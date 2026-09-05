@@ -190,8 +190,13 @@ public final class TailnetPurgeManifestsUnit extends AbstractManifestsUnit {
         JsonPatch.add(
             "/spec",
             Map.of(
+                // Generous: at cold-start the flox-controller realises FloxEnvs serially (~1/min),
+                // so this Job's flox-wait init may time out several times before the mesh/tailnet
+                // GC-root exists. A high backoffLimit lets the pod keep retrying until the env is
+                // realised (rather than failing the Job and wedging the operator gate — which then
+                // needs a manual `kubectl delete job`). A genuinely-broken env still fails eventually.
                 "backoffLimit",
-                3,
+                20,
                 "template",
                 Map.of(
                     "metadata",
