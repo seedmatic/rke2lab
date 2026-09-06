@@ -1,6 +1,7 @@
 package io.seedmatic.rke2lab.manifests.contract;
 
 import io.seedmatic.rke2lab.manifests.contract.profiles.BootstrapIdentity;
+import io.seedmatic.rke2lab.manifests.contract.profiles.ClusterIssuerCaMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.FloxDebugPolicy;
 import io.seedmatic.rke2lab.manifests.contract.profiles.GithubAppMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ImageState;
@@ -31,7 +32,8 @@ public record ManifestSynthesisRequest(
     Optional<IncusIdentityMaterial> incusIdentity,
     Optional<OperatorPkiMaterial> operatorPki,
     Optional<GithubAppMaterial> githubApp,
-    Optional<ReplicatorSourceSecretsMaterial> replicatorSources)
+    Optional<ReplicatorSourceSecretsMaterial> replicatorSources,
+    Optional<ClusterIssuerCaMaterial> clusterIssuerCa)
     implements ManifestDomainPolicyAware {
 
   private static final String ENABLED_DOMAINS_PROPERTY = "rke2lab.manifests.policy.enabledDomains";
@@ -62,6 +64,7 @@ public record ManifestSynthesisRequest(
     operatorPki = operatorPki == null ? Optional.empty() : operatorPki;
     githubApp = githubApp == null ? Optional.empty() : githubApp;
     replicatorSources = replicatorSources == null ? Optional.empty() : replicatorSources;
+    clusterIssuerCa = clusterIssuerCa == null ? Optional.empty() : clusterIssuerCa;
   }
 
   public static Builder builder(Path synthOutdir, Path synthManifestFile) {
@@ -80,7 +83,8 @@ public record ManifestSynthesisRequest(
         .incusIdentity(incusIdentity)
         .operatorPki(operatorPki)
         .githubApp(githubApp)
-        .replicatorSources(replicatorSources);
+        .replicatorSources(replicatorSources)
+        .clusterIssuerCa(clusterIssuerCa);
   }
 
   // Immutable transformations: each returns a new request with one slice replaced. They delegate to
@@ -124,6 +128,10 @@ public record ManifestSynthesisRequest(
 
   public ManifestSynthesisRequest withReplicatorSources(ReplicatorSourceSecretsMaterial material) {
     return toBuilder().replicatorSources(Optional.of(material)).build();
+  }
+
+  public ManifestSynthesisRequest withClusterIssuerCa(ClusterIssuerCaMaterial material) {
+    return toBuilder().clusterIssuerCa(Optional.of(material)).build();
   }
 
   public static ManifestSynthesisRequest fromSystemProperties() {
@@ -191,6 +199,7 @@ public record ManifestSynthesisRequest(
     private Optional<OperatorPkiMaterial> operatorPki = Optional.empty();
     private Optional<GithubAppMaterial> githubApp = Optional.empty();
     private Optional<ReplicatorSourceSecretsMaterial> replicatorSources = Optional.empty();
+    private Optional<ClusterIssuerCaMaterial> clusterIssuerCa = Optional.empty();
 
     private Builder(Path synthOutdir, Path synthManifestFile) {
       this.synthOutdir = synthOutdir;
@@ -247,6 +256,11 @@ public record ManifestSynthesisRequest(
       return this;
     }
 
+    public Builder clusterIssuerCa(final Optional<ClusterIssuerCaMaterial> v) {
+      this.clusterIssuerCa = v;
+      return this;
+    }
+
     public ManifestSynthesisRequest build() {
       return new ManifestSynthesisRequest(
           synthOutdir,
@@ -260,7 +274,8 @@ public record ManifestSynthesisRequest(
           incusIdentity,
           operatorPki,
           githubApp,
-          replicatorSources);
+          replicatorSources,
+          clusterIssuerCa);
     }
   }
 

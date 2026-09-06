@@ -7,9 +7,12 @@ import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.ManifestLayer;
 import io.seedmatic.rke2lab.manifests.ingress.Component;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
+import io.seedmatic.rke2lab.manifests.units.platform.ClusterIssuerManifestsUnit;
 import io.seedmatic.rke2lab.manifests.upstream.UpstreamYamlInclusion;
+import io.seedmatic.rke2lab.manifests.upstream.UpstreamYamlInclusion.UpstreamRewrite;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.cdk8s.ApiObject;
 import org.cdk8s.ApiObjectMetadata;
 import org.cdk8s.ApiObjectProps;
@@ -29,8 +32,17 @@ public final class ClusterApiOperatorManifestsUnit extends AbstractManifestsUnit
       new PackageMetadataProfile(
           ManifestDomainCatalog.CLUSTER_API, OUTPUT_DIR, false, ManifestLayer.OPERATORS);
 
+  /**
+   * The upstream operator's self-signed webhook Issuer + serving Certificate we repoint at our CA.
+   */
+  private static final String UPSTREAM_SELFSIGNED_ISSUER = "capi-operator-selfsigned-issuer";
+
+  private static final String UPSTREAM_SERVING_CERT = "capi-operator-serving-cert";
+
   public ClusterApiOperatorManifestsUnit() {
-    super(MANIFEST_UNIT_ID, List.of());
+    // dependsOn platform/cluster-issuer: the operator's serving Certificate now references the
+    // shared rke2lab-ca ClusterIssuer, so Flux must apply that issuer (Ready) first.
+    super(MANIFEST_UNIT_ID, List.of(ClusterIssuerManifestsUnit.MANIFEST_UNIT_ID));
   }
 
   @Override
@@ -51,7 +63,8 @@ public final class ClusterApiOperatorManifestsUnit extends AbstractManifestsUnit
 
     final String operatorReleaseResource =
         "/upstream/clusterapi/operator/release-" + operatorVersion + ".yaml";
-    new UpstreamYamlInclusion(scope, operatorReleaseResource, packageProfile, context.yaml());
+    new UpstreamYamlInclusion(
+        scope, operatorReleaseResource, packageProfile, context.yaml(), new CaIssuerRewrite());
 
     createProviderNamespaces(scope);
     createCoreProvider(scope, coreVersion);
@@ -173,5 +186,43 @@ public final class ClusterApiOperatorManifestsUnit extends AbstractManifestsUnit
                 .build());
 
     provider.addJsonPatch(JsonPatch.add("/spec", Map.of("version", version)));
+  }
+
+  /**
+   * Repoints the operator's webhook serving cert at the shared cluster CA {@code ClusterIssuer}
+   * ({@code rke2lab-ca}) so it chains to our own root like every other in-cluster leaf: DROP the
+   * upstream self-signed {@code Issuer}, and rewrite the serving {@code Certificate}'s {@code
+   * issuerRef} to the {@code ClusterIssuer}. The {@code cert-manager.io/inject-ca-from} on the
+   * webhook configs is unchanged — ca-injector then injects OUR CA. Matches upstream by exact name;
+   * a release bump that renames these would leave both untouched (the build still succeeds), so the
+   * post-grow check is that the webhook configs carry the rke2lab-ca chain.
+   */
+  private static final class CaIssuerRewrite implements UpstreamRewrite {
+
+    @Override
+    public boolean accept(final Map<String, Object> document) {
+      return !("Issuer".equals(document.get("kind"))
+          && nameOf(document).filter(UPSTREAM_SELFSIGNED_ISSUER::equals).isPresent());
+    }
+
+    @Override
+    public Map<String, Object> transform(final Map<String, Object> document) {
+      if ("Certificate".equals(document.get("kind"))
+          && nameOf(document).filter(UPSTREAM_SERVING_CERT::equals).isPresent()
+          && document.get("spec") instanceof Map<?, ?> spec) {
+        @SuppressWarnings("unchecked")
+        final Map<String, Object> mutableSpec = (Map<String, Object>) spec;
+        mutableSpec.put(
+            "issuerRef",
+            Map.of("kind", "ClusterIssuer", "name", ClusterIssuerManifestsUnit.ISSUER_NAME));
+      }
+      return document;
+    }
+
+    private static Optional<String> nameOf(final Map<String, Object> document) {
+      return document.get("metadata") instanceof Map<?, ?> metadata
+          ? Optional.ofNullable(metadata.get("name")).map(Object::toString)
+          : Optional.empty();
+    }
   }
 }

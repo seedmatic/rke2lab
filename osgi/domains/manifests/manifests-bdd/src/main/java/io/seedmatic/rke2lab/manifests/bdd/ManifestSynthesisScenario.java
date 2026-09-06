@@ -22,6 +22,7 @@ import io.seedmatic.rke2lab.manifests.contract.ManifestsRunbookInput;
 import io.seedmatic.rke2lab.manifests.contract.NodeBootstrapArtifact;
 import io.seedmatic.rke2lab.manifests.contract.RenderMode;
 import io.seedmatic.rke2lab.manifests.contract.profiles.BootstrapIdentity;
+import io.seedmatic.rke2lab.manifests.contract.profiles.ClusterIssuerCaMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.FloxDebugPolicy;
 import io.seedmatic.rke2lab.manifests.contract.profiles.GithubAppMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.OperatorPkiMaterial;
@@ -195,6 +196,18 @@ public class ManifestSynthesisScenario
     }
     return cellar.fetch(
         parcel.orElseThrow(), ClusterPkiCase.ADMIN_CREDENTIALS, OperatorPkiMaterial.class);
+  }
+
+  // Reveal the cluster-issuer CA (mirror of cluster-pki ClusterIssuerCa) via the neutral wire
+  // coordinate — same treatment as revealOperatorPki(). Empty on a bare survey / before the seal
+  // filed / a secret-blind in-cluster render (EphemeralCellar) → the delivering unit renders no
+  // Secret onto the branch (the material rides the durable NODE_BOOTSTRAP lane).
+  private Optional<ClusterIssuerCaMaterial> revealClusterIssuerCa() {
+    if (cellar == null || parcel.isEmpty()) {
+      return Optional.empty();
+    }
+    return cellar.fetch(
+        parcel.orElseThrow(), ClusterPkiCase.CLUSTER_ISSUER_CA, ClusterIssuerCaMaterial.class);
   }
 
   /**
@@ -505,7 +518,8 @@ public class ManifestSynthesisScenario
    * the manifests realm knows that cross-realm wire name (the cellar matches a read case by slug).
    */
   private enum ClusterPkiCase implements SeedCoordinate {
-    ADMIN_CREDENTIALS("admin-credentials");
+    ADMIN_CREDENTIALS("admin-credentials"),
+    CLUSTER_ISSUER_CA("cluster-issuer-ca");
 
     private final String slug;
 
@@ -543,7 +557,11 @@ public class ManifestSynthesisScenario
         .the_policy_is_derived_from_the_facet()
         .and()
         .the_manifests_are_synthesized(
-            revealOperatorPki(), revealGithubApp(), revealReplicatorSources(), rendered);
+            revealOperatorPki(),
+            revealGithubApp(),
+            revealReplicatorSources(),
+            revealClusterIssuerCa(),
+            rendered);
     then()
         .every_enabled_domain_produced_its_units()
         .and()
@@ -642,6 +660,7 @@ public class ManifestSynthesisScenario
         @Hidden Optional<OperatorPkiMaterial> operatorPki,
         @Hidden Optional<GithubAppMaterial> githubApp,
         @Hidden Optional<ReplicatorSourceSecretsMaterial> replicatorSources,
+        @Hidden Optional<ClusterIssuerCaMaterial> clusterIssuerCa,
         @Hidden Optional<LinkedWorktree> rendered) {
       final ManifestsRunbookInput.DebugFacet debug = facet.facets().debug();
       final FloxDebugPolicy floxDebug =
@@ -687,6 +706,10 @@ public class ManifestSynthesisScenario
       // The replicator SOURCE secrets revealed from the cellar (empty on a bare survey / before the
       // seal filed): ReplicatorManifestsUnit renders them onto the node-bootstrap lane, or nothing.
       builder.replicatorSources(replicatorSources);
+      // The cluster-issuer CA revealed from the cellar (empty on a bare survey / secret-blind
+      // in-cluster render): ClusterIssuerManifestsUnit renders the ClusterIssuer + its key Secret
+      // onto the node-bootstrap lane, or (no material) just leaves the branch ClusterIssuer.
+      builder.clusterIssuerCa(clusterIssuerCa);
       final ManifestSynthesisRequest request = builder.build();
       try {
         this.result = synthesis.orElseThrow().synthesize(request);

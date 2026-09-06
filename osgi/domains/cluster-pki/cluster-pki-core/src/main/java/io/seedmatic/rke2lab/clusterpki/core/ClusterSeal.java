@@ -5,6 +5,7 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import io.seedmatic.rke2lab.clusterpki.contract.AdminCredentials;
 import io.seedmatic.rke2lab.clusterpki.contract.ClusterAgeKey;
 import io.seedmatic.rke2lab.clusterpki.contract.ClusterCaBundle;
+import io.seedmatic.rke2lab.clusterpki.contract.ClusterIssuerCa;
 import io.seedmatic.rke2lab.clusterpki.contract.SopsEncryptor;
 import io.seedmatic.rke2lab.clusterpki.core.internal.ClusterCaGenerator;
 import io.seedmatic.rke2lab.clusterpki.core.internal.SopsRecipients;
@@ -63,11 +64,12 @@ public final class ClusterSeal {
     final long timestamp = Instant.now().getEpochSecond();
 
     final ClusterCaGenerator generator = new ClusterCaGenerator();
-    final LinkedHashMap<String, String> bundle =
+    final ClusterCaGenerator.ClusterCaSet caSet =
         generator.generate(
             keystore.authorityCert(TLS_AUTHORITY),
             keystore.authorityPrivate(TLS_AUTHORITY),
             timestamp);
+    final LinkedHashMap<String, String> bundle = caSet.nodeBundle();
     final String sealed = encryptor.encryptYaml(renderYaml(bundle), recipients);
     final String ageIdentity = sshToAge.toAgeKey(keystore.sshPrivate(CLUSTER_SSH_KEY));
 
@@ -81,8 +83,16 @@ public final class ClusterSeal {
     final AdminCredentials adminCredentials =
         new AdminCredentials(admin.certPem(), admin.keyPem(), bundle.get("server-ca.crt"));
 
+    // The cert-manager ClusterIssuer root: full chain (to the mammoth-skate root) + CA key,
+    // delivered in-cluster so every leaf chains to our own CA.
+    final ClusterIssuerCa clusterIssuerCa =
+        new ClusterIssuerCa(caSet.issuerCaChainPem(), caSet.issuerCaKeyPem());
+
     return new SealedClusterPki(
-        new ClusterCaBundle(sealed), new ClusterAgeKey(ageIdentity), adminCredentials);
+        new ClusterCaBundle(sealed),
+        new ClusterAgeKey(ageIdentity),
+        adminCredentials,
+        clusterIssuerCa);
   }
 
   /**

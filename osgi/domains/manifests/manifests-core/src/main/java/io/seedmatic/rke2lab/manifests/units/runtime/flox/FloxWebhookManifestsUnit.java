@@ -8,6 +8,7 @@ import io.seedmatic.rke2lab.manifests.contract.ManifestLayer;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import io.seedmatic.rke2lab.manifests.units.cluster.ClusterRefs;
 import io.seedmatic.rke2lab.manifests.units.cluster.ClusterRuntimeNamespaceManifestsUnit;
+import io.seedmatic.rke2lab.manifests.units.platform.ClusterIssuerManifestsUnit;
 import java.util.List;
 import java.util.Map;
 import org.cdk8s.ApiObject;
@@ -18,33 +19,31 @@ import software.constructs.Construct;
 
 /**
  * Serves the flox-controller pod-mutating webhook: the TLS serving cert (minted + renewed
- * IN-CLUSTER by cert-manager from a self-signed {@code Issuer}), the {@code Service} that fronts
- * the flox-controller DaemonSet pods (the mutation is stateless, so any pod serves), and the {@code
- * MutatingWebhookConfiguration} routing pod CREATE to it.
+ * IN-CLUSTER by cert-manager from the shared cluster CA {@code ClusterIssuer}), the {@code Service}
+ * that fronts the flox-controller DaemonSet pods (the mutation is stateless, so any pod serves),
+ * and the {@code MutatingWebhookConfiguration} routing pod CREATE to it.
  *
  * <p>The cert is a cert-manager concern, not a grow one (Door 2 of
- * docs/architecture/cluster-api/pac-in-cluster-render-spec.adoc § secret-delivery): a self-signed
- * {@code Issuer} signs a leaf {@code Certificate} whose {@code secretName} is {@value
- * #TLS_SECRET_NAME} (the DaemonSet mounts it), and the {@code MutatingWebhookConfiguration} carries
- * NO inline caBundle — the {@code cert-manager.io/inject-ca-from} annotation makes cert-manager's
- * ca-injector fill it (and keep it in sync on renewal). So the webhook rides no reveal-gated
- * secret: it renders UNCONDITIONALLY (a bare survey still emits the CRs; cert-manager materialises
- * the Secret in-cluster), and a secret-blind in-cluster render never strips it — the defect that
- * left the DaemonSet without {@code --enable-webhook} and the flox scheduling gate inert.
+ * docs/architecture/cluster-api/pac-in-cluster-render-spec.adoc § secret-delivery): the leaf {@code
+ * Certificate} (its {@code secretName} is {@value #TLS_SECRET_NAME}, the DaemonSet mounts it)
+ * references the two-tier {@code ClusterIssuer} {@link ClusterIssuerManifestsUnit#ISSUER_NAME}
+ * ({@code rke2lab-ca}) — rooted in our own cluster-pki CA, so it chains to the mammoth-skate root
+ * like every other in-cluster leaf. The {@code MutatingWebhookConfiguration} carries NO inline
+ * caBundle — the {@code cert-manager.io/inject-ca-from} annotation makes cert-manager's ca-injector
+ * fill it (and keep it in sync on renewal). So the webhook rides no reveal-gated secret: it renders
+ * UNCONDITIONALLY (a bare survey still emits the CRs; cert-manager materialises the Secret
+ * in-cluster), and a secret-blind in-cluster render never strips it — the defect that left the
+ * DaemonSet without {@code --enable-webhook} and the flox scheduling gate inert.
  *
  * <p>Single-source concord: the Service name/namespace ({@value #SERVICE_NAME} in {@code
  * rke2lab-system}) MUST match the {@code Certificate} SANs ({@link #servingDnsNames}) — otherwise
- * kube-apiserver rejects the TLS handshake. cert-manager itself is on the FOUNDATION layer (before
- * this OPERATORS unit), so the {@code Issuer}/{@code Certificate} CRDs exist and the leaf issues
- * before the DaemonSet mounts the Secret.
+ * kube-apiserver rejects the TLS handshake. The unit dependsOn {@code platform/cluster-issuer}
+ * (and, derived, {@code platform/cert-manager}), so the {@code ClusterIssuer} is Ready before this
+ * leaf issues, and the leaf issues before the DaemonSet mounts the Secret.
  *
  * <p>{@code failurePolicy: Ignore} keeps pod creation cluster-wide unblocked if the webhook is
  * momentarily unavailable (e.g. during a rollout); the injector self-filters (no-op on pods without
  * a {@code flox.seedmatic.io/environment.*} annotation), so the broad pod rule is cheap.
- *
- * <p>Single-tier self-signed leaf (the pattern the CAPI operator already runs in-cluster). The
- * planned convergence is a two-tier CA rooted in our own cluster-pki server-CA — see § FOLLOW-UP in
- * the flox-gate secret-flow record; nothing here forecloses it.
  */
 public final class FloxWebhookManifestsUnit extends AbstractManifestsUnit {
 
@@ -60,9 +59,6 @@ public final class FloxWebhookManifestsUnit extends AbstractManifestsUnit {
   private static final String CONTROLLER_NAME = "flox-controller";
 
   public static final String TLS_SECRET_NAME = "flox-controller-webhook-tls";
-
-  /** The self-signed cert-manager Issuer that signs the serving leaf. */
-  private static final String ISSUER_NAME = "flox-controller-webhook-selfsigned";
 
   /** The leaf serving Certificate; its caBundle is ca-injected onto the webhook config. */
   private static final String CERTIFICATE_NAME = "flox-controller-webhook-serving";
@@ -82,7 +78,11 @@ public final class FloxWebhookManifestsUnit extends AbstractManifestsUnit {
           ManifestDomainCatalog.RUNTIME, OUTPUT_DIR, false, ManifestLayer.OPERATORS);
 
   public FloxWebhookManifestsUnit() {
-    super(MANIFEST_UNIT_ID, List.of(ClusterRuntimeNamespaceManifestsUnit.MANIFEST_UNIT_ID));
+    super(
+        MANIFEST_UNIT_ID,
+        List.of(
+            ClusterRuntimeNamespaceManifestsUnit.MANIFEST_UNIT_ID,
+            ClusterIssuerManifestsUnit.MANIFEST_UNIT_ID));
   }
 
   @Override
@@ -94,37 +94,16 @@ public final class FloxWebhookManifestsUnit extends AbstractManifestsUnit {
   protected void doSynthesize(final Construct scope, final ManifestsUnitContext context) {
     final String namespace = ClusterRefs.RUNTIME_SYSTEM_NAMESPACE.name();
 
-    final ApiObject issuer = createSelfSignedIssuer(scope, context.resolver(), namespace);
-    createServingCertificate(scope, issuer, namespace);
+    createServingCertificate(scope, context.resolver(), namespace);
     createService(scope, context.resolver(), namespace);
     createWebhookConfiguration(scope, namespace);
   }
 
-  private ApiObject createSelfSignedIssuer(
-      final Construct scope, final Cdk8sApiObjectResolver resolver, final String namespace) {
-    final ApiObject issuer =
-        new ApiObject(
-            scope,
-            "issuer-flox-webhook-selfsigned",
-            ApiObjectProps.builder()
-                .apiVersion("cert-manager.io/v1")
-                .kind("Issuer")
-                .metadata(
-                    ApiObjectMetadata.builder()
-                        .name(ISSUER_NAME)
-                        .namespace(namespace)
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "cert-manager.io|Issuer|" + namespace + "|" + ISSUER_NAME))
-                        .build())
-                .build());
-    issuer.addDependency(resolver.require(ClusterRefs.RUNTIME_SYSTEM_NAMESPACE));
-    issuer.addJsonPatch(JsonPatch.add("/spec", Map.of("selfSigned", Map.of())));
-    return issuer;
-  }
-
+  // The serving leaf, signed by the shared cluster CA ClusterIssuer (rke2lab-ca) so it chains to
+  // our own cluster-pki root — the two-tier convergence. The unit dependsOn platform/cluster-issuer
+  // (declared in the ctor) so Flux only applies this once that issuer is Ready.
   private void createServingCertificate(
-      final Construct scope, final ApiObject issuer, final String namespace) {
+      final Construct scope, final Cdk8sApiObjectResolver resolver, final String namespace) {
     final ApiObject certificate =
         new ApiObject(
             scope,
@@ -144,14 +123,16 @@ public final class FloxWebhookManifestsUnit extends AbstractManifestsUnit {
                                     + CERTIFICATE_NAME))
                         .build())
                 .build());
-    certificate.addDependency(issuer);
+    certificate.addDependency(resolver.require(ClusterRefs.RUNTIME_SYSTEM_NAMESPACE));
     certificate.addJsonPatch(
         JsonPatch.add(
             "/spec",
             Map.of(
                 "secretName", TLS_SECRET_NAME,
                 "dnsNames", servingDnsNames(namespace),
-                "issuerRef", Map.of("kind", "Issuer", "name", ISSUER_NAME))));
+                "issuerRef",
+                    Map.of(
+                        "kind", "ClusterIssuer", "name", ClusterIssuerManifestsUnit.ISSUER_NAME))));
   }
 
   private void createService(

@@ -9,10 +9,10 @@ import io.seedmatic.rke2lab.seed.broker.port.SeedCoordinate;
  * incus-ingress {@code IncusGrowCoordinate} lesson, applied to the producing domain.
  *
  * <p>Each slug matches the {@code @SeedContract} of the record filed under it ({@link
- * ClusterCaBundle}, {@link ClusterAgeKey}, {@link AdminCredentials}), which {@code SeedCodec}
- * verifies at decode. Domain is {@code "cluster-pki"} — the seal scion (OSGi) stores, the host
- * fetches (the incus GROW poses the node cases on devlxd; the kubeconfig write consumes the admin
- * case), across the realm boundary com.pulumi imposes. See
+ * ClusterCaBundle}, {@link ClusterAgeKey}, {@link AdminCredentials}, {@link ClusterIssuerCa}),
+ * which {@code SeedCodec} verifies at decode. Domain is {@code "cluster-pki"} — the seal scion
+ * (OSGi) stores, the host fetches (the incus GROW poses the node cases on devlxd; the kubeconfig
+ * write consumes the admin case), across the realm boundary com.pulumi imposes. See
  * docs/architecture/cluster-api/deterministic-cluster-access.adoc.
  */
 public enum ClusterPkiCoordinate implements SeedCoordinate {
@@ -26,7 +26,13 @@ public enum ClusterPkiCoordinate implements SeedCoordinate {
   // The operator's admin credentials (admin client cert + key + server-ca chain), minted from the
   // client-ca at seal time. SEALED — it carries the admin private key. The host reveals it after
   // the grow and writes the operator kubeconfig the readiness probe reads.
-  ADMIN_CREDENTIALS("admin-credentials");
+  ADMIN_CREDENTIALS("admin-credentials"),
+
+  // The cluster-issuer CA (chain + private key) minted at seal time — the cert-manager
+  // ClusterIssuer
+  // root every in-cluster leaf chains to. SEALED (it carries the CA private key). Delivered into
+  // kube-system via the NODE_BOOTSTRAP lane, never onto the reconciled branch.
+  CLUSTER_ISSUER_CA("cluster-issuer-ca");
 
   private static final String DOMAIN = "cluster-pki";
 

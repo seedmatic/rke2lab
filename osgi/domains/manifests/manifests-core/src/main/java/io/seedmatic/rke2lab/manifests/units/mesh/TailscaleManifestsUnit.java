@@ -108,12 +108,12 @@ public final class TailscaleManifestsUnit extends AbstractManifestsUnit {
                 """
                 operatorConfig:
                   debug: true
-                # LE STAGING while validating funnel-cert persistence/reuse: staging has effectively
-                # unlimited rate limits, so a re-issuance during iteration does NOT burn the production
-                # 5-cert/FQDN/168h budget. Staging certs are UNTRUSTED (GitHub webhook TLS fails), so
-                # flip this back to false for production once the persisted cert is proven reused (0
-                # issuance). See docs .../pac-in-cluster-render-spec.adoc § funnel-durability.
-                useLetsEncryptStagingEnvironment: true
+                # PRODUCTION Let's Encrypt: funnel certs must be publicly trusted (staging certs make
+                # the GitHub webhook TLS handshake fail). Flip to true ONLY to iterate on funnel-cert
+                # persistence/reuse — staging has effectively unlimited rate limits, so a re-issuance
+                # during iteration does not burn the production 5-cert/FQDN/168h budget — then flip
+                # back before a real grow. See docs .../pac-in-cluster-render-spec.adoc § funnel-durability.
+                useLetsEncryptStagingEnvironment: false
                 """,
                 "version",
                 version)));

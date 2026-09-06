@@ -17,7 +17,7 @@ public final class ClusterApiDomainRegistrar implements ManifestsDomainRegistrar
   public ManifestsDomain domain() {
     return new ManifestsDomain(
         ManifestDomainCatalog.CLUSTER_API,
-        List.of(),
+        List.of(ManifestDomainCatalog.PLATFORM),
         List.of(
             new IncusIdentitySecretManifestsUnit(),
             new ImageStateConfigMapManifestsUnit(),

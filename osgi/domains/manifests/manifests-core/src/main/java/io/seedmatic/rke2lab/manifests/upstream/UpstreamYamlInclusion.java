@@ -31,8 +31,29 @@ import software.constructs.Construct;
  *
  * <p>Resources are constructed eagerly during instantiation. Use {@link #apiObjects()} to recover
  * the cdk8s constructs (e.g. to add cross-resource dependencies).
+ *
+ * <p>A caller may pass an {@link UpstreamRewrite} to DROP documents ({@link
+ * UpstreamRewrite#accept}) or MUTATE them ({@link UpstreamRewrite#transform}) before emission — the
+ * hook for repointing an upstream self-signed issuer at our own CA, without hand-translating the
+ * artifact. The domain knowledge (which resource, what rewrite) lives at the call site, never in
+ * this generic mechanism.
  */
 public final class UpstreamYamlInclusion {
+
+  /** Per-document drop/mutate hook, supplied by the caller; defaults are identity/accept-all. */
+  public interface UpstreamRewrite {
+    UpstreamRewrite NONE = new UpstreamRewrite() {};
+
+    /** {@code false} drops the document from the emitted set (e.g. an unwanted upstream Issuer). */
+    default boolean accept(final Map<String, Object> document) {
+      return true;
+    }
+
+    /** Returns the document to emit — mutated or replaced (e.g. a rewritten {@code issuerRef}). */
+    default Map<String, Object> transform(final Map<String, Object> document) {
+      return document;
+    }
+  }
 
   private final List<ApiObject> apiObjects;
 
@@ -41,20 +62,21 @@ public final class UpstreamYamlInclusion {
       final String classpathResource,
       final PackageMetadataProfile packageProfile,
       final YamlMapper yaml) {
-    this.apiObjects = build(scope, classpathResource, packageProfile, yaml);
+    this(scope, classpathResource, packageProfile, yaml, UpstreamRewrite.NONE);
+  }
+
+  public UpstreamYamlInclusion(
+      final Construct scope,
+      final String classpathResource,
+      final PackageMetadataProfile packageProfile,
+      final YamlMapper yaml,
+      final UpstreamRewrite rewrite) {
+    this.apiObjects = build(scope, classpathResource, packageProfile, yaml, rewrite);
   }
 
   /** All resources emitted from the included YAML, in document order. */
   public List<ApiObject> apiObjects() {
     return Collections.unmodifiableList(apiObjects);
-  }
-
-  private static boolean accept(final Map<String, Object> document) {
-    return true;
-  }
-
-  private static Map<String, Object> transform(final Map<String, Object> document) {
-    return document;
   }
 
   private static String upstreamIdentifierFor(
@@ -70,16 +92,17 @@ public final class UpstreamYamlInclusion {
       final Construct scope,
       final String classpathResource,
       final PackageMetadataProfile packageProfile,
-      final YamlMapper yaml) {
+      final YamlMapper yaml,
+      final UpstreamRewrite rewrite) {
     final List<Map<String, Object>> documents = readDocuments(classpathResource, yaml);
     final List<ApiObject> emitted = new ArrayList<>();
 
     int index = 0;
     for (Map<String, Object> document : documents) {
-      if (!accept(document)) {
+      if (!rewrite.accept(document)) {
         continue;
       }
-      final Map<String, Object> shaped = transform(document);
+      final Map<String, Object> shaped = rewrite.transform(document);
 
       final Optional<String> apiVersion = stringField(shaped, "apiVersion");
       final Optional<String> kind = stringField(shaped, "kind");

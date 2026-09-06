@@ -54,7 +54,12 @@ import org.bouncycastle.util.io.pem.PemReader;
  *   <li>an INTERMEDIATE CA (RSA 4096) signed by the root,
  *   <li>the five leaf CAs — {@code client}, {@code server}, {@code request-header}, {@code
  *       etcd-peer}, {@code etcd-server} (EC prime256v1) — signed by the intermediate,
- *   <li>the service-account issuer key (RSA 2048).
+ *   <li>the service-account issuer key (RSA 2048),
+ *   <li>the {@code cluster-issuer} CA (EC prime256v1) — a SIXTH CA signed by the SAME intermediate,
+ *       distinct from the five rke2 leaf CAs and NOT part of the node bundle. Its key is delivered
+ *       in-cluster (kube-system) so a cert-manager {@code CA} {@code ClusterIssuer} signs app
+ *       leaves (flox webhook, CAPI, …) that chain to the mammoth-skate root. Deliberately
+ *       low-privilege: cert-manager never sees an rke2 CA key.
  * </ul>
  *
  * <p>Every cert carries the k3s {@code v3_ca} profile: SKI (hash), AKI (issuer keyid only),
@@ -62,10 +67,11 @@ import org.bouncycastle.util.io.pem.PemReader;
  * digitalSignature|keyEncipherment|keyCertSign}, sha256, 3700-day validity. Each {@code *-ca.crt}
  * is the FULL CHAIN (leaf + intermediate + root); each leaf key is SEC1 PEM, {@code service.key} is
  * PKCS#1. The root + intermediate PRIVATE keys never leave the operator's host — they are NOT in
- * the returned bundle.
+ * the returned set.
  *
- * <p>The return is the exact eleven-key node bundle {@code nixos/sops.nix} declares, ready to be
- * assembled into YAML and sops-sealed for the node. See
+ * <p>The return {@link ClusterCaSet} carries the exact eleven-key node bundle {@code
+ * nixos/sops.nix} declares (assembled into YAML + sops-sealed for the node) PLUS the cluster-issuer
+ * CA chain + key (sealed separately, delivered in-cluster). See
  * docs/architecture/cluster-api/deterministic-cluster-access.adoc.
  */
 public final class ClusterCaGenerator {
@@ -77,6 +83,20 @@ public final class ClusterCaGenerator {
   private static final List<String> LEAF_CAS =
       List.of("client", "server", "request-header", "etcd-peer", "etcd-server");
 
+  /**
+   * CN stem of the sixth CA — the cert-manager {@code ClusterIssuer} root, delivered in-cluster.
+   */
+  private static final String CLUSTER_ISSUER_CN = "rke2lab-cluster-issuer-ca";
+
+  /**
+   * The generated CA hierarchy: the eleven-key node bundle {@code nixos/sops.nix} declares, plus
+   * the cluster-issuer CA (its full chain to the root + its private key) minted under the SAME
+   * intermediate but kept OUT of the node bundle — it is sealed separately and delivered
+   * in-cluster.
+   */
+  public record ClusterCaSet(
+      LinkedHashMap<String, String> nodeBundle, String issuerCaChainPem, String issuerCaKeyPem) {}
+
   static {
     if (Security.getProvider(BouncyCastleProvider.PROVIDER_NAME) == null) {
       Security.addProvider(new BouncyCastleProvider());
@@ -87,10 +107,10 @@ public final class ClusterCaGenerator {
    * Mint the CA set rooted on {@code rootCertPem}/{@code rootKeyPem}. {@code timestampSeconds} pins
    * the {@code @<ts>} suffix on each CA's CN (cosmetic uniqueness, as in the k3s script).
    *
-   * @return {@code fileName -> PEM} for the eleven node-bundle entries, in a stable order.
+   * @return the {@link ClusterCaSet}: the eleven node-bundle entries ({@code fileName -> PEM}, in a
+   *     stable order) plus the cluster-issuer CA chain + key.
    */
-  public LinkedHashMap<String, String> generate(
-      String rootCertPem, String rootKeyPem, long timestampSeconds) {
+  public ClusterCaSet generate(String rootCertPem, String rootKeyPem, long timestampSeconds) {
     try {
       final X509Certificate root = readCert(rootCertPem);
       final PrivateKey rootKey = readKey(rootKeyPem);
@@ -122,7 +142,19 @@ public final class ClusterCaGenerator {
 
       // service-account issuer key: RSA 2048, PKCS#1.
       bundle.put("service.key", keyPem(rsa(2048).getPrivate()));
-      return bundle;
+
+      // cluster-issuer CA: EC prime256v1, signed by the SAME intermediate. Kept OUT of the node
+      // bundle — sealed separately and delivered in-cluster as the cert-manager ClusterIssuer's CA.
+      final KeyPair issuerCaKey = ec();
+      final X509Certificate issuerCaCert =
+          sign(
+              interCert,
+              intermediate.getPrivate(),
+              "CN=" + CLUSTER_ISSUER_CN + "@" + timestampSeconds,
+              issuerCaKey.getPublic(),
+              timestampSeconds);
+      return new ClusterCaSet(
+          bundle, chainPem(issuerCaCert, interCert, root), keyPem(issuerCaKey.getPrivate()));
     } catch (RuntimeException ex) {
       throw ex;
     } catch (Exception ex) {

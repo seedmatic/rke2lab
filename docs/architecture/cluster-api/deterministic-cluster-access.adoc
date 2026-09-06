@@ -113,6 +113,20 @@ for the new synthesis path, by the manifests scion in-container — which transl
 manifests-side `OperatorPkiMaterial` and synthesizes the kubeconfigs — see the delivery section
 below.
 
+A fourth case, `ClusterIssuerCa`, carries a dedicated **cluster-issuer CA** — a sixth CA the seal
+mints under the SAME intermediate as the five rke2 leaf CAs, so it chains to the mammoth-skate root,
+but kept OUT of the node bundle. It is filed `SEALED` (it carries the CA private key). Its purpose is
+the two-tier cert-manager convergence: the CA chain + key are delivered in-cluster into `kube-system`
+(cert-manager's cluster-resource-namespace) via the durable `NODE_BOOTSTRAP` lane, where a
+cert-manager `CA` `ClusterIssuer` (`rke2lab-ca`) signs every in-cluster leaf — the flox webhook
+serving cert, the CAPI operator certs, future webhooks — so all chain to our own root instead of a
+forest of independent self-signed issuers. Deliberately low-privilege and distinct from the rke2
+CAs: cert-manager never receives an rke2 CA private key, so a compromise of the issuer CA mints only
+application leaves, never kube/etcd client certs. The manifests scion reveals it in-container and
+translates it to the manifests-side `ClusterIssuerCaMaterial` mirror (the same gate-boundary
+discipline `OperatorPkiMaterial` follows); the delivering unit stamps only the key Secret onto the
+`NODE_BOOTSTRAP` lane, while the `ClusterIssuer` object itself (no secret) renders onto the branch.
+
 == The target architecture
 
 [mermaid]
