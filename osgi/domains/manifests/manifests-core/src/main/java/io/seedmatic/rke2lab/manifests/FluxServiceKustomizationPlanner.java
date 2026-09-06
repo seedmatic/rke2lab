@@ -630,6 +630,15 @@ final class FluxServiceKustomizationPlanner {
       final Optional<HealthCheck> healthCheck) {
     final Map<String, Object> spec = new LinkedHashMap<>();
     spec.put("interval", "5m");
+    // While NotReady (the cold-start state), Flux re-queues after retryInterval, NOT interval —
+    // and a Kustomization only re-checks its dependsOn on its own tick, so each dependency LEVEL
+    // costs up to one tick. With the default (retryInterval = interval = 5m), a healthy object is
+    // detected up to 5m late and a deep dependsOn chain (e.g. a flox consumer →flox-runtime
+    // →cluster-issuer →cert-manager) compounds a tick per level — the cold-start cascade measured
+    // at
+    // ~11m of pure polling though the objects were healthy in ~2m. A short retryInterval collapses
+    // that to seconds-per-level; interval stays 5m so healthy resources are not re-polled hot.
+    spec.put("retryInterval", "30s");
     spec.put("path", cell.path());
     spec.put("prune", true);
     spec.put("wait", wait);
