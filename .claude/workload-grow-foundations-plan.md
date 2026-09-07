@@ -54,9 +54,11 @@ SHIPPED as the sub-facet design below. Carrier flows config → `Facets.workload
 `ManifestSynthesisRequest.workloadTargets` → `ManifestSynthesisContext.workloadTargets()`. New
 top-level `WorkloadTarget(host, role)` record (self-contained, no netplan dep; topology CANONICAL
 derived at consumption). Coalesces to empty. Verified: `-Pnxmatic` package green + facet coalescing
-test passes (`Tests run: 2`). Build note: the repo builds under **`-Pnxmatic`** (bnd generates the
-bundle MANIFEST.MF into `target~nxmatic`); the default profile fails at maven-jar (no MANIFEST.MF),
-and foundation SNAPSHOTs are not in `~/.m2` so a subset `-pl … -am` needs `package` not `test-compile`.
+test passes (`Tests run: 2`). Build note: **Claude builds in ITS lane `-Pclaude,all-worlds`** (→
+`target~claude`), NOT `-Pnxmatic` (the user's lane / `target~nxmatic`, which collides with their
+warm-up). bnd generates the bundle MANIFEST.MF (the default profile fails at maven-jar, no
+MANIFEST.MF); foundation SNAPSHOTs are not in `~/.m2` so a subset `-pl … -am` needs `package` not
+`test-compile`.
 Files: `WorkloadTarget.java` (new), `ManifestsRunbookInput.java` (Facets +4th sub-facet),
 `ManifestSynthesisRequest.java` (slice+builder+toBuilder), `ManifestSynthesisContext.java` (accessor),
 `ManifestSynthesisScenario.java` (threading + UPDATE/EDIT merge keeps seeded targets),
