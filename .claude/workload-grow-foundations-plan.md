@@ -166,10 +166,15 @@ a target. The targets are a set beside the identity; only the cluster-api units 
 - **4 — Incus project per cluster** — ❌ DROPPED (2026-09-07). One `rke2lab` project suffices: instance
   names are globally unique via the blueprint, networks/images are shared regardless, and the operator
   wants all nodes in one project (the naming was designed for it). Marginal isolation not worth the cost.
-- **5 — CAPN identity per REMOTE** (rescoped from per-cluster): one Secret per bare-metal
-  (`<host>-incus-identity`, `client-crt`/`client-key` shared, `server`/`server-crt` per remote), carrying
-  `project: rke2lab`. `IncusIdentitySecretManifestsUnit` re-keyed by host; a copy rendered into each
-  workload namespace (CAPN resolves `LXCCluster.secretRef` within the LXCCluster's namespace).
+- **5 — CAPN identity per REMOTE** — ✅ DONE. `ClusterApiWorkloadManifestsUnit` renders
+  `<host>-incus-identity` (data `server`/`server-crt`/`client-crt`/`client-key` + `project: rke2lab`)
+  into the workload namespace on the **NODE_BOOTSTRAP lane** (a credential — seeded node-side at the
+  grow, never committed to the branch, survives secret-blind in-cluster renders), with a
+  node-bootstrap copy of the namespace so the set is self-contained (twin of the CAPI kubeconfig
+  Secret). Rendered only when the material is revealed (a grow). The dead capn-system
+  `IncusIdentitySecretManifestsUnit` (per-cluster, unconsumed) is DELETED. Deferred: per-host material
+  for a DIFFERENT remote (nikopol) — today the one revealed identity is bioskop's, shared by
+  bioskop-wrkld.
 - **kube-vip** — ✅ DONE (1a): VIP now read from `NetworkTopology.vipHostInetAddr()` (blueprint-derived,
   per-cluster: mgmt 10.80.7.10 / bioskop-wrkld 10.80.15.10), no more hardcode. Per user directive
   "automate like the other netplan addresses". Still open: settle unit-vs-`LXCCluster.spec.loadBalancer`

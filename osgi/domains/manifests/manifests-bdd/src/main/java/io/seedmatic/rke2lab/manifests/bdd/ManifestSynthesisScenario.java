@@ -341,9 +341,13 @@ public class ManifestSynthesisScenario
   }
 
   /**
-   * A copy of {@code seeded} taking publish+debug from {@code facets}, keeping the seeded delivery
-   * and workload targets — both are grow-time coordinates the render verb never re-derives from
-   * HEAD.
+   * A copy of {@code seeded} taking publish + debug + workloadTargets from {@code facets} (HEAD),
+   * keeping only the seeded {@code delivery}. Rationale: publish/debug/workloadTargets are
+   * GROW-recorded coordinates (the CLI's facet never sets workloadTargets — it comes from the
+   * grow's Pulumi config), so HEAD wins; only {@code delivery} is verb-carried (the CLI's push
+   * intent). An earlier version took workloadTargets from {@code seeded} and a steady-state render
+   * — whose seeded facet has none — stripped them off the recorded manifest, emptying the workload
+   * CR set.
    */
   private ManifestsRunbookInput withPublishDebug(
       ManifestsRunbookInput seeded,
@@ -351,10 +355,7 @@ public class ManifestSynthesisScenario
       Optional<ImageState> recordedImage) {
     return new ManifestsRunbookInput(
         new ManifestsRunbookInput.Facets(
-            facets.publish(),
-            facets.debug(),
-            seeded.facets().delivery(),
-            seeded.facets().workloadTargets()),
+            facets.publish(), facets.debug(), seeded.facets().delivery(), facets.workloadTargets()),
         seeded.materializationRoot(),
         seeded.identity(),
         seeded.renderMode(),
