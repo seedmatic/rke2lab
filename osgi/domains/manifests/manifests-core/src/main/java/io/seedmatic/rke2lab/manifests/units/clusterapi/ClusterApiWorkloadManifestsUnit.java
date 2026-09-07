@@ -3,12 +3,16 @@ package io.seedmatic.rke2lab.manifests.units.clusterapi;
 import io.seedmatic.rke2lab.manifests.AbstractManifestsUnit;
 import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
 import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
+import io.seedmatic.rke2lab.manifests.contract.ManifestAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.WorkloadTarget;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ImageState;
+import io.seedmatic.rke2lab.manifests.contract.profiles.IncusIdentityMaterial;
 import io.seedmatic.rke2lab.manifests.ingress.Component;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import io.seedmatic.rke2lab.netplan.contract.ClusterNetworkBlueprint;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -45,12 +49,14 @@ import software.constructs.Construct;
  * CRs would pin a non-existent image, so — like {@link ImageStateConfigMapManifestsUnit} — the unit
  * renders nothing rather than a misleading placeholder.
  *
- * <p>Two provisioning inputs settle in later foundations, referenced by convention here: the
- * per-cluster incus PROJECT + network/profile the {@code LXCMachineTemplate} lands on (foundation
- * 4) and the per-remote CAPN identity Secret {@code <cluster>-incus-identity} the {@code
- * LXCCluster.secretRef} names (foundation 5). The rke2 config-ownership reconciliation (CAPRKE2's
- * generated {@code config.yaml} vs the node-base's baked config/CNI) is validated when the set is
- * first unpaused, not asserted here.
+ * <p>The per-remote CAPN identity Secret {@code <host>-incus-identity} the {@code
+ * LXCCluster.secretRef} names (foundation 5) is rendered HERE, on the {@code NODE_BOOTSTRAP} lane
+ * (a credential — never committed to the branch), with a node-bootstrap copy of the namespace so
+ * the grow-time apply is self-contained. One {@code rke2lab} incus project (foundation 4 dropped —
+ * instance names are globally unique via the blueprint), so the Secret carries {@code project:
+ * rke2lab}. Still by convention: the incus network/profile the {@code LXCMachineTemplate} lands on;
+ * and the rke2 config-ownership reconciliation (CAPRKE2's generated {@code config.yaml} vs the
+ * node-base's baked config/CNI), validated when the set is first unpaused, not asserted here.
  */
 public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit {
 
@@ -114,11 +120,9 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
     final String namespace = "rke2lab-" + cluster;
     // The CAPN identity is PER-REMOTE, not per-cluster: every cluster on a bare-metal shares the
     // one
-    // `rke2lab` incus project (instance names are already globally unique via the blueprint), so
-    // the
-    // Secret is keyed by the host/remote (bioskop, nikopol) and carries `project: rke2lab`.
-    // Foundation
-    // 5 renders a copy into each workload namespace; CAPN resolves secretRef within that namespace.
+    // `rke2lab` project (instance names are globally unique via the blueprint), so the Secret is
+    // keyed by the host (bioskop, nikopol). Rendered below on the node-bootstrap lane, in THIS
+    // namespace — CAPN resolves secretRef within the LXCCluster's own namespace.
     final String identitySecret = target.host() + "-incus-identity";
     // CAPI/CAPRKE2 want the k8s version with a leading `v`; the nix-emitted rke2Version has none
     // (e.g. `1.34.8+rke2r2`) — prefix it iff absent.
@@ -144,6 +148,82 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
         createRke2ConfigTemplate(scope, cluster, namespace, namespaceObject);
     createWorkerMachineDeployment(
         scope, cluster, namespace, rke2Version, configTemplate, workerTemplate, namespaceObject);
+
+    // The per-remote CAPN identity Secret the LXCCluster.secretRef names (foundation 5) — a
+    // CREDENTIAL, so it rides the NODE_BOOTSTRAP lane (seeded node-side at the grow, NEVER
+    // committed
+    // to the git branch), with its own node-bootstrap copy of the namespace so the set is
+    // self-contained. Rendered only when the material is revealed (a grow); a secret-blind
+    // in-cluster render omits it and — being off the branch — cannot strip the grow-seeded Secret.
+    // The twin of the CAPI kubeconfig Secret.
+    ManifestSynthesisContext.current()
+        .incusIdentity()
+        .ifPresent(
+            material ->
+                createIdentitySecret(scope, cluster, namespace, identitySecret, material, image));
+  }
+
+  private void createIdentitySecret(
+      final Construct scope,
+      final String cluster,
+      final String namespace,
+      final String identitySecret,
+      final IncusIdentityMaterial material,
+      final ImageState image) {
+    final Map<String, String> nodeBootstrap =
+        Map.of(ManifestAnnotation.NODE_BOOTSTRAP.key(), "true");
+    // A node-bootstrap copy of the workload namespace: the branch namespace above is Flux's (owns
+    // the CRs' lifecycle); this one just lets the grow-time node-side apply land the credential
+    // Secret self-contained. Same name, applied twice, idempotent.
+    final ApiObject nbNamespace =
+        new ApiObject(
+            scope,
+            "namespace-nb-" + cluster,
+            ApiObjectProps.builder()
+                .apiVersion("v1")
+                .kind("Namespace")
+                .metadata(
+                    ApiObjectMetadata.builder()
+                        .name(namespace)
+                        .annotations(
+                            packageProfile.packageAnnotations(
+                                "|Namespace||" + namespace, nodeBootstrap))
+                        .build())
+                .build());
+
+    final ApiObject secret =
+        new ApiObject(
+            scope,
+            "secret-incus-identity-" + cluster,
+            ApiObjectProps.builder()
+                .apiVersion("v1")
+                .kind("Secret")
+                .metadata(
+                    ApiObjectMetadata.builder()
+                        .name(identitySecret)
+                        .namespace(namespace)
+                        .annotations(
+                            packageProfile.packageAnnotations(
+                                "|Secret|" + namespace + "|" + identitySecret, nodeBootstrap))
+                        .build())
+                .build());
+    secret.addDependency(nbNamespace);
+    secret.addJsonPatch(JsonPatch.add("/type", "Opaque"));
+    secret.addJsonPatch(
+        JsonPatch.add(
+            "/data",
+            Map.of(
+                "server", base64(material.serverAddress()),
+                "server-crt", base64(material.serverCert()),
+                "client-crt", base64(material.clientCert()),
+                "client-key", base64(material.clientKey()),
+                // Single project (foundation 4 dropped) — the same project the node-base image
+                // lives in.
+                "project", base64(image.incusProject()))));
+  }
+
+  private static String base64(final String value) {
+    return Base64.getEncoder().encodeToString(value.getBytes(StandardCharsets.UTF_8));
   }
 
   private ApiObject createNamespace(

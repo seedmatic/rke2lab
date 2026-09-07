@@ -6,11 +6,13 @@
  * <ul>
  *   <li>{@link io.seedmatic.rke2lab.manifests.units.clusterapi.ClusterApiOperatorManifestsUnit} —
  *       the Cluster API operator plus core/infrastructure/control-plane providers.
- *   <li>{@link io.seedmatic.rke2lab.manifests.units.clusterapi.IncusIdentitySecretManifestsUnit} —
- *       the Incus identity secret; reads {@code bootstrapIdentity()} and guards against ephemeral
- *       (smoke-test) synthesis.
  *   <li>{@link io.seedmatic.rke2lab.manifests.units.clusterapi.ImageStateConfigMapManifestsUnit} —
  *       the Stage A → Stage B control-node image identity, surfaced as a ConfigMap.
+ *   <li>{@link io.seedmatic.rke2lab.manifests.units.clusterapi.ClusterKubeconfigManifestsUnit} —
+ *       the operator + CAPI kubeconfigs for the management cluster.
+ *   <li>{@link io.seedmatic.rke2lab.manifests.units.clusterapi.ClusterApiWorkloadManifestsUnit} —
+ *       the workload CAPI CR set (rendered on {@code -mgmt}, model B) plus the per-remote CAPN
+ *       identity Secret it references (node-bootstrap lane).
  * </ul>
  *
  * <p>Registered by {@link io.seedmatic.rke2lab.manifests.domain.ClusterApiDomainRegistrar}.

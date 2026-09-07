@@ -5,11 +5,11 @@ import java.util.Objects;
 
 /**
  * Stage A → Stage B Incus identity material published to synth-time layers via {@link
- * io.seedmatic.rke2lab.manifests.ManifestSynthesisContext}. Backs the {@code
- * <cluster>-incus-identity} Secret (see {@code IncusIdentitySecretManifestsUnit}) that hands the
- * {@code capn-provider} identity to the in-cluster CAPN provider (Stage B), which authenticates to
- * Incus via {@code LXCCluster.spec.secretRef} and has no access to Stage A's filesystem or Pulumi
- * outputs.
+ * io.seedmatic.rke2lab.manifests.ManifestSynthesisContext}. Backs the per-remote {@code
+ * <host>-incus-identity} Secret (rendered by {@code ClusterApiWorkloadManifestsUnit} on the
+ * node-bootstrap lane) that hands the {@code capn-provider} identity to the in-cluster CAPN
+ * provider (Stage B), which authenticates to Incus via {@code LXCCluster.spec.secretRef} and has no
+ * access to Stage A's filesystem or Pulumi outputs.
  *
  * <p>seed-master (the host) owns these materials and assembles them from the host world — the
  * {@code capn-provider} client cert from the application resources, the client key from {@code
