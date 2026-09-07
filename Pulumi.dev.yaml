@@ -59,6 +59,13 @@ config:
     # LOCAL until armed; set "false" to return to a local-only render (then push by hand).
     delivery:
       push: "true"
+    # The workload clusters this management render emits CAPI CRs for (model B — the CRs live on
+    # manifests/<host>-mgmt where CAPI runs). clusterName = <host>-<role>; the CR-set unit derives
+    # each target's blueprint + pins the node-base image. Only rendered at an operator grow (needs
+    # the incus scion's ImageState).
+    workloadTargets:
+      - host: bioskop
+        role: wrkld
   rke2lab:policy:
     network:
       lan:
