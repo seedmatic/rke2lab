@@ -110,7 +110,10 @@ a target. The targets are a set beside the identity; only the cluster-api units 
   Open: producer emit mechanism, openebs adoption, ephemeral wipe owner.
 - **4 — Incus project per cluster** (`features.images/networks=false`); `LXCCluster` remote scoped to it.
 - **5 — CAPN identity scoped to workload** (`project=bioskop-wrkld`), `LXCCluster.spec.secretRef`.
-- **kube-vip** VIP from blueprint + settle unit-vs-`LXCCluster.spec.loadBalancer`.
+- **kube-vip** — ✅ DONE (1a): VIP now read from `NetworkTopology.vipHostInetAddr()` (blueprint-derived,
+  per-cluster: mgmt 10.80.7.10 / bioskop-wrkld 10.80.15.10), no more hardcode. Per user directive
+  "automate like the other netplan addresses". Still open: settle unit-vs-`LXCCluster.spec.loadBalancer`
+  when 1c wires the workload endpoint.
 
 ## Deferred (NOT blocking the first workload)
 

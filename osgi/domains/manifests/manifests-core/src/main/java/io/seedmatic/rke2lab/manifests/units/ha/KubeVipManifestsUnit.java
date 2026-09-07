@@ -33,12 +33,19 @@ public final class KubeVipManifestsUnit extends AbstractManifestsUnit {
   protected void doSynthesize(final Construct scope, final ManifestsUnitContext context) {
     final String kubeVipVersion =
         ManifestSynthesisContext.current().componentVersions().of(Component.KUBE_VIP);
+    // The control-plane VIP is a PER-CLUSTER netplan address, never a literal:
+    // ClusterNetworkBlueprint
+    // derives it (vipHostInetAddr) and it rides the synth request's NetworkTopology, so this
+    // renders
+    // 10.80.7.10 for the mgmt cluster and 10.80.15.10 for bioskop-wrkld from the SAME code — the
+    // render's own cluster decides.
+    final String vip = ManifestSynthesisContext.current().networkTopology().vipHostInetAddr();
 
     ApiObject namespace = createNamespace(scope);
     ApiObject serviceAccount = createServiceAccount(scope, namespace);
     ApiObject clusterRole = createClusterRole(scope);
     ApiObject clusterRoleBinding = createClusterRoleBinding(scope, clusterRole, serviceAccount);
-    createDaemonSet(scope, namespace, serviceAccount, clusterRoleBinding, kubeVipVersion);
+    createDaemonSet(scope, namespace, serviceAccount, clusterRoleBinding, kubeVipVersion, vip);
     createService(scope);
   }
 
@@ -164,7 +171,8 @@ public final class KubeVipManifestsUnit extends AbstractManifestsUnit {
       final ApiObject namespace,
       final ApiObject serviceAccount,
       final ApiObject clusterRoleBinding,
-      final String kubeVipVersion) {
+      final String kubeVipVersion,
+      final String vip) {
     ApiObject daemonSet =
         new ApiObject(
             scope,
@@ -246,9 +254,9 @@ public final class KubeVipManifestsUnit extends AbstractManifestsUnit {
                                     // interface — there is no dedicated `rke2-vip0` link in the
                                     // netplan, despite the historical blueprint slot suggesting
                                     // one. The cluster-internal bridge is `vmnet0` (10.80.0.0/21
-                                    // cluster CIDR), and the VIP 10.80.7.10 sits in the
-                                    // cluster-vip-cidr 10.80.7.0/24 routed across that bridge —
-                                    // so vmnet0 is the only correct binding target.
+                                    // cluster CIDR), and the per-cluster VIP sits in that cluster's
+                                    // cluster-vip-cidr routed across that bridge — so vmnet0 is the
+                                    // only correct binding target.
                                     Map.of("name", "vip_interface", "value", "vmnet0"),
                                     Map.of("name", "vip_cidr", "value", "32"),
                                     Map.of("name", "dns_mode", "value", "first"),
@@ -259,7 +267,7 @@ public final class KubeVipManifestsUnit extends AbstractManifestsUnit {
                                     Map.of("name", "vip_leaseduration", "value", "5"),
                                     Map.of("name", "vip_renewdeadline", "value", "3"),
                                     Map.of("name", "vip_retryperiod", "value", "1"),
-                                    Map.of("name", "address", "value", "10.80.7.10")),
+                                    Map.of("name", "address", "value", vip)),
                                 "resources",
                                 Map.of(
                                     "limits",
