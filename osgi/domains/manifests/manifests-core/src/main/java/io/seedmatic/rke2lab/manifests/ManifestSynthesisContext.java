@@ -15,6 +15,7 @@ import io.seedmatic.rke2lab.manifests.contract.profiles.ReplicatorSourceSecretsM
 import io.seedmatic.rke2lab.manifests.contract.profiles.SigningKeyMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.SopsAgeMaterial;
 import io.seedmatic.rke2lab.manifests.ingress.ComponentVersions;
+import io.seedmatic.rke2lab.manifests.node.DefaultNodeEnvContext;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
@@ -119,8 +120,15 @@ public final class ManifestSynthesisContext {
     return request.bootstrapIdentity();
   }
 
+  /**
+   * The render's network topology — a PURE FUNCTION of {@link #bootstrapIdentity()} (the cluster +
+   * node name), derived through the same {@link DefaultNodeEnvContext} blueprint the node-env units
+   * use. Deriving here rather than carrying a separate request slice keeps ONE source of truth: the
+   * identity. (The former request-borne slice was never populated by any render driver, so a reader
+   * — kube-vip's VIP, the CAPI kubeconfig endpoint — silently got a blank address.)
+   */
   public NetworkTopology networkTopology() {
-    return request.networkTopology();
+    return new DefaultNodeEnvContext(request.bootstrapIdentity()).networkTopology();
   }
 
   public ComponentVersions componentVersions() {

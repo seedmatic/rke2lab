@@ -6,7 +6,6 @@ import io.seedmatic.rke2lab.manifests.contract.profiles.FloxDebugPolicy;
 import io.seedmatic.rke2lab.manifests.contract.profiles.GithubAppMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ImageState;
 import io.seedmatic.rke2lab.manifests.contract.profiles.IncusIdentityMaterial;
-import io.seedmatic.rke2lab.manifests.contract.profiles.NetworkTopology;
 import io.seedmatic.rke2lab.manifests.contract.profiles.OperatorPkiMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ReplicatorSourceSecretsMaterial;
 import io.seedmatic.rke2lab.manifests.ingress.ComponentVersions;
@@ -27,7 +26,6 @@ public record ManifestSynthesisRequest(
     Optional<ManifestDomainPolicy> manifestDomainPolicy,
     FloxDebugPolicy floxDebugPolicy,
     BootstrapIdentity bootstrapIdentity,
-    NetworkTopology networkTopology,
     ComponentVersions componentVersions,
     Optional<ImageState> imageState,
     Optional<IncusIdentityMaterial> incusIdentity,
@@ -52,7 +50,6 @@ public record ManifestSynthesisRequest(
             : manifestDomainPolicy.map(policy -> policy);
     floxDebugPolicy = floxDebugPolicy == null ? FloxDebugPolicy.disabled() : floxDebugPolicy;
     bootstrapIdentity = bootstrapIdentity == null ? BootstrapIdentity.unknown() : bootstrapIdentity;
-    networkTopology = networkTopology == null ? NetworkTopology.empty() : networkTopology;
     // No blank-version fallback: an absent ComponentVersions is incomplete state, not a valid empty
     // default — a blank version renders an unresolvable upstream path (e.g. release-.yaml). The
     // builder supplies ComponentVersions.defaults(); the engine (seed-master) overlays Pulumi
@@ -82,7 +79,6 @@ public record ManifestSynthesisRequest(
         .manifestDomainPolicy(manifestDomainPolicy)
         .floxDebugPolicy(floxDebugPolicy)
         .bootstrapIdentity(bootstrapIdentity)
-        .networkTopology(networkTopology)
         .componentVersions(componentVersions)
         .imageState(imageState)
         .incusIdentity(incusIdentity)
@@ -106,10 +102,6 @@ public record ManifestSynthesisRequest(
 
   public ManifestSynthesisRequest withBootstrapIdentity(BootstrapIdentity identity) {
     return toBuilder().bootstrapIdentity(identity).build();
-  }
-
-  public ManifestSynthesisRequest withNetworkTopology(NetworkTopology topology) {
-    return toBuilder().networkTopology(topology).build();
   }
 
   public ManifestSynthesisRequest withComponentVersions(ComponentVersions versions) {
@@ -198,7 +190,6 @@ public record ManifestSynthesisRequest(
     private Optional<ManifestDomainPolicy> manifestDomainPolicy = Optional.empty();
     private FloxDebugPolicy floxDebugPolicy = FloxDebugPolicy.disabled();
     private BootstrapIdentity bootstrapIdentity = BootstrapIdentity.unknown();
-    private NetworkTopology networkTopology = NetworkTopology.empty();
     private ComponentVersions componentVersions = ComponentVersions.defaults();
     private Optional<ImageState> imageState = Optional.empty();
     private Optional<IncusIdentityMaterial> incusIdentity = Optional.empty();
@@ -225,11 +216,6 @@ public record ManifestSynthesisRequest(
 
     public Builder bootstrapIdentity(final BootstrapIdentity v) {
       this.bootstrapIdentity = v;
-      return this;
-    }
-
-    public Builder networkTopology(final NetworkTopology v) {
-      this.networkTopology = v;
       return this;
     }
 
@@ -280,7 +266,6 @@ public record ManifestSynthesisRequest(
           manifestDomainPolicy,
           floxDebugPolicy,
           bootstrapIdentity,
-          networkTopology,
           componentVersions,
           imageState,
           incusIdentity,
