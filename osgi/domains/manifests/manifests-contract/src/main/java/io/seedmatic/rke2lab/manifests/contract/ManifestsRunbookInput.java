@@ -2,6 +2,7 @@ package io.seedmatic.rke2lab.manifests.contract;
 
 import io.seedmatic.rke2lab.seed.broker.port.Amendment;
 import io.seedmatic.rke2lab.seed.broker.port.SeedContract;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -16,13 +17,14 @@ import java.util.Optional;
  *
  * <ul>
  *   <li>{@link Amendment#FACET} — {@link #facets} is the WHOLE {@code rke2lab:manifests:} concern
- *       map of {@code Pulumi.dev.yaml} ({@code {publish, debug, delivery}}), one composite
- *       component so the role binds to ONE field. The host contributes the yaml subtree verbatim as
- *       the FACET value (an {@link io.seedmatic.rke2lab.seed.broker.port.AmendmentContributor} it
- *       registers into the world); the assembler gathers it at the amend door and the binder places
- *       it on {@code facets}, naming no manifests vocabulary — {@link Facets} mirroring the yaml is
- *       what keeps the copy blind. When no contributor offers FACET (a bare {@code shape} probe, a
- *       survey), it falls to {@link #defaults()}.
+ *       map of {@code Pulumi.dev.yaml} ({@code {publish, debug, delivery, workloadTargets}}), one
+ *       composite component so the role binds to ONE field. The host contributes the yaml subtree
+ *       verbatim as the FACET value (an {@link
+ *       io.seedmatic.rke2lab.seed.broker.port.AmendmentContributor} it registers into the world);
+ *       the assembler gathers it at the amend door and the binder places it on {@code facets},
+ *       naming no manifests vocabulary — {@link Facets} mirroring the yaml is what keeps the copy
+ *       blind. When no contributor offers FACET (a bare {@code shape} probe, a survey), it falls to
+ *       {@link #defaults()}.
  *   <li>{@link Amendment#SOIL} — {@link #materializationRoot} is NOT in the yaml: it is the plot
  *       the scion materialises into, which only the host knows (it holds {@code BootstrapPaths}).
  *       The host fills it by role — the SOIL amendment — from its provisioning state (the
@@ -114,19 +116,26 @@ public record ManifestsRunbookInput(
    * coalesces any sub-facet the operator omitted to its default, so a partial yaml decodes
    * complete.
    */
-  public record Facets(PublishFacet publish, DebugFacet debug, DeliveryFacet delivery) {
+  public record Facets(
+      PublishFacet publish,
+      DebugFacet debug,
+      DeliveryFacet delivery,
+      List<WorkloadTarget> workloadTargets) {
 
     /**
      * Coalesce absent sub-facets to their defaults — the host contributes the {@code
      * rke2lab:manifests:} yaml subtree VERBATIM, and jackson decodes a record component absent from
-     * the yaml (a partial config that omits {@code delivery:}, {@code publish:} or {@code debug:})
-     * to {@code null}. The compact constructor makes every sub-facet non-null, so a consumer reads
-     * a complete facet whatever the operator wrote (a partial yaml never NPEs nor silently pushes).
+     * the yaml (a partial config that omits {@code delivery:}, {@code publish:}, {@code debug:} or
+     * {@code workloadTargets:}) to {@code null}. The compact constructor makes every sub-facet
+     * non-null, so a consumer reads a complete facet whatever the operator wrote (a partial yaml
+     * never NPEs nor silently pushes). {@code workloadTargets} coalesces to an empty list — a
+     * management cluster with no declared workloads.
      */
     public Facets {
       publish = publish != null ? publish : PublishFacet.defaults();
       debug = debug != null ? debug : DebugFacet.disabled();
       delivery = delivery != null ? delivery : DeliveryFacet.defaults();
+      workloadTargets = workloadTargets != null ? List.copyOf(workloadTargets) : List.of();
     }
 
     public static Builder builder() {
@@ -141,6 +150,7 @@ public record ManifestsRunbookInput(
       private PublishFacet publish = PublishFacet.defaults();
       private DebugFacet debug = DebugFacet.disabled();
       private DeliveryFacet delivery = DeliveryFacet.defaults();
+      private List<WorkloadTarget> workloadTargets = List.of();
 
       private Builder() {}
 
@@ -159,8 +169,13 @@ public record ManifestsRunbookInput(
         return this;
       }
 
+      public Builder workloadTargets(List<WorkloadTarget> workloadTargets) {
+        this.workloadTargets = workloadTargets;
+        return this;
+      }
+
       public Facets build() {
-        return new Facets(publish, debug, delivery);
+        return new Facets(publish, debug, delivery, workloadTargets);
       }
     }
   }

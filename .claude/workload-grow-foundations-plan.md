@@ -48,7 +48,19 @@ flowchart TD
 
 Blue chain (2a→1→6→2b + kube-vip) = the render work. 3/4/5 = parallel plumbing, independent of 2a.
 
-## Foundation 2a — the workload-targets carrier — CONCRETE DESIGN (mechanism verified)
+## Foundation 2a — the workload-targets carrier — ✅ DONE (built + tested)
+
+SHIPPED as the sub-facet design below. Carrier flows config → `Facets.workloadTargets` (wire) →
+`ManifestSynthesisRequest.workloadTargets` → `ManifestSynthesisContext.workloadTargets()`. New
+top-level `WorkloadTarget(host, role)` record (self-contained, no netplan dep; topology CANONICAL
+derived at consumption). Coalesces to empty. Verified: `-Pnxmatic` package green + facet coalescing
+test passes (`Tests run: 2`). Build note: the repo builds under **`-Pnxmatic`** (bnd generates the
+bundle MANIFEST.MF into `target~nxmatic`); the default profile fails at maven-jar (no MANIFEST.MF),
+and foundation SNAPSHOTs are not in `~/.m2` so a subset `-pl … -am` needs `package` not `test-compile`.
+Files: `WorkloadTarget.java` (new), `ManifestsRunbookInput.java` (Facets +4th sub-facet),
+`ManifestSynthesisRequest.java` (slice+builder+toBuilder), `ManifestSynthesisContext.java` (accessor),
+`ManifestSynthesisScenario.java` (threading + UPDATE/EDIT merge keeps seeded targets),
+`ManifestsRunbookInputFacetsTest.java` (coalescing test). **NEXT = foundation 1 (CR-set units) consuming `ctx.workloadTargets()`.**
 
 **Decision: a new sub-facet inside `Facets`** (the `PublishFacet` sibling pattern), NOT a new
 cross-domain amendment role. Rationale (from the mechanism trace): the FACET amendment role is

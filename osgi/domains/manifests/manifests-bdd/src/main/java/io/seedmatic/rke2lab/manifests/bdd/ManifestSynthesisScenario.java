@@ -334,12 +334,19 @@ public class ManifestSynthesisScenario
     };
   }
 
-  /** A copy of {@code seeded} taking publish+debug from {@code facets}, keeping seeded delivery. */
+  /**
+   * A copy of {@code seeded} taking publish+debug from {@code facets}, keeping the seeded delivery
+   * and workload targets — both are grow-time coordinates the render verb never re-derives from
+   * HEAD.
+   */
   private ManifestsRunbookInput withPublishDebug(
       ManifestsRunbookInput seeded, ManifestsRunbookInput.Facets facets) {
     return new ManifestsRunbookInput(
         new ManifestsRunbookInput.Facets(
-            facets.publish(), facets.debug(), seeded.facets().delivery()),
+            facets.publish(),
+            facets.debug(),
+            seeded.facets().delivery(),
+            seeded.facets().workloadTargets()),
         seeded.materializationRoot(),
         seeded.identity(),
         seeded.renderMode());
@@ -682,6 +689,11 @@ public class ManifestSynthesisScenario
           ManifestSynthesisRequest.builder(root, manifestFile)
               .manifestDomainPolicy(java.util.Optional.of(domainPolicy))
               .floxDebugPolicy(floxDebug);
+      // The management render's workload targets (from the manifests facet): the DIFFERENT clusters
+      // whose CAPI CR set this run emits onto manifests/<host>-mgmt (model B — the CRs live where
+      // CAPI runs). Empty on a mgmt-only or survey run; the cluster-api units derive each target's
+      // blueprint from its clusterName.
+      builder.workloadTargets(facet.facets().workloadTargets());
       // The cross-frontier identity view: reaped ONCE at this scion via the WORKTREE amendment,
       // then
       // handed to synthesis on the request — the synthesis root threads one NodeEnvContext derived

@@ -16,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -33,7 +34,8 @@ public record ManifestSynthesisRequest(
     Optional<OperatorPkiMaterial> operatorPki,
     Optional<GithubAppMaterial> githubApp,
     Optional<ReplicatorSourceSecretsMaterial> replicatorSources,
-    Optional<ClusterIssuerCaMaterial> clusterIssuerCa)
+    Optional<ClusterIssuerCaMaterial> clusterIssuerCa,
+    List<WorkloadTarget> workloadTargets)
     implements ManifestDomainPolicyAware {
 
   private static final String ENABLED_DOMAINS_PROPERTY = "rke2lab.manifests.policy.enabledDomains";
@@ -65,6 +67,9 @@ public record ManifestSynthesisRequest(
     githubApp = githubApp == null ? Optional.empty() : githubApp;
     replicatorSources = replicatorSources == null ? Optional.empty() : replicatorSources;
     clusterIssuerCa = clusterIssuerCa == null ? Optional.empty() : clusterIssuerCa;
+    // The workload clusters this (management) render must emit CAPI CRs for — empty on a mgmt-only
+    // or standalone run. Coalesced to an empty immutable list so a slice-less request never NPEs.
+    workloadTargets = workloadTargets != null ? List.copyOf(workloadTargets) : List.of();
   }
 
   public static Builder builder(Path synthOutdir, Path synthManifestFile) {
@@ -84,7 +89,8 @@ public record ManifestSynthesisRequest(
         .operatorPki(operatorPki)
         .githubApp(githubApp)
         .replicatorSources(replicatorSources)
-        .clusterIssuerCa(clusterIssuerCa);
+        .clusterIssuerCa(clusterIssuerCa)
+        .workloadTargets(workloadTargets);
   }
 
   // Immutable transformations: each returns a new request with one slice replaced. They delegate to
@@ -200,6 +206,7 @@ public record ManifestSynthesisRequest(
     private Optional<GithubAppMaterial> githubApp = Optional.empty();
     private Optional<ReplicatorSourceSecretsMaterial> replicatorSources = Optional.empty();
     private Optional<ClusterIssuerCaMaterial> clusterIssuerCa = Optional.empty();
+    private List<WorkloadTarget> workloadTargets = List.of();
 
     private Builder(Path synthOutdir, Path synthManifestFile) {
       this.synthOutdir = synthOutdir;
@@ -261,6 +268,11 @@ public record ManifestSynthesisRequest(
       return this;
     }
 
+    public Builder workloadTargets(final List<WorkloadTarget> v) {
+      this.workloadTargets = v;
+      return this;
+    }
+
     public ManifestSynthesisRequest build() {
       return new ManifestSynthesisRequest(
           synthOutdir,
@@ -275,7 +287,8 @@ public record ManifestSynthesisRequest(
           operatorPki,
           githubApp,
           replicatorSources,
-          clusterIssuerCa);
+          clusterIssuerCa,
+          workloadTargets);
     }
   }
 

@@ -2,6 +2,7 @@
 package io.seedmatic.rke2lab.manifests;
 
 import io.seedmatic.rke2lab.manifests.contract.ManifestSynthesisRequest;
+import io.seedmatic.rke2lab.manifests.contract.WorkloadTarget;
 import io.seedmatic.rke2lab.manifests.contract.profiles.BootstrapIdentity;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ClusterIssuerCaMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.FloxDebugPolicy;
@@ -15,6 +16,7 @@ import io.seedmatic.rke2lab.manifests.contract.profiles.SigningKeyMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.SopsAgeMaterial;
 import io.seedmatic.rke2lab.manifests.ingress.ComponentVersions;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -123,6 +125,16 @@ public final class ManifestSynthesisContext {
 
   public ComponentVersions componentVersions() {
     return request.componentVersions();
+  }
+
+  /**
+   * The workload clusters this (management) render must emit CAPI CRs for — the cluster-api units
+   * derive each target's {@code ClusterNetworkBlueprint} from its {@link
+   * WorkloadTarget#clusterName()}. Empty on a mgmt-only or standalone run. Distinct from {@link
+   * #bootstrapIdentity()}, which stays the render's own (management) cluster.
+   */
+  public List<WorkloadTarget> workloadTargets() {
+    return request.workloadTargets();
   }
 
   public Optional<ImageState> imageState() {
