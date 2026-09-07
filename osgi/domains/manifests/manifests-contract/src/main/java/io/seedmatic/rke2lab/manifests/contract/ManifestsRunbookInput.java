@@ -1,5 +1,6 @@
 package io.seedmatic.rke2lab.manifests.contract;
 
+import io.seedmatic.rke2lab.manifests.contract.profiles.ImageState;
 import io.seedmatic.rke2lab.seed.broker.port.Amendment;
 import io.seedmatic.rke2lab.seed.broker.port.SeedContract;
 import java.util.List;
@@ -12,7 +13,7 @@ import java.util.Optional;
  * broker door rather than compiling the class (see docs/architecture/osgi/seed-broker-spec.adoc §
  * introspection).
  *
- * <p>Its components carry four kinds of {@link Amendment}, each a SINGLE field its role binds by
+ * <p>Its components carry five kinds of {@link Amendment}, each a SINGLE field its role binds by
  * value (the amont mapping the schema alone cannot express — see seed-broker-spec § @Amendment):
  *
  * <ul>
@@ -39,6 +40,12 @@ import java.util.Optional;
  *       the {@code manifests-cli} update/edit verbs sow it. Optional (not a compact-ctor default)
  *       so the amend door does not make it mandatory — an unsown mode is legitimately absent,
  *       exactly as for {@code SOIL}/{@code IDENTITY}.
+ *   <li>{@link Amendment#IMAGE_STATE} — {@link #image} is the built node-base image's identity
+ *       (alias, content fingerprint, build checksum, incus project/remote, baked RKE2 version) the
+ *       incus scion COMPUTES from the freshly-built artifacts and forwards; the synthesis pins the
+ *       {@code LXCMachineTemplate} image and the {@code RKE2ControlPlane} version from it. {@link
+ *       Optional#empty()} when unsown (a bare survey / a render with no image built) — the image
+ *       units then no-op.
  * </ul>
  *
  * <p>Because the host only fills amendments by role, ALL the domain knowledge lives in the scion
@@ -53,7 +60,8 @@ public record ManifestsRunbookInput(
     @Amendment(Amendment.FACET) Facets facets,
     @Amendment(Amendment.SOIL) Optional<String> materializationRoot,
     @Amendment(Amendment.IDENTITY) Optional<Identity> identity,
-    @Amendment(Amendment.RENDER_MODE) Optional<RenderMode> renderMode) {
+    @Amendment(Amendment.RENDER_MODE) Optional<RenderMode> renderMode,
+    @Amendment(Amendment.IMAGE_STATE) Optional<ImageState> image) {
 
   public static Builder builder() {
     return new Builder();
@@ -79,6 +87,7 @@ public record ManifestsRunbookInput(
     private Optional<String> materializationRoot = Optional.empty();
     private Optional<Identity> identity = Optional.empty();
     private Optional<RenderMode> renderMode = Optional.empty();
+    private Optional<ImageState> image = Optional.empty();
 
     private Builder() {}
 
@@ -102,8 +111,13 @@ public record ManifestsRunbookInput(
       return this;
     }
 
+    public Builder image(ImageState image) {
+      this.image = Optional.of(image);
+      return this;
+    }
+
     public ManifestsRunbookInput build() {
-      return new ManifestsRunbookInput(facets, materializationRoot, identity, renderMode);
+      return new ManifestsRunbookInput(facets, materializationRoot, identity, renderMode, image);
     }
   }
 

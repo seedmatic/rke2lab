@@ -32,29 +32,13 @@ import software.constructs.Construct;
  *
  * <p>The ConfigMap is named {@code <cluster-name>-image-state} in namespace {@code capn-system}.
  *
- * <p><b>NOTE:</b> This unit is currently NOT registered in {@link
- * io.seedmatic.rke2lab.manifests.layers.clusterapi.ClusterApiDomainRegistrar} due to a dependency
- * cycle: CDK8s manifest synthesis happens during Stage A "host state" preparation (before Pulumi
- * provider resources are created), but the image fingerprint comes FROM a Pulumi provider resource
- * (the Incus image). This creates a chicken-and-egg problem where manifests need to be materialized
- * into {@code /srv/host} before the data they need exists.
- *
- * <p><b>Solution:</b> The ConfigMap is created via the "staged post-cluster resource" pattern
- * documented in {@code docs/staged-post-cluster-resources.adoc} — a systemd oneshot unit applies it
- * after RKE2 starts, reading image state from a metadata file written during Pulumi apply.
- *
- * <p>This class remains in the codebase as:
- *
- * <ul>
- *   <li>Documentation of the ConfigMap structure
- *   <li>Reference for the systemd bootstrap script that creates it
- *   <li>Potential future use if the dependency cycle is broken another way
- * </ul>
- *
- * <p>Values are supplied by seed-master (Stage A) through the {@link ImageState} synth slice — the
- * fingerprint via the synchronous Incus {@code getImagePlain} lookup, the checksum from the build,
- * the remote/project from the bootstrap config. When no real image state is bound (ephemeral/test
- * synth), the unit is skipped, same as for an unknown cluster identity.
+ * <p>Registered in {@link io.seedmatic.rke2lab.manifests.domain.ClusterApiDomainRegistrar}. It
+ * renders the ConfigMap only when the {@link ImageState} synth slice is present; that slice is
+ * populated by the incus scion's {@code IMAGE_STATE} amendment — the built node-base image's
+ * identity (alias, content fingerprint, build checksum, incus project/remote, baked RKE2 version),
+ * computed from the freshly-built artifacts rather than a Pulumi provider round trip, which
+ * sidesteps the old Stage A/B chicken-and-egg. When no image state is bound (a bare survey / a
+ * render with no image built), the unit no-ops, same as for an unknown cluster identity.
  */
 public final class ImageStateConfigMapManifestsUnit extends AbstractManifestsUnit {
 
@@ -92,7 +76,8 @@ public final class ImageStateConfigMapManifestsUnit extends AbstractManifestsUni
             "imageFingerprint", state.imageFingerprint(),
             "imageBuildChecksum", state.imageBuildChecksum(),
             "incusProject", state.incusProject(),
-            "incusRemoteAddress", state.incusRemoteAddress());
+            "incusRemoteAddress", state.incusRemoteAddress(),
+            "rke2Version", state.rke2Version());
 
     createImageStateConfigMap(scope, effectiveClusterName, data);
   }

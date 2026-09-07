@@ -58,6 +58,18 @@ public @interface Amendment {
   String IMAGE = "image";
 
   /**
+   * The built image's IDENTITY — the node-base image the artifacts resolve to (alias, content
+   * fingerprint, build checksum, incus project/remote, and the baked RKE2 version). Distinct from
+   * {@link #IMAGE} (the build COORDINATES the host holds): this is what the incus scion COMPUTES
+   * from the freshly-built artifacts (the split-image fingerprint + the emitted {@code
+   * rke2.version}) and forwards to the manifests synthesis, which pins the {@code
+   * LXCMachineTemplate} image and the {@code RKE2ControlPlane} version from it. Born in the incus
+   * crossing (the image exists before any Pulumi resource), so it rides this amendment, not the
+   * cellar.
+   */
+  String IMAGE_STATE = "image-state";
+
+  /**
    * The public funnel endpoint URL — the Tailscale funnel FQDN ({@code
    * https://<leaf>.<tailnet>.ts.net}) a domain must point an external callback at. Only the host
    * holds it: the MagicDNS leaf is a shared manifest constant, but the tailnet suffix is

@@ -349,7 +349,8 @@ public class ManifestSynthesisScenario
             seeded.facets().workloadTargets()),
         seeded.materializationRoot(),
         seeded.identity(),
-        seeded.renderMode());
+        seeded.renderMode(),
+        seeded.image());
   }
 
   /**
@@ -708,6 +709,10 @@ public class ManifestSynthesisScenario
                           .clusterName(w.clusterName())
                           .nodeName(w.nodeName())
                           .build()));
+      // The built node-base image's identity, forwarded by the incus scion as the IMAGE_STATE
+      // amendment (empty on a survey / a render with no image built): the image-state ConfigMap and
+      // the workload CR units pin the image fingerprint and the RKE2 version from it.
+      builder.imageState(facet.image());
       // The operator PKI revealed from the cellar (empty on a bare survey / before the seal filed):
       // the kubeconfig unit renders the operator + CAPI kubeconfigs from it, or nothing.
       builder.operatorPki(operatorPki);
