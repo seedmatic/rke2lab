@@ -188,6 +188,19 @@ component names, and the caller plucks `manifests.<name>` for each. So the wire-
 nests (`record …(PublishFacet publish, DebugFacet debug)`), mirroring the yaml's concern
 nesting exactly, rather than flattening into one bag.
 
+*The workload-targets sub-facet.* Alongside `publish`/`debug`/`delivery`, the `Facets`
+wire-record carries a fourth concern — `workloadTargets`, a `List<WorkloadTarget>` sourced
+verbatim from `rke2lab:manifests:workloadTargets`. A `WorkloadTarget(host, role)` names a
+*different* cluster the MANAGEMENT render must create: under the management/workload separation
+(model B — see link:../cluster-api/manifests-rendered-branches.adoc[Manifests Rendered Branches]),
+the workload CAPI CR set is rendered onto the management cluster's own `manifests/<host>-mgmt`
+branch, because CAPI runs there. So the synthesis needs the workload identities *beside* its own
+`bootstrapIdentity()` (which stays the management cluster): the `cluster-api` units read
+`ManifestSynthesisContext.workloadTargets()` and derive each target's `ClusterNetworkBlueprint`
+from its `WorkloadTarget.clusterName()` (`<host>-<role>`; the topology is the CANONICAL HA shape,
+not carried). The compact constructor coalesces an absent list to empty — a management cluster
+with no declared workloads.
+
 === The policy has TWO ends — the scion must cover both
 
 The activation choice does not stop at "which domains synthesize". It drives a path
