@@ -108,11 +108,19 @@ a target. The targets are a set beside the identity; only the cluster-api units 
     the artifacts build from, and emits `rke2.version` beside `incus.tar.xz`/`rootfs.squashfs` (a true
     image property, from nix — not hand-pinned; `1.34.8+rke2r2` today). Freshness gate rebuilds if the
     file is missing. Changes `BuildRecipe.digest` (one cache-invalidating rebuild, expected).
-  - Layer 2 TODO (with 1c): the incus scion reads `rke2.version` from the artifact dir → carries it on
-    `GrowImageView` (add field) / the image identity → revives the dormant `ImageState` profile into
-    synthesis (add `rke2Version`, its producer being this host-side image-identity step) → the CR unit
-    reads `ctx.imageState().rke2Version()`. Note: `getImagePlain` (GetImageResult) exposes NO custom
-    `properties`, so the round-trip is nix→artifact→scion, never a getImagePlain property read.
+  - Layer 2 ✅ DONE: the dormant `ImageState` carrier is revived end-to-end.
+    - Receiving end: new `Amendment.IMAGE_STATE` role + `@Amendment(IMAGE_STATE) Optional<ImageState> image`
+      on `ManifestsRunbookInput` (reuses the profile record); `ManifestSynthesisScenario` maps
+      `facet.image() → builder.imageState(...)`; `ImageState` gains `rke2Version`; ConfigMap emits it.
+    - Producer (incus scion): `IncusProvisionScenario.the_manifests_are_cultivated` assembles the
+      `IMAGE_STATE` JSON via the SAME `GrowPlanAssembler` the THEN seals the plan with
+      (`imageView()` now public → alias/paths/buildChecksum) + `SplitImageFingerprint.of(...)` +
+      reading the nix-emitted `rke2.version` beside the artifacts; remoteAddress derived
+      `https://<host>-nixos:8443`. Empty on a survey (no artifacts) → units no-op.
+    - Note: `getImagePlain` (GetImageResult) exposes NO custom `properties`, so the round-trip is
+      nix→artifact→scion, never a getImagePlain property read.
+    - **NEXT = 1c**: the CR-set units read `ctx.imageState()` (fingerprint→LXCMachineTemplate image,
+      rke2Version→RKE2ControlPlane version) + `ctx.workloadTargets()` (per-target blueprint).
 - **6 — domain split by role**: `manifests.publish.{domain}` becomes per-role sets (mgmt = cluster-api
   + base + tailscale + target CRs; wrkld = app stack, no cluster-api).
 - **2b — second render run** for `manifests/<host>-wrkld` (just a `role=wrkld` render; config already

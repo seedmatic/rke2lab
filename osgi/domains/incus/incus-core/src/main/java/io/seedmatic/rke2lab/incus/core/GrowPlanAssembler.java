@@ -58,7 +58,14 @@ public final class GrowPlanAssembler {
     return new InstanceGrowPlan(network, imageView(), identity);
   }
 
-  private GrowImageView imageView() {
+  /**
+   * The built image's view — alias, the two readable artifact paths, and the OSGi-computed {@code
+   * buildChecksum}. Public because the incus scion also folds this identity (plus the split-image
+   * fingerprint over the two paths and the emitted {@code rke2.version}) into the {@code
+   * IMAGE_STATE} amendment it forwards to the manifests synthesis, so the workload CRs pin the same
+   * image the plan does — the one computation, two consumers.
+   */
+  public GrowImageView imageView() {
     final Path artifactDir = resolveReadableArtifactDir();
     return new GrowImageView(
         imageAlias,

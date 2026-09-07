@@ -31,9 +31,11 @@ import io.seedmatic.rke2lab.incus.core.GrowPlanAssembler;
 import io.seedmatic.rke2lab.incus.core.LaunchSecretsWriter;
 import io.seedmatic.rke2lab.incus.ingress.BootstrapPaths;
 import io.seedmatic.rke2lab.incus.ingress.GrowIdentityView;
+import io.seedmatic.rke2lab.incus.ingress.GrowImageView;
 import io.seedmatic.rke2lab.incus.ingress.GrowNetworkView;
 import io.seedmatic.rke2lab.incus.ingress.IncusGrowCoordinate;
 import io.seedmatic.rke2lab.incus.ingress.InstanceGrowPlan;
+import io.seedmatic.rke2lab.incus.ingress.SplitImageFingerprint;
 import io.seedmatic.rke2lab.netplan.contract.NetplanSynthesisService;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.CellarReceiver;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.ConsultationSource;
@@ -56,6 +58,8 @@ import io.seedmatic.rke2lab.seed.broker.port.SeedEnvelope;
 import io.seedmatic.rke2lab.worktree.WorktreeCoordinate;
 import io.seedmatic.rke2lab.worktree.WorktreeFacts;
 import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -215,7 +219,8 @@ public class IncusProvisionScenario
     when()
         .the_image_is_built(imageRequest(worktreeRoot, input.facet(), input.image()))
         .and()
-        .the_manifests_are_cultivated(hostScenario, hostTree, input.facet())
+        .the_manifests_are_cultivated(
+            hostScenario, hostTree, input.facet(), input.image(), worktreeRoot)
         .and()
         .the_secrets_are_written(resolved)
         .and()
@@ -444,7 +449,9 @@ public class IncusProvisionScenario
     public When the_manifests_are_cultivated(
         @Hidden ScenarioModel hostScenario,
         @Hidden ReportModel hostTree,
-        @Hidden Optional<Facet> facet) {
+        @Hidden Optional<Facet> facet,
+        @Hidden Optional<Image> image,
+        @Hidden Optional<Path> worktreeRoot) {
       // AMEND: hand the broker {soil → path} by neutral role; the manifests amend reflector binds
       // it
       // onto ManifestsRunbookInput and returns the reconciled input, still under the runbook
@@ -456,6 +463,14 @@ public class IncusProvisionScenario
       // addressing for THIS cluster from the handed-over name (no hardcoded literal); the extra
       // facet scalars it does not need are ignored on decode. Absent = a bare survey.
       facet.ifPresent(f -> roleValues.set(Amendment.IDENTITY, codec.decode(codec.encode(f))));
+      // Forward the built node-base image's identity as the manifests IMAGE_STATE amendment — alias
+      // +
+      // split-image fingerprint + buildChecksum (from the SAME GrowPlanAssembler the THEN seals the
+      // plan with) + the nix-emitted rke2.version — so the workload CRs pin the exact image the
+      // master
+      // booted and its RKE2 version. Absent for a survey / a run that built no artifacts.
+      imageStateAmendment(facet, image, worktreeRoot)
+          .ifPresent(node -> roleValues.set(Amendment.IMAGE_STATE, node));
       final SeedEnvelope amended =
           broker
               .orElseThrow()
@@ -484,6 +499,61 @@ public class IncusProvisionScenario
           "the manifests are cultivated",
           graft.rebuild(runbookJson));
       return self();
+    }
+
+    /**
+     * The built node-base image's identity as the {@code IMAGE_STATE} amendment JSON (blind,
+     * mirroring the {@code ImageState} wire record's fields), or empty when the artifacts / the
+     * emitted {@code rke2.version} were not produced (a survey / preview run). Computed from the
+     * SAME {@link GrowPlanAssembler} the THEN seals the plan with — the alias, the two artifact
+     * paths and the {@code buildChecksum} — plus the split-image fingerprint over those two
+     * artifacts and the {@code rke2.version} beside them. The image-source remote is the node-base
+     * image's home host, {@code https://<host>-nixos:8443}, derived from the cluster name (the
+     * deterministic convention, matching the host bootstrap config + the netplan {@code
+     * nixosHost}).
+     */
+    private Optional<ObjectNode> imageStateAmendment(
+        Optional<Facet> maybeFacet, Optional<Image> maybeImage, Optional<Path> maybeWorktreeRoot) {
+      if (maybeFacet.isEmpty() || maybeImage.isEmpty() || maybeWorktreeRoot.isEmpty()) {
+        return Optional.empty();
+      }
+      final Facet facet = maybeFacet.orElseThrow();
+      final Image image = maybeImage.orElseThrow();
+      final Path worktreeRoot = maybeWorktreeRoot.orElseThrow();
+      final GrowImageView view =
+          new GrowPlanAssembler(
+                  image.alias(),
+                  image.builderBinary(),
+                  image.builderHost(),
+                  imageBuilder.orElseThrow().recipeDigest(),
+                  worktreeRoot,
+                  BootstrapPaths.fromLocalWorktree(worktreeRoot).stateRoot())
+              .imageView();
+      final Path metadata = Path.of(view.metadataPath());
+      final Path rootfs = Path.of(view.dataPath());
+      final Path versionFile = metadata.getParent().resolve("rke2.version");
+      if (!Files.isRegularFile(metadata)
+          || !Files.isRegularFile(rootfs)
+          || !Files.isRegularFile(versionFile)) {
+        // A survey / preview run built no artifacts — leave IMAGE_STATE unsown (the units no-op).
+        return Optional.empty();
+      }
+      final String rke2Version;
+      try {
+        rke2Version = Files.readString(versionFile).strip();
+      } catch (IOException ex) {
+        throw new UncheckedIOException(
+            "cannot read the emitted rke2.version at " + versionFile, ex);
+      }
+      final String host = facet.clusterName().split("-", 2)[0];
+      final ObjectNode node = JsonNodeFactory.instance.objectNode();
+      node.put("imageAlias", view.imageAlias());
+      node.put("imageFingerprint", SplitImageFingerprint.of(metadata, rootfs));
+      node.put("imageBuildChecksum", view.buildChecksum());
+      node.put("incusProject", facet.incusProject());
+      node.put("incusRemoteAddress", "https://" + host + "-nixos:8443");
+      node.put("rke2Version", rke2Version);
+      return Optional.of(node);
     }
 
     /**
