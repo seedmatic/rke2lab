@@ -138,8 +138,7 @@ implemented; the medical-model extensions are Design Only. All docs live in `arc
 
 == Implementation Plans
 
-* link:architecture/cluster-api/cluster-workload-completion-plan.adoc[Cluster Workload Completion Plan] (📋 live worklist) - The phase-level roadmap to finish cluster bring-up under the management/workload separation. Management track DONE (validated 2026-08-25); Phase 2.B (greenfield the first workload) mechanism SETTLED (GitOps-in-mgmt — workload CAPI CRs on the `-mgmt` branch, reconciled by the mgmt cluster's Flux). Its granular engineering decomposition is the Foundations Roadmap below.
-* link:architecture/cluster-api/workload-grow-foundations.adoc[Workload Grow — Foundations Roadmap] (📋 active — the resume point) - The engineering backlog + dependency DAG to lay all foundations before the first workload greenfield: the verified single-cluster baseline, the workload-targets carrier (foundation 2a, net-new), the CR-set units, the domain split by role, kube-vip per-workload, and the parallel plumbing (dataplan cluster dimension, Incus project per cluster, CAPN identity scoping). The granular decomposition of the completion plan's Phase 2.B.
+* link:architecture/cluster-api/cluster-workload-completion-plan.adoc[Cluster Workload Completion Plan] (📋 live worklist) - The phase-level roadmap to finish cluster bring-up under the management/workload separation. Management track DONE (validated 2026-08-25); Phase 2.B (greenfield the first workload) mechanism SETTLED (GitOps-in-mgmt — workload CAPI CRs on the `-mgmt` branch, reconciled by the mgmt cluster's Flux). The granular engineering backlog lives in the working plan `.claude/workload-grow-foundations-plan.md`.
 * link:script-layer-owners.adoc[Script Layer Owners] - Ownership after the substrate split: host provisioning concerns (see nixos-substrate concern-ownership) + the in-cluster workload scripts now owned by `ManifestsUnit`s
 
 == Architecture Diagrams
