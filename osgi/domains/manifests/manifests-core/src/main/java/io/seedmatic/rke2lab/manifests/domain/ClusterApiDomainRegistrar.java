@@ -4,6 +4,7 @@ import io.seedmatic.rke2lab.manifests.ManifestsDomain;
 import io.seedmatic.rke2lab.manifests.ManifestsDomainRegistrar;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.units.clusterapi.ClusterApiOperatorManifestsUnit;
+import io.seedmatic.rke2lab.manifests.units.clusterapi.ClusterApiWorkloadManifestsUnit;
 import io.seedmatic.rke2lab.manifests.units.clusterapi.ClusterKubeconfigManifestsUnit;
 import io.seedmatic.rke2lab.manifests.units.clusterapi.ImageStateConfigMapManifestsUnit;
 import io.seedmatic.rke2lab.manifests.units.clusterapi.IncusIdentitySecretManifestsUnit;
@@ -22,6 +23,7 @@ public final class ClusterApiDomainRegistrar implements ManifestsDomainRegistrar
             new IncusIdentitySecretManifestsUnit(),
             new ImageStateConfigMapManifestsUnit(),
             new ClusterApiOperatorManifestsUnit(),
-            new ClusterKubeconfigManifestsUnit()));
+            new ClusterKubeconfigManifestsUnit(),
+            new ClusterApiWorkloadManifestsUnit()));
   }
 }
