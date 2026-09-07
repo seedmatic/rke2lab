@@ -38,7 +38,7 @@ import java.util.stream.Collectors;
 import org.cdk8s.App;
 import org.cdk8s.AppProps;
 import org.cdk8s.Chart;
-import org.jspecify.annotations.Nullable;
+import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 import org.osgi.service.component.annotations.Component;
 import org.osgi.service.component.annotations.Reference;
 import org.osgi.service.component.annotations.ReferenceCardinality;
@@ -103,7 +103,7 @@ public final class DefaultManifestSynthesisService implements ManifestSynthesisS
       cardinality = ReferenceCardinality.OPTIONAL,
       policy = ReferencePolicy.DYNAMIC,
       policyOption = ReferencePolicyOption.GREEDY)
-  private volatile @Nullable EnclosureGate enclosureGate;
+  private volatile Optional<EnclosureGate> enclosureGate = Optional.empty();
 
   static final Set<String> SCRIPT_DATA_SUFFIXES =
       Set.of(".sh", ".bash", ".env", ".yaml", ".yml", ".conf", ".policy");
@@ -127,7 +127,7 @@ public final class DefaultManifestSynthesisService implements ManifestSynthesisS
     // prerequisites, it does not fetch them. Gated on the enclosure: IN_CLUSTER the sops-age Secret
     // is a NODE_BOOTSTRAP bootstrap artifact already applied at the operator's grow (and the git
     // tree's key-store is sops-encrypted at rest), so the resolver skips rather than reads.
-    final Optional<EnclosureGate> enclosure = Optional.ofNullable(enclosureGate);
+    final Optional<EnclosureGate> enclosure = enclosureGate;
     final Optional<SopsAgeMaterial> sopsAgeMaterial =
         new SopsAgeMaterialResolver(sshToAgeConverter, ndhKeystore, enclosure).resolve();
     // The commit-signing key, resolved the same way (OPERATOR-only, § pac-in-cluster-render-spec):
@@ -175,8 +175,8 @@ public final class DefaultManifestSynthesisService implements ManifestSynthesisS
         final ManifestSynthesisRequest request;
         final OnFailure onFailure;
 
-        @Nullable Scaffold scaffold;
-        @Nullable Registry registry;
+        @MonotonicNonNull Scaffold scaffold;
+        @MonotonicNonNull Registry registry;
 
         State(ManifestSynthesisRequest request, OnFailure onFailure) {
           this.request = request;

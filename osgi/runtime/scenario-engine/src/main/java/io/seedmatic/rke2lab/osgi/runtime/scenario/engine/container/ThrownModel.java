@@ -2,7 +2,7 @@ package io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container;
 
 import java.util.ArrayList;
 import java.util.List;
-import org.jspecify.annotations.Nullable;
+import java.util.Optional;
 
 /**
  * The STRUCTURED wire form of a failure — a POJO built DIRECTLY from a live {@link Throwable} (its
@@ -16,38 +16,38 @@ import org.jspecify.annotations.Nullable;
  * printStackTrace} — with no string parsing.
  *
  * @param type the exception's class name (its {@code toString} prefix, for a faithful re-render)
- * @param message the exception's message (may be null — a bare throw)
+ * @param message the exception's message (absent — a bare throw)
  * @param frames its own stack frames (NOT the cause's — the cause carries its own)
- * @param cause the next link of the {@code getCause} chain, or null at the root
+ * @param cause the next link of the {@code getCause} chain, absent at the root
  */
 public record ThrownModel(
-    String type, @Nullable String message, List<Frame> frames, @Nullable ThrownModel cause) {
+    String type, Optional<String> message, List<Frame> frames, Optional<ThrownModel> cause) {
 
   /** One structured stack frame — a {@link StackTraceElement}, flat for the mapper. */
   public record Frame(
-      String declaringClass, String methodName, @Nullable String fileName, int lineNumber) {
+      String declaringClass, String methodName, Optional<String> fileName, int lineNumber) {
 
     StackTraceElement toElement() {
-      return new StackTraceElement(declaringClass, methodName, fileName, lineNumber);
+      return new StackTraceElement(declaringClass, methodName, fileName.orElse(null), lineNumber);
     }
   }
 
   /** Capture a live {@link Throwable} — its type, message, real frames, and cause chain. */
-  public static @Nullable ThrownModel of(@Nullable Throwable throwable) {
-    if (throwable == null) {
-      return null;
-    }
+  public static ThrownModel of(Throwable throwable) {
     final List<Frame> frames = new ArrayList<>();
     for (final StackTraceElement element : throwable.getStackTrace()) {
       frames.add(
           new Frame(
               element.getClassName(),
               element.getMethodName(),
-              element.getFileName(),
+              Optional.ofNullable(element.getFileName()),
               element.getLineNumber()));
     }
     return new ThrownModel(
-        throwable.getClass().getName(), throwable.getMessage(), frames, of(throwable.getCause()));
+        throwable.getClass().getName(),
+        Optional.ofNullable(throwable.getMessage()),
+        frames,
+        Optional.ofNullable(throwable.getCause()).map(ThrownModel::of));
   }
 
   public ThrownModel {

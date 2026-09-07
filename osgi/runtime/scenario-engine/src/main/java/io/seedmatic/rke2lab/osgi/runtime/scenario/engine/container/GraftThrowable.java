@@ -28,7 +28,7 @@ public final class GraftThrowable extends RuntimeException {
   private final String type;
 
   GraftThrowable(Trail path, ThrownModel reason) {
-    super(reason.message(), reason.cause() == null ? null : reason.cause().toThrowable());
+    super(reason.message().orElse(null), reason.cause().map(ThrownModel::toThrowable).orElse(null));
     this.path = path;
     this.type = reason.type();
     setStackTrace(reason.framesAsElements());

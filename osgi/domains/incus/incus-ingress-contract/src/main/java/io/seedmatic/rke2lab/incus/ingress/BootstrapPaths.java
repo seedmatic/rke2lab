@@ -2,7 +2,7 @@ package io.seedmatic.rke2lab.incus.ingress;
 
 import java.nio.file.Path;
 import java.util.Objects;
-import org.jspecify.annotations.Nullable;
+import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 
 /**
  * The provisioning topology of the control node — the roots the bootstrap resolves once from the
@@ -96,9 +96,9 @@ public record BootstrapPaths(Path worktreeRoot, Path stateRoot, Path secretsFile
   }
 
   private static final class Builder {
-    @Nullable private Path worktreeRoot;
-    @Nullable private Path stateRoot;
-    @Nullable private Path secretsFile;
+    @MonotonicNonNull private Path worktreeRoot;
+    @MonotonicNonNull private Path stateRoot;
+    @MonotonicNonNull private Path secretsFile;
 
     private Builder worktreeRoot(Path value) {
       this.worktreeRoot = value;

@@ -12,7 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.Optional;
-import java.util.function.UnaryOperator;
+import java.util.function.Function;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -28,7 +28,7 @@ import org.junit.jupiter.api.io.TempDir;
 class LaunchSecretsWriterTest {
 
   /** An empty environment — no token variable set, so the contact is the only source. */
-  private static final UnaryOperator<String> NO_ENV = name -> null;
+  private static final Function<String, Optional<String>> NO_ENV = name -> Optional.empty();
 
   /** A contact that answers with fixed tokens per source. */
   private static AuthTokenContact contactWith(Map<AuthTokenSource, String> tokens) {
@@ -36,7 +36,7 @@ class LaunchSecretsWriterTest {
   }
 
   private static LaunchSecretsWriter writer(
-      Optional<AuthTokenContact> contact, UnaryOperator<String> env) {
+      Optional<AuthTokenContact> contact, Function<String, Optional<String>> env) {
     return new LaunchSecretsWriter(contact, env);
   }
 
@@ -83,7 +83,7 @@ class LaunchSecretsWriterTest {
 
     writer(
             Optional.of(contactWith(Map.of(AuthTokenSource.FLOXHUB, "from-contact"))),
-            name -> "FLOX_TOKEN".equals(name) ? "from-env" : null)
+            name -> "FLOX_TOKEN".equals(name) ? Optional.of("from-env") : Optional.empty())
         .ensureTokensPresent(secrets);
 
     final String result = Files.readString(secrets, StandardCharsets.UTF_8);

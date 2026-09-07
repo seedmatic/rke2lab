@@ -3,7 +3,6 @@ package io.seedmatic.rke2lab.doctor.contract;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 import java.util.Optional;
-import org.jspecify.annotations.Nullable;
 
 /**
  * A typed readiness-failure kind. The probe classifies its own failure and records the symptom in
@@ -56,12 +55,14 @@ public enum Symptom {
   }
 
   /**
-   * The codec's {@code @JsonCreator}: decodes a slug to the enum, an unknown/blank slug to {@code
-   * null} (an absent value) — keeping the tolerance the string readers had (a malformed symptom
-   * degrades the enclosing record rather than crashing the decode).
+   * The codec's {@code @JsonCreator}: decodes a slug to the enum, rejecting an unknown/blank slug
+   * with an {@link IllegalArgumentException} — the wire only ever carries slugs we emit, so a
+   * malformed value is a decode error, not a value to absorb. (An absent optional part is never
+   * routed here: the mapper omits it and never invokes the creator.)
    */
   @JsonCreator
-  static @Nullable Symptom fromWire(String value) {
-    return parse(value).orElse(null);
+  static Symptom fromWire(String value) {
+    return parse(value)
+        .orElseThrow(() -> new IllegalArgumentException("unknown symptom slug: '" + value + "'"));
   }
 }

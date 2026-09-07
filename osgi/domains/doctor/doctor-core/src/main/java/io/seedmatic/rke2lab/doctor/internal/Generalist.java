@@ -29,7 +29,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import org.jspecify.annotations.Nullable;
+import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 
 /**
  * The doctor's coordinator. When a checkpoint fails, the patient consults: the Generalist takes the
@@ -82,9 +82,9 @@ public final class Generalist implements Clinician, ConsultingService, ClinicalR
   public static final class Builder {
 
     private List<Specialist> specialists = List.of();
-    private @Nullable ClinicalAccess access;
-    private @Nullable DriftSpecialist driftSpecialist;
-    private @Nullable InterventionLedgerRegistry ledgerRegistry;
+    @MonotonicNonNull private ClinicalAccess access;
+    private Optional<DriftSpecialist> driftSpecialist = Optional.empty();
+    private Optional<InterventionLedgerRegistry> ledgerRegistry = Optional.empty();
 
     public Builder specialists(List<Specialist> specialists) {
       this.specialists = specialists;
@@ -97,7 +97,7 @@ public final class Generalist implements Clinician, ConsultingService, ClinicalR
     }
 
     public Builder driftSpecialist(DriftSpecialist driftSpecialist) {
-      this.driftSpecialist = driftSpecialist;
+      this.driftSpecialist = Optional.of(driftSpecialist);
       return this;
     }
 
@@ -107,7 +107,7 @@ public final class Generalist implements Clinician, ConsultingService, ClinicalR
      * degrade).
      */
     public Builder ledgerRegistry(InterventionLedgerRegistry ledgerRegistry) {
-      this.ledgerRegistry = ledgerRegistry;
+      this.ledgerRegistry = Optional.of(ledgerRegistry);
       return this;
     }
 
@@ -120,10 +120,9 @@ public final class Generalist implements Clinician, ConsultingService, ClinicalR
       // with the registry's no-backend degrade. A no-op registry keeps an empty ledger, records
       // nowhere.
       final DriftSpecialist drift =
-          driftSpecialist != null
-              ? driftSpecialist
-              : new DriftSpecialist(NoOpInterventionLedgerRegistry.INSTANCE);
-      return new Generalist(specialists, boundAccess, drift, Optional.ofNullable(ledgerRegistry));
+          driftSpecialist.orElseGet(
+              () -> new DriftSpecialist(NoOpInterventionLedgerRegistry.INSTANCE));
+      return new Generalist(specialists, boundAccess, drift, ledgerRegistry);
     }
   }
 

@@ -3,7 +3,6 @@ package io.seedmatic.rke2lab.doctor.contract;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 import java.util.Optional;
-import org.jspecify.annotations.Nullable;
 
 /**
  * The closed set of remediation programs a {@link Prescription} can be addressed to — a typed
@@ -42,9 +41,14 @@ public enum RemediationProgramRef {
     return Optional.empty();
   }
 
-  /** The codec's {@code @JsonCreator}: unknown/blank slug decodes to {@code null} (absent). */
+  /**
+   * The codec's {@code @JsonCreator}: rejects an unknown/blank slug with an {@link
+   * IllegalArgumentException} — the wire only ever carries slugs we emit.
+   */
   @JsonCreator
-  static @Nullable RemediationProgramRef fromWire(String value) {
-    return parse(value).orElse(null);
+  static RemediationProgramRef fromWire(String value) {
+    return parse(value)
+        .orElseThrow(
+            () -> new IllegalArgumentException("unknown remediation program ref: '" + value + "'"));
   }
 }

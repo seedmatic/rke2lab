@@ -10,10 +10,9 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.function.UnaryOperator;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import org.jspecify.annotations.Nullable;
 
 /**
  * Upserts the flox launch token into the worktree's {@code .secrets}, preserving the file's
@@ -35,7 +34,7 @@ public final class LaunchSecretsWriter {
       Pattern.compile("^([\\t ]*token\\s*:\\s*)([^#]*)(\\s*(#.*)?)$");
 
   private final Optional<AuthTokenContact> tokens;
-  private final UnaryOperator<@Nullable String> env;
+  private final Function<String, Optional<String>> env;
 
   /**
    * A world booted without {@code auth-edge} publishes no {@link AuthTokenContact}; the writer
@@ -43,11 +42,11 @@ public final class LaunchSecretsWriter {
    * contact as an {@link Optional} rather than requiring one.
    */
   public LaunchSecretsWriter(Optional<AuthTokenContact> tokens) {
-    this(tokens, System::getenv);
+    this(tokens, key -> Optional.ofNullable(System.getenv(key)));
   }
 
   /** Test seam: an injected environment accessor so token precedence is exercised hermetically. */
-  LaunchSecretsWriter(Optional<AuthTokenContact> tokens, UnaryOperator<@Nullable String> env) {
+  LaunchSecretsWriter(Optional<AuthTokenContact> tokens, Function<String, Optional<String>> env) {
     this.tokens = tokens;
     this.env = env;
   }
@@ -61,19 +60,20 @@ public final class LaunchSecretsWriter {
     final String token =
         resolve(
             AuthTokenSource.FLOXHUB,
-            env.apply("FLOXHUB_TOKEN"),
-            env.apply("FLOX_TOKEN"),
-            env.apply("FLOX_AUTH_TOKEN"));
+            List.of(
+                env.apply("FLOXHUB_TOKEN"), env.apply("FLOX_TOKEN"), env.apply("FLOX_AUTH_TOKEN")));
     if (token.isBlank()) {
       return;
     }
     rewrite(secretsFile, original -> upsertFlox(original, token));
   }
 
-  private String resolve(AuthTokenSource source, @Nullable String... envCandidates) {
-    for (String candidate : envCandidates) {
-      if (candidate != null && !candidate.isBlank()) {
-        return candidate.trim();
+  private String resolve(AuthTokenSource source, List<Optional<String>> envCandidates) {
+    for (Optional<String> candidate : envCandidates) {
+      final Optional<String> present =
+          candidate.map(String::trim).filter(value -> !value.isBlank());
+      if (present.isPresent()) {
+        return present.get();
       }
     }
     return tokens.flatMap(contact -> contact.tokenFor(source)).orElse("");

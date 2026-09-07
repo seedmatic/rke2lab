@@ -2,7 +2,7 @@ package io.seedmatic.rke2lab.manifests.contract;
 
 import java.nio.file.Path;
 import java.util.Objects;
-import org.jspecify.annotations.Nullable;
+import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 
 /**
  * Result contract for canonical manifest synthesis.
@@ -19,7 +19,7 @@ public record ManifestSynthesisResult(
   }
 
   public static final class Builder {
-    private @Nullable Path manifestFile;
+    @MonotonicNonNull private Path manifestFile;
     private int manifestUnitHitCount;
     private int domainCount;
 

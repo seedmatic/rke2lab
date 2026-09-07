@@ -2,10 +2,10 @@ package io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -24,14 +24,13 @@ class ThrownModelTest {
 
     final ThrownModel model = ThrownModel.of(top);
 
-    assertNotNull(model);
     assertEquals(RuntimeException.class.getName(), model.type());
-    assertEquals("not ready", model.message());
+    assertEquals(Optional.of("not ready"), model.message());
     assertTrue(model.frames().size() > 0, "the live frames are captured, not parsed from a string");
-    assertNotNull(model.cause(), "the cause chain is captured");
-    assertEquals(IllegalStateException.class.getName(), model.cause().type());
-    assertEquals("connection refused", model.cause().message());
-    assertNull(model.cause().cause(), "the chain ends at the root");
+    assertTrue(model.cause().isPresent(), "the cause chain is captured");
+    assertEquals(IllegalStateException.class.getName(), model.cause().orElseThrow().type());
+    assertEquals(Optional.of("connection refused"), model.cause().orElseThrow().message());
+    assertTrue(model.cause().orElseThrow().cause().isEmpty(), "the chain ends at the root");
   }
 
   @Test
@@ -39,7 +38,6 @@ class ThrownModelTest {
     final Throwable top =
         new RuntimeException("not ready", new IllegalStateException("connection refused"));
     final ThrownModel captured = ThrownModel.of(top);
-    assertNotNull(captured);
 
     final ThrownModel back = codec.decode(codec.encode(captured), ThrownModel.class);
 

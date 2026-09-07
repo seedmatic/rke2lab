@@ -3,7 +3,7 @@ package io.seedmatic.rke2lab.netplan.contract;
 import java.net.InetAddress;
 import java.util.List;
 import java.util.Objects;
-import org.jspecify.annotations.Nullable;
+import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 
 /**
  * Stage B network blueprint for clusters provisioned by the management control-plane.
@@ -449,8 +449,8 @@ public record ClusterNetworkBlueprint(
 
   /** Fluent API for deriving blueprint from cluster/node identity. */
   public static final class Builder {
-    private @Nullable String clusterName;
-    private @Nullable String nodeName;
+    @MonotonicNonNull private String clusterName;
+    @MonotonicNonNull private String nodeName;
     private boolean deriveRecipeModel;
 
     public Builder cluster(String clusterName) {

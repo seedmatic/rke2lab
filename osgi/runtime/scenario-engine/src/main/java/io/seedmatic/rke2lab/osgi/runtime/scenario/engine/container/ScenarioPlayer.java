@@ -148,9 +148,7 @@ public final class ScenarioPlayer {
         continue;
       }
       final ThrownModel reason = ThrownModel.of(failure);
-      if (reason != null) {
-        runbook.addTag(GraftTag.SCENARIO_FAILURE.of(codec.encode(reason)));
-      }
+      runbook.addTag(GraftTag.SCENARIO_FAILURE.of(codec.encode(reason)));
       final StringWriter trace = new StringWriter();
       failure.printStackTrace(new PrintWriter(trace));
       final ScenarioCaseModel failed = scenario.getScenarioCases().get(0);

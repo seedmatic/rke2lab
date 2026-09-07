@@ -35,7 +35,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
-import org.checkerframework.checker.nullness.qual.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
@@ -134,7 +133,7 @@ public class SystemdAdapterScenario
   @ReadinessDeadlines(connect = "PT2M", ready = "PT1M")
   void the_systemd_adapter_becomes_reachable() {
     final List<ObservationWire> observations = new ArrayList<>();
-    final SystemdProbeRequest endpoint = endpointFrom(input);
+    final SystemdProbeRequest endpoint = endpointFrom(Optional.ofNullable(input));
     final ReadinessBudget resolvedBudget =
         Objects.requireNonNull(
             budget, "the ReadinessBudgetExtension must inject the budget before the body");
@@ -197,11 +196,11 @@ public class SystemdAdapterScenario
    * plumbing the marker stood in for — the seam {@code SystemdProbeRequest}'s javadoc always
    * intended ("the flat host fills it").
    */
-  private static SystemdProbeRequest endpointFrom(@Nullable SystemdRunbookInput input) {
-    if (input == null) {
-      return MARKER;
-    }
-    return input.identity().map(SystemdAdapterScenario::deriveEndpoint).orElse(MARKER);
+  private static SystemdProbeRequest endpointFrom(Optional<SystemdRunbookInput> input) {
+    return input
+        .flatMap(SystemdRunbookInput::identity)
+        .map(SystemdAdapterScenario::deriveEndpoint)
+        .orElse(MARKER);
   }
 
   private static SystemdProbeRequest deriveEndpoint(SystemdRunbookInput.Identity identity) {

@@ -18,7 +18,7 @@ final class ReconstructedThrowable extends RuntimeException {
   private final String type;
 
   ReconstructedThrowable(ThrownModel model) {
-    super(model.message(), model.cause() == null ? null : model.cause().toThrowable());
+    super(model.message().orElse(null), model.cause().map(ThrownModel::toThrowable).orElse(null));
     this.type = model.type();
     setStackTrace(model.framesAsElements());
   }

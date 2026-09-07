@@ -33,6 +33,12 @@
       <groupId>com.github.seancfoley</groupId>
       <artifactId>ipaddress</artifactId>
     </dependency>
+    <!-- checker-qual: @MonotonicNonNull for the set-once builder fields. Analysis-only. -->
+    <dependency>
+      <groupId>org.checkerframework</groupId>
+      <artifactId>checker-qual</artifactId>
+      <scope>provided</scope>
+    </dependency>
   </dependencies>
 
   <build>

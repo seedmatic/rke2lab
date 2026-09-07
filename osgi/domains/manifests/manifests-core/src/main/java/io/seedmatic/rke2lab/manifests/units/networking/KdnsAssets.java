@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
-import org.jspecify.annotations.Nullable;
+import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 
 public final class KdnsAssets {
 
@@ -119,8 +119,8 @@ public final class KdnsAssets {
     }
 
     public static final class Builder {
-      private @Nullable String configMapKey;
-      private @Nullable String classpathResource;
+      @MonotonicNonNull private String configMapKey;
+      @MonotonicNonNull private String classpathResource;
 
       private Builder() {}
 

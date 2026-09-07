@@ -3,7 +3,6 @@ package io.seedmatic.rke2lab.doctor.contract;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 import java.util.Optional;
-import org.jspecify.annotations.Nullable;
 
 /**
  * The problem-oriented join key shared by three actors: the generalist opens a problem when a
@@ -33,14 +32,14 @@ public record ProblemRef(Checkpoint checkpoint, Optional<Symptom> symptom) {
   }
 
   /**
-   * The codec's {@code @JsonCreator}: parses the {@code "checkpoint/symptom"} string, an
-   * unknown/blank reference decoding to {@code null} (an absent value) — keeping the string
-   * reader's tolerance (a malformed ref degrades the enclosing Expectation, caught at the fromMap
-   * boundary).
+   * The codec's {@code @JsonCreator}: parses the {@code "checkpoint/symptom"} string, rejecting an
+   * unknown/blank reference with an {@link IllegalArgumentException} — the wire only ever carries
+   * refs we emit, so a malformed ref is a decode error, not a value to absorb.
    */
   @JsonCreator
-  static @Nullable ProblemRef fromWire(String value) {
-    return parse(value).orElse(null);
+  static ProblemRef fromWire(String value) {
+    return parse(value)
+        .orElseThrow(() -> new IllegalArgumentException("unknown problem ref: '" + value + "'"));
   }
 
   /**

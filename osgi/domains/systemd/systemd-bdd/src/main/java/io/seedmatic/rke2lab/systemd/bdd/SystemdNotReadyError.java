@@ -4,7 +4,7 @@ import io.seedmatic.rke2lab.doctor.contract.SymptomKind;
 import io.seedmatic.rke2lab.doctor.contract.Symptomatic;
 import io.seedmatic.rke2lab.systemd.contract.SystemdStatusSnapshot;
 import java.util.Map;
-import org.jspecify.annotations.Nullable;
+import java.util.Optional;
 
 /**
  * A systemd readiness facet is not ready. An {@link AssertionError} (so jGiven marks the step
@@ -17,14 +17,14 @@ import org.jspecify.annotations.Nullable;
 public final class SystemdNotReadyError extends AssertionError implements Symptomatic {
 
   // Rides only in-realm (the runbook carries the message; the checkpoint carries the wire copy), so
-  // neither field need survive serialization. The snapshot is null on the unreachable path.
-  private final transient @Nullable SystemdStatusSnapshot snapshot;
+  // neither field need survive serialization. The snapshot is absent on the unreachable path.
+  private final transient Optional<SystemdStatusSnapshot> snapshot;
   private final transient Map<String, Object> recoveryContext;
 
   /** Reachable but not ready — the endpoint answered and the snapshot explains why. */
   public SystemdNotReadyError(String facet, SystemdStatusSnapshot snapshot) {
     super(facet + ": not ready — " + snapshot.summary());
-    this.snapshot = snapshot;
+    this.snapshot = Optional.of(snapshot);
     this.recoveryContext = Map.of("facet", facet, "snapshot", snapshot.summary());
   }
 
@@ -33,7 +33,7 @@ public final class SystemdNotReadyError extends AssertionError implements Sympto
    */
   public SystemdNotReadyError(String facet, Throwable unreachable) {
     super(facet + ": " + unreachable.getMessage(), unreachable);
-    this.snapshot = null;
+    this.snapshot = Optional.empty();
     this.recoveryContext =
         Map.of("facet", facet, "reason", String.valueOf(unreachable.getMessage()));
   }
@@ -48,8 +48,8 @@ public final class SystemdNotReadyError extends AssertionError implements Sympto
     return recoveryContext;
   }
 
-  /** The snapshot on the reachable path, or {@code null} when the endpoint was unreachable. */
-  public @Nullable SystemdStatusSnapshot snapshot() {
+  /** The snapshot on the reachable path, or empty when the endpoint was unreachable. */
+  public Optional<SystemdStatusSnapshot> snapshot() {
     return snapshot;
   }
 }

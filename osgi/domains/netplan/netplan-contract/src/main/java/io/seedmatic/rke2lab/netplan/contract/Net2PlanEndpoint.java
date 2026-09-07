@@ -3,7 +3,7 @@ package io.seedmatic.rke2lab.netplan.contract;
 import java.net.URI;
 import java.util.Objects;
 import java.util.Optional;
-import org.jspecify.annotations.Nullable;
+import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 
 /**
  * External Net2Plan API endpoint contract for future mesh-topology integration.
@@ -41,7 +41,7 @@ public record Net2PlanEndpoint(URI baseUri, String networkPlanPath) {
   }
 
   public static final class Builder {
-    private @Nullable URI baseUri;
+    @MonotonicNonNull private URI baseUri;
     private String networkPlanPath = DEFAULT_NETWORK_PLAN_PATH;
 
     private Builder() {}
