@@ -22,8 +22,14 @@ the workload's app stack (its own Flux). **The CRs live where CAPI runs.**
 - **cluster-api units — ❌** render for the one current `clusterName` only (`ClusterApiDomainRegistrar`: 4 units).
 - **kube-vip — ❌** VIP hardcoded `10.80.7.10` (`KubeVipManifestsUnit` daemonset env `address`), not from blueprint.
 - **Dataplan — ❌ mono-cluster** `tank/rke2lab/control-nodes/<node>` (`DataplanLayout.canonical()`), no `<cluster>` dim.
-- **Incus project — ❌ single** `rke2lab` (`Pulumi.dev.yaml`, `BootstrapConfig.DEFAULT_INCUS_PROJECT`).
-- **CAPN identity — ❌ single** `<cluster>-incus-identity` (`IncusIdentitySecretManifestsUnit`).
+- **Incus project — ✅ single `rke2lab` IS the design** (foundation 4 DROPPED). Instance names are
+  already globally unique via the blueprint (`bioskop-mgmt-master`, `bioskop-wrkld-peer1`, …), and
+  networks/images are shared regardless — per-cluster projects add complexity for marginal isolation.
+  The operator sees all node instances in one project (the `<cluster>-<node>` naming was designed for it).
+- **CAPN identity — per REMOTE, not per cluster** (foundation 5, rescoped). All clusters on a
+  bare-metal share the one `rke2lab` project → one identity Secret per remote (`bioskop`, `nikopol`;
+  `client-crt`/`client-key` shared, `server`/`server-crt` per remote — the handoff-contract shape),
+  carrying `project: rke2lab`. The workload `LXCCluster.secretRef` names `<host>-incus-identity`.
 
 ## Foundations DAG
 
@@ -35,18 +41,18 @@ flowchart TD
   F2b["2b — second render run (-wrkld app stack)"]
   KV["kube-vip — VIP from blueprint"]
   F3["3 — dataplan cluster dimension"]
-  F4["4 — Incus project per cluster"]
-  F5["5 — CAPN identity scoped to workload"]
+  F5["5 — CAPN identity per REMOTE"]
   GREEN["greenfield bioskop-wrkld"]
   F2a --> F1 --> KV --> GREEN
   F2a --> F6 --> F2b -.-> GREEN
   F1 --> GREEN
   F3 --> GREEN
-  F4 --> GREEN
   F5 --> GREEN
 ```
 
-Blue chain (2a→1→6→2b + kube-vip) = the render work. 3/4/5 = parallel plumbing, independent of 2a.
+Blue chain (2a→1→6→2b + kube-vip) = the render work. 3/5 = parallel plumbing, independent of 2a.
+**Foundation 4 (Incus project per cluster) is DROPPED** — one `rke2lab` project suffices (see the
+Incus-project baseline row + foundation 5).
 
 ## Foundation 2a — the workload-targets carrier — ✅ DONE (built + tested)
 
@@ -58,7 +64,11 @@ test passes (`Tests run: 2`). Build note: **Claude builds in ITS lane `-Pclaude,
 `target~claude`), NOT `-Pnxmatic` (the user's lane / `target~nxmatic`, which collides with their
 warm-up). bnd generates the bundle MANIFEST.MF (the default profile fails at maven-jar, no
 MANIFEST.MF); foundation SNAPSHOTs are not in `~/.m2` so a subset `-pl … -am` needs `package` not
-`test-compile`.
+`test-compile`. **Build-cache trap:** a plain `package` can restore modules from cache and print
+BUILD SUCCESS *without* recompiling edits (`Found cached build, restoring …`). To force a real
+rebuild add `-Dmaven.build.cache.skipCache=true` (rebuilds AND rewrites the cache entry), NOT
+`-Dmaven.build.cache.enabled=false` (bypasses without updating → cache left stale). See the
+`maven-build-cache-force-rebuild-flag` memory.
 Files: `WorkloadTarget.java` (new), `ManifestsRunbookInput.java` (Facets +4th sub-facet),
 `ManifestSynthesisRequest.java` (slice+builder+toBuilder), `ManifestSynthesisContext.java` (accessor),
 `ManifestSynthesisScenario.java` (threading + UPDATE/EDIT merge keeps seeded targets),
@@ -102,8 +112,23 @@ a target. The targets are a set beside the identity; only the cluster-api units 
 
 ## Remaining foundations (intent)
 
-- **1 — CR-set units** (dep 2a): new `cluster-api` units rendering the CR set per target onto `-mgmt`,
-  `spec.paused` until host up. Values: blueprint + facet + CAPN identity ref.
+- **1 — CR-set unit** — ✅ DONE (`24faa4044`). `ClusterApiWorkloadManifestsUnit` (registered in
+  `ClusterApiDomainRegistrar`, dependsOn `cluster-api/operator`) loops `ctx.workloadTargets()` and,
+  per target, derives the blueprint + reads `ctx.imageState()` to render the full CR set into
+  `rke2lab-<cluster>`: `Cluster` (v1beta2, `spec.paused=true`, clusterNetwork pod/svc CIDRs +
+  controlPlaneEndpoint=VIP), `LXCCluster` (infra v1alpha2, `secretRef <cluster>-incus-identity`,
+  `loadBalancer.kubeVIP`), `RKE2ControlPlane` (controlplane v1beta2, replicas **3** = master+peer1+peer2,
+  `registrationMethod=address` on the VIP, kube-vip bootstrap via preRKE2Commands+files, version
+  `v`+`rke2Version()`), control-plane + worker `LXCMachineTemplate` (instanceType container, privileged
+  config mirroring `InstanceGrow`, `image.fingerprint`), `MachineDeployment` (v1beta2, **replicas 0** —
+  workers = 2.C), `RKE2ConfigTemplate` (bootstrap v1beta2). No-op if no targets or no ImageState. CRD
+  shapes verified vs pinned upstreams (CAPN incus v0.9.0 v1alpha2 + kube-vip template; CAPRKE2 v0.25.2
+  v1beta2). **To actually render:** set `rke2lab:manifests:workloadTargets` config (e.g. `[{host: bioskop,
+  role: wrkld}]`) config (done in `Pulumi.dev.yaml`) — the 2a carrier rides it. `LXCCluster.secretRef`
+  is per-REMOTE (`<host>-incus-identity`, `project: rke2lab`) — single project, foundation 4 dropped.
+  Open reconciliations deferred by design: per-remote CAPN identity Secret (foundation 5), rke2
+  config-ownership CAPRKE2-vs-node-base (validated at first unpause). **1c only renders at a GROW (needs
+  ImageState); an in-cluster UPDATE render replays it — see 1d.**
 - **1b — rke2 version from nix** (the RKE2ControlPlane.spec.version source; option A = image state):
   - Layer 1 ✅ DONE: `build-node-base-image.sh` now `nix eval`s
     `nixosConfigurations.rke2-node-base.config.services.rke2.package.version` from the SAME staged tree
@@ -121,16 +146,30 @@ a target. The targets are a set beside the identity; only the cluster-api units 
       `https://<host>-nixos:8443`. Empty on a survey (no artifacts) → units no-op.
     - Note: `getImagePlain` (GetImageResult) exposes NO custom `properties`, so the round-trip is
       nix→artifact→scion, never a getImagePlain property read.
-    - **NEXT = 1c**: the CR-set units read `ctx.imageState()` (fingerprint→LXCMachineTemplate image,
+    - 1c ✅ DONE: the CR-set unit reads `ctx.imageState()` (fingerprint→LXCMachineTemplate image,
       rke2Version→RKE2ControlPlane version) + `ctx.workloadTargets()` (per-target blueprint).
+- **1d — ImageState follows the grow** ✅ DONE. The incus scion sows `IMAGE_STATE` ONLY at a grow, so
+  a steady-state **in-cluster UPDATE render was ImageState-blind** → it rendered the image-pinned CR set
+  (and the `image-state` ConfigMap) EMPTY and force-pushed → stripped the grow-rendered CRs off the
+  branch. Fix (extends `render-facet-follows-grow`): `ManifestSynthesisScenario.recordRenderFacet` now
+  records `image: <ImageState>` in the branch-root `manifest.yaml` (via `YAML_MAPPER` + `Jdk8Module` for
+  the `Optional`), and `resolveFacet` REPLAYS the recorded HEAD image into the effective input when the
+  seeded one is empty (UPDATE/EDIT verbs). Fixpoint (update re-records identically); backward-compatible
+  (a branch with no `image` key → empty → graceful). Validate: grow (writes image + CRs) → in-cluster
+  update (replays image, re-renders CRs, no strip).
 - **6 — domain split by role**: `manifests.publish.{domain}` becomes per-role sets (mgmt = cluster-api
   + base + tailscale + target CRs; wrkld = app stack, no cluster-api).
 - **2b — second render run** for `manifests/<host>-wrkld` (just a `role=wrkld` render; config already
   frames "two clusters = two runs").
 - **3 — dataplan** `<cluster>` dimension (+ ndh `catalog.datasets`, `zfs-disko-config`, `zpool-init`).
   Open: producer emit mechanism, openebs adoption, ephemeral wipe owner.
-- **4 — Incus project per cluster** (`features.images/networks=false`); `LXCCluster` remote scoped to it.
-- **5 — CAPN identity scoped to workload** (`project=bioskop-wrkld`), `LXCCluster.spec.secretRef`.
+- **4 — Incus project per cluster** — ❌ DROPPED (2026-09-07). One `rke2lab` project suffices: instance
+  names are globally unique via the blueprint, networks/images are shared regardless, and the operator
+  wants all nodes in one project (the naming was designed for it). Marginal isolation not worth the cost.
+- **5 — CAPN identity per REMOTE** (rescoped from per-cluster): one Secret per bare-metal
+  (`<host>-incus-identity`, `client-crt`/`client-key` shared, `server`/`server-crt` per remote), carrying
+  `project: rke2lab`. `IncusIdentitySecretManifestsUnit` re-keyed by host; a copy rendered into each
+  workload namespace (CAPN resolves `LXCCluster.secretRef` within the LXCCluster's namespace).
 - **kube-vip** — ✅ DONE (1a): VIP now read from `NetworkTopology.vipHostInetAddr()` (blueprint-derived,
   per-cluster: mgmt 10.80.7.10 / bioskop-wrkld 10.80.15.10), no more hardcode. Per user directive
   "automate like the other netplan addresses". Still open: settle unit-vs-`LXCCluster.spec.loadBalancer`
