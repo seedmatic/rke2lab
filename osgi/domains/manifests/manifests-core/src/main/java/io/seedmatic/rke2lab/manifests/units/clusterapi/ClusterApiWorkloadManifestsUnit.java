@@ -112,13 +112,22 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
             .build();
     final String vip = blueprint.vip().vipHostInetaddr().getHostAddress();
     final String namespace = "rke2lab-" + cluster;
+    // The CAPN identity is PER-REMOTE, not per-cluster: every cluster on a bare-metal shares the
+    // one
+    // `rke2lab` incus project (instance names are already globally unique via the blueprint), so
+    // the
+    // Secret is keyed by the host/remote (bioskop, nikopol) and carries `project: rke2lab`.
+    // Foundation
+    // 5 renders a copy into each workload namespace; CAPN resolves secretRef within that namespace.
+    final String identitySecret = target.host() + "-incus-identity";
     // CAPI/CAPRKE2 want the k8s version with a leading `v`; the nix-emitted rke2Version has none
     // (e.g. `1.34.8+rke2r2`) — prefix it iff absent.
     final String rke2Version =
         image.rke2Version().startsWith("v") ? image.rke2Version() : "v" + image.rke2Version();
 
     final ApiObject namespaceObject = createNamespace(scope, cluster, namespace);
-    final ApiObject lxcCluster = createLxcCluster(scope, cluster, namespace, vip, namespaceObject);
+    final ApiObject lxcCluster =
+        createLxcCluster(scope, cluster, namespace, vip, identitySecret, namespaceObject);
     final ApiObject controlPlaneTemplate =
         createLxcMachineTemplate(
             scope, cluster, namespace, "control-plane", image, namespaceObject);
@@ -220,6 +229,7 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
       final String cluster,
       final String namespace,
       final String vip,
+      final String identitySecret,
       final ApiObject namespaceObject) {
     final ApiObject lxcCluster =
         new ApiObject(
@@ -245,9 +255,10 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
         JsonPatch.add(
             "/spec",
             Map.of(
-                // Per-remote CAPN identity (foundation 5) — resolved in this namespace by name.
+                // Per-remote CAPN identity (foundation 5) — resolved in this namespace by name; the
+                // Secret carries `project: rke2lab` (single project, all clusters).
                 "secretRef",
-                Map.of("name", cluster + "-incus-identity"),
+                Map.of("name", identitySecret),
                 "controlPlaneEndpoint",
                 Map.of("host", vip, "port", APISERVER_PORT),
                 // kube-vip mode: CAPN provisions no LB of its own; the RKE2ControlPlane bootstrap
