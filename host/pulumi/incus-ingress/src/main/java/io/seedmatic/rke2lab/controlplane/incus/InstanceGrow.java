@@ -21,14 +21,9 @@ import io.seedmatic.rke2lab.incus.ingress.GrowImageView;
 import io.seedmatic.rke2lab.incus.ingress.GrowNetworkView;
 import io.seedmatic.rke2lab.incus.ingress.IngressConfig;
 import io.seedmatic.rke2lab.incus.ingress.InstanceGrowPlan;
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.file.Files;
+import io.seedmatic.rke2lab.incus.ingress.SplitImageFingerprint;
 import java.nio.file.Path;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -201,7 +196,8 @@ public final class InstanceGrow {
     // Content-addressed: incus derives a SPLIT image's fingerprint as sha256(metadata.tar.xz ++
     // rootfs.squashfs), metadata first (verified against the live daemon). Compute it host-side to
     // decide whether the daemon already holds this exact content before deciding to upload.
-    final String fingerprint = splitImageFingerprint(view.metadataPath(), view.dataPath());
+    final String fingerprint =
+        SplitImageFingerprint.of(Path.of(view.metadataPath()), Path.of(view.dataPath()));
     // Adopt BY OMISSION when the daemon already holds it (a prior run, or the retired CLI-import
     // era): reference the fingerprint, declare NO Image — re-uploading identical bytes is rejected
     // as
@@ -231,31 +227,6 @@ public final class InstanceGrow {
                 .dependsOn(List.of(projectDependency))
                 .build());
     return image.fingerprint();
-  }
-
-  /**
-   * The incus SPLIT-image fingerprint of the built artifacts: {@code sha256(metadata.tar.xz ++
-   * rootfs.squashfs)}, metadata first — the exact value the daemon stores (verified empirically),
-   * so the GROW can look the image up before uploading. Streamed so the ~GB rootfs never loads
-   * whole.
-   */
-  private static String splitImageFingerprint(String metadataPath, String dataPath) {
-    try {
-      final MessageDigest sha = MessageDigest.getInstance("SHA-256");
-      final byte[] buffer = new byte[1 << 16];
-      for (String path : List.of(metadataPath, dataPath)) {
-        try (InputStream in = Files.newInputStream(Path.of(path))) {
-          int read;
-          while ((read = in.read(buffer)) > 0) {
-            sha.update(buffer, 0, read);
-          }
-        }
-      }
-      return HexFormat.of().formatHex(sha.digest());
-    } catch (IOException | NoSuchAlgorithmException ex) {
-      throw new IllegalStateException(
-          "cannot compute the incus image fingerprint from " + metadataPath + " + " + dataPath, ex);
-    }
   }
 
   private void createInstance(
