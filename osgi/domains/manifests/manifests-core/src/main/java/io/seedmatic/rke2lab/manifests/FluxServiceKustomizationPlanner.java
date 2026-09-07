@@ -2,7 +2,9 @@ package io.seedmatic.rke2lab.manifests;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.seedmatic.rke2lab.manifests.contract.FloxAnnotation;
+import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.ManifestExplodeResult;
+import io.seedmatic.rke2lab.manifests.units.clusterapi.ClusterApiOperatorManifestsUnit;
 import io.seedmatic.rke2lab.manifests.units.gitops.FluxRootManifestsUnit;
 import io.seedmatic.rke2lab.manifests.units.runtime.flox.FloxControllerManifestsUnit;
 import io.seedmatic.rke2lab.manifests.units.runtime.flox.FloxWebhookManifestsUnit;
@@ -202,6 +204,20 @@ final class FluxServiceKustomizationPlanner {
     // The openebs zfs-localpv HelmChart installs the CSI driver + its zfs.openebs.io CRDs
     // (ZFSVolume et al.) — the static funnel-cert/maven-cache PVs render ZFSVolume CRs.
     installers.put("zfs.openebs.io", new RuntimeInstaller("storage/openebs-zfs", Optional.empty()));
+    // The CAPI operator + the four providers it brings up (rendered by
+    // ClusterApiOperatorManifestsUnit) install the Cluster API CRD groups at runtime: CAPI core
+    // (cluster.x-k8s.io), the incus infrastructure provider (infrastructure.cluster.x-k8s.io), and
+    // CAPRKE2's control-plane + bootstrap providers. The workload CR set
+    // (ClusterApiWorkloadManifestsUnit) renders CRs in these groups; its Flux Kustomization already
+    // dependsOn the operator cell, so no separate health check.
+    final RuntimeInstaller clusterApi =
+        new RuntimeInstaller(
+            ManifestDomainCatalog.CLUSTER_API + "/" + ClusterApiOperatorManifestsUnit.OUTPUT_DIR,
+            Optional.empty());
+    installers.put("cluster.x-k8s.io", clusterApi);
+    installers.put("infrastructure.cluster.x-k8s.io", clusterApi);
+    installers.put("controlplane.cluster.x-k8s.io", clusterApi);
+    installers.put("bootstrap.cluster.x-k8s.io", clusterApi);
     return Map.copyOf(installers);
   }
 
