@@ -24,6 +24,9 @@ mkdir -p "$artifact_dir"
 
 metadata_name="incus.tar.xz"
 rootfs_name="rootfs.squashfs"
+# The RKE2 version baked into the image, emitted from nix beside the two artifacts (see the else
+# branch): a true property of the built image, so no version is ever hand-pinned downstream.
+rke2_version_file="$artifact_dir/rke2.version"
 
 # Build from the STAGED index, not HEAD: `git write-tree` writes the current index to a tree object
 # and prints its SHA. When nothing is staged that tree is byte-identical to HEAD's (so an unamended
@@ -46,7 +49,8 @@ source_digest="$(git -C "$workspace" ls-tree -r "$source_tree" -- flake.lock fla
 checksum_file="$artifact_dir/.image.checksum.sha256"
 
 if [ -f "$checksum_file" ] && [ "$(cat "$checksum_file")" = "$source_digest" ] &&
-    [ -f "$artifact_dir/$metadata_name" ] && [ -f "$artifact_dir/$rootfs_name" ]; then
+    [ -f "$artifact_dir/$metadata_name" ] && [ -f "$artifact_dir/$rootfs_name" ] &&
+    [ -f "$rke2_version_file" ]; then
     echo "node-base sources unchanged ($source_digest) — reusing on-disk artifacts, skipping nix build"
 else
     # Export the staged tree (computed above) with real git into a throwaway dir, and build THAT as a
@@ -97,6 +101,15 @@ else
 
     # Record the inputs digest beside the artifacts so the next run's freshness gate can trust them.
     printf '%s\n' "$source_digest" >"$checksum_file"
+
+    # Resolve the RKE2 version baked into THIS node-base image from the SAME staged tree the artifacts
+    # were built from (nix is the source of truth — never a hand-pinned literal), and emit it beside
+    # them. The scion folds it into the image identity, from which the workload
+    # RKE2ControlPlane.spec.version derives. `nix eval` takes only the eval flags — the build-only
+    # --no-link / --print-out-paths / --max-jobs would be rejected.
+    rke2_version="$("$nix_bin" eval --raw --impure --accept-flake-config \
+        "$src_dir#nixosConfigurations.rke2-node-base.config.services.rke2.package.version")"
+    printf '%s\n' "$rke2_version" >"$rke2_version_file"
 fi
 
 # Build-only: the two artifacts ($metadata_name + $rootfs_name) and their freshness checksum are the

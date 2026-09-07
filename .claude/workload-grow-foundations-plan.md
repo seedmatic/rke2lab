@@ -102,6 +102,17 @@ a target. The targets are a set beside the identity; only the cluster-api units 
 
 - **1 — CR-set units** (dep 2a): new `cluster-api` units rendering the CR set per target onto `-mgmt`,
   `spec.paused` until host up. Values: blueprint + facet + CAPN identity ref.
+- **1b — rke2 version from nix** (the RKE2ControlPlane.spec.version source; option A = image state):
+  - Layer 1 ✅ DONE: `build-node-base-image.sh` now `nix eval`s
+    `nixosConfigurations.rke2-node-base.config.services.rke2.package.version` from the SAME staged tree
+    the artifacts build from, and emits `rke2.version` beside `incus.tar.xz`/`rootfs.squashfs` (a true
+    image property, from nix — not hand-pinned; `1.34.8+rke2r2` today). Freshness gate rebuilds if the
+    file is missing. Changes `BuildRecipe.digest` (one cache-invalidating rebuild, expected).
+  - Layer 2 TODO (with 1c): the incus scion reads `rke2.version` from the artifact dir → carries it on
+    `GrowImageView` (add field) / the image identity → revives the dormant `ImageState` profile into
+    synthesis (add `rke2Version`, its producer being this host-side image-identity step) → the CR unit
+    reads `ctx.imageState().rke2Version()`. Note: `getImagePlain` (GetImageResult) exposes NO custom
+    `properties`, so the round-trip is nix→artifact→scion, never a getImagePlain property read.
 - **6 — domain split by role**: `manifests.publish.{domain}` becomes per-role sets (mgmt = cluster-api
   + base + tailscale + target CRs; wrkld = app stack, no cluster-api).
 - **2b — second render run** for `manifests/<host>-wrkld` (just a `role=wrkld` render; config already
