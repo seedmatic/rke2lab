@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator;
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
+import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.tngtech.jgiven.Stage;
 import com.tngtech.jgiven.annotation.ExpectedScenarioState;
 import com.tngtech.jgiven.annotation.Hidden;
@@ -25,6 +26,7 @@ import io.seedmatic.rke2lab.manifests.contract.profiles.BootstrapIdentity;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ClusterIssuerCaMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.FloxDebugPolicy;
 import io.seedmatic.rke2lab.manifests.contract.profiles.GithubAppMaterial;
+import io.seedmatic.rke2lab.manifests.contract.profiles.ImageState;
 import io.seedmatic.rke2lab.manifests.contract.profiles.OperatorPkiMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ReplicatorSourceSecretsMaterial;
 import io.seedmatic.rke2lab.manifests.ingress.ServerManifestsBundle;
@@ -305,10 +307,13 @@ public class ManifestSynthesisScenario
       ManifestsRunbookInput seeded, Optional<LinkedWorktree> rendered) {
     final RenderMode mode = seeded.renderMode().orElseGet(RenderMode::grow);
     final RenderMode.Verb verb = mode.verb();
-    final Optional<ManifestsRunbookInput.Facets> head =
-        rendered
-            .flatMap(worktree -> worktree.readAtHead(RENDERED_FACET_FILE))
-            .flatMap(this::recordedFacets);
+    final Optional<String> headManifest =
+        rendered.flatMap(worktree -> worktree.readAtHead(RENDERED_FACET_FILE));
+    final Optional<ManifestsRunbookInput.Facets> head = headManifest.flatMap(this::recordedFacets);
+    // The node-base ImageState the last grow recorded at HEAD: replayed into a steady-state UPDATE
+    // /EDIT render because the incus scion (the live IMAGE_STATE amendment) runs ONLY at the grow —
+    // without this the in-cluster render is ImageState-blind and empties the image-pinned CR set.
+    final Optional<ImageState> recordedImage = headManifest.flatMap(this::recordedImage);
     switch (verb) {
       case INIT -> {
         if (head.isPresent()) {
@@ -329,8 +334,9 @@ public class ManifestSynthesisScenario
     }
     return switch (verb) {
       case GROW, INIT -> seeded;
-      case UPDATE -> withPublishDebug(seeded, head.orElseThrow());
-      case EDIT -> withPublishDebug(seeded, overlay(head.orElseThrow(), mode.overrides()));
+      case UPDATE -> withPublishDebug(seeded, head.orElseThrow(), recordedImage);
+      case EDIT ->
+          withPublishDebug(seeded, overlay(head.orElseThrow(), mode.overrides()), recordedImage);
     };
   }
 
@@ -340,7 +346,9 @@ public class ManifestSynthesisScenario
    * HEAD.
    */
   private ManifestsRunbookInput withPublishDebug(
-      ManifestsRunbookInput seeded, ManifestsRunbookInput.Facets facets) {
+      ManifestsRunbookInput seeded,
+      ManifestsRunbookInput.Facets facets,
+      Optional<ImageState> recordedImage) {
     return new ManifestsRunbookInput(
         new ManifestsRunbookInput.Facets(
             facets.publish(),
@@ -350,7 +358,9 @@ public class ManifestSynthesisScenario
         seeded.materializationRoot(),
         seeded.identity(),
         seeded.renderMode(),
-        seeded.image());
+        // A live seeded image (a grow) wins; else replay the ImageState the grow recorded at HEAD,
+        // so a steady-state render pins the same node-base image instead of emptying the CR set.
+        seeded.image().or(() -> recordedImage));
   }
 
   /**
@@ -390,6 +400,25 @@ public class ManifestSynthesisScenario
         return Optional.empty();
       }
       return Optional.of(FACET_READER.treeToValue(facet, ManifestsRunbookInput.Facets.class));
+    } catch (IOException ex) {
+      return Optional.empty();
+    }
+  }
+
+  /**
+   * Decode the {@code image} sub-tree of a recorded {@code manifest.yaml} — the node-base {@link
+   * ImageState} the grow recorded, so a steady-state in-cluster {@code UPDATE}/{@code EDIT} render
+   * replays it (the incus scion, hence a live {@code IMAGE_STATE} amendment, runs ONLY at the
+   * grow). Empty if absent/unreadable (a branch recorded before this landed, or a grow that built
+   * no image).
+   */
+  private Optional<ImageState> recordedImage(String manifestYaml) {
+    try {
+      final JsonNode image = FACET_READER.readTree(manifestYaml).path("image");
+      if (image.isMissingNode() || image.isNull()) {
+        return Optional.empty();
+      }
+      return Optional.of(FACET_READER.treeToValue(image, ImageState.class));
     } catch (IOException ex) {
       return Optional.empty();
     }
@@ -742,7 +771,8 @@ public class ManifestSynthesisScenario
       // here
       // is the raw facet (incl. delivery) in hand, and the exploder has no root path.
       rendered.ifPresent(
-          linkedWorktree -> recordRenderFacet(linkedWorktree.path(), facet.facets()));
+          linkedWorktree ->
+              recordRenderFacet(linkedWorktree.path(), facet.facets(), facet.image()));
       return self();
     }
 
@@ -772,19 +802,30 @@ public class ManifestSynthesisScenario
             .disable(YAMLGenerator.Feature.WRITE_DOC_START_MARKER)
             .enable(YAMLGenerator.Feature.MINIMIZE_QUOTES)
             .enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS)
+            // Jdk8Module so the recorded image (Optional<ImageState>) serialises as its value /
+            // null,
+            // registered EXPLICITLY like SeedCodec (never findAndRegisterModules — OSGi
+            // classloading).
+            .addModule(new Jdk8Module())
             .build();
 
-    private void recordRenderFacet(Path root, ManifestsRunbookInput.Facets facets) {
+    private void recordRenderFacet(
+        Path root, ManifestsRunbookInput.Facets facets, Optional<ImageState> image) {
       // source: the rke2lab rev that synthesised this tree (worktree jgit provenance — sha +
-      // dirty); facet: the effective policy the read side (manifests-cli Main, via the wrapper's
-      // `yq -o=json .facet`) decodes verbatim. A local record so both land in declaration order.
-      record RenderContext(Provenance source, ManifestsRunbookInput.Facets facet) {}
+      // dirty); facet: the effective policy the read side decodes verbatim; image: the node-base
+      // ImageState the grow recorded so a steady-state UPDATE render replays it (the incus scion
+      // runs only at the grow). A local record so all land in declaration order. Read → decode →
+      // re-serialise is a fixpoint (the UPDATE render re-records the replayed image identically),
+      // so
+      // no empty-commit churn.
+      record RenderContext(
+          Provenance source, ManifestsRunbookInput.Facets facet, Optional<ImageState> image) {}
       try {
         final Provenance source =
             sourceWorktree.map(Worktree::provenance).orElse(new Provenance("", false));
         Files.writeString(
             root.resolve(RENDER_FACET_FILE),
-            YAML_MAPPER.writeValueAsString(new RenderContext(source, facets)));
+            YAML_MAPPER.writeValueAsString(new RenderContext(source, facets, image)));
       } catch (IOException ex) {
         throw new UncheckedIOException("cannot record the render facet at the branch root", ex);
       }
