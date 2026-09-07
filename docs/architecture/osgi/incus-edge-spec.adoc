@@ -182,6 +182,10 @@ SCENARIO: the instance is prepared   (PREPARE beat — sow-and-graft, in-contain
         InstanceGrowPlan {GrowNetworkView, GrowImageView (imageAlias, artifact paths, buildChecksum computed
         OSGi-side), GrowIdentityView} stored at the plan coordinate — the single record the host GROW fetches
         (views + plan in incus-ingress-contract)                                                          [CODED]
+    NOTE the split-image content fingerprint (sha256(incus.tar.xz ++ rootfs.squashfs), metadata first) is the
+        one pure util SplitImageFingerprint (incus-ingress-contract) — shared by the host GROW (which
+        references the image by it, no alias) and the incus scion (which folds it, with the nix-emitted
+        rke2.version, into the IMAGE_STATE amendment so the workload LXCMachineTemplate pins the same image) [CODED]
     AND a build/graft failure surfaces, optionally consulting the doctor                  [CODED]
     AND the instance is NOT started here — GROW is the separate, later pure-host beat
 
