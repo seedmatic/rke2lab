@@ -108,12 +108,16 @@ empty (currently shows the two services as `inactive`).
 
 [IMPORTANT]
 ====
-UNDER RE-DESIGN (2026-08-25). With the management track live, the workload grow is being
-re-brainstormed from scratch with C4/UML figures (the *how*: how a synthesis run rendering
-`manifests/<host>-mgmt` declares the CR set for a DIFFERENT cluster `<host>-wrkld`; how the CAPN
-per-remote identity is sealed; whether the apply is pure GitOps-in-mgmt vs another driver). The work
-items below capture the INTENDED CR shape (still valid) but NOT the settled mechanism — treat them as
-the target artifacts, not the design. The live design work is on the whiteboard.
+MECHANISM SETTLED (2026-09-07). The workload grow is **GitOps-in-mgmt**: a synthesis run renders the
+workload CAPI CR set onto `manifests/<host>-mgmt` — the branch the *management* cluster's own Flux
+tracks — so Flux applies the CRs to the management API and CAPI/CAPN reconcile them into a *different*
+cluster `<host>-wrkld`. The CRs live where CAPI runs (the management cluster); the `-wrkld` branch
+carries only that workload's app stack, reconciled by its own Flux once it is up. There is no
+imperative `kubectl apply`. The delivery model is specified in
+link:manifests-rendered-branches.adoc[Manifests Rendered Branches]; the Stage A boundary in
+link:../bootstrap/stagea-stageb-handoff-contract.adoc[the handoff contract]. The work items below are
+the CR artifacts to author as manifest units under the `cluster-api` domain, rendered onto the `-mgmt`
+branch (CAPN per-remote identity is a separate work item, still valid).
 ====
 
 Once 2.A lands, the *first* CAPN-managed cluster is `bioskop-wrkld` — a *separate*, greenfield HA

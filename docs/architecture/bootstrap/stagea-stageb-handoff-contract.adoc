@@ -29,14 +29,16 @@ resources target *workload* clusters on possibly-different bare-metals.
 sequenceDiagram
   autonumber
   participant SM as seed-mgmt (host)
+  participant G as git · manifests/&lt;host&gt;-mgmt
   participant MG as management cluster
+  participant FM as Flux (in mgmt)
   participant CAPI as CAPI/CAPN/CAPRKE2<br/>(in management cluster)
   participant WL as workload cluster<br/>(bioskop-wrkld / nikopol-wrkld)
 
-  SM->>MG: Stage A — nix-seed + validate single node
+  SM->>MG: Stage A — nix-seed single node + bootstrap FluxRoot
   MG-->>SM: handoff assets (mgmt kubeconfig, identity, checksums, 2 CAPN identity secrets)
-  SM->>CAPI: Stage B — install controllers into management cluster
-  SM->>CAPI: apply workload CRs (Cluster / LXCCluster / RKE2ControlPlane / LXCMachineTemplate)
+  MG->>FM: FluxRoot brings up Flux, tracking manifests/&lt;host&gt;-mgmt
+  FM->>CAPI: apply CAPI operator + providers + the workload CAPI CRs from the branch
   CAPI->>WL: greenfield-create over the node mesh (mammoth-skate)
   WL-->>CAPI: control-plane ready → kubeconfig for the workload cluster
 ----
@@ -62,19 +64,23 @@ Stage ownership is strict:
   through the Kubernetes controllers running *in the management cluster*. It never scales the
   management cluster itself.
 
-NOTE: The workload-CR *apply mechanism* (this section's imperative "Stage B `kubectl apply`" vs
-GitOps-in-mgmt vs another driver) is UNDER RE-DESIGN as of 2026-08-25 — see
-link:../cluster-api/cluster-workload-completion-plan.adoc[the completion plan] §2.B and the live
-whiteboard. What is settled and live: the management cluster runs its own Flux against
-`manifests/bioskop-mgmt` (all layers reconciling), and Stage A already shrank to nix-seed + the
-node-bootstrap set (`FluxRoot` + CNI + sops). Where the workload CRs are declared and by whom applies
-them is the open question the re-brainstorm answers.
+NOTE: The workload-CR *apply mechanism* is SETTLED (2026-09-07; no longer under re-design): it is
+**GitOps-in-mgmt**. The workload CAPI CRs are rendered onto `manifests/<host>-mgmt` — the branch the
+*management* cluster's own Flux tracks — so that Flux applies them to the management API and CAPI/CAPN
+reconcile them; there is no imperative `kubectl apply`. The CRs live where CAPI runs (the management
+cluster), never on a `-wrkld` branch (which carries only that workload's app stack). Stage A shrinks to
+two acts: nix-seed the single management node, and bootstrap `FluxRoot` (the `GitRepository` + root
+`Kustomization` pointing at `manifests/<host>-mgmt`). See
+link:../cluster-api/manifests-rendered-branches.adoc[Manifests Rendered Branches] (the authority for
+this delivery model) and link:../cluster-api/cluster-workload-completion-plan.adoc[the completion plan]
+§2.B.
 
 == Required handoff assets
 
 The following assets are the minimum shared contract. Unless noted, they describe the *management*
-cluster (the target of the Stage B install); the machine-class and identity-secret surfaces describe
-the *workload* resources Stage B will render.
+cluster (what the `FluxRoot` seed and the rendered `manifests/<host>-mgmt` branch are parameterised
+against); the machine-class and identity-secret surfaces describe the *workload* resources the render
+places on that branch for Flux to apply and CAPI/CAPN to reconcile.
 
 [cols="1,2,3",options="header"]
 |===

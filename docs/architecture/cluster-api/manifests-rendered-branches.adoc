@@ -43,25 +43,28 @@ So the split is not "which domains the master publishes into its `server-manifes
 |Nobody applies it — it is the build input
 
 |`manifests/nikopol-mgmt`
-|The management cluster's own definition, in the `seed-master` *sow* shape: single-node RKE2 bootstrap + CAPI operator + the four providers + base + Tailscale client + the `FluxRoot` seed
-|**pulumi / `seed-master`** — sows the management cluster
+|The management cluster's definition: the `seed-master` *sow* (single-node RKE2 bootstrap + the `FluxRoot` seed) + CAPI operator + the four providers + base + Tailscale client, AND the **workload CAPI CRs** (`Cluster` / `LXCCluster` / `RKE2ControlPlane` / `LXCMachineTemplate` / `MachineDeployment`) for every workload — paused until that workload's bare-metal is up
+|**`seed-master`** sows the node (local-only seed); the management cluster's **own Flux** then applies the rest of the branch — including the workload CRs, which **CAPI / CAPN** reconcile into the workload nodes
 
 |`manifests/nikopol-wrkld`
-|The workload's definition as **CAPI CRs**: `Cluster` / `LXCCluster` / `RKE2ControlPlane` / `LXCMachineTemplate` / `MachineDeployment`
-|**CAPI / CAPN** — reconcile the CRs into the nikopol-wrkld nodes
+|The workload's **app stack**: `gitops` · `storage` · `mesh` · `cicd` · `high-availability` — **no `cluster-api`**
+|the workload's **own Flux**, once the workload cluster is up
 
 |`manifests/bioskop-wrkld`
-|idem — the workload's CAPI CRs
-|**CAPI / CAPN** — dormant until the bioskop bare-metal is up
+|idem — the workload's app stack
+|the workload's own Flux — dormant until the bioskop bare-metal is up
 |===
 
 The consumer is per-branch and drives the branch's shape (§ <<render-inputs,output shape>>): a
-`-mgmt` branch carries the `seed-master` sow shape, a `-wrkld` branch carries CAPI CRs. This is the
-*near-term* wiring ("pour l'instant"): the cluster-*creation* content is consumed by `seed-master`
-(management) and CAPI/CAPN (workloads). The in-cluster **app stack** (gitops · storage · cicd …) and
-**Flux everywhere** (including the management cluster running its own Flux — see
-<<function-of-git>>) is the *target* layer, delivered per cluster once the creation flow is proven —
-it is not what consumes these branches today.
+`-mgmt` branch carries the management-plane shape — the `seed-master` sow + the CAPI operator and
+providers + the *workload CAPI CRs* — because CAPI runs *in the management cluster* and reconciles
+those CRs there; a `-wrkld` branch carries the workload's own **app stack** (gitops · storage · mesh ·
+cicd · high-availability), reconciled by the workload's own Flux once the cluster is up. The
+cluster-*creation* content therefore lives entirely on the `-mgmt` branch (read by `seed-master` for
+the node seed, then reconciled by the management cluster's own Flux — the operator, the providers, and
+the workload CRs); a `-wrkld` branch has content to reconcile only after its cluster exists to host a
+Flux. **Flux everywhere** (the management cluster running its own Flux against `manifests/<host>-mgmt`
+— see <<function-of-git>>) is the uniform model, not a deferred layer.
 
 The namespace names the *producer* (`manifests`), not the consumer (`gitops`): the branch holds
 rendered manifests, and Flux is only their reader. Per-cluster isolation is a *branch* concern, not
@@ -92,11 +95,12 @@ flowchart LR
   MOD["manifests<br/>SSOT render"]
   subgraph REN["git · manifests/* — rendered, pushed per cluster (history kept)"]
     direction TB
-    BM[("manifests/nikopol-mgmt<br/>seed-master sow")]
-    BW1[("manifests/nikopol-wrkld<br/>CAPI CRs")]
-    BW2[("manifests/bioskop-wrkld<br/>CAPI CRs")]
+    BM[("manifests/nikopol-mgmt<br/>sow + CAPI operator/providers<br/>+ workload CAPI CRs")]
+    BW1[("manifests/nikopol-wrkld<br/>app stack")]
+    BW2[("manifests/bioskop-wrkld<br/>app stack")]
   end
   SM["pulumi / seed-master"]
+  FM["Flux (in nikopol-mgmt)"]
   MG["management cluster<br/>CAPI · CAPN · CAPRKE2"]
   W1["nikopol-wrkld"]
   W2["bioskop-wrkld"]
@@ -105,22 +109,26 @@ flowchart LR
   MOD -->|"render + push"| BM
   MOD -->|"render + push"| BW1
   MOD -->|"render + push"| BW2
-  BM -->|"consumed by"| SM
+  BM -->|"node seed"| SM
   SM -->|"sows (nix-seed)"| MG
-  BW1 -->|"consumed by CAPI/CAPN"| MG
-  BW2 -.->|"consumed by CAPI/CAPN (dormant)"| MG
+  BM -->|"reconciled by mgmt Flux"| FM
+  FM -->|"applies operator/providers<br/>+ workload CRs"| MG
   MG ==>|"greenfield-create over mesh"| W1
   MG -.->|"greenfield-create (bioskop up)"| W2
+  BW1 -->|"reconciled by its own Flux"| W1
+  BW2 -.->|"reconciled by its own Flux (bioskop up)"| W2
   classDef src stroke:#888,stroke-dasharray:4 3;
   classDef mgmt stroke:#2f6f8f,stroke-width:1.6px;
   classDef wl stroke:#2e7d5b,stroke-width:1.2px;
-  class MAIN,MOD src; class BM,SM,MG mgmt; class BW1,BW2,W1,W2 wl;
+  class MAIN,MOD src; class BM,SM,FM,MG mgmt; class BW1,BW2,W1,W2 wl;
 ----
 
-*Legend*: `manifests` is the only writer of `manifests/*`. A `-mgmt` branch (blue) is consumed by
-`seed-master`, which sows the single management node; a `-wrkld` branch (green) is consumed by
-CAPI/CAPN in that management cluster, which greenfield-creates the workload (heavy arrows). Dashed =
-dormant until the bioskop bare-metal is up.
+*Legend*: `manifests` is the only writer of `manifests/*`. The `-mgmt` branch (blue) is read by
+`seed-master` for the node seed, then reconciled by the management cluster's own Flux — which applies
+the CAPI operator, the providers, and the *workload CAPI CRs* it carries; CAPI/CAPN then
+greenfield-create each workload (heavy arrows). A `-wrkld` branch (green) carries only that workload's
+app stack, reconciled by the workload's own Flux once it is up. Dashed = dormant until the bioskop
+bare-metal is up.
 
 === Container view (C4 L2)
 
@@ -133,30 +141,32 @@ flowchart TB
   MAIN[("main — source")]
   MOD["manifests<br/>CDK8s render engine"]
   MAIN --> MOD
-  MOD -->|"sow shape"| BM[("manifests/nikopol-mgmt")]
-  MOD -->|"CAPI CRs"| BW[("manifests/&lt;host&gt;-wrkld")]
+  MOD -->|"sow + operator/providers<br/>+ workload CRs"| BM[("manifests/&lt;host&gt;-mgmt")]
+  MOD -->|"app stack"| BW[("manifests/&lt;host&gt;-wrkld")]
   subgraph HOST["seed-master host · pulumi"]
     SM["seed-master (Stage A)"]
   end
   BM -->|reads| SM
   subgraph MGMT["management cluster · single node"]
     RKE2M["RKE2 server"]
+    FLX["Flux (gitops vCluster)"]
     CTRL["CAPI · CAPN · CAPRKE2"]
-    FRT["FluxRoot (target)"]
   end
-  SM -->|"local-only: RKE2 config + FluxRoot + providers"| RKE2M
-  RKE2M --> CTRL
-  BW -->|"CRs applied to the mgmt API"| CTRL
+  SM -->|"local-only: RKE2 config + FluxRoot seed"| RKE2M
+  RKE2M --> FLX
+  BM -->|"reconciled by mgmt Flux"| FLX
+  FLX -->|"applies operator + providers<br/>+ workload CRs to the mgmt API"| CTRL
   subgraph WL["workload clusters"]
     W1["nikopol-wrkld<br/>master+peer1+peer2 (+workers)"]
     W2["bioskop-wrkld"]
   end
   CTRL ==>|"init + scale + provision Incus nodes"| W1
   CTRL -.-> W2
+  BW -->|"reconciled by the workload's own Flux"| W1
   classDef src stroke:#888,stroke-dasharray:4 3;
   classDef mgmt stroke:#2f6f8f,stroke-width:1.6px;
   classDef wl stroke:#2e7d5b,stroke-width:1.2px;
-  class MAIN,MOD src; class BM,SM,RKE2M,CTRL,FRT mgmt; class BW,W1,W2 wl;
+  class MAIN,MOD src; class BM,SM,RKE2M,FLX,CTRL mgmt; class BW,W1,W2 wl;
 ----
 
 === Component view (C4 L3) — inside `manifests`
@@ -171,10 +181,10 @@ flowchart TB
   SEL["role → consumer"]
   PROJ["topology projection"]
   REG --> SEL --> PROJ --> SHAPE{"output shape"}
-  SHAPE -->|"role=mgmt"| SOW["seed-master sow<br/>RKE2 + providers + FluxRoot"]
-  SHAPE -->|"role=wrkld"| CRS["CAPI CRs<br/>Cluster · RKE2ControlPlane · LXCMachineTemplate · MachineDeployment"]
+  SHAPE -->|"role=mgmt"| SOW["mgmt shape<br/>RKE2 sow + FluxRoot<br/>+ CAPI operator/providers<br/>+ workload CAPI CRs"]
+  SHAPE -->|"role=wrkld"| APP["workload app stack<br/>gitops · storage · mesh · cicd · HA"]
   SOW --> DELIV{"delivery"}
-  CRS --> DELIV
+  APP --> DELIV
   DELIV -->|"branch (steady)"| FP["push · history kept<br/>manifests/&lt;host&gt;-&lt;role&gt;"]
   DELIV -->|"local-only (bootstrap)"| SRV["node server-manifests<br/>FluxRoot + Flux seed"]
 ----
@@ -188,18 +198,20 @@ sequenceDiagram
   participant M as manifests (SSOT)
   participant G as git · manifests/*
   participant SM as seed-master (Stage A)
+  participant FM as Flux (in mgmt)
   participant MG as management cluster
   participant WL as workload clusters
   OP->>M: commit source to main
-  M->>G: render + push manifests/nikopol-mgmt (sow shape)
-  M->>G: render + push manifests/nikopol-wrkld (CAPI CRs)
-  SM->>G: read manifests/nikopol-mgmt
-  SM->>MG: sow single node — local-only (RKE2 + FluxRoot + providers)
-  Note over MG: CAPI · CAPN · CAPRKE2 come up
-  SM->>MG: apply manifests/nikopol-wrkld CRs (pour l'instant)
+  M->>G: render + push manifests/&lt;host&gt;-mgmt (sow + operator/providers + workload CRs)
+  M->>G: render + push manifests/&lt;host&gt;-wrkld (app stack)
+  SM->>G: read manifests/&lt;host&gt;-mgmt
+  SM->>MG: sow single node — local-only (RKE2 + FluxRoot seed)
+  MG->>FM: FluxRoot brings up Flux, tracking manifests/&lt;host&gt;-mgmt
+  FM->>MG: apply CAPI operator + providers + workload CRs
+  Note over MG: CAPI · CAPN · CAPRKE2 reconcile the workload CRs
   MG->>WL: CAPI/CAPN greenfield-create nodes over the mesh
   WL-->>MG: control-plane ready → workload kubeconfig
-  Note over MG,WL: target — Flux per cluster reconciles the app stack from its branch
+  Note over WL: each workload's own Flux then reconciles its app stack from manifests/&lt;host&gt;-wrkld
 ----
 
 [[uniform]]
