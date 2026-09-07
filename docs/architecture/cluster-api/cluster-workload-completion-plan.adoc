@@ -117,7 +117,10 @@ imperative `kubectl apply`. The delivery model is specified in
 link:manifests-rendered-branches.adoc[Manifests Rendered Branches]; the Stage A boundary in
 link:../bootstrap/stagea-stageb-handoff-contract.adoc[the handoff contract]. The work items below are
 the CR artifacts to author as manifest units under the `cluster-api` domain, rendered onto the `-mgmt`
-branch (CAPN per-remote identity is a separate work item, still valid).
+branch (CAPN per-remote identity is a separate work item, still valid). The granular foundations
+backlog + dependency DAG for this phase (the workload-targets carrier, the single-cluster render
+baseline, kube-vip, dataplan, Incus project) lives in
+link:workload-grow-foundations.adoc[Workload Grow — Foundations Roadmap].
 ====
 
 Once 2.A lands, the *first* CAPN-managed cluster is `bioskop-wrkld` — a *separate*, greenfield HA
@@ -262,5 +265,6 @@ Recommended execution order — respects what unblocks what, leaves room to skip
 == Related Documentation
 
 * link:management-workload-topology.adoc[Management / Workload Topology] — 🎯 the anchor
+* link:workload-grow-foundations.adoc[Workload Grow — Foundations Roadmap] — the granular Phase 2.B backlog + dependency DAG
 * link:../bootstrap/stagea-stageb-handoff-contract.adoc[Stage A → Stage B Handoff] — the handoff Phase 2 consumes
 * link:post-bootstrap-in-cluster-ownership-plan.adoc[Post-Bootstrap In-Cluster Ownership] — who owns what across the separation
