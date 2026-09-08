@@ -1,5 +1,6 @@
 package io.seedmatic.rke2lab.manifests.bdd;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -14,6 +15,7 @@ import com.tngtech.jgiven.base.ScenarioTestBase;
 import com.tngtech.jgiven.impl.Scenario;
 import io.seedmatic.rke2lab.auth.contract.GithubWriterTokenMint;
 import io.seedmatic.rke2lab.manifests.bdd.versions.GitBotIdentities;
+import io.seedmatic.rke2lab.manifests.contract.ClusterRole;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainPolicy;
 import io.seedmatic.rke2lab.manifests.contract.ManifestSynthesisRequest;
@@ -60,8 +62,8 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 
 /**
  * The manifests synthesis scenario, a production jGiven scenario told in the MANIFESTS DOMAIN's own
- * vocabulary — the operator's activation facet ({@link ManifestsRunbookInput}: which layers
- * publish, which debug) translated into the synthesis input and materialised, no host/Pulumi type.
+ * vocabulary — the operator's activation facet ({@link ManifestsRunbookInput}: debug + delivery +
+ * workload targets) translated into the synthesis input and materialised, no host/Pulumi type.
  * Played IN-CONTAINER by the engine so the runbook shows a real node of the OSGi world; it is the
  * fifth scion, on the trio pattern the four contact scions share, with the differences its nature
  * forces (see docs/architecture/osgi/manifests-bdd-spec.adoc § what makes it different): it
@@ -69,23 +71,22 @@ import org.junit.jupiter.api.extension.RegisterExtension;
  * ignore theirs), and it consults no doctor (a synthesis failure is a build defect, not a symptom).
  *
  * <p>The WHEN stage is the transposition of {@code HostSlotManifest.Builder.policy()} — the
- * projection the incus-bootstrap demolition orphaned — now OSGi-side: from the facet it derives the
- * {@link ManifestDomainPolicy} (synth-time filter), owning the {@link ManifestDomainCatalog}. So
- * the control-plane policy is reactivated INSIDE synthesis: the {@link ManifestSynthesisRequest}
- * carries it, and — threaded into the env-config unit — the {@code PublishNodeEnvContributor}
- * synthesises the {@code RKE2LAB_MANIFESTS_PUBLISH_*} env section the master's install/ready
- * scripts read (a normal ConfigMap, no out-of-band overlay) — invisible at the master frontier.
+ * projection the incus-bootstrap demolition orphaned — now OSGi-side: it derives the {@link
+ * ManifestDomainPolicy} (synth-time filter, which layers synthesise) from the cluster's {@link
+ * ClusterRole} (parsed from the identity's clusterName), owning the {@link ManifestDomainCatalog}.
+ * So the control-plane policy is reactivated INSIDE synthesis, structural to the role: the {@link
+ * ManifestSynthesisRequest} carries it, and the {@link ManifestSynthesisService} materialises only
+ * the layers the role publishes — invisible at the master frontier.
  *
  * <p>Its collaborator is INJECTED from its OWN bundle's registry by the {@link OsgiService} bridge:
- * the {@link ManifestSynthesisService} (the SCR-published synthesis; the env-config synthesis and
- * its {@code PublishNodeEnvContributor} run inside it). MODE-BLIND — it injects no run gate:
- * manifests is a pure FS materialiser with no live touch (no {@code Cultivating}/{@code Surveying}
- * pair), so it runs identically in both modes; the materialisation target is carried by the SOIL
- * amendment alone (the real tree when the host amended a plot, a temp dir for a bare survey), and
- * rendering the run PENDING under a surveying gate is the frontier's business (the engine's survey
- * executor), not the scenario's. The activation facet is seeded by the front-door via the inbound
- * {@link #INPUT} channel and received here ({@link InputReceiver}) before the play; the outbound
- * {@code ScenarioOutcome} channel harvests the played runbook.
+ * the {@link ManifestSynthesisService} (the SCR-published synthesis). MODE-BLIND — it injects no
+ * run gate: manifests is a pure FS materialiser with no live touch (no {@code Cultivating}/{@code
+ * Surveying} pair), so it runs identically in both modes; the materialisation target is carried by
+ * the SOIL amendment alone (the real tree when the host amended a plot, a temp dir for a bare
+ * survey), and rendering the run PENDING under a surveying gate is the frontier's business (the
+ * engine's survey executor), not the scenario's. The activation facet is seeded by the front-door
+ * via the inbound {@link #INPUT} channel and received here ({@link InputReceiver}) before the play;
+ * the outbound {@code ScenarioOutcome} channel harvests the played runbook.
  */
 @SeedScenario
 public class ManifestSynthesisScenario
@@ -114,9 +115,9 @@ public class ManifestSynthesisScenario
 
   private final Scenario<Given, When, Then> scenario = createScenario();
 
-  // The activation facet the front-door seeds before the body (InputReceiver) — the operator's
-  // choice (which layers publish, which debug) the WHEN translates. @MonotonicNonNull: null until
-  // receiveInput sets it (before the body), then read.
+  // The activation facet the front-door seeds before the body (InputReceiver) — debug + delivery +
+  // workload targets + identity the WHEN translates (the domain set follows the role, not the
+  // facet). @MonotonicNonNull: null until receiveInput sets it (before the body), then read.
   @MonotonicNonNull private ManifestsRunbookInput input;
 
   // The shared in-container cellar (injected by ScenarioCellarExtension before the body) + the
@@ -280,7 +281,12 @@ public class ManifestSynthesisScenario
 
   // Reads the branch HEAD's recorded facet — a plain YAMLMapper, native record binding (jackson
   // reads the record component names). Symmetric with the Then's write of the same {source, facet}.
-  private static final YAMLMapper FACET_READER = new YAMLMapper();
+  // Tolerant of unknown keys: a branch recorded before the publish facet was removed still carries
+  // a `publish:` sub-map under `facet:`; the domain set is now role-derived, so that key is stale
+  // and ignored rather than failing the replay decode.
+  private static final YAMLMapper FACET_READER =
+      (YAMLMapper)
+          new YAMLMapper().configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
   // The name the Then records the facet under at the branch root (Then.RENDER_FACET_FILE).
   private static final String RENDERED_FACET_FILE = "manifest.yaml";
@@ -292,8 +298,9 @@ public class ManifestSynthesisScenario
    *   <li>{@code GROW}/{@code INIT} — the SEEDED facet is authoritative (the grow's Pulumi stack /
    *       the CLI args). {@code INIT} additionally GUARDS that the branch is new: a recorded facet
    *       at HEAD means it already exists, so it fails loud rather than silently reset it.
-   *   <li>{@code UPDATE} — the branch's recorded HEAD facet wins (publish + debug); the seeded
-   *       {@code delivery} is kept, as it carries the verb's push intent. Guards the branch EXISTS.
+   *   <li>{@code UPDATE} — the branch's recorded HEAD facet wins (debug + workload targets); the
+   *       seeded {@code delivery} is kept, as it carries the verb's push intent. Guards the branch
+   *       EXISTS.
    *   <li>{@code EDIT} — the recorded HEAD facet OVERLAID with the sparse operator overrides
    *       ({@link RenderMode#overrides}); seeded {@code delivery} kept. Guards the branch EXISTS.
    *       The overlaid facet is what the THEN re-records, so it becomes the new HEAD (one shot).
@@ -334,28 +341,28 @@ public class ManifestSynthesisScenario
     }
     return switch (verb) {
       case GROW, INIT -> seeded;
-      case UPDATE -> withPublishDebug(seeded, head.orElseThrow(), recordedImage);
-      case EDIT ->
-          withPublishDebug(seeded, overlay(head.orElseThrow(), mode.overrides()), recordedImage);
+      case UPDATE -> withDebug(seeded, head.orElseThrow(), recordedImage);
+      case EDIT -> withDebug(seeded, overlay(head.orElseThrow(), mode.overrides()), recordedImage);
     };
   }
 
   /**
-   * A copy of {@code seeded} taking publish + debug + workloadTargets from {@code facets} (HEAD),
-   * keeping only the seeded {@code delivery}. Rationale: publish/debug/workloadTargets are
-   * GROW-recorded coordinates (the CLI's facet never sets workloadTargets — it comes from the
-   * grow's Pulumi config), so HEAD wins; only {@code delivery} is verb-carried (the CLI's push
-   * intent). An earlier version took workloadTargets from {@code seeded} and a steady-state render
-   * — whose seeded facet has none — stripped them off the recorded manifest, emptying the workload
-   * CR set.
+   * A copy of {@code seeded} taking debug + workloadTargets from {@code facets} (HEAD), keeping
+   * only the seeded {@code delivery}. Rationale: debug/workloadTargets are GROW-recorded
+   * coordinates (the CLI's facet never sets workloadTargets — it comes from the grow's Pulumi
+   * config), so HEAD wins; only {@code delivery} is verb-carried (the CLI's push intent). An
+   * earlier version took workloadTargets from {@code seeded} and a steady-state render — whose
+   * seeded facet has none — stripped them off the recorded manifest, emptying the workload CR set.
+   * The domain set is no longer replayed here: it is a function of the cluster ROLE (see {@link
+   * ClusterRole}), derived fresh from the identity on every render.
    */
-  private ManifestsRunbookInput withPublishDebug(
+  private ManifestsRunbookInput withDebug(
       ManifestsRunbookInput seeded,
       ManifestsRunbookInput.Facets facets,
       Optional<ImageState> recordedImage) {
     return new ManifestsRunbookInput(
         new ManifestsRunbookInput.Facets(
-            facets.publish(), facets.debug(), seeded.facets().delivery(), facets.workloadTargets()),
+            facets.debug(), seeded.facets().delivery(), facets.workloadTargets()),
         seeded.materializationRoot(),
         seeded.identity(),
         seeded.renderMode(),
@@ -673,24 +680,13 @@ public class ManifestSynthesisScenario
     @ProvidedScenarioState ManifestSynthesisResult result;
 
     public When the_policy_is_derived_from_the_facet() {
-      final ManifestsRunbookInput.PublishFacet publish = facet.facets().publish();
-      // The one policy the run carries: base infra (cluster/runtime/platform) always on; the rest
-      // follow the facet. It drives the synth-time domain filter (which layers synthesise).
-      this.domainPolicy =
-          ManifestDomainPolicy.builder()
-              .domainCatalog(CATALOG)
-              .stageADefaults()
-              .cluster(true)
-              .runtime(true)
-              .platform(true)
-              .gitops(publish.gitops())
-              .networking(publish.networking())
-              .storage(publish.storage())
-              .mesh(publish.mesh())
-              .highAvailability(publish.highAvailability())
-              .cicd(publish.cicd())
-              .clusterApi(publish.clusterApi())
-              .build();
+      // The domain set is a FUNCTION of the cluster's ROLE (parsed from the clusterName), not an
+      // operator toggle: base infra always on, Cluster API MGMT-only, mesh + cicd WRKLD-only. The
+      // role is stable across a grow and any in-cluster re-render (it lives in the branch name), so
+      // the policy replays deterministically without a recorded publish facet.
+      final String clusterName =
+          facet.identity().map(ManifestsRunbookInput.Identity::clusterName).orElse("");
+      this.domainPolicy = ClusterRole.of(clusterName).domainPolicy(CATALOG);
       return self();
     }
 
@@ -834,10 +830,8 @@ public class ManifestSynthesisScenario
   }
 
   /**
-   * Then: the two ends landed. Every enabled domain produced units (the synth-time filter); the
-   * materialised tree is complete (manifest file exists, hit count &gt; 0); and the synthesised
-   * manifests carry the publish env section ({@code RKE2LAB_MANIFESTS_PUBLISH_*}) — what the
-   * master's scripts read.
+   * Then: the two ends landed. Every domain the role enables produced units (the synth-time
+   * filter); the materialised tree is complete (manifest file exists, hit count &gt; 0).
    */
   public static class Then extends Stage<Then> {
 

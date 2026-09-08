@@ -18,14 +18,13 @@ import java.util.Optional;
  *
  * <ul>
  *   <li>{@link Amendment#FACET} — {@link #facets} is the WHOLE {@code rke2lab:manifests:} concern
- *       map of {@code Pulumi.dev.yaml} ({@code {publish, debug, delivery, workloadTargets}}), one
- *       composite component so the role binds to ONE field. The host contributes the yaml subtree
- *       verbatim as the FACET value (an {@link
- *       io.seedmatic.rke2lab.seed.broker.port.AmendmentContributor} it registers into the world);
- *       the assembler gathers it at the amend door and the binder places it on {@code facets},
- *       naming no manifests vocabulary — {@link Facets} mirroring the yaml is what keeps the copy
- *       blind. When no contributor offers FACET (a bare {@code shape} probe, a survey), it falls to
- *       {@link #defaults()}.
+ *       map of {@code Pulumi.dev.yaml} ({@code {debug, delivery, workloadTargets}}), one composite
+ *       component so the role binds to ONE field. The host contributes the yaml subtree verbatim as
+ *       the FACET value (an {@link io.seedmatic.rke2lab.seed.broker.port.AmendmentContributor} it
+ *       registers into the world); the assembler gathers it at the amend door and the binder places
+ *       it on {@code facets}, naming no manifests vocabulary — {@link Facets} mirroring the yaml is
+ *       what keeps the copy blind. When no contributor offers FACET (a bare {@code shape} probe, a
+ *       survey), it falls to {@link #defaults()}.
  *   <li>{@link Amendment#SOIL} — {@link #materializationRoot} is NOT in the yaml: it is the plot
  *       the scion materialises into, which only the host knows (it holds {@code BootstrapPaths}).
  *       The host fills it by role — the SOIL amendment — from its provisioning state (the
@@ -50,10 +49,11 @@ import java.util.Optional;
  *
  * <p>Because the host only fills amendments by role, ALL the domain knowledge lives in the scion
  * (OSGi-side): it decodes this record (jackson coerces the yaml's string {@code "true"} to {@code
- * boolean}), flattens the nesting, and translates into its own vocabulary — {@link
- * ManifestDomainPolicy} (synth-time filter) + {@code FloxDebugPolicy} (per-layer debug) + the
- * {@code RKE2LAB_MANIFESTS_PUBLISH_*} publish-time env contributions. The host names no {@code
- * manifests.contract} translation type.
+ * boolean}), flattens the nesting, and translates into its own vocabulary — {@code FloxDebugPolicy}
+ * (per-layer debug). The synth-time domain filter ({@link ManifestDomainPolicy}) is NOT carried
+ * here: it follows the cluster's {@link ClusterRole} (parsed from the identity's clusterName),
+ * structural to the cluster, not an operator toggle. The host names no {@code manifests.contract}
+ * translation type.
  */
 @SeedContract("runbook")
 public record ManifestsRunbookInput(
@@ -122,31 +122,28 @@ public record ManifestsRunbookInput(
   }
 
   /**
-   * The {@code rke2lab:manifests:} concern map, mirroring its yaml sub-map EXACTLY ({@code
-   * {publish, debug, delivery}}) — the single {@link Amendment#FACET} component so the role binds
+   * The {@code rke2lab:manifests:} concern map, mirroring its yaml sub-map EXACTLY ({@code {debug,
+   * delivery, workloadTargets}}) — the single {@link Amendment#FACET} component so the role binds
    * to ONE field (the binder rejects a role borne by several components as ambiguous). The host
-   * contributes this whole subtree verbatim; the scion reads {@code facets().publish()} / {@code
-   * facets().debug()} / {@code facets().delivery()} and flattens each. The compact constructor
-   * coalesces any sub-facet the operator omitted to its default, so a partial yaml decodes
-   * complete.
+   * contributes this whole subtree verbatim; the scion reads {@code facets().debug()} / {@code
+   * facets().delivery()} / {@code facets().workloadTargets()} and flattens each. The compact
+   * constructor coalesces any sub-facet the operator omitted to its default, so a partial yaml
+   * decodes complete. Which manifest domains render is NOT here — it follows the cluster {@link
+   * ClusterRole}.
    */
   public record Facets(
-      PublishFacet publish,
-      DebugFacet debug,
-      DeliveryFacet delivery,
-      List<WorkloadTarget> workloadTargets) {
+      DebugFacet debug, DeliveryFacet delivery, List<WorkloadTarget> workloadTargets) {
 
     /**
      * Coalesce absent sub-facets to their defaults — the host contributes the {@code
      * rke2lab:manifests:} yaml subtree VERBATIM, and jackson decodes a record component absent from
-     * the yaml (a partial config that omits {@code delivery:}, {@code publish:}, {@code debug:} or
-     * {@code workloadTargets:}) to {@code null}. The compact constructor makes every sub-facet
-     * non-null, so a consumer reads a complete facet whatever the operator wrote (a partial yaml
-     * never NPEs nor silently pushes). {@code workloadTargets} coalesces to an empty list — a
-     * management cluster with no declared workloads.
+     * the yaml (a partial config that omits {@code delivery:}, {@code debug:} or {@code
+     * workloadTargets:}) to {@code null}. The compact constructor makes every sub-facet non-null,
+     * so a consumer reads a complete facet whatever the operator wrote (a partial yaml never NPEs
+     * nor silently pushes). {@code workloadTargets} coalesces to an empty list — a management
+     * cluster with no declared workloads.
      */
     public Facets {
-      publish = publish != null ? publish : PublishFacet.defaults();
       debug = debug != null ? debug : DebugFacet.disabled();
       delivery = delivery != null ? delivery : DeliveryFacet.defaults();
       workloadTargets = workloadTargets != null ? List.copyOf(workloadTargets) : List.of();
@@ -161,17 +158,11 @@ public record ManifestsRunbookInput(
     }
 
     public static final class Builder {
-      private PublishFacet publish = PublishFacet.defaults();
       private DebugFacet debug = DebugFacet.disabled();
       private DeliveryFacet delivery = DeliveryFacet.defaults();
       private List<WorkloadTarget> workloadTargets = List.of();
 
       private Builder() {}
-
-      public Builder publish(PublishFacet publish) {
-        this.publish = publish;
-        return this;
-      }
 
       public Builder debug(DebugFacet debug) {
         this.debug = debug;
@@ -189,7 +180,7 @@ public record ManifestsRunbookInput(
       }
 
       public Facets build() {
-        return new Facets(publish, debug, delivery, workloadTargets);
+        return new Facets(debug, delivery, workloadTargets);
       }
     }
   }
@@ -230,90 +221,6 @@ public record ManifestsRunbookInput(
      */
     public String clusterId() {
       return clusterName;
-    }
-  }
-
-  /**
-   * The {@code manifests.publish} concern: which domain manifest layers the master publishes into
-   * RKE2's server-manifests directory (a symlink/stow it auto-applies). Flat booleans, mirroring
-   * the yaml sub-map exactly; the scion feeds them to {@link ManifestDomainPolicy.Builder} and the
-   * {@code RKE2LAB_MANIFESTS_PUBLISH_*} overlay. An absent key defaults to the operator's usual
-   * posture (everything on except {@code mesh}) so a partial yaml still yields a complete facet.
-   */
-  public record PublishFacet(
-      boolean gitops,
-      boolean networking,
-      boolean clusterApi,
-      boolean storage,
-      boolean mesh,
-      boolean highAvailability,
-      boolean cicd) {
-
-    public static Builder builder() {
-      return new Builder();
-    }
-
-    /** The operator's usual posture — every domain on except {@code mesh}. */
-    public static PublishFacet defaults() {
-      return builder().build();
-    }
-
-    /**
-     * Named construction for the seven publish toggles: the canonical constructor's positional
-     * booleans do not say which flag is which, so every factory routes through here. Field defaults
-     * mirror {@link #defaults()} — all on except {@code mesh} — so a caller names only what
-     * diverges.
-     */
-    public static final class Builder {
-      private boolean gitops = true;
-      private boolean networking = true;
-      private boolean clusterApi = true;
-      private boolean storage = true;
-      private boolean mesh = false;
-      private boolean highAvailability = true;
-      private boolean cicd = true;
-
-      private Builder() {}
-
-      public Builder gitops(boolean gitops) {
-        this.gitops = gitops;
-        return this;
-      }
-
-      public Builder networking(boolean networking) {
-        this.networking = networking;
-        return this;
-      }
-
-      public Builder clusterApi(boolean clusterApi) {
-        this.clusterApi = clusterApi;
-        return this;
-      }
-
-      public Builder storage(boolean storage) {
-        this.storage = storage;
-        return this;
-      }
-
-      public Builder mesh(boolean mesh) {
-        this.mesh = mesh;
-        return this;
-      }
-
-      public Builder highAvailability(boolean highAvailability) {
-        this.highAvailability = highAvailability;
-        return this;
-      }
-
-      public Builder cicd(boolean cicd) {
-        this.cicd = cicd;
-        return this;
-      }
-
-      public PublishFacet build() {
-        return new PublishFacet(
-            gitops, networking, clusterApi, storage, mesh, highAvailability, cicd);
-      }
     }
   }
 

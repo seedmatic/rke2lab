@@ -37,15 +37,9 @@ config:
   rke2lab:manifests:
     # The WHOLE rke2lab:manifests subtree is contributed verbatim as the manifests FACET amendment
     # (FacetContributor in ClusterSeedScenario → ManifestsAmendReflector → ManifestsRunbookInput
-    # .facets), so publish / debug / delivery all reach the synthesis scion.
-    publish:
-      gitops: "true"
-      networking: "true"
-      clusterApi: "true"
-      storage: "true"
-      mesh: "true"
-      highAvailability: "true"
-      cicd: "true"
+    # .facets), so debug / delivery / workloadTargets all reach the synthesis scion. Which manifest
+    # domains render is NOT configured here — it follows the cluster ROLE (ClusterRole, from the
+    # clusterName): mgmt gets cluster-api + base, wrkld gets the app stack (mesh, cicd), never both.
     debug:
       mesh:
         enabled: "false"

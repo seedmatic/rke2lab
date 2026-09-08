@@ -5,9 +5,9 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.seedmatic.rke2lab.manifests.contract.ManifestsRunbookInput.DebugFacet;
 import io.seedmatic.rke2lab.manifests.contract.ManifestsRunbookInput.DeliveryFacet;
 import io.seedmatic.rke2lab.manifests.contract.ManifestsRunbookInput.Facets;
-import io.seedmatic.rke2lab.manifests.contract.ManifestsRunbookInput.PublishFacet;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -24,9 +24,8 @@ class ManifestsRunbookInputFacetsTest {
   @Test
   void the_compact_constructor_defaults_every_absent_sub_facet() {
     // What jackson hands the canonical constructor for a yaml that carries none of the sub-maps.
-    final Facets coalesced = new Facets(null, null, null, null);
+    final Facets coalesced = new Facets(null, null, null);
 
-    assertNotNull(coalesced.publish(), "an absent publish sub-map defaults, never null");
     assertNotNull(coalesced.debug(), "an absent debug sub-map defaults, never null");
     assertNotNull(coalesced.delivery(), "an absent delivery sub-map defaults, never null");
     // The safe delivery default: render + commit locally, never push until the operator opts in.
@@ -41,13 +40,12 @@ class ManifestsRunbookInputFacetsTest {
   void a_present_sub_facet_is_kept_verbatim() {
     final Facets partial =
         new Facets(
-            PublishFacet.defaults(),
-            null,
+            DebugFacet.builder().mesh(true).build(),
             new DeliveryFacet(true),
             List.of(new WorkloadTarget("bioskop", "wrkld")));
 
     assertEquals(true, partial.delivery().push(), "a present delivery is kept, not defaulted");
-    assertNotNull(partial.debug(), "the omitted debug still defaults");
+    assertTrue(partial.debug().mesh().enabled(), "a present debug is kept verbatim");
     assertEquals(1, partial.workloadTargets().size(), "a present workloadTargets is kept");
     assertEquals(
         "bioskop-wrkld",

@@ -48,8 +48,8 @@ public record IncusRunbookInput(
    * from the component) and (for the mount sources) {@code asAutomountView(automount, netPrefix)}.
    * The {@code incusProject} is the daemon project the built image is registered into and adopted
    * from (part of the stable provisioning identity, not a build-recipe scalar — so it rides the
-   * FACET, not the IMAGE). A sub-record filled blind by role, mirroring the {@code
-   * PublishFacet}/{@code DebugFacet} pattern — the host names no path vocabulary.
+   * FACET, not the IMAGE). A sub-record filled blind by role, mirroring the {@code DebugFacet}
+   * facet-sub-record pattern — the host names no path vocabulary.
    */
   public record Facet(
       String clusterName,

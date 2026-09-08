@@ -181,16 +181,10 @@ public final class Main {
   }
 
   // The facet toggles the CLI accepts, mapped to their dotted JSON path in the recorded facet:
-  // publish.* are flat; debug.* wrap the boolean in {enabled}, so the edit overlay path appends it.
+  // debug.* wrap the boolean in {enabled}, so the edit overlay path appends it. Which manifest
+  // domains render is no longer a toggle — it follows the cluster ROLE (see ClusterRole).
   private static final Map<String, String> FACET_TOGGLE_PATHS =
       Map.ofEntries(
-          Map.entry("publish.gitops", "publish.gitops"),
-          Map.entry("publish.networking", "publish.networking"),
-          Map.entry("publish.clusterApi", "publish.clusterApi"),
-          Map.entry("publish.storage", "publish.storage"),
-          Map.entry("publish.mesh", "publish.mesh"),
-          Map.entry("publish.highAvailability", "publish.highAvailability"),
-          Map.entry("publish.cicd", "publish.cicd"),
           Map.entry("debug.mesh", "debug.mesh.enabled"),
           Map.entry("debug.networking", "debug.networking.enabled"),
           Map.entry("debug.nriPlugins.flox", "debug.nriPlugins.flox.enabled"));
@@ -207,7 +201,7 @@ public final class Main {
   /**
    * The render-mode amendment JSON a delivery verb sows. {@code init}/{@code update} carry only the
    * verb; {@code edit} also carries the SPARSE overrides — the facet toggles the operator
-   * explicitly set, as dotted JSON paths into the recorded facet ({@code publish.mesh}, {@code
+   * explicitly set, as dotted JSON paths into the recorded facet ({@code debug.mesh}, {@code
    * debug.networking.enabled}) → boolean, which the synthesis overlays on the branch HEAD. Fails
    * loud on an unknown toggle or an {@code edit} that changes nothing.
    */
@@ -235,7 +229,7 @@ public final class Main {
         });
     if (overrides.isEmpty()) {
       throw new IllegalArgumentException(
-          "edit needs at least one facet toggle to change, e.g. publish.mesh=true");
+          "edit needs at least one facet toggle to change, e.g. debug.mesh=true");
     }
     return mode;
   }
@@ -258,25 +252,17 @@ public final class Main {
   }
 
   /**
-   * The manifests {@code FACET} the CLI sows — the {@code {publish, debug}} concern the seed flow
-   * reads from Pulumi, built here instead. Publish defaults to the operator posture (every layer on
-   * except {@code mesh}); {@code debug} defaults off. Each toggle is overridable via a trailing
-   * {@code publish.<layer>=…} / {@code debug.<toggle>=…} arg, so a management render can e.g. pass
-   * {@code publish.mesh=true} for the Tailscale client. When {@code armPush} is set the {@code
-   * delivery.push=true} intent is added — the git-push gate {@code ManifestSynthesisScenario}
-   * reads; the render scenario keeps this delivery when it follows the branch HEAD's recorded
-   * facet. The shape mirrors {@code ManifestsRunbookInput.Facets} — the membrane carries only JSON.
+   * The manifests {@code FACET} the CLI sows — the {@code {debug, delivery}} concern the seed flow
+   * reads from Pulumi, built here instead. {@code debug} defaults off; each toggle is overridable
+   * via a trailing {@code debug.<toggle>=…} arg. Which manifest domains render is NOT here — it
+   * follows the cluster ROLE (see {@code ClusterRole}), derived from the identity. When {@code
+   * armPush} is set the {@code delivery.push=true} intent is added — the git-push gate {@code
+   * ManifestSynthesisScenario} reads; the render scenario keeps this delivery when it follows the
+   * branch HEAD's recorded facet. The shape mirrors {@code ManifestsRunbookInput.Facets} — the
+   * membrane carries only JSON.
    */
   private ObjectNode manifestsFacet(Map<String, String> options, boolean armPush) {
     final ObjectNode facet = JsonNodeFactory.instance.objectNode();
-    final ObjectNode publish = facet.putObject("publish");
-    publish.put("gitops", toggle(options, "publish.gitops", true));
-    publish.put("networking", toggle(options, "publish.networking", true));
-    publish.put("clusterApi", toggle(options, "publish.clusterApi", true));
-    publish.put("storage", toggle(options, "publish.storage", true));
-    publish.put("mesh", toggle(options, "publish.mesh", false));
-    publish.put("highAvailability", toggle(options, "publish.highAvailability", true));
-    publish.put("cicd", toggle(options, "publish.cicd", true));
     final ObjectNode debug = facet.putObject("debug");
     debug.putObject("mesh").put("enabled", toggle(options, "debug.mesh", false));
     debug.putObject("networking").put("enabled", toggle(options, "debug.networking", false));
@@ -372,7 +358,7 @@ public final class Main {
 
     @Override
     public String usage() {
-      return "synthesize [cluster=<host>-mgmt] [node=master] [publish.<layer>=bool] [debug.<x>=bool]";
+      return "synthesize [cluster=<host>-mgmt] [node=master] [debug.<x>=bool]";
     }
 
     @Override
@@ -488,7 +474,7 @@ public final class Main {
                 + " the steady-state render; facet args are ignored";
         case EDIT ->
             "Change facet toggles on manifests/<cluster> over its recorded facet, then re-render +"
-                + " deliver — e.g. publish.mesh=true";
+                + " deliver — e.g. debug.mesh=true";
         case GROW -> "(internal) apply the seeded facet, as the grow does";
       };
     }
@@ -496,11 +482,9 @@ public final class Main {
     @Override
     public String usage() {
       return switch (verb) {
-        case INIT ->
-            "init [cluster=<host>-mgmt] [node=master] [publish.<layer>=bool] [debug.<x>=bool]";
+        case INIT -> "init [cluster=<host>-mgmt] [node=master] [debug.<x>=bool]";
         case UPDATE -> "update [cluster=<host>-mgmt] [node=master]";
-        case EDIT ->
-            "edit [cluster=<host>-mgmt] [node=master] <publish.<layer>=bool | debug.<x>=bool>…";
+        case EDIT -> "edit [cluster=<host>-mgmt] [node=master] <debug.<x>=bool>…";
         case GROW -> "grow";
       };
     }

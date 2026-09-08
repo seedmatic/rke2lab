@@ -18,10 +18,10 @@
     activation choice off the trigger (the others ignore theirs), and it consults no doctor (a
     synthesis failure is a build defect, not a medical symptom). It transposes the projection
     HostSlotManifest.Builder.policy() used to make host-side before the demolition orphaned it:
-    from its sown facet (publish + debug) it derives ManifestDomainPolicy (synth-time filter) +
-    FloxDebugPolicy + the RKE2LAB_MANIFESTS_PUBLISH_* seed vars (publish-time overlay), drives
-    ManifestSynthesisService.synthesize + NodeEnvOverlayService.writeControlplaneOverlay, and so
-    reactivates the control-plane policy INSIDE synthesis. A type=model embeddable bundle whose
+    it derives ManifestDomainPolicy (the synth-time filter, which layers synthesise) from the
+    cluster ROLE (ClusterRole, parsed from the identity) + FloxDebugPolicy from the debug facet,
+    drives ManifestSynthesisService.synthesize, and so reactivates the control-plane policy INSIDE
+    synthesis, structural to the role. A type=model embeddable bundle whose
     scenario class is non-exported: the launcher plays it by class-selection, the host grafts its
     ScenarioModel. See docs/architecture/osgi/manifests-bdd-spec.adoc.</description>
 

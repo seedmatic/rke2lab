@@ -46,10 +46,9 @@ class ManifestsShapeReflectorTest {
     assertEquals("object", schema.path("type").asText());
     // Option A: the FACET is ONE composite 'facets' component at top level (the whole
     // rke2lab:manifests: subtree the host contributes verbatim, bound to one field); the yaml
-    // concern keys publish/debug live under it. The schema names all three.
+    // concern keys (debug, delivery, workloadTargets) live under it.
     assertTrue(
         schema.path("properties").has("facets"), "schema must name the composite 'facets' concern");
-    assertTrue(reaped.payload().contains("publish"), "schema must name the 'publish' concern");
     assertTrue(reaped.payload().contains("debug"), "schema must name the 'debug' concern");
   }
 
@@ -62,19 +61,9 @@ class ManifestsShapeReflectorTest {
 
   @Test
   void decodes_a_yaml_shaped_map_into_the_wire_record_verbatim() {
-    // The exact subtree a sower plucks from Pulumi.dev.yaml: strings for booleans, {enabled}
-    // nesting
-    // for debug. The codec (jackson) coerces it into the typed wire-record — the verbatim-pluck
-    // invariant. The host copies this subtree blindly; all coercion is OSGi-side.
-    final Map<String, Object> publish =
-        Map.of(
-            "gitops", "true",
-            "networking", "true",
-            "clusterApi", "true",
-            "storage", "true",
-            "mesh", "false",
-            "highAvailability", "true",
-            "cicd", "true");
+    // The exact subtree a sower plucks from Pulumi.dev.yaml: {enabled} nesting for debug. The codec
+    // (jackson) coerces it into the typed wire-record — the verbatim-pluck invariant. The host
+    // copies this subtree blindly; all coercion is OSGi-side.
     final Map<String, Object> debug =
         Map.of(
             "mesh", Map.of("enabled", "true"),
@@ -82,12 +71,8 @@ class ManifestsShapeReflectorTest {
             "nriPlugins", Map.of("flox", Map.of("enabled", "true")));
 
     final ManifestsRunbookInput input =
-        CODEC.fromMap(
-            Map.of("facets", Map.of("publish", publish, "debug", debug)),
-            ManifestsRunbookInput.class);
+        CODEC.fromMap(Map.of("facets", Map.of("debug", debug)), ManifestsRunbookInput.class);
 
-    assertTrue(input.facets().publish().clusterApi());
-    assertFalse(input.facets().publish().mesh());
     assertTrue(input.facets().debug().mesh().enabled());
     assertFalse(input.facets().debug().networking().enabled());
     assertTrue(input.facets().debug().nriPlugins().flox().enabled());
