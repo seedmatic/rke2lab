@@ -126,9 +126,11 @@ public final class TailnetPurgeManifestsUnit extends AbstractManifestsUnit {
                                     ManifestLayer.OPERATORS.value())))
                         .build())
                 .build());
-    secret.addJsonPatch(
-        JsonPatch.add("/type", "Opaque"),
-        JsonPatch.add("/stringData", Map.of("client_id", "", "client_secret", "")));
+    // Empty stub — NO stringData: mittwald's replicate-from fills client_id/client_secret from the
+    // source. A rendered empty stringData makes Flux (SSA, force-apply) reset those keys to "" on
+    // every reconcile, clobbering the replicated values — the race that left this OAuth empty
+    // (401).
+    secret.addJsonPatch(JsonPatch.add("/type", "Opaque"));
   }
 
   /**

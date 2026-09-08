@@ -190,8 +190,9 @@ public final class TailscaleManifestsUnit extends AbstractManifestsUnit {
                         .build())
                 .build());
 
-    secret.addJsonPatch(
-        JsonPatch.add("/type", "Opaque"),
-        JsonPatch.add("/stringData", Map.of("client_id", "", "client_secret", "")));
+    // Empty stub — NO stringData: mittwald's replicate-from fills client_id/client_secret from the
+    // source. A rendered empty stringData makes Flux (SSA, force-apply) reset those keys to "" on
+    // every reconcile, clobbering the replicated values — a race that leaves the OAuth empty (401).
+    secret.addJsonPatch(JsonPatch.add("/type", "Opaque"));
   }
 }
