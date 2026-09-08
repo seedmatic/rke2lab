@@ -274,6 +274,19 @@ Tailscale at runtime — never on the in-container synthesis context — so `see
 any input (no cellar credentials, no secret, no cultivating edge) is the honest local skip — the
 reconcile is a best-effort convenience, never a hard gate on the grow.
 
+=== Per-cluster repository webhooks — beyond the App's single webhook
+
+A GitHub App has exactly ONE webhook URL, so the App webhook above can drive only ONE cluster's
+Pipelines-as-Code receiver. A *repository* accepts MANY webhooks, so each cluster's PaC/Tekton funnel
+can be driven independently. The `GithubRepoWebhookConfigurer` verb reconciles ONE repo webhook via
+`POST/PATCH /repos/{repo}/hooks` — its `RepoWebhookConfig` (`repoFullName`, `url`, `secret`,
+`events`, keyed by `url` so the reconcile is idempotent: patch the matching hook or create it). It
+needs a `TokenScope.REPO_ADMIN` installation token (`administration:write` — repo webhooks are not
+manageable with the App-level JWT), minted through the existing `GithubAppMinter`. Its edge
+`GithubRepoWebhookConfigurerEdge` is `cultivating`-gated like the rest. This is the capability half of
+the per-cluster webhook rewire; the grow wiring (a per-cluster funnel leaf + reconciling flux and pac
+repo webhooks, retiring the App webhook) is the pending step.
+
 [mermaid,ghapp-webhook,svg]
 ----
 flowchart LR
