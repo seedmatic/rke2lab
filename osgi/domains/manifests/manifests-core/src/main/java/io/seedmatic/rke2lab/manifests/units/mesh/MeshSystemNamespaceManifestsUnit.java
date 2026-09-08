@@ -14,7 +14,7 @@ import software.constructs.Construct;
 
 public final class MeshSystemNamespaceManifestsUnit extends AbstractManifestsUnit {
 
-  public static final String MANIFEST_UNIT_ID = ManifestDomainCatalog.MESH + "/system-namespace";
+  public static final String MANIFEST_UNIT_ID = ManifestDomainCatalog.INGRESS + "/system-namespace";
 
   // The shared mesh-system namespace must land in the foundation layer, NOT the default workloads
   // layer: the tailscale-operator HelmChart lives in the `operators` layer (CRD-before-CR), and

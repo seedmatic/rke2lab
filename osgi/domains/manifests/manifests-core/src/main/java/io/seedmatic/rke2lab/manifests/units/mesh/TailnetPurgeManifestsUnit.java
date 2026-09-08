@@ -43,7 +43,7 @@ import software.constructs.Construct;
  */
 public final class TailnetPurgeManifestsUnit extends AbstractManifestsUnit {
 
-  public static final String MANIFEST_UNIT_ID = ManifestDomainCatalog.MESH + "/tailnet-purge";
+  public static final String MANIFEST_UNIT_ID = ManifestDomainCatalog.INGRESS + "/tailnet-purge";
 
   private static final String NAMESPACE = MeshRefs.MESH_SYSTEM_NAMESPACE.name();
   private static final String SERVICE_ACCOUNT = "tailnet-purge";

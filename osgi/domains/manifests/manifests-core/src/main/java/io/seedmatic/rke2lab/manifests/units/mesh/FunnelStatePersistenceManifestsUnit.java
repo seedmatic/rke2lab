@@ -43,7 +43,7 @@ import software.constructs.Construct;
  */
 public final class FunnelStatePersistenceManifestsUnit extends AbstractManifestsUnit {
 
-  public static final String MANIFEST_UNIT_ID = ManifestDomainCatalog.MESH + "/funnel-state";
+  public static final String MANIFEST_UNIT_ID = ManifestDomainCatalog.INGRESS + "/funnel-state";
 
   private static final String NAMESPACE = MeshRefs.MESH_SYSTEM_NAMESPACE.name();
 

@@ -24,7 +24,7 @@ import software.constructs.Construct;
  */
 public final class TailscaleManifestsUnit extends AbstractManifestsUnit {
 
-  public static final String MANIFEST_UNIT_ID = ManifestDomainCatalog.MESH + "/tailscale";
+  public static final String MANIFEST_UNIT_ID = ManifestDomainCatalog.INGRESS + "/tailscale";
 
   private static final String TAILSCALE_NAMESPACE = MeshRefs.MESH_SYSTEM_NAMESPACE.name();
 

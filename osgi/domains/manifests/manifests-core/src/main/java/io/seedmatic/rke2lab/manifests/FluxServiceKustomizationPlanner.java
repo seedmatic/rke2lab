@@ -200,7 +200,7 @@ final class FluxServiceKustomizationPlanner {
     installers.put("cilium.io", cilium);
     installers.put("gateway.networking.k8s.io", cilium);
     // The tailscale-operator HelmChart registers tailscale.com at runtime.
-    installers.put("tailscale.com", new RuntimeInstaller("mesh/tailscale", Optional.empty()));
+    installers.put("tailscale.com", new RuntimeInstaller("ingress/tailscale", Optional.empty()));
     // The openebs zfs-localpv HelmChart installs the CSI driver + its zfs.openebs.io CRDs
     // (ZFSVolume et al.) — the static funnel-cert/maven-cache PVs render ZFSVolume CRs.
     installers.put("zfs.openebs.io", new RuntimeInstaller("storage/openebs-zfs", Optional.empty()));

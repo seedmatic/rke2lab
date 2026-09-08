@@ -45,9 +45,11 @@ public enum ClusterRole {
 
   /**
    * The manifest-domain policy this role publishes — the structural domain set resolved against
-   * {@code catalog}. Base infra (cluster / runtime / platform) is on for every role; Cluster API is
-   * MGMT-only (CAPI runs on the management cluster); mesh (Headscale/Headplane) and cicd are
-   * WRKLD-only (the always-live workload cluster hosts them).
+   * {@code catalog}. Only TWO domains are role-exclusive: Cluster API is MGMT-only (CAPI reconciles
+   * clusters from the management cluster) and mesh (Headscale/Headplane, the always-live control
+   * service) is WRKLD-only. Everything else — including {@code ingress} (the per-cluster
+   * public-door capability) and {@code cicd} (each cluster renders its own branch via its own
+   * Tekton pipeline) — is a structural capability every cluster carries.
    */
   public ManifestDomainPolicy domainPolicy(final ManifestDomainCatalog catalog) {
     return ManifestDomainPolicy.builder()
@@ -57,28 +59,26 @@ public enum ClusterRole {
   }
 
   private List<String> enabledDomainIds(final ManifestDomainCatalog catalog) {
+    final List<String> base =
+        List.of(
+            catalog.cluster(),
+            catalog.runtime(),
+            catalog.platform(),
+            catalog.gitops(),
+            catalog.networking(),
+            catalog.storage(),
+            catalog.highAvailability(),
+            catalog.ingress(),
+            catalog.cicd());
     return switch (this) {
-      case MGMT ->
-          List.of(
-              catalog.cluster(),
-              catalog.runtime(),
-              catalog.platform(),
-              catalog.gitops(),
-              catalog.clusterApi(),
-              catalog.networking(),
-              catalog.storage(),
-              catalog.highAvailability());
-      case WRKLD ->
-          List.of(
-              catalog.cluster(),
-              catalog.runtime(),
-              catalog.platform(),
-              catalog.gitops(),
-              catalog.networking(),
-              catalog.storage(),
-              catalog.highAvailability(),
-              catalog.mesh(),
-              catalog.cicd());
+      case MGMT -> concat(base, catalog.clusterApi());
+      case WRKLD -> concat(base, catalog.mesh());
     };
+  }
+
+  private static List<String> concat(final List<String> base, final String extra) {
+    final java.util.ArrayList<String> ids = new java.util.ArrayList<>(base);
+    ids.add(extra);
+    return List.copyOf(ids);
   }
 }
