@@ -166,10 +166,33 @@ a target. The targets are a set beside the identity; only the cluster-api units 
   seeded one is empty (UPDATE/EDIT verbs). Fixpoint (update re-records identically); backward-compatible
   (a branch with no `image` key → empty → graceful). Validate: grow (writes image + CRs) → in-cluster
   update (replays image, re-renders CRs, no strip).
-- **6 — domain split by role**: `manifests.publish.{domain}` becomes per-role sets (mgmt = cluster-api
-  + base + tailscale + target CRs; wrkld = app stack, no cluster-api).
-- **2b — second render run** for `manifests/<host>-wrkld` (just a `role=wrkld` render; config already
-  frames "two clusters = two runs").
+- **6 — domain split by role** — the render's domain set becomes a FUNCTION of the cluster ROLE.
+  Context: model B has TWO branches, one per cluster: `manifests/<host>-mgmt` (the mgmt cluster's own
+  stack + the workload CAPI CRs it reconciles) and `manifests/<host>-wrkld` (the workload's OWN app
+  stack, its own Flux — Tier 1). Today the render publishes ONE fixed domain set (tuned for mgmt). 6
+  makes it role-aware:
+  - **role=mgmt** publishes: `cluster-api` (operator + 4 providers + the workload CR set via
+    `workloadTargets`), `platform` (cert-manager/cluster-issuer), `gitops` (the mgmt's Flux), base +
+    `tailscale` CLIENT (bootstrap mesh — Tailscale, not Headscale). The mgmt is single-node, no HA.
+  - **role=wrkld** publishes the APP STACK: `gitops` (the workload's own Flux), `networking` (cilium),
+    `storage`, `mesh` (Headscale/Headplane — the mesh SERVICE is a workload-cluster service per the
+    topology doc), `high-availability` (kube-vip for the workload's OWN endpoint), `cicd` (tekton).
+    **NOT `cluster-api`** — the workload doesn't run CAPI (that's the mgmt's job; the workload's CRs
+    live on `-mgmt`).
+  - Where it lives: the `ManifestDomainPolicy` derivation (`ManifestSynthesisScenario` `.gitops(...)`
+    /`.clusterApi(...)` etc. off the publish facet) gains a ROLE input (from `bootstrapIdentity`'s
+    `role`, or the render's cluster). Either the publish flags differ per role, or the derivation
+    gates domains by role. Open: is the role read from the cluster identity (host-role) or a new facet
+    field? Leaning: derive from the render's own `role` (already in the cluster name).
+- **2b — second render run** — produce `manifests/<host>-wrkld` by running the render a SECOND time
+  with `role=wrkld`. The mgmt render (role=mgmt) already produces `-mgmt` (+ the workload CRs on it via
+  1c). 2b is the twin invocation for the workload's own branch: `manifests publish cluster=<host>-wrkld`
+  (or the grow loops over {mgmt, each workload}). It renders the role=wrkld domain set (foundation 6) →
+  the workload's app stack on `-wrkld`. The workload's own Flux (installed via the wrkld gitops domain)
+  then pulls `-wrkld` autonomously (Tier 1). Depends on 6 (need the role-split to know WHAT to render
+  for wrkld). Open: who triggers the initial `-wrkld` render — the operator (a second publish), or the
+  workload's own in-cluster render once it's up (mirroring the mgmt in-cluster render model)? The
+  config already frames "two clusters = two runs", so the mechanism is a second render invocation.
 - **3 — dataplan** `<cluster>` dimension (+ ndh `catalog.datasets`, `zfs-disko-config`, `zpool-init`).
   Open: producer emit mechanism, openebs adoption, ephemeral wipe owner.
 - **4 — Incus project per cluster** — ❌ DROPPED (2026-09-07). One `rke2lab` project suffices: instance
