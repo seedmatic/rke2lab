@@ -89,7 +89,10 @@ public final class GithubAppCli {
               + "&events%5B%5D=issue_comment"
               + "&events%5B%5D=pull_request"
               + "&events%5B%5D=push"
-              + "&contents=write&statuses=write&pull_requests=write&checks=write&metadata=read");
+              + "&contents=write&statuses=write&pull_requests=write&checks=write&metadata=read"
+              // administration:write — repo webhook management (per-cluster PaC/Tekton webhooks,
+              // POST/PATCH /repos/{repo}/hooks), reconciled by the ghapp repo-webhook scion.
+              + "&administration=write");
 
   private static final URI INSTALL_URL =
       URI.create(

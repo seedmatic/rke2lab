@@ -70,6 +70,7 @@ public final class GithubAppTokenMinter implements GithubAppMinter {
       case READER -> permissions.put("contents", "read");
       case CI ->
           permissions.put("statuses", "write").put("pull_requests", "write").put("checks", "write");
+      case REPO_ADMIN -> permissions.put("administration", "write");
     }
     return permissions;
   }

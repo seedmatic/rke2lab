@@ -15,5 +15,12 @@ public enum TokenScope {
   READER,
 
   /** {@code statuses:write} + {@code pull_requests:write} + {@code checks:write} — Tekton. */
-  CI
+  CI,
+
+  /**
+   * {@code administration:write} — repository webhook management (the per-cluster PaC/Tekton
+   * webhook reconcile, {@code POST/PATCH /repos/&#123;repo&#125;/hooks}). Requires the App to hold
+   * the "Repository administration" permission.
+   */
+  REPO_ADMIN
 }
