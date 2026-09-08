@@ -140,8 +140,10 @@ public final class TailnetPurgeManifestsUnit extends AbstractManifestsUnit {
    * start those have been offline for MINUTES by the time this runs (image build + boot + Flux) →
    * pass 1 prunes them, pass 2 is clean → the loop exits in seconds; the 90s cap only matters for a
    * pathological fast re-grow (tailscale marks a just-deleted node offline only after its ~50s
-   * keepalive window). Best-effort: a prune error is non-fatal ({@code || true}, no {@code set -e}
-   * on the pipe). Runs once at bring-up (a completed Job is not re-run by Flux).
+   * keepalive window). FAIL-LOUD on an auth/API error: an empty client-secret (a stale replicated
+   * OAuth) or a non-2xx from {@code manage-tailnet} FAILS the Job — never a false "clean; safe to
+   * deploy" (that false negative once hid an un-pruned tailnet across grows). Runs once at bring-up
+   * (a completed Job is not re-run by Flux).
    */
   private void purgeJob(final Construct scope) {
     final String script =
@@ -149,11 +151,24 @@ public final class TailnetPurgeManifestsUnit extends AbstractManifestsUnit {
         set -uo pipefail
         guard=90
         deadline=$(( $(date +%s) + guard ))
+        # FAIL LOUD, never a false "clean": the OAuth is a replicated secret, and a stale/empty
+        # replica (the source populated after this target replicated) yields a 401 that must NOT be
+        # mistaken for "nothing to prune" — that false negative hid an un-pruned tailnet for grows.
+        if [ ! -s /etc/tailnet/client-secret ]; then
+          echo "OAuth client-secret is EMPTY — the replicated tailnet-purge-oauth was not populated" >&2
+          echo "(delete it so the replicator re-syncs from rke2lab-replicator-source/operator-oauth)" >&2
+          exit 1
+        fi
         echo "tailnet stale-device prune — stop when clean, ${guard}s guard cap"
         while true; do
-          pruned="$(manage-tailnet --prune-stale-devices --stale-after 1s --yes \
-            --client-secret-file /etc/tailnet/client-secret --format=json \
-            | yq -p=json 'select(.event == "pruned") | .host' || true)"
+          # Capture output + exit code SEPARATELY (no '|| true'): an auth/API error fails the Job.
+          if ! out="$(manage-tailnet --prune-stale-devices --stale-after 1s --yes \
+              --client-secret-file /etc/tailnet/client-secret --format=json)"; then
+            echo "manage-tailnet failed (auth/API error — e.g. 401) — refusing to report clean" >&2
+            printf '%s\\n' "$out" >&2
+            exit 1
+          fi
+          pruned="$(printf '%s\\n' "$out" | yq -p=json 'select(.event == "pruned") | .host')"
           if [ -z "$pruned" ]; then
             echo "no stale devices left to prune — tailnet clean; safe to deploy"
             exit 0
