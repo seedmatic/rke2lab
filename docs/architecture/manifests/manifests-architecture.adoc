@@ -647,13 +647,14 @@ cross-domain ordering.
 | The high-availability domain — the KubeVip unit.
 
 | `IngressDomainRegistrar`
-| The ingress domain — the public-door capability: the shared `mesh-system` namespace, the Tailscale
-  operator, and the funnel cert-restore / state-persistence / tailnet-purge units. Structural on
-  BOTH roles (every cluster exposes its own endpoints — the Flux receiver, the PaC/Tekton webhook).
+| The ingress domain — the public-door capability: the shared `ingress-system` namespace, the
+  Tailscale operator, and the funnel cert-restore / state-persistence / tailnet-purge units.
+  Structural on BOTH roles (every cluster exposes its own endpoints — the Flux receiver, the
+  PaC/Tekton webhook).
 
 | `MeshDomainRegistrar`
 | The mesh domain — Headscale + Headplane (the self-hosted control service); depends on the ingress
-  domain for the `mesh-system` namespace. WRKLD-only (hosted on the always-live workload cluster).
+  domain for the `ingress-system` namespace. WRKLD-only (hosted on the always-live workload cluster).
 
 | `RuntimeDomainRegistrar`
 | The runtime domain — the RKE2 config unit plus the flox runtime units (controller, catalog, env,

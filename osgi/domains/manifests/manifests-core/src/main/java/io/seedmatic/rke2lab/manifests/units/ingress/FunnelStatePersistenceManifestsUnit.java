@@ -1,5 +1,5 @@
 // @codebase
-package io.seedmatic.rke2lab.manifests.units.mesh;
+package io.seedmatic.rke2lab.manifests.units.ingress;
 
 import io.seedmatic.rke2lab.manifests.AbstractManifestsUnit;
 import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
@@ -45,7 +45,7 @@ public final class FunnelStatePersistenceManifestsUnit extends AbstractManifests
 
   public static final String MANIFEST_UNIT_ID = ManifestDomainCatalog.INGRESS + "/funnel-state";
 
-  private static final String NAMESPACE = MeshRefs.MESH_SYSTEM_NAMESPACE.name();
+  private static final String NAMESPACE = IngressRefs.SYSTEM_NAMESPACE.name();
 
   /** The stable proxy-state Secret name the ProxyClass pins TS_KUBE_SECRET to (vs the pod name). */
   public static final String STATE_SECRET = "ts-" + PacWebhookFunnel.LEAF + "-state";

@@ -9,6 +9,8 @@ import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.profiles.FloxDebugPolicy;
 import io.seedmatic.rke2lab.manifests.profiles.FloxShellSidecarProfile;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
+import io.seedmatic.rke2lab.manifests.units.ingress.IngressRefs;
+import io.seedmatic.rke2lab.manifests.units.ingress.IngressSystemNamespaceManifestsUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -23,7 +25,7 @@ public final class HeadplaneManifestsUnit extends AbstractManifestsUnit {
 
   public static final String MANIFEST_UNIT_ID = ManifestDomainCatalog.MESH + "/headplane";
 
-  private static final String HEADSCALE_NAMESPACE = MeshRefs.MESH_SYSTEM_NAMESPACE.name();
+  private static final String HEADSCALE_NAMESPACE = IngressRefs.SYSTEM_NAMESPACE.name();
 
   private final PackageMetadataProfile packageProfile =
       new PackageMetadataProfile("mesh", "headplane");
@@ -32,7 +34,7 @@ public final class HeadplaneManifestsUnit extends AbstractManifestsUnit {
     super(
         MANIFEST_UNIT_ID,
         List.of(
-            MeshSystemNamespaceManifestsUnit.MANIFEST_UNIT_ID,
+            IngressSystemNamespaceManifestsUnit.MANIFEST_UNIT_ID,
             HeadscaleManifestsUnit.MANIFEST_UNIT_ID));
   }
 

@@ -1,15 +1,13 @@
 // @codebase
 /**
- * Mesh domain manifest units: the service-mesh / VPN layer (Tailscale + Headscale + Headplane).
+ * Mesh domain manifest units: the self-hosted control SERVICE (Headscale + Headplane). The
+ * Tailscale operator + funnel machinery and the shared system namespace live in the sibling {@code
+ * units.ingress} package (the public-door capability, both roles); mesh depends on it.
  *
  * <ul>
- *   <li>{@link io.seedmatic.rke2lab.manifests.units.mesh.MeshSystemNamespaceManifestsUnit} — the
- *       shared namespace the other mesh units depend on.
  *   <li>{@link io.seedmatic.rke2lab.manifests.units.mesh.HeadscaleManifestsUnit} — Headscale
  *       control server.
  *   <li>{@link io.seedmatic.rke2lab.manifests.units.mesh.HeadplaneManifestsUnit} — Headplane UI.
- *   <li>{@link io.seedmatic.rke2lab.manifests.units.mesh.TailscaleManifestsUnit} — Tailscale
- *       operator + connector.
  * </ul>
  *
  * <p>Registered by {@link io.seedmatic.rke2lab.manifests.domain.MeshDomainRegistrar}.

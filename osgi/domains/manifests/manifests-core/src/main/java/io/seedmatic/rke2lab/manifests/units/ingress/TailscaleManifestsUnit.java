@@ -1,5 +1,5 @@
 // @codebase
-package io.seedmatic.rke2lab.manifests.units.mesh;
+package io.seedmatic.rke2lab.manifests.units.ingress;
 
 import io.seedmatic.rke2lab.manifests.AbstractManifestsUnit;
 import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
@@ -26,7 +26,7 @@ public final class TailscaleManifestsUnit extends AbstractManifestsUnit {
 
   public static final String MANIFEST_UNIT_ID = ManifestDomainCatalog.INGRESS + "/tailscale";
 
-  private static final String TAILSCALE_NAMESPACE = MeshRefs.MESH_SYSTEM_NAMESPACE.name();
+  private static final String TAILSCALE_NAMESPACE = IngressRefs.SYSTEM_NAMESPACE.name();
 
   private final PackageMetadataProfile packageProfile =
       new PackageMetadataProfile("mesh", "tailscale");
@@ -44,17 +44,17 @@ public final class TailscaleManifestsUnit extends AbstractManifestsUnit {
     super(
         MANIFEST_UNIT_ID,
         List.of(
-            MeshSystemNamespaceManifestsUnit.MANIFEST_UNIT_ID,
+            IngressSystemNamespaceManifestsUnit.MANIFEST_UNIT_ID,
             FunnelCertRestoreManifestsUnit.MANIFEST_UNIT_ID,
             TailnetPurgeManifestsUnit.MANIFEST_UNIT_ID));
   }
 
   @Override
   protected void doSynthesize(final Construct scope, final ManifestsUnitContext context) {
-    // mesh-system is owned by MeshSystemNamespaceManifestsUnit (declared as this
+    // ingress-system is owned by IngressSystemNamespaceManifestsUnit (declared as this
     // unit's dependency). Do NOT re-render the Namespace here: the layered
     // kustomize build aggregates every unit's package dir and rejects a duplicate
-    // Namespace/mesh-system resource ("may not add resource with an already
+    // Namespace/ingress-system resource ("may not add resource with an already
     // registered id"). The HelmChart's own createNamespace=true is a runtime no-op
     // once the namespace exists.
     createSecret(scope);
@@ -81,8 +81,9 @@ public final class TailscaleManifestsUnit extends AbstractManifestsUnit {
                         // workloads layer dependsOn operators with wait:true, so the Connector CR
                         // (kept in workloads) only dry-runs once this HelmChart has registered its
                         // CRD — otherwise the whole workloads apply fails "no matches for kind
-                        // Connector". mesh-system is created earlier in the foundation layer
-                        // (MeshSystemNamespaceManifestsUnit), so it exists before this HelmChart.
+                        // Connector". ingress-system is created earlier in the foundation layer
+                        // (IngressSystemNamespaceManifestsUnit), so it exists before this
+                        // HelmChart.
                         .annotations(
                             packageProfile.packageAnnotations(
                                 "helm.cattle.io|HelmChart|${tailscale-namespace}|tailscale-operator",

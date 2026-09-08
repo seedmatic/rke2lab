@@ -1,5 +1,5 @@
 // @codebase
-package io.seedmatic.rke2lab.manifests.units.mesh;
+package io.seedmatic.rke2lab.manifests.units.ingress;
 
 import io.seedmatic.rke2lab.manifests.AbstractManifestsUnit;
 import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
@@ -45,7 +45,7 @@ public final class TailnetPurgeManifestsUnit extends AbstractManifestsUnit {
 
   public static final String MANIFEST_UNIT_ID = ManifestDomainCatalog.INGRESS + "/tailnet-purge";
 
-  private static final String NAMESPACE = MeshRefs.MESH_SYSTEM_NAMESPACE.name();
+  private static final String NAMESPACE = IngressRefs.SYSTEM_NAMESPACE.name();
   private static final String SERVICE_ACCOUNT = "tailnet-purge";
   private static final String PURGE_CONTAINER = "purge";
 
@@ -65,7 +65,7 @@ public final class TailnetPurgeManifestsUnit extends AbstractManifestsUnit {
       new PackageMetadataProfile("mesh", "tailnet-purge");
 
   public TailnetPurgeManifestsUnit() {
-    super(MANIFEST_UNIT_ID, List.of(MeshSystemNamespaceManifestsUnit.MANIFEST_UNIT_ID));
+    super(MANIFEST_UNIT_ID, List.of(IngressSystemNamespaceManifestsUnit.MANIFEST_UNIT_ID));
   }
 
   @Override
