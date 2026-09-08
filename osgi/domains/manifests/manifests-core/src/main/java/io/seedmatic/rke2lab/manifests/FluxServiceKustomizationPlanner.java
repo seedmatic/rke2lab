@@ -397,7 +397,17 @@ final class FluxServiceKustomizationPlanner {
         dependsOn.remove(name); // never depend on self
 
         final Optional<HealthCheck> healthCheck = Optional.ofNullable(healthCheckByCell.get(cell));
-        final boolean wait = healthCheck.isEmpty() && !scan.wfcPvcCells().contains(cell);
+        // A cell rendering a CAPI Cluster gets wait: false — CAPI provisioning is long + async
+        // (greenfield LXC + RKE2 boot, minutes), so the Cluster stays kstatus InProgress
+        // throughout;
+        // wait: true would wedge the Kustomization until it times out (churn), the way it would
+        // forever on a paused Cluster. Flux applies and moves on; CAPI reconciles out of band.
+        final boolean rendersCapiCluster =
+            scan.renderedBy()
+                .getOrDefault(new GroupKind("cluster.x-k8s.io", "Cluster"), Set.of())
+                .contains(cell);
+        final boolean wait =
+            healthCheck.isEmpty() && !scan.wfcPvcCells().contains(cell) && !rendersCapiCluster;
         final Path domainDir = fluxDir.resolve(cell.domain());
         Files.createDirectories(domainDir);
         Files.writeString(

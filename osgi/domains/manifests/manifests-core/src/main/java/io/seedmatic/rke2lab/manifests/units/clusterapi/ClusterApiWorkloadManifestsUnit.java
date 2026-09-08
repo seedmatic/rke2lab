@@ -38,11 +38,17 @@ import software.constructs.Construct;
  * ImageState#rke2Version()}, both the node-base identity the incus scion forwarded (foundation 1b).
  * So the workload boots the SAME nix-built node-base the management cluster grew on.
  *
- * <p>Every CR is emitted with {@code spec.paused: true} on the {@code Cluster}: the set is authored
- * now but does not reconcile until a deliberate unpause (the 2.B bring-up trigger), and the worker
- * {@code MachineDeployment} carries {@code replicas: 0} (workers are a later 2.C sub-phase — a pure
- * replica bump). The control plane is {@code master + peer1 + peer2} = 3 etcd members (peer3 is
- * dropped for workloads; a workload is NOT the full CANONICAL 4-server topology).
+ * <p>The CRs are NOT {@code spec.paused}: presence in {@code workloadTargets} IS the provisioning
+ * trigger (add a target when ready → CAPI greenfield-creates it; remove it → Flux prunes and CAPI
+ * cleans up). Paused was rejected because it is incompatible with Flux: a paused Cluster can't be
+ * deleted (CAPI's Reconcile returns on the paused check BEFORE {@code reconcileDelete}, so the
+ * finalizer never clears → prune deadlocks the namespace), and it never advances {@code
+ * observedGeneration}/{@code Ready} → kstatus InProgress forever → {@code wait: true} wedges. The
+ * workload cell instead renders un-paused with {@code wait: false} (CAPI provisioning is long +
+ * async; see {@code FluxServiceKustomizationPlanner}). The worker {@code MachineDeployment} carries
+ * {@code replicas: 0} (workers are a later 2.C sub-phase — a pure replica bump). The control plane
+ * is {@code master + peer1 + peer2} = 3 etcd members (peer3 is dropped for workloads; a workload is
+ * NOT the full CANONICAL 4-server topology).
  *
  * <p>No-op when there are no targets (a mgmt-only / standalone run) or when no {@link ImageState}
  * is bound (a secret-blind in-cluster render / a bare survey): without the image fingerprint the
@@ -272,9 +278,6 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
         JsonPatch.add(
             "/spec",
             Map.of(
-                // Authored dormant: reconciliation begins on a deliberate unpause (2.B bring-up).
-                "paused",
-                true,
                 "clusterNetwork",
                 Map.of(
                     "pods",
