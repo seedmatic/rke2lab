@@ -43,7 +43,7 @@ So the split is not "which domains the master publishes into its `server-manifes
 |Nobody applies it — it is the build input
 
 |`manifests/nikopol-mgmt`
-|The management cluster's definition: the `seed-master` *sow* (single-node RKE2 bootstrap + the `FluxRoot` seed) + CAPI operator + the four providers + base + Tailscale client, AND the **workload CAPI CRs** (`Cluster` / `LXCCluster` / `RKE2ControlPlane` / `LXCMachineTemplate` / `MachineDeployment`) for every workload — paused until that workload's bare-metal is up
+|The management cluster's definition: the `seed-master` *sow* (single-node RKE2 bootstrap + the `FluxRoot` seed) + CAPI operator + the four providers + base + Tailscale client, AND the **workload CAPI CRs** (`Cluster` / `LXCCluster` / `RKE2ControlPlane` / `LXCMachineTemplate` / `MachineDeployment`) for every workload declared in the render's `workloadTargets` (un-paused — presence in the config IS the provisioning trigger; `spec.paused` is NOT used, it deadlocks Flux prune + wait, see below)
 |**`seed-master`** sows the node (local-only seed); the management cluster's **own Flux** then applies the rest of the branch — including the workload CRs, which **CAPI / CAPN** reconcile into the workload nodes
 
 |`manifests/nikopol-wrkld`
@@ -364,10 +364,14 @@ Consequences:
   `FluxRoot` (the `GitRepository` + root `Kustomization` pointing at `manifests/nikopol-mgmt`). From
   there Flux installs the CAPI operator + providers AND applies the workload CRs — all from the
   branch. The management cluster is reconstructible from its branch exactly like a workload.
-* **The absent bare-metal's workload is optional.** `bioskop-wrkld`'s `Cluster` CR is either carried
-  with `spec.paused: true` in `manifests/nikopol-mgmt` (defined but not reconciled) or simply
-  omitted until bioskop is up. CAPI's `paused` is the mechanism; the choice is an implementation
-  detail of the render.
+* **The absent bare-metal's workload is gated by the config, not by `paused`.** `bioskop-wrkld`'s
+  CR set is rendered onto `manifests/nikopol-mgmt` iff `bioskop-wrkld` is in the render's
+  `workloadTargets`; omit it until bioskop is up. `spec.paused` is deliberately NOT used: verified
+  against CAPI v1.14.0, a paused `Cluster` can't be deleted (the paused check in `Reconcile` returns
+  before `reconcileDelete`, so the finalizer never clears → a Flux prune wedges the namespace
+  `Terminating`) and never reaches kstatus `Current` (no `observedGeneration`/`Ready`) → Flux
+  `wait:true` wedges. So the CRs are un-paused and the CAPI-`Cluster` cell renders with `wait:false`;
+  presence in `workloadTargets` is the whole gate.
 
 == The staging evolves
 

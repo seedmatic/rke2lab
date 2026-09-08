@@ -115,7 +115,7 @@ a target. The targets are a set beside the identity; only the cluster-api units 
 - **1 — CR-set unit** — ✅ DONE (`24faa4044`). `ClusterApiWorkloadManifestsUnit` (registered in
   `ClusterApiDomainRegistrar`, dependsOn `cluster-api/operator`) loops `ctx.workloadTargets()` and,
   per target, derives the blueprint + reads `ctx.imageState()` to render the full CR set into
-  `rke2lab-<cluster>`: `Cluster` (v1beta2, `spec.paused=true`, clusterNetwork pod/svc CIDRs +
+  `rke2lab-<cluster>`: `Cluster` (v1beta2, clusterNetwork pod/svc CIDRs +
   controlPlaneEndpoint=VIP), `LXCCluster` (infra v1alpha2, `secretRef <cluster>-incus-identity`,
   `loadBalancer.kubeVIP`), `RKE2ControlPlane` (controlplane v1beta2, replicas **3** = master+peer1+peer2,
   `registrationMethod=address` on the VIP, kube-vip bootstrap via preRKE2Commands+files, version
@@ -127,8 +127,17 @@ a target. The targets are a set beside the identity; only the cluster-api units 
   role: wrkld}]`) config (done in `Pulumi.dev.yaml`) — the 2a carrier rides it. `LXCCluster.secretRef`
   is per-REMOTE (`<host>-incus-identity`, `project: rke2lab`) — single project, foundation 4 dropped.
   Open reconciliations deferred by design: per-remote CAPN identity Secret (foundation 5), rke2
-  config-ownership CAPRKE2-vs-node-base (validated at first unpause). **1c only renders at a GROW (needs
-  ImageState); an in-cluster UPDATE render replays it — see 1d.**
+  config-ownership CAPRKE2-vs-node-base (validated at first provisioning). **1c only renders at a GROW
+  (needs ImageState); an in-cluster UPDATE render replays it — see 1d.**
+  - **NO `spec.paused` (`501e5fb08`) — paused is incompatible with Flux, verified vs CAPI v1.14.0.**
+    A paused Cluster (a) can't be deleted (Reconcile returns on the paused check *before*
+    `reconcileDelete` → the `cluster.cluster.x-k8s.io` finalizer never clears → a Flux prune wedges the
+    namespace `Terminating`, observed live), and (b) never advances `observedGeneration`/`Ready` →
+    kstatus InProgress forever → Flux `wait:true` wedges. So the CRs render UN-paused: **presence in
+    `workloadTargets` IS the provisioning trigger** (add when ready → CAPI greenfield-creates; remove →
+    Flux prunes + CAPI cleans up). Plus **`wait:false`** on any cell rendering a `cluster.x-k8s.io/Cluster`
+    (CAPI provisioning is long+async). This SUPERSEDES the completion-plan's "spec.paused until host up".
+    A stuck-Terminating namespace from a prior paused prune needs a manual finalizer patch to clear.
 - **1b — rke2 version from nix** (the RKE2ControlPlane.spec.version source; option A = image state):
   - Layer 1 ✅ DONE: `build-node-base-image.sh` now `nix eval`s
     `nixosConfigurations.rke2-node-base.config.services.rke2.package.version` from the SAME staged tree
