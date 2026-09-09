@@ -143,6 +143,23 @@ The proxy then returns as the SAME device → Tailscale serves the existing cert
 proxy cannot mount the PVC itself (ProxyClass exposes no volume), so the helper Jobs do. See
 link:../patterns/dataplan-single-source.adoc[Dataplan SSOT] (the persist tier).
 
+EVERY funnel is persisted, not just PaC. The canonical set is the `FunnelLeaf` registry (a dual-realm
+enum in `manifests.ingress`: `pipelines-webhook` + `flux-webhook`), each carrying its stable state
+Secret (`ts-<leaf>-state`) and per-funnel `ProxyClass`. The restore/backup Jobs LOOP `FunnelLeaf`, one
+per leaf, over `/persist/<leaf>/state.yaml` on the shared PV; `FluxReceiverManifestsUnit` opts
+flux-webhook into its `ProxyClass` (it was previously un-persisted and re-registered every grow).
+
+The purge and the persistence must not fight: `TailnetPurgeManifestsUnit` runs `manage-tailnet
+--prune-stale-devices` which would DELETE the very (offline, stale) device whose identity the restore
+brings back — so the restored node key would point at a deleted device and the proxy re-registers
+(new device, cert re-issued) instead of re-attaching. The purge therefore passes `--keep-host <leaf>`
+to SPARE a persisted device — but CONDITIONALLY: only for a leaf whose `/persist/<leaf>/state.yaml`
+exists (there is state to re-attach to). A leaf with no backup yet is NOT spared, so its stale device
+is pruned and the fresh proxy claims a clean name; the first backup then establishes its state and the
+next grow re-attaches. A drifted duplicate (`<leaf>-1`) never matches the bare `--keep-host` name, so
+it is always pruned — the reclaim we want. The un-persisted controlplane Connector is likewise never
+spared. Needs the ndh `manage-tailnet --keep-host` flag.
+
 [#funnel-ordering]
 ==== The ordering is STRUCTURAL — restore before the operator, not timing
 

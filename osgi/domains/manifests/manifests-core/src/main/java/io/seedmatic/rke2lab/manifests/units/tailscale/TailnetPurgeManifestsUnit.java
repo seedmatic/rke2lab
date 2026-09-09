@@ -66,7 +66,16 @@ public final class TailnetPurgeManifestsUnit extends AbstractManifestsUnit {
       new PackageMetadataProfile("tailscale", "tailnet-purge");
 
   public TailnetPurgeManifestsUnit() {
-    super(MANIFEST_UNIT_ID, List.of(TailscaleSystemNamespaceManifestsUnit.MANIFEST_UNIT_ID));
+    // dependsOn funnel-cert-restore: the purge mounts that unit's persist PVC (to know which
+    // funnels
+    // HAVE persisted state → spare only those), and it must run AFTER the restore has
+    // migrated/seeded
+    // that state. The tailscale operator in turn dependsOn BOTH, so both gates precede any proxy.
+    super(
+        MANIFEST_UNIT_ID,
+        List.of(
+            TailscaleSystemNamespaceManifestsUnit.MANIFEST_UNIT_ID,
+            FunnelCertRestoreManifestsUnit.MANIFEST_UNIT_ID));
   }
 
   @Override
@@ -135,20 +144,23 @@ public final class TailnetPurgeManifestsUnit extends AbstractManifestsUnit {
   }
 
   /**
-   * The {@code --keep-host <leaf>} args sparing every PERSISTED funnel from the prune — one per
-   * {@link FunnelLeaf}, so the restored device re-attaches (same name, cert reused) instead of
-   * being deleted then re-registered. The un-persisted controlplane Connector is deliberately
-   * absent (pruning frees its name for a clean re-register).
+   * The funnel leaves, space-separated — the script iterates them and passes {@code --keep-host
+   * <leaf>} ONLY for a leaf whose {@code /persist/<leaf>/state.yaml} exists (there is state to
+   * re-attach to). A leaf with no backup yet is NOT spared → its stale device is pruned so the
+   * fresh proxy claims a clean name; the first backup then establishes its state and the next grow
+   * re-attaches. Conditioning on the PV state avoids the transition footgun where sparing a device
+   * we cannot re-attach to (no restore) leaves it holding the name → the new proxy drifts to {@code
+   * -N}.
    */
-  private String keepHostArgs() {
-    final StringBuilder args = new StringBuilder();
+  private String funnelLeaves() {
+    final StringBuilder leaves = new StringBuilder();
     for (final FunnelLeaf funnel : FunnelLeaf.values()) {
-      if (args.length() > 0) {
-        args.append(' ');
+      if (leaves.length() > 0) {
+        leaves.append(' ');
       }
-      args.append("--keep-host ").append(funnel.leaf());
+      leaves.append(funnel.leaf());
     }
-    return args.toString();
+    return leaves.toString();
   }
 
   /**
@@ -180,13 +192,25 @@ public final class TailnetPurgeManifestsUnit extends AbstractManifestsUnit {
           echo "(delete it so the replicator re-syncs from rke2lab-replicator-source/operator-oauth)" >&2
           exit 1
         fi
+        # Spare ONLY funnels that HAVE persisted state on the PV — those will re-attach (same device,
+        # cert reused), so deleting them breaks the reuse. A funnel with no backup yet is left to the
+        # prune so its stale device is reclaimed and the fresh proxy gets a clean name.
+        keep=""
+        for leaf in @LEAVES@; do
+          if [ -s "/persist/$leaf/state.yaml" ]; then
+            keep="$keep --keep-host $leaf"
+            echo "sparing $leaf — has persisted state, will re-attach"
+          else
+            echo "not sparing $leaf — no persisted state yet, its stale device will be pruned"
+          fi
+        done
         echo "tailnet stale-device prune — stop when clean, ${guard}s guard cap"
         while true; do
           # Capture output + exit code SEPARATELY (no '|| true'): an auth/API error fails the Job.
           # --keep-host spares the PERSISTED funnel devices (their identity is restored across the
           # cold-start, so they must survive to re-attach — same name, cert reused); only drifted
           # duplicates (name-1, …) and un-persisted orphans (the controlplane Connector) are pruned.
-          if ! out="$(manage-tailnet --prune-stale-devices --stale-after 1s --yes @KEEP_HOSTS@ \
+          if ! out="$(manage-tailnet --prune-stale-devices --stale-after 1s --yes $keep \
               --client-secret-file /etc/tailnet/client-secret --format=json)"; then
             echo "manage-tailnet failed (auth/API error — e.g. 401) — refusing to report clean" >&2
             printf '%s\\n' "$out" >&2
@@ -205,7 +229,7 @@ public final class TailnetPurgeManifestsUnit extends AbstractManifestsUnit {
           sleep 5
         done
         """
-            .replace("@KEEP_HOSTS@", keepHostArgs());
+            .replace("@LEAVES@", funnelLeaves());
     final String floxImage = ManifestSynthesisContext.current().floxDebugPolicy().prodImage();
     final ApiObject jobObject =
         new ApiObject(
@@ -270,6 +294,15 @@ public final class TailnetPurgeManifestsUnit extends AbstractManifestsUnit {
                                     "mountPath",
                                     OAUTH_MOUNT,
                                     "readOnly",
+                                    Boolean.TRUE),
+                                // The persist PV (owned by FunnelCertRestore) — read-only, to learn
+                                // which funnels have state (→ --keep-host them, they re-attach).
+                                Map.of(
+                                    "name",
+                                    "persist",
+                                    "mountPath",
+                                    "/persist",
+                                    "readOnly",
                                     Boolean.TRUE)
                               })
                         },
@@ -285,7 +318,12 @@ public final class TailnetPurgeManifestsUnit extends AbstractManifestsUnit {
                                   "items",
                                   new Object[] {
                                     Map.of("key", "client_secret", "path", "client-secret")
-                                  }))
+                                  })),
+                          Map.of(
+                              "name",
+                              "persist",
+                              "persistentVolumeClaim",
+                              Map.of("claimName", FunnelCertRestoreManifestsUnit.PV_NAME))
                         })))));
   }
 }

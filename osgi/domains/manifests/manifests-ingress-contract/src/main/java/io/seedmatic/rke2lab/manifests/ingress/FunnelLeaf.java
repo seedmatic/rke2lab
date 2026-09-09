@@ -47,4 +47,15 @@ public enum FunnelLeaf {
   public String proxyClass() {
     return leaf;
   }
+
+  /**
+   * Whether this funnel adopts the LEGACY flat persist path {@code /persist/state.yaml} — the
+   * single-funnel layout from before the per-leaf subdirs. Only {@code pipelines-webhook} (the sole
+   * funnel that was persisted then) owns it, so its restore migrates that file into {@code
+   * /persist/<leaf>/state.yaml} once, letting it re-attach + reuse its cert on the FIRST per-leaf
+   * grow instead of re-issuing.
+   */
+  public boolean adoptsLegacyFlatState() {
+    return this == PIPELINES_WEBHOOK;
+  }
 }

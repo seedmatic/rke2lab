@@ -331,9 +331,25 @@ public final class FunnelCertRestoreManifestsUnit extends AbstractManifestsUnit 
    * proxy.
    */
   private void restoreJob(final Construct scope, final FunnelLeaf funnel) {
+    // One-time migration for the incumbent: the pre-subdir backup wrote the flat
+    // /persist/state.yaml.
+    // Move it into this leaf's subdir so the restore below finds it (re-attach + cert reuse on the
+    // first per-leaf grow instead of re-issuing). Empty for a funnel with no legacy flat state.
+    final String migrateLegacy =
+        funnel.adoptsLegacyFlatState()
+            ? """
+            if [ ! -e /persist/%s/state.yaml ] && [ -s /persist/state.yaml ]; then
+              echo "migrating legacy flat /persist/state.yaml -> /persist/%s/state.yaml"
+              mv /persist/state.yaml /persist/%s/state.yaml
+            fi
+            """
+                .formatted(funnel.leaf(), funnel.leaf(), funnel.leaf())
+            : "";
     final String script =
         """
         set -euo pipefail
+        mkdir -p /persist/%s
+        %s
         if [ -s /persist/%s/state.yaml ]; then
           echo "restoring saved tailscale funnel state into %s"
           # Strip the embedded metadata.namespace: a backup captured under a PRIOR namespace (the
@@ -346,6 +362,8 @@ public final class FunnelCertRestoreManifestsUnit extends AbstractManifestsUnit 
         fi
         """
             .formatted(
+                funnel.leaf(),
+                migrateLegacy,
                 funnel.leaf(),
                 funnel.stateSecret(),
                 NAMESPACE,
