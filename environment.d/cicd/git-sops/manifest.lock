@@ -1,0 +1,221 @@
+{
+  "lockfile-version": 1,
+  "manifest": {
+    "schema-version": "1.10.0",
+    "install": {
+      "bash": {
+        "pkg-path": "bash",
+        "outputs": "all"
+      },
+      "coreutils": {
+        "pkg-path": "coreutils",
+        "outputs": "all"
+      },
+      "git": {
+        "pkg-path": "git"
+      },
+      "git-sops-filter": {
+        "flake": "path:../../..#git-sops-filter"
+      },
+      "sops": {
+        "pkg-path": "sops"
+      },
+      "yq-go": {
+        "pkg-path": "yq-go"
+      }
+    },
+    "hook": {
+      "on-activate": "  # Wire git to the package's `sops` include (top-level file the git-sops-filter output\n  # carries, surfaced at $FLOX_ENV/sops). Its relative `path = sops.d/<fmt>` entries and\n  # the absolute filter/diff commands both resolve inside the package's own store path.\n  # Guarded so repeated activations do not stack duplicate include.path entries.\n  if ! git config --global --get-all include.path 2>/dev/null | grep -qxF \"$FLOX_ENV/sops\"; then\n    git config --global --add include.path \"$FLOX_ENV/sops\"\n  fi\n"
+    },
+    "options": {
+      "systems": [
+        "aarch64-linux"
+      ]
+    }
+  },
+  "packages": [
+    {
+      "attr_path": "bash",
+      "broken": false,
+      "derivation": "/nix/store/43c5mqrji1g24gr7kgl7rz7h56biywx6-bash-interactive-5.3p15.drv",
+      "description": "GNU Bourne-Again Shell, the de facto standard shell on Linux (for interactive use)",
+      "install_id": "bash",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d6524aaca2ff07876657ae2b323f24be4874944b",
+      "name": "bash-interactive-5.3p15",
+      "pname": "bash",
+      "rev": "d6524aaca2ff07876657ae2b323f24be4874944b",
+      "rev_count": 1069856,
+      "rev_date": "2026-09-08T15:35:43Z",
+      "scrape_date": "2026-09-09T05:30:33.380330Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "5.3p15",
+      "outputs_to_install": [
+        "man",
+        "out",
+        "out",
+        "out"
+      ],
+      "outputs": {
+        "debug": "/nix/store/713g2mp1i8xpmbdmi3kifdhla7g0gsin-bash-interactive-5.3p15-debug",
+        "dev": "/nix/store/360xx4r3q0zf4mkd824ngw1g0ijxijmi-bash-interactive-5.3p15-dev",
+        "doc": "/nix/store/v6laahd0c284g94x6b18am6ni7l4lcaw-bash-interactive-5.3p15-doc",
+        "info": "/nix/store/1sy5cvzy4k1kg8rq9m9py5qnhxcklri6-bash-interactive-5.3p15-info",
+        "man": "/nix/store/x5hnm458p9mhfbf9qjbdh0kx3niml2ca-bash-interactive-5.3p15-man",
+        "out": "/nix/store/2v6yfrj5kcq2f5vqw63cr6c3d6i898qc-bash-interactive-5.3p15"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "coreutils",
+      "broken": false,
+      "derivation": "/nix/store/d3f8fssi5bl2dp8i31xh102pmq7znwwi-coreutils-9.11.drv",
+      "description": "GNU Core Utilities",
+      "install_id": "coreutils",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d6524aaca2ff07876657ae2b323f24be4874944b",
+      "name": "coreutils-9.11",
+      "pname": "coreutils",
+      "rev": "d6524aaca2ff07876657ae2b323f24be4874944b",
+      "rev_count": 1069856,
+      "rev_date": "2026-09-08T15:35:43Z",
+      "scrape_date": "2026-09-09T05:30:33.908098Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "9.11",
+      "outputs_to_install": [
+        "out",
+        "out",
+        "out",
+        "out"
+      ],
+      "outputs": {
+        "debug": "/nix/store/mm20p77c25q3xf822lzfwfb11i6w14p8-coreutils-9.11-debug",
+        "info": "/nix/store/rlgrpyjxh9xgx6bi3p8lv2bp4vhqagkh-coreutils-9.11-info",
+        "out": "/nix/store/85k56vdxxb75xmgvxj4zhaawyafkchwh-coreutils-9.11"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "git",
+      "broken": false,
+      "derivation": "/nix/store/9cr7f3maf18igwnv314m3vgh7ay93wbd-git-2.55.0.drv",
+      "description": "Distributed version control system",
+      "install_id": "git",
+      "license": "GPL-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d6524aaca2ff07876657ae2b323f24be4874944b",
+      "name": "git-2.55.0",
+      "pname": "git",
+      "rev": "d6524aaca2ff07876657ae2b323f24be4874944b",
+      "rev_count": 1069856,
+      "rev_date": "2026-09-08T15:35:43Z",
+      "scrape_date": "2026-09-09T05:30:35.230572Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2.55.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "debug": "/nix/store/1asxbx6r55sylz2ljdzk6404i0w28iri-git-2.55.0-debug",
+        "doc": "/nix/store/ryn8xbxi2i1d2dharz9r7kb2ymqfgkyw-git-2.55.0-doc",
+        "out": "/nix/store/clxhwm4v3gl0k3hazm0zpx14gz2w0clz-git-2.55.0"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "sops",
+      "broken": false,
+      "derivation": "/nix/store/qyci95vfhhj55z15qkcb2raxiqh297y3-sops-3.13.3.drv",
+      "description": "Simple and flexible tool for managing secrets",
+      "install_id": "sops",
+      "license": "MPL-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d6524aaca2ff07876657ae2b323f24be4874944b",
+      "name": "sops-3.13.3",
+      "pname": "sops",
+      "rev": "d6524aaca2ff07876657ae2b323f24be4874944b",
+      "rev_count": 1069856,
+      "rev_date": "2026-09-08T15:35:43Z",
+      "scrape_date": "2026-09-09T05:33:09.775937Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "3.13.3",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/p41fwvk4zxq3fpgmncggp8zq7ihd96mm-sops-3.13.3"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "yq-go",
+      "broken": false,
+      "derivation": "/nix/store/s236np3j1yljw4ah9w0sv6lm1qy27hr7-yq-go-4.53.3.drv",
+      "description": "Portable command-line YAML processor",
+      "install_id": "yq-go",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d6524aaca2ff07876657ae2b323f24be4874944b",
+      "name": "yq-go-4.53.3",
+      "pname": "yq-go",
+      "rev": "d6524aaca2ff07876657ae2b323f24be4874944b",
+      "rev_count": 1069856,
+      "rev_date": "2026-09-08T15:35:43Z",
+      "scrape_date": "2026-09-09T05:34:35.903936Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "4.53.3",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/imixh3w8g9v93fa7vzgsyjfvdssyqsx1-yq-go-4.53.3"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "install_id": "git-sops-filter",
+      "locked-url": "path:/private/var/lib/git/seedmatic/rke2lab.d/flox-catalogue?lastModified=1788985164&narHash=sha256-EDEwqkFQuVyVAAKvX9cIlSlrhjSNC22X7u/H%2BNdsOsY%3D",
+      "flake-description": "Flox runtime env catalog: per-workload packages (kdns, headplane, headscale, tailscale) the flox-nri-plugin injects. The plugin itself now lives in github:seedmatic/flox-nri-plugin (consumed as the flox-runtime input of the rke2lab flake).",
+      "locked-flake-attr-path": "packages.aarch64-linux.git-sops-filter",
+      "derivation": "/nix/store/prhbfyyd6w8b9nybmm74lkqi544aiw73-git-sops-filter.drv",
+      "outputs": {
+        "out": "/nix/store/86wdk7aa4s8ymdkgqjc6lay76jnkkxfj-git-sops-filter"
+      },
+      "output-names": [
+        "out"
+      ],
+      "outputs-to-install": [
+        "out"
+      ],
+      "requested-outputs-to-install": [],
+      "package-system": "aarch64-linux",
+      "system": "aarch64-linux",
+      "name": "git-sops-filter",
+      "broken": false,
+      "unfree": false,
+      "priority": 5
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+# The git sops clean/smudge filter toolchain — the composable env that makes an
+# in-cluster checkout smudge `.secrets` (and `.ndh-ssh.d/keys.yaml`) exactly as the
+# operator host does. Composed via `[include]` into the cicd render toolchain, so the
+# render pod is secret-FULL (the cellar fills from `.secrets`) instead of secret-blind.
+#
+# It carries git + sops + yq + the ndh `git-sops-filter` package (the SSOT filter def:
+# the sops-dispatch script + the sops.d config fragments, baking their own store path).
+# On activation it wires git to the package's `sops` include, which registers the
+# sops-yaml (and siblings) clean/smudge/diff commands.
+#
+# The age key is NOT here: sops reads it from SOPS_AGE_KEY / SOPS_AGE_KEY_FILE, which the
+# render pod supplies from the mounted `sops-age` Secret (the cluster age key, a recipient
+# of `.secrets`). The re-smudge itself (`git checkout -- .secrets .ndh-ssh.d/keys.yaml`
+# after the PaC clone, before `manifests publish`) is a pipeline step, since PaC clones
+# before this toolchain activates and `manifests publish` reads the already-smudged files.
+schema-version = "1.10.0"
+
+[install]
+
+  [install.git]
+  pkg-path = "git"
+
+  [install.sops]
+  pkg-path = "sops"
+
+  # mikefarah yq (the `yq eval` the dispatcher's anchor handling calls).
+  [install.yq-go]
+  pkg-path = "yq-go"
+
+  [install.bash]
+  pkg-path = "bash"
+  outputs = "all"
+
+  [install.coreutils]
+  pkg-path = "coreutils"
+  outputs = "all"
+
+  # The SSOT filter def, re-exported by this catalog's flake from ndh.
+  [install.git-sops-filter]
+  flake = "path:../../..#git-sops-filter"
+
+[hook]
+on-activate = '''
+  # Wire git to the package's `sops` include (top-level file the git-sops-filter output
+  # carries, surfaced at $FLOX_ENV/sops). Its relative `path = sops.d/<fmt>` entries and
+  # the absolute filter/diff commands both resolve inside the package's own store path.
+  # Guarded so repeated activations do not stack duplicate include.path entries.
+  if ! git config --global --get-all include.path 2>/dev/null | grep -qxF "$FLOX_ENV/sops"; then
+    git config --global --add include.path "$FLOX_ENV/sops"
+  fi
+'''
+
+[options]
+systems = ["aarch64-linux"]
