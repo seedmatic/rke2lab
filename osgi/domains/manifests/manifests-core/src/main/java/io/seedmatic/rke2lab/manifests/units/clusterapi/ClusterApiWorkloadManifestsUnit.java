@@ -663,7 +663,33 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
         "security.syscalls.intercept.bpf",
         "true",
         "security.syscalls.intercept.bpf.devices",
-        "true");
+        "true",
+        // incus modprobes these on the host at instance start. The CAPN provider's default set is
+        // `ip_vs,ip_vs_rr,ip_vs_wrr,ip_vs_sh,ip_tables,ip6_tables,iptable_raw,netlink_diag,nf_nat,
+        // overlay,br_netfilter,xt_socket` — but ip_tables/ip6_tables/iptable_raw are LEGACY
+        // iptables
+        // modules dropped from the kernel-6.18 nixpkgs config on our nftables-only node substrate
+        // (bioskop-nixos: verified via `nix eval .#nixosConfigurations.bioskop-nixos.config.boot
+        // .kernelModules` in ndh), so `modprobe ip_tables` FATALs and the instance never launches.
+        // Override with the CAPN set MINUS that legacy trio — surgical: keep everything the
+        // provider
+        // intends for kube (IPVS + nf_nat + xt_socket, all present in the host's loaded module
+        // set),
+        // remove only what the kernel no longer ships. iptables routes through the iptables-nft
+        // shim
+        // on this host. seed-master's master instance sets none and rides the same nftables stack.
+        "linux.kernel_modules",
+        String.join(
+            ",",
+            "ip_vs",
+            "ip_vs_rr",
+            "ip_vs_wrr",
+            "ip_vs_sh",
+            "netlink_diag",
+            "nf_nat",
+            "overlay",
+            "br_netfilter",
+            "xt_socket"));
   }
 
   /**
