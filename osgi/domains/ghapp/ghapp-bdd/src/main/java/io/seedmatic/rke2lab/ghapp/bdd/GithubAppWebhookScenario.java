@@ -1,7 +1,6 @@
 package io.seedmatic.rke2lab.ghapp.bdd;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tngtech.jgiven.Stage;
 import com.tngtech.jgiven.annotation.As;
 import com.tngtech.jgiven.annotation.ExpectedScenarioState;
@@ -21,11 +20,10 @@ import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.ScenarioCella
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.ScenarioInputSeed;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.ScenarioPlayer;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.SeedScenario;
+import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
 import io.seedmatic.rke2lab.seed.broker.port.Cellar;
 import io.seedmatic.rke2lab.seed.broker.port.Parcel;
 import io.seedmatic.rke2lab.seed.broker.port.SecretsGateway;
-import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.util.Objects;
 import java.util.Optional;
 import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
@@ -130,7 +128,7 @@ public class GithubAppWebhookScenario
   /** WHEN — the App credentials (cellar) and the shared webhook secret ({@code .secrets}). */
   public static class When extends Stage<When> {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private final SeedCodec codec = new SeedCodec();
 
     /** The resolved App credentials — empty when the ghapp registration sealed nothing. */
     @ProvidedScenarioState Optional<GithubAppCredentials> credentials = Optional.empty();
@@ -144,19 +142,15 @@ public class GithubAppWebhookScenario
       this.credentials =
           cellar.fetch(parcel, GhAppCoordinate.GITHUB_APP, GithubAppCredentials.class);
       this.webhookSecret =
-          secrets.flatMap(gateway -> gateway.read(SECRETS_KEY)).flatMap(When::webhookSecret);
+          secrets.flatMap(gateway -> gateway.read(SECRETS_KEY)).flatMap(this::webhookSecret);
       return self();
     }
 
-    private static Optional<String> webhookSecret(String json) {
-      try {
-        final JsonNode secret = MAPPER.readTree(json).path("webhook").path("secret");
-        return secret.isMissingNode() || secret.asText().isBlank()
-            ? Optional.empty()
-            : Optional.of(secret.asText());
-      } catch (IOException e) {
-        throw new UncheckedIOException("could not parse the github.webhook secrets block", e);
-      }
+    private Optional<String> webhookSecret(String json) {
+      final JsonNode secret = codec.decode(json).path("webhook").path("secret");
+      return secret.isMissingNode() || secret.asText().isBlank()
+          ? Optional.empty()
+          : Optional.of(secret.asText());
     }
   }
 

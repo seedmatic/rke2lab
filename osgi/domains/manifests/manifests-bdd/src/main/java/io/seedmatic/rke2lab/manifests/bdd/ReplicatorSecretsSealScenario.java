@@ -1,7 +1,6 @@
 package io.seedmatic.rke2lab.manifests.bdd;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tngtech.jgiven.Stage;
 import com.tngtech.jgiven.annotation.As;
 import com.tngtech.jgiven.annotation.ExpectedScenarioState;
@@ -16,12 +15,11 @@ import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.OsgiService;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.ScenarioCellar;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.ScenarioPlayer;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.SeedScenario;
+import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
 import io.seedmatic.rke2lab.seed.broker.port.Cellar;
 import io.seedmatic.rke2lab.seed.broker.port.Parcel;
 import io.seedmatic.rke2lab.seed.broker.port.SecretsGateway;
 import io.seedmatic.rke2lab.seed.broker.port.Sensitivity;
-import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -101,7 +99,7 @@ public class ReplicatorSecretsSealScenario
    */
   public static class When extends Stage<When> {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private final SeedCodec codec = new SeedCodec();
 
     @ProvidedScenarioState
     ReplicatorSourceSecretsMaterial material = new ReplicatorSourceSecretsMaterial(List.of());
@@ -203,16 +201,8 @@ public class ReplicatorSecretsSealScenario
       return List.of();
     }
 
-    private static Optional<JsonNode> read(final SecretsGateway gateway, final String block) {
-      return gateway.read(block).map(When::parse);
-    }
-
-    private static JsonNode parse(final String json) {
-      try {
-        return MAPPER.readTree(json);
-      } catch (IOException e) {
-        throw new UncheckedIOException("could not parse the .secrets block", e);
-      }
+    private Optional<JsonNode> read(final SecretsGateway gateway, final String block) {
+      return gateway.read(block).map(codec::decode);
     }
   }
 
