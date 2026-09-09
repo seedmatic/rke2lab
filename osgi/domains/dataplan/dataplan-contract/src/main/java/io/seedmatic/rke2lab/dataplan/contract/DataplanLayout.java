@@ -29,8 +29,14 @@ public record DataplanLayout(String pool, List<Dataset> datasets) {
   /** The control-plane node names whose ephemeral datasets back containerd. */
   public static final List<String> CONTROL_NODES = List.of("master", "peer1", "peer2", "peer3");
 
+  /** The Tailscale funnel-state persist dataset — the openebs volumeHandle the funnel PV binds. */
+  public static final String FUNNEL_CERT = "funnel-cert";
+
+  /** The maven build-cache persist dataset. */
+  public static final String MAVEN_CACHE = "maven-cache";
+
   /** The cross-grow persist datasets (retained; out of the GC'd control-nodes tree). */
-  public static final List<String> PERSIST_DATASETS = List.of("funnel-cert", "maven-cache");
+  public static final List<String> PERSIST_DATASETS = List.of(FUNNEL_CERT, MAVEN_CACHE);
 
   /** A single ZFS dataset request: a pool-relative path, its disko type, and its ZFS options. */
   public record Dataset(String path, String type, Map<String, String> options) {

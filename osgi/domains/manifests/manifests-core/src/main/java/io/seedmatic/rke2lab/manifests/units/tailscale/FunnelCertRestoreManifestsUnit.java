@@ -58,11 +58,12 @@ public final class FunnelCertRestoreManifestsUnit extends AbstractManifestsUnit 
 
   /**
    * The persist PVC name the restore Jobs and the backup Jobs (funnel-state) both mount — ONE
-   * volume shared by every funnel, each under its own {@code /persist/<leaf>/} subdir. Value kept
-   * stable (do not re-key: it is the openebs volumeHandle bound to the pre-created persist
-   * dataset).
+   * volume shared by every funnel, each under its own {@code /persist/<leaf>/} subdir. The name is
+   * the dataplan's {@code funnel-cert} dataset (SSOT) so the openebs volumeHandle ADOPTS the
+   * ndh-pre-created dataset instead of dynamically creating a divergent {@code
+   * pipelines-webhook-funnel-cert} one (the orphan that left two datasets).
    */
-  public static final String PV_NAME = "pipelines-webhook-funnel-cert";
+  public static final String PV_NAME = DataplanLayout.FUNNEL_CERT;
 
   // A cert-state Secret mirror (tailscale node key + cert) is a few KB; 16Mi is generous headroom.
   private static final String CAPACITY = "16Mi";
