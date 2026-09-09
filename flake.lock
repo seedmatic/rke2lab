@@ -152764,11 +152764,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1788938904,
-        "narHash": "sha256-nP50J+NBNko4roEO0jGwpgMc5ZUbs94rvmCdPcrcYt8=",
+        "lastModified": 1788947472,
+        "narHash": "sha256-WhzCCcPWPsY80fJf5z4nWnGulYAdERvtSM9+cEf6DYQ=",
         "owner": "seedmatic",
         "repo": "ndh",
-        "rev": "e8f0c267d57c6dffd0794038940bb265dd68d61a",
+        "rev": "d784979ea48d43f9f5bcd3d616c845001179624d",
         "type": "github"
       },
       "original": {
@@ -306476,16 +306476,16 @@
         "systems": "systems_1032"
       },
       "locked": {
-        "lastModified": 1787160369,
-        "narHash": "sha256-61uF+J8082tIc/TJIOtMwHmtik4+oAnI+rOWSbDimj4=",
+        "lastModified": 1788946341,
+        "narHash": "sha256-vhV0gwMM4GIjuj4faBXDjq/HYktKfs+cH29XP3CeK5I=",
         "owner": "nxmatic",
         "repo": "tailscale",
-        "rev": "61f34186416e52163b7d598f9275edf65da09f52",
+        "rev": "7b962478b2ad5b437e84911bce2563569e292dc3",
         "type": "github"
       },
       "original": {
         "owner": "nxmatic",
-        "ref": "nxmatic/feature/extra-records-cname",
+        "ref": "nxmatic/integration/1.102",
         "repo": "tailscale",
         "type": "github"
       }
