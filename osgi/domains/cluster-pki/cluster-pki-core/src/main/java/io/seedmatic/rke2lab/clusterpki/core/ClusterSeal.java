@@ -147,7 +147,7 @@ public final class ClusterSeal {
     return new WorkloadClusterCas(entries);
   }
 
-  private static WorkloadClusterCas.Pair pair(Map<String, String> bundle, String stem) {
+  private WorkloadClusterCas.Pair pair(Map<String, String> bundle, String stem) {
     return new WorkloadClusterCas.Pair(bundle.get(stem + ".crt"), bundle.get(stem + ".key"));
   }
 

@@ -1,8 +1,6 @@
 package io.seedmatic.rke2lab.controlplane.bdd;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -48,6 +46,7 @@ import io.seedmatic.rke2lab.seed.bdd.SeedReceiver;
 import io.seedmatic.rke2lab.seed.bdd.SessionSeed;
 import io.seedmatic.rke2lab.seed.bdd.SowAndGraftStage;
 import io.seedmatic.rke2lab.seed.bdd.sow.Gardening;
+import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
 import io.seedmatic.rke2lab.seed.broker.port.AmendCoordinate;
 import io.seedmatic.rke2lab.seed.broker.port.Amendment;
 import io.seedmatic.rke2lab.seed.broker.port.AmendmentContributor;
@@ -189,6 +188,8 @@ public class ClusterSeedScenario
         .and()
         .the_cluster_ca_is_sealed(hostScenario, hostTree)
         .and()
+        .the_incus_identity_is_sealed(hostScenario, hostTree)
+        .and()
         .the_github_app_is_registered(hostScenario, hostTree)
         .and()
         .the_replicator_secrets_are_sealed(hostScenario, hostTree)
@@ -238,6 +239,11 @@ public class ClusterSeedScenario
     // imageScalars.
     @ProvidedScenarioState(resolution = Resolution.NAME)
     JsonNode workloadClusterNames = JsonNodeFactory.instance.arrayNode();
+
+    // The CAPN provider's host-world incus creds (serverAddress + serverCert + clientCert) for the
+    // incus-identity seal crossing, offered under the neutral INCUS_IDENTITY role. Name-resolved.
+    @ProvidedScenarioState(resolution = Resolution.NAME)
+    JsonNode incusIdentityHostCreds = JsonNodeFactory.instance.objectNode();
 
     // The run's provisioning config — the host GROW derives the instance mounts from it (via the
     // dual-realm BootstrapPaths) and builds the provider context from it.
@@ -335,6 +341,9 @@ public class ClusterSeedScenario
       // The workload cluster names the cluster-pki seal pre-seeds a CA for — dug from the SAME
       // manifests FACET (its workloadTargets), offered per-consult to the cluster-pki crossing.
       this.workloadClusterNames = workloadClusterNames(manifestsFacet);
+      // The incus-identity seal's host-world creds — assembled from config + ~/.config/incus + the
+      // bundled capn client cert, offered to the incus-identity crossing.
+      this.incusIdentityHostCreds = incusIdentityHostCreds(run.config());
       // The bbox FACET — the router contact (uri + password) the root read from .secrets:lan.bbox
       // (joined into rke2lab:bbox by ConfigLoader's `secret:` meta), published ambient like the
       // manifests FACET. Bbox carries no per-consult amendment, so its crossing sows an empty
@@ -423,32 +432,68 @@ public class ClusterSeedScenario
       return self();
     }
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    // The shared, seam-configured JSON mapper (WireEnum + jackson datatypes) — the host reaches the
+    // OSGi codec rather than spinning a bare ObjectMapper.
+    private final SeedCodec codec = new SeedCodec();
 
     // Dig the workload cluster names (<host>-<role>) out of the manifests FACET's workloadTargets.
     // Absent facet / no targets -> an empty array (a mgmt-only grow seeds no workload CA).
-    private static JsonNode workloadClusterNames(Optional<String> manifestsFacetJson) {
+    private JsonNode workloadClusterNames(Optional<String> manifestsFacetJson) {
       final ArrayNode names = JsonNodeFactory.instance.arrayNode();
       if (manifestsFacetJson.isEmpty()) {
         return names;
       }
-      try {
-        MAPPER
-            .readTree(manifestsFacetJson.orElseThrow())
-            .path("workloadTargets")
-            .forEach(
-                target -> {
-                  final String host = target.path("host").asText("");
-                  final String role = target.path("role").asText("");
-                  if (!host.isBlank() && !role.isBlank()) {
-                    names.add(host + "-" + role);
-                  }
-                });
-      } catch (JsonProcessingException ex) {
-        throw new IllegalStateException(
-            "could not parse the manifests facet for workloadTargets", ex);
-      }
+      codec
+          .decode(manifestsFacetJson.orElseThrow())
+          .path("workloadTargets")
+          .forEach(
+              target -> {
+                final String host = target.path("host").asText("");
+                final String role = target.path("role").asText("");
+                if (!host.isBlank() && !role.isBlank()) {
+                  names.add(host + "-" + role);
+                }
+              });
       return names;
+    }
+
+    // Assemble the CAPN provider's host-world incus creds for the incus-identity seal amendment:
+    // serverAddress (config), serverCert (~/.config/incus/servercerts/<host>.crt), clientCert (the
+    // bundled capn-provider cert). Any missing read -> blank field, and the seal then files
+    // nothing.
+    private ObjectNode incusIdentityHostCreds(BootstrapConfig config) {
+      final ObjectNode creds = JsonNodeFactory.instance.objectNode();
+      creds.put(
+          "serverAddress",
+          config.incusRemoteAddress() == null ? "" : config.incusRemoteAddress().toString());
+      creds.put("serverCert", readIncusServerCert(config));
+      creds.put("clientCert", readCapnClientCert());
+      return creds;
+    }
+
+    private String readIncusServerCert(BootstrapConfig config) {
+      final Path folder = config.incusConfigFolder();
+      final String host =
+          config.incusRemoteAddress() == null ? null : config.incusRemoteAddress().getHost();
+      if (folder == null || host == null || host.isBlank()) {
+        return "";
+      }
+      final Path certPath = folder.resolve("servercerts").resolve(host + ".crt");
+      try {
+        return Files.exists(certPath) ? Files.readString(certPath) : "";
+      } catch (IOException ex) {
+        throw new UncheckedIOException("could not read the incus server cert " + certPath, ex);
+      }
+    }
+
+    private String readCapnClientCert() {
+      try (var in = ClusterSeedScenario.class.getResourceAsStream("/incus/capn-client.crt")) {
+        return in == null
+            ? ""
+            : new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+      } catch (IOException ex) {
+        throw new UncheckedIOException("could not read the bundled capn client cert", ex);
+      }
     }
   }
 
@@ -484,6 +529,11 @@ public class ClusterSeedScenario
     // role — picked back from the Given by name, like imageScalars.
     @ScenarioState(resolution = ScenarioState.Resolution.NAME)
     JsonNode workloadClusterNames;
+
+    // The incus-identity host-world creds offered to the incus-identity crossing under the
+    // INCUS_IDENTITY role — picked back from the Given by name.
+    @ScenarioState(resolution = ScenarioState.Resolution.NAME)
+    JsonNode incusIdentityHostCreds;
 
     @ScenarioState BootstrapConfig config;
 
@@ -553,6 +603,30 @@ public class ClusterSeedScenario
               hostTree,
               Map.of(Amendment.WORKLOAD_TARGETS, workloadClusterNames))
           .the_scion_is_sown_and_grafted("the cluster CA is sealed");
+      return self();
+    }
+
+    @NestedSteps
+    @As("the incus identity is sealed")
+    public When the_incus_identity_is_sealed(
+        @Hidden ScenarioModel hostScenario, @Hidden ReportModel hostTree) {
+      // The incus-identity seal scion assembles the CAPN provider identity (the host-world creds
+      // via
+      // this amendment + the client key it reads from .secrets in-container) and files it SEALED,
+      // so
+      // the manifests synthesis reveals it and renders the <host>-incus-identity Secret the
+      // workload
+      // LXCCluster.secretRef needs. Sown BEFORE provisioning (beside the cluster-pki seal). ONE
+      // amendment hands the neutral INCUS_IDENTITY role the three host creds; empty on a run that
+      // supplied none.
+      sowAndGraft
+          .sowing(
+              "incus-identity",
+              gardening,
+              hostScenario,
+              hostTree,
+              Map.of(Amendment.INCUS_IDENTITY, incusIdentityHostCreds))
+          .the_scion_is_sown_and_grafted("the incus identity is sealed");
       return self();
     }
 

@@ -386,6 +386,24 @@ input carrying the workload cluster names:
   four Secrets onto the durable `NODE_BOOTSTRAP` lane (a real CA private key — never on the
   Flux-reconciled branch; a secret-blind in-cluster render finds nothing and omits them).
 
+=== The CAPN provider identity — a sibling MANDATORY seal
+
+The workload's CA is not the only credential its birth needs: CAPN (the in-cluster incus provider)
+must also authenticate to the incus remote to provision the nodes. That credential is the
+`<host>-incus-identity` Secret the `LXCCluster.spec.secretRef` names, rendered on the same
+NODE_BOOTSTRAP lane by `ClusterApiWorkloadManifestsUnit`. It rides its own pre-provisioning seal,
+the twin of the cluster-pki seal: the host offers the three host-world creds (the incus remote
+address, the operator server cert from `~/.config/incus`, and the bundled capn-provider client cert)
+as the `INCUS_IDENTITY` amendment carried by `IncusIdentitySealInput`; the `IncusIdentitySealScenario`
+reads the fourth — the client key — in-container from `.secrets:incus.capn.clientKey` (off the
+amendment wire, never on the branch), seals the assembled identity, and `ManifestSynthesisScenario`
+reveals it.
+
+Unlike the replicator secrets, this identity is *MANDATORY* — a workload cannot be grown without it,
+so there is no fallback: an absent amendment, an incomplete cred, or a missing client key each raise
+an explicit exception rather than silently skipping. The record is always complete (its constructor
+rejects a blank field), so an unusable identity cannot even be constructed.
+
 == Related documentation
 
 NOTE: Throughout this document `<cluster>` is the full cluster identity `<host>-<role>` (e.g.

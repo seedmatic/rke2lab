@@ -29,6 +29,7 @@ import io.seedmatic.rke2lab.manifests.contract.profiles.ClusterIssuerCaMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.FloxDebugPolicy;
 import io.seedmatic.rke2lab.manifests.contract.profiles.GithubAppMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ImageState;
+import io.seedmatic.rke2lab.manifests.contract.profiles.IncusIdentityMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.OperatorPkiMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ReplicatorSourceSecretsMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.WorkloadClusterCasMaterial;
@@ -227,6 +228,19 @@ public class ManifestSynthesisScenario
         parcel.orElseThrow(),
         ClusterPkiCase.WORKLOAD_CLUSTER_CAS,
         WorkloadClusterCasMaterial.class);
+  }
+
+  // Reveal the CAPN provider incus identity (assembled + sealed by the incus-identity seal scion)
+  // via the shared IncusIdentityCase coordinate. Empty on a bare survey / before the seal filed / a
+  // secret-blind in-cluster render → ClusterApiWorkloadManifestsUnit renders no
+  // <host>-incus-identity
+  // Secret (it rides the durable NODE_BOOTSTRAP lane).
+  private Optional<IncusIdentityMaterial> revealIncusIdentity() {
+    if (cellar == null || parcel.isEmpty()) {
+      return Optional.empty();
+    }
+    return cellar.fetch(
+        parcel.orElseThrow(), IncusIdentityCase.INCUS_IDENTITY, IncusIdentityMaterial.class);
   }
 
   /**
@@ -624,6 +638,7 @@ public class ManifestSynthesisScenario
             revealReplicatorSources(),
             revealClusterIssuerCa(),
             revealWorkloadCas(),
+            revealIncusIdentity(),
             rendered);
     then()
         .every_enabled_domain_produced_its_units()
@@ -714,6 +729,7 @@ public class ManifestSynthesisScenario
         @Hidden Optional<ReplicatorSourceSecretsMaterial> replicatorSources,
         @Hidden Optional<ClusterIssuerCaMaterial> clusterIssuerCa,
         @Hidden Optional<WorkloadClusterCasMaterial> workloadCas,
+        @Hidden Optional<IncusIdentityMaterial> incusIdentity,
         @Hidden Optional<LinkedWorktree> rendered) {
       final ManifestsRunbookInput.DebugFacet debug = facet.facets().debug();
       final FloxDebugPolicy floxDebug =
@@ -776,6 +792,10 @@ public class ManifestSynthesisScenario
       // secret-blind in-cluster render): ClusterApiWorkloadManifestsUnit renders the four
       // <cluster>-{ca,cca,etcd,peer-etcd} Secrets onto the node-bootstrap lane, or nothing.
       builder.workloadCas(workloadCas);
+      // The CAPN provider incus identity revealed from the cellar (empty on a bare survey /
+      // secret-blind in-cluster render): ClusterApiWorkloadManifestsUnit renders the
+      // <host>-incus-identity Secret onto the node-bootstrap lane, or nothing.
+      builder.incusIdentity(incusIdentity);
       final ManifestSynthesisRequest request = builder.build();
       try {
         this.result = synthesis.orElseThrow().synthesize(request);

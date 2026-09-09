@@ -98,6 +98,17 @@ public @interface Amendment {
    */
   String WORKLOAD_TARGETS = "workload-targets";
 
+  /**
+   * The host-world part of the CAPN provider's incus identity — the three fields only the host can
+   * read: the incus remote {@code serverAddress} (BootstrapConfig), the {@code serverCert} (the
+   * operator's {@code ~/.config/incus/servercerts/*.crt}), and the capn-provider {@code clientCert}
+   * (a bundled seed-master classpath resource). The incus-identity seal scion fills the fourth
+   * field (the client KEY) itself from {@code .secrets} — off this wire — and seals the assembled
+   * {@code IncusIdentityMaterial}, which {@code ClusterApiWorkloadManifestsUnit} renders as the
+   * {@code <host>-incus-identity} Secret CAPN authenticates to incus with.
+   */
+  String INCUS_IDENTITY = "incus-identity";
+
   /** The neutral gardening role of this amendment (e.g. {@link #SOIL}, {@link #FACET}). */
   String value();
 }
