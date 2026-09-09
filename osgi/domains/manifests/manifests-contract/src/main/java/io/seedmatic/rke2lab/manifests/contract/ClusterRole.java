@@ -47,9 +47,10 @@ public enum ClusterRole {
    * The manifest-domain policy this role publishes — the structural domain set resolved against
    * {@code catalog}. Only TWO domains are role-exclusive: Cluster API is MGMT-only (CAPI reconciles
    * clusters from the management cluster) and mesh (Headscale/Headplane, the always-live control
-   * service) is WRKLD-only. Everything else — including {@code ingress} (the per-cluster
-   * public-door capability) and {@code cicd} (each cluster renders its own branch via its own
-   * Tekton pipeline) — is a structural capability every cluster carries.
+   * service) is WRKLD-only. Everything else — including {@code tailscale} (the per-cluster tailnet
+   * substrate: operator, subnet-router Connector, funnel public door) and {@code cicd} (each
+   * cluster renders its own branch via its own Tekton pipeline) — is a structural capability every
+   * cluster carries.
    */
   public ManifestDomainPolicy domainPolicy(final ManifestDomainCatalog catalog) {
     return ManifestDomainPolicy.builder()
@@ -68,7 +69,7 @@ public enum ClusterRole {
             catalog.networking(),
             catalog.storage(),
             catalog.highAvailability(),
-            catalog.ingress(),
+            catalog.tailscale(),
             catalog.cicd());
     return switch (this) {
       case MGMT -> concat(base, catalog.clusterApi());

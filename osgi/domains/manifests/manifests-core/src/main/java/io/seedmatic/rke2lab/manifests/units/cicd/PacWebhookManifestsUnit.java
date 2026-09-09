@@ -5,7 +5,7 @@ import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.ingress.PacWebhookFunnel;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
-import io.seedmatic.rke2lab.manifests.units.ingress.FunnelStatePersistenceManifestsUnit;
+import io.seedmatic.rke2lab.manifests.units.tailscale.FunnelStatePersistenceManifestsUnit;
 import java.util.List;
 import java.util.Map;
 import org.cdk8s.ApiObject;

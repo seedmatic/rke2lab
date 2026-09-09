@@ -10,8 +10,6 @@ import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.profiles.FloxDebugPolicy;
 import io.seedmatic.rke2lab.manifests.profiles.FloxShellSidecarProfile;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
-import io.seedmatic.rke2lab.manifests.units.ingress.IngressRefs;
-import io.seedmatic.rke2lab.manifests.units.ingress.IngressSystemNamespaceManifestsUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -32,13 +30,13 @@ public final class HeadscaleManifestsUnit extends AbstractManifestsUnit {
 
   public static final String MANIFEST_UNIT_ID = ManifestDomainCatalog.MESH + "/headscale";
 
-  private static final String HEADSCALE_NAMESPACE = IngressRefs.SYSTEM_NAMESPACE.name();
+  private static final String HEADSCALE_NAMESPACE = MeshRefs.SYSTEM_NAMESPACE.name();
 
   private final PackageMetadataProfile packageProfile =
       new PackageMetadataProfile("mesh", "headscale");
 
   public HeadscaleManifestsUnit() {
-    super(MANIFEST_UNIT_ID, List.of(IngressSystemNamespaceManifestsUnit.MANIFEST_UNIT_ID));
+    super(MANIFEST_UNIT_ID, List.of(MeshSystemNamespaceManifestsUnit.MANIFEST_UNIT_ID));
   }
 
   @Override
@@ -46,7 +44,7 @@ public final class HeadscaleManifestsUnit extends AbstractManifestsUnit {
     final String floxImage = ManifestSynthesisContext.current().floxDebugPolicy().prodImage();
     final String clusterName = context.nodeEnvContext().bootstrapIdentity().clusterName();
 
-    ApiObject namespace = context.resolver().require(IngressRefs.SYSTEM_NAMESPACE);
+    ApiObject namespace = context.resolver().require(MeshRefs.SYSTEM_NAMESPACE);
 
     ApiObject saClient = createServiceAccount(scope, "headscale-client", namespace);
     ApiObject saBootstrap = createServiceAccount(scope, "headscale-bootstrap", namespace);

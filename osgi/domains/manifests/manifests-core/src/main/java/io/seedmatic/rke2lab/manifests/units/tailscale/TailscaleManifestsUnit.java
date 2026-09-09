@@ -1,5 +1,5 @@
 // @codebase
-package io.seedmatic.rke2lab.manifests.units.ingress;
+package io.seedmatic.rke2lab.manifests.units.tailscale;
 
 import io.seedmatic.rke2lab.manifests.AbstractManifestsUnit;
 import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
@@ -24,12 +24,12 @@ import software.constructs.Construct;
  */
 public final class TailscaleManifestsUnit extends AbstractManifestsUnit {
 
-  public static final String MANIFEST_UNIT_ID = ManifestDomainCatalog.INGRESS + "/tailscale";
+  public static final String MANIFEST_UNIT_ID = ManifestDomainCatalog.TAILSCALE + "/tailscale";
 
-  private static final String TAILSCALE_NAMESPACE = IngressRefs.SYSTEM_NAMESPACE.name();
+  private static final String TAILSCALE_NAMESPACE = TailscaleRefs.SYSTEM_NAMESPACE.name();
 
   private final PackageMetadataProfile packageProfile =
-      new PackageMetadataProfile("ingress", "tailscale");
+      new PackageMetadataProfile("tailscale", "tailscale");
 
   public TailscaleManifestsUnit() {
     // Two STRUCTURAL gates Flux health-gates to COMPLETION before this operator provisions any
@@ -44,17 +44,17 @@ public final class TailscaleManifestsUnit extends AbstractManifestsUnit {
     super(
         MANIFEST_UNIT_ID,
         List.of(
-            IngressSystemNamespaceManifestsUnit.MANIFEST_UNIT_ID,
+            TailscaleSystemNamespaceManifestsUnit.MANIFEST_UNIT_ID,
             FunnelCertRestoreManifestsUnit.MANIFEST_UNIT_ID,
             TailnetPurgeManifestsUnit.MANIFEST_UNIT_ID));
   }
 
   @Override
   protected void doSynthesize(final Construct scope, final ManifestsUnitContext context) {
-    // ingress-system is owned by IngressSystemNamespaceManifestsUnit (declared as this
+    // tailscale-system is owned by TailscaleSystemNamespaceManifestsUnit (declared as this
     // unit's dependency). Do NOT re-render the Namespace here: the layered
     // kustomize build aggregates every unit's package dir and rejects a duplicate
-    // Namespace/ingress-system resource ("may not add resource with an already
+    // Namespace/tailscale-system resource ("may not add resource with an already
     // registered id"). The HelmChart's own createNamespace=true is a runtime no-op
     // once the namespace exists.
     createSecret(scope);
@@ -81,8 +81,8 @@ public final class TailscaleManifestsUnit extends AbstractManifestsUnit {
                         // workloads layer dependsOn operators with wait:true, so the Connector CR
                         // (kept in workloads) only dry-runs once this HelmChart has registered its
                         // CRD — otherwise the whole workloads apply fails "no matches for kind
-                        // Connector". ingress-system is created earlier in the foundation layer
-                        // (IngressSystemNamespaceManifestsUnit), so it exists before this
+                        // Connector". tailscale-system is created earlier in the foundation layer
+                        // (TailscaleSystemNamespaceManifestsUnit), so it exists before this
                         // HelmChart.
                         .annotations(
                             packageProfile.packageAnnotations(
@@ -175,7 +175,7 @@ public final class TailscaleManifestsUnit extends AbstractManifestsUnit {
                         // the
                         // SAME cell as the Connector CR, whose dry-run fails ("no matches for kind
                         // Connector") until the operator has registered the CRD — a failure that
-                        // aborts the whole workloads/ingress/tailscale apply, so the secret was
+                        // aborts the whole workloads/tailscale/tailscale apply, so the secret was
                         // never
                         // created and the operator never started (a circular deadlock the grow lost
                         // non-deterministically). In the operators cell it applies independently of

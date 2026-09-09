@@ -31,7 +31,7 @@ public record ManifestDomainCatalog(List<String> all, List<String> stageALinkabl
   public static final String CICD = "cicd";
   public static final String CLUSTER_API = "cluster-api";
   public static final String PLATFORM = "platform";
-  public static final String INGRESS = "ingress";
+  public static final String TAILSCALE = "tailscale";
 
   public ManifestDomainCatalog {
     all = List.copyOf(all);
@@ -82,8 +82,8 @@ public record ManifestDomainCatalog(List<String> all, List<String> stageALinkabl
     return PLATFORM;
   }
 
-  public String ingress() {
-    return INGRESS;
+  public String tailscale() {
+    return TAILSCALE;
   }
 
   public boolean isKnownDomainId(String domainId) {
@@ -109,7 +109,7 @@ public record ManifestDomainCatalog(List<String> all, List<String> stageALinkabl
               CICD,
               CLUSTER_API,
               PLATFORM,
-              INGRESS));
+              TAILSCALE));
     }
 
     public Builder addDefaultStageALinkableDomains() {

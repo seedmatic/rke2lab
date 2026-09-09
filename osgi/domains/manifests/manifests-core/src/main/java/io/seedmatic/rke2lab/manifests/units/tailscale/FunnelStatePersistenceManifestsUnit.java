@@ -1,5 +1,5 @@
 // @codebase
-package io.seedmatic.rke2lab.manifests.units.ingress;
+package io.seedmatic.rke2lab.manifests.units.tailscale;
 
 import io.seedmatic.rke2lab.manifests.AbstractManifestsUnit;
 import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
@@ -43,9 +43,9 @@ import software.constructs.Construct;
  */
 public final class FunnelStatePersistenceManifestsUnit extends AbstractManifestsUnit {
 
-  public static final String MANIFEST_UNIT_ID = ManifestDomainCatalog.INGRESS + "/funnel-state";
+  public static final String MANIFEST_UNIT_ID = ManifestDomainCatalog.TAILSCALE + "/funnel-state";
 
-  private static final String NAMESPACE = IngressRefs.SYSTEM_NAMESPACE.name();
+  private static final String NAMESPACE = TailscaleRefs.SYSTEM_NAMESPACE.name();
 
   /** The stable proxy-state Secret name the ProxyClass pins TS_KUBE_SECRET to (vs the pod name). */
   public static final String STATE_SECRET = "ts-" + PacWebhookFunnel.LEAF + "-state";
@@ -61,7 +61,7 @@ public final class FunnelStatePersistenceManifestsUnit extends AbstractManifests
   private static final String SERVICE_ACCOUNT = "funnel-state";
 
   private final PackageMetadataProfile packageProfile =
-      new PackageMetadataProfile("ingress", "funnel-state");
+      new PackageMetadataProfile("tailscale", "funnel-state");
 
   public FunnelStatePersistenceManifestsUnit() {
     // The Tailscale operator registers the tailscale.com CRD the ProxyClass needs, and the backup

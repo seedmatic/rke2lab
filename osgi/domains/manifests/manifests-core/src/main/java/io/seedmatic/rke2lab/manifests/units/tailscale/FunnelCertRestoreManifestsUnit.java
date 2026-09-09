@@ -1,5 +1,5 @@
 // @codebase
-package io.seedmatic.rke2lab.manifests.units.ingress;
+package io.seedmatic.rke2lab.manifests.units.tailscale;
 
 import io.seedmatic.rke2lab.dataplan.contract.DataplanLayout;
 import io.seedmatic.rke2lab.manifests.AbstractManifestsUnit;
@@ -44,9 +44,9 @@ import software.constructs.Construct;
 public final class FunnelCertRestoreManifestsUnit extends AbstractManifestsUnit {
 
   public static final String MANIFEST_UNIT_ID =
-      ManifestDomainCatalog.INGRESS + "/funnel-cert-restore";
+      ManifestDomainCatalog.TAILSCALE + "/funnel-cert-restore";
 
-  private static final String NAMESPACE = IngressRefs.SYSTEM_NAMESPACE.name();
+  private static final String NAMESPACE = TailscaleRefs.SYSTEM_NAMESPACE.name();
 
   // The stable proxy-state Secret name (mirrors FunnelStatePersistenceManifestsUnit — both derive
   // it
@@ -74,18 +74,18 @@ public final class FunnelCertRestoreManifestsUnit extends AbstractManifestsUnit 
   private static final String SERVICE_ACCOUNT = "funnel-cert-restore";
 
   private final PackageMetadataProfile packageProfile =
-      new PackageMetadataProfile("ingress", "funnel-cert-restore");
+      new PackageMetadataProfile("tailscale", "funnel-cert-restore");
 
   private final DataplanLayout layout = DataplanLayout.canonical();
 
   public FunnelCertRestoreManifestsUnit() {
-    // ingress-system must exist for the Job/PVC/SA (explicit, as TailscaleManifestsUnit declares
+    // tailscale-system must exist for the Job/PVC/SA (explicit, as TailscaleManifestsUnit declares
     // it);
     // the openebs edge for the ZFSVolume is DERIVED by the planner (zfs.openebs.io CR → installer).
     // This unit MUST NOT depend on the tailscale operator — the operator dependsOn IT, so the
     // Secret
     // is seeded before any proxy is provisioned.
-    super(MANIFEST_UNIT_ID, List.of(IngressSystemNamespaceManifestsUnit.MANIFEST_UNIT_ID));
+    super(MANIFEST_UNIT_ID, List.of(TailscaleSystemNamespaceManifestsUnit.MANIFEST_UNIT_ID));
   }
 
   @Override

@@ -1,5 +1,5 @@
 // @codebase
-package io.seedmatic.rke2lab.manifests.units.ingress;
+package io.seedmatic.rke2lab.manifests.units.tailscale;
 
 import io.seedmatic.rke2lab.manifests.AbstractManifestsUnit;
 import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
@@ -43,9 +43,9 @@ import software.constructs.Construct;
  */
 public final class TailnetPurgeManifestsUnit extends AbstractManifestsUnit {
 
-  public static final String MANIFEST_UNIT_ID = ManifestDomainCatalog.INGRESS + "/tailnet-purge";
+  public static final String MANIFEST_UNIT_ID = ManifestDomainCatalog.TAILSCALE + "/tailnet-purge";
 
-  private static final String NAMESPACE = IngressRefs.SYSTEM_NAMESPACE.name();
+  private static final String NAMESPACE = TailscaleRefs.SYSTEM_NAMESPACE.name();
   private static final String SERVICE_ACCOUNT = "tailnet-purge";
   private static final String PURGE_CONTAINER = "purge";
 
@@ -62,10 +62,10 @@ public final class TailnetPurgeManifestsUnit extends AbstractManifestsUnit {
   private static final String OAUTH_MOUNT = "/etc/tailnet";
 
   private final PackageMetadataProfile packageProfile =
-      new PackageMetadataProfile("ingress", "tailnet-purge");
+      new PackageMetadataProfile("tailscale", "tailnet-purge");
 
   public TailnetPurgeManifestsUnit() {
-    super(MANIFEST_UNIT_ID, List.of(IngressSystemNamespaceManifestsUnit.MANIFEST_UNIT_ID));
+    super(MANIFEST_UNIT_ID, List.of(TailscaleSystemNamespaceManifestsUnit.MANIFEST_UNIT_ID));
   }
 
   @Override
