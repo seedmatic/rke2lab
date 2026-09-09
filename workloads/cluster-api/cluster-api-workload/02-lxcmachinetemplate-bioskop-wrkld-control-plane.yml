@@ -23,4 +23,4 @@ spec:
         fingerprint: b7c6a573dda580f221734b9f300c220ed97848211adb18ad58494390f922dc51
       instanceType: container
       profiles:
-      - default
+      - rke2lab
