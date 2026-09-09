@@ -3,9 +3,9 @@ package io.seedmatic.rke2lab.manifests.units.cicd;
 import io.seedmatic.rke2lab.manifests.AbstractManifestsUnit;
 import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
+import io.seedmatic.rke2lab.manifests.ingress.FunnelLeaf;
 import io.seedmatic.rke2lab.manifests.ingress.PacWebhookFunnel;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
-import io.seedmatic.rke2lab.manifests.units.tailscale.FunnelStatePersistenceManifestsUnit;
 import java.util.List;
 import java.util.Map;
 import org.cdk8s.ApiObject;
@@ -69,7 +69,7 @@ public final class PacWebhookManifestsUnit extends AbstractManifestsUnit {
                                     "tailscale.com/funnel",
                                     "true",
                                     "tailscale.com/proxy-class",
-                                    FunnelStatePersistenceManifestsUnit.PROXY_CLASS)))
+                                    FunnelLeaf.PIPELINES_WEBHOOK.proxyClass())))
                         .build())
                 .build());
     ingress.addJsonPatch(

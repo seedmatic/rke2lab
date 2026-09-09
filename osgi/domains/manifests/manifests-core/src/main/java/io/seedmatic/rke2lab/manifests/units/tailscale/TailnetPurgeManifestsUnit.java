@@ -8,6 +8,7 @@ import io.seedmatic.rke2lab.manifests.contract.FloxAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.ManifestAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.ManifestLayer;
+import io.seedmatic.rke2lab.manifests.ingress.FunnelLeaf;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import java.util.List;
 import java.util.Map;
@@ -134,6 +135,23 @@ public final class TailnetPurgeManifestsUnit extends AbstractManifestsUnit {
   }
 
   /**
+   * The {@code --keep-host <leaf>} args sparing every PERSISTED funnel from the prune — one per
+   * {@link FunnelLeaf}, so the restored device re-attaches (same name, cert reused) instead of
+   * being deleted then re-registered. The un-persisted controlplane Connector is deliberately
+   * absent (pruning frees its name for a clean re-register).
+   */
+  private String keepHostArgs() {
+    final StringBuilder args = new StringBuilder();
+    for (final FunnelLeaf funnel : FunnelLeaf.values()) {
+      if (args.length() > 0) {
+        args.append(' ');
+      }
+      args.append("--keep-host ").append(funnel.leaf());
+    }
+    return args.toString();
+  }
+
+  /**
    * Prune stale tailnet devices, retrying until a pass finds NOTHING left to remove — then STOP
    * (the colliding devices are gone → safe to deploy). A 90s guard CAPS the loop: if devices keep
    * appearing past 90s the Job proceeds anyway (fail-open — a lingering device is a nuisance,
@@ -145,7 +163,8 @@ public final class TailnetPurgeManifestsUnit extends AbstractManifestsUnit {
    * keepalive window). FAIL-LOUD on an auth/API error: an empty client-secret (a stale replicated
    * OAuth) or a non-2xx from {@code manage-tailnet} FAILS the Job — never a false "clean; safe to
    * deploy" (that false negative once hid an un-pruned tailnet across grows). Runs once at bring-up
-   * (a completed Job is not re-run by Flux).
+   * (a completed Job is not re-run by Flux). Spares the persisted funnels via {@link
+   * #keepHostArgs}.
    */
   private void purgeJob(final Construct scope) {
     final String script =
@@ -164,7 +183,10 @@ public final class TailnetPurgeManifestsUnit extends AbstractManifestsUnit {
         echo "tailnet stale-device prune — stop when clean, ${guard}s guard cap"
         while true; do
           # Capture output + exit code SEPARATELY (no '|| true'): an auth/API error fails the Job.
-          if ! out="$(manage-tailnet --prune-stale-devices --stale-after 1s --yes \
+          # --keep-host spares the PERSISTED funnel devices (their identity is restored across the
+          # cold-start, so they must survive to re-attach — same name, cert reused); only drifted
+          # duplicates (name-1, …) and un-persisted orphans (the controlplane Connector) are pruned.
+          if ! out="$(manage-tailnet --prune-stale-devices --stale-after 1s --yes @KEEP_HOSTS@ \
               --client-secret-file /etc/tailnet/client-secret --format=json)"; then
             echo "manage-tailnet failed (auth/API error — e.g. 401) — refusing to report clean" >&2
             printf '%s\\n' "$out" >&2
@@ -182,7 +204,8 @@ public final class TailnetPurgeManifestsUnit extends AbstractManifestsUnit {
           fi
           sleep 5
         done
-        """;
+        """
+            .replace("@KEEP_HOSTS@", keepHostArgs());
     final String floxImage = ManifestSynthesisContext.current().floxDebugPolicy().prodImage();
     final ApiObject jobObject =
         new ApiObject(

@@ -9,7 +9,7 @@ import io.seedmatic.rke2lab.manifests.contract.FloxAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.ManifestAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.ManifestLayer;
-import io.seedmatic.rke2lab.manifests.ingress.PacWebhookFunnel;
+import io.seedmatic.rke2lab.manifests.ingress.FunnelLeaf;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import java.util.List;
 import java.util.Map;
@@ -48,13 +48,6 @@ public final class FunnelCertRestoreManifestsUnit extends AbstractManifestsUnit 
 
   private static final String NAMESPACE = TailscaleRefs.SYSTEM_NAMESPACE.name();
 
-  // The stable proxy-state Secret name (mirrors FunnelStatePersistenceManifestsUnit — both derive
-  // it
-  // from the SAME PacWebhookFunnel.LEAF, so they cannot drift). The ProxyClass pins TS_KUBE_SECRET
-  // to
-  // it; the restore seeds it.
-  private static final String STATE_SECRET = "ts-" + PacWebhookFunnel.LEAF + "-state";
-
   /** The stable node name the persist dataset + PV are pinned to (openebs is node-local). */
   private static final String NODE_NAME = "bioskop-mgmt-master";
 
@@ -63,8 +56,13 @@ public final class FunnelCertRestoreManifestsUnit extends AbstractManifestsUnit 
 
   private static final String STORAGE_CLASS = "openebs-zfs-persist";
 
-  /** The persist PVC name the restore Job and the backup Job (funnel-state) both mount. */
-  public static final String PV_NAME = PacWebhookFunnel.LEAF + "-funnel-cert";
+  /**
+   * The persist PVC name the restore Jobs and the backup Jobs (funnel-state) both mount — ONE
+   * volume shared by every funnel, each under its own {@code /persist/<leaf>/} subdir. Value kept
+   * stable (do not re-key: it is the openebs volumeHandle bound to the pre-created persist
+   * dataset).
+   */
+  public static final String PV_NAME = "pipelines-webhook-funnel-cert";
 
   // A cert-state Secret mirror (tailscale node key + cert) is a few KB; 16Mi is generous headroom.
   private static final String CAPACITY = "16Mi";
@@ -96,7 +94,9 @@ public final class FunnelCertRestoreManifestsUnit extends AbstractManifestsUnit 
     serviceAccount(scope);
     role(scope);
     roleBinding(scope);
-    restoreJob(scope);
+    for (final FunnelLeaf funnel : FunnelLeaf.values()) {
+      restoreJob(scope, funnel);
+    }
   }
 
   /** The ZFSVolume CR adopting the pre-declared persist dataset (openebs namespace). */
@@ -330,33 +330,39 @@ public final class FunnelCertRestoreManifestsUnit extends AbstractManifestsUnit 
    * dependsOn} this unit, so Flux waits for this Job to COMPLETE before the operator provisions any
    * proxy.
    */
-  private void restoreJob(final Construct scope) {
+  private void restoreJob(final Construct scope, final FunnelLeaf funnel) {
     final String script =
         """
         set -euo pipefail
-        if [ -s /persist/state.yaml ]; then
+        if [ -s /persist/%s/state.yaml ]; then
           echo "restoring saved tailscale funnel state into %s"
           # Strip the embedded metadata.namespace: a backup captured under a PRIOR namespace (the
           # persist PV is Retain, so it survives a namespace rename like ingress-system ->
           # tailscale-system) would otherwise make `kubectl apply -n %s` fail "namespace from the
           # provided object does not match". Namespace-agnostic — the apply -n places it correctly.
-          yq 'del(.metadata.namespace)' /persist/state.yaml | kubectl apply -n %s -f -
+          yq 'del(.metadata.namespace)' /persist/%s/state.yaml | kubectl apply -n %s -f -
         else
-          echo "no saved funnel state on the persist volume — clean first grow"
+          echo "no saved funnel state for %s on the persist volume — clean first grow"
         fi
         """
-            .formatted(STATE_SECRET, NAMESPACE, NAMESPACE);
+            .formatted(
+                funnel.leaf(),
+                funnel.stateSecret(),
+                NAMESPACE,
+                funnel.leaf(),
+                NAMESPACE,
+                funnel.leaf());
     final String floxImage = ManifestSynthesisContext.current().floxDebugPolicy().prodImage();
     final ApiObject jobObject =
         new ApiObject(
             scope,
-            "job-funnel-restore",
+            "job-funnel-restore-" + funnel.leaf(),
             ApiObjectProps.builder()
                 .apiVersion("batch/v1")
                 .kind("Job")
                 .metadata(
                     ApiObjectMetadata.builder()
-                        .name("funnel-cert-restore")
+                        .name("funnel-cert-restore-" + funnel.leaf())
                         .namespace(NAMESPACE)
                         .annotations(
                             packageProfile.packageAnnotations(

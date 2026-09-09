@@ -3,6 +3,7 @@ package io.seedmatic.rke2lab.manifests.units.gitops;
 import io.seedmatic.rke2lab.manifests.AbstractManifestsUnit;
 import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
+import io.seedmatic.rke2lab.manifests.ingress.FunnelLeaf;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import java.util.List;
 import java.util.Map;
@@ -156,7 +157,16 @@ public final class FluxReceiverManifestsUnit extends AbstractManifestsUnit {
                                 "networking.k8s.io|Ingress|" + NAMESPACE + "|flux-webhook",
                                 // Funnel = public internet (vs a bare tailnet-private expose). The
                                 // Tailscale operator provisions the funnel + Let's Encrypt cert.
-                                Map.of("tailscale.com/funnel", "true")))
+                                // proxy-class opts this proxy into the per-funnel ProxyClass that
+                                // pins a STABLE state Secret (FunnelStatePersistenceManifestsUnit)
+                                // —
+                                // so the device identity + cert survive a cold-start (re-attach, no
+                                // LE re-issuance), same durable-funnel posture as the PaC webhook.
+                                Map.of(
+                                    "tailscale.com/funnel",
+                                    "true",
+                                    "tailscale.com/proxy-class",
+                                    FunnelLeaf.FLUX_WEBHOOK.proxyClass())))
                         .build())
                 .build());
     ingress.addJsonPatch(

@@ -8,7 +8,7 @@ import io.seedmatic.rke2lab.manifests.contract.FloxAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.ManifestAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.ManifestLayer;
-import io.seedmatic.rke2lab.manifests.ingress.PacWebhookFunnel;
+import io.seedmatic.rke2lab.manifests.ingress.FunnelLeaf;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import java.util.List;
 import java.util.Map;
@@ -20,26 +20,28 @@ import software.constructs.Construct;
 
 /**
  * The funnel-state PROXYCLASS + BACKUP half of the durable-funnel fix — the twin of {@link
- * FunnelCertRestoreManifestsUnit} (which owns the persist volume + the restore that SEEDS the state
- * Secret before the operator runs). See {@code
+ * FunnelCertRestoreManifestsUnit} (which owns the persist volume + the restore that SEEDS each
+ * state Secret before the operator runs). See {@code
  * docs/architecture/cluster-api/pac-in-cluster-render-spec.adoc} § funnel-durability.
  *
- * <p>This unit renders, AFTER the tailscale operator (it {@code dependsOn} it — the {@code
- * ProxyClass} is a {@code tailscale.com} CR needing the operator's CRD, and the backup only runs
- * once the proxy is up):
+ * <p>Renders, for EVERY funnel in {@link FunnelLeaf} (not just PaC — flux-webhook is persisted too,
+ * so it stops re-registering every grow), AFTER the tailscale operator (it {@code dependsOn} it —
+ * the {@code ProxyClass} is a {@code tailscale.com} CR needing the operator's CRD, and the backup
+ * only runs once the proxy is up):
  *
  * <ol>
- *   <li>a {@link #proxyClass} pinning {@code TS_KUBE_SECRET} to a STABLE name so the state Secret
- *       is addressable across grows (the funnel Ingress opts in via {@code
+ *   <li>a per-funnel {@link #proxyClass} pinning {@code TS_KUBE_SECRET} to that funnel's STABLE
+ *       state Secret so it is addressable across grows (the funnel Ingress opts in via {@code
  *       tailscale.com/proxy-class});
- *   <li>a {@link #backupJob} that mirrors the current state Secret back to the persist volume once
- *       the funnel CERT is present — it waits on the cert key ITSELF (not the Secret, not pod
- *       readiness), so it never overwrites a good backup with a cert-less state.
+ *   <li>a per-funnel {@link #backupJob} that mirrors the current state Secret to the persist volume
+ *       (under {@code /persist/<leaf>/state.yaml}) once the funnel CERT is present — it waits on
+ *       the cert key ITSELF (not the Secret, not pod readiness), so it never overwrites a good
+ *       backup with a cert-less state.
  * </ol>
  *
- * <p>The restore ran far up-chain (funnel-cert-restore, before the operator), so by the time this
- * backup runs the restore Job is long gone — the two never contend for the one RWO persist PVC
- * (which funnel-cert-restore owns; the backup just mounts it by name).
+ * <p>The restore ran far up-chain (funnel-cert-restore, before the operator), so by the time these
+ * backups run the restore Jobs are long gone — they never contend for the one RWO persist PVC
+ * (which funnel-cert-restore owns; the backups just mount it by name).
  */
 public final class FunnelStatePersistenceManifestsUnit extends AbstractManifestsUnit {
 
@@ -47,14 +49,8 @@ public final class FunnelStatePersistenceManifestsUnit extends AbstractManifests
 
   private static final String NAMESPACE = TailscaleRefs.SYSTEM_NAMESPACE.name();
 
-  /** The stable proxy-state Secret name the ProxyClass pins TS_KUBE_SECRET to (vs the pod name). */
-  public static final String STATE_SECRET = "ts-" + PacWebhookFunnel.LEAF + "-state";
-
-  /** The ProxyClass the funnel Ingress opts into via tailscale.com/proxy-class. */
-  public static final String PROXY_CLASS = PacWebhookFunnel.LEAF;
-
-  /** The persist PVC (owned by FunnelCertRestoreManifestsUnit) the backup Job mounts. */
-  private static final String PV_NAME = PacWebhookFunnel.LEAF + "-funnel-cert";
+  /** The persist PVC (owned by FunnelCertRestoreManifestsUnit) the backup Jobs mount. */
+  private static final String PV_NAME = FunnelCertRestoreManifestsUnit.PV_NAME;
 
   private static final String MIRROR_ENV = "kube/base";
   private static final String MIRROR_CONTAINER = "mirror";
@@ -66,34 +62,34 @@ public final class FunnelStatePersistenceManifestsUnit extends AbstractManifests
   public FunnelStatePersistenceManifestsUnit() {
     // The Tailscale operator registers the tailscale.com CRD the ProxyClass needs, and the backup
     // only makes sense once the proxy is up — so this unit lands AFTER the operator. (The operator
-    // in
-    // turn dependsOn funnel-cert-restore, so the restore's seed precedes the proxy: no cycle,
-    // because
-    // the restore was split OUT of this unit.)
+    // in turn dependsOn funnel-cert-restore, so the restore's seed precedes the proxy: no cycle,
+    // because the restore was split OUT of this unit.)
     super(MANIFEST_UNIT_ID, List.of(TailscaleManifestsUnit.MANIFEST_UNIT_ID));
   }
 
   @Override
   protected void doSynthesize(final Construct scope, final ManifestsUnitContext context) {
-    proxyClass(scope);
     serviceAccount(scope);
     role(scope);
     roleBinding(scope);
-    backupJob(scope);
+    for (final FunnelLeaf funnel : FunnelLeaf.values()) {
+      proxyClass(scope, funnel);
+      backupJob(scope, funnel);
+    }
   }
 
-  /** ProxyClass pinning TS_KUBE_SECRET to a stable name — cluster-scoped. */
-  private void proxyClass(final Construct scope) {
+  /** Per-funnel ProxyClass pinning TS_KUBE_SECRET to that funnel's stable state Secret. */
+  private void proxyClass(final Construct scope, final FunnelLeaf funnel) {
     final ApiObject proxyClass =
         new ApiObject(
             scope,
-            "proxyclass-pac-webhook",
+            "proxyclass-" + funnel.leaf(),
             ApiObjectProps.builder()
                 .apiVersion("tailscale.com/v1alpha1")
                 .kind("ProxyClass")
                 .metadata(
                     ApiObjectMetadata.builder()
-                        .name(PROXY_CLASS)
+                        .name(funnel.proxyClass())
                         .annotations(
                             packageProfile.packageAnnotations(
                                 "",
@@ -116,7 +112,7 @@ public final class FunnelStatePersistenceManifestsUnit extends AbstractManifests
                         Map.of(
                             "env",
                             new Object[] {
-                              Map.of("name", "TS_KUBE_SECRET", "value", STATE_SECRET)
+                              Map.of("name", "TS_KUBE_SECRET", "value", funnel.stateSecret())
                             }))))));
   }
 
@@ -142,10 +138,10 @@ public final class FunnelStatePersistenceManifestsUnit extends AbstractManifests
   }
 
   /**
-   * Namespaced Role for the backup: read the state Secret. {@code get} for the {@code -o yaml} dump
-   * + {@code list}/{@code watch} for {@code kubectl wait --for=create}/{@code --for=jsonpath}
-   * (which open an informer). No write verbs — the backup never mutates the Secret, only mirrors it
-   * out.
+   * Namespaced Role for the backups: read the funnel state Secrets. {@code get} for the {@code -o
+   * yaml} dump + {@code list}/{@code watch} for {@code kubectl wait --for=create}/{@code
+   * --for=jsonpath} (which open an informer). No write verbs — a backup never mutates the Secret,
+   * only mirrors it out. One Role covers every funnel (all state Secrets live in tailscale-system).
    */
   private void role(final Construct scope) {
     final ApiObject role =
@@ -213,20 +209,22 @@ public final class FunnelStatePersistenceManifestsUnit extends AbstractManifests
   }
 
   /**
-   * Backup Job (workloads layer): mirror the current state Secret to the persist volume, stripped
-   * of server-set metadata so it re-applies cleanly. It must wait for the funnel CERT — not merely
-   * the Secret, and not the proxy pod: readiness does not gate on the cert (measured, the cert is
-   * written tens of seconds AFTER the pod is Ready). {@code set -e} plus the cert wait give the fix
-   * its teeth: on a timeout the write below never runs, so a good backup is never clobbered with a
-   * cert-less state. On a re-grow the seeded Secret already carries a valid cert (the proxy reuses
-   * it, zero ACME issuance) and the wait returns at once.
+   * Per-funnel backup Job (workloads layer): mirror this funnel's state Secret to {@code
+   * /persist/<leaf>/state.yaml}, stripped of server-set metadata so it re-applies cleanly. It must
+   * wait for the funnel CERT — not merely the Secret, and not the proxy pod: readiness does not
+   * gate on the cert (measured, the cert is written tens of seconds AFTER the pod is Ready). {@code
+   * set -e} plus the cert wait give the fix its teeth: on a timeout the write never runs, so a good
+   * backup is never clobbered with a cert-less state. On a re-grow the seeded Secret already
+   * carries a valid cert (the proxy reuses it, zero ACME issuance) and the wait returns at once.
    */
-  private void backupJob(final Construct scope) {
+  private void backupJob(final Construct scope, final FunnelLeaf funnel) {
     final String script =
         """
         set -euo pipefail
         ns=%s
         secret=%s
+        dir=/persist/%s
+        mkdir -p "$dir"
         echo "waiting for the funnel state secret ${secret} to exist"
         kubectl wait --for=create -n "$ns" "secret/${secret}" --timeout=300s
         echo "waiting for the proxy device to register (device_fqdn)"
@@ -242,21 +240,21 @@ public final class FunnelStatePersistenceManifestsUnit extends AbstractManifests
         esc="${key//./\\\\.}"
         echo "waiting for the funnel cert ${key} to be issued and written"
         kubectl wait --for="jsonpath={.data.${esc}}" -n "$ns" "secret/${secret}" --timeout=900s
-        kubectl get -n "$ns" secret "$secret" -o yaml | yq 'del(.metadata.namespace) | del(.metadata.managedFields) | del(.metadata.resourceVersion) | del(.metadata.uid) | del(.metadata.creationTimestamp) | del(.metadata.ownerReferences) | del(.metadata.annotations."kubectl.kubernetes.io/last-applied-configuration") | del(.status)' > /persist/state.yaml
-        echo "backed up funnel state (with cert) to the persist volume"
+        kubectl get -n "$ns" secret "$secret" -o yaml | yq 'del(.metadata.namespace) | del(.metadata.managedFields) | del(.metadata.resourceVersion) | del(.metadata.uid) | del(.metadata.creationTimestamp) | del(.metadata.ownerReferences) | del(.metadata.annotations."kubectl.kubernetes.io/last-applied-configuration") | del(.status)' > "$dir/state.yaml"
+        echo "backed up funnel state (with cert) to $dir/state.yaml"
         """
-            .formatted(NAMESPACE, STATE_SECRET);
+            .formatted(NAMESPACE, funnel.stateSecret(), funnel.leaf());
     final String floxImage = ManifestSynthesisContext.current().floxDebugPolicy().prodImage();
     final ApiObject jobObject =
         new ApiObject(
             scope,
-            "job-funnel-backup",
+            "job-funnel-backup-" + funnel.leaf(),
             ApiObjectProps.builder()
                 .apiVersion("batch/v1")
                 .kind("Job")
                 .metadata(
                     ApiObjectMetadata.builder()
-                        .name("funnel-cert-backup")
+                        .name("funnel-cert-backup-" + funnel.leaf())
                         .namespace(NAMESPACE)
                         .annotations(
                             packageProfile.packageAnnotations(
