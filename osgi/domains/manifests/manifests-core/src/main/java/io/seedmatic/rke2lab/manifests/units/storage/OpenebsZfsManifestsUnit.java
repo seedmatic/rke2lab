@@ -51,10 +51,10 @@ public final class OpenebsZfsManifestsUnit extends AbstractManifestsUnit {
     final String ephemeralPool = layout.controlNodePool("master");
     createStorageClass(scope, "openebs-zfs", true, false, ephemeralPool, "Delete");
     createStorageClass(scope, "openebs-zfs-shared", false, true, ephemeralPool, "Delete");
-    // The persist tier: a Retain, non-default class on tank/rke2lab/persist so the funnel cert +
-    // maven-cache PVs survive a cold-start re-grow (etcd is wiped, so a stable dataset + a static
-    // PV
-    // are the only cross-grow handle). Nothing lands here unless it names the class explicitly.
+    // The persist tier: a Retain, non-default class on tank/rke2lab/persist so the funnel cert PV
+    // survives a cold-start re-grow (etcd is wiped, so a stable dataset + a static PV are the only
+    // cross-grow handle). Nothing lands here unless it names the class explicitly. (The render
+    // maven-cache is EPHEMERAL today + goes per-cluster in foundation 3 — not on this tier yet.)
     createStorageClass(scope, "openebs-zfs-persist", false, false, layout.persistPool(), "Retain");
     createHelmChart(scope, namespace, chartVersion);
   }

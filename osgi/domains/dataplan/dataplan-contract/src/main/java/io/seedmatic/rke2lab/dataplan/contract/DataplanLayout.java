@@ -32,11 +32,15 @@ public record DataplanLayout(String pool, List<Dataset> datasets) {
   /** The Tailscale funnel-state persist dataset — the openebs volumeHandle the funnel PV binds. */
   public static final String FUNNEL_CERT = "funnel-cert";
 
-  /** The maven build-cache persist dataset. */
-  public static final String MAVEN_CACHE = "maven-cache";
-
-  /** The cross-grow persist datasets (retained; out of the GC'd control-nodes tree). */
-  public static final List<String> PERSIST_DATASETS = List.of(FUNNEL_CERT, MAVEN_CACHE);
+  /**
+   * The cross-grow persist datasets (retained; out of the GC'd control-nodes tree). Only {@code
+   * funnel-cert} today: the render maven-cache is currently EPHEMERAL (its PVC rides {@code
+   * openebs-zfs-shared} on the control-nodes pool), and its durable form is PER-CLUSTER ({@code
+   * tank/rke2lab/<cluster>/persist/maven-cache} — the Maven local repo is not concurrency-safe), a
+   * foundation-3 item. A flat {@code persist/maven-cache} here was an unadopted orphan, so it is
+   * not declared.
+   */
+  public static final List<String> PERSIST_DATASETS = List.of(FUNNEL_CERT);
 
   /** A single ZFS dataset request: a pool-relative path, its disko type, and its ZFS options. */
   public record Dataset(String path, String type, Map<String, String> options) {

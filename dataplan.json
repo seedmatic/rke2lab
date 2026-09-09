@@ -1,3 +1,4 @@
+08:10:00.288 INFO  i.s.r.o.r.f.FrameworkLauncher - OSGi runtime booted: 43 bundle(s) installed and started
 {
   "pool" : "tank",
   "datasets" : [ {
@@ -54,12 +55,6 @@
     "options" : { }
   }, {
     "path" : "rke2lab/persist/funnel-cert",
-    "type" : "zfs_fs",
-    "options" : {
-      "mountpoint" : "legacy"
-    }
-  }, {
-    "path" : "rke2lab/persist/maven-cache",
     "type" : "zfs_fs",
     "options" : {
       "mountpoint" : "legacy"

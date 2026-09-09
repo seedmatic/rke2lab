@@ -202,7 +202,7 @@ final class FluxServiceKustomizationPlanner {
     // The tailscale-operator HelmChart registers tailscale.com at runtime.
     installers.put("tailscale.com", new RuntimeInstaller("tailscale/tailscale", Optional.empty()));
     // The openebs zfs-localpv HelmChart installs the CSI driver + its zfs.openebs.io CRDs
-    // (ZFSVolume et al.) — the static funnel-cert/maven-cache PVs render ZFSVolume CRs.
+    // (ZFSVolume et al.) — the static funnel-cert PV renders a ZFSVolume CR.
     installers.put("zfs.openebs.io", new RuntimeInstaller("storage/openebs-zfs", Optional.empty()));
     // The CAPI operator + the four providers it brings up (rendered by
     // ClusterApiOperatorManifestsUnit) install the Cluster API CRD groups at runtime: CAPI core
