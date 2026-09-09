@@ -7,6 +7,9 @@ data:
     v1|ServiceAccount|kube-system|kubernetes-replicator
     rbac.authorization.k8s.io/v1|ClusterRoleBinding||kubernetes-replicator
     apps/v1|Deployment|kube-system|kubernetes-replicator
+    v1|Secret|rke2lab-replicator-source|floxhub-token
+    v1|Secret|rke2lab-replicator-source|flux-webhook-token
+    v1|Secret|rke2lab-replicator-source|operator-oauth
 kind: ConfigMap
 metadata:
   annotations:
