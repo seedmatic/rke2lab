@@ -811,8 +811,10 @@ public class ManifestSynthesisScenario
       // here
       // is the raw facet (incl. delivery) in hand, and the exploder has no root path.
       rendered.ifPresent(
-          linkedWorktree ->
-              recordRenderFacet(linkedWorktree.path(), facet.facets(), facet.image()));
+          linkedWorktree -> {
+            recordRenderFacet(linkedWorktree.path(), facet.facets(), facet.image());
+            recordSopsPolicy(linkedWorktree.path());
+          });
       return self();
     }
 
@@ -869,6 +871,30 @@ public class ManifestSynthesisScenario
       } catch (IOException ex) {
         throw new UncheckedIOException("cannot record the render facet at the branch root", ex);
       }
+    }
+
+    /**
+     * Copy the source repo's {@code .sops.yaml} policy verbatim to the rendered branch ROOT — the
+     * declarative half of the two static sops assets (the exploder writes the other, {@code
+     * .gitattributes}, marking {@code *-secret-*.yml filter=sops-yaml}). This policy names the
+     * fields to encrypt ({@code encrypted_regex: ^(data|stringData)$}) and the age recipients —
+     * crucially the cluster key, so Flux decrypts the committed Secrets in-cluster. Verbatim from
+     * source, so the recipients stay SSOT (a key rotation propagates on the next render). The
+     * git-sops clean filter (run when the THEN stages) reads it from the worktree root (its CWD). A
+     * no-op on a bare survey or a source with no readable {@code .sops.yaml}.
+     */
+    private void recordSopsPolicy(Path root) {
+      sourceWorktree
+          .flatMap(worktree -> worktree.readAtHead(".sops.yaml"))
+          .ifPresent(
+              policy -> {
+                try {
+                  Files.writeString(root.resolve(".sops.yaml"), policy);
+                } catch (IOException ex) {
+                  throw new UncheckedIOException(
+                      "cannot record the sops policy at the branch root", ex);
+                }
+              });
     }
   }
 

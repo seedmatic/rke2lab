@@ -3,7 +3,6 @@ package io.seedmatic.rke2lab.manifests.units.clusterapi;
 import io.seedmatic.rke2lab.manifests.AbstractManifestsUnit;
 import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
 import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
-import io.seedmatic.rke2lab.manifests.contract.ManifestAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.WorkloadTarget;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ImageState;
@@ -57,13 +56,16 @@ import software.constructs.Construct;
  * renders nothing rather than a misleading placeholder.
  *
  * <p>The per-remote CAPN identity Secret {@code <host>-incus-identity} the {@code
- * LXCCluster.secretRef} names (foundation 5) is rendered HERE, on the {@code NODE_BOOTSTRAP} lane
- * (a credential — never committed to the branch), with a node-bootstrap copy of the namespace so
- * the grow-time apply is self-contained. One {@code rke2lab} incus project (foundation 4 dropped —
- * instance names are globally unique via the blueprint), so the Secret carries {@code project:
- * rke2lab}. Still by convention: the incus network/profile the {@code LXCMachineTemplate} lands on;
- * and the rke2 config-ownership reconciliation (CAPRKE2's generated {@code config.yaml} vs the
- * node-base's baked config/CNI), validated when the set is first unpaused, not asserted here.
+ * LXCCluster.secretRef} names (foundation 5) and the four CAPRKE2 BYO-CA Secrets are rendered HERE
+ * ON THE BRANCH, sops-encrypted: the git sops clean filter encrypts their {@code data} at commit
+ * (the branch's {@code .gitattributes} + recorded {@code .sops.yaml}), and Flux decrypts with
+ * {@code sops-age} and applies. They are NOT on {@code NODE_BOOTSTRAP} — Flux does not need them to
+ * reconcile, so they ride the branch like the rest. One {@code rke2lab} incus project (foundation 4
+ * dropped — instance names are globally unique via the blueprint), so the Secret carries {@code
+ * project: rke2lab}. Still by convention: the incus network/profile the {@code LXCMachineTemplate}
+ * lands on; and the rke2 config-ownership reconciliation (CAPRKE2's generated {@code config.yaml}
+ * vs the node-base's baked config/CNI), validated when the set is first unpaused, not asserted
+ * here.
  */
 public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit {
 
@@ -156,43 +158,46 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
     createWorkerMachineDeployment(
         scope, cluster, namespace, rke2Version, configTemplate, workerTemplate, namespaceObject);
 
-    // The node-bootstrap-lane CREDENTIALS this cluster needs, seeded node-side at the grow and
-    // NEVER committed to the git branch (a secret-blind in-cluster render reveals nothing here and
-    // — being off the branch — cannot strip the grow-seeded Secrets):
+    // The CREDENTIALS this cluster needs, rendered ON THE BRANCH sops-encrypted: the git sops clean
+    // filter encrypts their data/stringData at commit (the branch's .gitattributes marks
+    // *-secret-*.yml filter=sops-yaml + the recorded .sops.yaml names the fields + recipients), and
+    // Flux decrypts with sops-age and applies. NOT on NODE_BOOTSTRAP: Flux does not need them to
+    // reconcile, so they ride the branch like the rest (frontier: only the bootstrap seed Flux
+    // needs stays node-side). They join the branch namespace (Flux owns its lifecycle):
     //   - the per-remote CAPN identity the LXCCluster.secretRef names (foundation 5);
     //   - the four deterministic CAPRKE2 BYO-CA Secrets (C2), so CAPRKE2 delivers OUR mammoth-skate
     //     CA to the workload node via its cloud-init instead of self-generating a random one.
-    // Both ride ONE node-bootstrap copy of the namespace so the set self-applies; rendered only
-    // when their material is revealed (a grow). The twin of the CAPI kubeconfig Secret.
+    // Rendered only when their material is revealed (a secret-full render — a grow, or an
+    // in-cluster
+    // render once the git-sops filter is present; a secret-blind render must not run steady-state,
+    // else it pushes them empty and Flux prunes the populated ones).
     final Optional<IncusIdentityMaterial> identity =
         ManifestSynthesisContext.current().incusIdentity();
     final Optional<WorkloadClusterCasMaterial.Entry> workloadCa =
         ManifestSynthesisContext.current().workloadCas().flatMap(cas -> cas.forCluster(cluster));
-    if (identity.isPresent() || workloadCa.isPresent()) {
-      final ApiObject nbNamespace = createNodeBootstrapNamespace(scope, cluster, namespace);
-      identity.ifPresent(
-          material ->
-              createIdentitySecret(
-                  scope, cluster, namespace, identitySecret, material, image, nbNamespace));
-      workloadCa.ifPresent(
-          ca -> createWorkloadCaSecrets(scope, cluster, namespace, ca, nbNamespace));
-    }
+    identity.ifPresent(
+        material ->
+            createIdentitySecret(
+                scope, cluster, namespace, identitySecret, material, image, namespaceObject));
+    workloadCa.ifPresent(
+        ca -> createWorkloadCaSecrets(scope, cluster, namespace, ca, namespaceObject));
   }
 
   // The four CAPRKE2 BYO-CA Secrets CAPRKE2 looks up by name (<cluster>-{ca,cca,etcd,peer-etcd}) to
   // skip generating its own CA — type cluster.x-k8s.io/secret + the cluster-name label, exactly the
-  // shape CAPRKE2 would SaveGenerated, data tls.crt/tls.key. On the NODE_BOOTSTRAP lane (a real CA
-  // private key), never on the branch. See the caprke2-byo-ca-secret-contract memory.
+  // shape CAPRKE2 would SaveGenerated, data tls.crt/tls.key. On the BRANCH, sops-encrypted (the git
+  // sops clean filter encrypts tls.key at commit; Flux decrypts). See the
+  // caprke2-byo-ca-secret-contract memory.
   private void createWorkloadCaSecrets(
       final Construct scope,
       final String cluster,
       final String namespace,
       final WorkloadClusterCasMaterial.Entry ca,
-      final ApiObject nbNamespace) {
-    renderCaSecret(scope, cluster, namespace, "ca", ca.serverCa(), nbNamespace);
-    renderCaSecret(scope, cluster, namespace, "cca", ca.clientCa(), nbNamespace);
-    renderCaSecret(scope, cluster, namespace, "etcd", ca.etcdServerCa(), nbNamespace);
-    renderCaSecret(scope, cluster, namespace, "peer-etcd", ca.etcdPeerCa(), nbNamespace);
+      final ApiObject branchNamespace) {
+    renderCaSecret(scope, cluster, namespace, "ca", ca.serverCa(), branchNamespace);
+    renderCaSecret(scope, cluster, namespace, "cca", ca.clientCa(), branchNamespace);
+    renderCaSecret(scope, cluster, namespace, "etcd", ca.etcdServerCa(), branchNamespace);
+    renderCaSecret(scope, cluster, namespace, "peer-etcd", ca.etcdPeerCa(), branchNamespace);
   }
 
   private void renderCaSecret(
@@ -201,7 +206,7 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
       final String namespace,
       final String purpose,
       final WorkloadClusterCasMaterial.Pair pair,
-      final ApiObject nbNamespace) {
+      final ApiObject branchNamespace) {
     final String name = cluster + "-" + purpose;
     final ApiObject secret =
         new ApiObject(
@@ -217,11 +222,10 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
                         .labels(Map.of("cluster.x-k8s.io/cluster-name", cluster))
                         .annotations(
                             packageProfile.packageAnnotations(
-                                "|Secret|" + namespace + "|" + name,
-                                Map.of(ManifestAnnotation.NODE_BOOTSTRAP.key(), "true")))
+                                "|Secret|" + namespace + "|" + name, Map.of()))
                         .build())
                 .build());
-    secret.addDependency(nbNamespace);
+    secret.addDependency(branchNamespace);
     secret.addJsonPatch(JsonPatch.add("/type", "cluster.x-k8s.io/secret"));
     secret.addJsonPatch(
         JsonPatch.add(
@@ -231,29 +235,6 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
                 "tls.key", base64(pair.keyPem()))));
   }
 
-  // A node-bootstrap copy of the workload namespace, SHARED by every node-bootstrap Secret this
-  // cluster carries (identity + BYO-CA): the branch namespace (createNamespace) is Flux's (owns the
-  // CRs' lifecycle); this one lets the grow-time node-side apply land the credential Secrets
-  // self-contained. Same name, applied twice, idempotent.
-  private ApiObject createNodeBootstrapNamespace(
-      final Construct scope, final String cluster, final String namespace) {
-    return new ApiObject(
-        scope,
-        "namespace-nb-" + cluster,
-        ApiObjectProps.builder()
-            .apiVersion("v1")
-            .kind("Namespace")
-            .metadata(
-                ApiObjectMetadata.builder()
-                    .name(namespace)
-                    .annotations(
-                        packageProfile.packageAnnotations(
-                            "|Namespace||" + namespace,
-                            Map.of(ManifestAnnotation.NODE_BOOTSTRAP.key(), "true")))
-                    .build())
-            .build());
-  }
-
   private void createIdentitySecret(
       final Construct scope,
       final String cluster,
@@ -261,9 +242,7 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
       final String identitySecret,
       final IncusIdentityMaterial material,
       final ImageState image,
-      final ApiObject nbNamespace) {
-    final Map<String, String> nodeBootstrap =
-        Map.of(ManifestAnnotation.NODE_BOOTSTRAP.key(), "true");
+      final ApiObject branchNamespace) {
     final ApiObject secret =
         new ApiObject(
             scope,
@@ -277,10 +256,10 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
                         .namespace(namespace)
                         .annotations(
                             packageProfile.packageAnnotations(
-                                "|Secret|" + namespace + "|" + identitySecret, nodeBootstrap))
+                                "|Secret|" + namespace + "|" + identitySecret, Map.of()))
                         .build())
                 .build());
-    secret.addDependency(nbNamespace);
+    secret.addDependency(branchNamespace);
     secret.addJsonPatch(JsonPatch.add("/type", "Opaque"));
     secret.addJsonPatch(
         JsonPatch.add(

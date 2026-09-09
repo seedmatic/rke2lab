@@ -145,8 +145,9 @@ public final class DefaultManifestExplodeService implements ManifestExplodeServi
     Files.writeString(
         target.resolve(".gitattributes"),
         """
-        # Rendered Secrets are sops-filtered so their data/stringData commits encrypted, never
-        # plaintext. Primary guarantee: real-data secrets ride the node-bootstrap lane (never here).
+        # Rendered Secrets are sops-filtered: their data/stringData commit ENCRYPTED (never
+        # plaintext), decrypted by Flux (sops-age) on reconcile. The recorded .sops.yaml names the
+        # fields + recipients; only the irreducible bootstrap seed still rides the node-bootstrap lane.
         **/*-secret-*.yml filter=sops-yaml
         **/.secret-*.yml filter=sops-yaml
         """);

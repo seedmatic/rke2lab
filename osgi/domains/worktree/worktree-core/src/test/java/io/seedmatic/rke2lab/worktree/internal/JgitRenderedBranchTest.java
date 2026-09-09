@@ -98,6 +98,35 @@ class JgitRenderedBranchTest {
   }
 
   @Test
+  void jgit_stage_runs_the_external_clean_filter() throws Exception {
+    // LOAD-BEARING for branch+sops: the render commits its output branch via jgit
+    // (JgitCheckout.stage → git.add()). If jgit's AddCommand runs the EXTERNAL clean
+    // filter, the sops clean filter (same mechanism) encrypts a Secret's bytes on commit;
+    // if it does NOT, a rendered Secret would be committed in PLAINTEXT — a leak. Prove it
+    // by transform: a stub clean filter that uppercases stdin. The committed blob is
+    // uppercased iff jgit ran the filter.
+    assumeTrue(toolPresent("tr", "--version"), "tr is required");
+    try (GitGround ground = new GitGround(tmp)) {
+      ground.setWorkConfig("filter.stub.clean", "tr a-z A-Z");
+
+      final Path worktreePath = ground.renderPath(CLUSTER);
+      final LinkedWorktree linked = ground.renderedBranch().prepare(worktreePath, BRANCH);
+
+      Files.writeString(linked.path().resolve(".gitattributes"), "secret.txt filter=stub\n");
+      Files.writeString(linked.path().resolve("secret.txt"), "hello\n");
+      linked.stageAll();
+      linked.commit("render " + CLUSTER, BOT, Optional.of(ground.signingKey()));
+
+      // cat-file shows the STORED blob (plumbing — no smudge): uppercased iff the clean
+      // filter ran while jgit staged it.
+      assertEquals(
+          "HELLO",
+          ground.showBlob(linked.path(), "HEAD:secret.txt").trim(),
+          "jgit add must run the external clean filter — else a committed Secret leaks plaintext");
+    }
+  }
+
+  @Test
   void re_preparing_reuses_the_branch_so_renders_accrete_as_fast_forwards() throws Exception {
     try (GitGround ground = new GitGround(tmp)) {
       final Path worktreePath = ground.renderPath(CLUSTER);
@@ -258,6 +287,16 @@ class JgitRenderedBranchTest {
     /** The parent sha of {@code sha} in the worktree's repo. */
     String parentSha(Path worktree, String sha) throws Exception {
       return git(worktree, "rev-parse", sha + "^").trim();
+    }
+
+    /** Set a git config key on the work repo (shared by its linked worktrees). */
+    void setWorkConfig(String key, String value) throws Exception {
+      git(work, "config", key, value);
+    }
+
+    /** The STORED blob at {@code rev} (plumbing {@code cat-file -p} — no smudge applied). */
+    String showBlob(Path worktree, String rev) throws Exception {
+      return git(worktree, "cat-file", "-p", rev);
     }
 
     /** Whether {@code sha}'s commit object carries an SSH signature header. */
