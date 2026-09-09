@@ -375,7 +375,7 @@ public final class InstanceGrow {
         "set -u",
         "REMOTE='" + remote + "'",
         "PROJECT='" + project + "'",
-        "ALIAS='node-base'",
+        "ALIAS='" + IncusImportLookup.NODE_BASE_ALIAS + "'",
         "KEEP='" + fingerprint + "'",
         "echo \"incus image gc: keeping $KEEP in project $PROJECT\"",
         "incus query \"$REMOTE:/1.0/images?project=$PROJECT\" | tr ',' '\\n' \\",

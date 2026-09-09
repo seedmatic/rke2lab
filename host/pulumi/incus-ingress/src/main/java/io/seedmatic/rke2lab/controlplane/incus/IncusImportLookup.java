@@ -30,6 +30,13 @@ public final class IncusImportLookup {
   private static final long PREVIEW_INVOKE_TIMEOUT_SECONDS = 10;
   private static final long APPLY_INVOKE_TIMEOUT_SECONDS = 20;
 
+  /**
+   * The stable image alias the GROW poses on the current node-base image after every instance (see
+   * {@code InstanceGrow.poseNodeBaseAliasAndGcImages}) — the reliable key for {@link #imageExists}:
+   * an alias lookup does NOT trip the provider's fingerprint-query SIGSEGV.
+   */
+  public static final String NODE_BASE_ALIAS = "node-base";
+
   private enum LookupState {
     FOUND,
     NOT_FOUND,
@@ -100,33 +107,36 @@ public final class IncusImportLookup {
   }
 
   /**
-   * Whether the daemon already holds an image under this content {@code fingerprint} in the
-   * project. The GROW then references it (adopt by omission) instead of re-declaring an {@code
-   * Image} that would re-upload identical bytes and be rejected as a duplicate. Content-addressed:
-   * an unchanged build resolves to the same fingerprint (present → adopt), a changed build to a new
-   * one (absent → upload).
+   * Whether the daemon already holds this content {@code fingerprint} in the project. The GROW then
+   * references it (adopt by omission) instead of re-declaring an {@code Image} that would re-upload
+   * identical bytes and be rejected as a duplicate. Content-addressed: an unchanged build resolves
+   * to the same fingerprint (present → adopt), a changed build to a new one (absent → upload).
    *
-   * <p>STOPGAP: queried on {@code name} (which matches an ALIAS), NOT {@code fingerprint}, because
-   * terraform-provider-incus v1.1.1's {@code incus_image} data source SIGSEGVs (nil deref,
-   * datasource_image.go:207) when queried by {@code fingerprint} alone — the panic kills the plugin
-   * and poisons every later RPC (surfaced downstream as "ValidateResourceConfig ... connection
-   * refused"). Our images carry no alias, so this lookup returns absent for them and the GROW
-   * always takes the create path — correct while no duplicate exists, but it does NOT adopt a
-   * pre-existing alias-less image (that hits "already exists" instead). Proper
-   * fingerprint-existence needs a non-crashing path (provider v1.0.2, an alias, or a resource
-   * import); revisit once the upload itself is confirmed. A miss throws, caught as absent.
+   * <p>Resolved through the stable {@link #NODE_BASE_ALIAS} the GROW poses after every instance —
+   * NOT by a {@code fingerprint} query, which SIGSEGVs terraform-provider-incus v1.1.1 (nil deref,
+   * datasource_image.go:207 — the panic kills the plugin and poisons every later RPC as
+   * "ValidateResourceConfig ... connection refused"). An alias lookup does not trip it, so the
+   * daemon holds THIS exact content iff the alias resolves to our fingerprint. A rebuild leaves the
+   * alias on the OLD image (mismatch → absent → the GROW uploads the new content, then the
+   * post-instance beat moves the alias); a virgin/not-yet-aliased daemon also returns absent → the
+   * create path, both correct. A miss throws, caught as absent.
    */
   public boolean imageExists(String fingerprint, String incusProject) {
     log.accept(
-        "incus lookup getImage: start fingerprint=" + fingerprint + " project=" + incusProject);
+        "incus lookup getImage: start alias="
+            + NODE_BASE_ALIAS
+            + " fingerprint="
+            + fingerprint
+            + " project="
+            + incusProject);
     try {
       final var image =
           IncusFunctions.getImagePlain(
-                  GetImagePlainArgs.builder().name(fingerprint).project(incusProject).build(),
+                  GetImagePlainArgs.builder().name(NODE_BASE_ALIAS).project(incusProject).build(),
                   context.invokeOptions())
               .orTimeout(invokeTimeoutSeconds(), TimeUnit.SECONDS)
               .join();
-      return image != null && image.fingerprint() != null;
+      return image != null && fingerprint.equals(image.fingerprint());
     } catch (Exception ex) {
       log.accept("incus lookup getImage: absent (" + summarizeLookupFailure(ex) + ")");
       return false;
