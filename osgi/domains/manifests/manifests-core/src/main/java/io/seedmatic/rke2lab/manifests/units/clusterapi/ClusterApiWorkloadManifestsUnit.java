@@ -84,9 +84,14 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
   private static final int WORKLOAD_CONTROL_PLANE_REPLICAS = 3;
 
   /**
-   * The default incus profile the machine templates attach to (per-cluster profile = foundation 4).
+   * The incus profile the workload machine templates attach to — the SHARED per-project {@code
+   * rke2lab} profile that carries the root disk device (path {@code /} on the default pool), the
+   * SAME profile seed-master's master instance uses. NOT the project's {@code default} profile: an
+   * isolated project's default profile is empty ({@code devices: {}}) → incus fails "no root device
+   * could be found". Foundation-4's per-cluster profile was dropped (instances are globally unique
+   * via the blueprint), so every instance shares this one.
    */
-  private static final String DEFAULT_PROFILE = "default";
+  private static final String INSTANCE_PROFILE = "rke2lab";
 
   private final PackageMetadataProfile packageProfile =
       new PackageMetadataProfile(ManifestDomainCatalog.CLUSTER_API, OUTPUT_DIR);
@@ -525,7 +530,7 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
                         "instanceType",
                         "container",
                         "profiles",
-                        List.of(DEFAULT_PROFILE),
+                        List.of(INSTANCE_PROFILE),
                         // Pin OUR nix-built node-base by content fingerprint (foundation 1b) — the
                         // same image the management grow ran on, present on the remote by
                         // fingerprint.
