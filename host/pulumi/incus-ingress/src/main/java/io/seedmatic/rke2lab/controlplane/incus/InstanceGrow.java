@@ -1,5 +1,7 @@
 package io.seedmatic.rke2lab.controlplane.incus;
 
+import com.pulumi.command.local.Command;
+import com.pulumi.command.local.CommandArgs;
 import com.pulumi.core.Output;
 import com.pulumi.incus.Image;
 import com.pulumi.incus.ImageArgs;
@@ -75,7 +77,9 @@ public final class InstanceGrow {
     ensureNetwork(config.vmnetNetworkName(), project, plan.network());
     final Output<String> profileName = ensureProfile(project);
     final Output<String> imageFingerprint = ensureImage(plan.image(), project);
-    createInstance(plan, project, profileName, imageFingerprint, extraDevlxdConfig);
+    final Instance instance =
+        createInstance(plan, project, profileName, imageFingerprint, extraDevlxdConfig);
+    poseNodeBaseAliasAndGcImages(imageFingerprint, instance);
   }
 
   private Project ensureProject() {
@@ -187,10 +191,13 @@ public final class InstanceGrow {
    * unchanged tree keeps the same name → the same {@code Image}, a no-op with no redundant upload;
    * a content change is a NEW resource → a fresh upload and a new daemon-computed fingerprint,
    * which arms the instance's {@code replaceOnChanges} on {@code user.rke2lab.imageBuildChecksum}
-   * to recreate it. No {@code aliases}: the instance references the image by the fingerprint {@link
-   * Output} returned here, and a stable alias carried across content changes would collide on the
-   * daemon's per-project alias uniqueness when the old and new images coexist at replace time (the
-   * alias is a future CAPN concern, re-introduced then as its own stable resource).
+   * to recreate it. No declared {@code aliases}: the instance references the image by the
+   * fingerprint {@link Output} returned here, and a stable alias carried as an {@code Image}
+   * attribute would collide on the daemon's per-project alias uniqueness while the old and new
+   * images coexist at replace time (they DO coexist: the old image is {@code retainOnDelete}, held
+   * until the instance stops cloning it). The {@code node-base} alias is posed imperatively AFTER
+   * the instance is (re)created — see {@link #poseNodeBaseAliasAndGcImages}, which also GCs the
+   * leaked old images once the replaced instance no longer clones them.
    */
   private Output<String> ensureImage(GrowImageView view, Resource projectDependency) {
     // Content-addressed: incus derives a SPLIT image's fingerprint as sha256(metadata.tar.xz ++
@@ -229,7 +236,7 @@ public final class InstanceGrow {
     return image.fingerprint();
   }
 
-  private void createInstance(
+  private Instance createInstance(
       InstanceGrowPlan plan,
       Resource projectDependency,
       Output<String> profileName,
@@ -282,7 +289,7 @@ public final class InstanceGrow {
               return merged;
             });
 
-    new Instance(
+    return new Instance(
         "seed-instance",
         InstanceArgs.builder()
             .name(config.nodeName())
@@ -313,6 +320,78 @@ public final class InstanceGrow {
             // so ignoring post-create drift is correct.
             .ignoreChanges(List.of("image", "devices"))
             .build());
+  }
+
+  /**
+   * The post-instance beat: pose the stable {@code node-base} alias on the current image and GC the
+   * leaked old node-base images. It runs a {@code local.Command} (the incus CLI is a runtimeInput
+   * the provider already shells out to, authenticating through the same {@code configDir}) that
+   * {@code dependsOn} the instance, so the engine schedules it AFTER the (re)created instance —
+   * meaning the {@code deleteBeforeReplace} already tore down the old instance that cloned the old
+   * image, which is now deletable (a live image cannot be deleted while an instance clones it,
+   * which is why the old {@code Image} resource is {@code retainOnDelete}: Pulumi drops it from
+   * state WITHOUT deleting the daemon image, and this beat reaps it once the clone is gone).
+   *
+   * <p>Retention is CURRENT-ONLY (no rollback): every project image but the freshly-grown
+   * fingerprint is pruned. The alias is set delete-then-create (an idempotent upsert), safe now
+   * that the GC guarantees no stale image lingers to collide on per-project alias uniqueness.
+   * Best-effort throughout ({@code exit 0}): a GC or alias hiccup logs but never fails the grow —
+   * the leak is slow and the alias is a convenience. {@code triggers} on the fingerprint re-runs it
+   * on every renew (a new fingerprint), which is exactly when an old image starts leaking.
+   */
+  private void poseNodeBaseAliasAndGcImages(
+      Output<String> imageFingerprint, Resource instanceDependency) {
+    final String remote = config.incusDefaultRemote();
+    final String project = config.incusProject();
+    final Output<String> script =
+        imageFingerprint.applyValue(
+            fingerprint -> imageGcAndAliasScript(remote, project, fingerprint));
+
+    final CommandArgs.Builder args =
+        CommandArgs.builder()
+            .create(script)
+            .update(script)
+            .triggers(imageFingerprint.applyValue(fingerprint -> List.<Object>of(fingerprint)));
+    if (config.incusConfigDir() != null && !config.incusConfigDir().isBlank()) {
+      args.environment(Map.of("INCUS_CONF", config.incusConfigDir()));
+    }
+
+    new Command(
+        "seed-image-gc-alias",
+        args.build(),
+        CustomResourceOptions.builder().dependsOn(List.of(instanceDependency)).build());
+  }
+
+  /**
+   * The sh script the {@code node-base} beat runs against the incus CLI: prune every project image
+   * but {@code KEEP}, then upsert the {@code node-base} alias onto it. Fingerprints come from
+   * {@code incus query} (the CLI's raw REST passthrough) so no jq/yq is needed — {@code tr}/{@code
+   * sed} (coreutils) carve the 64-hex fingerprints out of the {@code /1.0/images/<fp>} array. The
+   * config-derived {@code remote}/{@code project} are single-quoted (never user input).
+   */
+  private String imageGcAndAliasScript(String remote, String project, String fingerprint) {
+    return String.join(
+        "\n",
+        "set -u",
+        "REMOTE='" + remote + "'",
+        "PROJECT='" + project + "'",
+        "ALIAS='node-base'",
+        "KEEP='" + fingerprint + "'",
+        "echo \"incus image gc: keeping $KEEP in project $PROJECT\"",
+        "incus query \"$REMOTE:/1.0/images?project=$PROJECT\" | tr ',' '\\n' \\",
+        "  | sed -n 's#.*/1.0/images/\\([0-9a-f]\\{64\\}\\).*#\\1#p' \\",
+        "  | while IFS= read -r fp; do",
+        "      if [ \"$fp\" != \"$KEEP\" ]; then",
+        "        echo \"incus image gc: deleting $fp\"",
+        "        incus image delete \"$REMOTE:$fp\" --project \"$PROJECT\" \\",
+        "          || echo \"incus image gc: could not delete $fp (still referenced?)\"",
+        "      fi",
+        "    done",
+        "echo \"incus image alias: node-base -> $KEEP\"",
+        "incus image alias delete \"$REMOTE:$ALIAS\" --project \"$PROJECT\" 2>/dev/null || true",
+        "incus image alias create \"$REMOTE:$ALIAS\" \"$KEEP\" --project \"$PROJECT\" \\",
+        "  || echo \"incus image alias: create failed\"",
+        "exit 0");
   }
 
   /**

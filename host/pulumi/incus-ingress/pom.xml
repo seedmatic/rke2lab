@@ -37,5 +37,12 @@
       <groupId>com.pulumi</groupId>
       <artifactId>pulumi</artifactId>
     </dependency>
+    <!-- local.Command: the post-instance beat poses the `node-base` image alias and GCs the leaked
+         node-base images via the incus CLI (a runtimeInput the provider already shells out to),
+         authenticating through the same configDir the provider uses. -->
+    <dependency>
+      <groupId>com.pulumi</groupId>
+      <artifactId>command</artifactId>
+    </dependency>
   </dependencies>
 </project>
