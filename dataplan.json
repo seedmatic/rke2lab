@@ -1,4 +1,3 @@
-08:10:00.288 INFO  i.s.r.o.r.f.FrameworkLauncher - OSGi runtime booted: 43 bundle(s) installed and started
 {
   "pool" : "tank",
   "datasets" : [ {

@@ -318,7 +318,12 @@
       dataplanJsonFor = pkgs:
         let planJar = planJarFor pkgs;
         in pkgs.runCommand "dataplan.json" { buildInputs = [ pkgs.jdk25 ]; } ''
-          java -jar ${planJar}/share/java/rke2lab-plan.jar dataset export > $out
+          # The OSGi FrameworkLauncher narrates its boot on stdout before the
+          # export, so keep only the JSON document (from its top-level `{` on)
+          # — otherwise a stray "HH:MM:SS.mmm INFO …" line lands at line 1 and
+          # fromJSON chokes ("unexpected number literal").
+          java -jar ${planJar}/share/java/rke2lab-plan.jar dataset export \
+            | sed -n '/^{/,$p' > $out
         '';
 
       # The consumed blueprint is PURE committed data — read from the checked-in
