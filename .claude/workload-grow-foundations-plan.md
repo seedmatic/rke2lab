@@ -166,24 +166,135 @@ a target. The targets are a set beside the identity; only the cluster-api units 
   seeded one is empty (UPDATE/EDIT verbs). Fixpoint (update re-records identically); backward-compatible
   (a branch with no `image` key → empty → graceful). Validate: grow (writes image + CRs) → in-cluster
   update (replays image, re-renders CRs, no strip).
-- **6 — domain split by role** — the render's domain set becomes a FUNCTION of the cluster ROLE.
-  Context: model B has TWO branches, one per cluster: `manifests/<host>-mgmt` (the mgmt cluster's own
-  stack + the workload CAPI CRs it reconciles) and `manifests/<host>-wrkld` (the workload's OWN app
-  stack, its own Flux — Tier 1). Today the render publishes ONE fixed domain set (tuned for mgmt). 6
-  makes it role-aware:
-  - **role=mgmt** publishes: `cluster-api` (operator + 4 providers + the workload CR set via
-    `workloadTargets`), `platform` (cert-manager/cluster-issuer), `gitops` (the mgmt's Flux), base +
-    `tailscale` CLIENT (bootstrap mesh — Tailscale, not Headscale). The mgmt is single-node, no HA.
-  - **role=wrkld** publishes the APP STACK: `gitops` (the workload's own Flux), `networking` (cilium),
-    `storage`, `mesh` (Headscale/Headplane — the mesh SERVICE is a workload-cluster service per the
-    topology doc), `high-availability` (kube-vip for the workload's OWN endpoint), `cicd` (tekton).
-    **NOT `cluster-api`** — the workload doesn't run CAPI (that's the mgmt's job; the workload's CRs
-    live on `-mgmt`).
-  - Where it lives: the `ManifestDomainPolicy` derivation (`ManifestSynthesisScenario` `.gitops(...)`
-    /`.clusterApi(...)` etc. off the publish facet) gains a ROLE input (from `bootstrapIdentity`'s
-    `role`, or the render's cluster). Either the publish flags differ per role, or the derivation
-    gates domains by role. Open: is the role read from the cluster identity (host-role) or a new facet
-    field? Leaning: derive from the render's own `role` (already in the cluster name).
+- **6 — domain split by role** — ✅ DONE (`f51ba1d10`). The render's domain set is now a FUNCTION of
+  the cluster ROLE, not a config-toggled facet. New `ClusterRole` (mgmt/wrkld, parsed from the
+  `<host>-<role>` clusterName) owns the role→`ManifestDomainPolicy` mapping — the single canonical
+  domain-set the synthesis already consumes; `ManifestSynthesisScenario` derives the policy from
+  `ClusterRole.of(clusterName)`. **`PublishFacet` REMOVED entirely** (record + `Facets.publish` +
+  builder + coalesce + `rke2lab:manifests:publish:` config + CLI `publish.*` edit overrides + the
+  dead `RKE2LAB_MANIFESTS_PUBLISH_*` env javadocs — the domain policy was its only live consumer, the
+  publish-env contributor was already gone). `withPublishDebug`→`withDebug`; `FACET_READER` tolerates
+  unknown keys so a branch with a stale `publish:` sub-map still decodes. Tests green (Facets 2/2,
+  ShapeReflector 4/4), full chain BUILD SUCCESS (claude lane).
+  - **Why role, not a facet — the concept we'd missed:** the `PublishFacet` conflated *structural
+    membership* (which domains a cluster's role IS made of) with an *operator toggle*. That worked
+    while there was ONE cluster (its config booleans WERE the role's set, hand-baked); a 2nd role
+    makes them contradict. The domain set is STRUCTURAL to the role — a mgmt cluster does not "turn
+    off cluster-api" as an op. `ManifestDomainPolicy` was already "the canonical domain-set shared by
+    synthesis + activation", so role→policy directly (no PublishFacet intermediate) is the clean end.
+  - **Sets shipped:** mgmt = cluster, runtime, platform, gitops, **cluster-api**, networking, storage,
+    high-availability. wrkld = cluster, runtime, platform, gitops, networking, storage,
+    high-availability, **mesh**, **cicd**. Role-exclusive: cluster-api (mgmt), mesh+cicd (wrkld). Easy
+    to tune (one place: `ClusterRole.enabledDomainIds`).
+  - **ingress deferred to a follow-up** (see the ingress-domain entry below) — mesh stays wrkld-only
+    for now; mgmt gets no mesh/ingress this step (fine for the cold-start: the mgmt render is at-grow,
+    no webhook needed yet).
+- **ingress domain extraction** — ✅ DONE (`97160ad8f`). New `ingress` domain (IngressDomainRegistrar:
+  `mesh-system` namespace + Tailscale operator + funnel cert-restore/state-persistence/tailnet-purge),
+  STRUCTURAL on both roles; `mesh` = Headscale+Headplane, `dependsOn` ingress, WRKLD-only; `ClusterRole`
+  adds ingress + cicd to both roles. 5 units keep `units/mesh` package + shared `MeshRefs`, k8s namespace
+  name kept `mesh-system` (rename would relocate the funnel cert + Headscale state) — tidy follow-ups.
+  planner tailscale.com cell → `ingress/tailscale`. Graph resolves, BUILD SUCCESS, registrar-table doc
+  updated. **Remaining:** the PaC webhook rewiring (below). Original design notes: **Finding:** `TailscaleManifestsUnit` is NOT the node-plane client — its
+  javadoc is "Tailscale operator connector + oauth"; it provisions the **funnel** proxies that expose
+  services PUBLICLY (`PacWebhookManifestsUnit` cicd, `FluxReceiverManifestsUnit` gitops). Its own code
+  says "Funnel … NOT the self-hosted headscale mesh (which has no funnel)". So `mesh` conflates TWO
+  concerns (same PublishFacet-style smell, at the taxonomy level):
+  - **mesh** = Headscale/Headplane — the self-hosted workload-plane control SERVICE. Stateful
+    (SQLite, `replicas:1`, `Recreate` — single-writer, verified NOT multi-replica-capable), always-live
+    → **wrkld-only** (hosted on the always-live `bioskop-wrkld`, never the on-demand mgmt).
+  - **ingress** = tailscale operator + `FunnelCertRestore` + `FunnelStatePersistence` + `TailnetPurge`
+    — a public-door CAPABILITY (not a shared service). Each cluster provisions its OWN doors →
+    **STRUCTURAL, base, BOTH roles** (like cluster/runtime/platform). User's call: the mgmt needs
+    webhooks / to expose its endpoints, structurally. The funnel state-persistence (stable FQDN across
+    restarts) + tailnet-purge (stale-device GC) are PRECISELY what makes ingress viable on an
+    on-demand/recreate cluster — so ingress-on-mgmt is the nominal case, not an entorse.
+  - Node-plane Tailscale (`mammoth-skate`, every node a member) = baked in NixOS node-base, NOT a
+    manifest. The mgmt reaches workloads over it at bootstrap, independent of Headscale — dissolves the
+    chicken-and-egg.
+  - Consumers keep their funnel `Ingress` objects (FluxReceiver, PacWebhook) and `dependsOn` the
+    ingress domain (as PacWebhook already dependsOn FunnelStatePersistence). Name = `ingress` (a
+    `manifests.ingress` package already exists). **OPEN TRAP (Q4):** the tailscale operator + headscale
+    share the `mesh-system` namespace (`MeshSystemNamespaceManifestsUnit`, FOUNDATION layer). Splitting
+    needs its own `ingress-system`/`tailscale-system` namespace or a shared-namespace owner without an
+    inter-domain cycle — resolve as you code. Then `ClusterRole` adds `ingress` to BOTH role sets.
+- **CONVERGED domain/role model (brainstorm 2026-09-08) — only TWO role-exclusive domains.** After the
+  ingress + cicd findings the target is: **structural base (BOTH roles)** = cluster, runtime, platform,
+  gitops, networking, storage, high-availability, **ingress** (funnel capability), **cicd** (Tekton
+  render + its webhook). **Role-exclusive** = **cluster-api** (mgmt — CAPI runs there), **mesh**
+  (wrkld — the always-live Headscale/Headplane control service). Everything else is shared: the role
+  differs ONLY on *who reconciles clusters* and *who hosts the mesh control-plane*.
+  - **cicd is structural (both roles), NOT wrkld-only** (my `f51ba1d10` split was wrong on this):
+    each cluster runs its OWN in-cluster manifests-render Tekton pipeline (the mgmt ALREADY has at
+    least the manifests-render pipeline). So `ClusterRole` must add cicd (+ ingress) to BOTH sets.
+- **★ mesh→ingress path drift — ROOT CAUSE FOUND + FIXED (`0017d8658`, 2026-09-09).** NOT a clean-tree
+  bug — the clean-tree render was never at fault. `RenderedBranch.prepare`/`GitCli.worktreeAdd` DOES
+  empty the worktree each render (`git rm -rf .`) and `stageAll` (`git add -A`) stages deletions, so a
+  dropped path IS pruned. The REAL cause: the mesh→ingress move (`ff95fe7ad`) was INCOMPLETE — it
+  shifted the Java package, the domain registrar and the k8s namespace, but the five moved units kept
+  stamping `PackageMetadataProfile("mesh", …)`. That first arg is the `io.seedmatic.rke2lab/domain`
+  annotation the exploder turns into the `<layer>/<domain>/<package>` output path
+  (`DefaultManifestExplodeService:100-109`) and `FluxServiceKustomizationPlanner` turns into a
+  `flux/<domain>/*` cell (`Cell(layer,domain,pkg)` from the tree dirs). So every render emitted a FULL
+  `mesh/` tree IN PARALLEL with the ingress-domain Kustomizations (split brain). On bioskop-mgmt the
+  stale `flux/mesh/mesh-tailscale` applied the operator UNGATED (the tailnet-purge gate lives on the
+  ingress cells) → funnel proxies drifted to a `-N` MagicDNS suffix. **Fix:** relabel the domain
+  "mesh"→"ingress" on all five units (+ one stale comment). The `git ls-tree` "both mesh AND ingress"
+  and the tip commit's `M`/`D`/`A` mesh churn were the tell: mesh files were being RE-RENDERED each
+  grow (M), not carried over — exactly what an incomplete rename + working clean-tree produces. Build
+  SUCCESS (`-Pclaude,all-worlds`, skipCache). NOTE: `PURGE_ENV="mesh/tailnet"` is a FloxEnv reference
+  (`FloxEnvFolder.MESH`, runtime domain, structural on BOTH roles — that's why the purge ran on mgmt),
+  NOT an output path; left as-is (renaming the flox folder is a separate runtime-domain concern).
+  Live cleanup of the already-drifted branch (optional, the next grow's clean tree does it anyway):
+  `git rm -r workloads/mesh flux/mesh flux/mesh.yml operators/mesh foundation/mesh` on
+  `manifests/bioskop-mgmt` + push. NEXT: fresh cold-start to validate.
+- **★ ingress → RENOMMÉ `tailscale` + mesh a son namespace (`50d6f76e1`, 2026-09-09).** Décision user (brainstorm) : l'opérateur Tailscale > ingress/funnel (il porte aussi le Connector subnet-router + l'inscription tailnet ; funnel = 1 capacité), et « ingress » collisionne avec EnvoyGateway (l'ingress in-cluster réel). Rename complet domaine `ingress`→`tailscale` (catalog, registrar, package `units.tailscale`, `TailscaleRefs`, namespace dédié `tailscale-system`, les 5 `PackageMetadataProfile`), + **mesh récupère son `mesh-system`** (`MeshSystemNamespaceManifestsUnit`, drop dependsOn tailscale) → dissout la dette de partage. Graphe résout, BUILD SUCCESS. **⚠️ FOLLOW-UP `.secrets` (sops, user) :** `replicateTo` `ingress-system` → `tailscale-system` (operator-oauth, tailnet-purge-oauth, floxhub-token pour le Job purge) + `mesh-system` (Headscale/Headplane). Supersède le change mesh→ingress précédent non-committé.
+- **PaC/Tekton webhook rewiring** (chantier cicd, IN PROGRESS — chunk 1 shipped `033b7fc2e`).
+  **Chunk 1 DONE (ghapp repo-webhook capability):** `TokenScope.REPO_ADMIN` (administration:write) +
+  minter mapping; `RepoWebhookConfig` + `GithubRepoWebhookConfigurer` contract +
+  `GithubRepoWebhookConfigurerEdge` (mints REPO_ADMIN token, idempotent GET/POST/PATCH
+  `/repos/{repo}/hooks` keyed by url, fail-fast, gardening-gated); `GithubAppCli` registration
+  pre-fills `administration=write` (operator GRANTED it on the App). App-webhook path untouched.
+  **Chunk 2 TODO (wiring — rewires the grow, do fresh):**
+  1. `PacWebhookFunnel` per-cluster: add cluster → leaf `pipelines-webhook-<cluster>` (LEAF is used
+     by BOTH `PacWebhookManifestsUnit` (Ingress tls host, has `bootstrapIdentity().clusterName()`)
+     and the host (`ClusterSeedScenario`/`GithubAppCli` via `url()`) — they must compute the SAME
+     per-cluster leaf).
+  2. Rewire the `ghapp-webhook` scion (`GithubAppWebhookScenario`) to reconcile a REPO webhook via
+     `GithubRepoWebhookConfigurer` + `RepoWebhookConfig(repo="seedmatic/rke2lab", per-cluster-url,
+     secret from .secrets github.webhook.secret, events=PaC set)` — instead of the App webhook.
+     `WebhookReconcileInput` gains repo/events (or the scenario hardcodes them).
+  3. `ClusterSeedScenario.the_github_app_webhook_is_reconciled` sows the per-cluster funnel url.
+  4. RETIRE the App-webhook path (no-dead-code): delete `GithubAppWebhookConfigurer` + its edge +
+     the App webhook_url/webhook_active from `GithubAppCli` registration (PaC no longer uses it).
+     Each cluster's grow reconciles ITS repo webhook on the shared repo (N repo webhooks OK).
+  6. **Generalise funnel-state PERSISTENCE beyond PaC (root-cause fix, found live 2026-09-08).** The
+     Flux funnel (`FluxReceiverManifestsUnit`) sets only `tailscale.com/funnel:true`, NO
+     `tailscale.com/proxy-class` — so it has NO persisted tailscale identity. Each grow its proxy pod
+     re-registers a NEW device → the old `flux-webhook` device lingers → MagicDNS drifts
+     `flux-webhook-1…-4` (observed live: `tailscale funnel status` on `ts-flux-webhook-*` shows
+     `flux-webhook-4.mammoth-skate.ts.net`, while the repo webhook points at `flux-webhook` → "failed
+     to connect to host"). PaC does NOT drift because it HAS the ProxyClass.
+     `FunnelStatePersistenceManifestsUnit` is hardcoded PaC-only (`STATE_SECRET`/`PROXY_CLASS` =
+     `PacWebhookFunnel.LEAF`). Fix: PARAMETERISE it per funnel — each funnel (flux, pac) × cluster gets
+     its own ProxyClass + `ts-<leaf>-state` secret + persist volume + backup/restore. Each grow the
+     drift silently burned LE prod certs (every `flux-webhook-N` is a distinct FQDN = a distinct cert
+     vs mammoth-skate.ts.net's 50/week) — the persisted certs were PaC-only, never Flux.
+  5. **`funnelCertStaging` SSOT (user requirement):** on staging the funnel certs are self-signed →
+     GitHub's webhook TLS handshake fails UNLESS the webhook is `insecure_ssl: 1`. So ONE config flag
+     `funnelCertStaging` (default false) must drive BOTH: (a) `TailscaleManifestsUnit`
+     `useLetsEncryptStagingEnvironment` (via the manifests facet → context, remove the hardcoded
+     `false`), and (b) the repo webhook's `insecure_ssl` (1 when staging, 0 when prod — add
+     `insecureSsl` to `RepoWebhookConfig` + the edge; the host sows it from the same config). Flip to
+     true for the rewire shakeout, back to false before the real grow. Two flags that must agree =
+     one source (SSOT discipline). Today `PacWebhookManifestsUnit`
+  uses the SINGULAR **GitHub App webhook** (its javadoc: "so GitHub's App webhook can reach it",
+  validates "the App webhook's signature" against `pipelines-as-code-secret`), while Flux uses a
+  per-repo `Receiver` (`type: github`, own `github.webhook.secret`). A GitHub App has ONE webhook URL;
+  a repo has MANY. So the App webhook can't fan out to two clusters' PaC controllers — a mono-cluster
+  assumption. Fix: PaC on a **per-repo webhook + own HMAC secret + own funnel** (mirror Flux); the
+  GitHub App keeps ONLY the auth role (token mint, per-cluster). Each cluster: Flux receiver funnel +
+  PaC webhook funnel, both `dependsOn` the ingress domain.
 - **2b — second render run** — produce `manifests/<host>-wrkld` by running the render a SECOND time
   with `role=wrkld`. The mgmt render (role=mgmt) already produces `-mgmt` (+ the workload CRs on it via
   1c). 2b is the twin invocation for the workload's own branch: `manifests publish cluster=<host>-wrkld`
@@ -194,7 +305,16 @@ a target. The targets are a set beside the identity; only the cluster-api units 
   workload's own in-cluster render once it's up (mirroring the mgmt in-cluster render model)? The
   config already frames "two clusters = two runs", so the mechanism is a second render invocation.
 - **3 — dataplan** `<cluster>` dimension (+ ndh `catalog.datasets`, `zfs-disko-config`, `zpool-init`).
-  Open: producer emit mechanism, openebs adoption, ephemeral wipe owner.
+  **⏸ EN PAUSE (pivot ProxyGroup 2026-09-09).** Forks TRANCHÉS : (1) producteur = **workloadTargets dans le
+  facet dataplan** (le grow mgmt émet l'union {mgmt + workloadTargets} par cluster ; miroir de foundation 1) ;
+  (2) persist = **tout par-cluster** (funnel-cert ET maven-cache — le repo local Maven n'est pas
+  concurrency-safe, un cache partagé se corromprait avec des builds simultanés). Design : `DataplanLayout`
+  paths `tank/rke2lab/<cluster>/{control-nodes/<node>,persist/*}` ; consommateurs (OpenebsZfs, FunnelCertRestore)
+  passent `clusterName()` ; producteur `DataplanScenario` émet l'union. **Scoping restant à confirmer À LA REPRISE :**
+  `NetplanRunbookInput`+`DataplanRunbookInput` ne portent QUE le SOIL (pas d'identité/cluster) — or netplan EST
+  cluster-aware ⇒ trouver COMMENT NetplanScenario obtient son cluster aujourd'hui (le pattern à mirrorer pour
+  injecter le set de clusters dans dataplan). ndh probablement transparent (dataplan.json = liste plate de datasets,
+  chemins plus profonds OK tant que les parents `rke2lab/<cluster>[/control-nodes|/persist]` sont émis).
 - **4 — Incus project per cluster** — ❌ DROPPED (2026-09-07). One `rke2lab` project suffices: instance
   names are globally unique via the blueprint, networks/images are shared regardless, and the operator
   wants all nodes in one project (the naming was designed for it). Marginal isolation not worth the cost.
