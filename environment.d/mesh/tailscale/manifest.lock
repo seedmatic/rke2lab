@@ -95,7 +95,7 @@
     },
     {
       "install_id": "tailscale",
-      "locked-url": "path:/private/var/lib/git/seedmatic/rke2lab.d/flox-catalogue?lastModified=1788951169&narHash=sha256-zH81yqAowwUdr9aWzL3BXaImuFPKuNA0xGUf0MzLC5k%3D",
+      "locked-url": "path:/private/var/lib/git/seedmatic/rke2lab.d/flox-catalogue?lastModified=1788951705&narHash=sha256-jjiEZTrMHlNW%2BV/jfFkQYa8og%2BBFhxZMO55Lv6ZCOFU%3D",
       "flake-description": "Flox runtime env catalog: per-workload packages (kdns, headplane, headscale, tailscale) the flox-nri-plugin injects. The plugin itself now lives in github:seedmatic/flox-nri-plugin (consumed as the flox-runtime input of the rke2lab flake).",
       "locked-flake-attr-path": "packages.aarch64-linux.tailscale",
       "derivation": "/nix/store/pv40hcjmg8pbvx5lh1im5nvvf1vq02c3-tailscale.drv",

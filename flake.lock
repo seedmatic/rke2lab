@@ -22869,16 +22869,19 @@
     "claude-hub": {
       "inputs": {
         "flake-commons": [
+          "rke2lab",
           "ndh",
           "flake-commons"
         ],
         "flake-utils": [
+          "rke2lab",
           "ndh",
           "claude-hub",
           "flake-commons",
           "flake-utils"
         ],
         "nixpkgs": [
+          "rke2lab",
           "ndh",
           "claude-hub",
           "flake-commons",
@@ -103108,17 +103111,14 @@
     "flox-controller": {
       "inputs": {
         "flake-commons": [
-          "ndh",
           "rke2lab",
           "flake-commons"
         ],
         "flake-utils": [
-          "ndh",
           "rke2lab",
           "flake-utils"
         ],
         "nixpkgs": [
-          "ndh",
           "rke2lab",
           "nixpkgs"
         ]
@@ -103141,17 +103141,14 @@
     "flox-runtime": {
       "inputs": {
         "flake-commons": [
-          "ndh",
           "rke2lab",
           "flake-commons"
         ],
         "flake-utils": [
-          "ndh",
           "rke2lab",
           "flake-utils"
         ],
         "nixpkgs": [
-          "ndh",
           "rke2lab",
           "nixpkgs"
         ]
@@ -153151,102 +153148,124 @@
     "ndh": {
       "inputs": {
         "bird": [
+          "rke2lab",
           "ndh",
           "flake-commons",
           "bird"
         ],
         "cachix": [
+          "rke2lab",
           "ndh",
           "flake-commons",
           "cachix"
         ],
         "chromium-bin": [
+          "rke2lab",
           "ndh",
           "flake-commons",
           "chromium-bin"
         ],
         "claude-hub": "claude-hub",
         "darwin": [
+          "rke2lab",
           "ndh",
           "flake-commons",
           "darwin"
         ],
         "disko": [
+          "rke2lab",
           "ndh",
           "flake-commons",
           "disko"
         ],
         "flake-commons": [
+          "rke2lab",
           "flake-commons"
         ],
         "flake-compat": [
+          "rke2lab",
           "ndh",
           "flake-commons",
           "flake-compat"
         ],
         "flake-utils": [
+          "rke2lab",
           "ndh",
           "flake-commons",
           "flake-utils"
         ],
         "flox": [
+          "rke2lab",
           "ndh",
           "flake-commons",
           "flox"
         ],
         "home-manager": [
+          "rke2lab",
           "ndh",
           "flake-commons",
           "home-manager"
         ],
         "impermanence": [
+          "rke2lab",
           "ndh",
           "flake-commons",
           "impermanence"
         ],
         "incus-compose": [
+          "rke2lab",
           "ndh",
           "flake-commons",
           "incus-compose"
         ],
         "lix-module": [
+          "rke2lab",
           "ndh",
           "flake-commons",
           "lix-module"
         ],
         "maven-mvnd": [
+          "rke2lab",
           "ndh",
           "flake-commons",
           "maven-mvnd"
         ],
         "nix": [
+          "rke2lab",
           "ndh",
           "flake-commons",
           "nix"
         ],
         "nixos-hardware": [
+          "rke2lab",
           "ndh",
           "flake-commons",
           "nixos-hardware"
         ],
         "nixpkgs": [
+          "rke2lab",
           "ndh",
           "flake-commons",
           "nixpkgs"
         ],
         "nixpkgs-unstable": [
+          "rke2lab",
           "ndh",
           "flake-commons",
           "nixpkgs-unstable"
         ],
         "nnh": "nnh",
         "ripvcs": [
+          "rke2lab",
           "ndh",
           "flake-commons",
           "ripvcs"
         ],
-        "rke2lab": "rke2lab",
+        "rke2lab": [
+          "rke2lab"
+        ],
         "socket-vmnet": [
+          "rke2lab",
           "ndh",
           "flake-commons",
           "socket-vmnet"
@@ -153255,6 +153274,7 @@
         "tailscale-fork": "tailscale-fork",
         "treefmt-nix": "treefmt-nix_230",
         "zen-browser": [
+          "rke2lab",
           "ndh",
           "flake-commons",
           "zen-browser"
@@ -248395,13 +248415,16 @@
       "inputs": {
         "akvorado": "akvorado",
         "flake-commons": [
+          "rke2lab",
           "ndh",
           "flake-commons"
         ],
         "ndh": [
+          "rke2lab",
           "ndh"
         ],
         "nixpkgs": [
+          "rke2lab",
           "ndh",
           "nnh",
           "flake-commons",
@@ -282582,45 +282605,38 @@
     "rke2lab": {
       "inputs": {
         "flake-commons": [
-          "ndh",
           "flake-commons"
         ],
         "flake-utils": [
-          "ndh",
           "rke2lab",
           "flake-commons",
           "flake-utils"
         ],
         "flox": [
-          "ndh",
           "rke2lab",
           "flake-commons",
           "flox"
         ],
         "flox-controller": "flox-controller",
         "flox-runtime": "flox-runtime",
-        "ndh": [
-          "ndh"
-        ],
+        "ndh": "ndh",
         "nixpkgs": [
-          "ndh",
           "rke2lab",
           "flake-commons",
           "nixpkgs"
         ],
         "sops-nix": [
-          "ndh",
           "rke2lab",
           "flake-commons",
           "sops-nix"
         ]
       },
       "locked": {
-        "lastModified": 1788947716,
-        "narHash": "sha256-scTtrQBpRkIs89d2N8SpmDRuczYfUcd3uYkPXe1aqKc=",
+        "lastModified": 1788951634,
+        "narHash": "sha256-QmRN7AeIgm6q5P/QqbQ0Q/U9cpj4EgPqB/NswW89vHQ=",
         "owner": "seedmatic",
         "repo": "rke2lab",
-        "rev": "bba3e4d9ad02289801d030f48598868f7898a2da",
+        "rev": "95a1e3d77ab532397fbe7c77b33c85a14c1f70fd",
         "type": "github"
       },
       "original": {
@@ -282640,11 +282656,15 @@
         "headplane": "headplane",
         "headscale": "headscale",
         "kdns-src": "kdns-src",
-        "ndh": "ndh",
+        "ndh": [
+          "rke2lab",
+          "ndh"
+        ],
         "nixpkgs": [
           "flake-commons",
           "nixpkgs"
-        ]
+        ],
+        "rke2lab": "rke2lab"
       }
     },
     "rust-analyzer-src": {
@@ -307268,6 +307288,7 @@
       "inputs": {
         "flake-compat": "flake-compat_814",
         "nixpkgs": [
+          "rke2lab",
           "ndh",
           "flake-commons",
           "nixpkgs-unstable"

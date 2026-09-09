@@ -29,12 +29,20 @@
       url = "github:juanfont/headscale?ref=v0.29.3";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    # ndh (public) carries manage-tailnet — the bash tool that prunes stale tailnet
-    # devices via the Tailscale API. Re-exported below so the in-cluster prune Job
-    # gets it from THIS catalog like the other workloads. follows flake-commons (as
-    # the top-level rke2lab flake does) so the nixpkgs is unified.
-    ndh.url = "github:seedmatic/ndh/develop";
-    ndh.inputs.flake-commons.follows = "flake-commons";
+    # rke2lab is the single owner of the `ndh` pin: this catalog is a branch of
+    # rke2lab and part of its world, so it FOLLOWS rke2lab's ndh instead of
+    # pinning ndh independently. That keeps the host (path A, rke2lab's
+    # services.tailscale) and the mesh (path B, tailscale-prod below) on the
+    # exact same ndh rev → the same tailscale fork build, no drift. rke2lab
+    # doesn't take this catalog as an input (it references the flox-catalogue
+    # branch at runtime via the FloxCatalog), and the ndh<->rke2lab edge is
+    # already cut in rke2lab (ndh.inputs.rke2lab.follows = ""), so no cycle.
+    rke2lab.url = "github:seedmatic/rke2lab/feature/nixos-node-substrate";
+    rke2lab.inputs.flake-commons.follows = "flake-commons";
+
+    # ndh (public) carries manage-tailnet + the tailscale fork
+    # (packages.<sys>.tailscale). Follows rke2lab's pin — see above.
+    ndh.follows = "rke2lab/ndh";
   };
 
   outputs = {
