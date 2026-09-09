@@ -35,6 +35,7 @@ Documentation for the RKE2Lab project - multi-cluster Kubernetes bootstrap via P
 * link:architecture/nixos-substrate/concern-ownership.adoc[Concern ownership] - the old→new redistribution table: where each provisioning responsibility lands once the substrate is declarative
 * link:architecture/nixos-substrate/node-bootstrap-delivery.adoc[Node-side bootstrap delivery] - how the CNI (cilium) + Flux reach a grown node's `server/manifests` over devlxd, now that cloud-init + `/srv/host` are gone
 * link:architecture/nixos-substrate/flox-containerd-runtime.adoc[The flox containerd runtime] - the nix-native runtime *shim* baked into the base closure; the *envs* it injects are delivered at runtime as `FloxEnv` CRs reconciled onto the host store (not baked); the dev→prod build trajectory
+* link:architecture/nixos-substrate/tailscale-fork-supply-chain.adoc[Tailscale fork supply chain] - how the patched tailscale/tailscaled (CNAME extra_records + SSH-2222) reaches BOTH the operator host and the in-cluster mesh through `ndh` as single source of truth; C4 of the two consumption paths + the manual bump runbook (fork rebase → ndh → rke2lab → flox-catalogue → deploy)
 * link:architecture/atlas/nixos-substrate.adoc[Atlas — NixOS substrate] - the codebase↔vision before/after delta (C4 figures)
 
 === Policies & Configuration

@@ -1,0 +1,302 @@
+= Tailscale Fork Supply Chain
+:toc: macro
+:toclevels: 3
+
+toc::[]
+
+== Overview
+
+rke2lab runs a *patched tailscale/tailscaled*, not the stock upstream binary.
+Two patches justify the fork:
+
+* *CNAME in `DNSRecord.ExtraRecords`* — the local resolver honours
+  `Type="CNAME"` extra-records pushed by the control plane (headscale), chasing
+  the chain in the node's own resolver (depth-limited, cycle-safe) and in
+  tsdial so `tailscale ssh <alias>` follows the alias too. This is the reason
+  the fork must reach the *in-cluster mesh daemon*: that is where the control
+  plane pushes the CNAME records.
+* *SSH interception on port 2222* — moves tailscale's SSH interception off 22.
+
+The fork lives at `github:nxmatic/tailscale`, on a *single* integration branch
+`nxmatic/integration/1.102` = upstream `release-branch/1.102` + the two patches
+(+ a headscale lab scaffold). Upstream tailscale ships its own `flake.nix` +
+`flakehashes.json` (vendorHash + go-toolchain SRI); both patches are pure-Go and
+never touch `go.mod`, so that vendorHash stays valid across an upstream rebase —
+the fork builds itself, decoupled from whatever `tailscale` version
+nixpkgs happens to ship.
+
+The cost of the fork is a *multi-hop supply chain*: the patched binary has to
+reach two independent consumers (the operator host and the in-cluster mesh) that
+resolve tailscale through different mechanisms. This document maps that chain and
+gives the manual bump runbook, until the bump is automated.
+
+== C4 — Context
+
+The fork feeds two consumption paths; `ndh` is the single source of truth for the
+build.
+
+[mermaid]
+....
+graph TD
+    UP["upstream tailscale<br/>release-branch/1.102<br/>(ships flake.nix + flakehashes.json)"]:::ext
+    FORK["nxmatic/tailscale<br/>branch nxmatic/integration/1.102<br/>(+ CNAME, + SSH-2222)"]:::fork
+
+    NDH["ndh flake<br/>(seedmatic/ndh, develop)<br/>tailscale-fork input + tailscaleOverlay"]:::ssot
+
+    RKE["rke2lab flake<br/>(pins ndh)"]:::consumer
+    CAT["flox-catalogue branch<br/>(pins ndh)"]:::consumer
+
+    HOSTS["Operator + node hosts<br/>bioskop / bioskop-nixos<br/>services.tailscale (PATH A)"]:::runtime
+    MESH["In-cluster mesh pods<br/>headscale-gateway / -client<br/>tailscaled (PATH B)"]:::runtime
+
+    UP -->|rebase onto| FORK
+    FORK -->|tailscale-fork input| NDH
+    NDH -->|ndh pin| RKE
+    NDH -->|ndh pin| CAT
+    RKE -->|nixos/darwin config| HOSTS
+    CAT -->|FloxCatalog CR + flox-controller| MESH
+
+    classDef ext fill:#7a7a7a,stroke:#333,color:#fff;
+    classDef fork fill:#1f6feb,stroke:#0b3d91,color:#fff;
+    classDef ssot fill:#8250df,stroke:#4b2a86,color:#fff;
+    classDef consumer fill:#2da44e,stroke:#116329,color:#fff;
+    classDef runtime fill:#bf8700,stroke:#7d5700,color:#fff;
+....
+
+[cols="1,3"]
+|===
+| Colour | Meaning
+
+| grey | Upstream (not ours)
+| blue | The fork (our patched source)
+| purple | Single source of truth for the build (`ndh`)
+| green | Flake consumers that pin `ndh`
+| amber | Runtime — where a `tailscaled` actually runs
+|===
+
+== C4 — Build & resolution flow
+
+How the patched derivation is produced once (in `ndh`) and reaches each runtime.
+
+[mermaid]
+....
+graph TD
+    subgraph fork["fork flake (nxmatic/tailscale)"]
+        FH["flakehashes.json<br/>vendorHash + go SRI"]:::art
+        FP["packages.&lt;sys&gt;.tailscale"]:::art
+        FH --> FP
+    end
+
+    subgraph ndh["ndh flake"]
+        IN["input tailscale-fork<br/>ref = nxmatic/integration/1.102"]:::art
+        OV["overlays/tailscale.nix<br/>tailscaleOverlay<br/>(version + longStamp/shortStamp)"]:::art
+        LP["legacyPackages.&lt;sys&gt;.tailscale"]:::art
+        PK["packages.&lt;sys&gt;.tailscale<br/>(re-export of overlaid pkg)"]:::art
+        OX["overlays.tailscaleOverlay<br/>(exported)"]:::art
+        IN --> OV
+        OV --> LP
+        OV --> OX
+        LP --> PK
+    end
+
+    FP --> IN
+
+    subgraph hostA["PATH A — host (rke2lab pins ndh)"]
+        SVC["services.tailscale.package<br/>(pkgsFor has the overlay)"]:::run
+        LP --> SVC
+    end
+
+    subgraph meshB["PATH B — mesh (flox-catalogue pins ndh)"]
+        TP["catalogue: tailscale-prod =<br/>ndh.packages.&lt;sys&gt;.tailscale"]:::run
+        FE["FloxEnv mesh/tailscale<br/>install ref floxcatalog:catalogue#tailscale"]:::run
+        FC["FloxCatalog CR + GitRepository(flox-catalogue)<br/>flox-controller resolves the output"]:::run
+        POD["mesh tailscaled"]:::run
+        PK --> TP
+        TP --> FE
+        FE --> FC
+        FC --> POD
+    end
+
+    classDef art fill:#ddf4ff,stroke:#0969da,color:#000;
+    classDef run fill:#fff8c5,stroke:#9a6700,color:#000;
+....
+
+Key points:
+
+* `pkgsFor` in `ndh` applies `tailscaleOverlay`, so `legacyPackages.<sys>.tailscale`
+  *is* the fork. `packages.<sys>.tailscale` merely re-exports it (`inherit
+  (systemPkgs) tailscale`) to give consumers a first-class output.
+* *Path A* rides `legacyPackages` through the host's `services.tailscale`.
+* *Path B* consumes the explicit `packages.<sys>.tailscale` output; the
+  flox-catalogue re-export is what the FloxEnv resolves via the FloxCatalog.
+* The overlay keeps `shortStamp` at the *upstream* version string (read from
+  `VERSION.txt`) because headscale's client/server skew check is string-equality
+  on the short stamp; the fork identity rides `longStamp`
+  (`<version>-nxmatic-integration-<shortrev>`).
+
+== The two consumption paths
+
+Both paths must be wired, and it is easy to wire only one.
+
+[NOTE]
+====
+The host path (A) and the mesh path (B) resolve tailscale *independently*. Fixing
+the fork input in `ndh` only moves whichever path actually consumes the fork.
+====
+
+.❌ Anti-pattern (the trap this fork hit)
+[source,nix]
+----
+# flox-catalogue/flake.nix — mesh consumed STOCK nixpkgs, patch never landed
+tailscale-prod = pkgs.tailscale.overrideAttrs (_: { doCheck = false; });
+----
+
+The comment even read "upstream prod from nixpkgs" — so the operator host ran the
+fork while the in-cluster daemon (the one the CNAME patch exists *for*) silently
+ran stock tailscale.
+
+.✅ Correct — mesh consumes the ndh fork
+[source,nix]
+----
+# flox-catalogue/flake.nix
+tailscale-prod = ndh.packages.${system}.tailscale.overrideAttrs (_: {
+  doCheck = false;   # lab-only; upstream atomicfile_test fails in the nix sandbox
+});
+----
+
+This guarantees the mesh `tailscaled` is the *same* patched binary as the host.
+
+Verify a host is on the fork:
+
+[source,console]
+----
+$ tailscaled --version
+1.102.3
+  tailscale commit: 7b962478b2ad5b437e84911bce2563569e292dc3
+  long version: 1.102.3-nxmatic-integration-7b96247
+----
+
+== Bump runbook (manual, until automated)
+
+Bumping tailscale to a newer upstream version touches four repos in order. Each
+step is a commit + push; the runtime rollout is the last step.
+
+=== 1. Fork — rebase onto the new upstream
+
+[source,console]
+----
+cd /var/lib/git/tailscale/tailscale
+git fetch upstream --tags
+# Rebase our patches onto the new stable release branch tip:
+git rebase upstream/release-branch/1.<NEW> nxmatic/integration/1.<NEW>
+#   (or cherry-pick the patch commits onto a fresh branch off the new base;
+#    keep it a SINGLE integration branch — see Troubleshooting)
+git push --force-with-lease origin nxmatic/integration/1.<NEW>
+----
+
+`flakehashes.json` is upstream's and travels with the base; our patches don't
+touch `go.mod`, so vendorHash stays valid. Only if `go.mod` changed (rare) refresh
+it via the fork flake's update tool.
+
+If the branch name changed (new upstream major), also update
+`ndh/flake.nix` `tailscale-fork.url` ref and `overlays/tailscale.nix`
+`forkBranchTag`.
+
+=== 2. ndh — re-lock + build-check
+
+[source,console]
+----
+cd /private/var/lib/git/seedmatic/ndh
+nix flake update tailscale-fork
+nix build .#tailscale --no-link      # validates vendorHash: tailscale-go-modules.drv must build
+git commit -am "feat(tailscale-fork): bump to 1.<NEW>"
+git push origin develop
+----
+
+=== 3. rke2lab — host path A
+
+[source,console]
+----
+cd <rke2lab worktree>
+nix flake update ndh
+git commit -m "chore(lock): bump ndh (tailscale 1.<NEW>)" flake.lock
+git push
+----
+
+Hosts pick up the fork on their next `nixos-rebuild switch` / `darwin-rebuild switch`
+(they enable `services.tailscale`, whose package comes from `ndh`'s overlaid pkgs).
+
+=== 4. flox-catalogue — mesh path B
+
+[source,console]
+----
+cd /private/var/lib/git/seedmatic/rke2lab.d/flox-catalogue   # dedicated worktree
+nix flake update ndh
+# Confirm the catalogue output is the fork:
+nix eval '.#packages.aarch64-linux.tailscale.ldflags' \
+  --apply 'fs: builtins.filter (f: builtins.isString f && builtins.match ".*gitCommitStamp.*" f != null) fs'
+#   -> [ "-X tailscale.com/version.gitCommitStamp=<new-fork-rev>" ]
+git commit -m "chore(lock): bump ndh (mesh tailscale 1.<NEW>)" flake.nix flake.lock
+git push origin flox-catalogue
+----
+
+[NOTE]
+====
+The runtime mesh install ref is `floxcatalog:catalogue#tailscale`, which the
+flox-controller resolves against the *catalogue flake output* at the reconciled
+commit — not against `environment.d/mesh/tailscale/manifest.lock`. That committed
+`manifest.lock` is for local `flox activate` reproducibility, not the in-cluster
+mesh path; re-locking it (`flox activate -- ./lock-envs.sh mesh/tailscale
+mesh/tailscale-debug`, needs an aarch64-linux builder) is a hygiene step, not a
+rollout gate.
+====
+
+=== 5. Deploy the mesh
+
+Flux reconciles the `flox-catalogue` `GitRepository` to the new commit → the
+`FloxCatalog` artifact advances → `FloxEnv mesh/tailscale` re-resolves
+`floxcatalog:catalogue#tailscale` → the flox-controller re-realises it onto nodes
+→ restart the mesh pods (`headscale-gateway` Deployment, `headscale-client`
+DaemonSet) to pick up the new `tailscaled`.
+
+== Troubleshooting
+
+[cols="1,2,2"]
+|===
+| Symptom | Cause | Fix
+
+| `nix flake update tailscale-fork` fails, `ref not found`
+| The fork branch was renamed/deleted (there must be exactly ONE integration
+  branch)
+| Point `ndh/flake.nix` `tailscale-fork.url` at the current branch, then update.
+
+| vendorHash / `tailscale-go-modules.drv` hash mismatch at build
+| The upstream rebase changed `go.mod`
+| Refresh the fork's `flakehashes.json` (upstream's update tool) on the fork
+  branch, push, re-`nix flake update tailscale-fork`.
+
+| Mesh still reports the old version after a bump
+| Path B not propagated (flake edited but catalogue not re-locked/reconciled, or
+  pods not restarted)
+| `nix eval` the catalogue `packages.<sys>.tailscale` ldflags to confirm the fork
+  rev; check the `flox-catalogue` `GitRepository` reconciled to the new commit;
+  restart mesh pods.
+
+| headscale rejects the client (version skew)
+| `shortStamp` was changed off the upstream version string
+| Keep `shortStamp = forkVersion` (from `VERSION.txt`); only `longStamp` carries
+  the fork tag. See `ndh/overlays/tailscale.nix`.
+
+| Host on the fork but `tailscale ssh <cname-alias>` doesn't resolve
+| The alias is a control-plane CNAME extra-record; only the patched resolver
+  chases it
+| Confirm the host runs the fork (`tailscaled --version` shows
+  `-nxmatic-integration-`); confirm the mesh daemon is the fork too (path B).
+|===
+
+== Related Documentation
+
+* link:flox-containerd-runtime.adoc[The flox containerd runtime] — the runtime shim that injects mesh workload packages; tailscale is one such workload.
+* link:../patterns/flox-store-resolved-runtime-and-builder.adoc[Flox Store-Resolved Runtime + Remote Nix Builder] — how FloxEnv packages (incl. this tailscale) are delivered onto the host store.
+* link:../patterns/daemonset-host-assets-architecture.adoc[DaemonSet Host Assets Architecture] — the `flox-catalogue` branch → FloxCatalog delivery model this doc's path B rides.
+* link:../patterns/flox-env-readiness-gating.adoc[FloxEnv readiness gating] — how the mesh pods wait for their FloxEnv (incl. tailscale) to be realised.

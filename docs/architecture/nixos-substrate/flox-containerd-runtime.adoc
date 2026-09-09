@@ -50,3 +50,4 @@ build survives as the *retained runtime-contribution* tier, no longer the primar
 * link:../patterns/daemonset-host-assets-architecture.adoc[Daemonset host-assets] — the post-join host-mutation channel the dev-loop build rides.
 * link:../patterns/flox-store-resolved-runtime-and-builder.adoc[Flox Store-Resolved Runtime + Remote Nix Builder] — the two-tier design + the fork-repo extraction (Part 1) + the remote builder (Part 2).
 * link:../nri-plugin-c4-diagrams.adoc[NRI Plugin C4 Diagrams] — the foundation-tier bake context + the retained extension-tier installer diagrams.
+* link:tailscale-fork-supply-chain.adoc[Tailscale fork supply chain] — a concrete workload this runtime injects: how the patched tailscale reaches the mesh (path B) alongside the operator host (path A), and the bump runbook.
