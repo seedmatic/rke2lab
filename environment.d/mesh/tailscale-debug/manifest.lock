@@ -34,17 +34,17 @@
     {
       "attr_path": "bash",
       "broken": false,
-      "derivation": "/nix/store/6m17d0hk048xgklqrblndd6hxbx536x9-bash-interactive-5.3p15.drv",
+      "derivation": "/nix/store/43c5mqrji1g24gr7kgl7rz7h56biywx6-bash-interactive-5.3p15.drv",
       "description": "GNU Bourne-Again Shell, the de facto standard shell on Linux (for interactive use)",
       "install_id": "bash",
       "license": "GPL-3.0-or-later",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=56c02bc00adcf003215cc4bd996d6efaf4cff188",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d6524aaca2ff07876657ae2b323f24be4874944b",
       "name": "bash-interactive-5.3p15",
       "pname": "bash",
-      "rev": "56c02bc00adcf003215cc4bd996d6efaf4cff188",
-      "rev_count": 1060451,
-      "rev_date": "2026-08-23T15:22:48Z",
-      "scrape_date": "2026-08-25T05:27:21.628451Z",
+      "rev": "d6524aaca2ff07876657ae2b323f24be4874944b",
+      "rev_count": 1069856,
+      "rev_date": "2026-09-08T15:35:43Z",
+      "scrape_date": "2026-09-09T05:30:33.380330Z",
       "stabilities": [
         "unstable"
       ],
@@ -57,12 +57,12 @@
         "out"
       ],
       "outputs": {
-        "debug": "/nix/store/0dl2x2hd1chhnl1jnzid2n2pigidvvw3-bash-interactive-5.3p15-debug",
-        "dev": "/nix/store/jllm6fy12lsxnk9af20yjf83livhddzh-bash-interactive-5.3p15-dev",
-        "doc": "/nix/store/p7kxvv6n35nkn2kf7m4gsyh18lpdc174-bash-interactive-5.3p15-doc",
-        "info": "/nix/store/3n2nk4fr1c3lk7dqbvd802svdrhmg7fd-bash-interactive-5.3p15-info",
-        "man": "/nix/store/gdbq6857ydnda2zi8fhdmzpbjh9d946l-bash-interactive-5.3p15-man",
-        "out": "/nix/store/a9kda025a17126f14c01xpwscmjqddwb-bash-interactive-5.3p15"
+        "debug": "/nix/store/713g2mp1i8xpmbdmi3kifdhla7g0gsin-bash-interactive-5.3p15-debug",
+        "dev": "/nix/store/360xx4r3q0zf4mkd824ngw1g0ijxijmi-bash-interactive-5.3p15-dev",
+        "doc": "/nix/store/v6laahd0c284g94x6b18am6ni7l4lcaw-bash-interactive-5.3p15-doc",
+        "info": "/nix/store/1sy5cvzy4k1kg8rq9m9py5qnhxcklri6-bash-interactive-5.3p15-info",
+        "man": "/nix/store/x5hnm458p9mhfbf9qjbdh0kx3niml2ca-bash-interactive-5.3p15-man",
+        "out": "/nix/store/2v6yfrj5kcq2f5vqw63cr6c3d6i898qc-bash-interactive-5.3p15"
       },
       "system": "aarch64-linux",
       "group": "toplevel",
@@ -71,17 +71,17 @@
     {
       "attr_path": "coreutils",
       "broken": false,
-      "derivation": "/nix/store/zywpcpzi0b2d4av1h0lg7x8nnf672mfz-coreutils-9.11.drv",
+      "derivation": "/nix/store/d3f8fssi5bl2dp8i31xh102pmq7znwwi-coreutils-9.11.drv",
       "description": "GNU Core Utilities",
       "install_id": "coreutils",
       "license": "GPL-3.0-or-later",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=56c02bc00adcf003215cc4bd996d6efaf4cff188",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d6524aaca2ff07876657ae2b323f24be4874944b",
       "name": "coreutils-9.11",
       "pname": "coreutils",
-      "rev": "56c02bc00adcf003215cc4bd996d6efaf4cff188",
-      "rev_count": 1060451,
-      "rev_date": "2026-08-23T15:22:48Z",
-      "scrape_date": "2026-08-25T05:27:22.130238Z",
+      "rev": "d6524aaca2ff07876657ae2b323f24be4874944b",
+      "rev_count": 1069856,
+      "rev_date": "2026-09-08T15:35:43Z",
+      "scrape_date": "2026-09-09T05:30:33.908098Z",
       "stabilities": [
         "unstable"
       ],
@@ -94,9 +94,9 @@
         "out"
       ],
       "outputs": {
-        "debug": "/nix/store/9s0n8g4m0yy3fkglglir6vfm3g7lncvl-coreutils-9.11-debug",
-        "info": "/nix/store/kk4nsbj48pn6d33rvmxiw6w7r17bqdkn-coreutils-9.11-info",
-        "out": "/nix/store/dqxknsb71lsgzfzcdmn6x7fzssqbdyyx-coreutils-9.11"
+        "debug": "/nix/store/mm20p77c25q3xf822lzfwfb11i6w14p8-coreutils-9.11-debug",
+        "info": "/nix/store/rlgrpyjxh9xgx6bi3p8lv2bp4vhqagkh-coreutils-9.11-info",
+        "out": "/nix/store/85k56vdxxb75xmgvxj4zhaawyafkchwh-coreutils-9.11"
       },
       "system": "aarch64-linux",
       "group": "toplevel",
@@ -105,17 +105,17 @@
     {
       "attr_path": "curl",
       "broken": false,
-      "derivation": "/nix/store/n6mbhphh51pv5i3hvzhjmkmmchqg49m8-curl-8.21.0.drv",
+      "derivation": "/nix/store/jb7rplvvzd1wyahggysw1b5bb6pzyqkr-curl-8.21.0.drv",
       "description": "Command line tool for transferring files with URL syntax",
       "install_id": "curl",
       "license": "curl",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=56c02bc00adcf003215cc4bd996d6efaf4cff188",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d6524aaca2ff07876657ae2b323f24be4874944b",
       "name": "curl-8.21.0",
       "pname": "curl",
-      "rev": "56c02bc00adcf003215cc4bd996d6efaf4cff188",
-      "rev_count": 1060451,
-      "rev_date": "2026-08-23T15:22:48Z",
-      "scrape_date": "2026-08-25T05:27:22.223898Z",
+      "rev": "d6524aaca2ff07876657ae2b323f24be4874944b",
+      "rev_count": 1069856,
+      "rev_date": "2026-09-08T15:35:43Z",
+      "scrape_date": "2026-09-09T05:30:34.010070Z",
       "stabilities": [
         "unstable"
       ],
@@ -128,12 +128,12 @@
         "man"
       ],
       "outputs": {
-        "bin": "/nix/store/ai0yaxin94p1ya5d49nw0bbbqx17jzdr-curl-8.21.0-bin",
-        "debug": "/nix/store/a5p76djkfsw0k6gcr86rc5lxdm8qp95f-curl-8.21.0-debug",
-        "dev": "/nix/store/r19irjfvzkzijszg9nqkb4h9by6y7762-curl-8.21.0-dev",
-        "devdoc": "/nix/store/i24iyj11axsw8xq225z4bhfzfr4bg9q8-curl-8.21.0-devdoc",
-        "man": "/nix/store/fdn90f4m92qk40q8vq8ijpq1yvbd0pci-curl-8.21.0-man",
-        "out": "/nix/store/w0szn2ip93x22mzmlxxgncrcj9qnm4wc-curl-8.21.0"
+        "bin": "/nix/store/vg5pj1j7y8hl6f6i4wb040qpv84m9fcx-curl-8.21.0-bin",
+        "debug": "/nix/store/f675jagq2dzjnxq0zgck37mzlxfil7xr-curl-8.21.0-debug",
+        "dev": "/nix/store/xbhfcsv7s8wq5j50zkqvkb5jqc9zfclq-curl-8.21.0-dev",
+        "devdoc": "/nix/store/8ls4grcya4aflgqc4a4b2c7rl07a0ir3-curl-8.21.0-devdoc",
+        "man": "/nix/store/5s4va5bkyq2jipcaqk8l5vmywwxjk8p9-curl-8.21.0-man",
+        "out": "/nix/store/4m2zy0glpqrj0pl4hmycid216l7racp7-curl-8.21.0"
       },
       "system": "aarch64-linux",
       "group": "toplevel",
@@ -142,17 +142,17 @@
     {
       "attr_path": "delve",
       "broken": false,
-      "derivation": "/nix/store/kzaa5q4jjdlx9y7bhhkp7783xs2lk9n5-delve-1.27.1.drv",
+      "derivation": "/nix/store/vq6cxv8pd02yqshp2pddllpfdvr1s4r1-delve-1.27.1.drv",
       "description": "Debugger for the Go programming language",
       "install_id": "delve",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=56c02bc00adcf003215cc4bd996d6efaf4cff188",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d6524aaca2ff07876657ae2b323f24be4874944b",
       "name": "delve-1.27.1",
       "pname": "delve",
-      "rev": "56c02bc00adcf003215cc4bd996d6efaf4cff188",
-      "rev_count": 1060451,
-      "rev_date": "2026-08-23T15:22:48Z",
-      "scrape_date": "2026-08-25T05:27:22.322783Z",
+      "rev": "d6524aaca2ff07876657ae2b323f24be4874944b",
+      "rev_count": 1069856,
+      "rev_date": "2026-09-08T15:35:43Z",
+      "scrape_date": "2026-09-09T05:30:34.113267Z",
       "stabilities": [
         "unstable"
       ],
@@ -162,7 +162,7 @@
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/kq78xx7aax02syz5fd65q1aajm37qq9a-delve-1.27.1"
+        "out": "/nix/store/s0mk34slf6irk22mvlirks9b24yvz9iw-delve-1.27.1"
       },
       "system": "aarch64-linux",
       "group": "toplevel",
@@ -171,30 +171,30 @@
     {
       "attr_path": "strace",
       "broken": false,
-      "derivation": "/nix/store/x5c6g773g4ghv0l8w2d4fd4vcy9inl04-strace-7.1.drv",
+      "derivation": "/nix/store/0r8jhzjcvry88xsyi5cxdja070sqzzk8-strace-7.2.drv",
       "description": "System call tracer for Linux",
       "install_id": "strace",
       "license": "[ LGPL-2.1-or-later, GPL-2.0-or-later ]",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=56c02bc00adcf003215cc4bd996d6efaf4cff188",
-      "name": "strace-7.1",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d6524aaca2ff07876657ae2b323f24be4874944b",
+      "name": "strace-7.2",
       "pname": "strace",
-      "rev": "56c02bc00adcf003215cc4bd996d6efaf4cff188",
-      "rev_count": 1060451,
-      "rev_date": "2026-08-23T15:22:48Z",
-      "scrape_date": "2026-08-25T05:29:55.193005Z",
+      "rev": "d6524aaca2ff07876657ae2b323f24be4874944b",
+      "rev_count": 1069856,
+      "rev_date": "2026-09-08T15:35:43Z",
+      "scrape_date": "2026-09-09T05:33:11.615675Z",
       "stabilities": [
         "unstable"
       ],
       "unfree": false,
-      "version": "7.1",
+      "version": "7.2",
       "outputs_to_install": [
         "man",
         "out"
       ],
       "outputs": {
-        "debug": "/nix/store/5v2hfbdy27cirbqx9njw3617vc55rqw2-strace-7.1-debug",
-        "man": "/nix/store/bs4fvj32xpmkzby4xh8zvzywazg6c66m-strace-7.1-man",
-        "out": "/nix/store/c6q57lv1d8v4ndvs25vgvzkrmvcrvvp6-strace-7.1"
+        "debug": "/nix/store/m46jrs4py0j315grb2jy26hn75kclbw6-strace-7.2-debug",
+        "man": "/nix/store/w7z2d0cydrv2p9p60b3iiyhni4rbdgqj-strace-7.2-man",
+        "out": "/nix/store/w90kx35bpp92nnw31kgf1q43ky46ihkk-strace-7.2"
       },
       "system": "aarch64-linux",
       "group": "toplevel",
@@ -202,17 +202,15 @@
     },
     {
       "install_id": "tailscale-debug",
-      "locked-url": "path:/private/var/lib/git/seedmatic/rke2lab.d/feature/nixos-node-substrate/osgi/domains/manifests/manifests-core/src/main/resources/runtime/flox?lastModified=1787817555&narHash=sha256-oluGeCdjdAn2e7nWk5t3eUNI8MDUi7mdLboOGw9wC/w%3D",
+      "locked-url": "path:/private/var/lib/git/seedmatic/rke2lab.d/flox-catalogue?lastModified=1788951190&narHash=sha256-fve4ugUQydEc4lrQq1Ylx7fbD5v565bwfk6onyB3sQI%3D",
       "flake-description": "Flox runtime env catalog: per-workload packages (kdns, headplane, headscale, tailscale) the flox-nri-plugin injects. The plugin itself now lives in github:seedmatic/flox-nri-plugin (consumed as the flox-runtime input of the rke2lab flake).",
       "locked-flake-attr-path": "packages.aarch64-linux.tailscale-debug",
-      "derivation": "/nix/store/wi9w047414jxd5sz2fxn7ddjasb9b95h-tailscale-debug-1.98.10.drv",
+      "derivation": "/nix/store/ym75c2j58zgkh9w7k4yp1ykpsi1ywnak-tailscale.drv",
       "outputs": {
-        "derper": "/nix/store/cid8wdmld8dig94q04gxmgrxipandd6c-tailscale-debug-1.98.10-derper",
-        "out": "/nix/store/pis2flxbyrrnax2vk25aaavma7vcnyqz-tailscale-debug-1.98.10"
+        "out": "/nix/store/s8kqpnclc5svrxy3aybagbdj7hdb3xsa-tailscale"
       },
       "output-names": [
-        "out",
-        "derper"
+        "out"
       ],
       "outputs-to-install": [
         "out"
@@ -220,13 +218,9 @@
       "requested-outputs-to-install": [],
       "package-system": "aarch64-linux",
       "system": "aarch64-linux",
-      "name": "tailscale-debug-1.98.10",
+      "name": "tailscale",
       "pname": "tailscale-debug",
-      "version": "1.98.10",
-      "description": "Node agent for Tailscale, a mesh VPN built on WireGuard",
-      "licenses": [
-        "BSD-3-Clause"
-      ],
+      "version": "1.102.3",
       "broken": false,
       "unfree": false,
       "priority": 5
