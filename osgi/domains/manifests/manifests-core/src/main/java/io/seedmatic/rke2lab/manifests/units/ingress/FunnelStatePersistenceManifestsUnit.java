@@ -61,7 +61,7 @@ public final class FunnelStatePersistenceManifestsUnit extends AbstractManifests
   private static final String SERVICE_ACCOUNT = "funnel-state";
 
   private final PackageMetadataProfile packageProfile =
-      new PackageMetadataProfile("mesh", "funnel-state");
+      new PackageMetadataProfile("ingress", "funnel-state");
 
   public FunnelStatePersistenceManifestsUnit() {
     // The Tailscale operator registers the tailscale.com CRD the ProxyClass needs, and the backup

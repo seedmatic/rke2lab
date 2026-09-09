@@ -29,7 +29,7 @@ public final class TailscaleManifestsUnit extends AbstractManifestsUnit {
   private static final String TAILSCALE_NAMESPACE = IngressRefs.SYSTEM_NAMESPACE.name();
 
   private final PackageMetadataProfile packageProfile =
-      new PackageMetadataProfile("mesh", "tailscale");
+      new PackageMetadataProfile("ingress", "tailscale");
 
   public TailscaleManifestsUnit() {
     // Two STRUCTURAL gates Flux health-gates to COMPLETION before this operator provisions any
@@ -175,7 +175,8 @@ public final class TailscaleManifestsUnit extends AbstractManifestsUnit {
                         // the
                         // SAME cell as the Connector CR, whose dry-run fails ("no matches for kind
                         // Connector") until the operator has registered the CRD — a failure that
-                        // aborts the whole workloads/mesh/tailscale apply, so the secret was never
+                        // aborts the whole workloads/ingress/tailscale apply, so the secret was
+                        // never
                         // created and the operator never started (a circular deadlock the grow lost
                         // non-deterministically). In the operators cell it applies independently of
                         // the Connector; the replicator (a separate platform cell) fills it.

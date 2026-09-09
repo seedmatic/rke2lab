@@ -24,7 +24,7 @@ public final class IngressSystemNamespaceManifestsUnit extends AbstractManifests
   // ingress-system not
   // found"). foundation applies before operators, so the namespace is Ready for both.
   private final PackageMetadataProfile packageProfile =
-      new PackageMetadataProfile("mesh", "system-namespace", false, ManifestLayer.FOUNDATION);
+      new PackageMetadataProfile("ingress", "system-namespace", false, ManifestLayer.FOUNDATION);
 
   public IngressSystemNamespaceManifestsUnit() {
     super(MANIFEST_UNIT_ID, List.of());

@@ -62,7 +62,7 @@ public final class TailnetPurgeManifestsUnit extends AbstractManifestsUnit {
   private static final String OAUTH_MOUNT = "/etc/tailnet";
 
   private final PackageMetadataProfile packageProfile =
-      new PackageMetadataProfile("mesh", "tailnet-purge");
+      new PackageMetadataProfile("ingress", "tailnet-purge");
 
   public TailnetPurgeManifestsUnit() {
     super(MANIFEST_UNIT_ID, List.of(IngressSystemNamespaceManifestsUnit.MANIFEST_UNIT_ID));

@@ -74,7 +74,7 @@ public final class FunnelCertRestoreManifestsUnit extends AbstractManifestsUnit 
   private static final String SERVICE_ACCOUNT = "funnel-cert-restore";
 
   private final PackageMetadataProfile packageProfile =
-      new PackageMetadataProfile("mesh", "funnel-cert-restore");
+      new PackageMetadataProfile("ingress", "funnel-cert-restore");
 
   private final DataplanLayout layout = DataplanLayout.canonical();
 
