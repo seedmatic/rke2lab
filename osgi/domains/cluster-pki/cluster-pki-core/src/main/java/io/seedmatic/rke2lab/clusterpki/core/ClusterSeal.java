@@ -7,13 +7,18 @@ import io.seedmatic.rke2lab.clusterpki.contract.ClusterAgeKey;
 import io.seedmatic.rke2lab.clusterpki.contract.ClusterCaBundle;
 import io.seedmatic.rke2lab.clusterpki.contract.ClusterIssuerCa;
 import io.seedmatic.rke2lab.clusterpki.contract.SopsEncryptor;
+import io.seedmatic.rke2lab.clusterpki.contract.WorkloadClusterCas;
 import io.seedmatic.rke2lab.clusterpki.core.internal.ClusterCaGenerator;
 import io.seedmatic.rke2lab.clusterpki.core.internal.SopsRecipients;
 import io.seedmatic.rke2lab.manifests.contract.SshToAgeConverter;
 import io.seedmatic.rke2lab.ndh.contract.NdhKeystoreReader;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
  * The cluster-PKI seal, in one act — the domain logic the seal scion drives (instance-passing: the
@@ -93,6 +98,57 @@ public final class ClusterSeal {
         new ClusterAgeKey(ageIdentity),
         adminCredentials,
         clusterIssuerCa);
+  }
+
+  /**
+   * Mint the deterministic CAPRKE2 BYO-CA set for each workload cluster the mgmt greenfields —
+   * ADDITIVELY and idempotently: a cluster already present in {@code existing} keeps its CA (stable
+   * across re-grows, never re-minted — a re-mint would rotate every workload cert), a cluster newly
+   * appearing gets a FRESH hierarchy rooted DIRECTLY on {@code mammoth-skate-tls} (a SIBLING of the
+   * mgmt CA — independent keys). Clusters no longer requested drop out (deprovision). Each entry
+   * carries the four CAs CAPRKE2 looks up by name ({@code <cluster>-{ca,cca,etcd,peer-etcd}}); the
+   * {@code *-ca.crt} values are the full chain to the root, byte-identical to the mgmt node's
+   * {@code server/tls} files. Unlike the node bundle, no sops/age here: these are rendered as
+   * in-cluster Secrets, not decrypted node-side.
+   */
+  public WorkloadClusterCas sealWorkloadCas(
+      List<String> clusterNames, Optional<WorkloadClusterCas> existing) {
+    if (clusterNames.isEmpty()) {
+      return new WorkloadClusterCas(List.of());
+    }
+    final String rootCert = keystore.authorityCert(TLS_AUTHORITY);
+    final String rootKey = keystore.authorityPrivate(TLS_AUTHORITY);
+    final Map<String, WorkloadClusterCas.Entry> kept =
+        existing.map(WorkloadClusterCas::entries).orElseGet(List::of).stream()
+            .collect(
+                Collectors.toMap(
+                    WorkloadClusterCas.Entry::clusterName,
+                    entry -> entry,
+                    (a, b) -> a,
+                    LinkedHashMap::new));
+    final ClusterCaGenerator generator = new ClusterCaGenerator();
+    final List<WorkloadClusterCas.Entry> entries = new ArrayList<>();
+    for (final String clusterName : clusterNames) {
+      final WorkloadClusterCas.Entry existingEntry = kept.get(clusterName);
+      if (existingEntry != null) {
+        entries.add(existingEntry);
+        continue;
+      }
+      final LinkedHashMap<String, String> bundle =
+          generator.generate(rootCert, rootKey, Instant.now().getEpochSecond()).nodeBundle();
+      entries.add(
+          new WorkloadClusterCas.Entry(
+              clusterName,
+              pair(bundle, "server-ca"),
+              pair(bundle, "client-ca"),
+              pair(bundle, "etcd-server-ca"),
+              pair(bundle, "etcd-peer-ca")));
+    }
+    return new WorkloadClusterCas(entries);
+  }
+
+  private static WorkloadClusterCas.Pair pair(Map<String, String> bundle, String stem) {
+    return new WorkloadClusterCas.Pair(bundle.get(stem + ".crt"), bundle.get(stem + ".key"));
   }
 
   /**

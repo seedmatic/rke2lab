@@ -87,6 +87,17 @@ public @interface Amendment {
    */
   String RENDER_MODE = "render-mode";
 
+  /**
+   * The workload clusters this grow must pre-seed a deterministic CA for — the flat list of CAPI
+   * {@code Cluster} names ({@code <host>-<role>}, e.g. {@code bioskop-wrkld}) the management
+   * cluster will greenfield. Only the host holds it (it is the same {@code workloadTargets} the
+   * manifests facet carries, read from {@code BootstrapConfig}); the cluster-pki seal scion fills
+   * it to mint — additively, once per cluster, rooted at {@code mammoth-skate} (sibling of the mgmt
+   * CA) — the four CAPRKE2 BYO-CA sets ({@code <cluster>-{ca,cca,etcd,peer-etcd}}). Empty on a
+   * mgmt-only run.
+   */
+  String WORKLOAD_TARGETS = "workload-targets";
+
   /** The neutral gardening role of this amendment (e.g. {@link #SOIL}, {@link #FACET}). */
   String value();
 }

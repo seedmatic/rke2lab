@@ -32,7 +32,14 @@ public enum ClusterPkiCoordinate implements SeedCoordinate {
   // ClusterIssuer
   // root every in-cluster leaf chains to. SEALED (it carries the CA private key). Delivered into
   // kube-system via the NODE_BOOTSTRAP lane, never onto the reconciled branch.
-  CLUSTER_ISSUER_CA("cluster-issuer-ca");
+  CLUSTER_ISSUER_CA("cluster-issuer-ca"),
+
+  // The workload clusters' deterministic CA sets — one CAPRKE2 BYO-CA hierarchy per workload
+  // cluster the mgmt greenfields, minted additively at seal time (each rooted at mammoth-skate, a
+  // sibling of the mgmt CA). SEALED (it carries the CA private keys). The manifests scion reveals
+  // it and renders the four <cluster>-{ca,cca,etcd,peer-etcd} Secrets into rke2lab-<cluster> on the
+  // NODE_BOOTSTRAP lane, so CAPRKE2 does BYO-CA instead of self-generating a random one.
+  WORKLOAD_CLUSTER_CAS("workload-cluster-cas");
 
   private static final String DOMAIN = "cluster-pki";
 

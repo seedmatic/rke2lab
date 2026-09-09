@@ -1,6 +1,8 @@
 package io.seedmatic.rke2lab.controlplane.bdd;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -230,6 +232,13 @@ public class ClusterSeedScenario
     @ProvidedScenarioState(resolution = Resolution.NAME)
     JsonNode imageScalars;
 
+    // The workload cluster names the cluster-pki seal must pre-seed a deterministic CA for — dug
+    // from the manifests FACET (workloadTargets[].{host,role} -> <host>-<role>), offered to the
+    // cluster-pki crossing under the neutral WORKLOAD_TARGETS role. Name-resolved like
+    // imageScalars.
+    @ProvidedScenarioState(resolution = Resolution.NAME)
+    JsonNode workloadClusterNames = JsonNodeFactory.instance.arrayNode();
+
     // The run's provisioning config — the host GROW derives the instance mounts from it (via the
     // dual-realm BootstrapPaths) and builds the provider context from it.
     @ProvidedScenarioState BootstrapConfig config;
@@ -315,13 +324,17 @@ public class ClusterSeedScenario
       // false` (and the rest of rke2lab:manifests:) reaches the synthesis without any sower
       // carrying
       // a role it does not own.
+      final Optional<String> manifestsFacet = run.facet("manifests");
       gardening
           .connection()
           .context()
           .registerService(
               AmendmentContributor.class,
-              new FacetContributor(new AmendCoordinate("manifests"), run.facet("manifests")),
+              new FacetContributor(new AmendCoordinate("manifests"), manifestsFacet.orElse("")),
               new Hashtable<>());
+      // The workload cluster names the cluster-pki seal pre-seeds a CA for — dug from the SAME
+      // manifests FACET (its workloadTargets), offered per-consult to the cluster-pki crossing.
+      this.workloadClusterNames = workloadClusterNames(manifestsFacet);
       // The bbox FACET — the router contact (uri + password) the root read from .secrets:lan.bbox
       // (joined into rke2lab:bbox by ConfigLoader's `secret:` meta), published ambient like the
       // manifests FACET. Bbox carries no per-consult amendment, so its crossing sows an empty
@@ -333,7 +346,7 @@ public class ClusterSeedScenario
           .context()
           .registerService(
               AmendmentContributor.class,
-              new FacetContributor(new AmendCoordinate("bbox"), run.facet("bbox")),
+              new FacetContributor(new AmendCoordinate("bbox"), run.facet("bbox").orElse("")),
               new Hashtable<>());
       // The incus FACET — the stable provisioning identity (cluster/node, automount, netPrefix)
       // the scion combines with the worktree root it reads from its Worktree component. A FACET,
@@ -409,6 +422,34 @@ public class ClusterSeedScenario
               new Hashtable<>());
       return self();
     }
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    // Dig the workload cluster names (<host>-<role>) out of the manifests FACET's workloadTargets.
+    // Absent facet / no targets -> an empty array (a mgmt-only grow seeds no workload CA).
+    private static JsonNode workloadClusterNames(Optional<String> manifestsFacetJson) {
+      final ArrayNode names = JsonNodeFactory.instance.arrayNode();
+      if (manifestsFacetJson.isEmpty()) {
+        return names;
+      }
+      try {
+        MAPPER
+            .readTree(manifestsFacetJson.orElseThrow())
+            .path("workloadTargets")
+            .forEach(
+                target -> {
+                  final String host = target.path("host").asText("");
+                  final String role = target.path("role").asText("");
+                  if (!host.isBlank() && !role.isBlank()) {
+                    names.add(host + "-" + role);
+                  }
+                });
+      } catch (JsonProcessingException ex) {
+        throw new IllegalStateException(
+            "could not parse the manifests facet for workloadTargets", ex);
+      }
+      return names;
+    }
   }
 
   /**
@@ -438,6 +479,11 @@ public class ClusterSeedScenario
     // stays so the field is picked back by name).
     @ScenarioState(resolution = ScenarioState.Resolution.NAME)
     JsonNode imageScalars;
+
+    // The workload cluster names offered to the cluster-pki crossing under the WORKLOAD_TARGETS
+    // role — picked back from the Given by name, like imageScalars.
+    @ScenarioState(resolution = ScenarioState.Resolution.NAME)
+    JsonNode workloadClusterNames;
 
     @ScenarioState BootstrapConfig config;
 
@@ -492,13 +538,20 @@ public class ClusterSeedScenario
     @As("the cluster CA is sealed")
     public When the_cluster_ca_is_sealed(
         @Hidden ScenarioModel hostScenario, @Hidden ReportModel hostTree) {
-      // The cluster-pki seal scion mints the deterministic CA ONCE per cluster (idempotent on a
-      // cellar hit, so the CA is stable across re-grows) and files it in the cellar for the GROW to
-      // pose over devlxd. Sown BEFORE provisioning so the PKI exists when the instance grows. No
-      // amendment: the scion reads keys.yaml / .sops.yaml in-container, so the sow carries an empty
-      // trigger (Gardening.sow skips the amend door — no reflector needed).
+      // The cluster-pki seal scion mints the deterministic mgmt CA ONCE per cluster (idempotent on
+      // a cellar hit, so the CA is stable across re-grows) and files it for the GROW to pose over
+      // cloud-init. Sown BEFORE provisioning so the PKI exists when the instance grows. ONE
+      // amendment hands the seal the WORKLOAD_TARGETS role — the workload cluster names it also
+      // pre-seeds a deterministic BYO-CA for (additively, sibling-rooted at mammoth-skate); empty
+      // on
+      // a mgmt-only grow. The rest the scion reads in-container (keys.yaml / .sops.yaml).
       sowAndGraft
-          .sowing("cluster-pki", gardening, hostScenario, hostTree)
+          .sowing(
+              "cluster-pki",
+              gardening,
+              hostScenario,
+              hostTree,
+              Map.of(Amendment.WORKLOAD_TARGETS, workloadClusterNames))
           .the_scion_is_sown_and_grafted("the cluster CA is sealed");
       return self();
     }

@@ -8,6 +8,7 @@ import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.WorkloadTarget;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ImageState;
 import io.seedmatic.rke2lab.manifests.contract.profiles.IncusIdentityMaterial;
+import io.seedmatic.rke2lab.manifests.contract.profiles.WorkloadClusterCasMaterial;
 import io.seedmatic.rke2lab.manifests.ingress.Component;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import io.seedmatic.rke2lab.netplan.contract.ClusterNetworkBlueprint;
@@ -155,18 +156,102 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
     createWorkerMachineDeployment(
         scope, cluster, namespace, rke2Version, configTemplate, workerTemplate, namespaceObject);
 
-    // The per-remote CAPN identity Secret the LXCCluster.secretRef names (foundation 5) — a
-    // CREDENTIAL, so it rides the NODE_BOOTSTRAP lane (seeded node-side at the grow, NEVER
-    // committed
-    // to the git branch), with its own node-bootstrap copy of the namespace so the set is
-    // self-contained. Rendered only when the material is revealed (a grow); a secret-blind
-    // in-cluster render omits it and — being off the branch — cannot strip the grow-seeded Secret.
-    // The twin of the CAPI kubeconfig Secret.
-    ManifestSynthesisContext.current()
-        .incusIdentity()
-        .ifPresent(
-            material ->
-                createIdentitySecret(scope, cluster, namespace, identitySecret, material, image));
+    // The node-bootstrap-lane CREDENTIALS this cluster needs, seeded node-side at the grow and
+    // NEVER committed to the git branch (a secret-blind in-cluster render reveals nothing here and
+    // — being off the branch — cannot strip the grow-seeded Secrets):
+    //   - the per-remote CAPN identity the LXCCluster.secretRef names (foundation 5);
+    //   - the four deterministic CAPRKE2 BYO-CA Secrets (C2), so CAPRKE2 delivers OUR mammoth-skate
+    //     CA to the workload node via its cloud-init instead of self-generating a random one.
+    // Both ride ONE node-bootstrap copy of the namespace so the set self-applies; rendered only
+    // when their material is revealed (a grow). The twin of the CAPI kubeconfig Secret.
+    final Optional<IncusIdentityMaterial> identity =
+        ManifestSynthesisContext.current().incusIdentity();
+    final Optional<WorkloadClusterCasMaterial.Entry> workloadCa =
+        ManifestSynthesisContext.current().workloadCas().flatMap(cas -> cas.forCluster(cluster));
+    if (identity.isPresent() || workloadCa.isPresent()) {
+      final ApiObject nbNamespace = createNodeBootstrapNamespace(scope, cluster, namespace);
+      identity.ifPresent(
+          material ->
+              createIdentitySecret(
+                  scope, cluster, namespace, identitySecret, material, image, nbNamespace));
+      workloadCa.ifPresent(
+          ca -> createWorkloadCaSecrets(scope, cluster, namespace, ca, nbNamespace));
+    }
+  }
+
+  // The four CAPRKE2 BYO-CA Secrets CAPRKE2 looks up by name (<cluster>-{ca,cca,etcd,peer-etcd}) to
+  // skip generating its own CA — type cluster.x-k8s.io/secret + the cluster-name label, exactly the
+  // shape CAPRKE2 would SaveGenerated, data tls.crt/tls.key. On the NODE_BOOTSTRAP lane (a real CA
+  // private key), never on the branch. See the caprke2-byo-ca-secret-contract memory.
+  private void createWorkloadCaSecrets(
+      final Construct scope,
+      final String cluster,
+      final String namespace,
+      final WorkloadClusterCasMaterial.Entry ca,
+      final ApiObject nbNamespace) {
+    renderCaSecret(scope, cluster, namespace, "ca", ca.serverCa(), nbNamespace);
+    renderCaSecret(scope, cluster, namespace, "cca", ca.clientCa(), nbNamespace);
+    renderCaSecret(scope, cluster, namespace, "etcd", ca.etcdServerCa(), nbNamespace);
+    renderCaSecret(scope, cluster, namespace, "peer-etcd", ca.etcdPeerCa(), nbNamespace);
+  }
+
+  private void renderCaSecret(
+      final Construct scope,
+      final String cluster,
+      final String namespace,
+      final String purpose,
+      final WorkloadClusterCasMaterial.Pair pair,
+      final ApiObject nbNamespace) {
+    final String name = cluster + "-" + purpose;
+    final ApiObject secret =
+        new ApiObject(
+            scope,
+            "secret-workload-ca-" + name,
+            ApiObjectProps.builder()
+                .apiVersion("v1")
+                .kind("Secret")
+                .metadata(
+                    ApiObjectMetadata.builder()
+                        .name(name)
+                        .namespace(namespace)
+                        .labels(Map.of("cluster.x-k8s.io/cluster-name", cluster))
+                        .annotations(
+                            packageProfile.packageAnnotations(
+                                "|Secret|" + namespace + "|" + name,
+                                Map.of(ManifestAnnotation.NODE_BOOTSTRAP.key(), "true")))
+                        .build())
+                .build());
+    secret.addDependency(nbNamespace);
+    secret.addJsonPatch(JsonPatch.add("/type", "cluster.x-k8s.io/secret"));
+    secret.addJsonPatch(
+        JsonPatch.add(
+            "/data",
+            Map.of(
+                "tls.crt", base64(pair.certChainPem()),
+                "tls.key", base64(pair.keyPem()))));
+  }
+
+  // A node-bootstrap copy of the workload namespace, SHARED by every node-bootstrap Secret this
+  // cluster carries (identity + BYO-CA): the branch namespace (createNamespace) is Flux's (owns the
+  // CRs' lifecycle); this one lets the grow-time node-side apply land the credential Secrets
+  // self-contained. Same name, applied twice, idempotent.
+  private ApiObject createNodeBootstrapNamespace(
+      final Construct scope, final String cluster, final String namespace) {
+    return new ApiObject(
+        scope,
+        "namespace-nb-" + cluster,
+        ApiObjectProps.builder()
+            .apiVersion("v1")
+            .kind("Namespace")
+            .metadata(
+                ApiObjectMetadata.builder()
+                    .name(namespace)
+                    .annotations(
+                        packageProfile.packageAnnotations(
+                            "|Namespace||" + namespace,
+                            Map.of(ManifestAnnotation.NODE_BOOTSTRAP.key(), "true")))
+                    .build())
+            .build());
   }
 
   private void createIdentitySecret(
@@ -175,28 +260,10 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
       final String namespace,
       final String identitySecret,
       final IncusIdentityMaterial material,
-      final ImageState image) {
+      final ImageState image,
+      final ApiObject nbNamespace) {
     final Map<String, String> nodeBootstrap =
         Map.of(ManifestAnnotation.NODE_BOOTSTRAP.key(), "true");
-    // A node-bootstrap copy of the workload namespace: the branch namespace above is Flux's (owns
-    // the CRs' lifecycle); this one just lets the grow-time node-side apply land the credential
-    // Secret self-contained. Same name, applied twice, idempotent.
-    final ApiObject nbNamespace =
-        new ApiObject(
-            scope,
-            "namespace-nb-" + cluster,
-            ApiObjectProps.builder()
-                .apiVersion("v1")
-                .kind("Namespace")
-                .metadata(
-                    ApiObjectMetadata.builder()
-                        .name(namespace)
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "|Namespace||" + namespace, nodeBootstrap))
-                        .build())
-                .build());
-
     final ApiObject secret =
         new ApiObject(
             scope,

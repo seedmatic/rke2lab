@@ -330,6 +330,62 @@ No SSH blast radius: SSH host/user certs chain to the separate `mammoth-skate`
 authority (OpenSSH format, no X.509 `pathLen`); rotating `mammoth-skate-tls` touches
 only the TLS side.
 
+== Workload clusters — the same root, delivered as CAPRKE2 BYO-CA secrets (C2)
+
+The management node gets its CA as a sops bundle its own `sops-nix` lays under `server/tls/`. A
+*workload* cluster is different: `seed-master` never grows its nodes — CAPI/CAPRKE2 greenfield them
+in the management cluster. So the workload's deterministic CA is delivered the way CAPRKE2 already
+delivers a bring-your-own CA: as four Kubernetes Secrets it looks up *by name* in the cluster's
+namespace, whose cert/key it then writes into each node's `server/tls/` through the node's cloud-init
+(the same uniform bootstrap channel). If those Secrets are present CAPRKE2 uses them; if absent it
+self-generates a random CA. C2 pre-creates them so every workload chains to *our* `mammoth-skate-tls`
+root, stable across re-grows.
+
+=== The four secrets — the CAPRKE2 contract
+
+Per workload cluster `<cluster>` (the CAPI `Cluster` name `<host>-<role>`), in its namespace
+`rke2lab-<cluster>`, type `cluster.x-k8s.io/secret`, label `cluster.x-k8s.io/cluster-name`, data
+`tls.crt`/`tls.key`:
+
+[cols="1,1,2",options="header"]
+|===
+| Secret | rke2 `server/tls` file | our CA bundle key
+| `<cluster>-ca` | `server-ca.{crt,key}` | `server-ca`
+| `<cluster>-cca` | `client-ca.{crt,key}` | `client-ca`
+| `<cluster>-etcd` | `etcd/server-ca.{crt,key}` | `etcd-server-ca`
+| `<cluster>-peer-etcd` | `etcd/peer-ca.{crt,key}` | `etcd-peer-ca`
+|===
+
+Each `tls.crt` is the full chain to the root — byte-identical to the mgmt node's `server/tls` files.
+CAPRKE2 discovers them by name only; there is no field on `RKE2ControlPlane` to reference them.
+
+=== Sibling roots, not a child of the mgmt CA
+
+Each workload cluster gets its OWN CA hierarchy rooted *directly* on `mammoth-skate-tls` — a
+**sibling** of the mgmt CA, with independent keys, so a compromise of one cluster's CA never reaches
+another. It is NOT signed by the mgmt CA (that would need the mgmt CA private key at the signing
+locus, add chain depth, and — via the low-privilege cluster-issuer CA — break the privilege
+boundary). The `ClusterCaGenerator` that mints the mgmt CA is simply called once more per workload
+cluster.
+
+=== The seal → reveal → render thread
+
+The workload CA rides the SAME seal→cellar→reveal→render machinery as `ClusterIssuerCa`, plus one
+input carrying the workload cluster names:
+
+* *Seal (cluster-pki).* `ClusterSeedScenario` digs the workload cluster names out of the manifests
+  facet (`workloadTargets`) and sows the cluster-pki crossing with the neutral `WORKLOAD_TARGETS`
+  amendment; the `ClusterPkiSealAmendReflector` binds it onto `ClusterPkiSealInput`. The seal scion
+  mints the four CAs per cluster *additively* (a cluster already in the cellar keeps its CA — stable
+  across re-grows; a new one is minted; a removed one drops) and files them SEALED under
+  `ClusterPkiCoordinate.WORKLOAD_CLUSTER_CAS` as a `WorkloadClusterCas` record.
+* *Reveal (manifests).* `ManifestSynthesisScenario` reveals that record by the neutral wire
+  coordinate into the manifests-side mirror `WorkloadClusterCasMaterial` (same gate discipline as
+  `OperatorPkiMaterial` — no `cluster-pki` type crosses into manifests).
+* *Render.* `ClusterApiWorkloadManifestsUnit` looks up each workload target's entry and renders its
+  four Secrets onto the durable `NODE_BOOTSTRAP` lane (a real CA private key — never on the
+  Flux-reconciled branch; a secret-blind in-cluster render finds nothing and omits them).
+
 == Related documentation
 
 NOTE: Throughout this document `<cluster>` is the full cluster identity `<host>-<role>` (e.g.

@@ -43,6 +43,12 @@
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>seed-broker-port</artifactId>
     </dependency>
+    <!-- SeedCodec + AmendmentBinder: the seal's runbook handler decodes ClusterPkiSealInput and the
+         amend reflector binds the WORKLOAD_TARGETS role onto it. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>seed-broker-codec</artifactId>
+    </dependency>
     <!-- GenericRunbookHandler, ScenarioPlayer, @SeedScenario, CellarReceiver, ScenarioCellar, OsgiService. -->
     <dependency>
       <groupId>io.seedmatic.rke2lab</groupId>

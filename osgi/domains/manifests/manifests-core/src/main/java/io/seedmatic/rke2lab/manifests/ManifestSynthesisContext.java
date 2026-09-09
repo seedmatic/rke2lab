@@ -14,6 +14,7 @@ import io.seedmatic.rke2lab.manifests.contract.profiles.OperatorPkiMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ReplicatorSourceSecretsMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.SigningKeyMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.SopsAgeMaterial;
+import io.seedmatic.rke2lab.manifests.contract.profiles.WorkloadClusterCasMaterial;
 import io.seedmatic.rke2lab.manifests.ingress.ComponentVersions;
 import io.seedmatic.rke2lab.manifests.node.DefaultNodeEnvContext;
 import java.nio.file.Path;
@@ -159,6 +160,10 @@ public final class ManifestSynthesisContext {
 
   public Optional<ClusterIssuerCaMaterial> clusterIssuerCa() {
     return request.clusterIssuerCa();
+  }
+
+  public Optional<WorkloadClusterCasMaterial> workloadCas() {
+    return request.workloadCas();
   }
 
   public Optional<GithubAppMaterial> githubApp() {

@@ -31,6 +31,7 @@ import io.seedmatic.rke2lab.manifests.contract.profiles.GithubAppMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ImageState;
 import io.seedmatic.rke2lab.manifests.contract.profiles.OperatorPkiMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ReplicatorSourceSecretsMaterial;
+import io.seedmatic.rke2lab.manifests.contract.profiles.WorkloadClusterCasMaterial;
 import io.seedmatic.rke2lab.manifests.ingress.ServerManifestsBundle;
 import io.seedmatic.rke2lab.manifests.ingress.ServerManifestsCoordinate;
 import io.seedmatic.rke2lab.ndh.contract.NdhKeystoreReader;
@@ -211,6 +212,21 @@ public class ManifestSynthesisScenario
     }
     return cellar.fetch(
         parcel.orElseThrow(), ClusterPkiCase.CLUSTER_ISSUER_CA, ClusterIssuerCaMaterial.class);
+  }
+
+  // Reveal the workload clusters' BYO-CA sets (mirror of cluster-pki WorkloadClusterCas) via the
+  // neutral wire coordinate — same treatment as revealClusterIssuerCa(). Empty on a bare survey /
+  // before the seal filed / a secret-blind in-cluster render → ClusterApiWorkloadManifestsUnit
+  // renders no <cluster>-{ca,cca,etcd,peer-etcd} Secret (they ride the durable NODE_BOOTSTRAP
+  // lane).
+  private Optional<WorkloadClusterCasMaterial> revealWorkloadCas() {
+    if (cellar == null || parcel.isEmpty()) {
+      return Optional.empty();
+    }
+    return cellar.fetch(
+        parcel.orElseThrow(),
+        ClusterPkiCase.WORKLOAD_CLUSTER_CAS,
+        WorkloadClusterCasMaterial.class);
   }
 
   /**
@@ -564,7 +580,8 @@ public class ManifestSynthesisScenario
    */
   private enum ClusterPkiCase implements SeedCoordinate {
     ADMIN_CREDENTIALS("admin-credentials"),
-    CLUSTER_ISSUER_CA("cluster-issuer-ca");
+    CLUSTER_ISSUER_CA("cluster-issuer-ca"),
+    WORKLOAD_CLUSTER_CAS("workload-cluster-cas");
 
     private final String slug;
 
@@ -606,6 +623,7 @@ public class ManifestSynthesisScenario
             revealGithubApp(),
             revealReplicatorSources(),
             revealClusterIssuerCa(),
+            revealWorkloadCas(),
             rendered);
     then()
         .every_enabled_domain_produced_its_units()
@@ -695,6 +713,7 @@ public class ManifestSynthesisScenario
         @Hidden Optional<GithubAppMaterial> githubApp,
         @Hidden Optional<ReplicatorSourceSecretsMaterial> replicatorSources,
         @Hidden Optional<ClusterIssuerCaMaterial> clusterIssuerCa,
+        @Hidden Optional<WorkloadClusterCasMaterial> workloadCas,
         @Hidden Optional<LinkedWorktree> rendered) {
       final ManifestsRunbookInput.DebugFacet debug = facet.facets().debug();
       final FloxDebugPolicy floxDebug =
@@ -753,6 +772,10 @@ public class ManifestSynthesisScenario
       // in-cluster render): ClusterIssuerManifestsUnit renders the ClusterIssuer + its key Secret
       // onto the node-bootstrap lane, or (no material) just leaves the branch ClusterIssuer.
       builder.clusterIssuerCa(clusterIssuerCa);
+      // The workload clusters' BYO-CA sets revealed from the cellar (empty on a bare survey /
+      // secret-blind in-cluster render): ClusterApiWorkloadManifestsUnit renders the four
+      // <cluster>-{ca,cca,etcd,peer-etcd} Secrets onto the node-bootstrap lane, or nothing.
+      builder.workloadCas(workloadCas);
       final ManifestSynthesisRequest request = builder.build();
       try {
         this.result = synthesis.orElseThrow().synthesize(request);

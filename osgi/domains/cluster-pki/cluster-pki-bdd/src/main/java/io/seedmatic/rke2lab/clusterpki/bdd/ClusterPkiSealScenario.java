@@ -10,23 +10,29 @@ import com.tngtech.jgiven.base.ScenarioTestBase;
 import com.tngtech.jgiven.impl.Scenario;
 import io.seedmatic.rke2lab.clusterpki.contract.ClusterCaBundle;
 import io.seedmatic.rke2lab.clusterpki.contract.ClusterPkiCoordinate;
+import io.seedmatic.rke2lab.clusterpki.contract.ClusterPkiSealInput;
 import io.seedmatic.rke2lab.clusterpki.contract.SopsEncryptor;
+import io.seedmatic.rke2lab.clusterpki.contract.WorkloadClusterCas;
 import io.seedmatic.rke2lab.clusterpki.core.ClusterSeal;
 import io.seedmatic.rke2lab.clusterpki.core.SealedClusterPki;
 import io.seedmatic.rke2lab.manifests.contract.SshToAgeConverter;
 import io.seedmatic.rke2lab.ndh.contract.NdhKeystoreReader;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.CellarReceiver;
+import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.InputReceiver;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.OsgiService;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.ScenarioCellar;
+import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.ScenarioInputSeed;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.ScenarioPlayer;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.SeedScenario;
 import io.seedmatic.rke2lab.seed.broker.port.Cellar;
 import io.seedmatic.rke2lab.seed.broker.port.Parcel;
 import io.seedmatic.rke2lab.seed.broker.port.Sensitivity;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
 /**
  * The cluster-PKI seal scion — the in-container {@code @SeedScenario} the host sows ONCE per
@@ -53,7 +59,18 @@ import org.junit.jupiter.api.Test;
 public class ClusterPkiSealScenario
     extends ScenarioTestBase<
         ClusterPkiSealScenario.Given, ClusterPkiSealScenario.When, ClusterPkiSealScenario.Then>
-    implements CellarReceiver<ScenarioCellar>, ScenarioPlayer.Playable {
+    implements CellarReceiver<ScenarioCellar>,
+        InputReceiver<ClusterPkiSealInput>,
+        ScenarioPlayer.Playable {
+
+  /**
+   * The inbound channel the runbook handler seeds the {@link ClusterPkiSealInput} through — the
+   * workload cluster names the WORKLOAD_TARGETS amendment bound. Absent (no amendment) → the scion
+   * mints only the mgmt CA.
+   */
+  @RegisterExtension
+  public static final ScenarioInputSeed<ClusterPkiSealInput> INPUT =
+      new ScenarioInputSeed<>(ClusterPkiSealInput.class, "cluster-pki-seal-input");
 
   private final Scenario<Given, When, Then> scenario = createScenario();
 
@@ -61,6 +78,9 @@ public class ClusterPkiSealScenario
    * Injected by {@code ScenarioCellarExtension} before the body (store→tag, durable fallthrough).
    */
   @MonotonicNonNull private ScenarioCellar cellar;
+
+  /** The seal's one host-held input — null when sown with no WORKLOAD_TARGETS amendment. */
+  @MonotonicNonNull private ClusterPkiSealInput input;
 
   /** The current plot this run cultivates — injected from the bundle registry before the body. */
   @OsgiService private Optional<Parcel> parcel = Optional.empty();
@@ -82,6 +102,11 @@ public class ClusterPkiSealScenario
     this.cellar = cellar;
   }
 
+  @Override
+  public void receiveInput(ClusterPkiSealInput input) {
+    this.input = input;
+  }
+
   @Test
   void the_cluster_ca_is_sealed_once() {
     final Parcel plot =
@@ -89,6 +114,7 @@ public class ClusterPkiSealScenario
     final ScenarioCellar tx =
         Objects.requireNonNull(
             cellar, "the ScenarioCellar was not injected before the scenario ran");
+    final List<String> workloadClusters = input == null ? List.of() : input.workloadClusters();
     given().the_operators_root_of_trust();
     when()
         .the_cluster_ca_is_sealed(
@@ -96,7 +122,8 @@ public class ClusterPkiSealScenario
             tx,
             keystore.orElseThrow(() -> new IllegalStateException("no NdhKeystoreReader")),
             sshToAge.orElseThrow(() -> new IllegalStateException("no SshToAgeConverter edge")),
-            encryptor.orElseThrow(() -> new IllegalStateException("no SopsEncryptor edge")));
+            encryptor.orElseThrow(() -> new IllegalStateException("no SopsEncryptor edge")),
+            workloadClusters);
     then().the_cluster_pki_is_filed(plot, tx);
   }
 
@@ -119,19 +146,29 @@ public class ClusterPkiSealScenario
     @ProvidedScenarioState(resolution = Resolution.NAME)
     Optional<SealedClusterPki> sealed = Optional.empty();
 
+    @ProvidedScenarioState(resolution = Resolution.NAME)
+    WorkloadClusterCas workloadCas = new WorkloadClusterCas(List.of());
+
     @As("the cluster CA is sealed")
     public When the_cluster_ca_is_sealed(
         @Hidden Parcel parcel,
         @Hidden Cellar cellar,
         @Hidden NdhKeystoreReader keystore,
         @Hidden SshToAgeConverter sshToAge,
-        @Hidden SopsEncryptor encryptor) {
+        @Hidden SopsEncryptor encryptor,
+        @Hidden List<String> workloadClusters) {
       final ClusterSeal seal = new ClusterSeal(keystore, sshToAge, encryptor);
       final Optional<ClusterCaBundle> existing =
           cellar.fetch(parcel, ClusterPkiCoordinate.CLUSTER_CA_BUNDLE, ClusterCaBundle.class);
       if (existing.isEmpty()) {
         this.sealed = Optional.of(seal.seal());
       }
+      // The workload BYO-CA sets — minted ADDITIVELY (keep the entries already sealed, mint only
+      // the clusters newly appearing in workloadTargets), independent of the mgmt CA idempotency
+      // gate above so a new workload cluster gets its CA even on a re-grow of an existing mgmt.
+      final Optional<WorkloadClusterCas> existingWorkload =
+          cellar.fetch(parcel, ClusterPkiCoordinate.WORKLOAD_CLUSTER_CAS, WorkloadClusterCas.class);
+      this.workloadCas = seal.sealWorkloadCas(workloadClusters, existingWorkload);
       return self();
     }
   }
@@ -144,6 +181,9 @@ public class ClusterPkiSealScenario
 
     @ExpectedScenarioState(resolution = Resolution.NAME)
     Optional<SealedClusterPki> sealed;
+
+    @ExpectedScenarioState(resolution = Resolution.NAME)
+    WorkloadClusterCas workloadCas;
 
     @As("the cluster PKI is filed")
     public Then the_cluster_pki_is_filed(@Hidden Parcel parcel, @Hidden Cellar cellar) {
@@ -163,6 +203,13 @@ public class ClusterPkiSealScenario
                 pki.clusterIssuerCa(),
                 Sensitivity.SEALED);
           });
+      // The workload BYO-CA sets — SEALED (they carry the CA private keys). Filed whenever any
+      // workload cluster was requested (the additive mint returns the current set); a mgmt-only run
+      // returns an empty set and files nothing.
+      if (!workloadCas.entries().isEmpty()) {
+        cellar.store(
+            parcel, ClusterPkiCoordinate.WORKLOAD_CLUSTER_CAS, workloadCas, Sensitivity.SEALED);
+      }
       return self();
     }
   }

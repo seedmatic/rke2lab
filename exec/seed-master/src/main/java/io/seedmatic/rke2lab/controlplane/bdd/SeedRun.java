@@ -7,6 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -44,10 +45,14 @@ public record SeedRun(
     Map<String, String> facets) {
 
   /**
-   * The raw config subtree the host read for {@code coordinate}, or empty when none was carried.
+   * The raw config subtree the host read for {@code coordinate} — present iff the domain carried a
+   * facet (the KEY is in the map), so consumers decide the fallback rather than inheriting a {@code
+   * ""} sentinel. Presence is the deterministic signal (key membership), not the value's shape. The
+   * explicit {@code <String>} witness keeps NullAway from widening the nullable {@code get} into
+   * the type argument.
    */
-  public String facet(String coordinate) {
-    return facets.getOrDefault(coordinate, "");
+  public Optional<String> facet(String coordinate) {
+    return Optional.<String>ofNullable(facets.get(coordinate));
   }
 
   public static Builder builder() {

@@ -8,6 +8,7 @@ import io.seedmatic.rke2lab.manifests.contract.profiles.ImageState;
 import io.seedmatic.rke2lab.manifests.contract.profiles.IncusIdentityMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.OperatorPkiMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ReplicatorSourceSecretsMaterial;
+import io.seedmatic.rke2lab.manifests.contract.profiles.WorkloadClusterCasMaterial;
 import io.seedmatic.rke2lab.manifests.ingress.ComponentVersions;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -33,6 +34,7 @@ public record ManifestSynthesisRequest(
     Optional<GithubAppMaterial> githubApp,
     Optional<ReplicatorSourceSecretsMaterial> replicatorSources,
     Optional<ClusterIssuerCaMaterial> clusterIssuerCa,
+    Optional<WorkloadClusterCasMaterial> workloadCas,
     List<WorkloadTarget> workloadTargets)
     implements ManifestDomainPolicyAware {
 
@@ -64,6 +66,7 @@ public record ManifestSynthesisRequest(
     githubApp = githubApp == null ? Optional.empty() : githubApp;
     replicatorSources = replicatorSources == null ? Optional.empty() : replicatorSources;
     clusterIssuerCa = clusterIssuerCa == null ? Optional.empty() : clusterIssuerCa;
+    workloadCas = workloadCas == null ? Optional.empty() : workloadCas;
     // The workload clusters this (management) render must emit CAPI CRs for — empty on a mgmt-only
     // or standalone run. Coalesced to an empty immutable list so a slice-less request never NPEs.
     workloadTargets = workloadTargets != null ? List.copyOf(workloadTargets) : List.of();
@@ -86,6 +89,7 @@ public record ManifestSynthesisRequest(
         .githubApp(githubApp)
         .replicatorSources(replicatorSources)
         .clusterIssuerCa(clusterIssuerCa)
+        .workloadCas(workloadCas)
         .workloadTargets(workloadTargets);
   }
 
@@ -130,6 +134,10 @@ public record ManifestSynthesisRequest(
 
   public ManifestSynthesisRequest withClusterIssuerCa(ClusterIssuerCaMaterial material) {
     return toBuilder().clusterIssuerCa(Optional.of(material)).build();
+  }
+
+  public ManifestSynthesisRequest withWorkloadCas(WorkloadClusterCasMaterial material) {
+    return toBuilder().workloadCas(Optional.of(material)).build();
   }
 
   public static ManifestSynthesisRequest fromSystemProperties() {
@@ -197,6 +205,7 @@ public record ManifestSynthesisRequest(
     private Optional<GithubAppMaterial> githubApp = Optional.empty();
     private Optional<ReplicatorSourceSecretsMaterial> replicatorSources = Optional.empty();
     private Optional<ClusterIssuerCaMaterial> clusterIssuerCa = Optional.empty();
+    private Optional<WorkloadClusterCasMaterial> workloadCas = Optional.empty();
     private List<WorkloadTarget> workloadTargets = List.of();
 
     private Builder(Path synthOutdir, Path synthManifestFile) {
@@ -254,6 +263,11 @@ public record ManifestSynthesisRequest(
       return this;
     }
 
+    public Builder workloadCas(final Optional<WorkloadClusterCasMaterial> v) {
+      this.workloadCas = v;
+      return this;
+    }
+
     public Builder workloadTargets(final List<WorkloadTarget> v) {
       this.workloadTargets = v;
       return this;
@@ -273,6 +287,7 @@ public record ManifestSynthesisRequest(
           githubApp,
           replicatorSources,
           clusterIssuerCa,
+          workloadCas,
           workloadTargets);
     }
   }
