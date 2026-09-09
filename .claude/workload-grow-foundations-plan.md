@@ -255,6 +255,20 @@ a target. The targets are a set beside the identity; only the cluster-api units 
   `GithubRepoWebhookConfigurerEdge` (mints REPO_ADMIN token, idempotent GET/POST/PATCH
   `/repos/{repo}/hooks` keyed by url, fail-fast, gardening-gated); `GithubAppCli` registration
   pre-fills `administration=write` (operator GRANTED it on the App). App-webhook path untouched.
+  **Chunk 2 — CONVERGED design (brainstorm 2026-09-09, NOT built; not blocking `bioskop-wrkld` birth):**
+  - **Repo-hook reconciliation = LOCUS (b), in-cluster, per-cluster.** Each cluster reconciles ITS
+    own `/repos/seedmatic/rke2lab/hooks` entry (pointing at its funnel) when its webhook consumers
+    activate — minting a fresh App token in-cluster (the `GithubWriterTokenMint` Gate-2 mint-on-demand
+    model), NOT at the host grow. N clusters = N repo-hooks on the one repo (edge idempotent by url).
+  - **App-webhook teardown = SINGULAR (the App is org-owned), two layers:** (1) CODE (no-dead-path,
+    Claude) — delete `GithubAppWebhookScenario`+`GithubAppWebhookConfigurer`+edge+the `ghapp-webhook`
+    App sow in `ClusterSeedScenario`+the `webhook_active/webhook_url` prefill in `GithubAppCli`; (2)
+    LIVE on GitHub (user, after a re-grow) — blank/disable the App's own webhook (`PATCH /app/hook/config`
+    or the App-manifest flow) so events don't DOUBLE-FIRE (App-hook + repo-hooks).
+  - **Ordering constraint:** removing the App path alone leaves PaC with no reconciled webhook —
+    Flux is UNAFFECTED (own per-repo `Receiver`), but PaC/Tekton depends on the App webhook today. So
+    the App teardown (code + live) must land WITH the repo-hook reconciliation, never before. Build
+    chunk 2 as ONE cohesive pass, after the workload birth.
   **Chunk 2 TODO (wiring — rewires the grow, do fresh):**
   1. `PacWebhookFunnel` per-cluster: add cluster → leaf `pipelines-webhook-<cluster>` (LEAF is used
      by BOTH `PacWebhookManifestsUnit` (Ingress tls host, has `bootstrapIdentity().clusterName()`)
