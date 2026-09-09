@@ -164,16 +164,18 @@
       });
 
       # ---- tailscale --------------------------------------------------
-      # Same pattern as headscale: upstream prod from nixpkgs (override flips
-      # checkPhase off), debug overrideAttrs to drop strip flags + add delve
-      # wrapping. Both `tailscale` and `tailscaled` get wrapped so the
-      # operator can debug either side.
+      # The fork tailscale/tailscaled (CNAME extra_records + SSH port-2222),
+      # taken from ndh — ndh.packages.<system>.tailscale re-exports its
+      # tailscaleOverlay build, so the in-cluster mesh tailscaled runs the
+      # SAME patched binary as the operator host (path A). This is the point
+      # that matters for CNAME: the control plane pushes DNSRecord CNAME
+      # extra_records that only the patched resolver in this daemon honors.
       #
       # `doCheck = false`: lab-only build (same rationale as the others).
       # Tailscale's atomicfile_test specifically fails inside the nix sandbox
       # because the build tmpdir path can exceed the unix-socket name limit
       # (TestDoesNotOverwriteIrregularFiles).
-      tailscale-prod = pkgs.tailscale.overrideAttrs (_: {
+      tailscale-prod = ndh.packages.${system}.tailscale.overrideAttrs (_: {
         doCheck = false;
       });
 

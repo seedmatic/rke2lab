@@ -103124,11 +103124,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1788337890,
-        "narHash": "sha256-GBOWi/NJPU0tZwaOo3QsZqr65in8h+a5qQ/0hPzqVBk=",
+        "lastModified": 1788692069,
+        "narHash": "sha256-wTeq0IvYw9RHfSWox9Y0houQR+4in+Xo5D3n0lIU1oU=",
         "owner": "seedmatic",
         "repo": "flox-controller",
-        "rev": "b30201ca73d454c3b546c7f0dbbc9fedb414ad7c",
+        "rev": "b6ac4c2663a8ca7a64cb1d7d53aa9b8c2b808b03",
         "type": "github"
       },
       "original": {
@@ -153261,11 +153261,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1788938904,
-        "narHash": "sha256-nP50J+NBNko4roEO0jGwpgMc5ZUbs94rvmCdPcrcYt8=",
+        "lastModified": 1788948103,
+        "narHash": "sha256-08NAqCKD1vEMghFLCG/HRPYYtdJWNb5jP3HQ7kdjysk=",
         "owner": "seedmatic",
         "repo": "ndh",
-        "rev": "e8f0c267d57c6dffd0794038940bb265dd68d61a",
+        "rev": "fd404836e357e6b4fef8d4977f26659afa88be06",
         "type": "github"
       },
       "original": {
@@ -282616,11 +282616,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1788501588,
-        "narHash": "sha256-x5V+47hleIDNDTKbKMv5AQzf6t+O6YDtvhAqZ+ZDwJ8=",
+        "lastModified": 1788947716,
+        "narHash": "sha256-scTtrQBpRkIs89d2N8SpmDRuczYfUcd3uYkPXe1aqKc=",
         "owner": "seedmatic",
         "repo": "rke2lab",
-        "rev": "7a43f2c7be9e5af34c62d718ac5d4368c1126336",
+        "rev": "bba3e4d9ad02289801d030f48598868f7898a2da",
         "type": "github"
       },
       "original": {
@@ -307275,16 +307275,16 @@
         "systems": "systems_1033"
       },
       "locked": {
-        "lastModified": 1787160369,
-        "narHash": "sha256-61uF+J8082tIc/TJIOtMwHmtik4+oAnI+rOWSbDimj4=",
+        "lastModified": 1788946341,
+        "narHash": "sha256-vhV0gwMM4GIjuj4faBXDjq/HYktKfs+cH29XP3CeK5I=",
         "owner": "nxmatic",
         "repo": "tailscale",
-        "rev": "61f34186416e52163b7d598f9275edf65da09f52",
+        "rev": "7b962478b2ad5b437e84911bce2563569e292dc3",
         "type": "github"
       },
       "original": {
         "owner": "nxmatic",
-        "ref": "nxmatic/feature/extra-records-cname",
+        "ref": "nxmatic/integration/1.102",
         "repo": "tailscale",
         "type": "github"
       }
