@@ -1,0 +1,18 @@
+---
+apiVersion: v1
+data:
+  members: |-
+    cilium.io/v2alpha1|CiliumLoadBalancerIPPool||cluster
+    cilium.io/v2alpha1|CiliumLoadBalancerIPPool||lan
+    cilium.io/v2alpha1|CiliumLoadBalancerIPPool||vip
+    cilium.io/v2|CiliumBGPAdvertisement||control-plane-advertisement
+    cilium.io/v2alpha1|CiliumL2AnnouncementPolicy||host
+    cilium.io/v2|CiliumBGPClusterConfig||bgp-cluster-config
+kind: ConfigMap
+metadata:
+  annotations:
+    config.kubernetes.io/local-config: "true"
+    io.seedmatic.rke2lab/domain: networking
+    io.seedmatic.rke2lab/manifest-group: "true"
+    io.seedmatic.rke2lab/package: cilium-advanced
+  name: cilium-advanced.group

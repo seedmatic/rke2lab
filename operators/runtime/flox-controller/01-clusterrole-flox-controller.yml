@@ -1,0 +1,56 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: runtime
+    io.seedmatic.rke2lab/layer: operators
+    io.seedmatic.rke2lab/package: flox-controller
+  name: flox-controller
+rules:
+- apiGroups:
+  - flox.seedmatic.io
+  resources:
+  - floxenvs
+  - floxcatalogs
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - flox.seedmatic.io
+  resources:
+  - floxenvs/status
+  - floxcatalogs/status
+  verbs:
+  - get
+  - update
+  - patch
+- apiGroups:
+  - source.toolkit.fluxcd.io
+  resources:
+  - gitrepositories
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - persistentvolumeclaims
+  verbs:
+  - get
+  - create
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+  - update

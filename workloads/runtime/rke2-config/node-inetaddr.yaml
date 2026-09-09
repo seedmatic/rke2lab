@@ -1,0 +1,13 @@
+---
+apiVersion: v1
+data:
+  node-ip: '"10.80.0.10"'
+kind: ConfigMap
+metadata:
+  annotations:
+    config.kubernetes.io/local-config: "true"
+    description.kpt.dev: Node IP fragment
+    io.seedmatic.rke2lab/domain: runtime
+    io.seedmatic.rke2lab/package: rke2-config
+    io.seedmatic.rke2lab/rke2-config: "true"
+  name: node-inetaddr.yaml

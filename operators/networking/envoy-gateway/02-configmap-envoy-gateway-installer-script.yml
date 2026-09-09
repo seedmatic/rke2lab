@@ -1,0 +1,25 @@
+---
+apiVersion: v1
+data:
+  install.sh: |
+    #!/usr/bin/env -S bash -exuo pipefail
+
+    : "[i] Installing Envoy Gateway ${ENVOY_GATEWAY_VERSION}..."
+    kubectl apply \
+      --server-side \
+      --force-conflicts \
+      -f "https://github.com/envoyproxy/gateway/releases/download/${ENVOY_GATEWAY_VERSION}/install.yaml"
+
+    : "[i] Waiting for Envoy Gateway deployment..."
+    kubectl wait --timeout=300s \
+      --namespace "${ENVOY_GATEWAY_NAMESPACE}" \
+      --for=condition=available \
+      deployment/envoy-gateway
+kind: ConfigMap
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: networking
+    io.seedmatic.rke2lab/layer: operators
+    io.seedmatic.rke2lab/package: envoy-gateway
+  name: envoy-gateway-installer-script
+  namespace: envoy-gateway-system

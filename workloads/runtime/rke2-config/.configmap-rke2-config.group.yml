@@ -1,0 +1,23 @@
+---
+apiVersion: v1
+data:
+  members: |-
+    v1|ConfigMap||advertise-address.yaml
+    v1|ConfigMap||cidrs.yaml
+    v1|ConfigMap||cluster-init.yaml
+    v1|ConfigMap||core.yaml
+    v1|ConfigMap||debug.yaml
+    v1|ConfigMap||disable.yaml
+    v1|ConfigMap||etcd-metrics.yaml
+    v1|ConfigMap||etcd.yaml
+    v1|ConfigMap||node-inetaddr.yaml
+    v1|ConfigMap||tls-san.yaml
+    v1|ConfigMap||token.yaml
+kind: ConfigMap
+metadata:
+  annotations:
+    config.kubernetes.io/local-config: "true"
+    io.seedmatic.rke2lab/domain: runtime
+    io.seedmatic.rke2lab/manifest-group: "true"
+    io.seedmatic.rke2lab/package: rke2-config
+  name: rke2-config.group

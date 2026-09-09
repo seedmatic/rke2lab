@@ -1,0 +1,23 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: high-availability
+    io.seedmatic.rke2lab/package: kube-vip
+  labels:
+    backup-service: "true"
+  name: control-plane-nodeport
+  namespace: kube-system
+spec:
+  externalTrafficPolicy: Cluster
+  ports:
+  - name: kube-apiserver
+    nodePort: 30443
+    port: 6443
+    protocol: TCP
+    targetPort: 6443
+  selector:
+    component: kube-apiserver
+    tier: control-plane
+  type: NodePort

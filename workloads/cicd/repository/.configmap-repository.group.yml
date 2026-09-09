@@ -1,0 +1,12 @@
+---
+apiVersion: v1
+data:
+  members: pipelinesascode.tekton.dev/v1alpha1|Repository|rke2lab-system|rke2lab
+kind: ConfigMap
+metadata:
+  annotations:
+    config.kubernetes.io/local-config: "true"
+    io.seedmatic.rke2lab/domain: cicd
+    io.seedmatic.rke2lab/manifest-group: "true"
+    io.seedmatic.rke2lab/package: repository
+  name: repository.group

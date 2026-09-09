@@ -1,0 +1,21 @@
+---
+apiVersion: v1
+data:
+  tls-san: |-
+    - "localhost"
+    - "gateway"
+    - "0.0.0.0"
+    - "127.0.0.1"
+    - "10.80.7.1"
+    - "10.80.0.1"
+    - "10.80.0.10"
+    - "192.168.1.131"
+kind: ConfigMap
+metadata:
+  annotations:
+    config.kubernetes.io/local-config: "true"
+    description.kpt.dev: TLS SAN fragment
+    io.seedmatic.rke2lab/domain: runtime
+    io.seedmatic.rke2lab/package: rke2-config
+    io.seedmatic.rke2lab/rke2-config: "true"
+  name: tls-san.yaml

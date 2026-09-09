@@ -1,0 +1,220 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.20.1
+    io.seedmatic.rke2lab/domain: runtime
+    io.seedmatic.rke2lab/layer: operators
+    io.seedmatic.rke2lab/package: flox-controller
+  name: floxenvs.flox.seedmatic.io
+spec:
+  group: flox.seedmatic.io
+  names:
+    kind: FloxEnv
+    listKind: FloxEnvList
+    plural: floxenvs
+    shortNames:
+    - fenv
+    singular: floxenv
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.consumption
+      name: Consumption
+      type: string
+    - jsonPath: .spec.folder
+      name: Folder
+      type: string
+    - jsonPath: ".status.conditions[?(@.type==\"Ready\")].status"
+      name: Ready
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: FloxEnv is a flox environment as a first-class Kubernetes resource.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              FloxEnvSpec is the maintainer-authored INTENT. It never carries generated artifacts
+              (the lock, resolved paths) — those live in status.
+            properties:
+              consumption:
+                default: overlay
+                description: |-
+                  Consumption is how the env is used: overlaid into a pod at container-create
+                  (`overlay`) or containerized into a carrier base image (`image`).
+                enum:
+                - overlay
+                - image
+                type: string
+              folder:
+                description: |-
+                  Folder is the relative host-layout path the env materialises in
+                  (`<envroot>/<folder>/<name>/`), DISSOCIATED from the k8s namespace and MAY be a
+                  structured path (e.g. "mesh/base"), unlike a namespace. It is what other envs'
+                  manifest `include` paths resolve against. Defaults to metadata.namespace when empty.
+                type: string
+              manifest:
+                description: |-
+                  Manifest is the flox manifest expressed as YAML — a faithful TRANSPOSITION of
+                  `manifest.toml` (same structure, NOT a re-modelled schema): `install`, `include`,
+                  `vars`, `hook`, `profile`, `options`, `services`. The controller serialises it to
+                  `manifest.toml`. Composition stays flox-native: `include` uses PATHS that resolve
+                  to other envs' host folders (each env materialises at its `folder`), so the CR
+                  does NOT model includes separately (no CR↔manifest conflict).
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
+              update:
+                description: Update directs lock refresh (see UpdatePolicy).
+                properties:
+                  mode:
+                    default: Manual
+                    description: |-
+                      Mode is Manual (the lock changes only via an explicit operator bump) or Track
+                      (the env-bumper may refresh the lock within the packages' constraints).
+                    enum:
+                    - Manual
+                    - Track
+                    type: string
+                type: object
+            type: object
+          status:
+            description: |-
+              FloxEnvStatus is GENERATED — never hand-edited. It holds the deterministic lock, what
+              each package resolved to (inspectability), and per-node realisation.
+            properties:
+              conditions:
+                description: Conditions is the standard condition set.
+                items:
+                  description: Condition contains details for one aspect of the current state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: "^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$"
+                      type: string
+                    status:
+                      description: "status of the condition, one of True, False, Unknown."
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: "^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$"
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              lock:
+                description: |-
+                  Lock is the resolved flox manifest.lock (the deterministic pin) — GENERATED, in
+                  status so the maintenance loop is introspect(status) → adjust(spec); you never
+                  hand-edit a lock. Produced by a lock-producer (the operator env-bumper, or an
+                  in-cluster lock-controller reacting to spec.update — OPEN axis, gated on avoiding
+                  FloxHub), NEVER by the node-agent, which realises it verbatim and never re-locks.
+                type: string
+              realized:
+                description: Realized reports per-node realisation.
+                items:
+                  description: NodeRealization reports one node's realisation of the env.
+                  properties:
+                    envPath:
+                      description: |-
+                        EnvPath is the .flox source dir on the node (<env-root>/<folder>/<name>) — where the
+                        operator can cd to read the manifest/lock/run. Inspection aid, not a contract.
+                      type: string
+                    gcrootPath:
+                      description: |-
+                        GcrootPath is the flox-runtime GC-root on the node the NRI plugin readlinks to resolve
+                        this env (<gcroot-base>/<folder>/<name>) — the producer↔plugin handoff. Inspection aid.
+                      type: string
+                    node:
+                      description: Node is the node name.
+                      type: string
+                    observedGeneration:
+                      description: ObservedGeneration is the FloxEnv generation this realisation reflects.
+                      format: int64
+                      type: integer
+                    ready:
+                      description: Ready is true once the closures + GC-roots are present on the node.
+                      type: boolean
+                    storePath:
+                      description: StorePath is the realised env store path the NRI plugin resolves to.
+                      type: string
+                  required:
+                  - node
+                  - ready
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - node
+                x-kubernetes-list-type: map
+              resolved:
+                additionalProperties:
+                  type: string
+                description: "Resolved reports what each package resolved to, for inspection."
+                type: object
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

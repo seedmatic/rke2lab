@@ -1,0 +1,11 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: cluster
+    io.seedmatic.rke2lab/layer: foundation
+    io.seedmatic.rke2lab/package: runtime-system-namespace
+  labels:
+    rke2lab.nxmatic.io/shared-namespace: "true"
+  name: rke2lab-system

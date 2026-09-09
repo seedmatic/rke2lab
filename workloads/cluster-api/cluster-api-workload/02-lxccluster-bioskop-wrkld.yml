@@ -1,0 +1,17 @@
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha2
+kind: LXCCluster
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: cluster-api
+    io.seedmatic.rke2lab/package: cluster-api-workload
+  name: bioskop-wrkld
+  namespace: rke2lab-bioskop-wrkld
+spec:
+  controlPlaneEndpoint:
+    host: 10.80.15.10
+    port: 6443
+  loadBalancer:
+    kubeVIP: {}
+  secretRef:
+    name: bioskop-incus-identity

@@ -1,0 +1,30 @@
+---
+apiVersion: flox.seedmatic.io/v1alpha1
+kind: FloxEnv
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: runtime
+    io.seedmatic.rke2lab/package: flox-envs
+  name: base
+  namespace: rke2lab-system
+spec:
+  consumption: overlay
+  folder: kube
+  manifest:
+    install:
+      bash:
+        outputs: all
+        pkg-path: bash
+      coreutils:
+        outputs: all
+        pkg-path: coreutils
+      kubectl:
+        outputs: all
+        pkg-path: kubectl
+      yq-go:
+        outputs: all
+        pkg-path: yq-go
+    options:
+      systems:
+      - aarch64-linux
+    schema-version: 1.10.0

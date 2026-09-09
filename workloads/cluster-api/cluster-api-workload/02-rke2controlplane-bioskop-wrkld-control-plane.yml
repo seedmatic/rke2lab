@@ -1,0 +1,65 @@
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+kind: RKE2ControlPlane
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: cluster-api
+    io.seedmatic.rke2lab/package: cluster-api-workload
+  name: bioskop-wrkld-control-plane
+  namespace: rke2lab-bioskop-wrkld
+spec:
+  agentConfig:
+    airGapped: true
+  files:
+  - content: |-
+      apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: kube-vip
+        namespace: kube-system
+      ---
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRole
+      metadata:
+        annotations:
+          rbac.authorization.kubernetes.io/autoupdate: "true"
+        name: system:kube-vip-role
+      rules:
+        - apiGroups: [""]
+          resources: ["services", "services/status", "nodes", "endpoints"]
+          verbs: ["list","get","watch", "update"]
+        - apiGroups: ["coordination.k8s.io"]
+          resources: ["leases"]
+          verbs: ["list", "get", "watch", "update", "create"]
+      ---
+      kind: ClusterRoleBinding
+      apiVersion: rbac.authorization.k8s.io/v1
+      metadata:
+        name: system:kube-vip-binding
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: ClusterRole
+        name: system:kube-vip-role
+      subjects:
+      - kind: ServiceAccount
+        name: kube-vip
+        namespace: kube-system
+    owner: root:root
+    path: /var/lib/rancher/rke2/server/manifests/kube-vip-rbac.yaml
+  machineTemplate:
+    spec:
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: LXCMachineTemplate
+        name: bioskop-wrkld-control-plane
+  preRKE2Commands:
+  - "mkdir -p /var/lib/rancher/rke2/server/manifests/ && ctr images pull ghcr.io/kube-vip/kube-vip:v0.9.2 && ctr run --rm --net-host ghcr.io/kube-vip/kube-vip:v0.9.2 vip /kube-vip manifest daemonset --arp --interface $(ip -4 -j route list default | jq -r .[0].dev) --address 10.80.15.10 --controlplane --leaderElection --taint --services --inCluster | tee /var/lib/rancher/rke2/server/manifests/kube-vip.yaml"
+  registrationAddress: 10.80.15.10
+  registrationMethod: address
+  replicas: 3
+  rolloutStrategy:
+    rollingUpdate:
+      maxSurge: 1
+    type: RollingUpdate
+  serverConfig: {}
+  version: v1.34.8+rke2r2

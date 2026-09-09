@@ -1,0 +1,55 @@
+---
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: cicd
+    io.seedmatic.rke2lab/package: render-pipeline
+  name: render-manifests
+  namespace: rke2lab-system
+spec:
+  params:
+  - name: repo-url
+    type: string
+  - name: revision
+    type: string
+  - name: cluster
+    type: string
+  - name: node
+    type: string
+  tasks:
+  - name: fetch
+    params:
+    - name: repo-url
+      value: $(params.repo-url)
+    - name: revision
+      value: $(params.revision)
+    taskRef:
+      name: git-fetch
+    workspaces:
+    - name: output
+      workspace: source
+    - name: basic-auth
+      workspace: basic-auth
+  - name: render
+    params:
+    - name: cluster
+      value: $(params.cluster)
+    - name: node
+      value: $(params.node)
+    runAfter:
+    - fetch
+    taskRef:
+      name: render-publish
+    workspaces:
+    - name: source
+      workspace: source
+    - name: maven-cache
+      workspace: maven-cache
+    - name: basic-auth
+      workspace: basic-auth
+  workspaces:
+  - name: source
+  - name: maven-cache
+  - name: basic-auth
+    optional: true

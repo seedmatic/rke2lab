@@ -1,0 +1,99 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: networking
+    io.seedmatic.rke2lab/package: kdns
+  labels:
+    app.kubernetes.io/instance: kdns
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: kdns
+    helm.sh/chart: kdns-0.2.3
+  name: kdns
+  namespace: rke2lab-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: kdns
+      app.kubernetes.io/name: kdns
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        flox.seedmatic.io/environment.kdns: networking/kdns
+        flox.seedmatic.io/gid.kdns: "0"
+        flox.seedmatic.io/home.kdns: /root
+        flox.seedmatic.io/uid.kdns: "0"
+        io.seedmatic.rke2lab/domain: networking
+        io.seedmatic.rke2lab/package: kdns
+      labels:
+        app.kubernetes.io/instance: kdns
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: kdns
+        helm.sh/chart: kdns-0.2.3
+    spec:
+      containers:
+      - command:
+        - flox
+        - activate
+        - --dir
+        - /root
+        - --
+        - kdns
+        env:
+        - name: KUBERNETES_SERVICE_HOST
+          value: 10.80.0.10
+        - name: KUBERNETES_SERVICE_PORT
+          value: "6443"
+        - name: HOME
+          value: /root
+        image: rke2lab/flox-carrier:0.1.0
+        imagePullPolicy: IfNotPresent
+        name: kdns
+        ports:
+        - containerPort: 5353
+          hostPort: 5353
+          name: mdns
+          protocol: UDP
+        - containerPort: 5353
+          hostPort: 5353
+          name: http
+          protocol: TCP
+        resources:
+          limits:
+            cpu: 200m
+            memory: 256Mi
+          requests:
+            cpu: 100m
+            memory: 128Mi
+        securityContext:
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: false
+          runAsNonRoot: false
+          runAsUser: 0
+        volumeMounts:
+        - mountPath: /.config/flox
+          name: flox-config
+        - mountPath: /.cache/flox
+          name: flox-cache
+      dnsPolicy: Default
+      hostNetwork: true
+      securityContext: {}
+      serviceAccountName: kdns
+      shareProcessNamespace: true
+      tolerations:
+      - operator: Exists
+      volumes:
+      - configMap:
+          defaultMode: 493
+          name: kdns-dlv-script
+        name: kdns-dlv-script
+      - emptyDir: {}
+        name: flox-config
+      - emptyDir: {}
+        name: flox-cache

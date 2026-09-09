@@ -1,0 +1,29 @@
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: tailscale-funnel-cert-restore-operators
+  namespace: flux-system
+spec:
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
+  dependsOn:
+  - name: runtime-flox-controller-crds
+  - name: runtime-flox-controller-operators
+  - name: runtime-flox-controller-workloads
+  - name: runtime-flox-webhook-operators
+  - name: runtime-flox-webhook-workloads
+  - name: storage-openebs-zfs
+  - name: tailscale-system-namespace-foundation
+  - name: tailscale-system-namespace-workloads
+  force: true
+  interval: 5m
+  path: ./operators/tailscale/funnel-cert-restore
+  prune: true
+  retryInterval: 30s
+  sourceRef:
+    kind: GitRepository
+    name: rke2lab
+  wait: true

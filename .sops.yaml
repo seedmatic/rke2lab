@@ -1,0 +1,27 @@
+creation_rules:
+  # Age recipients for SOPS encryption:
+  # - age10ey0l... : Operator key (from nix-darwin-home, used by git sops filter)
+  # - age1k0tc4... : Flux/cluster key (derived from rke2-cluster SSH key via ssh-to-age)
+  #                  Obtained: ssh-to-age < ~/.local/var/run/secrets/ssh-keys/rke2-cluster.pub
+  #                  Used by Flux in-cluster to decrypt gitops/ resources
+
+  # k8s is catching only secrets based
+  - path_regex: '.*\.ya?ml'
+    input_type: kubernetes
+    encrypted_regex: '^(data|stringData)$'
+    age: >-
+      age10ey0lcup4zpjqcknpxw7enpsagn674nm634f2u75trfr5t62uq5qdjuxzv,
+      age1k0tc4gmaqrk5df3ujja34gkqxstu0cye7fl7fktjeuua3yych3aqxfjlak
+  # other YAML documents should have a sops:encrypted comment
+  - path_regex: '.*'
+    encrypted_comment_regex: 'sops:encrypted'
+    age: >-
+      age10ey0lcup4zpjqcknpxw7enpsagn674nm634f2u75trfr5t62uq5qdjuxzv,
+      age1k0tc4gmaqrk5df3ujja34gkqxstu0cye7fl7fktjeuua3yych3aqxfjlak
+stores:
+  json:
+    indent: 2
+  json_binary:
+    indent: 2
+  yaml:
+    indent: 2

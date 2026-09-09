@@ -1,0 +1,30 @@
+---
+apiVersion: operator.tekton.dev/v1alpha1
+kind: TektonConfig
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: cicd
+    io.seedmatic.rke2lab/package: tekton-pipelines
+  name: config
+spec:
+  pipeline:
+    coschedule: pipelineruns
+  platforms:
+    kubernetes:
+      pipelinesAsCode:
+        enable: true
+        settings:
+          secret-github-app-scope-extra-repos: seedmatic/claude-hub
+  profile: all
+  pruner:
+    disabled: false
+    keep: 100
+    resources:
+    - taskrun
+    - pipelinerun
+    schedule: 0 8 * * *
+  result:
+    disabled: true
+    is_external_db: false
+    options: {}
+  targetNamespace: tekton-pipelines

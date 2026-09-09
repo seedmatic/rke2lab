@@ -1,0 +1,51 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: networking
+    io.seedmatic.rke2lab/layer: operators
+    io.seedmatic.rke2lab/package: envoy-gateway
+  name: envoy-gateway-installer-v1-9-0
+  namespace: envoy-gateway-system
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      annotations:
+        io.seedmatic.rke2lab/domain: networking
+        io.seedmatic.rke2lab/layer: operators
+        io.seedmatic.rke2lab/package: envoy-gateway
+    spec:
+      containers:
+      - command:
+        - sh
+        - /scripts/install.sh
+        env:
+        - name: ENVOY_GATEWAY_VERSION
+          value: v1.9.0
+        - name: ENVOY_GATEWAY_NAMESPACE
+          value: envoy-gateway-system
+        image: alpine/k8s:1.29.8
+        name: installer
+        resources:
+          limits:
+            cpu: 200m
+            ephemeral-storage: 256Mi
+            memory: 256Mi
+          requests:
+            cpu: 50m
+            ephemeral-storage: 128Mi
+            memory: 64Mi
+        volumeMounts:
+        - mountPath: /scripts
+          name: installer-script
+          readOnly: true
+      restartPolicy: OnFailure
+      serviceAccountName: envoy-gateway-installer
+      volumes:
+      - configMap:
+          defaultMode: 493
+          name: envoy-gateway-installer-script
+        name: installer-script
+  ttlSecondsAfterFinished: 300

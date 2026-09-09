@@ -1,0 +1,42 @@
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: cicd
+    io.seedmatic.rke2lab/package: render-pipeline
+  name: render-publish
+  namespace: rke2lab-system
+spec:
+  params:
+  - name: cluster
+    type: string
+  - name: node
+    type: string
+  steps:
+  - env:
+    - name: RKE2LAB_SIGNING_KEY
+      valueFrom:
+        secretKeyRef:
+          key: ssh-private
+          name: manifests-render-signing
+          optional: true
+    image: debian:stable-slim
+    name: render
+    script: |-
+      #!/usr/bin/env bash
+      set -euo pipefail
+      GIT_AUTH_DIR="$(workspaces.basic-auth.path)"
+      if [ -f "$GIT_AUTH_DIR/.git-credentials" ]; then
+        export RKE2LAB_PUSH_TOKEN=`sed -E 's#https://[^:]+:([^@]+)@.*#\1#' "$GIT_AUTH_DIR/.git-credentials" | head -n1`
+        export GH_TOKEN="$RKE2LAB_PUSH_TOKEN"
+        export NIX_CONFIG="${NIX_CONFIG:-}"$'\n'"access-tokens = github.com=$RKE2LAB_PUSH_TOKEN"
+      fi
+      export M2_REPO="$(workspaces.maven-cache.path)/repository"
+      nix run .#render-manifests -- "$(params.cluster)" "$(params.node)"
+    workingDir: $(workspaces.source.path)
+  workspaces:
+  - name: source
+  - name: maven-cache
+  - name: basic-auth
+    optional: true

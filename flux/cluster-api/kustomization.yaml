@@ -1,0 +1,10 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- cluster-api-cluster-api-operator-crds.yml
+- cluster-api-cluster-api-operator-operators.yml
+- cluster-api-cluster-api-operator-workloads.yml
+- cluster-api-cluster-api-workload.yml
+- cluster-api-image-state.yml
+- cluster-api-kubeconfig.yml

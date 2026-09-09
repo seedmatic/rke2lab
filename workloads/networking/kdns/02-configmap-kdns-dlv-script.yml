@@ -1,0 +1,48 @@
+---
+apiVersion: v1
+data:
+  kdns-dlv.sh: |
+    #!/bin/sh
+    set -eu
+
+    find_kdns_pid() {
+        for proc_dir in /proc/[0-9]*; do
+            [ -d "$proc_dir" ] || continue
+            [ -r "$proc_dir/comm" ] || continue
+
+            IFS= read -r proc_name <"$proc_dir/comm" || continue
+            if [ "$proc_name" = "kdns" ]; then
+                printf '%s\n' "${proc_dir#/proc/}"
+                return 0
+            fi
+        done
+
+        return 1
+    }
+
+    enabled="${GO_DEBUG_ENABLED:-}"
+    if [ "$enabled" != "true" ]; then
+        : "[i] debug disabled (set annotation debug.kdns.lab42/enabled=true to enable); sleeping"
+        sleep 3650d
+    fi
+
+    if ! command -v dlv >/dev/null 2>&1; then
+        echo "[kdns-dlv] dlv not found on PATH; ensure the pod runs with the debug Flox environment" >&2
+        sleep 1d
+    fi
+
+    target_pid="$(find_kdns_pid || true)"
+    if [ -z "$target_pid" ]; then
+        : "[i] kdns process not found; sleeping"
+        sleep 1d
+    fi
+
+    : "[i] starting delve headless on :${KDNS_DEBUG_PORT} attaching to pid ${target_pid}"
+    exec dlv attach "$target_pid" --headless --listen=":${KDNS_DEBUG_PORT}" --api-version=2 --accept-multiclient --log --continue
+kind: ConfigMap
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: networking
+    io.seedmatic.rke2lab/package: kdns
+  name: kdns-dlv-script
+  namespace: rke2lab-system

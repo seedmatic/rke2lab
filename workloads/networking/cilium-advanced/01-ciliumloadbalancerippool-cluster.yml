@@ -1,0 +1,15 @@
+---
+apiVersion: cilium.io/v2alpha1
+kind: CiliumLoadBalancerIPPool
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: networking
+    io.seedmatic.rke2lab/package: cilium-advanced
+  name: cluster
+spec:
+  blocks:
+  - cidr: 10.80.0.64/26
+  serviceSelector:
+    matchExpressions:
+    - key: io.cilium/lb-ipam-pool
+      operator: DoesNotExist

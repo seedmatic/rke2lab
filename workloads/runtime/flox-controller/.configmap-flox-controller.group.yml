@@ -1,0 +1,19 @@
+---
+apiVersion: v1
+data:
+  members: |-
+    apiextensions.k8s.io/v1|CustomResourceDefinition||floxenvs.flox.seedmatic.io
+    apiextensions.k8s.io/v1|CustomResourceDefinition||floxcatalogs.flox.seedmatic.io
+    v1|ServiceAccount|rke2lab-system|flox-controller
+    rbac.authorization.k8s.io/v1|ClusterRole||flox-controller
+    rbac.authorization.k8s.io/v1|ClusterRoleBinding||flox-controller
+    apps/v1|DaemonSet|rke2lab-system|flox-controller
+    v1|Secret|rke2lab-system|floxhub-token
+kind: ConfigMap
+metadata:
+  annotations:
+    config.kubernetes.io/local-config: "true"
+    io.seedmatic.rke2lab/domain: runtime
+    io.seedmatic.rke2lab/manifest-group: "true"
+    io.seedmatic.rke2lab/package: flox-controller
+  name: flox-controller.group

@@ -1,0 +1,25 @@
+---
+apiVersion: v1
+data:
+  members: |-
+    v1|Namespace||rke2lab-bioskop-wrkld
+    infrastructure.cluster.x-k8s.io/v1alpha2|LXCCluster|rke2lab-bioskop-wrkld|bioskop-wrkld
+    infrastructure.cluster.x-k8s.io/v1alpha2|LXCMachineTemplate|rke2lab-bioskop-wrkld|bioskop-wrkld-control-plane
+    controlplane.cluster.x-k8s.io/v1beta2|RKE2ControlPlane|rke2lab-bioskop-wrkld|bioskop-wrkld-control-plane
+    cluster.x-k8s.io/v1beta2|Cluster|rke2lab-bioskop-wrkld|bioskop-wrkld
+    infrastructure.cluster.x-k8s.io/v1alpha2|LXCMachineTemplate|rke2lab-bioskop-wrkld|bioskop-wrkld-worker
+    bootstrap.cluster.x-k8s.io/v1beta2|RKE2ConfigTemplate|rke2lab-bioskop-wrkld|bioskop-wrkld-agent
+    cluster.x-k8s.io/v1beta2|MachineDeployment|rke2lab-bioskop-wrkld|bioskop-wrkld-md-0
+    v1|Secret|rke2lab-bioskop-wrkld|bioskop-incus-identity
+    v1|Secret|rke2lab-bioskop-wrkld|bioskop-wrkld-ca
+    v1|Secret|rke2lab-bioskop-wrkld|bioskop-wrkld-cca
+    v1|Secret|rke2lab-bioskop-wrkld|bioskop-wrkld-etcd
+    v1|Secret|rke2lab-bioskop-wrkld|bioskop-wrkld-peer-etcd
+kind: ConfigMap
+metadata:
+  annotations:
+    config.kubernetes.io/local-config: "true"
+    io.seedmatic.rke2lab/domain: cluster-api
+    io.seedmatic.rke2lab/manifest-group: "true"
+    io.seedmatic.rke2lab/package: cluster-api-workload
+  name: cluster-api-workload.group

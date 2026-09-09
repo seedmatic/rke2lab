@@ -1,0 +1,14 @@
+---
+apiVersion: v1
+data:
+  debug: '"false"'
+  v: '"4"'
+kind: ConfigMap
+metadata:
+  annotations:
+    config.kubernetes.io/local-config: "true"
+    description.kpt.dev: Enable RKE2 debug logging for manifest watcher
+    io.seedmatic.rke2lab/domain: runtime
+    io.seedmatic.rke2lab/package: rke2-config
+    io.seedmatic.rke2lab/rke2-config: "true"
+  name: debug.yaml

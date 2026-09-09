@@ -1,0 +1,5 @@
+# Rendered Secrets are sops-filtered: their data/stringData commit ENCRYPTED (never
+# plaintext), decrypted by Flux (sops-age) on reconcile. The recorded .sops.yaml names the
+# fields + recipients; only the irreducible bootstrap seed still rides the node-bootstrap lane.
+**/*-secret-*.yml filter=sops-yaml
+**/.secret-*.yml filter=sops-yaml

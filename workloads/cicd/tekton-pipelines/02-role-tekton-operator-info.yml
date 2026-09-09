@@ -1,0 +1,21 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: cicd
+    io.seedmatic.rke2lab/package: tekton-pipelines
+  labels:
+    app.kubernetes.io/instance: default
+  name: tekton-operator-info
+  namespace: tekton-operator
+rules:
+- apiGroups:
+  - ""
+  resourceNames:
+  - tekton-operator-info
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - describe

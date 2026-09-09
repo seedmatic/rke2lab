@@ -1,0 +1,14 @@
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+kind: RKE2ConfigTemplate
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: cluster-api
+    io.seedmatic.rke2lab/package: cluster-api-workload
+  name: bioskop-wrkld-agent
+  namespace: rke2lab-bioskop-wrkld
+spec:
+  template:
+    spec:
+      agentConfig:
+        airGapped: true

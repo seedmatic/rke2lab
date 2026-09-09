@@ -1,0 +1,20 @@
+---
+apiVersion: v1
+data:
+  members: |-
+    v1|Namespace||rke2lab-replicator-source
+    rbac.authorization.k8s.io/v1|ClusterRole||kubernetes-replicator
+    v1|ServiceAccount|kube-system|kubernetes-replicator
+    rbac.authorization.k8s.io/v1|ClusterRoleBinding||kubernetes-replicator
+    apps/v1|Deployment|kube-system|kubernetes-replicator
+    v1|Secret|rke2lab-replicator-source|floxhub-token
+    v1|Secret|rke2lab-replicator-source|flux-webhook-token
+    v1|Secret|rke2lab-replicator-source|operator-oauth
+kind: ConfigMap
+metadata:
+  annotations:
+    config.kubernetes.io/local-config: "true"
+    io.seedmatic.rke2lab/domain: platform
+    io.seedmatic.rke2lab/manifest-group: "true"
+    io.seedmatic.rke2lab/package: replicator
+  name: replicator.group

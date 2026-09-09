@@ -1,0 +1,34 @@
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: cicd
+    io.seedmatic.rke2lab/package: render-pipeline
+  name: git-fetch
+  namespace: rke2lab-system
+spec:
+  params:
+  - name: repo-url
+    type: string
+  - name: revision
+    type: string
+  steps:
+  - image: alpine/git:2.45.2
+    name: clone
+    script: |-
+      #!/bin/sh
+      set -eu
+      if [ -f "$(workspaces.basic-auth.path)/.git-credentials" ]; then
+        cp "$(workspaces.basic-auth.path)/.git-credentials" "$HOME/.git-credentials"
+        cp "$(workspaces.basic-auth.path)/.gitconfig" "$HOME/.gitconfig"
+      fi
+      cd "$(workspaces.output.path)"
+      git init -q .
+      git remote add origin "$(params.repo-url)"
+      git fetch -q --depth 1 origin "$(params.revision)"
+      git checkout -q FETCH_HEAD
+  workspaces:
+  - name: output
+  - name: basic-auth
+    optional: true

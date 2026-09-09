@@ -1,0 +1,15 @@
+---
+apiVersion: v1
+data:
+  etcd-expose-metrics: "false"
+  node-name: '"bioskop-mgmt-master"'
+  with-node-id: "false"
+kind: ConfigMap
+metadata:
+  annotations:
+    config.kubernetes.io/local-config: "true"
+    description.kpt.dev: Etcd settings fragment
+    io.seedmatic.rke2lab/domain: runtime
+    io.seedmatic.rke2lab/package: rke2-config
+    io.seedmatic.rke2lab/rke2-config: "true"
+  name: etcd.yaml

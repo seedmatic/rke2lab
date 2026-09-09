@@ -1,0 +1,12 @@
+---
+apiVersion: v1
+data:
+  members: v1|Namespace||rke2lab-system
+kind: ConfigMap
+metadata:
+  annotations:
+    config.kubernetes.io/local-config: "true"
+    io.seedmatic.rke2lab/domain: cluster
+    io.seedmatic.rke2lab/manifest-group: "true"
+    io.seedmatic.rke2lab/package: runtime-system-namespace
+  name: runtime-system-namespace.group

@@ -1,0 +1,94 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: tailscale
+    io.seedmatic.rke2lab/layer: operators
+    io.seedmatic.rke2lab/package: tailnet-purge
+  name: tailnet-purge
+  namespace: tailscale-system
+spec:
+  backoffLimit: 20
+  template:
+    metadata:
+      annotations:
+        flox.seedmatic.io/environment.purge: mesh/tailnet
+    spec:
+      containers:
+      - command:
+        - flox
+        - activate
+        - --dir
+        - /root
+        - --
+        - bash
+        - -c
+        - |
+          set -uo pipefail
+          guard=90
+          deadline=$(( $(date +%s) + guard ))
+          # FAIL LOUD, never a false "clean": the OAuth is a replicated secret, and a stale/empty
+          # replica (the source populated after this target replicated) yields a 401 that must NOT be
+          # mistaken for "nothing to prune" — that false negative hid an un-pruned tailnet for grows.
+          if [ ! -s /etc/tailnet/client-secret ]; then
+            echo "OAuth client-secret is EMPTY — the replicated tailnet-purge-oauth was not populated" >&2
+            echo "(delete it so the replicator re-syncs from rke2lab-replicator-source/operator-oauth)" >&2
+            exit 1
+          fi
+          # Spare ONLY funnels that HAVE persisted state on the PV — those will re-attach (same device,
+          # cert reused), so deleting them breaks the reuse. A funnel with no backup yet is left to the
+          # prune so its stale device is reclaimed and the fresh proxy gets a clean name.
+          keep=""
+          for leaf in pipelines-webhook flux-webhook; do
+            if [ -s "/persist/$leaf/state.yaml" ]; then
+              keep="$keep --keep-host $leaf"
+              echo "sparing $leaf — has persisted state, will re-attach"
+            else
+              echo "not sparing $leaf — no persisted state yet, its stale device will be pruned"
+            fi
+          done
+          echo "tailnet stale-device prune — stop when clean, ${guard}s guard cap"
+          while true; do
+            # Capture output + exit code SEPARATELY (no '|| true'): an auth/API error fails the Job.
+            # --keep-host spares the PERSISTED funnel devices (their identity is restored across the
+            # cold-start, so they must survive to re-attach — same name, cert reused); only drifted
+            # duplicates (name-1, …) and un-persisted orphans (the controlplane Connector) are pruned.
+            if ! out="$(manage-tailnet --prune-stale-devices --stale-after 1s --yes $keep       --client-secret-file /etc/tailnet/client-secret --format=json)"; then
+              echo "manage-tailnet failed (auth/API error — e.g. 401) — refusing to report clean" >&2
+              printf '%s\n' "$out" >&2
+              exit 1
+            fi
+            pruned="$(printf '%s\n' "$out" | yq -p=json 'select(.event == "pruned") | .host')"
+            if [ -z "$pruned" ]; then
+              echo "no stale devices left to prune — tailnet clean; safe to deploy"
+              exit 0
+            fi
+            echo "pruned: $(echo "$pruned" | tr '\n' ' ')"
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "guard window elapsed while still pruning — proceeding anyway (safe)"
+              exit 0
+            fi
+            sleep 5
+          done
+        image: rke2lab/flox-carrier:0.1.0
+        name: purge
+        volumeMounts:
+        - mountPath: /etc/tailnet
+          name: oauth
+          readOnly: true
+        - mountPath: /persist
+          name: persist
+          readOnly: true
+      restartPolicy: OnFailure
+      serviceAccountName: tailnet-purge
+      volumes:
+      - name: oauth
+        secret:
+          items:
+          - key: client_secret
+            path: client-secret
+          secretName: tailnet-purge-oauth
+      - name: persist
+        persistentVolumeClaim:
+          claimName: funnel-cert

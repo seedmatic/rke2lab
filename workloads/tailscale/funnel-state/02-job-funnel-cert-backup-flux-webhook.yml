@@ -1,0 +1,60 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: tailscale
+    io.seedmatic.rke2lab/layer: workloads
+    io.seedmatic.rke2lab/package: funnel-state
+  name: funnel-cert-backup-flux-webhook
+  namespace: tailscale-system
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      annotations:
+        flox.seedmatic.io/environment.mirror: kube/base
+    spec:
+      containers:
+      - command:
+        - flox
+        - activate
+        - --dir
+        - /root
+        - --
+        - bash
+        - -c
+        - |
+          set -euo pipefail
+          ns=tailscale-system
+          secret=ts-flux-webhook-state
+          dir=/persist/flux-webhook
+          mkdir -p "$dir"
+          echo "waiting for the funnel state secret ${secret} to exist"
+          kubectl wait --for=create -n "$ns" "secret/${secret}" --timeout=300s
+          echo "waiting for the proxy device to register (device_fqdn)"
+          kubectl wait --for=jsonpath='{.data.device_fqdn}' -n "$ns" "secret/${secret}" --timeout=300s
+          # The cert key is <device_fqdn>.crt; derive the FQDN at runtime (no tailnet name hardcoded)
+          # and escape its dots for the jsonpath. Waiting on the cert key ITSELF is load-bearing — see
+          # the method javadoc for why the Secret / pod-Ready are the wrong signal. Pure bash (strip the
+          # trailing dot, escape dots) — the kube/base FloxEnv has bash + coreutils but NOT sed.
+          fqdn="$(kubectl get -n "$ns" secret "$secret" -o jsonpath='{.data.device_fqdn}' | base64 -d)"
+          # The strip below is doubled on purpose: this whole string is String.formatted(...), which
+          # reads a lone percent as a format conversion, so a literal one must be written twice.
+          key="${fqdn%.}.crt"
+          esc="${key//./\\.}"
+          echo "waiting for the funnel cert ${key} to be issued and written"
+          kubectl wait --for="jsonpath={.data.${esc}}" -n "$ns" "secret/${secret}" --timeout=900s
+          kubectl get -n "$ns" secret "$secret" -o yaml | yq 'del(.metadata.namespace) | del(.metadata.managedFields) | del(.metadata.resourceVersion) | del(.metadata.uid) | del(.metadata.creationTimestamp) | del(.metadata.ownerReferences) | del(.metadata.annotations."kubectl.kubernetes.io/last-applied-configuration") | del(.status)' > "$dir/state.yaml"
+          echo "backed up funnel state (with cert) to $dir/state.yaml"
+        image: rke2lab/flox-carrier:0.1.0
+        name: mirror
+        volumeMounts:
+        - mountPath: /persist
+          name: persist
+      restartPolicy: OnFailure
+      serviceAccountName: funnel-state
+      volumes:
+      - name: persist
+        persistentVolumeClaim:
+          claimName: funnel-cert

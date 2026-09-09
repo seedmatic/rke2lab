@@ -1,0 +1,20 @@
+---
+apiVersion: v1
+data:
+  members: |-
+    zfs.openebs.io/v1|ZFSVolume|openebs|funnel-cert
+    v1|PersistentVolume||funnel-cert
+    v1|PersistentVolumeClaim|tailscale-system|funnel-cert
+    v1|ServiceAccount|tailscale-system|funnel-cert-restore
+    rbac.authorization.k8s.io/v1|Role|tailscale-system|funnel-cert-restore
+    rbac.authorization.k8s.io/v1|RoleBinding|tailscale-system|funnel-cert-restore
+    batch/v1|Job|tailscale-system|funnel-cert-restore-pipelines-webhook
+    batch/v1|Job|tailscale-system|funnel-cert-restore-flux-webhook
+kind: ConfigMap
+metadata:
+  annotations:
+    config.kubernetes.io/local-config: "true"
+    io.seedmatic.rke2lab/domain: tailscale
+    io.seedmatic.rke2lab/manifest-group: "true"
+    io.seedmatic.rke2lab/package: funnel-cert-restore
+  name: funnel-cert-restore.group

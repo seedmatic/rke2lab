@@ -1,0 +1,26 @@
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha2
+kind: LXCMachineTemplate
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: cluster-api
+    io.seedmatic.rke2lab/package: cluster-api-workload
+  name: bioskop-wrkld-worker
+  namespace: rke2lab-bioskop-wrkld
+spec:
+  template:
+    spec:
+      config:
+        raw.lxc: |-
+          lxc.mount.auto = proc:rw sys:rw cgroup:rw
+          lxc.apparmor.profile = unconfined
+          lxc.cap.drop =
+        security.nesting: "true"
+        security.privileged: "true"
+        security.syscalls.intercept.bpf: "true"
+        security.syscalls.intercept.bpf.devices: "true"
+      image:
+        fingerprint: b7c6a573dda580f221734b9f300c220ed97848211adb18ad58494390f922dc51
+      instanceType: container
+      profiles:
+      - default

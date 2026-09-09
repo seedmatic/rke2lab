@@ -1,0 +1,15 @@
+---
+apiVersion: v1
+data:
+  members: |-
+    v1|Secret|tailscale-system|operator-oauth
+    helm.cattle.io/v1|HelmChart|tailscale-system|tailscale-operator
+    tailscale.com/v1alpha1|Connector||controlplane
+kind: ConfigMap
+metadata:
+  annotations:
+    config.kubernetes.io/local-config: "true"
+    io.seedmatic.rke2lab/domain: tailscale
+    io.seedmatic.rke2lab/manifest-group: "true"
+    io.seedmatic.rke2lab/package: tailscale
+  name: tailscale.group

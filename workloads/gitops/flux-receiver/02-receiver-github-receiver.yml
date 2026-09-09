@@ -1,0 +1,21 @@
+---
+apiVersion: notification.toolkit.fluxcd.io/v1
+kind: Receiver
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: gitops
+    io.seedmatic.rke2lab/package: flux-receiver
+  name: github-receiver
+  namespace: flux-system
+spec:
+  events:
+  - ping
+  - push
+  resources:
+  - apiVersion: source.toolkit.fluxcd.io/v1
+    kind: GitRepository
+    name: rke2lab
+    namespace: flux-system
+  secretRef:
+    name: flux-webhook-token
+  type: github
