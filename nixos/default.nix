@@ -10,6 +10,7 @@
 {
   imports = [
     ./rke2.nix # rke2-server + dual-stack + rke2lab.target
+    ./cloud-init.nix # cloud-init datasource shim (incus devlxd → NoCloud seed) — the uniform bootstrap channel
     ./identity.nix # per-node identity from devlxd (node.env + hostname)
     ./sops.nix # sops-nix: PKI secret declaration + runtime devlxd delivery
     ./bootstrap-manifests.nix # devlxd → rke2 server/manifests: the node-side bootstrap lane (Flux + cilium config)
