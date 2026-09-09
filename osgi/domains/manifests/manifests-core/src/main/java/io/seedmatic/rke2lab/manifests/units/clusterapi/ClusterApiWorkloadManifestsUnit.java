@@ -469,9 +469,12 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
                 // with the node-base's config.yaml.d drop-ins — no ownership fight. Its
                 // systemctl enable/start rke2-server drives the nix unit. No airGappedChecksum
                 // (unset
-                // → the sha256sum check is skipped).
-                "airGapped",
-                true,
+                // → the sha256sum check is skipped). airGapped lives under agentConfig (CAPRKE2's
+                // RKE2ControlPlaneSpec inlines RKE2ConfigSpec, whose agentConfig carries it) — NOT
+                // a
+                // top-level spec field (a schema-rejected path).
+                "agentConfig",
+                Map.of("airGapped", true),
                 // Greenfield defaults; the CNI is the node-base's baked cilium (services.rke2.cni).
                 "serverConfig",
                 Map.of(),
@@ -656,8 +659,7 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
     configTemplate.addJsonPatch(
         JsonPatch.add(
             "/spec",
-            Map.of(
-                "template", Map.of("spec", Map.of("agentConfig", Map.of(), "airGapped", true)))));
+            Map.of("template", Map.of("spec", Map.of("agentConfig", Map.of("airGapped", true))))));
     return configTemplate;
   }
 
