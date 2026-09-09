@@ -391,8 +391,21 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
                 WORKLOAD_CONTROL_PLANE_REPLICAS,
                 "version",
                 rke2Version,
-                // Greenfield defaults; the rke2 config ownership (CAPRKE2 config.yaml vs the
-                // node-base baked config/CNI) is reconciled at first unpause, not asserted here.
+                // airGapped: our node-base BAKES rke2 (nix, immutable /nix/store) — CAPRKE2 has no
+                // skip-install mode, and even airGapped still runs `sh /opt/install.sh`, so the
+                // node-base bakes an INERT /opt/install.sh (exit 0) + empty /opt/rke2-artifacts
+                // (see
+                // nixos/capn-airgapped.nix). The install step then no-ops onto the baked binary,
+                // and
+                // CAPRKE2 owns /etc/rancher/rke2/config.yaml (join token + server URL), which
+                // MERGES
+                // with the node-base's config.yaml.d drop-ins — no ownership fight. Its
+                // systemctl enable/start rke2-server drives the nix unit. No airGappedChecksum
+                // (unset
+                // → the sha256sum check is skipped).
+                "airGapped",
+                true,
+                // Greenfield defaults; the CNI is the node-base's baked cilium (services.rke2.cni).
                 "serverConfig",
                 Map.of(),
                 // kube-vip fronts the control-plane endpoint: the replicas register on the VIP.
@@ -569,9 +582,15 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
                         .build())
                 .build());
     configTemplate.addDependency(namespaceObject);
+    // airGapped like the control plane: the worker node-base bakes rke2 too, so CAPRKE2's install
+    // no-ops onto the baked binary (inert /opt/install.sh). Workers are replicas:0 today; the
+    // role=server-vs-agent split of the homogeneous image (rke2.nix bakes role=server) is the
+    // remaining reconciliation before workers are enabled (phase 2.C).
     configTemplate.addJsonPatch(
         JsonPatch.add(
-            "/spec", Map.of("template", Map.of("spec", Map.of("agentConfig", Map.of())))));
+            "/spec",
+            Map.of(
+                "template", Map.of("spec", Map.of("agentConfig", Map.of(), "airGapped", true)))));
     return configTemplate;
   }
 

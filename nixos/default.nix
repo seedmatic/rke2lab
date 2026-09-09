@@ -11,6 +11,7 @@
   imports = [
     ./rke2.nix # rke2-server + dual-stack + rke2lab.target
     ./cloud-init.nix # cloud-init datasource shim (incus devlxd → NoCloud seed) — the uniform bootstrap channel
+    ./capn-airgapped.nix # inert /opt/install.sh so CAPRKE2 airGapped no-ops onto the baked rke2 (workload nodes)
     ./identity.nix # per-node hostname from the cloud-init-delivered node.env
     ./sops.nix # sops-nix: PKI secret declaration + cloud-init runtime delivery
     ./containerd.nix # flox NRI runtime + zfs snapshotter + dataset mount
