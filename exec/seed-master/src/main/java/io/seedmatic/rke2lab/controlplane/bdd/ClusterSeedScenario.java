@@ -22,6 +22,7 @@ import io.seedmatic.rke2lab.clusterpki.contract.ClusterCaBundle;
 import io.seedmatic.rke2lab.clusterpki.contract.ClusterPkiCoordinate;
 import io.seedmatic.rke2lab.controlplane.config.BootstrapConfig;
 import io.seedmatic.rke2lab.controlplane.incus.InstanceGrow;
+import io.seedmatic.rke2lab.controlplane.incus.NodeBootstrapMaterial;
 import io.seedmatic.rke2lab.host.runtime.ExecutionEnvironment;
 import io.seedmatic.rke2lab.incus.ingress.GrowOutcome;
 import io.seedmatic.rke2lab.incus.ingress.Growth;
@@ -63,7 +64,6 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
 import java.util.Hashtable;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -623,29 +623,32 @@ public class ClusterSeedScenario
               config.profileName(),
               config.lanBridgeParent(),
               config.vmnetNetworkName());
-      // The devlxd config the GROW poses on the instance — the per-cluster facts the homogeneous
-      // node-base guest reads back at boot, all opaque here. Two sources, both dual-realm cases the
-      // transactional cellar reveals (read-your-writes on the run's overlay, else the durable
-      // backend a prior grow drained):
+      // The per-node bootstrap material the GROW lays into the guest through the UNIFORM cloud-init
+      // channel (write_files; the same channel CAPN/CAPRKE2 use for a workload node). All opaque
+      // here. Two sources, both dual-realm cases the transactional cellar reveals (read-your-writes
+      // on the run's overlay, else the durable backend a prior grow drained):
       //   - the cluster PKI the seal scion filed: the sops CA bundle (PLAIN) + the age identity
       // that
       //     decrypts it (SEALED), so the guest's sops-nix lays the CA set before rke2-server;
       //   - the node-side bootstrap manifests the synthesis scion carved (SEALED — App key + age):
-      //     Flux + the cilium HelmChartConfig, which rke2lab-server-manifests.service writes into
-      //     server/manifests before rke2-server, so the CNI and Flux come up node-side.
+      //     Flux + the cilium HelmChartConfig, written into server/manifests before rke2-server so
+      //     the CNI and Flux come up node-side.
       // Each is absent only on a run where its producer did not file — the guest units are tolerant
       // (rke2 self-signs its CA; a node with no bootstrap set simply seeds nothing).
-      final Map<String, String> devlxdConfig = new LinkedHashMap<>();
-      workingCellar
-          .fetch(parcel, ClusterPkiCoordinate.CLUSTER_CA_BUNDLE, ClusterCaBundle.class)
-          .ifPresent(bundle -> devlxdConfig.put("user.rke2lab.cluster-ca-bundle", bundle.sops()));
-      workingCellar
-          .fetch(parcel, ClusterPkiCoordinate.CLUSTER_AGE_KEY, ClusterAgeKey.class)
-          .ifPresent(ageKey -> devlxdConfig.put("user.rke2lab.sops-age-key", ageKey.identity()));
-      workingCellar
-          .fetch(parcel, ServerManifestsCoordinate.SERVER_MANIFESTS, ServerManifestsBundle.class)
-          .ifPresent(
-              bundle -> devlxdConfig.put("user.rke2lab.server-manifests", bundle.manifests()));
+      final NodeBootstrapMaterial material =
+          new NodeBootstrapMaterial(
+              workingCellar
+                  .fetch(parcel, ClusterPkiCoordinate.CLUSTER_AGE_KEY, ClusterAgeKey.class)
+                  .map(ClusterAgeKey::identity),
+              workingCellar
+                  .fetch(parcel, ClusterPkiCoordinate.CLUSTER_CA_BUNDLE, ClusterCaBundle.class)
+                  .map(ClusterCaBundle::sops),
+              workingCellar
+                  .fetch(
+                      parcel,
+                      ServerManifestsCoordinate.SERVER_MANIFESTS,
+                      ServerManifestsBundle.class)
+                  .map(ServerManifestsBundle::manifests));
       // The cold/warm condition, READ NOW from the prior stack state — before the grow starts the
       // instance and the observation is lost. Frozen on the run's TRANSIENT bus as the GrowOutcome
       // fact (evicted at the drain, never conserved): the readiness-budget tuning reads it a few
@@ -658,7 +661,7 @@ public class ClusterSeedScenario
               .orElse(Growth.COLD);
       workingCellar
           .fetch(parcel, IncusGrowCoordinate.INSTANCE_GROW_PLAN, InstanceGrowPlan.class)
-          .ifPresent(plan -> new InstanceGrow(ingress, line -> {}).grow(plan, devlxdConfig));
+          .ifPresent(plan -> new InstanceGrow(ingress, line -> {}).grow(plan, material));
       workingCellar.storeTransient(
           parcel, IncusGrowCoordinate.GROW_OUTCOME, new GrowOutcome(growth));
       return self();

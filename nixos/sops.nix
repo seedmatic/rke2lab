@@ -5,11 +5,7 @@
 # validateSopsFiles=false lets defaultSopsFile be that runtime path; sops-install-secrets decrypts on
 # the node and lays the CA set down before rke2-server, which then issues every leaf from it.
 # See docs/architecture/cluster-api/deterministic-cluster-access.adoc.
-{
-  lib,
-  pkgs,
-  ...
-}:
+{ ... }:
 let
   tls = "/var/lib/rancher/rke2/server/tls";
   # bundle YAML key -> path under the rke2 server tls dir. The bundle is flat (etcd leaf CAs carry an
@@ -63,49 +59,17 @@ in
     "d /var/lib/rancher/rke2/server/tls/etcd 0700 root root - -"
   ];
 
-  # devlxd delivery of the sops material into /run, BEFORE sops-install-secrets — mirrors
-  # nix-darwin-home's sops-age-bootstrap ordering (modules/nixos/sops.nix): the key/material provider
-  # runs before, and is pulled in by, sops-install-secrets. Early-safe (DefaultDependencies=no,
-  # /dev/incus/sock present from container start), so it runs in the sysinit phase alongside
-  # sops-install-secrets. Both fetches are OPTIONAL: a node grown without a cluster-CA projection
-  # boots without them (rke2 self-generates its CA), so a missing key/bundle must not fail this unit.
-  systemd.services.rke2lab-sops-fetch = {
-    description = "rke2lab sops material (devlxd → /run: age key + cluster-CA bundle)";
-    before = [ "sops-install-secrets.service" ];
-    wantedBy = [ "sops-install-secrets.service" ];
-    after = [ "local-fs.target" ];
-    unitConfig.DefaultDependencies = "no";
-    serviceConfig = {
-      Type = "oneshot";
-      RemainAfterExit = true;
-    };
-    path = [ pkgs.curl ];
-    script = ''
-      set -euo pipefail
-      sock=/dev/incus/sock
-      install -d -m 0755 /run/rke2lab
-      fetch() {
-        curl -sf --unix-socket "$sock" "http://x/1.0/config/user.rke2lab.$1" 2>/dev/null || return 1
-      }
-      umask 077
-      if key="$(fetch sops-age-key)"; then
-        printf '%s' "$key" >/run/rke2lab/sops-age.key
-        chmod 0400 /run/rke2lab/sops-age.key
-      fi
-      if bundle="$(fetch cluster-ca-bundle)"; then
-        printf '%s' "$bundle" >/run/rke2lab/cluster-ca-bundle.yaml
-        chmod 0400 /run/rke2lab/cluster-ca-bundle.yaml
-      fi
-    '';
-  };
-
-  # sops-install-secrets waits for the devlxd delivery, then runs before rke2-server. The tie to
-  # rke2-server is WEAK (wantedBy, not requiredBy): if the bundle is absent or undecryptable,
-  # sops-install-secrets fails but rke2 still starts and self-generates its CA — the
-  # pre-deterministic-PKI fallback, surfaced as a failed unit the rke2lab.target probe reports.
+  # The age identity + cluster-CA bundle now arrive through the UNIFORM cloud-init channel — the mgmt
+  # cloud-config `write_files` /run/rke2lab/{sops-age.key,cluster-ca-bundle.yaml} (see ./cloud-init.nix;
+  # host GROW renders it). write_files runs in cloud-init.service, so sops-install-secrets waits on it,
+  # then runs before rke2-server. The tie to rke2-server is WEAK (wantedBy, not requiredBy) and the
+  # unit is GATED on the bundle's presence: a node whose channel carries no bundle (a CAPRKE2 workload
+  # node — joiners fetch the CA from the init server via the token) cleanly no-ops, and rke2
+  # self-generates its CA on a bare mgmt survey — the pre-deterministic-PKI fallback, surfaced as a
+  # skipped unit the rke2lab.target probe reports.
   systemd.services.sops-install-secrets = {
-    after = [ "rke2lab-sops-fetch.service" ];
-    requires = [ "rke2lab-sops-fetch.service" ];
+    unitConfig.ConditionPathExists = "/run/rke2lab/cluster-ca-bundle.yaml";
+    after = [ "cloud-init.service" ];
     before = [ "rke2-server.service" ];
     wantedBy = [ "rke2-server.service" ];
   };

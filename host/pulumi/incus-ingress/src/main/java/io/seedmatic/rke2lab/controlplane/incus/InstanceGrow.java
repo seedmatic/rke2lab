@@ -24,8 +24,10 @@ import io.seedmatic.rke2lab.incus.ingress.GrowNetworkView;
 import io.seedmatic.rke2lab.incus.ingress.IngressConfig;
 import io.seedmatic.rke2lab.incus.ingress.InstanceGrowPlan;
 import io.seedmatic.rke2lab.incus.ingress.SplitImageFingerprint;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -62,23 +64,26 @@ public final class InstanceGrow {
 
   /** Declare the whole instance graph from the plan; the Pulumi engine schedules it. */
   public void grow(InstanceGrowPlan plan) {
-    grow(plan, Map.of());
+    grow(plan, NodeBootstrapMaterial.none());
   }
 
   /**
-   * Grow with EXTRA devlxd config keys merged onto the instance — the host GROW poses the cluster
-   * PKI the seal scion filed (the sops-sealed CA bundle + the age identity, under {@code
-   * user.rke2lab.cluster-ca-bundle} / {@code user.rke2lab.sops-age-key}) alongside the per-node
-   * identity, all read by the guest over devlxd. The values are opaque to the GROW — the scenario
-   * fetched + revealed them and hands them here as a flat {@code key -> value} map.
+   * Grow, laying the per-node bootstrap material into the guest through the UNIFORM cloud-init
+   * channel: the GROW renders the per-node identity ({@code plan.identity()}) + the revealed {@link
+   * NodeBootstrapMaterial} (the sops-sealed CA bundle + age identity the PKI seal scion filed, and
+   * the node-side bootstrap manifests the synthesis scion carved) into ONE {@code
+   * cloud-init.user-data} cloud-config posed on the Instance — a {@code write_files} set the NixOS
+   * node-base consumes at boot (see {@link #mgmtCloudConfig}). The values are opaque here — the
+   * scenario fetched + revealed them. This is the SAME channel CAPN/CAPRKE2 use for a workload
+   * node, so there is one delivery mechanism across standalone and in-cluster grows.
    */
-  public void grow(InstanceGrowPlan plan, Map<String, String> extraDevlxdConfig) {
+  public void grow(InstanceGrowPlan plan, NodeBootstrapMaterial material) {
     final Project project = ensureProject();
     ensureNetwork(config.vmnetNetworkName(), project, plan.network());
     final Output<String> profileName = ensureProfile(project);
     final Output<String> imageFingerprint = ensureImage(plan.image(), project);
     final Instance instance =
-        createInstance(plan, project, profileName, imageFingerprint, extraDevlxdConfig);
+        createInstance(plan, project, profileName, imageFingerprint, material);
     poseNodeBaseAliasAndGcImages(imageFingerprint, instance);
   }
 
@@ -241,7 +246,7 @@ public final class InstanceGrow {
       Resource projectDependency,
       Output<String> profileName,
       Output<String> imageFingerprint,
-      Map<String, String> extraDevlxdConfig) {
+      NodeBootstrapMaterial material) {
     final Map<String, String> instanceConfig = new LinkedHashMap<>();
     instanceConfig.put(
         "raw.lxc",
@@ -255,25 +260,15 @@ public final class InstanceGrow {
     instanceConfig.put("security.syscalls.intercept.bpf", "true");
     instanceConfig.put("security.syscalls.intercept.bpf.devices", "true");
     // The image-build checksum arms replaceOnChanges — a rebuilt node-base image (new fingerprint,
-    // new checksum) recreates the instance onto it.
+    // new checksum) recreates the instance onto it. A host-side trigger, never read by the guest.
     instanceConfig.put("user.rke2lab.imageBuildChecksum", plan.image().buildChecksum());
-    // The per-node identity the homogeneous node-base guest reads back over devlxd
-    // (/dev/incus/sock) at boot: it resolves its hostname (mDNS <cluster>-<node>.local), its zfs
-    // dataset (control-nodes/<node-name>/containerd) and its rke2 role from these four scalars. The
-    // scion projected them from the netplan blueprint — the host only poses them.
-    final GrowIdentityView identity = plan.identity();
-    instanceConfig.put("user.rke2lab.node-name", identity.nodeName());
-    instanceConfig.put("user.rke2lab.node-hostname", identity.nodeHostname());
-    instanceConfig.put("user.rke2lab.node-kind", identity.nodeKind());
-    instanceConfig.put("user.rke2lab.node-id", String.valueOf(identity.nodeId()));
-    // The per-cluster dual-stack pod/service CIDRs — the homogeneous image cannot bake a static
-    // cluster-cidr (it differs per cluster on the shared host), so the guest reads these back over
-    // devlxd and writes rke2's 10-dualstack.yaml at boot (nixos/rke2.nix rke2lab-dualstack).
-    instanceConfig.put("user.rke2lab.cluster-pod-cidr", identity.clusterPodCidr());
-    instanceConfig.put("user.rke2lab.cluster-service-cidr", identity.clusterServiceCidr());
-    // The host GROW poses whatever extra devlxd keys the caller resolved — the cluster PKI the seal
-    // scion filed (the sops CA bundle + the age identity). Opaque here: the scenario fetched them.
-    instanceConfig.putAll(extraDevlxdConfig);
+    // The per-node identity + revealed bootstrap material, delivered through the UNIFORM cloud-init
+    // channel: ONE cloud-config write_files the node-base consumes at boot (node.env → hostname +
+    // rke2 dual-stack/tls-san/node-labels drop-ins; sops age key + CA bundle →
+    // sops-install-secrets;
+    // server-manifests → rke2 server/manifests). The same channel CAPN/CAPRKE2 use for a workload
+    // node — no devlxd user.rke2lab.* identity keys anymore.
+    instanceConfig.put("cloud-init.user-data", mgmtCloudConfig(plan.identity(), material));
 
     // The image FINGERPRINT is the artifact's content hash (sha of metadata ++ rootfs). Fold it
     // into config so replaceOnChanges("config.*") recreates the instance EXACTLY when the built
@@ -320,6 +315,62 @@ public final class InstanceGrow {
             // so ignoring post-create drift is correct.
             .ignoreChanges(List.of("image", "devices"))
             .build());
+  }
+
+  /**
+   * Render the mgmt node's {@code cloud-init.user-data}: a {@code write_files} cloud-config the
+   * NixOS node-base consumes at boot. {@code node.env} carries the per-node identity + dual-stack
+   * CIDRs (the hostname + rke2 drop-in oneshots read it); the revealed {@link
+   * NodeBootstrapMaterial} rides as the sops age key, the cluster-CA bundle, and the rke2
+   * server-manifests — each only when present (a producer that did not file leaves it out; the
+   * guest units are tolerant). Every file's content is base64 ({@code encoding: b64}) so arbitrary
+   * YAML/PEM never trips cloud-init's YAML indentation. This is the standalone twin of a CAPRKE2
+   * workload node's cloud-config — one channel.
+   */
+  private String mgmtCloudConfig(GrowIdentityView identity, NodeBootstrapMaterial material) {
+    final String nodeEnv =
+        String.join(
+                "\n",
+                "RKE2LAB_NODE_NAME=" + identity.nodeName(),
+                "RKE2LAB_NODE_HOSTNAME=" + identity.nodeHostname(),
+                "RKE2LAB_NODE_KIND=" + identity.nodeKind(),
+                "RKE2LAB_NODE_ID=" + identity.nodeId(),
+                "RKE2LAB_CLUSTER_POD_CIDR=" + identity.clusterPodCidr(),
+                "RKE2LAB_CLUSTER_SERVICE_CIDR=" + identity.clusterServiceCidr())
+            + "\n";
+    final StringBuilder cloudConfig = new StringBuilder("#cloud-config\nwrite_files:\n");
+    appendWriteFile(cloudConfig, "/run/rke2lab/node.env", "0644", nodeEnv);
+    material
+        .sopsAgeKey()
+        .ifPresent(v -> appendWriteFile(cloudConfig, "/run/rke2lab/sops-age.key", "0400", v));
+    material
+        .clusterCaBundle()
+        .ifPresent(
+            v -> appendWriteFile(cloudConfig, "/run/rke2lab/cluster-ca-bundle.yaml", "0400", v));
+    material
+        .serverManifests()
+        .ifPresent(
+            v ->
+                appendWriteFile(
+                    cloudConfig,
+                    "/var/lib/rancher/rke2/server/manifests/rke2lab-bootstrap.yaml",
+                    "0600",
+                    v));
+    return cloudConfig.toString();
+  }
+
+  /** Append one base64-encoded {@code write_files} entry — single-line content, no indent traps. */
+  private void appendWriteFile(
+      StringBuilder cloudConfig, String path, String perms, String content) {
+    final String b64 = Base64.getEncoder().encodeToString(content.getBytes(StandardCharsets.UTF_8));
+    cloudConfig
+        .append("- path: ")
+        .append(path)
+        .append("\n  encoding: b64\n  permissions: '")
+        .append(perms)
+        .append("'\n  content: ")
+        .append(b64)
+        .append("\n");
   }
 
   /**

@@ -13,12 +13,20 @@
     role = "server";
     cni = "cilium";
   };
+
+  # R1: hold the baked rke2-server until cloud-init has laid down its config — mgmt's node.env-derived
+  # config.yaml.d drop-ins (below) + sops CA (./sops.nix), and a CAPRKE2 workload node's own
+  # /etc/rancher/rke2/config.yaml (token + server URL, write_files in cloud-init.service). Without this
+  # gate the wantedBy=multi-user rke2-server could start config-less and mis-cluster-init.
+  systemd.services.rke2-server.after = [ "cloud-init.service" ];
   # Dual-stack cluster-cidr/service-cidr drop-in — PER-CLUSTER, so NOT a static image literal (the
   # homogeneous node-base image serves every cluster; their CIDRs differ). rke2lab-identity resolves
   # them from devlxd into /run/rke2lab/node.env; this oneshot writes rke2's config drop-in from there
   # before rke2-server reads config.yaml.d. Same runtime-drop-in pattern as rke2lab-tls-san.
   systemd.services.rke2lab-dualstack = {
     description = "rke2lab rke2 dual-stack cluster/service CIDR drop-in (per-cluster)";
+    # Skip on a node whose channel carries no node.env (a CAPRKE2 workload node owns its rke2 config).
+    unitConfig.ConditionPathExists = "/run/rke2lab/node.env";
     after = [ "rke2lab-identity.service" ];
     requires = [ "rke2lab-identity.service" ];
     before = [ "rke2-server.service" ];
@@ -69,6 +77,8 @@
   # is per-node) after identity resolves the hostname, before rke2-server.
   systemd.services.rke2lab-tls-san = {
     description = "rke2lab apiserver tls-san drop-in (<cluster>-<node>[.local])";
+    # Skip on a node whose channel carries no node.env (a CAPRKE2 workload node owns its rke2 config).
+    unitConfig.ConditionPathExists = "/run/rke2lab/node.env";
     after = [ "rke2lab-identity.service" ];
     requires = [ "rke2lab-identity.service" ];
     before = [ "rke2-server.service" ];
@@ -98,6 +108,8 @@
   # node-labels fragment RuntimeRke2ConfigManifestsUnit used to emit.
   systemd.services.rke2lab-node-labels = {
     description = "rke2lab kubelet node-labels drop-in (per-node identity + flox-runtime)";
+    # Skip on a node whose channel carries no node.env (a CAPRKE2 workload node owns its rke2 config).
+    unitConfig.ConditionPathExists = "/run/rke2lab/node.env";
     after = [ "rke2lab-identity.service" ];
     requires = [ "rke2lab-identity.service" ];
     before = [ "rke2-server.service" ];
