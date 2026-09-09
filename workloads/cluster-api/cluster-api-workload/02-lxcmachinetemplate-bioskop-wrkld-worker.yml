@@ -11,7 +11,7 @@ spec:
   template:
     spec:
       config:
-        linux.kernel_modules: "atkbd,br_netfilter,ctr,ext4,isofs,lockd,loop,nf_conntrack,nf_conntrack_netlink,nf_nat_ftp,nf_tables,nfnetlink,nfs,nfsd,nfsv3,nfsv4,nft_chain_nat,nft_ct,nft_fib,nft_fib_inet,nft_fib_ipv4,nft_fib_ipv6,nft_masq,nft_nat,nft_numgen,nft_redir,nft_reject,nls_cp437,nls_iso8859_1,overlay,sunrpc,veth,vhost_vsock,virtiofs,vsock,xt_CHECKSUM,xt_MASQUERADE,xt_comment,xt_conntrack,zfs"
+        linux.kernel_modules: "ip_vs,ip_vs_rr,ip_vs_wrr,ip_vs_sh,netlink_diag,nf_nat,overlay,br_netfilter,xt_socket"
         raw.lxc: |-
           lxc.mount.auto = proc:rw sys:rw cgroup:rw
           lxc.apparmor.profile = unconfined

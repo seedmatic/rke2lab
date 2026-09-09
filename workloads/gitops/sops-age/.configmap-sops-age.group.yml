@@ -1,7 +1,7 @@
 ---
 apiVersion: v1
 data:
-  members: v1|Secret|flux-system|sops-age
+  members: ""
 kind: ConfigMap
 metadata:
   annotations:
