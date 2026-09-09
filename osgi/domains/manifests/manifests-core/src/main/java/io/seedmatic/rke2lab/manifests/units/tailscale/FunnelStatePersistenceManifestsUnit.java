@@ -242,7 +242,7 @@ public final class FunnelStatePersistenceManifestsUnit extends AbstractManifests
         esc="${key//./\\\\.}"
         echo "waiting for the funnel cert ${key} to be issued and written"
         kubectl wait --for="jsonpath={.data.${esc}}" -n "$ns" "secret/${secret}" --timeout=900s
-        kubectl get -n "$ns" secret "$secret" -o yaml | yq 'del(.metadata.managedFields) | del(.metadata.resourceVersion) | del(.metadata.uid) | del(.metadata.creationTimestamp) | del(.metadata.ownerReferences) | del(.metadata.annotations."kubectl.kubernetes.io/last-applied-configuration") | del(.status)' > /persist/state.yaml
+        kubectl get -n "$ns" secret "$secret" -o yaml | yq 'del(.metadata.namespace) | del(.metadata.managedFields) | del(.metadata.resourceVersion) | del(.metadata.uid) | del(.metadata.creationTimestamp) | del(.metadata.ownerReferences) | del(.metadata.annotations."kubectl.kubernetes.io/last-applied-configuration") | del(.status)' > /persist/state.yaml
         echo "backed up funnel state (with cert) to the persist volume"
         """
             .formatted(NAMESPACE, STATE_SECRET);

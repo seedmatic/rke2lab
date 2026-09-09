@@ -336,12 +336,16 @@ public final class FunnelCertRestoreManifestsUnit extends AbstractManifestsUnit 
         set -euo pipefail
         if [ -s /persist/state.yaml ]; then
           echo "restoring saved tailscale funnel state into %s"
-          kubectl apply -n %s -f /persist/state.yaml
+          # Strip the embedded metadata.namespace: a backup captured under a PRIOR namespace (the
+          # persist PV is Retain, so it survives a namespace rename like ingress-system ->
+          # tailscale-system) would otherwise make `kubectl apply -n %s` fail "namespace from the
+          # provided object does not match". Namespace-agnostic — the apply -n places it correctly.
+          yq 'del(.metadata.namespace)' /persist/state.yaml | kubectl apply -n %s -f -
         else
           echo "no saved funnel state on the persist volume — clean first grow"
         fi
         """
-            .formatted(STATE_SECRET, NAMESPACE);
+            .formatted(STATE_SECRET, NAMESPACE, NAMESPACE);
     final String floxImage = ManifestSynthesisContext.current().floxDebugPolicy().prodImage();
     final ApiObject jobObject =
         new ApiObject(
