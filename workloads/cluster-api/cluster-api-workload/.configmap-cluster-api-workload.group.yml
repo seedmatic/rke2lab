@@ -10,11 +10,6 @@ data:
     infrastructure.cluster.x-k8s.io/v1alpha2|LXCMachineTemplate|rke2lab-bioskop-wrkld|bioskop-wrkld-worker
     bootstrap.cluster.x-k8s.io/v1beta2|RKE2ConfigTemplate|rke2lab-bioskop-wrkld|bioskop-wrkld-agent
     cluster.x-k8s.io/v1beta2|MachineDeployment|rke2lab-bioskop-wrkld|bioskop-wrkld-md-0
-    v1|Secret|rke2lab-bioskop-wrkld|bioskop-incus-identity
-    v1|Secret|rke2lab-bioskop-wrkld|bioskop-wrkld-ca
-    v1|Secret|rke2lab-bioskop-wrkld|bioskop-wrkld-cca
-    v1|Secret|rke2lab-bioskop-wrkld|bioskop-wrkld-etcd
-    v1|Secret|rke2lab-bioskop-wrkld|bioskop-wrkld-peer-etcd
 kind: ConfigMap
 metadata:
   annotations:
