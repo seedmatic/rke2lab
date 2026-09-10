@@ -22,9 +22,12 @@ import java.util.Map;
  * <ul>
  *   <li>{@link ExecutionEnclosure#OPERATOR} → ndh's provisioned OAuth client ({@code tailscale})
  *       chained ahead of the operator's {@code .secrets} (everything else) — the standalone chain.
- *   <li>{@link ExecutionEnclosure#IN_CLUSTER} → an {@link EmptySecretsGateway}: an in-cluster
- *       render is structural (secret-blind), because all secret material rides the {@code
- *       NODE_BOOTSTRAP} lane and never reaches the reconciled branch a render pushes.
+ *   <li>{@link ExecutionEnclosure#IN_CLUSTER} → a {@link DotSecretsGateway} over {@code .secrets}:
+ *       the in-cluster render is secret-FULL, because the render pod carries the {@code
+ *       toolchains/git-sops} flox env + the replicated cluster age key, so it re-smudges {@code
+ *       .secrets} and reads it exactly as the operator does (no {@code TailscaleOauthClientGateway}
+ *       — the ndh-provisioned OAuth client is operator-only; in-cluster the tailnet OAuth rides the
+ *       replicated {@code operator-oauth} Secret).
  * </ul>
  */
 public final class ExecutionEnvironment {
@@ -65,7 +68,13 @@ public final class ExecutionEnvironment {
       case OPERATOR ->
           new ChainedSecretsGateway(
               List.of(new TailscaleOauthClientGateway(), new DotSecretsGateway()));
-      case IN_CLUSTER -> new EmptySecretsGateway();
+      // Secret-FULL in-cluster: the render pod carries the toolchains/git-sops flox env + the
+      // replicated cluster age key (SOPS_AGE_KEY), so the render re-smudges `.secrets` and this
+      // gateway reads the CLEAR file — the same source the operator uses. NO
+      // TailscaleOauthClientGateway: that reads the operator's ndh-provisioned OAuth client, which
+      // is not present in-cluster (the tailnet OAuth arrives via the replicated operator-oauth
+      // Secret, not `.secrets`).
+      case IN_CLUSTER -> new DotSecretsGateway();
     };
   }
 

@@ -287,11 +287,24 @@ is a different concern — the `.secrets` DOOR — not a process secret.
   re-emitted by an in-cluster render.
 |===
 
-So in-cluster the `SecretsGateway` stays the secret-blind `EmptySecretsGateway` (a `KubeSecretsGateway`
-mirroring `.secrets` is still *unnecessary*), the push token comes from PaC, and the ONE process secret
-that must reach the pod — the signing key — rides the existing replicator lane, NOT the git tree (which
-the Tekton clone lands sops-encrypted at rest, having no smudge filter). Both lanes push and sign as the
-SAME App/bot — the identity is uniform, only each secret's provenance differs by enclosure.
+[NOTE]
+====
+*Superseded (git-sops secret-full chantier).* The secret-blind premise of this section — "the
+Tekton clone lands sops-encrypted at rest, having no smudge filter", so in-cluster is structurally
+secret-blind — no longer holds. The render step now carries the `toolchains/git-sops` flox env
+(git + sops + the ndh filter) composed with its `nix-build` runtime, plus the cluster age key
+mittwald-replicated into `rke2lab-system`, so it re-smudges `.secrets` and the branch's sops
+Secrets. In-cluster the `SecretsGateway` is therefore a `DotSecretsGateway` over the re-smudged
+`.secrets` (the `EmptySecretsGateway` was removed), and the durable-minted materials NOT in
+`.secrets` (incus-identity, the workload BYO-CAs) ride a sops-encrypted branch *cellar asset* the
+render rehydrates. See xref:../patterns/flox-store-resolved-runtime-and-builder.adoc[the
+runtime/builder pattern § capability-vs-package-set]. The ndh-keystore/signing-key narrative below
+predates this and is being reconciled to it.
+====
+
+The push token still comes from PaC, and the signing key rides the replicator lane. Both lanes push
+and sign as the SAME App/bot — the identity is uniform, only each secret's provenance differs by
+enclosure.
 
 That reach IS the sops-age pattern, applied to the signing key — the OPERATOR grow SEEDS it so a
 later in-cluster render can consume it. A pre-synthesis `SigningKeyMaterialResolver` reads {@code

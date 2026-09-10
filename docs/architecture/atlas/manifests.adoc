@@ -293,9 +293,11 @@ under a Pulumi grow, a standalone CLI, or a PaC PipelineRun. The push identity i
 GitHub App) across all three; only the token's provenance is host-specific, resolved by the
 `ExecutionEnvironment` instance from the `ExecutionEnclosure` FACT (OPERATOR mints via `.secrets`;
 IN_CLUSTER consumes PaC's `git_auth`).
-The render output is secret-blind (real-data secrets ride the NODE_BOOTSTRAP lane, off the branch),
-so the in-cluster `EmptySecretsGateway` holds — the loop closes without descending any operator
-secret into the cluster.
+The render is now secret-FULL in-cluster (the git-sops chantier): the render pod carries the
+`toolchains/git-sops` flox env + the replicated cluster age key, re-smudges `.secrets`, and its
+`SecretsGateway` is a `DotSecretsGateway` (the `EmptySecretsGateway` was removed). Real-data secrets
+ride the branch sops-encrypted (Flux decrypts on reconcile); the durable-minted materials not in
+`.secrets` (incus-identity, workload CAs) ride a sops branch cellar asset the render rehydrates.
 
 The render *configuration* is uniform the same way, and recorded in the branch. The facet (which
 layers publish, `delivery`) has one authoring source — the Pulumi stack, read at the grow — and the

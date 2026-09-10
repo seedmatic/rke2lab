@@ -60,14 +60,14 @@ class ExecutionEnvironmentTest {
   }
 
   @Test
-  void inClusterIsSecretBlind() {
+  void inClusterSourcesDotSecrets() {
+    // Secret-FULL: the render pod re-smudges .secrets (the toolchains/git-sops flox env + the
+    // replicated cluster age key), so the in-cluster gateway reads the CLEAR .secrets exactly as
+    // the operator does — a plain DotSecretsGateway, no operator-only TailscaleOauthClientGateway.
     final SecretsGateway gw =
         new ExecutionEnvironment(Map.of(ExecutionEnvironment.KUBERNETES_SIGNAL, "10.43.0.1"))
             .secretsGateway();
-    assertInstanceOf(EmptySecretsGateway.class, gw);
-    assertTrue(gw.read("github").isEmpty());
-    assertTrue(gw.read("kubernetes").isEmpty());
-    assertTrue(gw.read("tailscale").isEmpty());
+    assertInstanceOf(DotSecretsGateway.class, gw);
   }
 
   @Test
