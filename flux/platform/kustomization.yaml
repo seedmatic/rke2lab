@@ -6,4 +6,6 @@ resources:
 - platform-cert-manager-workloads.yml
 - platform-cluster-issuer-foundation.yml
 - platform-cluster-issuer-workloads.yml
+- platform-github-token-manager-operators.yml
+- platform-github-token-manager-workloads.yml
 - platform-replicator.yml

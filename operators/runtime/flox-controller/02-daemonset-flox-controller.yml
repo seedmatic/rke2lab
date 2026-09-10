@@ -53,6 +53,12 @@ spec:
               key: token
               name: floxhub-token
               optional: true
+        - name: GITHUB_ACCESS_TOKEN
+          valueFrom:
+            secretKeyRef:
+              key: token
+              name: github-token
+              optional: true
         image: io.seedmatic.flox-controller:0.0.0-develop
         imagePullPolicy: IfNotPresent
         name: controller
