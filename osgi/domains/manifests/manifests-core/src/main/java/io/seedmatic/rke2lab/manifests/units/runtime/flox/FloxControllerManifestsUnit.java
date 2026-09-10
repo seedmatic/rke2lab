@@ -310,14 +310,6 @@ public final class FloxControllerManifestsUnit extends AbstractManifestsUnit {
                 Map.of(
                     "name", "CONTAINERD_ADDRESS",
                     "value", "/run/k3s/containerd/containerd.sock"),
-                // Surface the realise builds in `kubectl logs`: the controller wires the flox
-                // subprocess stderr to its own (exec.go buildEnv), but the host nix runs at default
-                // verbosity — a `flox activate` that BUILDS is silent until it exits. NIX_CONFIG is
-                // inherited through nsenter into the host nix and MERGES with the node's nix.conf
-                // (so root's access-tokens are preserved), turning on full build-log streaming.
-                Map.of(
-                    "name", "NIX_CONFIG",
-                    "value", "print-build-logs = true"),
                 // The (rotating) App token gtm mints, read from a mounted file (see the
                 // github-token
                 // volume below) — NOT an env, so kubelet's live refresh is picked up
