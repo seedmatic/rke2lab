@@ -21,6 +21,7 @@ import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.SeedScenario;
 import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
 import io.seedmatic.rke2lab.seed.broker.port.Cellar;
 import io.seedmatic.rke2lab.seed.broker.port.Parcel;
+import io.seedmatic.rke2lab.seed.broker.port.Reach;
 import io.seedmatic.rke2lab.seed.broker.port.SecretsGateway;
 import io.seedmatic.rke2lab.seed.broker.port.Sensitivity;
 import java.util.Objects;
@@ -152,7 +153,8 @@ public class IncusIdentitySealScenario
 
     @As("the incus identity is filed")
     public Then the_incus_identity_is_filed(@Hidden Parcel parcel, @Hidden Cellar cellar) {
-      cellar.store(parcel, IncusIdentityCase.INCUS_IDENTITY, material, Sensitivity.SEALED);
+      cellar.store(
+          parcel, IncusIdentityCase.INCUS_IDENTITY, material, Sensitivity.SEALED, Reach.IN_CLUSTER);
       return self();
     }
   }

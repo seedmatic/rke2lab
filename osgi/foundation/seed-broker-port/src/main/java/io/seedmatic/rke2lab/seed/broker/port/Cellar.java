@@ -59,6 +59,20 @@ public interface Cellar {
   }
 
   /**
+   * File a decoded value with an explicit {@link Reach} — the scion DECLARES, at the seal (where
+   * the harvest is born), WHERE the value is consumed ({@link Reach#OPERATOR_ONLY} default vs
+   * {@link Reach#IN_CLUSTER}). The transactional cellar folds it into the value's {@link Trail}
+   * (CLEAR), so a consumer filters SEALED entries by reach without the passphrase (§
+   * in-cluster-cellar-asset). A capability, not a core verb — hence a default that DROPS reach;
+   * only the trail-stamping {@code ScenarioCellar} overrides it to honour the mark (a cellar that
+   * does not stamp trails cannot carry it).
+   */
+  default <T> void store(
+      Parcel parcel, SeedCoordinate coordinate, T value, Sensitivity sensitivity, Reach reach) {
+    store(parcel, coordinate, value, sensitivity);
+  }
+
+  /**
    * File a value on the within-run bus — the {@link Persistence#TRANSIENT} convenience over the
    * five-arg form, filed {@link Sensitivity#PLAIN} (a transient fact is a produced observation, not
    * a secret at rest). Readable this run (overlay + inheritance), evicted at the drain — it never
@@ -97,13 +111,14 @@ public interface Cellar {
   List<Parcel> neighbours(Parcel parcel);
 
   /**
-   * The provenance {@link Trail} (fil d'Ariane) of the current value at {@code coordinate} — its
-   * lineage back to the git commit it was cultivated from, readable WITHOUT decoding the (possibly
-   * SEALED) payload, since the trail rides CLEAR on the {@link SeedEnvelope}. Empty when the case
-   * is empty OR when this cellar tracks no trail (the default): only the transactional cellar
-   * stamps and reads it within a run; the durable edge does not yet carry it (§ fil-d-ariane, the
-   * durable extension is a handoff item). A capability, not a core verb — hence a default, not an
-   * abstract method every {@code Cellar} must realise.
+   * The {@link Trail} of the current value at {@code coordinate} — its origin lineage (breadcrumbs
+   * back to the git commit it was cultivated from) AND its producer-declared {@link Reach}, both
+   * readable WITHOUT decoding the (possibly SEALED) payload, since the trail rides CLEAR on the
+   * {@link SeedEnvelope}. Stamped by the transactional cellar within a run AND persisted across the
+   * durable round-trip (the {@code PulumiCellar} coquille carries the trail; {@code CodecCellar}
+   * reads it back off the opaque envelope). Empty only when the case is empty OR when this cellar
+   * tracks no trail (the default). A capability, not a core verb — hence a default, not an abstract
+   * method every {@code Cellar} must realise.
    */
   default Optional<Trail> trailOf(Parcel parcel, SeedCoordinate coordinate) {
     return Optional.empty();

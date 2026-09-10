@@ -8,6 +8,7 @@ import io.seedmatic.rke2lab.seed.broker.port.CellarCipher;
 import io.seedmatic.rke2lab.seed.broker.port.CellarCoordinate;
 import io.seedmatic.rke2lab.seed.broker.port.Parcel;
 import io.seedmatic.rke2lab.seed.broker.port.Persistence;
+import io.seedmatic.rke2lab.seed.broker.port.Reach;
 import io.seedmatic.rke2lab.seed.broker.port.SeedCoordinate;
 import io.seedmatic.rke2lab.seed.broker.port.SeedEnvelope;
 import io.seedmatic.rke2lab.seed.broker.port.Sensitivity;
@@ -265,7 +266,7 @@ public final class ScenarioCellar implements TransactionalCellar {
   @Override
   public <T> void store(
       Parcel parcel, SeedCoordinate coordinate, T value, Sensitivity sensitivity) {
-    store(parcel, coordinate, value, sensitivity, Persistence.DURABLE);
+    storeCore(parcel, coordinate, value, sensitivity, Persistence.DURABLE, Reach.OPERATOR_ONLY);
   }
 
   @Override
@@ -275,10 +276,27 @@ public final class ScenarioCellar implements TransactionalCellar {
       T value,
       Sensitivity sensitivity,
       Persistence persistence) {
+    storeCore(parcel, coordinate, value, sensitivity, persistence, Reach.OPERATOR_ONLY);
+  }
+
+  @Override
+  public <T> void store(
+      Parcel parcel, SeedCoordinate coordinate, T value, Sensitivity sensitivity, Reach reach) {
+    storeCore(parcel, coordinate, value, sensitivity, Persistence.DURABLE, reach);
+  }
+
+  private <T> void storeCore(
+      Parcel parcel,
+      SeedCoordinate coordinate,
+      T value,
+      Sensitivity sensitivity,
+      Persistence persistence,
+      Reach reach) {
     final String encoded = codec.encode(value);
     final String payload = sensitivity == Sensitivity.SEALED ? cipher.seal(encoded) : encoded;
     final SeedEnvelope envelope =
-        SeedEnvelope.of(coordinate, payload).withTrail(trailFor(parcel, coordinate));
+        SeedEnvelope.of(coordinate, payload)
+            .withTrail(trailFor(parcel, coordinate).withReach(reach));
     append(new Entry(parcel, envelope, false, false, persistence));
   }
 

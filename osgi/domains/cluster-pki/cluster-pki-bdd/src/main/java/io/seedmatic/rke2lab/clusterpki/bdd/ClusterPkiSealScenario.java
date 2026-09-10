@@ -26,6 +26,7 @@ import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.ScenarioPlaye
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.SeedScenario;
 import io.seedmatic.rke2lab.seed.broker.port.Cellar;
 import io.seedmatic.rke2lab.seed.broker.port.Parcel;
+import io.seedmatic.rke2lab.seed.broker.port.Reach;
 import io.seedmatic.rke2lab.seed.broker.port.Sensitivity;
 import java.util.List;
 import java.util.Objects;
@@ -207,8 +208,16 @@ public class ClusterPkiSealScenario
       // workload cluster was requested (the additive mint returns the current set); a mgmt-only run
       // returns an empty set and files nothing.
       if (!workloadCas.entries().isEmpty()) {
+        // IN_CLUSTER: the workload BYO-CA Secrets ride the branch (CAPI secretRef), so the
+        // in-cluster
+        // render must resolve them — extracted to the branch cellar asset. Its sibling stores above
+        // (bundle/age-key/admin/issuer) stay OPERATOR_ONLY: they ride the NODE_BOOTSTRAP lane.
         cellar.store(
-            parcel, ClusterPkiCoordinate.WORKLOAD_CLUSTER_CAS, workloadCas, Sensitivity.SEALED);
+            parcel,
+            ClusterPkiCoordinate.WORKLOAD_CLUSTER_CAS,
+            workloadCas,
+            Sensitivity.SEALED,
+            Reach.IN_CLUSTER);
       }
       return self();
     }
