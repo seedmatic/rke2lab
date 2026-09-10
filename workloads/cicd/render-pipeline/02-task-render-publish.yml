@@ -21,6 +21,12 @@ spec:
           key: ssh-private
           name: manifests-render-signing
           optional: true
+    - name: SOPS_AGE_KEY
+      valueFrom:
+        secretKeyRef:
+          key: age.agekey
+          name: sops-age
+          optional: true
     image: debian:stable-slim
     name: render
     script: |-
@@ -33,6 +39,13 @@ spec:
         export NIX_CONFIG="${NIX_CONFIG:-}"$'\n'"access-tokens = github.com=$RKE2LAB_PUSH_TOKEN"
       fi
       export M2_REPO="$(workspaces.maven-cache.path)/repository"
+      if [ -n "${SOPS_AGE_KEY:-}" ]; then
+        for f in .secrets .ndh-ssh.d/keys.yaml; do
+          if git ls-files --error-unmatch "$f" >/dev/null 2>&1; then
+            git checkout -- "$f"
+          fi
+        done
+      fi
       nix run .#render-manifests -- "$(params.cluster)" "$(params.node)"
     workingDir: $(workspaces.source.path)
   workspaces:

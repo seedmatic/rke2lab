@@ -1,0 +1,32 @@
+---
+apiVersion: flox.seedmatic.io/v1alpha1
+kind: FloxEnv
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: runtime
+    io.seedmatic.rke2lab/package: flox-envs
+  name: git-sops
+  namespace: rke2lab-system
+spec:
+  consumption: overlay
+  folder: toolchains
+  manifest:
+    install:
+      bash:
+        outputs: all
+        pkg-path: bash
+      coreutils:
+        outputs: all
+        pkg-path: coreutils
+      git:
+        pkg-path: git
+      git-sops-filter:
+        flake: floxcatalog:catalogue#git-sops-filter
+      sops:
+        pkg-path: sops
+      yq-go:
+        pkg-path: yq-go
+    options:
+      systems:
+      - aarch64-linux
+    schema-version: 1.10.0

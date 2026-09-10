@@ -45,6 +45,8 @@ spec:
           value: /run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/usr/bin:/bin
         - name: CONTAINERD_ADDRESS
           value: /run/k3s/containerd/containerd.sock
+        - name: NIX_CONFIG
+          value: print-build-logs = true
         - name: FLOX_FLOXHUB_TOKEN
           valueFrom:
             secretKeyRef:
