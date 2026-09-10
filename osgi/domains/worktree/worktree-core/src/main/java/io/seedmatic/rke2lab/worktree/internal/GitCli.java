@@ -113,6 +113,16 @@ final class GitCli {
     run(true, "-C", worktreePath.toString(), "add", "-A");
   }
 
+  /**
+   * Restore {@code relPath} from HEAD into the working tree ({@code git checkout HEAD -- <path>}) —
+   * a checkout, so it runs the configured {@code sops-yaml} smudge filter and the file lands
+   * DECRYPTED. The caller has already confirmed the path is committed at HEAD (jgit read its blob),
+   * so a non-zero exit is a real defect, not the missing-path case.
+   */
+  void restoreFromHead(Path worktreePath, String relPath) {
+    run(true, "-C", worktreePath.toString(), "checkout", "HEAD", "--", relPath);
+  }
+
   /** Remove the linked worktree at {@code worktreePath} — tolerant of a path already gone. */
   void worktreeRemove(Path worktreePath) {
     run(false, "worktree", "remove", "--force", worktreePath.toString());

@@ -36,6 +36,19 @@ public interface LinkedWorktree extends AutoCloseable {
   Optional<String> readAtHead(String path);
 
   /**
+   * Restore {@code path} from {@code HEAD} into the working tree THROUGH the smudge filter, then
+   * return its (smudged) content — the read-back a rendered branch's sops-encrypted asset needs.
+   * {@link #readAtHead} yields the COMMITTED blob (sops-ENCRYPTED, jgit runs no filter), so a
+   * consumer that must read the plaintext instead checks the committed asset out with {@code git}
+   * (which DOES run the {@code sops-yaml} smudge filter the environment configures), leaving the
+   * decrypted file where the render then overwrites it. Empty when {@code path} is absent at HEAD
+   * (a first render, an orphan base). The working-tree file is a side effect — {@code prepare}
+   * emptied the tree, so restoring it is additive, and a later {@link #stageAll} re-seals it via
+   * the clean filter.
+   */
+  Optional<String> smudgeFromHead(String path);
+
+  /**
    * Stage the given paths for the next commit — additions/modifications for paths that exist,
    * removals for paths that no longer do. Each path may be absolute or resolved against {@link
    * #path()}. For staging a whole rendered tree (including files a re-render dropped), prefer

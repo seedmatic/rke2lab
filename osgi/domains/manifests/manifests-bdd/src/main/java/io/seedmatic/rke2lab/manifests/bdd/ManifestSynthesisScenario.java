@@ -622,6 +622,13 @@ public class ManifestSynthesisScenario
     // it, and the THEN seals + delivers it. Empty for a bare survey / the standalone CLI: the
     // synthesis then falls back to a temp dir with no branch, and the delivery THEN is a no-op.
     final Optional<LinkedWorktree> rendered = prepareRenderWorktree(facet);
+    // Rehydrate the in-cluster cellar asset (§ in-cluster-cellar-asset): a secret-blind in-cluster
+    // publish sows no seal, so the IN_CLUSTER reveals below would find nothing and Flux would prune
+    // the branch secrets — reading the prior render's asset back onto the overlay makes them
+    // resolve
+    // as if the operator's seal had run. A no-op on a first grow (no asset yet) / a survey; on a
+    // re-grow the fresh seal wins (importSealed skips a coordinate the overlay already carries).
+    rehydrateInClusterAsset(rendered);
     // Resolve the effective facet per the sower's RenderMode: GROW/INIT keep the seeded facet
     // (the grow's Pulumi SSOT / the CLI args), UPDATE follows the branch HEAD, EDIT overlays the
     // sparse operator overrides on HEAD — so a steady-state render never silently resets the branch
@@ -640,6 +647,12 @@ public class ManifestSynthesisScenario
             revealWorkloadCas(),
             revealIncusIdentity(),
             rendered);
+    // Extract the IN_CLUSTER-reaching sealed materials to the branch asset (§ in-cluster-cellar
+    // -asset): the operator's grow captures its fresh seals, a publish re-captures the rehydrated
+    // set (a fixpoint). Written plaintext into the tree; the git clean filter sops-encrypts it at
+    // stageAll, so the passphrase-sealed payloads gain age protection at rest. Before delivery so
+    // the THEN's stageAll picks it up. A no-op when nothing reaches in-cluster (a mgmt-only run).
+    extractInClusterAsset(rendered);
     then()
         .every_enabled_domain_produced_its_units()
         .and()
@@ -675,6 +688,89 @@ public class ManifestSynthesisScenario
     } catch (IOException ex) {
       throw new UncheckedIOException(
           "cannot read the node-bootstrap manifests: " + bootstrapFile, ex);
+    }
+  }
+
+  // The in-cluster cellar asset at the branch ROOT (§ in-cluster-cellar-asset): a hidden Secret
+  // carrier holding the SEALED IN_CLUSTER-reaching envelopes as one stringData scalar. The
+  // `.secret-`
+  // prefix matches the exploder's `.gitattributes` (`**/.secret-*.yml filter=sops-yaml`), so the
+  // git
+  // clean filter sops-encrypts the stringData at commit; local-config + its root placement (outside
+  // every Flux Kustomization path) keep it unapplied — pure operator/render carrier.
+  private static final String IN_CLUSTER_ASSET_FILE = ".secret-in-cluster-cellar.yml";
+  private static final String ASSET_ENVELOPES_KEY = "envelopes";
+
+  /**
+   * Rehydrate the prior render's in-cluster asset onto the run's overlay so the IN_CLUSTER reveals
+   * resolve on a secret-blind publish (§ in-cluster-cellar-asset). Reads the COMMITTED asset back
+   * THROUGH the sops smudge filter ({@link LinkedWorktree#smudgeFromHead}, since jgit's {@code
+   * readAtHead} would hand back the encrypted blob), unwraps its {@code stringData} scalar, and
+   * hands the sealed envelopes to the cellar. A no-op on a survey / no cellar / no asset at HEAD.
+   */
+  private void rehydrateInClusterAsset(Optional<LinkedWorktree> rendered) {
+    if (rendered.isEmpty() || cellar == null || parcel.isEmpty()) {
+      return;
+    }
+    final ScenarioCellar tx = cellar;
+    final Parcel plot = parcel.orElseThrow();
+    rendered
+        .orElseThrow()
+        .smudgeFromHead(IN_CLUSTER_ASSET_FILE)
+        .flatMap(this::assetEnvelopesJson)
+        .ifPresent(json -> tx.importSealed(plot, json));
+  }
+
+  /**
+   * Extract the IN_CLUSTER-reaching sealed materials to the branch asset — the grow captures its
+   * fresh seals, a publish re-captures the rehydrated set (a fixpoint). Written PLAINTEXT into the
+   * tree; the git clean filter sops-encrypts the {@code stringData} at {@code stageAll}. A no-op on
+   * a survey / no cellar / nothing reaching in-cluster (a mgmt-only run leaves the branch
+   * untouched).
+   */
+  private void extractInClusterAsset(Optional<LinkedWorktree> rendered) {
+    if (rendered.isEmpty() || cellar == null || parcel.isEmpty()) {
+      return;
+    }
+    final ScenarioCellar tx = cellar;
+    tx.exportReaching(parcel.orElseThrow(), io.seedmatic.rke2lab.seed.broker.port.Reach.IN_CLUSTER)
+        .ifPresent(json -> writeInClusterAsset(rendered.orElseThrow().path(), json));
+  }
+
+  /**
+   * The {@code stringData.envelopes} scalar of a smudged asset carrier; empty if absent/unreadable.
+   */
+  private Optional<String> assetEnvelopesJson(String secretYaml) {
+    try {
+      final JsonNode envelopes =
+          FACET_READER.readTree(secretYaml).path("stringData").path(ASSET_ENVELOPES_KEY);
+      return envelopes.isMissingNode() || envelopes.isNull()
+          ? Optional.empty()
+          : Optional.of(envelopes.asText());
+    } catch (IOException ex) {
+      return Optional.empty();
+    }
+  }
+
+  /**
+   * Write the asset carrier (a local-config Secret) at the branch root, {@code envelopesJson}
+   * plain.
+   */
+  private void writeInClusterAsset(Path root, String envelopesJson) {
+    final ObjectNode secret = FACET_READER.createObjectNode();
+    secret.put("apiVersion", "v1");
+    secret.put("kind", "Secret");
+    final ObjectNode metadata = secret.putObject("metadata");
+    metadata.put("name", "in-cluster-cellar");
+    metadata.putObject("annotations").put("config.kubernetes.io/local-config", "true");
+    secret.put("type", "Opaque");
+    secret.putObject("stringData").put(ASSET_ENVELOPES_KEY, envelopesJson);
+    try {
+      Files.writeString(
+          root.resolve(IN_CLUSTER_ASSET_FILE), FACET_READER.writeValueAsString(secret));
+    } catch (IOException ex) {
+      throw new UncheckedIOException(
+          "cannot write the in-cluster cellar asset at the branch root", ex);
     }
   }
 

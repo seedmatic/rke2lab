@@ -2,6 +2,9 @@ package io.seedmatic.rke2lab.worktree.internal;
 
 import io.seedmatic.rke2lab.worktree.GitIdentity;
 import io.seedmatic.rke2lab.worktree.LinkedWorktree;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
@@ -39,6 +42,26 @@ final class JgitLinkedWorktree implements LinkedWorktree {
   @Override
   public Optional<String> readAtHead(String path) {
     return checkout.readAtHead(path);
+  }
+
+  @Override
+  public Optional<String> smudgeFromHead(String path) {
+    // Only when the path is committed at HEAD (readAtHead sees the encrypted blob) — else there is
+    // nothing to restore (a first render, an orphan base). The checkout runs the sops-yaml smudge
+    // filter, so the working-tree file lands DECRYPTED; read it back plaintext.
+    if (checkout.readAtHead(path).isEmpty()) {
+      return Optional.empty();
+    }
+    gitCli.restoreFromHead(checkout.root(), path);
+    final Path restored = checkout.root().resolve(path);
+    if (!Files.exists(restored)) {
+      return Optional.empty();
+    }
+    try {
+      return Optional.of(Files.readString(restored));
+    } catch (IOException ex) {
+      throw new UncheckedIOException("cannot read the smudged " + path + " from HEAD", ex);
+    }
   }
 
   @Override

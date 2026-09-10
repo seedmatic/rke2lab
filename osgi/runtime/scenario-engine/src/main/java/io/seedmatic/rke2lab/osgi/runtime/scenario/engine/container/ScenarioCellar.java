@@ -300,6 +300,50 @@ public final class ScenarioCellar implements TransactionalCellar {
     append(new Entry(parcel, envelope, false, false, persistence));
   }
 
+  /** A portable bundle of SEALED envelopes — the wire shape {@link #exportReaching} serialises. */
+  private record CellarAsset(List<SeedEnvelope> envelopes) {}
+
+  /**
+   * The overlay's current SEALED envelopes at {@code parcel} whose producer-declared {@link Reach}
+   * is {@code reach}, serialised to a portable JSON asset — the in-cluster render EXTRACTS the
+   * {@link Reach#IN_CLUSTER} set to a sops-encrypted branch file so a later secret-blind render
+   * rehydrates it (§ in-cluster-cellar-asset). Reads the OVERLAY only (the run's own/inherited
+   * seals on a grow, the {@link #importSealed rehydrated} envelopes on a publish); payloads stay
+   * SEALED — the passphrase never leaves the run, the sops layer on the asset file is the real
+   * protection. Empty when nothing reaches {@code reach} (a mgmt-only grow, a survey).
+   */
+  public Optional<String> exportReaching(Parcel parcel, Reach reach) {
+    final List<SeedEnvelope> reaching =
+        currentSetEntries(parcel).stream()
+            .map(Entry::envelope)
+            .filter(envelope -> envelope.trail().reach() == reach)
+            .toList();
+    return reaching.isEmpty()
+        ? Optional.empty()
+        : Optional.of(codec.encode(new CellarAsset(reaching)));
+  }
+
+  /**
+   * Rehydrate the SEALED envelopes of a branch asset (produced by {@link #exportReaching}) onto
+   * this run's overlay — the read-back a secret-blind in-cluster render needs: a publish sows no
+   * seal, so the reveals would find nothing and Flux would prune the branch secrets; rehydrating
+   * the asset's envelopes makes the reveals resolve as if the operator's seal had run. Each is
+   * filed {@link Persistence#TRANSIENT} (a read-side rehydration, never re-drained) and SKIPPED
+   * when the coordinate already carries an overlay entry, so a re-grow's FRESH seal always wins
+   * over a stale asset (own {@literal >} rehydrated). The payload stays sealed; a reveal opens it
+   * with the same cellar cipher that sealed it.
+   */
+  public void importSealed(Parcel parcel, String assetJson) {
+    for (SeedEnvelope sealed : codec.decode(assetJson, CellarAsset.class).envelopes()) {
+      final boolean present =
+          setEntriesFor(parcel).stream()
+              .anyMatch(entry -> entry.envelope().coordinate().equals(sealed.coordinate()));
+      if (!present) {
+        append(new Entry(parcel, sealed, false, false, Persistence.TRANSIENT));
+      }
+    }
+  }
+
   /**
    * Stamp the value's fil d'Ariane at {@code coordinate}: the run's provenance PATH — read back
    * from {@link CellarCoordinate#RUN_PROVENANCE} — followed by THIS coordinate's link. The path is
