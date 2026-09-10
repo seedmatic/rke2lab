@@ -24,6 +24,13 @@ metadata:
     # closure. Keyed per-container (NO bare-key fallback), so it names the render step container
     # (step-render); only the render-publish pod owns one, so the git-fetch pod ignores it.
     flox.seedmatic.io/nix-build.step-render: "manifests-nix-store"
+    # git-sops filter capability: the SAME step-render container ALSO gets the toolchains/git-sops
+    # flox env (git + sops + the ndh git-sops-filter) — the NRI plugin composes a flox env AND a
+    # nix-build runtime on one container. This wires git's sops clean/smudge filter, so the render
+    # commits branch Secrets ENCRYPTED (clean, needs only the .sops.yaml recipients) and — with
+    # SOPS_AGE_KEY mounted (see the render Task) — smudges .secrets + the in-cluster cellar asset,
+    # making the in-cluster render secret-FULL instead of blind.
+    flox.seedmatic.io/environment.step-render: "toolchains/git-sops"
 spec:
   # The Pipeline is a RENDERED in-cluster manifest (RenderPipelineManifestsUnit), not inline here.
   # PaC's own resolver does NOT consult the cluster for a bare pipelineRef.name (it wants inline /

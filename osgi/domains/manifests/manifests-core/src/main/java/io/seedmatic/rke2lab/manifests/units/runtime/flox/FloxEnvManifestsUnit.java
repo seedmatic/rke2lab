@@ -19,10 +19,13 @@ import software.constructs.Construct;
 
 /**
  * Emits the workload {@code FloxEnv} CRs the flox-controller realises on each node — the runtime
- * successor to the baked {@code environment.d} tree. Covers {@code kdns} (networking) and {@code
- * headscale}/{@code tailscale}/{@code headplane} (mesh). The CI render is NOT a flox env: the
- * nix-build runtime (nix CLI + config + persistent store) is provided by the flox NRI system via
- * the {@code flox.seedmatic.io/nix-build} annotation, so the render pod ships no flox env.
+ * successor to the baked {@code environment.d} tree. Covers {@code kdns} (networking), {@code
+ * headscale}/{@code tailscale}/{@code headplane} (mesh), and the cross-cutting toolchain tier
+ * {@code base} (kube) + {@code git-sops} (toolchains). The CI render's TOOLCHAIN is nix-build (not
+ * a flox env) — nix CLI + config + persistent store via the {@code flox.seedmatic.io/nix-build}
+ * annotation; but the render step ALSO carries the {@code toolchains/git-sops} flox env (git + sops
+ * + the git-sops filter) composed with nix-build, so a checkout smudges the sops tree (see {@code
+ * RenderPipelineManifestsUnit}).
  *
  * <p>Each env installs its workload package from the {@link FloxCatalogManifestsUnit} catalog via a
  * {@code floxcatalog:catalogue#<output>} ref (resolved same-namespace, both live in {@code

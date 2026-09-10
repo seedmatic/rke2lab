@@ -5,6 +5,7 @@ import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import io.seedmatic.rke2lab.manifests.units.cluster.ClusterRefs;
+import io.seedmatic.rke2lab.manifests.units.gitops.SopsAgeSecretManifestsUnit;
 import java.util.List;
 import java.util.Map;
 import org.cdk8s.ApiObject;
@@ -37,10 +38,17 @@ import software.constructs.Construct;
  * carries {@code flox.seedmatic.io/nix-build.step-render=<pvc-name>} — the value names the render's
  * persistent nix-store PVC (a warm store reused across renders). The flox-controller webhook
  * ensures that PVC (create-if-absent) + injects it as the {@code /nix} overlay upper backing +
- * {@code NIX_CONFIG}; the NRI plugin puts {@code nix} on PATH. No flox env is involved — nix owns
- * the whole build + exec closure. Only the {@code render-publish} pod owns a {@code step-render}
- * container, so the injection applies there and is ignored on the {@code git-fetch} pod (no
- * bare-key fallback — each container opts in BY NAME). See {@code
+ * {@code NIX_CONFIG}; the NRI plugin puts {@code nix} on PATH. The {@code step-render} container
+ * ALSO carries {@code flox.seedmatic.io/environment.step-render=toolchains/git-sops} — the NRI
+ * composes a flox env AND the nix-build runtime on ONE container (see {@code
+ * flox-store-resolved-runtime-and-builder.adoc} § capability-vs-package-set): the nix-build runtime
+ * builds + runs the closure, while the git-sops env brings git + sops + the git-sops filter so the
+ * render commits branch Secrets ENCRYPTED (clean) and — with {@code SOPS_AGE_KEY} (the cluster age
+ * key replicated into this namespace, {@link
+ * io.seedmatic.rke2lab.manifests.units.gitops.SopsAgeSecretManifestsUnit}) — smudges {@code
+ * .secrets} + the cellar asset, making the render secret-FULL. Only the {@code render-publish} pod
+ * owns a {@code step-render} container, so the injection applies there and is ignored on the {@code
+ * git-fetch} pod (no bare-key fallback — each container opts in BY NAME). See {@code
  * docs/architecture/patterns/flox-store-resolved-runtime-and-builder.adoc} + {@link
  * io.seedmatic.rke2lab.manifests.contract.FloxAnnotation}.
  *
@@ -249,6 +257,26 @@ public final class RenderPipelineManifestsUnit extends AbstractManifestsUnit {
                                     "key",
                                     RenderSigningSecretManifestsUnit.SSH_PRIVATE_KEY,
                                     "optional",
+                                    true))),
+                        // The cluster age key, mittwald-replicated from flux-system into this
+                        // namespace (SopsAgeSecretManifestsUnit) — sops reads it as SOPS_AGE_KEY to
+                        // smudge .secrets + the branch cellar asset, making this render
+                        // secret-FULL.
+                        // optional=true: on the window before the replicator has copied it (a fresh
+                        // grow) the pod still starts; the re-smudge below then fails loud on the
+                        // empty key rather than the pod failing to schedule.
+                        Map.of(
+                            "name",
+                            "SOPS_AGE_KEY",
+                            "valueFrom",
+                            Map.of(
+                                "secretKeyRef",
+                                Map.of(
+                                    "name",
+                                    SopsAgeSecretManifestsUnit.SECRET_NAME,
+                                    "key",
+                                    SopsAgeSecretManifestsUnit.AGE_KEY,
+                                    "optional",
                                     true)))
                       },
                       // A glibc base; the toolchain (java/maven) arrives via flox injection, not
@@ -303,6 +331,22 @@ public final class RenderPipelineManifestsUnit extends AbstractManifestsUnit {
                           // maven-build-cache persists beside the repo on the PVC → renders are
                           // incremental across pushes (only changed modules recompile).
                           "export M2_REPO=\"$(workspaces.maven-cache.path)/repository\"",
+                          // Re-smudge the sops inputs the fetch pod checked out RAW (it had no
+                          // git-sops env): THIS container's toolchains/git-sops flox env configures
+                          // the sops-yaml filter, and SOPS_AGE_KEY (above) lets sops decrypt. A
+                          // re-checkout runs the smudge → .secrets / keys.yaml land CLEAR, so
+                          // `manifests
+                          // publish` fills the cellar (secret-FULL) and the branch cellar-asset
+                          // smudge/clean works. Guarded: only with a key present, only tracked
+                          // paths
+                          // (git ls-files in an `if` so an absent path never trips `set -e`).
+                          "if [ -n \"${SOPS_AGE_KEY:-}\" ]; then",
+                          "  for f in .secrets .ndh-ssh.d/keys.yaml; do",
+                          "    if git ls-files --error-unmatch \"$f\" >/dev/null 2>&1; then",
+                          "      git checkout -- \"$f\"",
+                          "    fi",
+                          "  done",
+                          "fi",
                           // The flox NRI plugin put `nix` on PATH + injected NIX_CONFIG (daemonless
                           // single-user) and hosts the /nix store overlay on the assigned
                           // persistent
