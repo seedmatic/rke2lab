@@ -833,8 +833,7 @@ public final class HeadscaleManifestsUnit extends AbstractManifestsUnit {
     final LinkedHashMap<String, Object> headscaleContainer = new LinkedHashMap<>();
     headscaleContainer.put("name", "headscale");
     headscaleContainer.put("image", floxImage);
-    headscaleContainer.put(
-        "command", List.of("flox", "activate", "--dir", "/root", "--", "headscale", "serve"));
+    headscaleContainer.put("command", List.of("headscale", "serve"));
     headscaleContainer.put(
         "livenessProbe",
         Map.of(
@@ -928,7 +927,7 @@ public final class HeadscaleManifestsUnit extends AbstractManifestsUnit {
                 "image",
                 floxImage,
                 "command",
-                List.of("flox", "activate", "--dir", "/root", "--", "/scripts/config-init.sh"),
+                List.of("/scripts/config-init.sh"),
                 "volumeMounts",
                 List.of(
                     Map.of("mountPath", "/scripts", "name", "config-init-script"),
@@ -1068,13 +1067,7 @@ public final class HeadscaleManifestsUnit extends AbstractManifestsUnit {
                                 "image",
                                 floxImage,
                                 "command",
-                                List.of(
-                                    "flox",
-                                    "activate",
-                                    "--dir",
-                                    "/root",
-                                    "--",
-                                    "/scripts/bootstrap.sh"),
+                                List.of("/scripts/bootstrap.sh"),
                                 "envFrom",
                                 List.of(
                                     Map.of(
@@ -1185,8 +1178,7 @@ public final class HeadscaleManifestsUnit extends AbstractManifestsUnit {
     final LinkedHashMap<String, Object> gatewayContainer = new LinkedHashMap<>();
     gatewayContainer.put("name", "tailscale");
     gatewayContainer.put("image", floxImage);
-    gatewayContainer.put(
-        "command", List.of("flox", "activate", "--dir", "/root", "--", "/scripts/gateway.sh"));
+    gatewayContainer.put("command", List.of("/scripts/gateway.sh"));
     gatewayContainer.put(
         "env",
         List.of(
@@ -1371,9 +1363,7 @@ public final class HeadscaleManifestsUnit extends AbstractManifestsUnit {
     final LinkedHashMap<String, Object> clientContainer = new LinkedHashMap<>();
     clientContainer.put("name", "tailscale");
     clientContainer.put("image", floxImage);
-    clientContainer.put(
-        "command",
-        List.of("flox", "activate", "--dir", "/root", "--", "/scripts/tailscale-client.sh"));
+    clientContainer.put("command", List.of("/scripts/tailscale-client.sh"));
     clientContainer.put(
         "env",
         List.of(
@@ -1495,13 +1485,7 @@ public final class HeadscaleManifestsUnit extends AbstractManifestsUnit {
                                 "image",
                                 floxImage,
                                 "command",
-                                List.of(
-                                    "flox",
-                                    "activate",
-                                    "--dir",
-                                    "/root",
-                                    "--",
-                                    "/scripts/wait-for-headscale.sh"),
+                                List.of("/scripts/wait-for-headscale.sh"),
                                 "envFrom",
                                 List.of(
                                     Map.of(

@@ -535,13 +535,7 @@ public final class HeadplaneManifestsUnit extends AbstractManifestsUnit {
                                 "image",
                                 ManifestSynthesisContext.current().floxDebugPolicy().prodImage(),
                                 "command",
-                                List.of(
-                                    "flox",
-                                    "activate",
-                                    "--dir",
-                                    "/root",
-                                    "--",
-                                    "/scripts/agent-sync.sh"),
+                                List.of("/scripts/agent-sync.sh"),
                                 "envFrom",
                                 List.of(
                                     Map.of(
@@ -704,11 +698,6 @@ public final class HeadplaneManifestsUnit extends AbstractManifestsUnit {
     headplaneContainer.put(
         "command",
         List.of(
-            "flox",
-            "activate",
-            "--dir",
-            "/root",
-            "--",
             "sh",
             "-c",
             "ln -sf \"$(command -v hp_agent)\" /usr/libexec/headplane/agent && exec headplane serve"));

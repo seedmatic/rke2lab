@@ -418,9 +418,7 @@ public final class FunnelCertRestoreManifestsUnit extends AbstractManifestsUnit 
                               "image",
                               floxImage,
                               "command",
-                              new Object[] {
-                                "flox", "activate", "--dir", "/root", "--", "bash", "-c", script
-                              },
+                              new Object[] {"bash", "-c", script},
                               "volumeMounts",
                               new Object[] {Map.of("name", "persist", "mountPath", "/persist")})
                         },

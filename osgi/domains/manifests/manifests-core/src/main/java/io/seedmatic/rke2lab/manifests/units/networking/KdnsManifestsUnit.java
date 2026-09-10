@@ -260,7 +260,7 @@ public final class KdnsManifestsUnit extends AbstractManifestsUnit {
     kdnsContainer.put("name", "kdns");
     kdnsContainer.put("image", debugPolicy.prodImage());
     kdnsContainer.put("imagePullPolicy", "IfNotPresent");
-    kdnsContainer.put("command", List.of("flox", "activate", "--dir", "/root", "--", "kdns"));
+    kdnsContainer.put("command", List.of("kdns"));
     kdnsContainer.put(
         "env",
         List.of(

@@ -284,9 +284,7 @@ public final class TailnetPurgeManifestsUnit extends AbstractManifestsUnit {
                               "image",
                               floxImage,
                               "command",
-                              new Object[] {
-                                "flox", "activate", "--dir", "/root", "--", "bash", "-c", script
-                              },
+                              new Object[] {"bash", "-c", script},
                               "volumeMounts",
                               new Object[] {
                                 Map.of(
