@@ -45,7 +45,12 @@ public enum Component implements WireEnum {
   CAPI_CORE("capiCore", "v1.14.0", "kubernetes-sigs/cluster-api"),
   CAPI_INCUS_PROVIDER("capiIncusProvider", "v0.9.0", "lxc/cluster-api-provider-incus"),
   CAPI_RKE2_PROVIDER("capiRke2Provider", "v0.25.2", "rancher/cluster-api-provider-rke2"),
-  CERT_MANAGER("certManager", "v1.21.1", "cert-manager/cert-manager");
+  CERT_MANAGER("certManager", "v1.21.1", "cert-manager/cert-manager"),
+  // isometry/github-token-manager — the OCI CHART version (1.6.1), which the publish aligns to the
+  // app tag; NO GitHub bump source (the chart is versioned separately from the app release tags, so
+  // the bumper cannot diff it against `v*` tags — it stays a manual chart pin, like
+  // OPENEBS_ZFS_CHART).
+  GITHUB_TOKEN_MANAGER("githubTokenManager", "1.6.1");
 
   private final String slug;
   private final String defaultVersion;

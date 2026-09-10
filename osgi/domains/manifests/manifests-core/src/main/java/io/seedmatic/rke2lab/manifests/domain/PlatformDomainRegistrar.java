@@ -5,6 +5,7 @@ import io.seedmatic.rke2lab.manifests.ManifestsDomainRegistrar;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.units.platform.CertManagerManifestsUnit;
 import io.seedmatic.rke2lab.manifests.units.platform.ClusterIssuerManifestsUnit;
+import io.seedmatic.rke2lab.manifests.units.platform.GithubTokenManagerManifestsUnit;
 import io.seedmatic.rke2lab.manifests.units.platform.ReplicatorManifestsUnit;
 import java.util.List;
 import org.osgi.service.component.annotations.Component;
@@ -19,6 +20,7 @@ public final class PlatformDomainRegistrar implements ManifestsDomainRegistrar {
         List.of(),
         List.of(
             new CertManagerManifestsUnit(),
+            new GithubTokenManagerManifestsUnit(),
             new ClusterIssuerManifestsUnit(),
             new ReplicatorManifestsUnit()));
   }

@@ -204,6 +204,11 @@ final class FluxServiceKustomizationPlanner {
     // The openebs zfs-localpv HelmChart installs the CSI driver + its zfs.openebs.io CRDs
     // (ZFSVolume et al.) — the static funnel-cert PV renders a ZFSVolume CR.
     installers.put("zfs.openebs.io", new RuntimeInstaller("storage/openebs-zfs", Optional.empty()));
+    // The github-token-manager HelmChart (crds.install default) registers github.as-code.io at
+    // runtime — GithubTokenManagerManifestsUnit renders the App + ClusterToken CRs in that group.
+    installers.put(
+        "github.as-code.io",
+        new RuntimeInstaller("platform/github-token-manager", Optional.empty()));
     // The CAPI operator + the four providers it brings up (rendered by
     // ClusterApiOperatorManifestsUnit) install the Cluster API CRD groups at runtime: CAPI core
     // (cluster.x-k8s.io), the incus infrastructure provider (infrastructure.cluster.x-k8s.io), and

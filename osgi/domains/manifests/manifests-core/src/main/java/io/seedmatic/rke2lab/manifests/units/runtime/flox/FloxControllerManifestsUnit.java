@@ -10,6 +10,7 @@ import io.seedmatic.rke2lab.manifests.contract.ManifestLayer;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import io.seedmatic.rke2lab.manifests.units.cluster.ClusterRefs;
 import io.seedmatic.rke2lab.manifests.units.cluster.ClusterRuntimeNamespaceManifestsUnit;
+import io.seedmatic.rke2lab.manifests.units.platform.GithubTokenManagerManifestsUnit;
 import io.seedmatic.rke2lab.manifests.upstream.UpstreamYamlInclusion;
 import java.util.List;
 import java.util.Map;
@@ -319,6 +320,24 @@ public final class FloxControllerManifestsUnit extends AbstractManifestsUnit {
                 Map.of(
                     "name", FLOXHUB_TOKEN_SECRET,
                     "key", FLOXHUB_TOKEN_KEY,
+                    "optional", true))));
+    // The GitHub App token gtm mints into `github-token` (GithubTokenManagerManifestsUnit): the
+    // controller's `buildEnv` passes it to the host nix as `access-tokens = github.com=<token>`
+    // (NIX_CONFIG), so a FloxEnv flake resolving a PRIVATE input (claude-hub via ndh) fetches AS
+    // the
+    // App instead of 404ing anonymously. optional: absent before gtm has minted it (a fresh grow) —
+    // the controller starts and the private-input envs just fail-to-realise until it lands, rather
+    // than the pod not scheduling.
+    env.add(
+        Map.of(
+            "name",
+            "GITHUB_ACCESS_TOKEN",
+            "valueFrom",
+            Map.of(
+                "secretKeyRef",
+                Map.of(
+                    "name", GithubTokenManagerManifestsUnit.TOKEN_SECRET_NAME,
+                    "key", GithubTokenManagerManifestsUnit.TOKEN_SECRET_KEY,
                     "optional", true))));
     volumeMounts.add(
         Map.of(
