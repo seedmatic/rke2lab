@@ -54,6 +54,14 @@ public final class FloxControllerManifestsUnit extends AbstractManifestsUnit {
 
   private static final String FLOXHUB_TOKEN_KEY = "token";
 
+  /**
+   * Where the controller reads the (rotating) GitHub App token: a file mounted from the replicated
+   * {@code github-token} Secret. A FILE, not an env — {@code buildEnv} reads it fresh per flox
+   * invocation, so kubelet's live volume refresh (the token's first arrival AND gtm's 45m rotation)
+   * is picked up with no restart; an env var, resolved once at pod start, could do neither.
+   */
+  private static final String GITHUB_TOKEN_MOUNT_DIR = "/var/run/flox/github-token";
+
   private final PackageMetadataProfile packageProfile =
       new PackageMetadataProfile(
           ManifestDomainCatalog.RUNTIME, OUTPUT_DIR, false, ManifestLayer.OPERATORS);
@@ -82,39 +90,52 @@ public final class FloxControllerManifestsUnit extends AbstractManifestsUnit {
     clusterRoleBinding.addDependency(clusterRole);
     createDaemonSet(scope, context.resolver(), namespace, serviceAccount, clusterRoleBinding);
 
-    // The FloxHub token target stub: mittwald fills it from the replicator source (pull pattern, as
-    // Tailscale/Tekton do), and the DaemonSet's FLOX_FLOXHUB_TOKEN env + the webhook injection
-    // consume it. Without it the source secret (authorised to this namespace) is never pulled and
-    // the controller wedges on a missing secret.
-    createTokenReplicaStub(scope, context.resolver(), namespace);
+    // Token target stubs: mittwald fills each from its replicator source in rke2lab-secrets (pull
+    // pattern, as Tailscale/Tekton do). floxhub-token feeds the DaemonSet's FLOX_FLOXHUB_TOKEN env
+    // +
+    // the webhook injection; github-token (the App token gtm mints, replicated here) feeds the
+    // controller's own nix via a mounted FILE (see the volume in createDaemonSet). Without a stub
+    // the source secret (authorised to this namespace) is never pulled.
+    createTokenReplicaStub(
+        scope, context.resolver(), namespace, FLOXHUB_TOKEN_SECRET, "secret-floxhub-token");
+    createTokenReplicaStub(
+        scope,
+        context.resolver(),
+        namespace,
+        GithubTokenManagerManifestsUnit.TOKEN_SECRET_NAME,
+        "secret-github-token");
   }
 
   private void createTokenReplicaStub(
-      final Construct scope, final Cdk8sApiObjectResolver resolver, final String namespace) {
+      final Construct scope,
+      final Cdk8sApiObjectResolver resolver,
+      final String namespace,
+      final String secretName,
+      final String constructId) {
     final ApiObject secret =
         new ApiObject(
             scope,
-            "secret-floxhub-token",
+            constructId,
             ApiObjectProps.builder()
                 .apiVersion("v1")
                 .kind("Secret")
                 .metadata(
                     ApiObjectMetadata.builder()
-                        .name(FLOXHUB_TOKEN_SECRET)
+                        .name(secretName)
                         .namespace(namespace)
                         .labels(Map.of("app.kubernetes.io/replicated", "true"))
                         .annotations(
                             packageProfile.packageAnnotations(
-                                "|Secret|" + namespace + "|" + FLOXHUB_TOKEN_SECRET,
+                                "|Secret|" + namespace + "|" + secretName,
                                 Map.of(
                                     "replicator.v1.mittwald.de/replicate-from",
-                                    ClusterRefs.SECRETS_NAMESPACE + "/" + FLOXHUB_TOKEN_SECRET)))
+                                    ClusterRefs.SECRETS_NAMESPACE + "/" + secretName)))
                         .build())
                 .build());
     secret.addDependency(resolver.require(ClusterRefs.RUNTIME_SYSTEM_NAMESPACE));
     // Empty stub — no placeholder sentinel: mittwald's replicate-from fills the data from the
-    // source. Consumers reference the token as an OPTIONAL secretKeyRef, so the absent key before
-    // replication is a clean "unset", not a wedge.
+    // source. Consumers reference the token as an OPTIONAL secretKeyRef / optional volume, so the
+    // absent key before replication is a clean "unset", not a wedge.
     secret.addJsonPatch(JsonPatch.add("/type", "Opaque"));
   }
 
@@ -296,7 +317,18 @@ public final class FloxControllerManifestsUnit extends AbstractManifestsUnit {
                 // (so root's access-tokens are preserved), turning on full build-log streaming.
                 Map.of(
                     "name", "NIX_CONFIG",
-                    "value", "print-build-logs = true")));
+                    "value", "print-build-logs = true"),
+                // The (rotating) App token gtm mints, read from a mounted file (see the
+                // github-token
+                // volume below) — NOT an env, so kubelet's live refresh is picked up
+                // per-invocation.
+                Map.of(
+                    "name",
+                    "GITHUB_ACCESS_TOKEN_FILE",
+                    "value",
+                    GITHUB_TOKEN_MOUNT_DIR
+                        + "/"
+                        + GithubTokenManagerManifestsUnit.TOKEN_SECRET_KEY)));
     // The pod-mutating webhook is served from every DaemonSet pod (behind
     // FloxWebhookManifestsUnit's
     // Service). Always on: the serving cert is minted in-cluster by cert-manager (no reveal-gate),
@@ -321,24 +353,6 @@ public final class FloxControllerManifestsUnit extends AbstractManifestsUnit {
                     "name", FLOXHUB_TOKEN_SECRET,
                     "key", FLOXHUB_TOKEN_KEY,
                     "optional", true))));
-    // The GitHub App token gtm mints into `github-token` (GithubTokenManagerManifestsUnit): the
-    // controller's `buildEnv` passes it to the host nix as `access-tokens = github.com=<token>`
-    // (NIX_CONFIG), so a FloxEnv flake resolving a PRIVATE input (claude-hub via ndh) fetches AS
-    // the
-    // App instead of 404ing anonymously. optional: absent before gtm has minted it (a fresh grow) —
-    // the controller starts and the private-input envs just fail-to-realise until it lands, rather
-    // than the pod not scheduling.
-    env.add(
-        Map.of(
-            "name",
-            "GITHUB_ACCESS_TOKEN",
-            "valueFrom",
-            Map.of(
-                "secretKeyRef",
-                Map.of(
-                    "name", GithubTokenManagerManifestsUnit.TOKEN_SECRET_NAME,
-                    "key", GithubTokenManagerManifestsUnit.TOKEN_SECRET_KEY,
-                    "optional", true))));
     volumeMounts.add(
         Map.of(
             "name", "webhook-certs",
@@ -350,6 +364,26 @@ public final class FloxControllerManifestsUnit extends AbstractManifestsUnit {
             "webhook-certs",
             "secret",
             Map.of("secretName", FloxWebhookManifestsUnit.TLS_SECRET_NAME)));
+    // The GitHub App token gtm mints into `github-token` (GithubTokenManagerManifestsUnit),
+    // replicated into this namespace: mounted as a FILE (read GITHUB_ACCESS_TOKEN_FILE) so
+    // `buildEnv` passes it to the host nix as `access-tokens = github.com=<token>` (NIX_CONFIG),
+    // and
+    // a FloxEnv flake resolving a PRIVATE input (claude-hub via ndh) fetches AS the App instead of
+    // 404ing anonymously. optional: absent before gtm mints + mittwald replicates it — the
+    // controller starts anyway and private-input envs realise once the file lands (kubelet live
+    // refresh, no restart), the whole point of a file over a pod-start-frozen env var.
+    volumeMounts.add(
+        Map.of("name", "github-token", "mountPath", GITHUB_TOKEN_MOUNT_DIR, "readOnly", true));
+    volumes.add(
+        Map.of(
+            "name",
+            "github-token",
+            "secret",
+            Map.of(
+                "secretName",
+                GithubTokenManagerManifestsUnit.TOKEN_SECRET_NAME,
+                "optional",
+                true)));
 
     final ApiObject daemonSet =
         new ApiObject(

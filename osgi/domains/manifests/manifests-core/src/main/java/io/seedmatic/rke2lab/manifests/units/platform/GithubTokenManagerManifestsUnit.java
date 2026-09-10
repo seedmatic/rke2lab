@@ -196,6 +196,11 @@ public final class GithubTokenManagerManifestsUnit extends AbstractManifestsUnit
    * The cluster-scoped {@code ClusterToken} CR — mints + refreshes the {@code github-token} Secret
    * with a {@code contents:read}+{@code metadata:read} installation token (enough for nix to fetch
    * the private flake inputs). refreshInterval < the App token's ~1h TTL.
+   *
+   * <p>The minted Secret lands in the {@code rke2lab-secrets} datasource namespace, stamped (via
+   * gtm's {@code spec.secret.annotations}) as a mittwald replication SOURCE authorised to the
+   * consumer namespaces — so it reaches each consumer through the same pull pattern as the other
+   * source credentials, rather than gtm minting into each namespace directly.
    */
   private void createClusterToken(
       final Construct scope, final String namespace, final ApiObject appCr) {
@@ -221,7 +226,18 @@ public final class GithubTokenManagerManifestsUnit extends AbstractManifestsUnit
                 "appRef", Map.of("name", APP_NAME, "namespace", namespace),
                 "permissions", Map.of("metadata", "read", "contents", "read"),
                 "refreshInterval", "45m",
-                "secret", Map.of("name", TOKEN_SECRET_NAME, "namespace", namespace))));
+                "secret",
+                    Map.of(
+                        "name",
+                        TOKEN_SECRET_NAME,
+                        "namespace",
+                        ClusterRefs.SECRETS_NAMESPACE,
+                        "annotations",
+                        Map.of(
+                            "replicator.v1.mittwald.de/replication-allowed",
+                            "true",
+                            "replicator.v1.mittwald.de/replication-allowed-namespaces",
+                            ClusterRefs.RUNTIME_SYSTEM_NAMESPACE.name())))));
     token.addDependency(appCr);
   }
 }
