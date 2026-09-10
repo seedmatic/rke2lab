@@ -305,7 +305,7 @@
 
         # Re-exported from ndh (public): the git sops clean/smudge filter as a
         # self-contained package (the SSOT filter def, sops.sh dispatcher + sops.d
-        # config). The cicd/git-sops FloxEnv installs it so a checkout smudges
+        # config). The toolchains/git-sops FloxEnv installs it so a checkout smudges
         # `.secrets` in the render pod exactly as on the operator host — that is what
         # makes the in-cluster render secret-FULL (the cellar fills from `.secrets`)
         # rather than secret-blind. aarch64-linux for the pod; darwin for parity.
