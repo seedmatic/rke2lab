@@ -33,7 +33,7 @@ spec:
           # mistaken for "nothing to prune" — that false negative hid an un-pruned tailnet for grows.
           if [ ! -s /etc/tailnet/client-secret ]; then
             echo "OAuth client-secret is EMPTY — the replicated tailnet-purge-oauth was not populated" >&2
-            echo "(delete it so the replicator re-syncs from rke2lab-replicator-source/operator-oauth)" >&2
+            echo "(delete it so the replicator re-syncs from rke2lab-secrets/operator-oauth)" >&2
             exit 1
           fi
           # Spare ONLY funnels that HAVE persisted state on the PV — those will re-attach (same device,
