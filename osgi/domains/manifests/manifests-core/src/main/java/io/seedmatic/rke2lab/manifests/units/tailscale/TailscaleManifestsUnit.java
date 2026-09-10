@@ -9,6 +9,7 @@ import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.ManifestLayer;
 import io.seedmatic.rke2lab.manifests.ingress.Component;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
+import io.seedmatic.rke2lab.manifests.units.cluster.ClusterRefs;
 import java.util.List;
 import java.util.Map;
 import org.cdk8s.ApiObject;
@@ -185,7 +186,7 @@ public final class TailscaleManifestsUnit extends AbstractManifestsUnit {
                                 "",
                                 Map.of(
                                     "replicator.v1.mittwald.de/replicate-from",
-                                    "rke2lab-replicator-source/operator-oauth",
+                                    ClusterRefs.SECRETS_NAMESPACE + "/operator-oauth",
                                     ManifestAnnotation.MANIFEST_LAYER.key(),
                                     ManifestLayer.OPERATORS.value())))
                         .build())

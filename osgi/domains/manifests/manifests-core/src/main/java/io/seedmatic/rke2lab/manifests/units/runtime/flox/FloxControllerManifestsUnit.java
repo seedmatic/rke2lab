@@ -107,7 +107,7 @@ public final class FloxControllerManifestsUnit extends AbstractManifestsUnit {
                                 "|Secret|" + namespace + "|" + FLOXHUB_TOKEN_SECRET,
                                 Map.of(
                                     "replicator.v1.mittwald.de/replicate-from",
-                                    "rke2lab-replicator-source/" + FLOXHUB_TOKEN_SECRET)))
+                                    ClusterRefs.SECRETS_NAMESPACE + "/" + FLOXHUB_TOKEN_SECRET)))
                         .build())
                 .build());
     secret.addDependency(resolver.require(ClusterRefs.RUNTIME_SYSTEM_NAMESPACE));

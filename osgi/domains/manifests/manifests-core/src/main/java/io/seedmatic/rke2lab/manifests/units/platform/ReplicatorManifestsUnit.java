@@ -8,6 +8,7 @@ import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ReplicatorSourceSecretsMaterial;
 import io.seedmatic.rke2lab.manifests.ingress.Component;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
+import io.seedmatic.rke2lab.manifests.units.cluster.ClusterRefs;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -97,20 +98,20 @@ public final class ReplicatorManifestsUnit extends AbstractManifestsUnit {
   private ApiObject createSourceNamespace(final Construct scope) {
     return new ApiObject(
         scope,
-        "namespace-rke2lab-replicator-source",
+        "namespace-" + ClusterRefs.SECRETS_NAMESPACE,
         ApiObjectProps.builder()
             .apiVersion("v1")
             .kind("Namespace")
             .metadata(
                 ApiObjectMetadata.builder()
-                    .name("rke2lab-replicator-source")
+                    .name(ClusterRefs.SECRETS_NAMESPACE)
                     .annotations(
                         packageProfile.templateAnnotations(
                             Map.of(ManifestAnnotation.NODE_BOOTSTRAP.key(), "true")))
                     .labels(
                         Map.of(
                             "app.kubernetes.io/name",
-                            "rke2lab-replicator-source",
+                            ClusterRefs.SECRETS_NAMESPACE,
                             "app.kubernetes.io/managed-by",
                             "rke2lab"))
                     .build())

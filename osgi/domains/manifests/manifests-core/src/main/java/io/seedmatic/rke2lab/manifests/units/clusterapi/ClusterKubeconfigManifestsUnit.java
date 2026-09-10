@@ -77,7 +77,7 @@ public final class ClusterKubeconfigManifestsUnit extends AbstractManifestsUnit 
     final NetworkTopology topology = synth.networkTopology();
 
     // One namespace per managed cluster, WE create it (not CAPI) — so it carries the rke2lab prefix
-    // like every other rke2lab-owned namespace (rke2lab-system, rke2lab-replicator-source): {@code
+    // like every other rke2lab-owned namespace (rke2lab-system, rke2lab-secrets): {@code
     // rke2lab-<cluster>}. The Cluster CR + its Machines + this kubeconfig Secret co-locate here,
     // and
     // CAPI reads the canonical {@code <cluster>-kubeconfig} Secret WITHIN it (the secret name stays

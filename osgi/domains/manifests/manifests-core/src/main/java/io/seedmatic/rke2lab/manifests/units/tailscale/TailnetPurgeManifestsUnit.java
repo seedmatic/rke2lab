@@ -10,6 +10,7 @@ import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.ManifestLayer;
 import io.seedmatic.rke2lab.manifests.ingress.FunnelLeaf;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
+import io.seedmatic.rke2lab.manifests.units.cluster.ClusterRefs;
 import java.util.List;
 import java.util.Map;
 import org.cdk8s.ApiObject;
@@ -30,10 +31,10 @@ import software.constructs.Construct;
  * <ol>
  *   <li>{@link #serviceAccount} for the Job;
  *   <li>{@link #oauthSecret} — its OWN replicated copy ({@code tailnet-purge-oauth}) of the
- *       Tailscale OAuth client, filled by the replicator from the same {@code
- *       rke2lab-replicator-source /operator-oauth} source the operator's {@code operator-oauth}
- *       rides. A dedicated target (not a shared reference) keeps this unit self-contained — no
- *       dependency cycle with the operator unit that would otherwise render the shared secret;
+ *       Tailscale OAuth client, filled by the replicator from the same {@code rke2lab-secrets
+ *       /operator-oauth} source the operator's {@code operator-oauth} rides. A dedicated target
+ *       (not a shared reference) keeps this unit self-contained — no dependency cycle with the
+ *       operator unit that would otherwise render the shared secret;
  *   <li>{@link #purgeJob} — runs ndh's {@code manage-tailnet --prune-stale-devices} in a 90s guard
  *       loop, parsing its {@code --format=json} JSON Lines to know what it removed.
  * </ol>
@@ -108,10 +109,10 @@ public final class TailnetPurgeManifestsUnit extends AbstractManifestsUnit {
 
   /**
    * The purge Job's own replicated Tailscale-OAuth secret — the replicator fills it (client_id +
-   * client_secret) from the shared {@code rke2lab-replicator-source/operator-oauth} source. Only
-   * the client_secret is mounted below; ndh's manage-tailnet reads it RAW as the OAuth
-   * client_secret (Tailscale accepts the {@code tskey-client-…} alone). Operators layer so it
-   * exists before the Job runs; no RBAC — a secret is mounted, not read through the API.
+   * client_secret) from the shared {@code rke2lab-secrets/operator-oauth} source. Only the
+   * client_secret is mounted below; ndh's manage-tailnet reads it RAW as the OAuth client_secret
+   * (Tailscale accepts the {@code tskey-client-…} alone). Operators layer so it exists before the
+   * Job runs; no RBAC — a secret is mounted, not read through the API.
    */
   private void oauthSecret(final Construct scope) {
     final ApiObject secret =
@@ -131,7 +132,7 @@ public final class TailnetPurgeManifestsUnit extends AbstractManifestsUnit {
                                 "",
                                 Map.of(
                                     "replicator.v1.mittwald.de/replicate-from",
-                                    "rke2lab-replicator-source/operator-oauth",
+                                    ClusterRefs.SECRETS_NAMESPACE + "/operator-oauth",
                                     ManifestAnnotation.MANIFEST_LAYER.key(),
                                     ManifestLayer.OPERATORS.value())))
                         .build())
@@ -189,7 +190,7 @@ public final class TailnetPurgeManifestsUnit extends AbstractManifestsUnit {
         # mistaken for "nothing to prune" — that false negative hid an un-pruned tailnet for grows.
         if [ ! -s /etc/tailnet/client-secret ]; then
           echo "OAuth client-secret is EMPTY — the replicated tailnet-purge-oauth was not populated" >&2
-          echo "(delete it so the replicator re-syncs from rke2lab-replicator-source/operator-oauth)" >&2
+          echo "(delete it so the replicator re-syncs from rke2lab-secrets/operator-oauth)" >&2
           exit 1
         fi
         # Spare ONLY funnels that HAVE persisted state on the PV — those will re-attach (same device,

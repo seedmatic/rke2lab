@@ -5,6 +5,7 @@ import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.ingress.FunnelLeaf;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
+import io.seedmatic.rke2lab.manifests.units.cluster.ClusterRefs;
 import java.util.List;
 import java.util.Map;
 import org.cdk8s.ApiObject;
@@ -90,7 +91,7 @@ public final class FluxReceiverManifestsUnit extends AbstractManifestsUnit {
                                 "|Secret|" + NAMESPACE + "|" + WEBHOOK_TOKEN_SECRET,
                                 Map.of(
                                     "replicator.v1.mittwald.de/replicate-from",
-                                    "rke2lab-replicator-source/" + WEBHOOK_TOKEN_SECRET)))
+                                    ClusterRefs.SECRETS_NAMESPACE + "/" + WEBHOOK_TOKEN_SECRET)))
                         .build())
                 .build());
     // Empty stub — mittwald's replicate-from fills the `token` key from the source.
