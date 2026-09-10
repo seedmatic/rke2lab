@@ -78,6 +78,14 @@ public final class FloxEnvManifestsUnit extends AbstractManifestsUnit {
     // Jobs (e.g. the funnel-state mirror) activate it directly; domain envs will `[include]` it to
     // stop re-declaring the same tools. No debug flavor — it is a toolchain base, not a workload.
     createEnv(scope, resolver, "base", FloxEnvFolder.KUBE, kubeBaseManifest());
+    // toolchains/git-sops — the git sops clean/smudge filter toolchain (git + sops + yq + the ndh
+    // git-sops-filter). The in-cluster render pipeline's re-smudge step activates it so a Tekton
+    // checkout smudges `.secrets` (and the branch's sops-encrypted Secrets) exactly as the operator
+    // host does — the render is then secret-FULL, not blind. A cross-cutting toolchain tier (like
+    // kube/base), NOT cicd-bound: decoupled so the cicd need evolves independently and any env
+    // doing
+    // git ops on the sops tree can `[include]` it. Always prod; a toolchain, not a workload.
+    createEnv(scope, resolver, "git-sops", FloxEnvFolder.TOOLCHAINS, gitSopsManifest());
     final boolean net = policy.networkingEnabled();
     createEnv(scope, resolver, "kdns", FloxEnvFolder.NETWORKING, kdnsManifest(false));
     if (net) {
@@ -227,6 +235,25 @@ public final class FloxEnvManifestsUnit extends AbstractManifestsUnit {
   private Map<String, Object> kubeBaseManifest() {
     final Map<String, Object> install = new LinkedHashMap<>();
     kubeApiScriptingInstall(install);
+    return manifest(install);
+  }
+
+  /**
+   * Mirrors {@code environment.d/cicd/git-sops/manifest.toml} — the git sops clean/smudge filter
+   * toolchain. Carries git + sops + yq-go + a shell, plus the ndh {@code git-sops-filter} package
+   * (the SSOT filter def re-exported by the catalog flake); on activation flox wires git to that
+   * package's {@code sops} include, registering the {@code sops-yaml} clean/smudge commands. The
+   * age key is NOT here — sops reads {@code SOPS_AGE_KEY} from the render pod's mounted {@code
+   * sops-age} Secret.
+   */
+  private Map<String, Object> gitSopsManifest() {
+    final Map<String, Object> install = new LinkedHashMap<>();
+    install.put("git", catalog("git"));
+    install.put("sops", catalog("sops"));
+    install.put("yq-go", catalog("yq-go"));
+    install.put("bash", catalogAll("bash"));
+    install.put("coreutils", catalogAll("coreutils"));
+    install.put("git-sops-filter", flakeRef("git-sops-filter"));
     return manifest(install);
   }
 

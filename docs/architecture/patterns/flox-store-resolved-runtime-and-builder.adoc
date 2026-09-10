@@ -246,6 +246,53 @@ The capabilities:
   `nix run .#render-manifests` build gets room + a persistent warm cache without shipping a flox
   env: the nix runtime is a first-class flox-NRI capability the pod opts into by annotation.
 
+[[capability-vs-package-set]]
+=== Why `nix-build` is a capability, not a flox env
+
+A fair question — the nix runtime is just packages plus some environment wiring, so why
+is `nix-build` a dedicated annotation the webhook + plugin implement, rather than a flox
+env a container references like any other? Three tempting "reasons" do NOT hold, and
+naming them is the point:
+
+* ❌ *The writable store.* The `/nix` overlay that makes the store writable is mounted for
+  BOTH capabilities (a flox-env container has it too) — writability is not unique to
+  nix-build.
+* ❌ *Putting `nix` on PATH.* `nix` is a package; a flox env could `install` it.
+* ❌ *The runtime wiring* (`NIX_SSL_CERT_FILE`, `NIX_CONFIG`, PATH). A flox env's
+  activation hook could set all of it.
+
+✅ What a flox env CANNOT do is the one thing that survives: *mutate the pod spec*. The
+`nix-build` annotation's value is a **PVC name**; the flox-controller webhook
+(`PodFloxMutator.injectNixBuild`) ensures that PVC (create-if-absent in the pod's
+namespace) and appends it to `pod.Spec.Volumes` + a `VolumeMount` on the container — an
+ADMISSION-time act. A flox env activates INSIDE the already-scheduled container; it has
+no reach into `pod.Spec.Volumes`. The persistent, RWO, warm nix-store — so a `nix build`
+of the maven/cdk8s render closure has room and does not run cold every time — is thus
+expressible ONLY as a webhook capability, never as env activation.
+
+The deeper reason is the same tier boundary the mutable-vs-immutable boundary draws
+above — a *package set* versus a *capability*:
+
+[cols="1,2,2",options="header"]
+|===
+| | Flox env (`environment.<c>`) | Capability (`nix-build.<c>`)
+
+| What it is | A declarative, locked _package set_ (`manifest.lock`) | An imperative _infra capability_
+| Delivered as | Read-only store paths, symlink-farmed at activation | Pod-spec mutation (PVC) + overlay-upper redirect + runtime posture
+| Defined in | A flox catalogue manifest | Typed, reviewed controller code (webhook + NRI plugin)
+| Right for | Reproducible tool/library sets a container _consumes_ | A writable build store + the nix runtime a container _drives_
+|===
+
+So the split is intentional, not uncontrolled drift: a *package set* is a flox env
+(declarative, `[include]`-composable); a *capability* that must touch the pod or the node
+is code the controller owns. The corollary places every new need on the right side of the
+line. `git-sops` (git + sops + the ndh `git-sops-filter`) is a read-only package set → a
+flox env, `[include]`-able by any env that does git ops on the sops tree AND attachable
+directly to a nix-build container (the in-cluster render carries BOTH annotations — its
+build store via `nix-build`, its sops filter via `environment: toolchains/git-sops`). Keeping
+`git-sops` its OWN composable env — rather than baking the filter into a monolithic cicd
+toolchain — lets the cicd need evolve independently and stays extensible via `[include]`.
+
 == Part 1 — Store-resolved runtime scripts (the fork-repo extraction)
 
 === Goal

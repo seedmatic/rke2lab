@@ -287,7 +287,15 @@ public final class FloxControllerManifestsUnit extends AbstractManifestsUnit {
                         "/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/usr/bin:/bin"),
                 Map.of(
                     "name", "CONTAINERD_ADDRESS",
-                    "value", "/run/k3s/containerd/containerd.sock")));
+                    "value", "/run/k3s/containerd/containerd.sock"),
+                // Surface the realise builds in `kubectl logs`: the controller wires the flox
+                // subprocess stderr to its own (exec.go buildEnv), but the host nix runs at default
+                // verbosity — a `flox activate` that BUILDS is silent until it exits. NIX_CONFIG is
+                // inherited through nsenter into the host nix and MERGES with the node's nix.conf
+                // (so root's access-tokens are preserved), turning on full build-log streaming.
+                Map.of(
+                    "name", "NIX_CONFIG",
+                    "value", "print-build-logs = true")));
     // The pod-mutating webhook is served from every DaemonSet pod (behind
     // FloxWebhookManifestsUnit's
     // Service). Always on: the serving cert is minted in-cluster by cert-manager (no reveal-gate),
