@@ -1375,13 +1375,36 @@ payload; it rides as a CLEAR sibling on the shell.
    failure grew through, no git provenance (the `ScenarioGraft` prepends one per graft level). The same
    `Trail` mechanism, one level up: the cellar traces a VALUE to its git source, the graft traces a
    FAILURE through its crossings.
-* `Trail(List<Breadcrumb> breadcrumbs)` — the path-to-origin, root-first; immutable (`push` appends
-  leaf-ward as the cellar descends, `prepend` roots-ward as a grafted failure returns up the chain). It
-  is the fourth field of `SeedEnvelope`, CLEAR, outside the sealed payload.
+* `Trail(List<Breadcrumb> breadcrumbs, Reach reach)` — the CLEAR per-value metadata the frontier reads
+  without the passphrase. It carries TWO independent things: the `breadcrumbs` path-to-origin, root-first,
+  immutable (`push` appends leaf-ward as the cellar descends, `prepend` roots-ward as a grafted failure
+  returns up the chain); and the producer-declared `reach` (below). It is the fourth field of
+  `SeedEnvelope`, CLEAR, outside the sealed payload.
+* `Reach` — a producer-declared enum `{ OPERATOR_ONLY (default), IN_CLUSTER }` naming WHERE a value is
+  consumed, declared *at the seal* by the scion that harvests it (the same "re-declare where born"
+  discipline as `Sensitivity`: only the producer knows, at design time, that e.g. the incus identity must
+  be readable by the in-cluster render). It is ORTHOGONAL to the breadcrumbs: they say where a value CAME
+  FROM (origin lineage), `reach` says where it must GO (destination/audience). It rides on the `Trail` — the
+  clear metadata carrier — so a consumer can filter SEALED entries by reach WITHOUT the passphrase. The
+  `Trail`'s compact constructor defaults an absent `reach` to `OPERATOR_ONLY`, so durable coquilles filed
+  before this field round-trip unchanged; `withReach(Reach)` returns a re-stamped copy.
 * The sealed `Breadcrumb` carries NO jackson annotation (the seam has no third-party dependency): the
   polymorphic type-info is configured ONCE in `SeedCodec` (a `@kind` mixin), and the host's
   `PulumiCellar` DELEGATES its trail (de)serialization there rather than to a bare mapper — so every
-  realm resolves a crumb back to its concrete shape from the one config.
+  realm resolves a crumb back to its concrete shape from the one config. `Reach` is a plain enum on the
+  `Trail` record, so it (de)serializes with the trail through the same delegated path, no mixin needed.
+
+*Declaring + consuming `reach` — the SSOT is the producer, the consumer is manifests.* A scion declares
+reach through a `Cellar.store(parcel, coordinate, value, sensitivity, reach)` overload (default
+`OPERATOR_ONLY`), and `ScenarioCellar.store` folds it into the stamped trail
+(`trailFor(...).withReach(reach)`). So the marker is defined ONCE, at the harvest — no central registry of
+"which cases go in-cluster" to keep in sync with the reveals. The consumer is the manifests render: at the
+grow it reads the durable `OpaqueCellar.fetch(parcel)` (opaque envelopes, trails CLEAR), filters
+`env.trail().reach() == IN_CLUSTER`, and extracts those STILL-SEALED envelopes into a branch asset — the
+symmetric twin of the `NODE_BOOTSTRAP`-annotation extraction the exploder already does on rendered
+documents (see <<in-cluster-cellar-asset>>). The in-cluster render, whose durable cellar is the black-hole
+`EphemeralCellar`, reads that asset back through a read-only cellar so its reveals resolve the same sealed
+materials the operator sealed — instead of pruning the branch secrets it cannot re-derive.
 
 *The accumulation — the crossing PATH, realised by the EXISTING transactional inheritance.* The
 `RUN_PROVENANCE` foundation coordinate carries a `Trail` — the run's provenance PATH — not a lone
@@ -1403,6 +1426,41 @@ envelope — no decode, no reveal, so a SEALED value's lineage reads without the
 (empty) on `Cellar`, overridden by `ScenarioCellar` (the overlay, with a DURABLE fallback when the
 run's write set is silent on the case) and by `CodecCellar` (the durable read path, reading the trail
 off the opaque envelope the backend hands back). It is a capability, not a core verb.
+
+[[in-cluster-cellar-asset]]
+==== `reach` in practice — the in-cluster cellar asset (the branch-secret prune, closed)
+
+*The problem it closes.* The steady-state manifests render runs IN-CLUSTER, and its durable cellar is the
+black-hole `EphemeralCellar` (`seed-bdd`) — stores nothing, reveals nothing. So a reveal of a value the
+OPERATOR sealed at the grow (into its `PulumiCellar`) returns empty in-cluster, unless that same run
+re-sealed it into the overlay. Two branch secrets are exactly in this trap: `IncusIdentityCase.INCUS_IDENTITY`
+and `ClusterPkiCase.WORKLOAD_CLUSTER_CAS` — sealed operator-side (host-world incus creds / the operator sops
+key inventory), rendered ON THE BRANCH sops-encrypted (NOT `NODE_BOOTSTRAP`), and referenced by the CAPI CRs'
+`secretRef`. A secret-blind in-cluster re-render finds no material, emits no Secret → Flux PRUNES the ones
+the operator grow had populated → CAPN loses its `secretRef` and cannot authenticate to incus.
+
+Everything else stays put by DEFAULT: the bootstrap materials (github-app, replicator, admin kubeconfig,
+cluster-issuer-CA, sops-age, signing-key, server-manifests) render onto the `NODE_BOOTSTRAP` lane (applied
+node-side at the grow, NEVER on the branch), so their `reach` is `OPERATOR_ONLY` — ignored in-cluster by
+ABSENCE of the mark, never pruned (they were never branch resources). `OPERATOR_ONLY` is the fail-closed
+default: a new sealed secret cannot leak to the branch asset unless a producer deliberately marks it
+`IN_CLUSTER`.
+
+*The mechanism (manifests owns it — the seam only carries `reach`).* At the grow the render reads the
+durable `OpaqueCellar.fetch(parcel)` (opaque envelopes, trails CLEAR), keeps those with
+`env.trail().reach() == IN_CLUSTER`, and writes the STILL-SEALED envelopes into a branch asset (named to
+match the `.gitattributes` sops filter so the git-sops clean filter age-encrypts it at commit). This is the
+symmetric twin of the `NODE_BOOTSTRAP`-annotation extraction the exploder already does on rendered documents.
+In-cluster, the git-sops smudge filter decrypts the asset on checkout, and a READ-ONLY `OpaqueCellar` backed
+by it REPLACES the `EphemeralCellar` as the durable read-side: `fetch(parcel, coordinate)` serves the exported
+envelopes, so the reveals resolve the same sealed materials the operator sealed. The transactional overlay
+still layers on top, so a this-run in-cluster seal (from `.secrets`) still wins over the asset.
+
+❌ Do NOT special-case "ignore bootstrap in-cluster" with a negative test, and do NOT keep a central registry
+of in-cluster coordinates alongside the reveals. ✅ The producer declares `reach` at the seal (SSOT per
+value); the extraction filters by the mark; absence of the mark IS the ignore. The two `IN_CLUSTER` seals are
+`IncusIdentitySealScenario` (`INCUS_IDENTITY`) and `ClusterPkiSealScenario` (`WORKLOAD_CLUSTER_CAS` only — its
+sibling `ADMIN_CREDENTIALS`/`CLUSTER_ISSUER_CA`/… stay `OPERATOR_ONLY`).
 
 [[durable-coquille]]
 *The durable coquille (integration session, DONE).* The fil d'Ariane is realised at the TRANSACTIONAL

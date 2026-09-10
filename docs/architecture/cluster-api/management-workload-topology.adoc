@@ -314,6 +314,61 @@ Greenfield creation from a *separate* management cluster sidesteps all of this: 
 is on its clean init path, and the management cluster's own single node is never something CAPI
 has to manage.
 
+[[mgmt-declarative-mirror]]
+== The management cluster's own declarative mirror (planned)
+
+The workload clusters exist on the branch as *applied* CAPI CRs (Flux applies them, CAPI reconciles
+them). The management cluster does not — it is nix-seeded (<<seeding-management>>), so it has no CAPI
+representation anywhere, and reading the branch does not show the whole fleet.
+
+The mirror closes that gap WITHOUT contradicting <<why-separation>>: render the management cluster's own
+CAPI CR set (`Cluster`, `LXCCluster`, `RKE2ControlPlane`, `LXCMachineTemplate`, …) onto the branch, marked
+`config.kubernetes.io/local-config: "true"` — the same "local only" annotation the render already uses for
+the facet ConfigMap (see the render-facet mechanism). Kustomize/Flux keep these resources in the tree but
+NEVER apply them, so there is no adopt / mixed-mode hazard (they are descriptive, not actuated). The branch
+becomes a complete, uniform, self-describing record of the fleet — one model (CAPI CRs), one marker
+(`local-config`) separating "Flux applies" from "recorded, actuated node-side".
+
+Preferred over a bespoke ConfigMap: CAPI CRs are typed, schema-validated, tool-readable
+(kubectl/clusterctl), and uniform with the workload CRs. (The facet ConfigMap stays a SEPARATE concern —
+it carries the `ManifestDomainPolicy` synthesis facet, which is not a CAPI topology concept.)
+
+.No drift — derive, never author
+[IMPORTANT]
+====
+A descriptive mirror can LIE if it diverges from the real (nix/operator) bootstrap. The mirror CRs MUST be
+DERIVED from the same SSOT as the real grow — the management cluster's `ClusterNetworkBlueprint` /
+identity — exactly as the workload CRs are already derived, never hand-authored. Derivation makes the drift
+structurally impossible.
+====
+
+[[mgmt-self-hosted-hypothesis]]
+== Hypothetical direction — a CAPI-native cold-start (self-hosted via bootstrap → pivot)
+
+WARNING: This is an EXPLORATORY direction, NOT a plan and NOT shipped. It is recorded so the option is not
+re-discovered from scratch. It revisits <<seeding-management>> and must clear the caveats below before it
+could be considered.
+
+The mirror above is descriptive; the ambitious end-state makes it REAL. Instead of seed-master nix-seeding
+the management cluster forever, an *ephemeral* CAPI bootstrap cluster (kind-like) would GREENFIELD-create the
+management cluster — the clean `RKE2ControlPlane` init path <<why-separation>> says "sidesteps all of this" —
+then `clusterctl move` (pivot) would transfer the management cluster's own CRs INTO it, and the management
+cluster would self-host (manage itself + all workloads). The bootstrap cluster's sole role is to birth the
+management cluster, then it is discarded. This is the canonical CAPI answer to the chicken-and-egg that
+<<seeding-management>> currently resolves by keeping the seed-master nix-seed load-bearing.
+
+Caveats that gate it:
+
+* *The self-management paradox.* A self-hosted management cluster reconciles the control plane it RUNS ON.
+  Control-plane-replacing operations (RKE2 upgrade, machine replacement, etcd rotation) can self-destruct.
+  Standard mitigation: pivot OUT to a temporary bootstrap cluster for those operations (then re-pivot), or
+  pause the self-`Cluster`. Must be designed explicitly.
+* *The nix floor remains.* The incus host (`bioskop-nixos`) is nix/operator-provisioned, not CAPI. "Self
+  managed" covers the k8s/LXC layer only; there is always an operator base under it.
+* *Grow-then-pivot, not grow-eliminated.* Cold start still needs the management cluster to EXIST before it
+  can self-manage; the ephemeral bootstrap does the initial greenfield, then hands over. It relocates the
+  seed-master role (to running the ephemeral bootstrap + provisioning the incus host), it does not remove it.
+
 [[operating-model]]
 == Operating model — GitOps pull, management on demand
 
@@ -399,6 +454,11 @@ This forces where the durable secrets live: they must be in *git (sops-encrypted
 cellar's Pulumi state. A transient, host-local management fed from git must obtain the CAs and tokens
 *from git* — it cannot reach a cellar hosted on the other host's Pulumi state. Host-level secrets
 already live in `.secrets` sops; the cluster PKI from the cellar must join them in git.
+
+The MECHANISM that carries the cellar's sealed materials into git is the `reach = IN_CLUSTER` extraction
+(the seal declares `reach`, the render extracts the marked entries into a sops-encrypted branch asset, and
+an in-cluster read-only cellar reads them back): see
+link:../osgi/seed-broker-spec.adoc#in-cluster-cellar-asset[seed-broker-spec — the in-cluster cellar asset].
 ====
 
 [[seeding-management]]
