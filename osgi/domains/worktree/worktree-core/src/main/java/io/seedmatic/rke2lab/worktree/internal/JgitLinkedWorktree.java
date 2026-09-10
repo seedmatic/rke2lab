@@ -52,6 +52,17 @@ final class JgitLinkedWorktree implements LinkedWorktree {
     if (checkout.readAtHead(path).isEmpty()) {
       return Optional.empty();
     }
+    // `git checkout` decides a path's filters from the WORKING-TREE .gitattributes, but `prepare`
+    // emptied the tree — so with no .gitattributes present, git writes the RAW (sops-encrypted)
+    // blob
+    // and the smudge never runs. Restore .gitattributes FIRST (it rides HEAD, written by the
+    // exploder, and is itself unfiltered) so the subsequent checkout sees `filter=sops-yaml` for
+    // the
+    // path and decrypts. Guarded on its presence at HEAD (absent on an orphan base — but then the
+    // target path is absent too, handled above).
+    if (checkout.readAtHead(".gitattributes").isPresent()) {
+      gitCli.restoreFromHead(checkout.root(), ".gitattributes");
+    }
     gitCli.restoreFromHead(checkout.root(), path);
     final Path restored = checkout.root().resolve(path);
     if (!Files.exists(restored)) {
