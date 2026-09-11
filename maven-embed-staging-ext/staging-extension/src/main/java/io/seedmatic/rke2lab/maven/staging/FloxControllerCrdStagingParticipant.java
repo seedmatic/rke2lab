@@ -26,7 +26,9 @@ import org.slf4j.LoggerFactory;
  * <p><b>Guards.</b> Skipped when {@code RKE2LAB_CRD_STAGED} is set — the nix build already staged
  * in its buildPhase and a nested {@code nix run} in that sandbox has no daemon/network. Skipped
  * when manifests-core (which packages the CRD) is not in the reactor, so unrelated {@code -pl}
- * builds pay no nix-eval tax.
+ * builds pay no nix-eval tax. Skipped when {@code -Dflox.crd-staging.skip=true} — the explicit
+ * opt-out for a build with no {@code nix} on PATH (an IDE/CI without the flox env), where the CRD
+ * on disk is taken as-is; use it only when you know the staged CRD matches the flake.
  */
 @Named
 @Singleton
@@ -36,6 +38,7 @@ public class FloxControllerCrdStagingParticipant extends AbstractMavenLifecycleP
       LoggerFactory.getLogger(FloxControllerCrdStagingParticipant.class);
 
   private static final String STAGED_MARKER = "RKE2LAB_CRD_STAGED";
+  private static final String SKIP_PROPERTY = "flox.crd-staging.skip";
   private static final String CRD_PACKAGING_MODULE = "manifests-core";
 
   @Override
@@ -44,6 +47,10 @@ public class FloxControllerCrdStagingParticipant extends AbstractMavenLifecycleP
       log.info(
           "flox-controller CRD staging: skipped ({} set — the nix build already staged it)",
           STAGED_MARKER);
+      return;
+    }
+    if (skipRequested(session)) {
+      log.info("flox-controller CRD staging: skipped (-D{}=true)", SKIP_PROPERTY);
       return;
     }
     final boolean packagesCrd =
@@ -75,5 +82,16 @@ public class FloxControllerCrdStagingParticipant extends AbstractMavenLifecycleP
       Thread.currentThread().interrupt();
       throw new MavenExecutionException("flox-controller CRD staging interrupted", e);
     }
+  }
+
+  /**
+   * {@code -Dflox.crd-staging.skip=true} (a CLI {@code -D} lands in userProperties, else system).
+   */
+  private static boolean skipRequested(final MavenSession session) {
+    String v = session.getUserProperties().getProperty(SKIP_PROPERTY);
+    if (v == null) {
+      v = session.getSystemProperties().getProperty(SKIP_PROPERTY);
+    }
+    return Boolean.parseBoolean(v);
   }
 }

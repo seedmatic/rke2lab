@@ -273,16 +273,13 @@ public final class RenderPipelineManifestsUnit extends AbstractManifestsUnit {
                       set -euxo pipefail
                       : "The publish narrates live to stdout: it runs STANDALONE (not seed-master under Pulumi), so PaxLogbackConfigurer keeps its console appender on and the render/delivery logs land in this container's logs"
                       GIT_AUTH_DIR="$(workspaces.basic-auth.path)"
-                      : "PaC minted an App token into the mounted git_auth secret; extract it into RKE2LAB_PUSH_TOKEN so the publish reveals it for the ff-push (the scion reads it in-container, ManifestSynthesisScenario.revealGithubToken). Backtick substitution, not the dollar-paren form, so Tekton does not claim it as one of its own vars"
+                      : "PaC mints the App token into the git_auth secret's git-provider-token key; read it RAW (not scraped from the .git-credentials URL) into RKE2LAB_PUSH_TOKEN for the ff-push (the scion reveals it in-container, ManifestSynthesisScenario.revealGithubToken) + nix + maven. Backticks, not the dollar-paren form, so Tekton does not claim the substitution as one of its own vars"
                       : "The same App token authenticates .mvn/settings.xml to GitHub Packages (the env.GH_TOKEN placeholder) so the reactor resolves the private seedmatic releases java-systemd and java-bbox-api-client. Requires the App to carry packages:read"
                       : "nix must authenticate its flake-input fetches: the closure pulls a PRIVATE input, seedmatic/claude-hub transitively via ndh; the flox NRI sets NIX_CONFIG but no access-tokens, so an unauthenticated github fetch 404s on the private repo. Append the App token so nix reads it AS the App. Requires PaC to scope the git_auth token to include claude-hub via secret-github-app-scope-extra-repos"
                       : "xtrace is disabled across the next block so the App token is never echoed to the logs"
                       set +x
-                      if [ -f "$GIT_AUTH_DIR/.git-credentials" ]; then
-                        _cred=`head -n1 "$GIT_AUTH_DIR/.git-credentials"`
-                        _cred="${_cred#*://}"
-                        _cred="${_cred#*:}"
-                        export RKE2LAB_PUSH_TOKEN="${_cred%%@*}"
+                      if [ -f "$GIT_AUTH_DIR/git-provider-token" ]; then
+                        export RKE2LAB_PUSH_TOKEN=`cat "$GIT_AUTH_DIR/git-provider-token"`
                         export GH_TOKEN="$RKE2LAB_PUSH_TOKEN"
                         export NIX_CONFIG="${NIX_CONFIG:-}"$'\\n'"access-tokens = github.com=$RKE2LAB_PUSH_TOKEN"
                       fi
