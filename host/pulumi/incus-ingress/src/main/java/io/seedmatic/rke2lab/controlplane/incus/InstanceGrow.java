@@ -287,12 +287,18 @@ public final class InstanceGrow {
     return new Instance(
         "seed-instance",
         InstanceArgs.builder()
-            // The FULL cluster-node identity (bioskop-mgmt-master), NOT the short blueprint node
-            // name (master): it must (1) be globally unique in the shared `rke2lab` incus project
-            // (two clusters would otherwise both name their control node `master` → collision), and
-            // (2) match the k8s node name (RKE2LAB_NODE_NAME = identity.nodeName(), below) so CAPN
-            // adopts by name — GetInstanceName() = the LXCMachine name = <cluster>-<node>.
-            .name(plan.identity().nodeName())
+            // nodeHostname = the FULL <cluster>-<node> (bioskop-mgmt-master), NOT nodeName (the
+            // short
+            // blueprint role `master`): it must (1) be globally unique in the shared `rke2lab`
+            // incus
+            // project (two clusters would otherwise both name their control node `master` →
+            // collision),
+            // and (2) match the k8s node name — the node sets its hostname DIRECTLY from
+            // RKE2LAB_NODE_HOSTNAME = identity.nodeHostname() (nixos/identity.nix), so CAPN adopts
+            // by
+            // name: GetInstanceName() = the LXCMachine name = <cluster>-<node> = this instance
+            // name.
+            .name(plan.identity().nodeHostname())
             .project(config.incusProject())
             .image(imageFingerprint)
             .profiles(profileName.applyValue(List::of))
@@ -336,7 +342,11 @@ public final class InstanceGrow {
     final String nodeEnv =
         String.join(
                 "\n",
-                "RKE2LAB_NODE_NAME=" + identity.nodeName(),
+                // RKE2LAB_NODE_NAME keeps its node.env name (a nixos contract; the broader
+                // nodeName→nodeRef terminology pass renames the env + its nixos consumers) —
+                // sourced
+                // from nodeRef (the short ordinal). The FULL name is RKE2LAB_NODE_HOSTNAME below.
+                "RKE2LAB_NODE_NAME=" + identity.nodeRef(),
                 "RKE2LAB_NODE_HOSTNAME=" + identity.nodeHostname(),
                 "RKE2LAB_NODE_KIND=" + identity.nodeKind(),
                 "RKE2LAB_NODE_ID=" + identity.nodeId(),

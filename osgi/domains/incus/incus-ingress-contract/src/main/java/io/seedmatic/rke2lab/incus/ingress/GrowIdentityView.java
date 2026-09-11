@@ -8,12 +8,14 @@ package io.seedmatic.rke2lab.incus.ingress;
  * these four scalars, delivered declaratively on the Instance resource.
  *
  * <p>Like {@link GrowNetworkView}, every field ORIGINATES in the {@code ClusterNetworkBlueprint}
- * ({@code netplan-contract}, OSGi-only): the {@code nodeName}/{@code nodeId} are the blueprint's
- * node ref, the {@code nodeKind} is {@code NodeType.kind()} (server/agent — the same single source
- * the manifests node-env identity projects), and the {@code nodeHostname} is {@code
- * <cluster>-<node>} (the OS hostname the node sets so mDNS resolves {@code
- * <cluster>-<node>.local}). The host cannot read the blueprint typed, so the scion resolves it and
- * projects these flat values here; the host only poses them.
+ * ({@code netplan-contract}, OSGi-only): the {@code nodeRef}/{@code nodeId} are the blueprint's
+ * node ref (the SHORT in-cluster node identifier — {@code master}, {@code peer1} — NOT a name), the
+ * {@code nodeKind} is {@code NodeType.kind()} (server/agent — the k8s role), and the {@code
+ * nodeHostname} is the FULL {@code <cluster>-<node>} (the OS hostname the node sets, and thus the
+ * k8s node name + the incus instance name — what CAPN adopts by). The two are distinct on purpose:
+ * reach for {@code nodeHostname} when you want the node's NAME, {@code nodeRef} only for the short
+ * ordinal. The host cannot read the blueprint typed, so the scion resolves it and projects these
+ * flat values here; the host only poses them.
  *
  * <p>The {@code clusterPodCidr}/{@code clusterServiceCidr} are the PER-CLUSTER dual-stack spans
  * ({@code 10.<44+id>.0.0/16,fd00:<44+id>::/56}) the guest bakes into rke2's {@code cluster-cidr}/
@@ -22,7 +24,7 @@ package io.seedmatic.rke2lab.incus.ingress;
  * config drop-in at boot (see {@code nixos/rke2.nix} {@code rke2lab-dualstack}).
  */
 public record GrowIdentityView(
-    String nodeName,
+    String nodeRef,
     String nodeHostname,
     String nodeKind,
     int nodeId,

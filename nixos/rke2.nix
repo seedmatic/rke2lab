@@ -167,7 +167,10 @@
       install -d -m 0755 "$(dirname "$dropin")"
       {
         echo "kubelet-arg:"
-        echo "  - provider-id=lxc:///''${RKE2LAB_NODE_NAME}"
+        # RKE2LAB_NODE_HOSTNAME (the full <cluster>-<node>), NOT RKE2LAB_NODE_NAME (the short ref
+        # `master`): the providerID must equal the incus instance name (= the hostname), which is
+        # what CAPN/the LXCMachine carry.
+        echo "  - provider-id=lxc:///''${RKE2LAB_NODE_HOSTNAME}"
       } >"$dropin"
     '';
   };
