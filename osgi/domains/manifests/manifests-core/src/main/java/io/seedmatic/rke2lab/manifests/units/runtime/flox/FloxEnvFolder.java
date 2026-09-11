@@ -16,13 +16,12 @@ package io.seedmatic.rke2lab.manifests.units.runtime.flox;
 public enum FloxEnvFolder {
   NETWORKING("networking"),
   MESH("mesh"),
-  // Cross-cutting toolchain tiers — NOT workload domains. `toolchains` holds composable capability
-  // envs a step activates or `[include]`s regardless of domain (git-sops: git + sops + the ndh
-  // filter, so a checkout smudges the sops tree). `kube` carries the kube-API scripting tools
-  // (kubectl + yq-go) helper Jobs activate; domain envs `[include]` it. Both are toolchain bases,
-  // not workloads — kept separate from the domain folders so a folder never implies a consumer.
-  TOOLCHAINS("toolchains"),
-  KUBE("kube");
+  // The cross-cutting toolchain tier — NOT a workload domain. `toolchains` holds composable
+  // capability envs a step activates or `[include]`s regardless of domain: `git-sops` (git + sops +
+  // the ndh filter, so a checkout smudges the sops tree) and `kube` (the kube-API scripting tools
+  // kubectl + yq-go that helper Jobs activate / domain envs `[include]`). Kept separate from the
+  // domain folders so a folder never implies a consumer.
+  TOOLCHAINS("toolchains");
 
   private final String value;
 

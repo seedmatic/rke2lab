@@ -68,7 +68,7 @@ public final class FunnelCertRestoreManifestsUnit extends AbstractManifestsUnit 
   // A cert-state Secret mirror (tailscale node key + cert) is a few KB; 16Mi is generous headroom.
   private static final String CAPACITY = "16Mi";
 
-  private static final String MIRROR_ENV = "kube/base";
+  private static final String MIRROR_ENV = "toolchains/kube";
   private static final String MIRROR_CONTAINER = "mirror";
   private static final String SERVICE_ACCOUNT = "funnel-cert-restore";
 

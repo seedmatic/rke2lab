@@ -245,7 +245,7 @@ public final class EnvoyGatewayManifestsUnit extends AbstractManifestsUnit {
                         packageProfile.templateAnnotations(
                             Map.of(
                                 FloxAnnotation.ENVIRONMENT.forContainer("installer"),
-                                "kube/base"))),
+                                "toolchains/kube"))),
                     "spec",
                     Map.of(
                         "containers",
@@ -255,7 +255,8 @@ public final class EnvoyGatewayManifestsUnit extends AbstractManifestsUnit {
                                 "installer",
                                 // The flox-carrier runtime (prodImage) like every rke2lab workload
                                 // —
-                                // kubectl + yq arrive via the injected kube/base env (annotation
+                                // kubectl + yq arrive via the injected toolchains/kube env
+                                // (annotation
                                 // above), not a stock alpine/k8s image.
                                 "image",
                                 ManifestSynthesisContext.current().floxDebugPolicy().prodImage(),

@@ -52,7 +52,7 @@ public final class FunnelStatePersistenceManifestsUnit extends AbstractManifests
   /** The persist PVC (owned by FunnelCertRestoreManifestsUnit) the backup Jobs mount. */
   private static final String PV_NAME = FunnelCertRestoreManifestsUnit.PV_NAME;
 
-  private static final String MIRROR_ENV = "kube/base";
+  private static final String MIRROR_ENV = "toolchains/kube";
   private static final String MIRROR_CONTAINER = "mirror";
   private static final String SERVICE_ACCOUNT = "funnel-state";
 
@@ -232,7 +232,7 @@ public final class FunnelStatePersistenceManifestsUnit extends AbstractManifests
         # The cert key is <device_fqdn>.crt; derive the FQDN at runtime (no tailnet name hardcoded)
         # and escape its dots for the jsonpath. Waiting on the cert key ITSELF is load-bearing — see
         # the method javadoc for why the Secret / pod-Ready are the wrong signal. Pure bash (strip the
-        # trailing dot, escape dots) — the kube/base FloxEnv has bash + coreutils but NOT sed.
+        # trailing dot, escape dots) — the toolchains/kube FloxEnv has bash + coreutils but NOT sed.
         fqdn="$(kubectl get -n "$ns" secret "$secret" -o jsonpath='{.data.device_fqdn}' | base64 -d)"
         # The strip below is doubled on purpose: this whole string is String.formatted(...), which
         # reads a lone percent as a format conversion, so a literal one must be written twice.
@@ -274,7 +274,7 @@ public final class FunnelStatePersistenceManifestsUnit extends AbstractManifests
                 Map.of(
                     // The flox NRI plugin only puts the env on PATH for a container NAMED by a
                     // flox.seedmatic.io/environment.<c> annotation — opt the mirror container into
-                    // kube/base (kubectl + yq-go).
+                    // toolchains/kube (kubectl + yq-go).
                     "metadata",
                     Map.of(
                         "annotations",

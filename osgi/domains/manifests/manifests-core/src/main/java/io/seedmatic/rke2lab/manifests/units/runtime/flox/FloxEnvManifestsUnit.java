@@ -22,11 +22,11 @@ import software.constructs.Construct;
 /**
  * Emits the workload {@code FloxEnv} CRs the flox-controller realises on each node — the runtime
  * successor to the baked {@code environment.d} tree. Covers {@code kdns} (networking), {@code
- * headscale}/{@code tailscale}/{@code headplane} (mesh), and the cross-cutting toolchain tier
- * {@code base} (kube) + {@code git-sops} (toolchains). The CI render's TOOLCHAIN is nix-build (not
- * a flox env) — nix CLI + config + persistent store via the {@code flox.seedmatic.io/nix-build}
- * annotation; but the render step ALSO carries the {@code toolchains/git-sops} flox env (git + sops
- * + the git-sops filter) composed with nix-build, so a checkout smudges the sops tree (see {@code
+ * headscale}/{@code tailscale}/{@code headplane} (mesh), and the cross-cutting {@code toolchains}
+ * tier ({@code kube} + {@code git-sops}). The CI render's TOOLCHAIN is nix-build (not a flox env) —
+ * nix CLI + config + persistent store via the {@code flox.seedmatic.io/nix-build} annotation; but
+ * the render step ALSO carries the {@code toolchains/git-sops} flox env (git + sops + the git-sops
+ * filter) composed with nix-build, so a checkout smudges the sops tree (see {@code
  * RenderPipelineManifestsUnit}).
  *
  * <p>Each env installs its workload package from the {@link FloxCatalogManifestsUnit} catalog via a
@@ -79,15 +79,17 @@ public final class FloxEnvManifestsUnit extends AbstractManifestsUnit {
     // headscale-debug env deliberately drops) and headplane's agent-sync Job annotates
     // mesh/headplane. Emitting only the selected flavor left those Jobs' flox-wait blocked forever
     // on a prod GC-root the controller never provisioned (the mesh-debug bootstrap wedge).
-    // kube/base — the cross-cutting kube-API scripting tier (kubectl + yq-go). Always prod: helper
+    // toolchains/kube — the cross-cutting kube-API scripting tier (kubectl + yq-go). Always prod:
+    // helper
     // Jobs (e.g. the funnel-state mirror) activate it directly; domain envs will `[include]` it to
     // stop re-declaring the same tools. No debug flavor — it is a toolchain base, not a workload.
-    createEnv(scope, resolver, "base", FloxEnvFolder.KUBE, kubeBaseManifest());
+    createEnv(scope, resolver, "kube", FloxEnvFolder.TOOLCHAINS, kubeBaseManifest());
     // toolchains/git-sops — the git sops clean/smudge filter toolchain (git + sops + yq + the ndh
     // git-sops-filter). The in-cluster render pipeline's re-smudge step activates it so a Tekton
     // checkout smudges `.secrets` (and the branch's sops-encrypted Secrets) exactly as the operator
     // host does — the render is then secret-FULL, not blind. A cross-cutting toolchain tier (like
-    // kube/base), NOT cicd-bound: decoupled so the cicd need evolves independently and any env
+    // toolchains/kube), NOT cicd-bound: decoupled so the cicd need evolves independently and any
+    // env
     // doing
     // git ops on the sops tree can `[include]` it. Always prod; a toolchain, not a workload.
     // git-sops CONTRIBUTES SOPS_AGE_KEY to its consumers (spec.inject): the flox-controller webhook
@@ -274,7 +276,7 @@ public final class FloxEnvManifestsUnit extends AbstractManifestsUnit {
     return manifest(install);
   }
 
-  /** The kube/base env — the shared kube-API scripting toolchain, no workload flake. */
+  /** The toolchains/kube env — the shared kube-API scripting toolchain, no workload flake. */
   private Map<String, Object> kubeBaseManifest() {
     final Map<String, Object> install = new LinkedHashMap<>();
     kubeApiScriptingInstall(install);
@@ -322,8 +324,8 @@ public final class FloxEnvManifestsUnit extends AbstractManifestsUnit {
   /**
    * The kube-API scripting fragment: a shell ({@code bash}/{@code coreutils}) plus {@code kubectl}
    * + {@code yq-go}. The single source for the tools a helper Job needs to read/patch cluster
-   * objects — {@code kube/base} installs exactly this, and domain envs will {@code [include]} it
-   * rather than re-listing the same packages.
+   * objects — {@code toolchains/kube} installs exactly this, and domain envs will {@code [include]}
+   * it rather than re-listing the same packages.
    */
   private void kubeApiScriptingInstall(final Map<String, Object> install) {
     install.put("bash", catalogAll("bash"));
