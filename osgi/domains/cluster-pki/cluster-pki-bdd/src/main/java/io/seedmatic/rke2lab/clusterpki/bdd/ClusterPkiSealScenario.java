@@ -193,11 +193,18 @@ public class ClusterPkiSealScenario
             cellar.store(parcel, ClusterPkiCoordinate.CLUSTER_CA_BUNDLE, pki.bundle());
             cellar.store(
                 parcel, ClusterPkiCoordinate.CLUSTER_AGE_KEY, pki.ageKey(), Sensitivity.SEALED);
+            // IN_CLUSTER: admin credentials render the operator kubeconfig, a local-config Secret
+            // committed to the branch (sops-encrypted). Flux ignores local-config, but the SEAL
+            // must
+            // reach in-cluster or the steady-state render drops the branch kubeconfig every pass
+            // (churn). No new exposure — the material already rides the branch as that Secret. This
+            // is ORTHOGONAL to the NODE_BOOTSTRAP delivery of admin to the node; the two coexist.
             cellar.store(
                 parcel,
                 ClusterPkiCoordinate.ADMIN_CREDENTIALS,
                 pki.adminCredentials(),
-                Sensitivity.SEALED);
+                Sensitivity.SEALED,
+                Reach.IN_CLUSTER);
             cellar.store(
                 parcel,
                 ClusterPkiCoordinate.CLUSTER_ISSUER_CA,
@@ -210,8 +217,9 @@ public class ClusterPkiSealScenario
       if (!workloadCas.entries().isEmpty()) {
         // IN_CLUSTER: the workload BYO-CA Secrets ride the branch (CAPI secretRef), so the
         // in-cluster
-        // render must resolve them — extracted to the branch cellar asset. Its sibling stores above
-        // (bundle/age-key/admin/issuer) stay OPERATOR_ONLY: they ride the NODE_BOOTSTRAP lane.
+        // render must resolve them — extracted to the branch cellar asset. Of the sibling stores
+        // above, admin is ALSO IN_CLUSTER (it renders the branch operator kubeconfig); bundle +
+        // age-key + issuer stay OPERATOR_ONLY — they render NO branch Secret (pure NODE_BOOTSTRAP).
         cellar.store(
             parcel,
             ClusterPkiCoordinate.WORKLOAD_CLUSTER_CAS,

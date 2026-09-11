@@ -18,6 +18,7 @@ import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.SeedScenario;
 import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
 import io.seedmatic.rke2lab.seed.broker.port.Cellar;
 import io.seedmatic.rke2lab.seed.broker.port.Parcel;
+import io.seedmatic.rke2lab.seed.broker.port.Reach;
 import io.seedmatic.rke2lab.seed.broker.port.SecretsGateway;
 import io.seedmatic.rke2lab.seed.broker.port.Sensitivity;
 import java.util.Objects;
@@ -147,8 +148,16 @@ public class GithubAppScenario
 
     @As("the github app credentials are filed")
     public Then the_github_app_credentials_are_filed(@Hidden Parcel parcel, @Hidden Cellar cellar) {
+      // IN_CLUSTER: the App CREDENTIALS render into branch Secrets — the gtm App key
+      // (github-app-private-key), the PaC git-auth secret, and the Flux githubapp secret — so the
+      // in-cluster render must resolve them (extracted to the branch cellar asset) or it drops the
+      // whole github-token-manager stack + PaC + githubapp on every steady-state render. No new
+      // exposure: the private key already rides the branch sops-encrypted as those rendered
+      // Secrets.
       credentials.ifPresent(
-          value -> cellar.store(parcel, GhAppCoordinate.GITHUB_APP, value, Sensitivity.SEALED));
+          value ->
+              cellar.store(
+                  parcel, GhAppCoordinate.GITHUB_APP, value, Sensitivity.SEALED, Reach.IN_CLUSTER));
       return self();
     }
   }
