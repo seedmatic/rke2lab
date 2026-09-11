@@ -1,0 +1,24 @@
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: cluster-api-rke2-adoption-controller-crds
+  namespace: flux-system
+spec:
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
+  dependsOn:
+  - name: cluster-api-cluster-api-operator-crds
+  - name: cluster-api-cluster-api-operator-operators
+  - name: cluster-api-cluster-api-operator-workloads
+  force: true
+  interval: 5m
+  path: ./crds/cluster-api/rke2-adoption-controller
+  prune: true
+  retryInterval: 30s
+  sourceRef:
+    kind: GitRepository
+    name: rke2lab
+  wait: true

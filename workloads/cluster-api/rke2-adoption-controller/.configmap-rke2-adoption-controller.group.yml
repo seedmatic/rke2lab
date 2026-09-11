@@ -1,0 +1,17 @@
+---
+apiVersion: v1
+data:
+  members: |-
+    apiextensions.k8s.io/v1|CustomResourceDefinition||clusteradoptions.adoption.seedmatic.io
+    v1|ServiceAccount|rke2lab-system|rke2-adoption-controller
+    rbac.authorization.k8s.io/v1|ClusterRole||rke2-adoption-controller
+    rbac.authorization.k8s.io/v1|ClusterRoleBinding||rke2-adoption-controller
+    apps/v1|Deployment|rke2lab-system|rke2-adoption-controller
+kind: ConfigMap
+metadata:
+  annotations:
+    config.kubernetes.io/local-config: "true"
+    io.seedmatic.rke2lab/domain: cluster-api
+    io.seedmatic.rke2lab/manifest-group: "true"
+    io.seedmatic.rke2lab/package: rke2-adoption-controller
+  name: rke2-adoption-controller.group
