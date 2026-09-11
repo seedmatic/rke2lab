@@ -35,6 +35,8 @@ spec:
         pkg-path: git
       git-sops-filter:
         flake: floxcatalog:catalogue#git-sops-filter
+      gnugrep:
+        pkg-path: gnugrep
       sops:
         pkg-path: sops
       yq-go:
