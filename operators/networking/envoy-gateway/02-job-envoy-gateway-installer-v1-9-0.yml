@@ -13,7 +13,7 @@ spec:
   template:
     metadata:
       annotations:
-        flox.seedmatic.io/environment.installer: kube/base
+        flox.seedmatic.io/environment.installer: toolchains/kube
         io.seedmatic.rke2lab/domain: networking
         io.seedmatic.rke2lab/layer: operators
         io.seedmatic.rke2lab/package: envoy-gateway

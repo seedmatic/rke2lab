@@ -13,7 +13,7 @@ spec:
   template:
     metadata:
       annotations:
-        flox.seedmatic.io/environment.mirror: kube/base
+        flox.seedmatic.io/environment.mirror: toolchains/kube
     spec:
       containers:
       - command:
@@ -32,7 +32,7 @@ spec:
           # The cert key is <device_fqdn>.crt; derive the FQDN at runtime (no tailnet name hardcoded)
           # and escape its dots for the jsonpath. Waiting on the cert key ITSELF is load-bearing — see
           # the method javadoc for why the Secret / pod-Ready are the wrong signal. Pure bash (strip the
-          # trailing dot, escape dots) — the kube/base FloxEnv has bash + coreutils but NOT sed.
+          # trailing dot, escape dots) — the toolchains/kube FloxEnv has bash + coreutils but NOT sed.
           fqdn="$(kubectl get -n "$ns" secret "$secret" -o jsonpath='{.data.device_fqdn}' | base64 -d)"
           # The strip below is doubled on purpose: this whole string is String.formatted(...), which
           # reads a lone percent as a format conversion, so a literal one must be written twice.

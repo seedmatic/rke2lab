@@ -13,7 +13,7 @@ spec:
   template:
     metadata:
       annotations:
-        flox.seedmatic.io/environment.mirror: kube/base
+        flox.seedmatic.io/environment.mirror: toolchains/kube
     spec:
       containers:
       - command:

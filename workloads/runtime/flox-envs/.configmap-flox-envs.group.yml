@@ -2,7 +2,7 @@
 apiVersion: v1
 data:
   members: |-
-    flox.seedmatic.io/v1alpha1|FloxEnv|rke2lab-system|base
+    flox.seedmatic.io/v1alpha1|FloxEnv|rke2lab-system|kube
     flox.seedmatic.io/v1alpha1|FloxEnv|rke2lab-system|git-sops
     flox.seedmatic.io/v1alpha1|FloxEnv|rke2lab-system|kdns
     flox.seedmatic.io/v1alpha1|FloxEnv|rke2lab-system|headscale
