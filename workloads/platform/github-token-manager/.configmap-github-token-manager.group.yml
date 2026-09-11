@@ -1,11 +1,7 @@
 ---
 apiVersion: v1
 data:
-  members: |-
-    helm.cattle.io/v1|HelmChart|kube-system|github-token-manager
-    v1|Secret|rke2lab-system|github-app-private-key
-    github.as-code.io/v1|App|rke2lab-system|github-app
-    github.as-code.io/v1|ClusterToken||github-token
+  members: ""
 kind: ConfigMap
 metadata:
   annotations:
