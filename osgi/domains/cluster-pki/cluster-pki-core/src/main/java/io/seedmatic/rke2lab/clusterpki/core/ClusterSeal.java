@@ -7,6 +7,7 @@ import io.seedmatic.rke2lab.clusterpki.contract.ClusterAgeKey;
 import io.seedmatic.rke2lab.clusterpki.contract.ClusterCaBundle;
 import io.seedmatic.rke2lab.clusterpki.contract.ClusterIssuerCa;
 import io.seedmatic.rke2lab.clusterpki.contract.ManagementClusterCa;
+import io.seedmatic.rke2lab.clusterpki.contract.SopsDecryptor;
 import io.seedmatic.rke2lab.clusterpki.contract.SopsEncryptor;
 import io.seedmatic.rke2lab.clusterpki.contract.WorkloadClusterCas;
 import io.seedmatic.rke2lab.clusterpki.core.internal.ClusterCaGenerator;
@@ -95,16 +96,9 @@ public final class ClusterSeal {
         new ClusterIssuerCa(caSet.issuerCaChainPem(), caSet.issuerCaKeyPem());
 
     // The mgmt cluster's OWN four CAs in render-usable form — the same node-bundle pairs, exposed
-    // so
-    // the mgmt-adoption CR set renders them as BYO-CA Secrets and CAPRKE2 adopts the running
-    // control
-    // plane with its LIVE CA. Nameless: the render stamps the mgmt cluster name.
-    final ManagementClusterCa managementCas =
-        new ManagementClusterCa(
-            pair(bundle, "server-ca"),
-            pair(bundle, "client-ca"),
-            pair(bundle, "etcd-server-ca"),
-            pair(bundle, "etcd-peer-ca"));
+    // so the mgmt-adoption CR set renders them as BYO-CA Secrets and CAPRKE2 adopts the running
+    // control plane with its LIVE CA. Nameless: the render stamps the mgmt cluster name.
+    final ManagementClusterCa managementCas = managementCasFrom(bundle);
 
     return new SealedClusterPki(
         new ClusterCaBundle(sealed),
@@ -163,6 +157,46 @@ public final class ClusterSeal {
 
   private WorkloadClusterCas.Pair pair(Map<String, String> bundle, String stem) {
     return new WorkloadClusterCas.Pair(bundle.get(stem + ".crt"), bundle.get(stem + ".key"));
+  }
+
+  /**
+   * The mgmt cluster's OWN four CAs (server/client/etcd-server/etcd-peer) as render-usable pairs,
+   * pulled from its node bundle — the LIVE CA the running control plane issues from, so the
+   * mgmt-adoption render can hand it to CAPRKE2 as BYO-CA Secrets and adoption never rotates it.
+   */
+  public ManagementClusterCa managementCasFrom(Map<String, String> bundle) {
+    return new ManagementClusterCa(
+        pair(bundle, "server-ca"),
+        pair(bundle, "client-ca"),
+        pair(bundle, "etcd-server-ca"),
+        pair(bundle, "etcd-peer-ca"));
+  }
+
+  /**
+   * Recover {@link ManagementClusterCa} from an ALREADY-sealed bundle — the keep-path backfill. On
+   * a re-grow the CA is KEPT ({@link #seal()} is skipped for stability), so the plaintext node
+   * bundle is gone; but the adoption render still needs the four pairs. Decrypt the sops blob with
+   * the cluster age identity (both already in the cellar) to recover the same bundle {@link
+   * #seal()} built, then map it. Idempotent (decrypt is pure); the recovered CA is byte-identical
+   * to the node's live one.
+   */
+  public ManagementClusterCa recoverManagementCas(
+      ClusterCaBundle bundle, ClusterAgeKey ageKey, SopsDecryptor decryptor) {
+    final String plainYaml = decryptor.decryptYaml(bundle.sops(), ageKey.identity());
+    return managementCasFrom(parseBundleYaml(plainYaml));
+  }
+
+  private static LinkedHashMap<String, String> parseBundleYaml(String yaml) {
+    final YAMLMapper mapper = YAMLMapper.builder().build();
+    try {
+      return mapper.readValue(
+          yaml,
+          mapper
+              .getTypeFactory()
+              .constructMapType(LinkedHashMap.class, String.class, String.class));
+    } catch (Exception ex) {
+      throw new IllegalStateException("failed to parse the decrypted cluster CA bundle YAML", ex);
+    }
   }
 
   /**

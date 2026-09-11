@@ -9,10 +9,12 @@ import com.tngtech.jgiven.annotation.ScenarioState.Resolution;
 import com.tngtech.jgiven.base.ScenarioTestBase;
 import com.tngtech.jgiven.impl.Scenario;
 import io.seedmatic.rke2lab.clusterpki.contract.AdminCredentials;
+import io.seedmatic.rke2lab.clusterpki.contract.ClusterAgeKey;
 import io.seedmatic.rke2lab.clusterpki.contract.ClusterCaBundle;
 import io.seedmatic.rke2lab.clusterpki.contract.ClusterPkiCoordinate;
 import io.seedmatic.rke2lab.clusterpki.contract.ClusterPkiSealInput;
 import io.seedmatic.rke2lab.clusterpki.contract.ManagementClusterCa;
+import io.seedmatic.rke2lab.clusterpki.contract.SopsDecryptor;
 import io.seedmatic.rke2lab.clusterpki.contract.SopsEncryptor;
 import io.seedmatic.rke2lab.clusterpki.contract.WorkloadClusterCas;
 import io.seedmatic.rke2lab.clusterpki.core.ClusterSeal;
@@ -95,6 +97,8 @@ public class ClusterPkiSealScenario
 
   @OsgiService private Optional<SopsEncryptor> encryptor = Optional.empty();
 
+  @OsgiService private Optional<SopsDecryptor> decryptor = Optional.empty();
+
   @Override
   public Scenario<Given, When, Then> getScenario() {
     return scenario;
@@ -126,6 +130,7 @@ public class ClusterPkiSealScenario
             keystore.orElseThrow(() -> new IllegalStateException("no NdhKeystoreReader")),
             sshToAge.orElseThrow(() -> new IllegalStateException("no SshToAgeConverter edge")),
             encryptor.orElseThrow(() -> new IllegalStateException("no SopsEncryptor edge")),
+            decryptor.orElseThrow(() -> new IllegalStateException("no SopsDecryptor edge")),
             workloadClusters);
     then().the_cluster_pki_is_filed(plot, tx);
   }
@@ -169,6 +174,7 @@ public class ClusterPkiSealScenario
         @Hidden NdhKeystoreReader keystore,
         @Hidden SshToAgeConverter sshToAge,
         @Hidden SopsEncryptor encryptor,
+        @Hidden SopsDecryptor decryptor,
         @Hidden List<String> workloadClusters) {
       final ClusterSeal seal = new ClusterSeal(keystore, sshToAge, encryptor);
       final Optional<ClusterCaBundle> existing =
@@ -184,8 +190,26 @@ public class ClusterPkiSealScenario
         this.keptAdmin =
             cellar.fetch(parcel, ClusterPkiCoordinate.ADMIN_CREDENTIALS, AdminCredentials.class);
         this.keptManagementCas =
-            cellar.fetch(
-                parcel, ClusterPkiCoordinate.MANAGEMENT_CLUSTER_CAS, ManagementClusterCa.class);
+            cellar
+                .fetch(
+                    parcel, ClusterPkiCoordinate.MANAGEMENT_CLUSTER_CAS, ManagementClusterCa.class)
+                .or(
+                    () ->
+                        // BACKFILL: the mgmt CA was sealed before MANAGEMENT_CLUSTER_CAS existed,
+                        // so
+                        // it was never filed — and seal() (which builds it) is skipped on a keep.
+                        // The
+                        // adoption render still needs the four pairs, so recover them by decrypting
+                        // the kept bundle with the cluster age key (both already in the cellar);
+                        // the
+                        // recovered CA is byte-identical to the node's live one. Filed by the THEN.
+                        cellar
+                            .fetch(
+                                parcel, ClusterPkiCoordinate.CLUSTER_AGE_KEY, ClusterAgeKey.class)
+                            .map(
+                                ageKey ->
+                                    seal.recoverManagementCas(
+                                        existing.orElseThrow(), ageKey, decryptor)));
       }
       // The workload BYO-CA sets — minted ADDITIVELY (keep the entries already sealed, mint only
       // the clusters newly appearing in workloadTargets), independent of the mgmt CA idempotency
