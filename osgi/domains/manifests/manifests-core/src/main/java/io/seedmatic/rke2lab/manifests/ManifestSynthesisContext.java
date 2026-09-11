@@ -9,6 +9,7 @@ import io.seedmatic.rke2lab.manifests.contract.profiles.FloxDebugPolicy;
 import io.seedmatic.rke2lab.manifests.contract.profiles.GithubAppMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ImageState;
 import io.seedmatic.rke2lab.manifests.contract.profiles.IncusIdentityMaterial;
+import io.seedmatic.rke2lab.manifests.contract.profiles.ManagementClusterCaMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.NetworkTopology;
 import io.seedmatic.rke2lab.manifests.contract.profiles.OperatorPkiMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ReplicatorSourceSecretsMaterial;
@@ -164,6 +165,10 @@ public final class ManifestSynthesisContext {
 
   public Optional<WorkloadClusterCasMaterial> workloadCas() {
     return request.workloadCas();
+  }
+
+  public Optional<ManagementClusterCaMaterial> managementCas() {
+    return request.managementCas();
   }
 
   public Optional<GithubAppMaterial> githubApp() {

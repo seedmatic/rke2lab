@@ -12,6 +12,7 @@ import io.seedmatic.rke2lab.clusterpki.contract.AdminCredentials;
 import io.seedmatic.rke2lab.clusterpki.contract.ClusterCaBundle;
 import io.seedmatic.rke2lab.clusterpki.contract.ClusterPkiCoordinate;
 import io.seedmatic.rke2lab.clusterpki.contract.ClusterPkiSealInput;
+import io.seedmatic.rke2lab.clusterpki.contract.ManagementClusterCa;
 import io.seedmatic.rke2lab.clusterpki.contract.SopsEncryptor;
 import io.seedmatic.rke2lab.clusterpki.contract.WorkloadClusterCas;
 import io.seedmatic.rke2lab.clusterpki.core.ClusterSeal;
@@ -154,6 +155,10 @@ public class ClusterPkiSealScenario
     @ProvidedScenarioState(resolution = Resolution.NAME)
     Optional<AdminCredentials> keptAdmin = Optional.empty();
 
+    /** The kept mgmt CA set on a re-grow (CA not re-minted) — re-filed to converge its reach. */
+    @ProvidedScenarioState(resolution = Resolution.NAME)
+    Optional<ManagementClusterCa> keptManagementCas = Optional.empty();
+
     @ProvidedScenarioState(resolution = Resolution.NAME)
     WorkloadClusterCas workloadCas = new WorkloadClusterCas(List.of());
 
@@ -178,6 +183,9 @@ public class ClusterPkiSealScenario
         // and the in-cluster render drops the operator kubeconfig. Value unchanged — idempotent.
         this.keptAdmin =
             cellar.fetch(parcel, ClusterPkiCoordinate.ADMIN_CREDENTIALS, AdminCredentials.class);
+        this.keptManagementCas =
+            cellar.fetch(
+                parcel, ClusterPkiCoordinate.MANAGEMENT_CLUSTER_CAS, ManagementClusterCa.class);
       }
       // The workload BYO-CA sets — minted ADDITIVELY (keep the entries already sealed, mint only
       // the clusters newly appearing in workloadTargets), independent of the mgmt CA idempotency
@@ -200,6 +208,9 @@ public class ClusterPkiSealScenario
 
     @ExpectedScenarioState(resolution = Resolution.NAME)
     Optional<AdminCredentials> keptAdmin;
+
+    @ExpectedScenarioState(resolution = Resolution.NAME)
+    Optional<ManagementClusterCa> keptManagementCas;
 
     @ExpectedScenarioState(resolution = Resolution.NAME)
     WorkloadClusterCas workloadCas;
@@ -228,6 +239,14 @@ public class ClusterPkiSealScenario
                 ClusterPkiCoordinate.CLUSTER_ISSUER_CA,
                 pki.clusterIssuerCa(),
                 Sensitivity.SEALED);
+            // IN_CLUSTER: the mgmt CA set renders the four <mgmt>-{ca,cca,etcd,peer-etcd} BYO-CA
+            // Secrets on the branch so CAPRKE2 adopts the running control plane with its LIVE CA.
+            cellar.store(
+                parcel,
+                ClusterPkiCoordinate.MANAGEMENT_CLUSTER_CAS,
+                pki.managementCas(),
+                Sensitivity.SEALED,
+                Reach.IN_CLUSTER);
           });
       // Re-grow (CA kept, sealed empty): the mint is skipped but the admin reach must still
       // converge — re-file the kept admin credentials with the current reach so exportReaching
@@ -238,6 +257,16 @@ public class ClusterPkiSealScenario
                   parcel,
                   ClusterPkiCoordinate.ADMIN_CREDENTIALS,
                   admin,
+                  Sensitivity.SEALED,
+                  Reach.IN_CLUSTER));
+      // Re-grow: the mgmt CA is kept, but its reach must converge too (same as admin) so the
+      // in-cluster render resolves the mgmt BYO-CA Secrets from the branch asset.
+      keptManagementCas.ifPresent(
+          cas ->
+              cellar.store(
+                  parcel,
+                  ClusterPkiCoordinate.MANAGEMENT_CLUSTER_CAS,
+                  cas,
                   Sensitivity.SEALED,
                   Reach.IN_CLUSTER));
       // The workload BYO-CA sets — SEALED (they carry the CA private keys). Filed whenever any

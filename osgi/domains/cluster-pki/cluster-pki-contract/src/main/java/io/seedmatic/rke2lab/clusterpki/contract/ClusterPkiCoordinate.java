@@ -39,7 +39,19 @@ public enum ClusterPkiCoordinate implements SeedCoordinate {
   // sibling of the mgmt CA). SEALED (it carries the CA private keys). The manifests scion reveals
   // it and renders the four <cluster>-{ca,cca,etcd,peer-etcd} Secrets into rke2lab-<cluster> on the
   // NODE_BOOTSTRAP lane, so CAPRKE2 does BYO-CA instead of self-generating a random one.
-  WORKLOAD_CLUSTER_CAS("workload-cluster-cas");
+  WORKLOAD_CLUSTER_CAS("workload-cluster-cas"),
+
+  // The MANAGEMENT cluster's OWN CA set (the four CAs of its node bundle) exposed in render-usable
+  // PEM form — the sibling of CLUSTER_CA_BUNDLE (which is the same material as a sops blob,
+  // decrypted
+  // only node-side). SEALED (CA private keys), Reach IN_CLUSTER: the mgmt-adoption CR set renders
+  // the
+  // four <mgmt>-{ca,cca,etcd,peer-etcd} BYO-CA Secrets onto the branch so CAPRKE2 adopts the
+  // running
+  // control-plane with its LIVE CA (never rotating it). Nameless — the render stamps the mgmt
+  // cluster
+  // name (bootstrapIdentity) the seal does not hold. See management-workload-topology.adoc.
+  MANAGEMENT_CLUSTER_CAS("management-cluster-cas");
 
   private static final String DOMAIN = "cluster-pki";
 

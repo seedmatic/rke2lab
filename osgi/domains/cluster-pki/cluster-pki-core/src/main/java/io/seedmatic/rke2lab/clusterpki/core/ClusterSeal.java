@@ -6,6 +6,7 @@ import io.seedmatic.rke2lab.clusterpki.contract.AdminCredentials;
 import io.seedmatic.rke2lab.clusterpki.contract.ClusterAgeKey;
 import io.seedmatic.rke2lab.clusterpki.contract.ClusterCaBundle;
 import io.seedmatic.rke2lab.clusterpki.contract.ClusterIssuerCa;
+import io.seedmatic.rke2lab.clusterpki.contract.ManagementClusterCa;
 import io.seedmatic.rke2lab.clusterpki.contract.SopsEncryptor;
 import io.seedmatic.rke2lab.clusterpki.contract.WorkloadClusterCas;
 import io.seedmatic.rke2lab.clusterpki.core.internal.ClusterCaGenerator;
@@ -93,11 +94,24 @@ public final class ClusterSeal {
     final ClusterIssuerCa clusterIssuerCa =
         new ClusterIssuerCa(caSet.issuerCaChainPem(), caSet.issuerCaKeyPem());
 
+    // The mgmt cluster's OWN four CAs in render-usable form — the same node-bundle pairs, exposed
+    // so
+    // the mgmt-adoption CR set renders them as BYO-CA Secrets and CAPRKE2 adopts the running
+    // control
+    // plane with its LIVE CA. Nameless: the render stamps the mgmt cluster name.
+    final ManagementClusterCa managementCas =
+        new ManagementClusterCa(
+            pair(bundle, "server-ca"),
+            pair(bundle, "client-ca"),
+            pair(bundle, "etcd-server-ca"),
+            pair(bundle, "etcd-peer-ca"));
+
     return new SealedClusterPki(
         new ClusterCaBundle(sealed),
         new ClusterAgeKey(ageIdentity),
         adminCredentials,
-        clusterIssuerCa);
+        clusterIssuerCa,
+        managementCas);
   }
 
   /**

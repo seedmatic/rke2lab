@@ -30,6 +30,7 @@ import io.seedmatic.rke2lab.manifests.contract.profiles.FloxDebugPolicy;
 import io.seedmatic.rke2lab.manifests.contract.profiles.GithubAppMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ImageState;
 import io.seedmatic.rke2lab.manifests.contract.profiles.IncusIdentityMaterial;
+import io.seedmatic.rke2lab.manifests.contract.profiles.ManagementClusterCaMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.OperatorPkiMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ReplicatorSourceSecretsMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.WorkloadClusterCasMaterial;
@@ -228,6 +229,24 @@ public class ManifestSynthesisScenario
         parcel.orElseThrow(),
         ClusterPkiCase.WORKLOAD_CLUSTER_CAS,
         WorkloadClusterCasMaterial.class);
+  }
+
+  // Reveal the MANAGEMENT cluster's own CA set (mirror of cluster-pki ManagementClusterCa) via the
+  // neutral wire coordinate — same treatment as revealWorkloadCas(). Empty on a bare survey /
+  // before
+  // the seal filed / a secret-blind in-cluster render → ClusterApiManagementManifestsUnit renders
+  // no
+  // <mgmt>-{ca,cca,etcd,peer-etcd} Secret (the mgmt CA also rides the durable NODE_BOOTSTRAP lane
+  // as
+  // the cluster-ca-bundle blob).
+  private Optional<ManagementClusterCaMaterial> revealManagementCas() {
+    if (cellar == null || parcel.isEmpty()) {
+      return Optional.empty();
+    }
+    return cellar.fetch(
+        parcel.orElseThrow(),
+        ClusterPkiCase.MANAGEMENT_CLUSTER_CAS,
+        ManagementClusterCaMaterial.class);
   }
 
   // Reveal the CAPN provider incus identity (assembled + sealed by the incus-identity seal scion)
@@ -595,7 +614,8 @@ public class ManifestSynthesisScenario
   private enum ClusterPkiCase implements SeedCoordinate {
     ADMIN_CREDENTIALS("admin-credentials"),
     CLUSTER_ISSUER_CA("cluster-issuer-ca"),
-    WORKLOAD_CLUSTER_CAS("workload-cluster-cas");
+    WORKLOAD_CLUSTER_CAS("workload-cluster-cas"),
+    MANAGEMENT_CLUSTER_CAS("management-cluster-cas");
 
     private final String slug;
 
@@ -645,6 +665,7 @@ public class ManifestSynthesisScenario
             revealReplicatorSources(),
             revealClusterIssuerCa(),
             revealWorkloadCas(),
+            revealManagementCas(),
             revealIncusIdentity(),
             rendered);
     // Extract the IN_CLUSTER-reaching sealed materials to the branch asset (§ in-cluster-cellar
@@ -825,6 +846,7 @@ public class ManifestSynthesisScenario
         @Hidden Optional<ReplicatorSourceSecretsMaterial> replicatorSources,
         @Hidden Optional<ClusterIssuerCaMaterial> clusterIssuerCa,
         @Hidden Optional<WorkloadClusterCasMaterial> workloadCas,
+        @Hidden Optional<ManagementClusterCaMaterial> managementCas,
         @Hidden Optional<IncusIdentityMaterial> incusIdentity,
         @Hidden Optional<LinkedWorktree> rendered) {
       final ManifestsRunbookInput.DebugFacet debug = facet.facets().debug();
@@ -888,6 +910,11 @@ public class ManifestSynthesisScenario
       // secret-blind in-cluster render): ClusterApiWorkloadManifestsUnit renders the four
       // <cluster>-{ca,cca,etcd,peer-etcd} Secrets onto the node-bootstrap lane, or nothing.
       builder.workloadCas(workloadCas);
+      // The MANAGEMENT cluster's own CA set revealed from the cellar (empty on a bare survey /
+      // secret-blind in-cluster render): ClusterApiManagementManifestsUnit renders the four
+      // <mgmt>-{ca,cca,etcd,peer-etcd} BYO-CA Secrets so CAPRKE2 adopts the running control plane
+      // with its LIVE CA, or nothing.
+      builder.managementCas(managementCas);
       // The CAPN provider incus identity revealed from the cellar (empty on a bare survey /
       // secret-blind in-cluster render): ClusterApiWorkloadManifestsUnit renders the
       // <host>-incus-identity Secret onto the node-bootstrap lane, or nothing.
