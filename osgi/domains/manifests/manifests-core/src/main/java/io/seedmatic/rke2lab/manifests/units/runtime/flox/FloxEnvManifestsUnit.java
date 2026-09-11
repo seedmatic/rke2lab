@@ -298,6 +298,10 @@ public final class FloxEnvManifestsUnit extends AbstractManifestsUnit {
     install.put("yq-go", catalog("yq-go"));
     install.put("bash", catalogAll("bash"));
     install.put("coreutils", catalogAll("coreutils"));
+    // sops-dispatch (the smudge/clean filter) shells `grep` — not in coreutils, and the
+    // flox-carrier
+    // base is minimal, so the toolchain must carry it (a debian base happened to have it).
+    install.put("gnugrep", catalog("gnugrep"));
     install.put("git-sops-filter", flakeRef("git-sops-filter"));
     return manifest(install, Optional.of(GIT_SOPS_ON_ACTIVATE));
   }

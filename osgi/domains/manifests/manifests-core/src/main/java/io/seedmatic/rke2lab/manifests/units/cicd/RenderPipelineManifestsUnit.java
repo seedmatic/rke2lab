@@ -279,7 +279,10 @@ public final class RenderPipelineManifestsUnit extends AbstractManifestsUnit {
                       : "xtrace is disabled across the next block so the App token is never echoed to the logs"
                       set +x
                       if [ -f "$GIT_AUTH_DIR/.git-credentials" ]; then
-                        export RKE2LAB_PUSH_TOKEN=`sed -E 's#https://[^:]+:([^@]+)@.*#\\1#' "$GIT_AUTH_DIR/.git-credentials" | head -n1`
+                        _cred=`head -n1 "$GIT_AUTH_DIR/.git-credentials"`
+                        _cred="${_cred#*://}"
+                        _cred="${_cred#*:}"
+                        export RKE2LAB_PUSH_TOKEN="${_cred%%@*}"
                         export GH_TOKEN="$RKE2LAB_PUSH_TOKEN"
                         export NIX_CONFIG="${NIX_CONFIG:-}"$'\\n'"access-tokens = github.com=$RKE2LAB_PUSH_TOKEN"
                       fi
