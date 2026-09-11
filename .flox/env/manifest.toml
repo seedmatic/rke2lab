@@ -1,0 +1,27 @@
+## rke2-adoption-controller — dev toolchain.
+## `flox activate` provides everything to work on the controller: build, codegen,
+## and cluster tooling. Mirrors flox-controller's dev env (same discipline).
+schema-version = "1.14.0"
+
+[install]
+# Go toolchain
+go.pkg-path = "go"
+gopls.pkg-path = "gopls"
+delve.pkg-path = "delve"                                  # dlv debugger
+# Codegen: controller-gen (deepcopy + CRD manifests)
+kubernetes-controller-tools.pkg-path = "kubernetes-controller-tools"
+# Cluster tooling
+kubectl.pkg-path = "kubectl"
+# kubebuilder-style Makefile targets
+gnumake.pkg-path = "gnumake"
+
+[vars]
+CGO_ENABLED = "0"
+
+[options]
+systems = [
+  "aarch64-darwin",
+  "aarch64-linux",
+  "x86_64-darwin",
+  "x86_64-linux",
+]
