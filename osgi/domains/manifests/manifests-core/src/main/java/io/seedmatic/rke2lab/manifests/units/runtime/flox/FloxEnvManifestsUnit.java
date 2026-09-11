@@ -8,9 +8,11 @@ import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import io.seedmatic.rke2lab.manifests.units.cluster.ClusterRefs;
 import io.seedmatic.rke2lab.manifests.units.cluster.ClusterRuntimeNamespaceManifestsUnit;
+import io.seedmatic.rke2lab.manifests.units.gitops.SopsAgeSecretManifestsUnit;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.cdk8s.ApiObject;
 import org.cdk8s.ApiObjectMetadata;
 import org.cdk8s.ApiObjectProps;
@@ -88,7 +90,27 @@ public final class FloxEnvManifestsUnit extends AbstractManifestsUnit {
     // kube/base), NOT cicd-bound: decoupled so the cicd need evolves independently and any env
     // doing
     // git ops on the sops tree can `[include]` it. Always prod; a toolchain, not a workload.
-    createEnv(scope, resolver, "git-sops", FloxEnvFolder.TOOLCHAINS, gitSopsManifest());
+    // git-sops CONTRIBUTES SOPS_AGE_KEY to its consumers (spec.inject): the flox-controller webhook
+    // adds it (valueFrom the replicated sops-age Secret) to every container that annotates
+    // environment.<c>=toolchains/git-sops, so a consumer (the render clone/step) only annotates the
+    // env — it never wires the age key itself. optional: a consumer namespace without the
+    // replicated
+    // Secret does not wedge (the consumer's own fail-loud check reports the absence).
+    createEnv(
+        scope,
+        resolver,
+        "git-sops",
+        FloxEnvFolder.TOOLCHAINS,
+        gitSopsManifest(),
+        List.of(
+            Map.of(
+                "name",
+                "SOPS_AGE_KEY",
+                "secretKeyRef",
+                Map.of(
+                    "name", SopsAgeSecretManifestsUnit.SECRET_NAME,
+                    "key", SopsAgeSecretManifestsUnit.AGE_KEY,
+                    "optional", true))));
     final boolean net = policy.networkingEnabled();
     createEnv(scope, resolver, "kdns", FloxEnvFolder.NETWORKING, kdnsManifest(false));
     if (net) {
@@ -115,6 +137,21 @@ public final class FloxEnvManifestsUnit extends AbstractManifestsUnit {
       final String name,
       final FloxEnvFolder folder,
       final Map<String, Object> manifest) {
+    createEnv(scope, resolver, name, folder, manifest, List.of());
+  }
+
+  /**
+   * @param inject {@code spec.inject} entries the flox-controller webhook adds to every container
+   *     that opts into this env — how the env contributes required runtime env/secrets to its
+   *     consumers (e.g. git-sops → SOPS_AGE_KEY), so a consumer only annotates the env.
+   */
+  private void createEnv(
+      final Construct scope,
+      final Cdk8sApiObjectResolver resolver,
+      final String name,
+      final FloxEnvFolder folder,
+      final Map<String, Object> manifest,
+      final List<Object> inject) {
     final String namespace = ClusterRefs.RUNTIME_SYSTEM_NAMESPACE.name();
     final ApiObject env =
         new ApiObject(
@@ -138,6 +175,9 @@ public final class FloxEnvManifestsUnit extends AbstractManifestsUnit {
     spec.put("folder", folder.value());
     spec.put("consumption", "overlay");
     spec.put("manifest", manifest);
+    if (!inject.isEmpty()) {
+      spec.put("inject", inject.toArray());
+    }
     env.addJsonPatch(JsonPatch.add("/spec", spec));
   }
 
@@ -257,8 +297,27 @@ public final class FloxEnvManifestsUnit extends AbstractManifestsUnit {
     install.put("bash", catalogAll("bash"));
     install.put("coreutils", catalogAll("coreutils"));
     install.put("git-sops-filter", flakeRef("git-sops-filter"));
-    return manifest(install);
+    return manifest(install, Optional.of(GIT_SOPS_ON_ACTIVATE));
   }
+
+  /**
+   * git-sops activation hook: register the {@code git-sops-filter} package's {@code sops} include
+   * (shipped at {@code $FLOX_ENV/sops}) as a GLOBAL git include, so a {@code git checkout} in the
+   * source checkout AND the render worktree (a {@code git worktree add} shares the config) runs the
+   * {@code sops-yaml} clean/smudge filter. {@code SOPS_AGE_KEY} (per-pod, from the replicated
+   * {@code sops-age} Secret) is what sops decrypts with. NOT fail-closed on a missing key: this
+   * same hook runs during the flox-controller's {@code flox activate --mode dev -- true} realise,
+   * which has no {@code SOPS_AGE_KEY} — a hard exit there would wedge the env's realisation. The
+   * consumer (the render step) is where the key + filter are asserted fail-loud.
+   */
+  private static final String GIT_SOPS_ON_ACTIVATE =
+      """
+      if [ -f "$FLOX_ENV/sops" ]; then
+        git config --global include.path "$FLOX_ENV/sops"
+      else
+        echo >&2 "git-sops: include $FLOX_ENV/sops not found — sops-yaml filter NOT wired"
+      fi
+      """;
 
   /**
    * The kube-API scripting fragment: a shell ({@code bash}/{@code coreutils}) plus {@code kubectl}
@@ -291,11 +350,17 @@ public final class FloxEnvManifestsUnit extends AbstractManifestsUnit {
   }
 
   private Map<String, Object> manifest(final Map<String, Object> install) {
+    return manifest(install, Optional.empty());
+  }
+
+  private Map<String, Object> manifest(
+      final Map<String, Object> install, final Optional<String> hookOnActivate) {
     final Map<String, Object> manifest = new LinkedHashMap<>();
     manifest.put("schema-version", SCHEMA_VERSION);
     manifest.put("install", install);
     // These envs activate inside Linux containers on the nodes — restrict resolution to Linux.
     manifest.put("options", Map.of("systems", new Object[] {"aarch64-linux"}));
+    hookOnActivate.ifPresent(h -> manifest.put("hook", Map.of("on-activate", h)));
     return manifest;
   }
 }

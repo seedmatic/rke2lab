@@ -31,6 +31,13 @@ metadata:
     # SOPS_AGE_KEY mounted (see the render Task) — smudges .secrets + the in-cluster cellar asset,
     # making the in-cluster render secret-FULL instead of blind.
     flox.seedmatic.io/environment.step-render: "toolchains/git-sops"
+    # The git-fetch pod's clone step ALSO runs on toolchains/git-sops (git + sops + the ndh
+    # git-sops-filter, on the flox-carrier base), so its `git checkout FETCH_HEAD` smudges .secrets
+    # in the shared source workspace AT CLONE TIME — no stock alpine/git image, no downstream
+    # re-smudge. SOPS_AGE_KEY arrives via the env's spec.inject (flox-controller webhook), not a
+    # hand-wired Task env. Keyed to the clone step's container (step-clone); the render-publish pod
+    # has no such container so it ignores it.
+    flox.seedmatic.io/environment.step-clone: "toolchains/git-sops"
 spec:
   # The Pipeline is a RENDERED in-cluster manifest (RenderPipelineManifestsUnit), not inline here.
   # PaC's own resolver does NOT consult the cluster for a bare pipelineRef.name (it wants inline /

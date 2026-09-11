@@ -102818,11 +102818,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1789076028,
-        "narHash": "sha256-vX4kjcwz6seAJO8EmcrtX/rs7d9Y9JG5dAdf95S0S+w=",
+        "lastModified": 1789108828,
+        "narHash": "sha256-IYokgUYC7KFt7CpD4s8vY8RaSOeBjJ94ue+tsLNAsNQ=",
         "owner": "seedmatic",
         "repo": "flox-controller",
-        "rev": "98a5c3619a31438f3880b4f2b3d6dd23cfab99da",
+        "rev": "2cd369fc1d70c192133891c9f7bfefe0222bda96",
         "type": "github"
       },
       "original": {

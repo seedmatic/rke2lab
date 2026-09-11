@@ -1,11 +1,11 @@
 package io.seedmatic.rke2lab.manifests.units.cicd;
 
 import io.seedmatic.rke2lab.manifests.AbstractManifestsUnit;
+import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
 import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import io.seedmatic.rke2lab.manifests.units.cluster.ClusterRefs;
-import io.seedmatic.rke2lab.manifests.units.gitops.SopsAgeSecretManifestsUnit;
 import java.util.List;
 import java.util.Map;
 import org.cdk8s.ApiObject;
@@ -171,25 +171,22 @@ public final class RenderPipelineManifestsUnit extends AbstractManifestsUnit {
                       "name",
                       "clone",
                       "image",
-                      "alpine/git:2.45.2",
+                      ManifestSynthesisContext.current().floxDebugPolicy().prodImage(),
                       "script",
-                      String.join(
-                          "\n",
-                          "#!/bin/sh",
-                          "set -eu",
-                          // PaC's git_auth_secret ships .gitconfig + .git-credentials; adopt them
-                          // so
-                          // the clone authenticates as the App without embedding a token in the
-                          // URL.
-                          "if [ -f \"$(workspaces.basic-auth.path)/.git-credentials\" ]; then",
-                          "  cp \"$(workspaces.basic-auth.path)/.git-credentials\" \"$HOME/.git-credentials\"",
-                          "  cp \"$(workspaces.basic-auth.path)/.gitconfig\" \"$HOME/.gitconfig\"",
-                          "fi",
-                          "cd \"$(workspaces.output.path)\"",
-                          "git init -q .",
-                          "git remote add origin \"$(params.repo-url)\"",
-                          "git fetch -q --depth 1 origin \"$(params.revision)\"",
-                          "git checkout -q FETCH_HEAD"))
+                      """
+                      #!/bin/sh
+                      set -eux
+                      : "PaC's git_auth_secret ships .gitconfig + .git-credentials; adopt them so the clone authenticates as the App without embedding a token in the URL"
+                      if [ -f "$(workspaces.basic-auth.path)/.git-credentials" ]; then
+                        cp "$(workspaces.basic-auth.path)/.git-credentials" "$HOME/.git-credentials"
+                        cp "$(workspaces.basic-auth.path)/.gitconfig" "$HOME/.gitconfig"
+                      fi
+                      cd "$(workspaces.output.path)"
+                      git init -q .
+                      git remote add origin "$(params.repo-url)"
+                      git fetch -q --depth 1 origin "$(params.revision)"
+                      git checkout -q FETCH_HEAD
+                      """)
                 })));
   }
 
@@ -257,107 +254,46 @@ public final class RenderPipelineManifestsUnit extends AbstractManifestsUnit {
                                     "key",
                                     RenderSigningSecretManifestsUnit.SSH_PRIVATE_KEY,
                                     "optional",
-                                    true))),
-                        // The cluster age key, mittwald-replicated from flux-system into this
-                        // namespace (SopsAgeSecretManifestsUnit) — sops reads it as SOPS_AGE_KEY to
-                        // smudge .secrets + the branch cellar asset, making this render
-                        // secret-FULL.
-                        // optional=true: on the window before the replicator has copied it (a fresh
-                        // grow) the pod still starts; the re-smudge below then fails loud on the
-                        // empty key rather than the pod failing to schedule.
-                        Map.of(
-                            "name",
-                            "SOPS_AGE_KEY",
-                            "valueFrom",
-                            Map.of(
-                                "secretKeyRef",
-                                Map.of(
-                                    "name",
-                                    SopsAgeSecretManifestsUnit.SECRET_NAME,
-                                    "key",
-                                    SopsAgeSecretManifestsUnit.AGE_KEY,
-                                    "optional",
                                     true)))
+                        // SOPS_AGE_KEY is no longer hand-wired here: the step-render container opts
+                        // into the git-sops env (environment.step-render), which CONTRIBUTES it via
+                        // spec.inject — the flox-controller webhook adds it from the replicated
+                        // sops-age Secret. Same for the step-clone container in the git-fetch pod.
                       },
-                      // A glibc base; the toolchain (java/maven) arrives via flox injection, not
-                      // the
-                      // image. No JDK baked in — dogfooding the flox NRI runtime.
+                      // The flox-carrier runtime (prodImage) like every other rke2lab workload — no
+                      // stock base. The toolchain (nix + the git-sops env) arrives via flox NRI
+                      // injection onto this container; no JDK/nix baked into the image.
                       "image",
-                      "debian:stable-slim",
+                      ManifestSynthesisContext.current().floxDebugPolicy().prodImage(),
                       "workingDir",
                       "$(workspaces.source.path)",
                       "script",
-                      String.join(
-                          "\n",
-                          "#!/usr/bin/env bash",
-                          "set -euo pipefail",
-                          // The publish narrates live to stdout: it runs STANDALONE (not
-                          // seed-master
-                          // under Pulumi), so PaxLogbackConfigurer keeps its console appender on
-                          // and
-                          // the render/delivery logs land in this container's logs — no
-                          // cat-the-file
-                          // crutch.
-                          // PaC minted an App token into the mounted git_auth secret; extract it
-                          // into RKE2LAB_PUSH_TOKEN so the in-cluster publish reveals it for the
-                          // ff-push (the scion reads it in-container —
-                          // ManifestSynthesisScenario.revealGithubToken). Backticks, not $(...), so
-                          // Tekton doesn't mistake the shell substitution for one of its own vars.
-                          "GIT_AUTH_DIR=\"$(workspaces.basic-auth.path)\"",
-                          "if [ -f \"$GIT_AUTH_DIR/.git-credentials\" ]; then",
-                          "  export RKE2LAB_PUSH_TOKEN=`sed -E 's#https://[^:]+:([^@]+)@.*#\\1#'"
-                              + " \"$GIT_AUTH_DIR/.git-credentials\" | head -n1`",
-                          // The same App token authenticates .mvn/settings.xml to GitHub Packages
-                          // (${env.GH_TOKEN}) so the reactor resolves the private seedmatic
-                          // releases
-                          // (java-systemd, java-bbox-api-client). Requires the App to carry
-                          // packages:read.
-                          "  export GH_TOKEN=\"$RKE2LAB_PUSH_TOKEN\"",
-                          // nix must AUTHENTICATE its flake-input fetches: the closure pulls a
-                          // PRIVATE input (seedmatic/claude-hub, transitively via ndh), and the
-                          // flox
-                          // NRI sets NIX_CONFIG (experimental-features) but NO access-tokens, so
-                          // nix
-                          // fetches the github: archive unauthenticated → HTTP 404 on the private
-                          // repo. Append the App token (the same one PaC minted) so nix reads it AS
-                          // the App. Requires PaC to scope the git_auth token to include claude-hub
-                          // (secret-github-app-scope-extra-repos) — a repo-scoped token still 404s.
-                          "  export NIX_CONFIG=\"${NIX_CONFIG:-}\"$'\\n'\"access-tokens ="
-                              + " github.com=$RKE2LAB_PUSH_TOKEN\"",
-                          "fi",
-                          // The maven-cache PVC is the cache ROOT — it holds repository/ AND
-                          // build-cache/ side by side. M2_REPO points at its repository; the render
-                          // app derives MAVEN_BUILD_CACHE=dirname(M2_REPO)=the PVC, so the
-                          // maven-build-cache persists beside the repo on the PVC → renders are
-                          // incremental across pushes (only changed modules recompile).
-                          "export M2_REPO=\"$(workspaces.maven-cache.path)/repository\"",
-                          // Re-smudge the sops inputs the fetch pod checked out RAW (it had no
-                          // git-sops env): THIS container's toolchains/git-sops flox env configures
-                          // the sops-yaml filter, and SOPS_AGE_KEY (above) lets sops decrypt. A
-                          // re-checkout runs the smudge → .secrets / keys.yaml land CLEAR, so
-                          // `manifests
-                          // publish` fills the cellar (secret-FULL) and the branch cellar-asset
-                          // smudge/clean works. Guarded: only with a key present, only tracked
-                          // paths
-                          // (git ls-files in an `if` so an absent path never trips `set -e`).
-                          "if [ -n \"${SOPS_AGE_KEY:-}\" ]; then",
-                          "  for f in .secrets .ndh-ssh.d/keys.yaml; do",
-                          "    if git ls-files --error-unmatch \"$f\" >/dev/null 2>&1; then",
-                          "      git checkout -- \"$f\"",
-                          "    fi",
-                          "  done",
-                          "fi",
-                          // The flox NRI plugin put `nix` on PATH + injected NIX_CONFIG (daemonless
-                          // single-user) and hosts the /nix store overlay on the assigned
-                          // persistent
-                          // PVC — no flox env, no `flox activate`. `nix run .#render-manifests`
-                          // from
-                          // the source checkout is the ONE render definition (shared with
-                          // dev/release, no hand-scripted mvn+java that drifts): it builds
-                          // manifests-cli (CRDs staged in), then update signs + ff-pushes
-                          // manifests/<cluster> — the exe LOCATES its render worktree itself at
-                          // .local.d/render/<cluster> (workingDir = the source workspace).
-                          "nix run .#render-manifests -- \"$(params.cluster)\" \"$(params.node)\""))
+                      """
+                      #!/usr/bin/env bash
+                      set -euxo pipefail
+                      : "The publish narrates live to stdout: it runs STANDALONE (not seed-master under Pulumi), so PaxLogbackConfigurer keeps its console appender on and the render/delivery logs land in this container's logs"
+                      GIT_AUTH_DIR="$(workspaces.basic-auth.path)"
+                      : "PaC minted an App token into the mounted git_auth secret; extract it into RKE2LAB_PUSH_TOKEN so the publish reveals it for the ff-push (the scion reads it in-container, ManifestSynthesisScenario.revealGithubToken). Backtick substitution, not the dollar-paren form, so Tekton does not claim it as one of its own vars"
+                      : "The same App token authenticates .mvn/settings.xml to GitHub Packages (the env.GH_TOKEN placeholder) so the reactor resolves the private seedmatic releases java-systemd and java-bbox-api-client. Requires the App to carry packages:read"
+                      : "nix must authenticate its flake-input fetches: the closure pulls a PRIVATE input, seedmatic/claude-hub transitively via ndh; the flox NRI sets NIX_CONFIG but no access-tokens, so an unauthenticated github fetch 404s on the private repo. Append the App token so nix reads it AS the App. Requires PaC to scope the git_auth token to include claude-hub via secret-github-app-scope-extra-repos"
+                      : "xtrace is disabled across the next block so the App token is never echoed to the logs"
+                      set +x
+                      if [ -f "$GIT_AUTH_DIR/.git-credentials" ]; then
+                        export RKE2LAB_PUSH_TOKEN=`sed -E 's#https://[^:]+:([^@]+)@.*#\\1#' "$GIT_AUTH_DIR/.git-credentials" | head -n1`
+                        export GH_TOKEN="$RKE2LAB_PUSH_TOKEN"
+                        export NIX_CONFIG="${NIX_CONFIG:-}"$'\\n'"access-tokens = github.com=$RKE2LAB_PUSH_TOKEN"
+                      fi
+                      set -x
+                      : "The maven-cache PVC is the cache ROOT: repository/ AND build-cache/ side by side. M2_REPO points at repository; the render app derives MAVEN_BUILD_CACHE from its dirname (the PVC), so the build cache persists beside the repo, making renders incremental across pushes"
+                      export M2_REPO="$(workspaces.maven-cache.path)/repository"
+                      : "Secret-full render prerequisites — fail loud with a clear message, not a downstream decode error. SOPS_AGE_KEY arrives via the git-sops env spec.inject (flox-controller webhook); the sops-yaml filter is wired by the env on-activate hook; the clone step (also on git-sops) already smudged .secrets in this shared workspace at checkout"
+                      set +x
+                      [ -n "${SOPS_AGE_KEY:-}" ] || { echo >&2 "render: SOPS_AGE_KEY not set (git-sops inject / replicated sops-age missing)"; exit 1; }
+                      set -x
+                      git config --get filter.sops-yaml.smudge >/dev/null 2>&1 || { echo >&2 "render: sops-yaml git filter not registered (git-sops on-activate hook did not wire it)"; exit 1; }
+                      : "The flox NRI plugin put nix on PATH, injected NIX_CONFIG (daemonless single-user) and hosts the /nix store overlay on the assigned persistent PVC, so there is no flox env and no flox activate. nix run .#render-manifests from the source checkout is the ONE render definition shared with dev and release: it builds manifests-cli, signs, and ff-pushes manifests/<cluster>; the exe locates its render worktree at .local.d/render/<cluster>"
+                      nix run .#render-manifests -- "$(params.cluster)" "$(params.node)"
+                      """)
                 })));
   }
 

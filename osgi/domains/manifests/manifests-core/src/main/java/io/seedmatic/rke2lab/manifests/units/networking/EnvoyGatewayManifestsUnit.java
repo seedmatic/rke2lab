@@ -4,6 +4,7 @@ package io.seedmatic.rke2lab.manifests.units.networking;
 import io.seedmatic.rke2lab.manifests.AbstractManifestsUnit;
 import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
 import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
+import io.seedmatic.rke2lab.manifests.contract.FloxAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.ManifestAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.ManifestLayer;
@@ -239,7 +240,12 @@ public final class EnvoyGatewayManifestsUnit extends AbstractManifestsUnit {
                 "template",
                 Map.of(
                     "metadata",
-                    Map.of("annotations", packageProfile.packageAnnotationsWithoutUpstream()),
+                    Map.of(
+                        "annotations",
+                        packageProfile.templateAnnotations(
+                            Map.of(
+                                FloxAnnotation.ENVIRONMENT.forContainer("installer"),
+                                "kube/base"))),
                     "spec",
                     Map.of(
                         "containers",
@@ -247,10 +253,14 @@ public final class EnvoyGatewayManifestsUnit extends AbstractManifestsUnit {
                             Map.of(
                                 "name",
                                 "installer",
+                                // The flox-carrier runtime (prodImage) like every rke2lab workload
+                                // —
+                                // kubectl + yq arrive via the injected kube/base env (annotation
+                                // above), not a stock alpine/k8s image.
                                 "image",
-                                "alpine/k8s:1.29.8",
+                                ManifestSynthesisContext.current().floxDebugPolicy().prodImage(),
                                 "command",
-                                List.of("sh", "/scripts/install.sh"),
+                                List.of("bash", "/scripts/install.sh"),
                                 "env",
                                 List.of(
                                     Map.of(
