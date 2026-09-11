@@ -1,0 +1,14 @@
+---
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: platform
+    io.seedmatic.rke2lab/layer: operators
+    io.seedmatic.rke2lab/package: github-token-manager
+  name: github-token-manager
+  namespace: kube-system
+spec:
+  chart: oci://ghcr.io/isometry/charts/github-token-manager
+  targetNamespace: rke2lab-system
+  version: 1.6.1
