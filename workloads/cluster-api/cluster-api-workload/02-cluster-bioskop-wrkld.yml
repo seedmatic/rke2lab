@@ -27,3 +27,4 @@ spec:
     apiGroup: infrastructure.cluster.x-k8s.io
     kind: LXCCluster
     name: bioskop-wrkld
+  paused: true
