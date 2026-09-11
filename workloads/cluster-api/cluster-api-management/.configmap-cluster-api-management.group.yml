@@ -4,6 +4,10 @@ data:
   members: |-
     v1|Namespace||rke2lab-bioskop-mgmt
     adoption.seedmatic.io/v1alpha1|ClusterAdoption|rke2lab-bioskop-mgmt|bioskop-mgmt
+    v1|Secret|rke2lab-bioskop-mgmt|bioskop-mgmt-ca
+    v1|Secret|rke2lab-bioskop-mgmt|bioskop-mgmt-cca
+    v1|Secret|rke2lab-bioskop-mgmt|bioskop-mgmt-etcd
+    v1|Secret|rke2lab-bioskop-mgmt|bioskop-mgmt-peer-etcd
     v1|Secret|rke2lab-bioskop-mgmt|bioskop-incus-identity
 kind: ConfigMap
 metadata:
