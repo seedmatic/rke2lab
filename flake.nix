@@ -30,7 +30,7 @@
             # UNSTRUCTURED, no typed CAPI/CAPRKE2/CAPN module import), so the vendor hash
             # matches. Regenerate after a go.mod change: set to lib.fakeHash, `nix build`,
             # paste the printed hash.
-            vendorHash = "sha256-TRKTDXhNP6NNtH0YNWy2tTzhZ6XeQOtgoEfPJk44Gsw=";
+            vendorHash = "sha256-tE7KeOIlejx5Jjaphouo9rgbQOsVOxjhvewZOyZw5ME=";
             subPackages = [ "cmd/rke2-adoption-controller" ];
             env.CGO_ENABLED = 0;
             ldflags = [ "-s" "-w" "-X main.version=${version}" ];
