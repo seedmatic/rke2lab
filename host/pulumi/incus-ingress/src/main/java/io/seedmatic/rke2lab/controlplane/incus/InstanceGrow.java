@@ -287,7 +287,12 @@ public final class InstanceGrow {
     return new Instance(
         "seed-instance",
         InstanceArgs.builder()
-            .name(config.nodeName())
+            // The FULL cluster-node identity (bioskop-mgmt-master), NOT the short blueprint node
+            // name (master): it must (1) be globally unique in the shared `rke2lab` incus project
+            // (two clusters would otherwise both name their control node `master` → collision), and
+            // (2) match the k8s node name (RKE2LAB_NODE_NAME = identity.nodeName(), below) so CAPN
+            // adopts by name — GetInstanceName() = the LXCMachine name = <cluster>-<node>.
+            .name(plan.identity().nodeName())
             .project(config.incusProject())
             .image(imageFingerprint)
             .profiles(profileName.applyValue(List::of))

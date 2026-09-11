@@ -12,6 +12,14 @@
     enable = true;
     role = "server";
     cni = "cilium";
+    # Disable rke2's embedded cloud-controller: we are NOT on the "rke2" cloud — every node is an
+    # incus instance under Cluster API (CAPN). Left on, the CCM stamps the node providerID
+    # `rke2://<node>` (immutable once set), which never matches the `lxc:///<node>` CAPN/CAPRKE2
+    # require for the Machine↔Node bind, AND it would try to resolve the `lxc:///` id against the
+    # rke2 cloud (fail → risk of tainting/deleting the node). The node's providerID is set instead by
+    # the kubelet `provider-id` arg (rke2lab-provider-id, mgmt nodes) or CAPN's CloudProviderNodePatch
+    # (workload nodes). kube-vip + cilium cover what the CCM would otherwise do (LB + node readiness).
+    extraFlags = [ "--disable-cloud-controller" ];
   };
 
   # R1: hold the baked rke2-server until cloud-init has laid down its config — mgmt's node.env-derived
@@ -131,6 +139,35 @@
         # devlxd per-node key (user.rke2lab.node-flox-enabled) once node roles diverge.
         # MUST match ManifestAnnotations.NODE_FLOX_RUNTIME_LABEL (the DaemonSet nodeSelectors).
         echo "  - flox.seedmatic.io/enabled=true"
+      } >"$dropin"
+    '';
+  };
+
+  # The node's providerID for Cluster API adoption. With the rke2 cloud-controller disabled (above),
+  # nothing stamps a providerID; the kubelet sets its own to `lxc:///<node>` — the SAME id the CAPN
+  # LXCMachine carries (GetExpectedProviderID), so the CAPI Machine↔Node bind succeeds. It MUST be
+  # right at first registration (Node.spec.providerID is immutable). Per-node (the name is in
+  # node.env), so a runtime drop-in like rke2lab-node-labels; a CAPRKE2 workload node (no node.env)
+  # skips this and takes its providerID from CAPN's CloudProviderNodePatch instead.
+  systemd.services.rke2lab-provider-id = {
+    description = "rke2lab kubelet provider-id drop-in (lxc:///<node> for CAPI adoption)";
+    unitConfig.ConditionPathExists = "/run/rke2lab/node.env";
+    after = [ "rke2lab-identity.service" ];
+    requires = [ "rke2lab-identity.service" ];
+    before = [ "rke2-server.service" ];
+    requiredBy = [ "rke2-server.service" ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+      EnvironmentFile = "/run/rke2lab/node.env";
+    };
+    script = ''
+      set -euo pipefail
+      dropin=/etc/rancher/rke2/config.yaml.d/40-provider-id.yaml
+      install -d -m 0755 "$(dirname "$dropin")"
+      {
+        echo "kubelet-arg:"
+        echo "  - provider-id=lxc:///''${RKE2LAB_NODE_NAME}"
       } >"$dropin"
     '';
   };

@@ -746,7 +746,6 @@ public class ClusterSeedScenario
               config.incusDefaultRemote(),
               config.incusRemoteAddress().toString(),
               config.incusConfigFolder() == null ? "" : config.incusConfigFolder().toString(),
-              config.nodeName(),
               config.profileName(),
               config.lanBridgeParent(),
               config.vmnetNetworkName());

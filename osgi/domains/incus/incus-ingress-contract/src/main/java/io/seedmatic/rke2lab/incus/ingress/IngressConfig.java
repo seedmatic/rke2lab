@@ -18,7 +18,6 @@ public record IngressConfig(
     String incusDefaultRemote,
     String incusRemoteAddress,
     String incusConfigDir,
-    String nodeName,
     String profileName,
     String lanBridgeParent,
     String vmnetNetworkName) {}
