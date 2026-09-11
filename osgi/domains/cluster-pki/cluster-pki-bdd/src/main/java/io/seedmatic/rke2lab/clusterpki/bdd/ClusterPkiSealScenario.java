@@ -8,6 +8,7 @@ import com.tngtech.jgiven.annotation.ProvidedScenarioState;
 import com.tngtech.jgiven.annotation.ScenarioState.Resolution;
 import com.tngtech.jgiven.base.ScenarioTestBase;
 import com.tngtech.jgiven.impl.Scenario;
+import io.seedmatic.rke2lab.clusterpki.contract.AdminCredentials;
 import io.seedmatic.rke2lab.clusterpki.contract.ClusterCaBundle;
 import io.seedmatic.rke2lab.clusterpki.contract.ClusterPkiCoordinate;
 import io.seedmatic.rke2lab.clusterpki.contract.ClusterPkiSealInput;
@@ -147,6 +148,12 @@ public class ClusterPkiSealScenario
     @ProvidedScenarioState(resolution = Resolution.NAME)
     Optional<SealedClusterPki> sealed = Optional.empty();
 
+    /**
+     * The kept admin credentials on a re-grow (CA not re-minted) — re-filed to converge its reach.
+     */
+    @ProvidedScenarioState(resolution = Resolution.NAME)
+    Optional<AdminCredentials> keptAdmin = Optional.empty();
+
     @ProvidedScenarioState(resolution = Resolution.NAME)
     WorkloadClusterCas workloadCas = new WorkloadClusterCas(List.of());
 
@@ -163,6 +170,14 @@ public class ClusterPkiSealScenario
           cellar.fetch(parcel, ClusterPkiCoordinate.CLUSTER_CA_BUNDLE, ClusterCaBundle.class);
       if (existing.isEmpty()) {
         this.sealed = Optional.of(seal.seal());
+      } else {
+        // CA KEPT (never re-minted — stability). Re-file the admin credentials so their reach
+        // CONVERGES to the current declaration (IN_CLUSTER): a prior grow sealed them
+        // OPERATOR_ONLY,
+        // and the keep would freeze that, so exportReaching never carries them to the branch asset
+        // and the in-cluster render drops the operator kubeconfig. Value unchanged — idempotent.
+        this.keptAdmin =
+            cellar.fetch(parcel, ClusterPkiCoordinate.ADMIN_CREDENTIALS, AdminCredentials.class);
       }
       // The workload BYO-CA sets — minted ADDITIVELY (keep the entries already sealed, mint only
       // the clusters newly appearing in workloadTargets), independent of the mgmt CA idempotency
@@ -182,6 +197,9 @@ public class ClusterPkiSealScenario
 
     @ExpectedScenarioState(resolution = Resolution.NAME)
     Optional<SealedClusterPki> sealed;
+
+    @ExpectedScenarioState(resolution = Resolution.NAME)
+    Optional<AdminCredentials> keptAdmin;
 
     @ExpectedScenarioState(resolution = Resolution.NAME)
     WorkloadClusterCas workloadCas;
@@ -211,6 +229,17 @@ public class ClusterPkiSealScenario
                 pki.clusterIssuerCa(),
                 Sensitivity.SEALED);
           });
+      // Re-grow (CA kept, sealed empty): the mint is skipped but the admin reach must still
+      // converge — re-file the kept admin credentials with the current reach so exportReaching
+      // carries them to the branch asset (the in-cluster render resolves the operator kubeconfig).
+      keptAdmin.ifPresent(
+          admin ->
+              cellar.store(
+                  parcel,
+                  ClusterPkiCoordinate.ADMIN_CREDENTIALS,
+                  admin,
+                  Sensitivity.SEALED,
+                  Reach.IN_CLUSTER));
       // The workload BYO-CA sets — SEALED (they carry the CA private keys). Filed whenever any
       // workload cluster was requested (the additive mint returns the current set); a mgmt-only run
       // returns an empty set and files nothing.

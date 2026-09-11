@@ -118,9 +118,15 @@ public class GithubAppScenario
     @As("the github app credentials are resolved")
     public When the_github_app_credentials_are_resolved(
         @Hidden Parcel parcel, @Hidden Cellar cellar, @Hidden Optional<SecretsGateway> secrets) {
-      if (cellar
-          .fetch(parcel, GhAppCoordinate.GITHUB_APP, GithubAppCredentials.class)
-          .isPresent()) {
+      // Re-file on a cellar HIT too (not a bare skip): a prior grow may have sealed these
+      // OPERATOR_ONLY, and the Then re-stores the (identical) value with the CURRENT reach
+      // (IN_CLUSTER) so the reach CONVERGES. That refreshed trail is what exportReaching carries to
+      // the branch asset — without it the reach stays frozen at the first seal and the in-cluster
+      // render never resolves the App (drops gtm + pac + githubapp). Idempotent: same value.
+      final Optional<GithubAppCredentials> existing =
+          cellar.fetch(parcel, GhAppCoordinate.GITHUB_APP, GithubAppCredentials.class);
+      if (existing.isPresent()) {
+        this.credentials = existing;
         return self();
       }
       this.credentials =
