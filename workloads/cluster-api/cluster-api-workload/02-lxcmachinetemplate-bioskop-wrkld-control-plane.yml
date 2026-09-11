@@ -21,7 +21,7 @@ spec:
         security.syscalls.intercept.bpf: "true"
         security.syscalls.intercept.bpf.devices: "true"
       image:
-        fingerprint: 0b4f83012b7c3620001fc71fc46e1346d045159110375d42986d1a654d46a0ba
+        fingerprint: e7297380cd31c8e57e6ef861fde4e3bec17cbfc0ed8420edba8b436b1788220e
       instanceType: container
       profiles:
       - rke2lab
