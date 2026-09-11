@@ -419,6 +419,10 @@
             STAGING_EXTENSION_REPO=${stagingExtensionRepoFor pkgs}
             ${mavenHostPrelude}
             ${stageFloxControllerCrds}
+            # The CRD is already staged above; tell the staging-extension's lifecycle participant to
+            # SKIP its `nix run .#stage-flox-controller-crd` (a nested nix run has no daemon/network
+            # in this sandbox). A plain `./mvnw` build has no marker, so the participant stages there.
+            export RKE2LAB_CRD_STAGED=1
             mvnHost -Dshfmt.version=${pkgs.shfmt.version} -DskipTests ${mvnArgs} clean package
           '';
 
