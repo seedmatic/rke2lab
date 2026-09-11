@@ -26,20 +26,19 @@ spec:
     script: |
       #!/usr/bin/env bash
       set -euxo pipefail
-      : "DEBUG: on any non-zero exit, hold the container open (sleep infinity) so we can kubectl exec a shell into the render pod and inspect state. Remove before this pipeline is durable — a wedged run then blocks a task slot until the TaskRun timeout."
-      trap 'rc=$?; if [ "$rc" -ne 0 ]; then echo >&2 "render: step failed (rc=$rc) — holding open for debug: kubectl -n rke2lab-system exec -it <pod> -c step-render -- bash"; sleep infinity; fi' EXIT
       : "The publish narrates live to stdout: it runs STANDALONE (not seed-master under Pulumi), so PaxLogbackConfigurer keeps its console appender on and the render/delivery logs land in this container's logs"
       GIT_AUTH_DIR="$(workspaces.basic-auth.path)"
       : "PaC mints the App token into the git_auth secret's git-provider-token key; read it RAW (not scraped from the .git-credentials URL) into RKE2LAB_PUSH_TOKEN for the ff-push (the scion reveals it in-container, ManifestSynthesisScenario.revealGithubToken) + nix + maven. Backticks, not the dollar-paren form, so Tekton does not claim the substitution as one of its own vars"
       : "The same App token authenticates .mvn/settings.xml to GitHub Packages (the env.GH_TOKEN placeholder) so the reactor resolves the private seedmatic releases java-systemd and java-bbox-api-client. Requires the App to carry packages:read"
       : "nix must authenticate its flake-input fetches: the closure pulls a PRIVATE input, seedmatic/claude-hub transitively via ndh; the flox NRI sets NIX_CONFIG but no access-tokens, so an unauthenticated github fetch 404s on the private repo. Append the App token so nix reads it AS the App. Requires PaC to scope the git_auth token to include claude-hub via secret-github-app-scope-extra-repos"
-      : "DEBUG: xtrace stays ON across the token block so we can see the extraction (is git-provider-token present, is the token empty?). This LEAKS the App token to the logs — re-enable the set +x/set -x guard before this pipeline is durable."
-      ls -la "$GIT_AUTH_DIR"
+      : "xtrace is disabled across the next block so the App token is never echoed to the logs"
+      set +x
       if [ -f "$GIT_AUTH_DIR/git-provider-token" ]; then
         export RKE2LAB_PUSH_TOKEN=`cat "$GIT_AUTH_DIR/git-provider-token"`
         export GH_TOKEN="$RKE2LAB_PUSH_TOKEN"
         export NIX_CONFIG="${NIX_CONFIG:-}"$'\n'"access-tokens = github.com=$RKE2LAB_PUSH_TOKEN"
       fi
+      set -x
       : "The maven-cache PVC is the cache ROOT: repository/ AND build-cache/ side by side. M2_REPO points at repository; the render app derives MAVEN_BUILD_CACHE from its dirname (the PVC), so the build cache persists beside the repo, making renders incremental across pushes"
       export M2_REPO="$(workspaces.maven-cache.path)/repository"
       : "Secret-full render prerequisites — fail loud with a clear message, not a downstream decode error. SOPS_AGE_KEY arrives via the git-sops env spec.inject (flox-controller webhook); the sops-yaml filter is wired by the env on-activate hook; the clone step (also on git-sops) already smudged .secrets in this shared workspace at checkout"
