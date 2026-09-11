@@ -2,8 +2,8 @@
 apiVersion: v1
 data:
   imageAlias: node-base
-  imageBuildChecksum: 152cfbac5f69fb2eb7f69d1817e4d7671d005ac216b7ecf0c36552fe60cea96d
-  imageFingerprint: f3a4c1f5d2149770c0a5e601224ebeee3ebe5a920a5ad75f56ca730028b50a84
+  imageBuildChecksum: 6843276d88643a444cdd8a38c2d003c5c153a0923a71b9ec8f45ba8208bc58e3
+  imageFingerprint: 1185e5f7e84dd0b7119daa9b50cd6cbd58e98d18e026c264cecdec743189a55f
   incusProject: rke2lab
   incusRemoteAddress: https://bioskop-nixos:8443
   rke2Version: 1.34.8+rke2r2

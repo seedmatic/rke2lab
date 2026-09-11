@@ -21,7 +21,7 @@ spec:
   controlPlaneReplicas: 1
   identitySecretName: bioskop-incus-identity
   image:
-    fingerprint: f3a4c1f5d2149770c0a5e601224ebeee3ebe5a920a5ad75f56ca730028b50a84
+    fingerprint: 1185e5f7e84dd0b7119daa9b50cd6cbd58e98d18e026c264cecdec743189a55f
   kubeVIPVersion: v0.9.2
   namespace: rke2lab-bioskop-mgmt
   rke2Version: v1.34.8+rke2r2
