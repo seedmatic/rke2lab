@@ -448,15 +448,20 @@ public final class FloxControllerManifestsUnit extends AbstractManifestsUnit {
                                       "securityContext",
                                       Map.of("privileged", true, "runAsUser", 0, "runAsGroup", 0)),
                                   Map.entry("volumeMounts", volumeMounts.toArray()),
-                                  // memory limit is generous: realising a FloxEnv runs nix on
-                                  // the node (via nsenter) — flake eval of a large lock + a
-                                  // from-scratch build of the workload closure — in THIS
-                                  // container's cgroup; 256Mi OOM-kills it (exit 137).
+                                  // Small limit: realising a FloxEnv runs the heavy nix build in a
+                                  // transient HOST cgroup (systemd-run --scope via nsenter — see
+                                  // the controller's ExecProvisioner.hostScopedCommand), bounded by
+                                  // the node's memory, NOT this cgroup. So the container only needs
+                                  // its own footprint (reconcile + webhook). Before the
+                                  // scope-escape
+                                  // the build was charged HERE and OOM-killed it (exit 137) — even
+                                  // 2Gi lost to the mesh closures; the fix is the scope, not a
+                                  // bigger limit.
                                   Map.entry(
                                       "resources",
                                       Map.of(
-                                          "requests", Map.of("cpu", "20m", "memory", "256Mi"),
-                                          "limits", Map.of("cpu", "1", "memory", "2Gi"))))
+                                          "requests", Map.of("cpu", "20m", "memory", "128Mi"),
+                                          "limits", Map.of("cpu", "1", "memory", "512Mi"))))
                             }),
                         Map.entry("restartPolicy", "Always"),
                         Map.entry("volumes", volumes.toArray()))))));
