@@ -38,14 +38,21 @@ import software.constructs.Construct;
  * ImageState#rke2Version()}, both the node-base identity the incus scion forwarded (foundation 1b).
  * So the workload boots the SAME nix-built node-base the management cluster grew on.
  *
- * <p>The CRs are NOT {@code spec.paused}: presence in {@code workloadTargets} IS the provisioning
- * trigger (add a target when ready → CAPI greenfield-creates it; remove it → Flux prunes and CAPI
- * cleans up). Paused was rejected because it is incompatible with Flux: a paused Cluster can't be
- * deleted (CAPI's Reconcile returns on the paused check BEFORE {@code reconcileDelete}, so the
- * finalizer never clears → prune deadlocks the namespace), and it never advances {@code
- * observedGeneration}/{@code Ready} → kstatus InProgress forever → {@code wait: true} wedges. The
- * workload cell instead renders un-paused with {@code wait: false} (CAPI provisioning is long +
- * async; see {@code FluxServiceKustomizationPlanner}). The worker {@code MachineDeployment} carries
+ * <p>The Cluster is currently rendered {@code spec.paused: true} — a TRANSITIONAL FREEZE. CAPN
+ * control-plane instances are CAPI-random-named and their linkage lives only in the management etcd,
+ * so a management cold-start re-provisions a fresh set and orphans the running one (a growing leak in
+ * the one {@code rke2lab} Incus project). Pausing stops CAPN reconciling the Cluster → no re-provision
+ * → the leak is capped, until the workload grow is revisited on the ADOPTION model (owned {@code
+ * Machine}/{@code LXCMachine} + {@code providerID} → the existing instances; see {@code
+ * management-workload-topology.adoc} {@code [[mgmt-adoption]]}). {@code spec.paused} is the DECLARATIVE
+ * input we author; CAPI propagates the {@code cluster.x-k8s.io/paused} annotation onto owned resources
+ * (separation of roles). This reverses the earlier no-paused stance, whose two Flux-incompatibility
+ * concerns are HANDLED here: (1) a paused Cluster never goes Ready → this cell already renders {@code
+ * wait: false} (CAPI is long+async; see {@code FluxServiceKustomizationPlanner}), so no {@code
+ * wait: true} wedge; (2) a paused Cluster can't be deleted (the finalizer never clears → prune
+ * deadlocks the namespace {@code Terminating}), so we must NOT prune it while paused — un-pause first
+ * when the adoption grow lands. Underlying trigger is still presence in {@code workloadTargets}. The
+ * worker {@code MachineDeployment} carries
  * {@code replicas: 0} (workers are a later 2.C sub-phase — a pure replica bump). The control plane
  * is {@code master + peer1 + peer2} = 3 etcd members (peer3 is dropped for workloads; a workload is
  * NOT the full CANONICAL 4-server topology).
@@ -329,6 +336,25 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
         JsonPatch.add(
             "/spec",
             Map.of(
+                // FREEZE (transitional): paused stops CAPN reconciling this Cluster, so a
+                // management
+                // cold-start no longer re-provisions a fresh (random-named) control-plane set and
+                // orphans the running one — capping the leak until the workload grow is revisited
+                // on
+                // the ADOPTION model (owned Machine/LXCMachine + providerID → existing instances;
+                // see
+                // management-workload-topology.adoc [[mgmt-adoption]]). spec.paused is the
+                // DECLARATIVE
+                // input we author; CAPI propagates the cluster.x-k8s.io/paused annotation onto
+                // owned
+                // resources (separation of roles). Safe here: the Cluster cell renders wait:false
+                // (FluxServiceKustomizationPlanner), so a never-Ready paused Cluster does not wedge
+                // its Flux Kustomization; and we must NOT prune it while paused (the finalizer
+                // would
+                // never clear → namespace Terminating) — unpause first when the adoption grow
+                // lands.
+                "paused",
+                true,
                 "clusterNetwork",
                 Map.of(
                     "pods",
