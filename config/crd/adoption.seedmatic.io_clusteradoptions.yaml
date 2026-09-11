@@ -26,6 +26,9 @@ spec:
     - jsonPath: .status.adoptedInstance
       name: Instance
       type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -165,7 +168,9 @@ spec:
                   "bioskop-mgmt-master").
                 type: string
               conditions:
-                description: Conditions follow the standard metav1.Condition contract.
+                description: |-
+                  Conditions follow the standard metav1.Condition contract — one per adoption step (see the
+                  Condition* constants), so the reconcile progress + any failure are visible per-step.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -224,8 +229,28 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              controlPlaneUID:
+                description: |-
+                  ControlPlaneUID is the observed RKE2ControlPlane UID the owned Machine's ownerRef carries —
+                  the piece GitOps could not pre-set; empty until the RCP is observable.
+                type: string
+              lastReconcileTime:
+                description: LastReconcileTime is when the controller last reconciled
+                  this ClusterAdoption.
+                format: date-time
+                type: string
+              observedGeneration:
+                description: ObservedGeneration is the spec generation this status
+                  reflects.
+                format: int64
+                type: integer
               phase:
                 description: Phase is the coarse lifecycle stage.
+                type: string
+              providerID:
+                description: |-
+                  ProviderID is the providerID the owned Machine/LXCMachine carry (e.g.
+                  "lxc:///bioskop-mgmt-master").
                 type: string
             type: object
         type: object

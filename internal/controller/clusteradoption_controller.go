@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -51,81 +52,180 @@ type ClusterAdoptionReconciler struct {
 
 // Reconcile drives one ClusterAdoption toward Adopted. Every object is created-if-absent, so a
 // re-reconcile (and a management cold-start, which wipes etcd and re-creates the CR-set) safely
-// re-adopts the SURVIVING instance by deterministic name + providerID.
+// re-adopts the SURVIVING instance by deterministic name + providerID. The step logic lives in
+// reconcileSteps; this wrapper ALWAYS persists the status afterwards — so a failure (or a wait) is
+// visible on the CR itself (`kubectl describe clusteradoption`), not only in the pod logs.
 func (r *ClusterAdoptionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
-
 	var adoption adoptionv1alpha1.ClusterAdoption
 	if err := r.Get(ctx, req.NamespacedName, &adoption); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
-	spec := adoption.Spec
+
+	result, reconcileErr := r.reconcileSteps(ctx, &adoption)
+
+	adoption.Status.ObservedGeneration = adoption.Generation
+	adoption.Status.LastReconcileTime = metav1.Now()
+	adoption.Status.Phase = r.derivePhase(&adoption, reconcileErr)
+	if statusErr := r.Status().Update(ctx, &adoption); statusErr != nil {
+		log.FromContext(ctx).Error(statusErr, "failed to update ClusterAdoption status")
+		if reconcileErr == nil {
+			reconcileErr = statusErr
+		}
+	}
+	return result, reconcileErr
+}
+
+// reconcileSteps runs the adoption flow, marking a per-step condition on the ClusterAdoption as it
+// goes (True on success, False + the error/reason on the step that stops). It mutates only status
+// conditions on `a`; the wrapper persists them.
+func (r *ClusterAdoptionReconciler) reconcileSteps(
+	ctx context.Context, a *adoptionv1alpha1.ClusterAdoption,
+) (ctrl.Result, error) {
+	spec := a.Spec
 
 	// Guard: the BYO-CA + identity Secrets are delivered by seed-master (branch, sops). CAPRKE2
 	// adopts the LIVE CA from <cluster>-{ca,cca,etcd,peer-etcd}; without them it would generate a
 	// fresh CA and the adopted apiserver would reject the minted admin cert. Wait until present.
-	if missing, err := r.materialMissing(ctx, spec); err != nil {
+	missing, err := r.materialMissing(ctx, spec)
+	if err != nil {
+		r.mark(a, adoptionv1alpha1.ConditionMaterialReady, false, "Error", err.Error())
 		return ctrl.Result{}, err
-	} else if missing != "" {
-		logger.Info("waiting for seed-master material", "missing", missing)
-		return r.setPhase(ctx, &adoption, adoptionv1alpha1.PhasePending, "", "MaterialMissing", missing)
 	}
+	if missing != "" {
+		r.mark(a, adoptionv1alpha1.ConditionMaterialReady, false, "MaterialMissing",
+			"waiting for seed-master Secret "+missing)
+		return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
+	}
+	r.mark(a, adoptionv1alpha1.ConditionMaterialReady, true, "MaterialReady",
+		"BYO-CA + identity Secrets present")
 
 	instance := spec.ClusterName + "-master"
 	providerID := "lxc:///" + instance
+	a.Status.AdoptedInstance = instance
+	a.Status.ProviderID = providerID
 
 	// 1. The infra + control-plane skeleton. The Cluster is created paused; the RKE2ControlPlane
 	//    carries the paused annotation DIRECTLY (inert from birth — no wait for CAPI to propagate
 	//    the Cluster's paused, closing the init race where the RCP would provision a random-named
 	//    control plane before the owned Machine exists).
-	if err := r.ensure(ctx, r.clusterObj(spec, true)); err != nil {
-		return ctrl.Result{}, err
+	for _, obj := range []*unstructured.Unstructured{
+		r.clusterObj(spec, true),
+		r.lxcClusterObj(spec),
+		r.lxcMachineTemplateObj(spec),
+		r.rke2ControlPlaneObj(spec, true),
+	} {
+		if err := r.ensure(ctx, obj); err != nil {
+			r.mark(a, adoptionv1alpha1.ConditionCRSetCreated, false, "Error",
+				obj.GetKind()+" "+obj.GetName()+": "+err.Error())
+			return ctrl.Result{}, err
+		}
 	}
-	if err := r.ensure(ctx, r.lxcClusterObj(spec)); err != nil {
-		return ctrl.Result{}, err
-	}
-	if err := r.ensure(ctx, r.lxcMachineTemplateObj(spec)); err != nil {
-		return ctrl.Result{}, err
-	}
-	if err := r.ensure(ctx, r.rke2ControlPlaneObj(spec, true)); err != nil {
-		return ctrl.Result{}, err
-	}
+	r.mark(a, adoptionv1alpha1.ConditionCRSetCreated, true, "Created",
+		"Cluster/LXCCluster/LXCMachineTemplate/RKE2ControlPlane ensured (paused)")
 
 	// 2. Read the RKE2ControlPlane UID — the piece GitOps cannot pre-set. The owned Machine's
 	//    ownerRef must carry it, else CAPRKE2 refuses ("mixed management mode") and never adopts.
 	rcpUID, err := r.rcpUID(ctx, spec)
 	if err != nil {
+		r.mark(a, adoptionv1alpha1.ConditionControlPlaneObserved, false, "Error", err.Error())
 		return ctrl.Result{}, err
 	}
 	if rcpUID == "" {
-		logger.Info("RKE2ControlPlane not observable yet, requeuing")
-		return r.setPhase(ctx, &adoption, adoptionv1alpha1.PhaseAdopting, instance, "AwaitingControlPlane",
-			"RKE2ControlPlane UID not yet observable")
+		r.mark(a, adoptionv1alpha1.ConditionControlPlaneObserved, false, "AwaitingControlPlane",
+			"RKE2ControlPlane UID not observable yet")
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
+	a.Status.ControlPlaneUID = string(rcpUID)
+	r.mark(a, adoptionv1alpha1.ConditionControlPlaneObserved, true, "Observed",
+		"RKE2ControlPlane UID "+string(rcpUID))
 
 	// 3. The adopted pair: the bootstrap sentinel (marks the Machine already-bootstrapped so CAPI
 	//    never re-bootstraps the running node), the concrete LXCMachine (providerID → CAPN adopts
 	//    the existing instance), and the OWNED control-plane Machine (ownerRef=RCP UID).
-	if err := r.ensure(ctx, r.bootstrapSecretObj(spec)); err != nil {
-		return ctrl.Result{}, err
+	for _, obj := range []*unstructured.Unstructured{
+		r.bootstrapSecretObj(spec),
+		r.lxcMachineObj(spec, providerID),
+		r.machineObj(spec, providerID, rcpUID),
+	} {
+		if err := r.ensure(ctx, obj); err != nil {
+			r.mark(a, adoptionv1alpha1.ConditionMachineCreated, false, "Error",
+				obj.GetKind()+" "+obj.GetName()+": "+err.Error())
+			return ctrl.Result{}, err
+		}
 	}
-	if err := r.ensure(ctx, r.lxcMachineObj(spec, providerID)); err != nil {
-		return ctrl.Result{}, err
-	}
-	if err := r.ensure(ctx, r.machineObj(spec, providerID, rcpUID)); err != nil {
-		return ctrl.Result{}, err
-	}
+	r.mark(a, adoptionv1alpha1.ConditionMachineCreated, true, "Created",
+		"owned Machine + LXCMachine(providerID) + bootstrap sentinel ensured")
 
 	// 4. Unpause: the owned Machine now exists, so on unpause the RCP counts it (numMachines ==
 	//    replicas → no init) and CAPN adopts the instance (providerID + existing instance). Clear
 	//    the RCP paused annotation and the Cluster's spec.paused.
 	if err := r.unpause(ctx, spec); err != nil {
+		r.mark(a, adoptionv1alpha1.ConditionUnpaused, false, "Error", err.Error())
 		return ctrl.Result{}, err
 	}
+	r.mark(a, adoptionv1alpha1.ConditionUnpaused, true, "Unpaused",
+		"RKE2ControlPlane + Cluster un-paused — CAPRKE2 adopts the owned Machine, CAPN the instance")
 
-	logger.Info("adoption reconciled", "cluster", spec.ClusterName, "instance", instance)
-	return r.setPhase(ctx, &adoption, adoptionv1alpha1.PhaseAdopted, instance, "Adopted",
-		"CR-set created; owned Machine bound to the running instance; unpaused")
+	log.FromContext(ctx).Info("adoption reconciled", "cluster", spec.ClusterName, "instance", instance)
+	return ctrl.Result{}, nil
+}
+
+// mark sets one step condition on the ClusterAdoption (True on success, False otherwise).
+func (r *ClusterAdoptionReconciler) mark(
+	a *adoptionv1alpha1.ClusterAdoption, condType string, ok bool, reason, message string,
+) {
+	status := metav1.ConditionFalse
+	if ok {
+		status = metav1.ConditionTrue
+	}
+	setCondition(&a.Status.Conditions, metav1.Condition{
+		Type:               condType,
+		Status:             status,
+		Reason:             reason,
+		Message:            message,
+		LastTransitionTime: metav1.Now(),
+		ObservedGeneration: a.Generation,
+	})
+}
+
+// derivePhase rolls the per-step conditions (+ the reconcile error) into the coarse phase and the
+// summary Ready condition.
+func (r *ClusterAdoptionReconciler) derivePhase(
+	a *adoptionv1alpha1.ClusterAdoption, reconcileErr error,
+) adoptionv1alpha1.ClusterAdoptionPhase {
+	if reconcileErr != nil {
+		r.mark(a, adoptionv1alpha1.ConditionReady, false, "ReconcileError", reconcileErr.Error())
+		return adoptionv1alpha1.PhaseFailed
+	}
+	steps := []string{
+		adoptionv1alpha1.ConditionMaterialReady,
+		adoptionv1alpha1.ConditionCRSetCreated,
+		adoptionv1alpha1.ConditionControlPlaneObserved,
+		adoptionv1alpha1.ConditionMachineCreated,
+		adoptionv1alpha1.ConditionUnpaused,
+	}
+	for _, step := range steps {
+		if !conditionTrue(a.Status.Conditions, step) {
+			if !conditionTrue(a.Status.Conditions, adoptionv1alpha1.ConditionMaterialReady) {
+				r.mark(a, adoptionv1alpha1.ConditionReady, false, "Pending", "waiting for material")
+				return adoptionv1alpha1.PhasePending
+			}
+			r.mark(a, adoptionv1alpha1.ConditionReady, false, "Adopting", "adoption in progress")
+			return adoptionv1alpha1.PhaseAdopting
+		}
+	}
+	r.mark(a, adoptionv1alpha1.ConditionReady, true, "Adopted",
+		"CR-set created; owned Machine created; un-paused")
+	return adoptionv1alpha1.PhaseAdopted
+}
+
+func conditionTrue(conditions []metav1.Condition, condType string) bool {
+	for i := range conditions {
+		if conditions[i].Type == condType {
+			return conditions[i].Status == metav1.ConditionTrue
+		}
+	}
+	return false
 }
 
 // materialMissing returns the name of the first required seed-master Secret that is absent, or ""
@@ -212,35 +312,6 @@ func (r *ClusterAdoptionReconciler) unpause(ctx context.Context, spec adoptionv1
 		}
 	}
 	return nil
-}
-
-func (r *ClusterAdoptionReconciler) setPhase(
-	ctx context.Context,
-	adoption *adoptionv1alpha1.ClusterAdoption,
-	phase adoptionv1alpha1.ClusterAdoptionPhase,
-	instance, reason, message string,
-) (ctrl.Result, error) {
-	adoption.Status.Phase = phase
-	adoption.Status.AdoptedInstance = instance
-	meta := metav1.Condition{
-		Type:               "Adopted",
-		Status:             metav1.ConditionFalse,
-		Reason:             reason,
-		Message:            message,
-		LastTransitionTime: metav1.Now(),
-		ObservedGeneration: adoption.Generation,
-	}
-	if phase == adoptionv1alpha1.PhaseAdopted {
-		meta.Status = metav1.ConditionTrue
-	}
-	setCondition(&adoption.Status.Conditions, meta)
-	if err := r.Status().Update(ctx, adoption); err != nil {
-		return ctrl.Result{}, err
-	}
-	if phase == adoptionv1alpha1.PhaseAdopted {
-		return ctrl.Result{}, nil
-	}
-	return ctrl.Result{Requeue: true}, nil
 }
 
 func setCondition(conditions *[]metav1.Condition, cond metav1.Condition) {
@@ -359,10 +430,12 @@ func (r *ClusterAdoptionReconciler) machineObj(spec adoptionv1alpha1.ClusterAdop
 			// re-bootstraps the already-running node (verified against the core Machine controller).
 			"dataSecretName": spec.ClusterName + "-adopted-bootstrap",
 		},
+		// CAPI v1beta2 contract ref: {apiGroup, kind, name} — NOT apiVersion (the v1beta1 shape,
+		// which the Machine webhook rejects as "spec.infrastructureRef.apiGroup: Required value").
 		"infrastructureRef": map[string]any{
-			"apiVersion": gvkLXCMachine.GroupVersion().String(),
-			"kind":       gvkLXCMachine.Kind,
-			"name":       spec.ClusterName + "-master",
+			"apiGroup": gvkLXCMachine.Group,
+			"kind":     gvkLXCMachine.Kind,
+			"name":     spec.ClusterName + "-master",
 		},
 	}
 	return obj

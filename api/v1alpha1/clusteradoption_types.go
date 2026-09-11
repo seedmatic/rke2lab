@@ -88,6 +88,26 @@ const (
 	// PhaseAdopted — the control plane is adopted (the Machine has a NodeRef / providerID
 	// bound) and the Cluster is unpaused.
 	PhaseAdopted ClusterAdoptionPhase = "Adopted"
+	// PhaseFailed — a reconcile step errored; see the conditions for which and why.
+	PhaseFailed ClusterAdoptionPhase = "Failed"
+)
+
+// The condition types the reconciler reports, one per step of the adoption flow — so `kubectl
+// describe clusteradoption` shows exactly HOW FAR the reconcile got and WHERE it stopped. Each is
+// set True on success, False (with a reason + the error message) on the step that failed.
+const (
+	// ConditionMaterialReady — the seed-master-delivered BYO-CA + identity Secrets are present.
+	ConditionMaterialReady = "MaterialReady"
+	// ConditionCRSetCreated — the Cluster/LXCCluster/LXCMachineTemplate/RKE2ControlPlane exist.
+	ConditionCRSetCreated = "CRSetCreated"
+	// ConditionControlPlaneObserved — the RKE2ControlPlane UID (for the Machine ownerRef) was read.
+	ConditionControlPlaneObserved = "ControlPlaneObserved"
+	// ConditionMachineCreated — the owned Machine + concrete LXCMachine(providerID) + sentinel exist.
+	ConditionMachineCreated = "MachineCreated"
+	// ConditionUnpaused — the RKE2ControlPlane + Cluster were un-paused (adoption released).
+	ConditionUnpaused = "Unpaused"
+	// ConditionReady — a roll-up: every step above succeeded this reconcile.
+	ConditionReady = "Ready"
 )
 
 // ClusterAdoptionStatus records what the controller observed.
@@ -96,12 +116,31 @@ type ClusterAdoptionStatus struct {
 	// +optional
 	Phase ClusterAdoptionPhase `json:"phase,omitempty"`
 
+	// ObservedGeneration is the spec generation this status reflects.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
 	// AdoptedInstance is the instance name the owned Machine binds (e.g.
 	// "bioskop-mgmt-master").
 	// +optional
 	AdoptedInstance string `json:"adoptedInstance,omitempty"`
 
-	// Conditions follow the standard metav1.Condition contract.
+	// ProviderID is the providerID the owned Machine/LXCMachine carry (e.g.
+	// "lxc:///bioskop-mgmt-master").
+	// +optional
+	ProviderID string `json:"providerID,omitempty"`
+
+	// ControlPlaneUID is the observed RKE2ControlPlane UID the owned Machine's ownerRef carries —
+	// the piece GitOps could not pre-set; empty until the RCP is observable.
+	// +optional
+	ControlPlaneUID string `json:"controlPlaneUID,omitempty"`
+
+	// LastReconcileTime is when the controller last reconciled this ClusterAdoption.
+	// +optional
+	LastReconcileTime metav1.Time `json:"lastReconcileTime,omitempty"`
+
+	// Conditions follow the standard metav1.Condition contract — one per adoption step (see the
+	// Condition* constants), so the reconcile progress + any failure are visible per-step.
 	// +optional
 	// +listType=map
 	// +listMapKey=type
@@ -114,6 +153,7 @@ type ClusterAdoptionStatus struct {
 // +kubebuilder:printcolumn:name="Cluster",type=string,JSONPath=`.spec.clusterName`
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Instance",type=string,JSONPath=`.status.adoptedInstance`
+// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // ClusterAdoption is the request to adopt one running RKE2-on-Incus control plane into CAPI.
