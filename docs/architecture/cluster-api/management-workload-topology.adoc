@@ -24,10 +24,12 @@ We run *three* Kubernetes clusters across *two* bare-metal hosts:
 * two *workload clusters* — one per bare-metal host — each a full HA control plane
   (master + peer1 + peer2 = three etcd members) plus workers, running the application stack.
 
-The management cluster **greenfield-creates** the workload clusters. It never scales itself,
-never adopts an externally-bootstrapped node, and holds no application workloads. This is the
-textbook Cluster API management/workload split, and it is what makes the whole design tractable
-(see <<why-separation>>).
+The management cluster **greenfield-creates** the workload clusters. It never scales itself into a
+multi-node cluster, never adopts a FOREIGN node into a workload fleet, and holds no application
+workloads. This is the textbook Cluster API management/workload split, and it is what makes the whole
+design tractable (see <<why-separation>>). (It MAY, separately, have its OWN single Pulumi-bootstrapped
+node described-and-adopted by CAPI — the Pulumi→CAPI handoff, <<mgmt-adoption>> — which is ownership of
+its own node, not adoption of a foreign one.)
 
 == System context (C4 L1 — context)
 
@@ -293,10 +295,12 @@ reason is structural, verified against CAPRKE2 `v0.24.4`:
 * `RKE2ControlPlane` **owns** the whole control plane. Its `initializeControlPlane` counts only
   the machines it owns; a nix-seeded master is invisible to it, so it would `cluster-init` a
   *second*, separate cluster with a fresh CA.
-* There is no adopt/join-existing field — `reconcileNormal` has no `adoptMachines` (unlike
+* There is no mixed-mode adopt field — `reconcileNormal` has no `adoptMachines` (unlike
   KubeadmControlPlane) and outright *refuses* to operate in "mixed management mode" if any
   control-plane machine is not owned by it. `RegistrationMethod` only selects which address the
-  replicas use; it is not a way to join a foreign cluster.
+  replicas use; it is not a way to join a foreign cluster. (Adoption does not need such a field: it
+  constructs the OWNED `Machine`/`LXCMachine` up front with a matching `providerID`, so there is no
+  foreign machine to "join" — see <<mgmt-adoption>>.)
 * The standalone `RKE2Config` bootstrap carries `agentConfig` only (no `serverConfig`), so a bare
   `Machine` bootstraps an *agent*, never an etcd-member server.
 
@@ -304,15 +308,22 @@ reason is structural, verified against CAPRKE2 `v0.24.4`:
 [WARNING]
 ====
 Do not point an `RKE2ControlPlane` at a cluster whose first node was bootstrapped outside CAPI
-expecting it to "add peers". It will either refuse (mixed-mode) or initialise a rival control
-plane. Adopting an external master is manual surgery (hand-built owned `Machine` + `LXCMachine`
-with a matching `providerID`, a satisfied bootstrap, and pre-seeded cert Secrets) with no
-turnkey path.
+expecting it to "add peers" via *mixed-mode*. With an UN-owned foreign master it will either refuse
+(mixed-mode) or initialise a rival control plane.
+
+This is NOT the same as *adoption*. Adoption builds an OWNED `Machine` + `LXCMachine` whose
+`providerID` matches the already-running instance, with a satisfied bootstrap and pre-seeded cert
+Secrets — so `RKE2ControlPlane` counts it as one of ITS OWN machines (clean init path), never a
+foreign one. Adoption is a first-class, *supported* CAPN path, not surgery to avoid — see
+<<mgmt-adoption>>. The recipe (owned CRs + matching `providerID` + bootstrap-done + certs) is exactly
+what the render already derives from the blueprint SSOT, so it is *automatable*, not hand-built.
 ====
 
-Greenfield creation from a *separate* management cluster sidesteps all of this: `RKE2ControlPlane`
-is on its clean init path, and the management cluster's own single node is never something CAPI
-has to manage.
+Greenfield creation from a *separate* management cluster keeps `RKE2ControlPlane` on its clean init
+path. But that is not the only way the management cluster's own node can be CAPI-represented:
+adoption (<<mgmt-adoption>>) lets a management cluster ALSO be described-and-owned by CAPI without a
+rival control plane — the Pulumi bootstrap and the CAPI target are two phases of ONE handoff, not
+rivals.
 
 [[mgmt-declarative-mirror]]
 == The management cluster's own declarative mirror (planned)
@@ -342,32 +353,141 @@ identity — exactly as the workload CRs are already derived, never hand-authore
 structurally impossible.
 ====
 
+[[mgmt-adoption]]
+== Adoption — the Pulumi→CAPI handoff (the render owns it)
+
+Pulumi has ALWAYS been the *bootstrap* tool, with in-cluster CAPI/CAPN as the *target* authority.
+The descriptive mirror (<<mgmt-declarative-mirror>>) records the fleet but never actuates; *adoption*
+is the mirror made REAL — CAPI/CAPN takes ownership of the already-running instances a bootstrap
+produced, WITHOUT re-provisioning them. It is the completion of a handoff, not a rival to Pulumi.
+
+.The motivating defect — CAPN instances leak on every management cold-start
+[NOTE]
+====
+CAPN control-plane machines are named by CAPI (`RKE2ControlPlane` → `Machine`
+`<cluster>-control-plane-<random>`), and the `Machine`↔instance linkage lives ONLY in the management
+cluster's etcd. A management cold-start (`pulumi destroy` + recreate) (a) wipes that etcd — the
+linkage is lost — and (b) the fresh CAPI mints NEW random names, so it cannot recognise the
+still-running old instances (different names) and provisions a fresh set. The orphaned old instances
+accumulate in the one `rke2lab` Incus project on every cold-start. Adoption is the fix: recognise +
+re-own the survivors instead of re-creating.
+====
+
+*How CAPN adoption works (verified against `cluster-api-provider-incus`).* The `LXCMachine`
+controller's reconcile (`internal/controller/lxcmachine/controller_normal.go`) branches on
+`spec.providerID`:
+
+* `providerID` PRE-SET → it calls `GetInstanceState(GetInstanceName())`; if the instance EXISTS it
+  ADOPTS it (no launch), if "Instance not found" it marks the machine deleted.
+* `providerID` empty → it `launchInstance(...)` (creates), then sets
+  `providerID = GetExpectedProviderID()`.
+
+The identity is name-derived, with NO override field:
+
+[source,go]
+----
+func (c *LXCMachine) GetInstanceName() string       { return c.Name }                       // = the LXCMachine object name
+func (c *LXCMachine) GetExpectedProviderID() string  { return fmt.Sprintf("lxc:///%s", c.GetInstanceName()) }
+----
+
+So adoption requires TWO things, together: a `LXCMachine` whose NAME matches the surviving instance,
+and a PRE-SET `providerID` (`lxc:///<name>`). This is exactly the "owned `Machine`/`LXCMachine` with a
+matching `providerID` + satisfied bootstrap + pre-seeded certs" the <<why-separation>> warning called
+"manual surgery" — but it is a supported reconcile path, and the render already derives all of it from
+the blueprint SSOT, so it is *rendered*, not hand-built.
+
+[mermaid]
+....
+sequenceDiagram
+    actor Op as Operator
+    participant Pulumi as Pulumi (bootstrap)
+    participant Incus
+    participant Render as seed-master render
+    participant CAPN as CAPI/CAPN (in-cluster)
+    Op->>Pulumi: cold-start (destroy + recreate)
+    Note over Incus: workload VMs SURVIVE (autonomous)<br/>mgmt etcd is wiped
+    Pulumi->>Incus: recreate bioskop-mgmt-master<br/>(deterministic name, adopt-by-omission)
+    Pulumi->>Render: grow → render
+    Render->>Incus: enumerate surviving <cluster>-* instances
+    Render->>CAPN: emit adoption CRs (owned Machine/LXCMachine,<br/>providerID=lxc:///<name>, bootstrap-done, certs)
+    CAPN->>Incus: GetInstanceState(GetInstanceName())
+    Incus-->>CAPN: instance FOUND
+    CAPN->>CAPN: ADOPT (no launch) — reconstruct from survivors
+    Note over CAPN,Incus: no re-provision, no orphan/leak
+....
+
+.State is RECONSTRUCTED at bootstrap, not persisted in etcd — this dissolves the self-management paradox
+[IMPORTANT]
+====
+A cold-start does not need the CAPI object graph to have SURVIVED (it lives in the wiped etcd). It
+re-derives it from three things that DO survive: (1) the running Incus **instances** (they outlive the
+management cluster; enumerable at grow); (2) the **PKI**, already persisted (cluster-issuer + BYO-CA +
+identity ride the `Reach.IN_CLUSTER` branch asset and the NODE_BOOTSTRAP lane — see the reach
+mechanism); (3) the **deterministic blueprint** topology. The grow re-renders the adoption CRs
+(owned + `providerID` → survivors + bootstrap-done) and CAPN RE-ADOPTS. No `clusterctl move`/pivot, no
+durable etcd — a re-bootstrap simply re-adopts.
+====
+
+.Pilot on the management cluster first — one deterministic node, no ordinal problem
+[TIP]
+====
+The management master is a SINGLE node with a DETERMINISTIC name (`bioskop-mgmt-master`, from the
+blueprint, Pulumi-created). Rendering one `LXCMachine` named `bioskop-mgmt-master` +
+`providerID: lxc:///bioskop-mgmt-master` + bootstrap-done makes `GetInstanceName()` match the running
+instance → CAPN adopts it with NO ordinal problem. It proves the whole mechanism (+ the handoff) on the
+simplest, most-controlled case before the workload.
+
+The WORKLOAD is the harder case: a 3-replica control plane needs stable, DISTINCT per-replica names
+(`-master`/`-peer1`/`-peer2`) for `GetInstanceName()` to match each survivor — but `RKE2ControlPlane`
+churns random-named machines (cattle), and `machineNamingStrategy` has no stable ordinal for a control
+plane. Resolving that (deterministic per-replica CP names, or pre-creating owned `LXCMachine`s from the
+enumerated survivors) is the workload follow-up.
+====
+
+[NOTE]
+.Why not k0smotron (hosted control planes)
+====
+k0smotron's model runs the control plane as PODS in the management cluster. That would put the
+workload's control plane INSIDE the on-demand management cluster — a management cold-start would then
+take the workload's control plane with it, INVERTING the coupling this whole topology is built to avoid
+(<<operating-model>>: workload always-live, management on-demand). It is also k0s, not RKE2 (our whole
+nix node-base + CAPRKE2 stack). We used k0smotron only as a REFERENCE for the adoption RECIPE
+(pre-set `providerID` + bootstrap-done + paused-during-handshake); CAPN implements that recipe natively,
+so we keep CAPN + RKE2 and adopt our own autonomous VM instances.
+====
+
 [[mgmt-self-hosted-hypothesis]]
-== Hypothetical direction — a CAPI-native cold-start (self-hosted via bootstrap → pivot)
+== Self-hosting via adoption — the direction (no ephemeral bootstrap needed)
 
-WARNING: This is an EXPLORATORY direction, NOT a plan and NOT shipped. It is recorded so the option is not
-re-discovered from scratch. It revisits <<seeding-management>> and must clear the caveats below before it
-could be considered.
+WARNING: The adoption MECHANISM is confirmed (<<mgmt-adoption>>); the self-hosted END-STATE (the management
+cluster reconciling its OWN control plane) is NOT shipped and is gated by the steady-state caveat below.
+Recorded so the direction is not re-discovered from scratch.
 
-The mirror above is descriptive; the ambitious end-state makes it REAL. Instead of seed-master nix-seeding
-the management cluster forever, an *ephemeral* CAPI bootstrap cluster (kind-like) would GREENFIELD-create the
-management cluster — the clean `RKE2ControlPlane` init path <<why-separation>> says "sidesteps all of this" —
-then `clusterctl move` (pivot) would transfer the management cluster's own CRs INTO it, and the management
-cluster would self-host (manage itself + all workloads). The bootstrap cluster's sole role is to birth the
-management cluster, then it is discarded. This is the canonical CAPI answer to the chicken-and-egg that
-<<seeding-management>> currently resolves by keeping the seed-master nix-seed load-bearing.
+The mirror is descriptive; adoption (<<mgmt-adoption>>) makes it REAL — self-hosting is the end-state where
+the management cluster's OWN CAPI owns the instances it runs on. *Adoption ERASES the need for the canonical
+ephemeral-bootstrap + `clusterctl move` (pivot) dance for bootstrap and cold-start.* That dance existed to
+solve the chicken-and-egg — you need a CAPI management cluster to CREATE one — but Pulumi already births the
+master WITHOUT CAPI, and adoption RECONSTRUCTS the CAPI graph at bootstrap from the survivors + persisted PKI
++ blueprint (<<mgmt-adoption>>). So the existing Pulumi bootstrap + a rendered adoption IS the handoff:
+Pulumi births the master, the render adopts it into CAPI, a cold-start RE-ADOPTS. No ephemeral kind cluster,
+no pivot for bootstrap. The ONLY residual use of a temporary bootstrap is the narrow steady-state
+CP-surgery mitigation below — a different, rare operation, not the cold-start path.
 
 Caveats that gate it:
 
-* *The self-management paradox.* A self-hosted management cluster reconciles the control plane it RUNS ON.
-  Control-plane-replacing operations (RKE2 upgrade, machine replacement, etcd rotation) can self-destruct.
-  Standard mitigation: pivot OUT to a temporary bootstrap cluster for those operations (then re-pivot), or
-  pause the self-`Cluster`. Must be designed explicitly.
+* *The self-management paradox — but only its steady-state half now.* A self-hosted management cluster
+  reconciles the control plane it RUNS ON, so control-plane-replacing operations (RKE2 upgrade, machine
+  replacement, etcd rotation) can self-destruct. The COLD-START half of the paradox is dissolved by
+  adoption's reconstruct-don't-persist model (a wiped management etcd is re-adopted, not lost); what
+  remains is the steady-state self-mutation risk. Mitigation: pivot OUT to a temporary bootstrap for
+  those specific operations (then re-adopt), never a permanently-paused self-`Cluster` (paused is
+  Flux-incompatible — see the workload CR-set's no-`spec.paused` finding). Must be designed explicitly.
 * *The nix floor remains.* The incus host (`bioskop-nixos`) is nix/operator-provisioned, not CAPI. "Self
   managed" covers the k8s/LXC layer only; there is always an operator base under it.
-* *Grow-then-pivot, not grow-eliminated.* Cold start still needs the management cluster to EXIST before it
-  can self-manage; the ephemeral bootstrap does the initial greenfield, then hands over. It relocates the
-  seed-master role (to running the ephemeral bootstrap + provisioning the incus host), it does not remove it.
+* *Grow-then-adopt, not grow-eliminated.* Cold start still needs the management master to EXIST before CAPI
+  can own it — Pulumi/nix births it (the nix floor), then the render adopts the k8s/LXC layer on top. This
+  does NOT introduce an ephemeral bootstrap and does NOT relocate the seed-master role: Pulumi stays the
+  bootstrap exactly as before, adoption just completes the handoff to in-cluster CAPI afterwards.
 
 [[operating-model]]
 == Operating model — GitOps pull, management on demand
