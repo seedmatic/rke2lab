@@ -11,6 +11,11 @@ spec:
       name: sops-age
   dependsOn:
   - name: networking-cilium-advanced
+  - name: runtime-flox-controller-crds
+  - name: runtime-flox-controller-operators
+  - name: runtime-flox-controller-workloads
+  - name: runtime-flox-webhook-operators
+  - name: runtime-flox-webhook-workloads
   force: true
   interval: 5m
   path: ./operators/networking/envoy-gateway

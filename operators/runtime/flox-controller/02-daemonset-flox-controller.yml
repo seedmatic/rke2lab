@@ -45,19 +45,13 @@ spec:
           value: /run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/usr/bin:/bin
         - name: CONTAINERD_ADDRESS
           value: /run/k3s/containerd/containerd.sock
-        - name: NIX_CONFIG
-          value: print-build-logs = true
+        - name: GITHUB_ACCESS_TOKEN_FILE
+          value: /var/run/flox/github-token/token
         - name: FLOX_FLOXHUB_TOKEN
           valueFrom:
             secretKeyRef:
               key: token
               name: floxhub-token
-              optional: true
-        - name: GITHUB_ACCESS_TOKEN
-          valueFrom:
-            secretKeyRef:
-              key: token
-              name: github-token
               optional: true
         image: io.seedmatic.flox-controller:0.0.0-develop
         imagePullPolicy: IfNotPresent
@@ -87,6 +81,9 @@ spec:
         - mountPath: /tmp/k8s-webhook-server/serving-certs
           name: webhook-certs
           readOnly: true
+        - mountPath: /var/run/flox/github-token
+          name: github-token
+          readOnly: true
       hostPID: true
       nodeSelector:
         flox.seedmatic.io/enabled: "true"
@@ -110,6 +107,10 @@ spec:
       - name: webhook-certs
         secret:
           secretName: flox-controller-webhook-tls
+      - name: github-token
+        secret:
+          optional: true
+          secretName: github-token
   updateStrategy:
     rollingUpdate:
       maxUnavailable: 1

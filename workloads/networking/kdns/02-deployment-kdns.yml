@@ -37,11 +37,6 @@ spec:
     spec:
       containers:
       - command:
-        - flox
-        - activate
-        - --dir
-        - /root
-        - --
         - kdns
         env:
         - name: KUBERNETES_SERVICE_HOST

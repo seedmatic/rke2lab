@@ -14,11 +14,12 @@ spec:
   - name: revision
     type: string
   steps:
-  - image: alpine/git:2.45.2
+  - image: rke2lab/flox-carrier:0.1.0
     name: clone
-    script: |-
+    script: |
       #!/bin/sh
-      set -eu
+      set -eux
+      : "PaC's git_auth_secret ships .gitconfig + .git-credentials; adopt them so the clone authenticates as the App without embedding a token in the URL"
       if [ -f "$(workspaces.basic-auth.path)/.git-credentials" ]; then
         cp "$(workspaces.basic-auth.path)/.git-credentials" "$HOME/.git-credentials"
         cp "$(workspaces.basic-auth.path)/.gitconfig" "$HOME/.gitconfig"

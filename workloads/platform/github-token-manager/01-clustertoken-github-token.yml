@@ -15,5 +15,8 @@ spec:
     metadata: read
   refreshInterval: 45m
   secret:
+    annotations:
+      replicator.v1.mittwald.de/replication-allowed: "true"
+      replicator.v1.mittwald.de/replication-allowed-namespaces: rke2lab-system
     name: github-token
-    namespace: rke2lab-system
+    namespace: rke2lab-secrets

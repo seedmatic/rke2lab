@@ -13,20 +13,21 @@ spec:
   template:
     metadata:
       annotations:
+        flox.seedmatic.io/environment.installer: kube/base
         io.seedmatic.rke2lab/domain: networking
         io.seedmatic.rke2lab/layer: operators
         io.seedmatic.rke2lab/package: envoy-gateway
     spec:
       containers:
       - command:
-        - sh
+        - bash
         - /scripts/install.sh
         env:
         - name: ENVOY_GATEWAY_VERSION
           value: v1.9.0
         - name: ENVOY_GATEWAY_NAMESPACE
           value: envoy-gateway-system
-        image: alpine/k8s:1.29.8
+        image: rke2lab/flox-carrier:0.1.0
         name: installer
         resources:
           limits:

@@ -10,7 +10,20 @@ metadata:
 spec:
   consumption: overlay
   folder: toolchains
+  inject:
+  - name: SOPS_AGE_KEY
+    secretKeyRef:
+      key: age.agekey
+      name: sops-age
+      optional: true
   manifest:
+    hook:
+      on-activate: |
+        if [ -f "$FLOX_ENV/sops" ]; then
+          git config --global include.path "$FLOX_ENV/sops"
+        else
+          echo >&2 "git-sops: include $FLOX_ENV/sops not found — sops-yaml filter NOT wired"
+        fi
     install:
       bash:
         outputs: all

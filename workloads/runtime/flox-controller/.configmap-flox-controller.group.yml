@@ -9,6 +9,7 @@ data:
     rbac.authorization.k8s.io/v1|ClusterRoleBinding||flox-controller
     apps/v1|DaemonSet|rke2lab-system|flox-controller
     v1|Secret|rke2lab-system|floxhub-token
+    v1|Secret|rke2lab-system|github-token
 kind: ConfigMap
 metadata:
   annotations:

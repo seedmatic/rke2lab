@@ -17,11 +17,6 @@ spec:
     spec:
       containers:
       - command:
-        - flox
-        - activate
-        - --dir
-        - /root
-        - --
         - bash
         - -c
         - |
