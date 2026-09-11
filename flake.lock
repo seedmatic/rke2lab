@@ -281884,6 +281884,33 @@
         "type": "github"
       }
     },
+    "rke2-adoption-controller": {
+      "inputs": {
+        "flake-commons": [
+          "flake-commons"
+        ],
+        "flake-utils": [
+          "flake-utils"
+        ],
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1789160143,
+        "narHash": "sha256-q6DcDbHJ8DjEDNdDdP6pLlQ5iLobnaIue54qPUjxcgg=",
+        "owner": "seedmatic",
+        "repo": "rke2lab",
+        "rev": "54406f84953ddbc5c7132ddce37ec0c5a11c1dc4",
+        "type": "github"
+      },
+      "original": {
+        "owner": "seedmatic",
+        "ref": "rke2-adoption-controller",
+        "repo": "rke2lab",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
         "flake-commons": "flake-commons",
@@ -281902,6 +281929,7 @@
           "flake-commons",
           "nixpkgs"
         ],
+        "rke2-adoption-controller": "rke2-adoption-controller",
         "sops-nix": [
           "flake-commons",
           "sops-nix"

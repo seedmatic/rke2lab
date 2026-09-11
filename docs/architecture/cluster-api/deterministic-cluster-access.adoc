@@ -386,6 +386,28 @@ input carrying the workload cluster names:
   four Secrets onto the durable `NODE_BOOTSTRAP` lane (a real CA private key — never on the
   Flux-reconciled branch; a secret-blind in-cluster render finds nothing and omits them).
 
+=== The management cluster — the SAME delivery, for adoption
+
+The management cluster is adopted into CAPI in-cluster (see
+xref:management-workload-topology.adoc[the topology doc] `[[mgmt-adoption]]`): the
+`rke2-adoption-controller` creates the CAPI CR-set describing the RUNNING control plane, and CAPRKE2
+adopts it only if it finds the four `<mgmt>-{ca,cca,etcd,peer-etcd}` BYO-CA Secrets carrying the
+cluster's *LIVE* CA — the very CA the running apiserver issues from, or the minted admin cert is
+rejected. That CA is the mgmt cluster's own node bundle (`CLUSTER_CA_BUNDLE`), which is already
+minted at seal but stored only as the node's sops blob (decrypted node-side). So a second,
+render-usable form is filed alongside it:
+
+* *Seal.* the seal builds a `ManagementClusterCa` record (the four pairs from the same node bundle,
+  the LIVE CA) and files it SEALED, reach `IN_CLUSTER`, under
+  `ClusterPkiCoordinate.MANAGEMENT_CLUSTER_CAS` — re-filed on a keep so a re-grow converges its
+  reach. It is the sibling of `CLUSTER_CA_BUNDLE`: same material, one as the node's sops blob, this
+  as the render-usable pairs.
+* *Reveal.* `ManifestSynthesisScenario` reveals it into the manifests-side mirror
+  `ManagementClusterCaMaterial` (same blind-mirror discipline as `WorkloadClusterCasMaterial`).
+* *Render.* `ClusterApiManagementManifestsUnit` renders the four BYO-CA Secrets on the branch
+  (sops-encrypted — Flux needs them to reconcile the adopted cluster), NAMELESS at the seal: the
+  render owns the mgmt cluster name (`bootstrapIdentity`), which the seal does not hold.
+
 === The CAPN provider identity — a sibling MANDATORY seal
 
 The workload's CA is not the only credential its birth needs: CAPN (the in-cluster incus provider)

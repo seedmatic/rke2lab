@@ -72,6 +72,17 @@
     flox-controller.inputs.flake-utils.follows = "flake-utils";
     flox-controller.inputs.flake-commons.follows = "flake-commons";
 
+    # The rke2-adoption-controller flake owns the ClusterAdoption CRD + the in-cluster
+    # controller that adopts running RKE2-on-Incus control planes into CAPI (Pulumi
+    # bootstraps, this describes it in CAPI so cold-starts stop re-provisioning). It lives
+    # on a DEDICATED orphan branch of THIS repo (a separate Go build artifact, not the Maven
+    # reactor) — a same-repo branch input, pinned by rev in flake.lock. Re-exported so the
+    # OCI image cross-builds via the linux-builder, like flox-controller. follows dedup.
+    rke2-adoption-controller.url = "github:seedmatic/rke2lab/rke2-adoption-controller";
+    rke2-adoption-controller.inputs.nixpkgs.follows = "nixpkgs";
+    rke2-adoption-controller.inputs.flake-utils.follows = "flake-utils";
+    rke2-adoption-controller.inputs.flake-commons.follows = "flake-commons";
+
     # Federation (Direction A): rke2lab consumes ndh's home-LAN facts
     # (catalog.netplan.lan). ndh already imports rke2lab's lib.networkBlueprint,
     # so this closes a mutual edge — cut with a reciprocal EMPTY follows: ndh's
@@ -85,7 +96,7 @@
     ndh.inputs.flake-commons.follows = "flake-commons";
   };
 
-  outputs = inputs@{ self, nixpkgs, flake-utils, flox-runtime, flox-controller, flox, sops-nix, ... }:
+  outputs = inputs@{ self, nixpkgs, flake-utils, flox-runtime, flox-controller, rke2-adoption-controller, flox, sops-nix, ... }:
     let
       # Enforce the INVARIANT above mechanically, not just by comment: fail eval
       # (any `nix build`/`nix eval` of this flake) with a printed diagnostic if
@@ -403,6 +414,14 @@
           install -m 644 ${floxControllerCrds}/*.yaml ${floxControllerCrdResourceDir}/
         '';
 
+        # Same as stageFloxControllerCrds, for the ClusterAdoption CRD — the two share the
+        # crds/ resource dir, so the DaemonSet + management units emit both into the cluster's
+        # crds layer. Empty when the adoption flake has no output for this system.
+        stageRke2AdoptionControllerCrds = nixpkgs.lib.optionalString (rke2AdoptionControllerCrds != null) ''
+          mkdir -p ${floxControllerCrdResourceDir}
+          install -m 644 ${rke2AdoptionControllerCrds}/*.yaml ${floxControllerCrdResourceDir}/
+        '';
+
         # One reactor build, factored: the shared Maven-in-nix closure (repo src, the
         # mavenToolchain, the CRD staging, the `mvnHost` prelude, the spotless shfmt pin)
         # captured ONCE, parameterized by the mvn module selector and the exec jars to
@@ -419,9 +438,10 @@
             STAGING_EXTENSION_REPO=${stagingExtensionRepoFor pkgs}
             ${mavenHostPrelude}
             ${stageFloxControllerCrds}
-            # The CRD is already staged above; tell the staging-extension's lifecycle participant to
-            # SKIP its `nix run .#stage-flox-controller-crd` (a nested nix run has no daemon/network
-            # in this sandbox). A plain `./mvnw` build has no marker, so the participant stages there.
+            ${stageRke2AdoptionControllerCrds}
+            # The CRDs are already staged above; tell the staging-extension's lifecycle participants
+            # to SKIP their `nix run .#stage-*-crd` (a nested nix run has no daemon/network in this
+            # sandbox). A plain `./mvnw` build has no marker, so the participants stage there.
             export RKE2LAB_CRD_STAGED=1
             mvnHost -Dshfmt.version=${pkgs.shfmt.version} -DskipTests ${mvnArgs} clean package
           '';
@@ -525,6 +545,27 @@
         floxControllerCrds = (flox-controller.packages.${system} or { }).flox-controller-crds or null;
         floxControllerCrdResourceDir =
           "osgi/domains/manifests/manifests-core/src/main/resources/crds";
+
+        # rke2-adoption-controller re-exported the same way as flox-controller: the
+        # controller binary + its OCI image (cross-built via the linux-builder) + the
+        # ClusterAdoption CRD store path. Same darwin-eval guard.
+        rke2AdoptionControllerPackages =
+          let adoptPkgs = rke2-adoption-controller.packages.${system} or { };
+          in (if adoptPkgs ? rke2-adoption-controller
+              then { inherit (adoptPkgs) rke2-adoption-controller; }
+              else { })
+          // (if adoptPkgs ? rke2-adoption-controller-image
+                then { inherit (adoptPkgs) rke2-adoption-controller-image; }
+                else { })
+          // (if adoptPkgs ? rke2-adoption-controller-crds
+                then { inherit (adoptPkgs) rke2-adoption-controller-crds; }
+                else { });
+
+        # The ClusterAdoption CRD as a store path (single-sourced from the flake —
+        # controller-gen output, never vendored). Staged onto the same crds/ classpath
+        # resource dir as the flox-controller CRD.
+        rke2AdoptionControllerCrds =
+          (rke2-adoption-controller.packages.${system} or { }).rke2-adoption-controller-crds or null;
 
         # Maven-build toolchain re-exported as individual packages, so the flox
         # env pins each tool to this flake's version
@@ -882,6 +923,7 @@ USAGE
         }
         // floxNriPluginPackages
         // floxControllerPackages
+        // rke2AdoptionControllerPackages
         // toolchainPackages
         # manage-tailnet (darwin-only): rke2lab OVER-SEEDS ndh's bare package with its own context —
         # the OAuth client ndh user-mirrors at ~/.local/share/ndh/tailnet.tailscale.client
@@ -958,6 +1000,20 @@ USAGE
           meta.description = "Stage the flox-controller CRD (from the flake) onto the manifest-synthesis classpath";
         };
 
+        # Stage the ClusterAdoption CRD (single-sourced from the rke2-adoption-controller
+        # flake) onto the manifest-synthesis classpath for the DEV loop. Release builds stage
+        # it inside seedMasterJar. The staged crds/ dir is gitignored — controller-gen stays
+        # the single source, never a committed copy.
+        apps.stage-rke2-adoption-controller-crd = {
+          type = "app";
+          program = toString (pkgs.writeShellScript "stage-rke2-adoption-controller-crd" ''
+            set -euo pipefail
+            ${stageRke2AdoptionControllerCrds}
+            echo "staged ClusterAdoption CRD into ${floxControllerCrdResourceDir}/ from ${rke2AdoptionControllerCrds}"
+          '');
+          meta.description = "Stage the ClusterAdoption CRD (from the flake) onto the manifest-synthesis classpath";
+        };
+
         # Anti-drift gate: fail if the committed JSON diverges from the jar output
         # (compared canonically via jq -S, so formatting never trips it). Defined ONLY on
         # blueprintSystem — absent elsewhere, so `nix flake check` on an aarch64-linux node
@@ -1018,7 +1074,7 @@ USAGE
       nixosConfigurations.rke2-node-base = nixpkgs.lib.nixosSystem {
         system = "aarch64-linux";
         specialArgs = {
-          inherit flox flox-runtime flox-controller;
+          inherit flox flox-runtime flox-controller rke2-adoption-controller;
           ndh = inputs.ndh;
         };
         modules = [
