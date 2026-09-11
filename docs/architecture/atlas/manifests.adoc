@@ -293,11 +293,18 @@ under a Pulumi grow, a standalone CLI, or a PaC PipelineRun. The push identity i
 GitHub App) across all three; only the token's provenance is host-specific, resolved by the
 `ExecutionEnvironment` instance from the `ExecutionEnclosure` FACT (OPERATOR mints via `.secrets`;
 IN_CLUSTER consumes PaC's `git_auth`).
-The render is now secret-FULL in-cluster (the git-sops chantier): the render pod carries the
-`toolchains/git-sops` flox env + the replicated cluster age key, re-smudges `.secrets`, and its
-`SecretsGateway` is a `DotSecretsGateway` (the `EmptySecretsGateway` was removed). Real-data secrets
-ride the branch sops-encrypted (Flux decrypts on reconcile); the durable-minted materials not in
-`.secrets` (incus-identity, workload CAs) ride a sops branch cellar asset the render rehydrates.
+The render is now secret-FULL in-cluster (the git-sops chantier). Both pipeline containers run on the
+flox-carrier runtime (`prodImage()`, no stock image) and opt into the `toolchains/git-sops` flox env
+(`environment.step-clone` + `environment.step-render`); the env makes the checkout secret-full by two
+mechanisms from one annotation — its `[hook.on-activate]` wires the ndh `sops-yaml` git filter GLOBALLY
+(so the clone smudges `.secrets` at checkout, in-cluster as on the host), and its `spec.inject`
+contributes `SOPS_AGE_KEY` from the replicated cluster age key (the flox-controller webhook adds it, no
+hand-wired Task env). So the `SecretsGateway` is a `DotSecretsGateway` over the smudged `.secrets` (the
+`EmptySecretsGateway` was removed). Real-data secrets ride the branch sops-encrypted (Flux decrypts on
+reconcile); the durable-minted materials not in `.secrets` (incus-identity, workload CAs) ride a sops
+branch cellar asset the render rehydrates. See
+link:../patterns/flox-store-resolved-runtime-and-builder.adoc#flox-runtime-universal-base[the
+flox-runtime base + `spec.inject` capability].
 
 The render *configuration* is uniform the same way, and recorded in the branch. The facet (which
 layers publish, `delivery`) has one authoring source — the Pulumi stack, read at the grow — and the

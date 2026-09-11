@@ -289,17 +289,36 @@ is a different concern — the `.secrets` DOOR — not a process secret.
 
 [NOTE]
 ====
-*Superseded (git-sops secret-full chantier).* The secret-blind premise of this section — "the
-Tekton clone lands sops-encrypted at rest, having no smudge filter", so in-cluster is structurally
-secret-blind — no longer holds. The render step now carries the `toolchains/git-sops` flox env
-(git + sops + the ndh filter) composed with its `nix-build` runtime, plus the cluster age key
-mittwald-replicated into `rke2lab-system`, so it re-smudges `.secrets` and the branch's sops
-Secrets. In-cluster the `SecretsGateway` is therefore a `DotSecretsGateway` over the re-smudged
-`.secrets` (the `EmptySecretsGateway` was removed), and the durable-minted materials NOT in
+*Superseded (git-sops secret-full chantier — IMPLEMENTED).* The secret-blind premise of this
+section — "the Tekton clone lands sops-encrypted at rest, having no smudge filter", so in-cluster is
+structurally secret-blind — no longer holds. Both pipeline containers now run on the flox-carrier
+runtime (`FloxDebugPolicy.prodImage()`) and opt into the `toolchains/git-sops` flox env — the clone
+step via `flox.seedmatic.io/environment.step-clone` and the render step via
+`environment.step-render` (composed with its `nix-build` runtime). No stock `alpine`/`git` image
+anywhere on the loop, and the former downstream re-smudge workaround is gone. The env makes the
+checkout secret-full by TWO mechanisms, both from the one annotation:
+
+* *the sops filter is wired on activation* — git-sops's `manifest[hook.on-activate]` runs `git
+  config --global include.path "$FLOX_ENV/sops"`, registering the ndh `git-sops-filter` package's
+  `sops-yaml` clean/smudge filter GLOBALLY. The clone step's `git checkout FETCH_HEAD` then smudges
+  `.secrets` + the branch's sops-encrypted files IN the shared `source` workspace, at clone time;
+* *`SOPS_AGE_KEY` arrives via `spec.inject`* — git-sops's `spec.inject` declares `SOPS_AGE_KEY`
+  `valueFrom` the replicated `sops-age` Secret (optional), which the flox-controller webhook adds to
+  every container that annotates the env. It is NO LONGER a hand-wired Task `env:` — the env owns
+  what its tools need, the container only opts in. See
+  xref:../patterns/flox-store-resolved-runtime-and-builder.adoc#floxenv-spec-inject[the
+  runtime/builder pattern § `spec.inject`] and its
+  xref:../patterns/flox-store-resolved-runtime-and-builder.adoc#flox-runtime-universal-base[universal
+  flox-runtime base].
+
+The render step opens with a FAIL-LOUD prerequisite check (a clear error, not a downstream decode
+failure): `SOPS_AGE_KEY` must be set (else the git-sops inject / the replicated `sops-age` is
+missing) and `git config --get filter.sops-yaml.smudge` must resolve (else the on-activate hook did
+not wire the filter). In-cluster the `SecretsGateway` is therefore a `DotSecretsGateway` over the
+smudged `.secrets` (the `EmptySecretsGateway` was removed), and the durable-minted materials NOT in
 `.secrets` (incus-identity, the workload BYO-CAs) ride a sops-encrypted branch *cellar asset* the
-render rehydrates. See xref:../patterns/flox-store-resolved-runtime-and-builder.adoc[the
-runtime/builder pattern § capability-vs-package-set]. The ndh-keystore/signing-key narrative below
-predates this and is being reconciled to it.
+render rehydrates. The ndh-keystore/signing-key narrative below predates this and is being reconciled
+to it.
 ====
 
 The push token still comes from PaC, and the signing key rides the replicator lane. Both lanes push
@@ -582,11 +601,26 @@ commit — determinism + consistency with what an operator would render.
 | The `git_auth_secret` wasn't wired into `publish` — in-cluster the delivery's `revealGithubToken()`
   reads PaC's mounted token (`RKE2LAB_PUSH_TOKEN`), else it reveals an empty token and skips the push
   (the signed commit still lands locally).
-| `keys.yaml appears sops-encrypted at rest` during an in-cluster render
-| The render tried to read the ndh keystore in-cluster (the Tekton clone lands it sops-encrypted, no
-  smudge filter). The enclosure gate is missing/misresolved: `SopsAgeMaterialResolver` +
-  `deliveryPlan` must branch on the seeded `ExecutionEnclosure` and, in IN_CLUSTER, skip the keystore
-  and take the signing key from `revealSigningKey()` (the `RKE2LAB_SIGNING_KEY` env) instead.
+| `render: SOPS_AGE_KEY not set` (the render step aborts before building)
+| The git-sops `spec.inject` did not deliver the age key. Either the container is not annotated
+  `environment.step-render=toolchains/git-sops`, or the replicated `sops-age` Secret is absent from
+  `rke2lab-system` (the mittwald replicator lane). The inject is `optional:true`, so a missing Secret
+  leaves the env unset — this check turns that into a clear error instead of a decode failure.
+| `render: sops-yaml git filter not registered` (the render step aborts)
+| git-sops's `[hook.on-activate]` did not wire the include — the `git-sops-filter` package shipped no
+  `$FLOX_ENV/sops` file, or the env did not activate on the container. Confirm the container carries
+  the `environment.<c>=toolchains/git-sops` annotation and the env realised on the node.
+| A `JsonParseException` on `ENC[…]` (the render reads a still-ENCRYPTED file)
+| The clone landed the sops file un-smudged: the sops-yaml filter was not wired at CLONE time. The
+  clone step (`step-clone`) must ALSO carry `environment.step-clone=toolchains/git-sops`, so its `git
+  checkout` smudges `.secrets` (and the cellar asset) in the shared `source` workspace. This was the
+  root cause the git-sops on-activate wiring fixed — installing the filter package is not enough, the
+  `git config --global include.path` must register it.
+| `keys.yaml appears sops-encrypted at rest` during an in-cluster render (legacy, pre-git-sops)
+| The render tried to read the ndh keystore in-cluster before the git-sops chantier wired the smudge
+  filter. The enclosure gate is missing/misresolved: `SopsAgeMaterialResolver` + `deliveryPlan` must
+  branch on the seeded `ExecutionEnclosure` and, in IN_CLUSTER, skip the keystore and take the signing
+  key from `revealSigningKey()` (the `RKE2LAB_SIGNING_KEY` env) instead.
 | The reconciled branch churns with empty commits
 | A structural re-render on an unchanged source is a no-op fast-forward; if it is not, check the
   render is deterministic (input hashing) — the NODE_BOOTSTRAP secrets must stay off the branch.
@@ -615,3 +649,7 @@ commit — determinism + consistency with what an operator would render.
   sows a scenario through the broker rather than calling a typed service.
 * link:../atlas/manifests.adoc[Atlas L1 — Manifests] — the subsystem map (see the in-cluster render
   loop figure).
+* link:../patterns/flox-store-resolved-runtime-and-builder.adoc[Flox Store-Resolved Runtime + Builder] —
+  the flox-runtime base + `spec.inject` capability the render's clone/render containers consume: how
+  the `toolchains/git-sops` env wires the sops filter on activation and contributes `SOPS_AGE_KEY`,
+  making this render secret-full.

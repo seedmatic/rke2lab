@@ -293,6 +293,187 @@ build store via `nix-build`, its sops filter via `environment: toolchains/git-so
 `git-sops` its OWN composable env — rather than baking the filter into a monolithic cicd
 toolchain — lets the cicd need evolve independently and stays extensible via `[include]`.
 
+[[flox-runtime-universal-base]]
+== The flox runtime is the universal workload base
+
+*Every container OURS runs on the flox runtime* — the flox-carrier image
+(`FloxDebugPolicy.prodImage()` = `rke2lab/flox-carrier:0.1.0`) PLUS the flox-NRI
+capabilities injected by annotation. There is no stock base image (alpine/debian/`bitnami`)
+for a rke2lab container: a workload's tools do not belong in a hand-picked base image, they
+belong in a *FloxEnv* the container opts into. Third-party VENDOR images (kube-vip,
+envoy-gateway's operator, the mittwald replicator, gtm, cert-manager) run as-is — they are
+out of scope; the rule governs the containers rke2lab authors, whose command/script we own.
+
+The carrier itself stays deliberately MINIMAL — `bashInteractive` + `coreutils` + `cacert`
+only (the `carrier` `FloxEnv` in flox-controller `internal/carrier/base-carrier.yaml`),
+just enough for `/usr/bin/env` + a shell for `flox activate` to bootstrap from. Every
+specialised toolchain arrives at runtime through an *injected FloxEnv*, never baked into
+the carrier. So the carrier never grows a per-workload dependency, and two workloads with
+different tool sets share one image.
+
+[cols="1,3",options="header"]
+|===
+| ✅ Do | ❌ Don't
+
+| Run on `FloxDebugPolicy.prodImage()` and annotate the container into the FloxEnv(s) it
+  needs (`FloxAnnotation.ENVIRONMENT.forContainer(c)` → `<folder>/<name>`).
+| Pick a stock `alpine`/`bitnami`/language base image because "it already has git / kubectl /
+  nix" — that image drifts, is un-pinned against the fleet's nixpkgs, and duplicates a
+  package set a FloxEnv already carries.
+
+| Add a NEW tool to a workload by adding it to (or `[include]`-ing) its FloxEnv.
+| Bake the tool into a bespoke per-workload image (a new Dockerfile, a new supply chain).
+|===
+
+The `EnvoyGatewayManifestsUnit` installer is the worked example of the migration: its Job
+container moved OFF a stock `alpine`/`kubectl` image onto `prodImage()` +
+`environment.installer=kube/base` — `kubectl` + `yq-go` now arrive via the injected
+`kube/base` FloxEnv, not a vendor image.
+
+=== What a FloxEnv contributes to its consumers (three vectors)
+
+A `FloxEnv` a container opts into contributes THREE things, and this is the whole capability
+model — a consumer that annotates the env gets all three, and hand-wires none of them:
+
+[cols="1,2,2",options="header"]
+|===
+| Vector | Who injects it | What it delivers
+
+| *Packages* (the locked tool set)
+| The NRI plugin (baked), resolving the `environment.<c>` annotation → the env's store path
+| The env's `manifest.install` closures on PATH (git, sops, kubectl, …), overlaid read-only
+  from the host `/nix` store.
+
+| *`FLOX_FLOXHUB_TOKEN`* + the canonical flox knobs
+| The flox-controller pod webhook (`PodFloxMutator.injectFloxEnvInto`)
+| `valueFrom` the replicated FloxHub token Secret (optional), so `flox` runs authenticated.
+
+| *`spec.inject`* — arbitrary required env/secrets
+| The same webhook, reading the env's CR (see below)
+| The env's declared env vars / secret refs (e.g. git-sops → `SOPS_AGE_KEY`).
+|===
+
+The third vector is the piece added here. It COMPLETES the model: an env already contributed
+packages and the token; now it also contributes the *required runtime env/secrets its tools
+need to function*. So a consumer only ANNOTATES the env — it never reaches around the env to
+hand-wire the env's own secrets.
+
+[[floxenv-spec-inject]]
+=== `spec.inject` — a FloxEnv contributes env/secrets to its consumers
+
+The `FloxEnv` CRD gains `spec.inject`, a list of env vars the env contributes to every
+container that opts into it (flox-controller `api/v1alpha1/floxenv_types.go`,
+`InjectedEnv` / `InjectedSecretKeyRef`):
+
+[source,yaml]
+----
+spec:
+  inject:
+    - name: SOPS_AGE_KEY                       # a literal `value:` OR a `secretKeyRef:`
+      secretKeyRef:
+        name: sops-age                         # a Secret in the CONSUMER pod's namespace
+        key: age.agekey
+        optional: true                         # the container starts even if it is absent
+----
+
+The pod-mutating webhook resolves it (`PodFloxMutator.injectFloxEnv` /
+`resolveInjects` / `injectFloxEnvInto`). For every container bearing a
+`flox.seedmatic.io/environment.<container>=<folder>/<name>` annotation it GETs the matching
+`FloxEnv` CR — the CR NAME is the annotation value's last segment, looked up in
+`FloxEnvNamespace` (the controller's own namespace) — and upserts that env's `spec.inject`
+onto the container as `EnvVar`s. A `secretKeyRef` is rendered as a core `valueFrom
+secretKeyRef`, so it is *kubelet-resolved in the CONSUMER pod's namespace* — the controller
+reads no secret material, and the referenced Secret must be REPLICATED into the consumer
+namespace (the mittwald replicator lane). Injection is an upsert: an explicit value already
+on the pod spec wins over the env's contribution. A missing env / an unreadable CR / an
+absent client is a no-op (nil inject), never a hard admission failure — a pod must still
+admit if the env's CR is momentarily unreadable; the consumer's own fail-loud check (below)
+reports a genuinely missing secret with a clear message.
+
+[mermaid]
+....
+flowchart TB
+  subgraph consumer["consumer pod (e.g. render-publish)"]
+    ann["container annotation<br/>flox.seedmatic.io/environment.step-render<br/>= toolchains/git-sops"]:::mut
+    ctr["container on rke2lab/flox-carrier:0.1.0<br/>(the universal runtime base — no stock image)"]:::mut
+  end
+  subgraph ctlns["controller namespace (rke2lab-system)"]
+    cr["FloxEnv git-sops (CR)<br/>manifest.install: git · sops · git-sops-filter<br/>hook.on-activate: wire the sops filter<br/>spec.inject: SOPS_AGE_KEY ← sops-age"]:::code
+  end
+  wh["flox-controller webhook<br/>(PodFloxMutator) — reads the CR"]:::code
+  nri["NRI plugin (baked)<br/>overlays the env's /nix store"]:::code
+  sec[("replicated sops-age Secret<br/>(consumer namespace)")]:::secret
+
+  ann -->|opt-in| wh
+  wh -->|GET FloxEnv| cr
+  wh -->|"upsert: flox knobs + FLOX_FLOXHUB_TOKEN + spec.inject<br/>(SOPS_AGE_KEY valueFrom secretKeyRef)"| ctr
+  ann -.->|plugin resolves the annotation| nri
+  nri -->|"packages on PATH (git + sops + filter)"| ctr
+  sec -.->|kubelet resolves secretKeyRef| ctr
+
+  classDef code fill:#dae8fc,stroke:#6c8ebf
+  classDef mut fill:#ffe6cc,stroke:#d79b00
+  classDef secret fill:#f8cecc,stroke:#b85450
+....
+
+[cols="1,3",options="header"]
+|===
+| ✅ Do | ❌ Don't
+
+| Declare the required secret ONCE on the env (`spec.inject`), and have every consumer just
+  annotate the env. The env owns "what my tools need to run"; the consumer owns "I use this
+  env". (git-sops declares `SOPS_AGE_KEY`; the render clone + render steps only annotate
+  `toolchains/git-sops`.)
+| Hand-wire the env's secret as a container `env:` on EVERY consumer (a `secretKeyRef` to
+  `sops-age` copied into each Task/Deployment). The wiring drifts per consumer, and a
+  consumer that forgets it silently runs the env's tools without the secret they need.
+|===
+
+=== git-sops wires its clean/smudge filter on activation
+
+The `git-sops` FloxEnv (`FloxEnvManifestsUnit.gitSopsManifest`) carries git + sops + yq-go +
+the ndh `git-sops-filter` package (the SSOT filter definition, re-exported through the
+catalogue flake). The package SHIPS the filter's include file at `$FLOX_ENV/sops`, but
+installing the package is not enough — git must be told to *use* it. The env therefore emits
+a `manifest` `[hook.on-activate]` that registers the include GLOBALLY:
+
+[source,bash]
+----
+if [ -f "$FLOX_ENV/sops" ]; then
+  git config --global include.path "$FLOX_ENV/sops"
+else
+  echo >&2 "git-sops: include $FLOX_ENV/sops not found — sops-yaml filter NOT wired"
+fi
+----
+
+Registering it `--global` (not per-repo) means a `git checkout` in the source checkout AND in
+a `git worktree add` render worktree (which shares the global config) runs the `sops-yaml`
+clean/smudge filter — so the branch's sops-encrypted files smudge to plaintext at checkout,
+exactly as they do on the operator host.
+
+[NOTE]
+.Why this was the missing piece in-cluster
+====
+On the operator host, home-manager wires the same include (`programs.git.includes =
+${gitSopsFilter}/sops`). In-cluster, the previous git-sops env INSTALLED the filter package
+but never REGISTERED the include — so `git` had the `sops` commands available but no filter
+bound, and a checkout landed the branch's sops files still-ENCRYPTED. That was the root cause
+of the in-cluster render reading the cellar asset still-ENC (a `JsonParseException` on the
+literal `ENC[…]` marker). Wiring the include on activation closes it.
+====
+
+The hook does NOT fail-closed on a missing `SOPS_AGE_KEY`: the SAME `on-activate` hook also
+runs during the flox-controller's realise pass (`flox activate --mode dev -- true`), which
+has no age key — a hard exit there would wedge the env's realisation. Whether the KEY is
+present is the CONSUMER's concern, asserted fail-loud at the point of use (the render step,
+below), not the env's.
+
+Composing the two pieces: git-sops's `spec.inject` contributes `SOPS_AGE_KEY` (from the
+replicated `sops-age` Secret, optional) — <<floxenv-spec-inject>> applied to this env. So any
+container that annotates `environment.<c>=toolchains/git-sops` gets *both* the sops filter
+(wired on activation) *and* the key sops decrypts with (injected by the webhook) — the two
+halves of a secret-full checkout, from one annotation.
+
 == Part 1 — Store-resolved runtime scripts (the fork-repo extraction)
 
 === Goal
@@ -744,5 +925,9 @@ already present in the real store the overlay lowers from.
   contract (the `FloxEnv` CRD, the controller, carriers); this doc only integrates it.
 * link:../cluster-api/cluster-api-bootstrap-requirements.adoc[Cluster API Bootstrap Requirements] —
   the design-only flox webhook (pod-level annotation injection), conceptually adjacent to the flox controller + FloxEnv CRD.
+* link:../cluster-api/pac-in-cluster-render-spec.adoc[In-cluster render via Pipelines-as-Code] —
+  the worked CONSUMER of <<flox-runtime-universal-base>> + <<floxenv-spec-inject>>: the render's clone
+  + step-render containers run on the flox-carrier + `toolchains/git-sops`, so the checkout is
+  secret-full (filter wired on activation, `SOPS_AGE_KEY` via `spec.inject`).
 * link:../bootstrap/bootstrap-identity-provider.adoc[Bootstrap Identity Provider] —
   the synth-time secret-access pattern the builder key delivery follows.
