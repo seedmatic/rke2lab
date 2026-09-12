@@ -10,6 +10,7 @@ import io.seedmatic.rke2lab.manifests.contract.ManifestLayer;
 import io.seedmatic.rke2lab.manifests.ingress.Component;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import io.seedmatic.rke2lab.manifests.units.cluster.ClusterRefs;
+import io.seedmatic.rke2lab.netplan.contract.ClusterNetworkBlueprint;
 import java.util.List;
 import java.util.Map;
 import org.cdk8s.ApiObject;
@@ -147,6 +148,26 @@ public final class TailscaleManifestsUnit extends AbstractManifestsUnit {
                 .build());
     connector.addDependency(helmChart);
 
+    // Advertise THIS cluster's reach set, derived from its blueprint (SSOT) — never a literal: the
+    // kube-vip control-plane VIP (a /32, what CAPI dials for adoption) and the cilium LB IP pool
+    // (so
+    // LoadBalancer services are reachable over the tailnet too). Both are per-cluster functions of
+    // the
+    // clusterId, so a hardcode (the old 10.80.7.10/32 + 10.80.0.64/26) only ever matched clusterId
+    // 0.
+    // ndh manage-tailnet auto-approves the whole vmnet /18 for tag:k8s, so any cluster's routes
+    // clear
+    // approval without a per-cluster console step (see
+    // management-workload-topology.adoc#cp-endpoint-reach).
+    final ClusterNetworkBlueprint blueprint =
+        ClusterNetworkBlueprint.builder()
+            .cluster(clusterName)
+            .node("master")
+            .deriveRecipeModel()
+            .build();
+    final String vipRoute = blueprint.vip().vipHostInetaddr().getHostAddress() + "/32";
+    final String lbRoute = blueprint.loadBalancer().lbCidr().toString();
+
     connector.addJsonPatch(
         JsonPatch.add(
             "/spec",
@@ -154,7 +175,7 @@ public final class TailscaleManifestsUnit extends AbstractManifestsUnit {
                 "hostname",
                 clusterName + "-controlplane",
                 "subnetRouter",
-                Map.of("advertiseRoutes", List.of("10.80.7.10/32", "10.80.0.64/26")))));
+                Map.of("advertiseRoutes", List.of(vipRoute, lbRoute)))));
   }
 
   private void createSecret(final Construct scope) {

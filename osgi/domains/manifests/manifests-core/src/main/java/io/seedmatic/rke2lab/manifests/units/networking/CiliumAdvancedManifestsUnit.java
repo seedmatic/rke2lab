@@ -38,6 +38,21 @@ public final class CiliumAdvancedManifestsUnit extends AbstractManifestsUnit {
   }
 
   private void createLoadBalancerPools(final Construct scope) {
+    // The vmnet LB pool is per-cluster (10.80.<clusterId*8>.64/26) — derive it from the blueprint
+    // (SSOT), never a literal, so it MATCHES the LB route the tailscale Connector advertises for
+    // the
+    // same cluster (both are blueprint.loadBalancer().lbCidr()). A hardcode only ever matched
+    // clusterId 0, so a workload cluster would announce one range and pool another → unreachable.
+    final ClusterNetworkBlueprint blueprint =
+        ClusterNetworkBlueprint.builder()
+            .cluster(
+                ManifestSynthesisContext.current()
+                    .bootstrapIdentity()
+                    .clusterNameOrDefault(DefaultNodeEnvContext.DEFAULT_CLUSTER_NAME))
+            .node("master")
+            .deriveRecipeModel()
+            .build();
+    final String clusterLbCidr = blueprint.loadBalancer().lbCidr().toString();
     ApiObject cluster =
         new ApiObject(
             scope,
@@ -58,7 +73,7 @@ public final class CiliumAdvancedManifestsUnit extends AbstractManifestsUnit {
             "/spec",
             Map.of(
                 "blocks",
-                List.of(Map.of("cidr", "10.80.0.64/26")),
+                List.of(Map.of("cidr", clusterLbCidr)),
                 "serviceSelector",
                 Map.of(
                     "matchExpressions",
@@ -80,12 +95,19 @@ public final class CiliumAdvancedManifestsUnit extends AbstractManifestsUnit {
                                 "cilium.io|CiliumLoadBalancerIPPool|default|lan"))
                         .build())
                 .build());
+    // The LAN LB pool is this cluster's per-cluster lanLbCidr /29 (holds lanHeadscale = host(1) and
+    // lanTailscale = host(2)) — NOT a literal. The old 192.168.1.192/27 matched no cluster's /29
+    // (the four are .136/.160/.184/.208/29) and, being rendered identically for every cluster,
+    // would
+    // have every cluster claim .192-.223 on the SHARED home LAN → collision. Per-cluster /29s do
+    // not
+    // overlap.
     lan.addJsonPatch(
         JsonPatch.add(
             "/spec",
             Map.of(
                 "blocks",
-                List.of(Map.of("cidr", "192.168.1.192/27")),
+                List.of(Map.of("cidr", blueprint.lan().lbCidr().toString())),
                 "serviceSelector",
                 Map.of("matchLabels", Map.of("io.cilium/lb-ipam-pool", "lan")))));
 
@@ -104,8 +126,12 @@ public final class CiliumAdvancedManifestsUnit extends AbstractManifestsUnit {
                                 "cilium.io|CiliumLoadBalancerIPPool|default|vip"))
                         .build())
                 .build());
+    // Same per-cluster derivation as the cluster pool: the vip pool is this cluster's vipCidr
+    // (10.80.<clusterId*8+7>.0/24), not a literal — 10.80.7.0/24 was clusterId 0 only.
     vip.addJsonPatch(
-        JsonPatch.add("/spec", Map.of("blocks", List.of(Map.of("cidr", "10.80.7.0/24")))));
+        JsonPatch.add(
+            "/spec",
+            Map.of("blocks", List.of(Map.of("cidr", blueprint.vip().vipCidr().toString())))));
   }
 
   private void createBgpAdvertisement(final Construct scope) {

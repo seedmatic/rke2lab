@@ -338,9 +338,13 @@ Two facts settle HOW to bridge it:
 The management cluster already reaches every workload NODE over `mammoth-skate` (regardless of host).
 We extend that to the VIP through the in-cluster *tailscale-operator*, which
 `TailscaleManifestsUnit` already deploys: it creates a `Connector` (`<cluster>-controlplane`,
-`tag:k8s`) in `subnetRouter` mode that advertises the cluster's *vmnet supernet* — the `/18` that
-holds every cluster's kube-vip VIP (`10.80.<w>.10`) and LB span. The controller pod then routes to
-the workload VIP through the tailnet — including when `nikopol-nixos` is roaming (DERP relays
+`tag:k8s`) in `subnetRouter` mode that advertises the cluster's own reach set, derived from its
+`ClusterNetworkBlueprint` (SSOT, never a literal): the kube-vip VIP as a `/32` (`10.80.<w>.10/32`,
+what CAPI dials) and the cilium LB IP pool (`blueprint.loadBalancer().lbCidr()`, so LoadBalancer
+services are reachable too). It advertises only what its OWN node can forward — its per-cluster
+addresses — NOT the whole `/18` (the other clusters' `/24`s live behind isolated `vmnet0`s). The `/18`
+is the APPROVAL umbrella below, not the advertised route. The controller pod then routes to the
+workload VIP through the tailnet — including when `nikopol-nixos` is roaming (DERP relays
 traverse the CGNAT; once punched, Tailscale upgrades to a direct path). CAPN consumes the
 pre-existing kube-vip endpoint via its load-balancer `external` mode (it does not orchestrate the LB;
 it uses the address).
@@ -349,9 +353,11 @@ Advertising a route is not enough — TWO independent locks must both open, and 
 declaratively in ndh's `manage-tailnet` (`--sync-acl`), derived from the blueprint's `"vmnet"`
 segment (`10.80.0.0/18`), never hardcoded:
 
-. *Route approval* — `autoApprovers.routes` must approve the `/18` for the advertiser's tag
-  (`tag:k8s`, the operator Connector — NOT `tag:nixos`, which owns the baremetal host subnet
-  routers). Without it the route sits `pending approval` (the console `Subnets ⚠️`), and because
+. *Route approval* — `autoApprovers.routes` approves the `/18` for the advertiser's tag (`tag:k8s`,
+  the operator Connector — NOT `tag:nixos`, which owns the baremetal host subnet routers). One `/18`
+  umbrella auto-approves EVERY cluster's advertised subrange (the VIP `/32` + LB `/26` all fall inside
+  it), so no per-cluster console step. Without it the route sits `pending approval` (the console
+  `Subnets ⚠️`), and because
   `TailnetPurgeManifestsUnit` wipes devices each grow, a manual approval would lapse on every
   re-grow — the auto-approver makes it survive.
 . *ACL `accept`* — the client must be ACL-permitted to REACH `10.80.x`, or the approved route never
@@ -362,7 +368,7 @@ segment (`10.80.0.0/18`), never hardcoded:
 flowchart LR
   subgraph MGMT["bioskop-mgmt (fixed)"]
     CAPI["CAPI/CAPN pod"]
-    OP["tailscale-operator<br/>Connector controlplane (tag:k8s)<br/>subnetRouter: 10.80.0.0/18"]
+    OP["tailscale-operator<br/>Connector controlplane (tag:k8s)<br/>subnetRouter: VIP /32 + LB pool /26 (per-cluster)"]
   end
   subgraph TS["node plane — mammoth-skate (tailnet + DERP)"]
     R{{"route approved (autoApprovers, tag:k8s)<br/>+ ACL accept dst 10.80.0.0/18<br/>— both from ndh manage-tailnet"}}
@@ -370,7 +376,7 @@ flowchart LR
   subgraph WL["*-wrkld on nikopol-nixos (itinerant)"]
     VIP["kube-vip VIP<br/>10.80.&lt;w&gt;.10:6443"]
   end
-  OP -.->|advertises /18| R
+  OP -.->|advertises VIP /32 + LB /26| R
   CAPI -->|routes via tailnet| R
   R -->|DERP then direct| VIP
 ----
@@ -386,10 +392,11 @@ every future cluster and survive purge/re-grow. *Validated live (2026-09-12):* f
 `10.80.7.10:6443` (the mgmt apiserver VIP) is reachable through the tailnet — DERP first, then a
 direct path.
 
-A self-hosted `Headscale` may REPLACE the SaaS control-server later for sovereignty — but NOT on the
-on-demand management cluster (an itinerant node behind CGNAT could not register with a control-server
-behind the home NAT; self-hosted Headscale would need DERP + a public, always-live endpoint). Its
-host is deferred.
+A self-hosted `Headscale` may REPLACE the SaaS control-server later for sovereignty — the natural
+end-state for these internal-only clusters (access rests on internal services alone). The migration
+path is <<sovereign-headscale-reach>>. It is NOT on the on-demand management cluster (an itinerant
+node behind CGNAT could not register with a control-server behind the home NAT; self-hosted Headscale
+would need DERP + a public, always-live endpoint). Its host is deferred.
 
 *Rejected — a shared-L2 VIP:* there is no shared L2 with an itinerant host.
 
@@ -421,7 +428,7 @@ flowchart LR
     EG["egress ProxyGroup (operator)<br/>Service &lt;w&gt;-apiserver<br/>tailnet-target-ip: 10.80.&lt;w&gt;.10"]
   end
   subgraph W["*-wrkld"]
-    CONN["operator Connector<br/>advertises 10.80.&lt;w&gt;.0/18"]
+    CONN["operator Connector<br/>advertises VIP 10.80.&lt;w&gt;.10/32 + LB pool /26"]
     VIP["kube-vip VIP<br/>10.80.&lt;w&gt;.10:6443"]
   end
   CAPI -->|ClusterIP/DNS| EG
@@ -447,6 +454,61 @@ Four rendered pieces, all derived from the blueprint SSOT:
 NOTE: The self-adoption reach (management cluster adopting itself) does NOT use this path — the
 controller is in-cluster and uses `kubernetes.default.svc` (see the two-reaches table above). The
 egress path is for the WORKLOAD reach: a management pod reaching another cluster's VIP.
+
+[[sovereign-headscale-reach]]
+=== Migrating the reach to a sovereign Headscale (deferred chantier)
+
+Both reaches above ride the *tailscale-operator* on `mammoth-skate` (Tailscale SaaS). Because these
+clusters are *internal-only* — access rests on internal services alone — the target end-state is to
+move the operator's control-server off the SaaS onto a *self-hosted Headscale*, closing the last
+external dependency in the reach. This is decided as a direction and *deferred*; recorded here so it
+is not re-derived.
+
+*Why it does not "just work" today.* The operator's join (its `tsnet` proxies registering) is not the
+coupling — Headscale reimplements the coordination protocol, so the proxies WOULD join. The coupling
+is the operator's *control loop*, which drives the **Tailscale admin REST API** (`api.tailscale.com/api/v2`,
+Go client `tailscale.com/client/tailscale/v2`, OAuth `CLIENT_ID`/`CLIENT_SECRET`) to mint per-proxy
+tagged auth-keys, manage devices, and enforce tag ownership. No *released* Headscale (≤ v0.29.3, the
+latest as of 2026-09-12) implements `/api/v2` or OAuth clients — its own API is a differently-shaped
+v1 HTTP surface (and its gRPC is being removed), which the operator cannot speak. So on any release,
+the operator cannot drive Headscale.
+
+*Why the migration is a config flip, not a fork.* Headscale is closing this gap *by design*.
+Headscale `main` / the upcoming **0.30.0** (unreleased as of 2026-09-12) ports `/api/v2` + OAuth
+clients "reusing Tailscale's wire shapes" *specifically so the Tailscale operator and Terraform
+provider drive Headscale unchanged (PR #3334); its CI (PR #3337) runs the REAL operator in k3s
+against Headscale over plain HTTP and proves operator self-registration, the **egress Connector**
+(subnet router), ingress, and **ProxyGroup** — i.e. exactly the two primitives this reach uses. The
+retarget is a single knob: `OPERATOR_LOGIN_SERVER` points BOTH the `tsnet` control plane AND the
+`/api/v2` client base-URL at Headscale, and a Headscale-minted OAuth client (scopes `devices:core` +
+`auth_keys`, tagged `tag:k8s-operator` owning `tag:k8s`) replaces the SaaS one. Same operator, same
+manifests.
+
+.The design consequence for the egress manifests
+[IMPORTANT]
+====
+Render the operator config with the *login-server as a parameter* (SaaS today,
+`OPERATOR_LOGIN_SERVER=<headscale>` tomorrow). Then the SaaS→Headscale migration is a config flip on
+one field, not a rewrite of the egress `ManifestsUnit`. The route-approval/ACL CIDRs are already
+derived from the blueprint `"vmnet"` segment (the SAME SSOT feeds ndh's `manage-tailnet` for SaaS and
+would feed Headscale's policy), so neither plane hardcodes the reach.
+====
+
+.Caveats and the rejected fork
+[NOTE]
+====
+* *Version floor.* Requires Headscale 0.30.0 (unreleased today) — the sovereign flip is gated on that
+  ship or on running a pinned `main` build (we already pin `tailscale` in ndh; pinning Headscale is in
+  the same discipline). 0.30.0 also REMOVES Headscale's gRPC, so any consumer of ours on that gRPC
+  breaks — audit before pinning.
+* *apiserver-proxy unverified — but not needed.* Headscale's operator CI does NOT exercise the
+  `apiServerProxy`/kube-apiserver ProxyGroup. Irrelevant here: plan A uses native client-cert egress
+  (L4 pass-through), never the TLS-terminating apiserver-proxy.
+* *Rejected — a bespoke controller on `hibare/headscale-client-go`.* It would reimplement what 0.30.0
+  ships for free, against the v1 HTTP surface Headscale is actively reshaping (gRPC removed, v2 added)
+  — building on a moving target. Kept ONLY as a last resort if a sovereign reach is mandatory on a
+  RELEASED Headscale before 0.30.0 lands.
+====
 
 [[why-separation]]
 == Why separation, not self-management
