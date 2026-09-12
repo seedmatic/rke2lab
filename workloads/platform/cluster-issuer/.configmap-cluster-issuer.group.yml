@@ -1,7 +1,9 @@
 ---
 apiVersion: v1
 data:
-  members: cert-manager.io/v1|ClusterIssuer||rke2lab-ca
+  members: |-
+    cert-manager.io/v1|ClusterIssuer||rke2lab-ca
+    v1|Secret|kube-system|rke2lab-ca-key-pair
 kind: ConfigMap
 metadata:
   annotations:
