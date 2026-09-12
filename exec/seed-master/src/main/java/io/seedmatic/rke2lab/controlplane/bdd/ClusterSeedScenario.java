@@ -29,6 +29,8 @@ import io.seedmatic.rke2lab.incus.ingress.Growth;
 import io.seedmatic.rke2lab.incus.ingress.IncusGrowCoordinate;
 import io.seedmatic.rke2lab.incus.ingress.IngressConfig;
 import io.seedmatic.rke2lab.incus.ingress.InstanceGrowPlan;
+import io.seedmatic.rke2lab.manifests.ingress.NodeGithubToken;
+import io.seedmatic.rke2lab.manifests.ingress.NodeGithubTokenCoordinate;
 import io.seedmatic.rke2lab.manifests.ingress.PacWebhookFunnel;
 import io.seedmatic.rke2lab.manifests.ingress.ServerManifestsBundle;
 import io.seedmatic.rke2lab.manifests.ingress.ServerManifestsCoordinate;
@@ -774,7 +776,20 @@ public class ClusterSeedScenario
                       parcel,
                       ServerManifestsCoordinate.SERVER_MANIFESTS,
                       ServerManifestsBundle.class)
-                  .map(ServerManifestsBundle::manifests));
+                  .map(ServerManifestsBundle::manifests),
+              // The manifests branch the node fetches its rke2 config from at boot (nix run
+              // <branch>#install-rke2-config); seed-master rendered+pushed it just before this
+              // grow.
+              Optional.of("manifests/" + config.clusterName()),
+              // The node's FRESH contents:read github token, minted at the render by the synthesis
+              // scion (from the durable App creds) and filed SEALED + TRANSIENT — revealed HERE
+              // this
+              // run, evicted at the drain, so it never persists durably (never stale). Empty on an
+              // offline/survey run (the reader-mint edge was filtered out) — the node then gets no
+              // token and the fetch fails loud, which is the intended fail-fast for a real grow.
+              workingCellar
+                  .fetch(parcel, NodeGithubTokenCoordinate.NODE_GITHUB_TOKEN, NodeGithubToken.class)
+                  .map(NodeGithubToken::token));
       // The cold/warm condition, READ NOW from the prior stack state — before the grow starts the
       // instance and the observation is lost. Frozen on the run's TRANSIENT bus as the GrowOutcome
       // fact (evicted at the drain, never conserved): the readiness-budget tuning reads it a few

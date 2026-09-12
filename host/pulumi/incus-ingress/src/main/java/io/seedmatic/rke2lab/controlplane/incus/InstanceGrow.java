@@ -330,13 +330,15 @@ public final class InstanceGrow {
 
   /**
    * Render the mgmt node's {@code cloud-init.user-data}: a {@code write_files} cloud-config the
-   * NixOS node-base consumes at boot. {@code node.env} carries the per-node identity + dual-stack
-   * CIDRs (the hostname + rke2 drop-in oneshots read it); the revealed {@link
-   * NodeBootstrapMaterial} rides as the sops age key, the cluster-CA bundle, and the rke2
-   * server-manifests — each only when present (a producer that did not file leaves it out; the
-   * guest units are tolerant). Every file's content is base64 ({@code encoding: b64}) so arbitrary
-   * YAML/PEM never trips cloud-init's YAML indentation. This is the standalone twin of a CAPRKE2
-   * workload node's cloud-config — one channel.
+   * NixOS node-base consumes at boot. {@code node.env} carries the four per-node identity scalars
+   * (the hostname + per-node rke2 drop-in oneshots — node-labels, provider-id — read it); the
+   * revealed {@link NodeBootstrapMaterial} rides as the sops age key, the cluster-CA bundle, and
+   * the rke2 server-manifests — each only when present (a producer that did not file leaves it out;
+   * the guest units are tolerant). The per-cluster rke2 config (CIDRs, tls-san, node-ip, …) is NOT
+   * here: it comes from the rendered {@code manifests/<cluster>} branch via {@code nix run
+   * <branch>#install-rke2-config} at boot. Every file's content is base64 ({@code encoding: b64})
+   * so arbitrary YAML/PEM never trips cloud-init's YAML indentation. This is the standalone twin of
+   * a CAPRKE2 workload node's cloud-config — one channel.
    */
   private String mgmtCloudConfig(GrowIdentityView identity, NodeBootstrapMaterial material) {
     final String nodeEnv =
@@ -349,19 +351,22 @@ public final class InstanceGrow {
                 "RKE2LAB_NODE_NAME=" + identity.nodeRef(),
                 "RKE2LAB_NODE_HOSTNAME=" + identity.nodeHostname(),
                 "RKE2LAB_NODE_KIND=" + identity.nodeKind(),
-                "RKE2LAB_NODE_ID=" + identity.nodeId(),
-                "RKE2LAB_CLUSTER_POD_CIDR=" + identity.clusterPodCidr(),
-                "RKE2LAB_CLUSTER_SERVICE_CIDR=" + identity.clusterServiceCidr())
+                "RKE2LAB_NODE_ID=" + identity.nodeId())
             + "\n";
     final StringBuilder cloudConfig = new StringBuilder("#cloud-config\nwrite_files:\n");
-    appendWriteFile(cloudConfig, "/run/rke2lab/node.env", "0644", nodeEnv);
+    // DURABLE set → /var/lib/rke2lab (persists across reboots): node.env (identity/hostname read
+    // EVERY boot), the sops age key + cluster-CA bundle (sops-nix reads them every boot). /run is
+    // tmpfs and cloud-init does not re-run write_files on reboot, so these MUST NOT live there or a
+    // reboot loses the hostname + breaks sops.
+    appendWriteFile(cloudConfig, "/var/lib/rke2lab/node.env", "0644", nodeEnv);
     material
         .sopsAgeKey()
-        .ifPresent(v -> appendWriteFile(cloudConfig, "/run/rke2lab/sops-age.key", "0400", v));
+        .ifPresent(v -> appendWriteFile(cloudConfig, "/var/lib/rke2lab/sops-age.key", "0400", v));
     material
         .clusterCaBundle()
         .ifPresent(
-            v -> appendWriteFile(cloudConfig, "/run/rke2lab/cluster-ca-bundle.yaml", "0400", v));
+            v ->
+                appendWriteFile(cloudConfig, "/var/lib/rke2lab/cluster-ca-bundle.yaml", "0400", v));
     material
         .serverManifests()
         .ifPresent(
@@ -371,6 +376,30 @@ public final class InstanceGrow {
                     "/var/lib/rancher/rke2/server/manifests/rke2lab-bootstrap.yaml",
                     "0600",
                     v));
+    // The two inputs the rke2lab-rke2-config oneshot reads (nixos/rke2.nix): the manifests branch
+    // to
+    // fetch (non-secret; also GATES the oneshot via ConditionPathExists), and a nix.conf snippet
+    // carrying the fresh github token as an `access-tokens` line (root-only). nix reads the latter
+    // via
+    // NIX_CONFIG="!include", so the token VALUE stays in the file, never in an env.
+    material
+        .manifestsBranchRef()
+        .ifPresent(
+            ref ->
+                appendWriteFile(
+                    cloudConfig,
+                    "/run/rke2lab/rke2-config.env",
+                    "0644",
+                    "RKE2LAB_MANIFESTS_REF=" + ref + "\n"));
+    material
+        .githubAccessToken()
+        .ifPresent(
+            token ->
+                appendWriteFile(
+                    cloudConfig,
+                    "/run/rke2lab/nix-github.conf",
+                    "0400",
+                    "access-tokens = github.com=" + token + "\n"));
     return cloudConfig.toString();
   }
 

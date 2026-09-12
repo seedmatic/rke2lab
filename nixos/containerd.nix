@@ -83,7 +83,7 @@ in
     serviceConfig = {
       Type = "oneshot";
       RemainAfterExit = true;
-      EnvironmentFile = "/run/rke2lab/node.env";
+      EnvironmentFile = "/var/lib/rke2lab/node.env";
     };
     path = [
       pkgs.util-linux

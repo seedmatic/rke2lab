@@ -1,4 +1,4 @@
-# rke2lab per-node hostname — set at boot from the cloud-init-delivered /run/rke2lab/node.env. The
+# rke2lab per-node hostname — set at boot from the cloud-init-delivered /var/lib/rke2lab/node.env. The
 # per-node identity scalars (node-name/hostname/kind/id + the per-cluster dual-stack CIDRs) now arrive
 # through the UNIFORM cloud-init channel: seed-master (mgmt) poses them as a `write_files` entry
 # writing node.env (see ./cloud-init.nix for the incus datasource shim; host GROW renders the
@@ -17,13 +17,14 @@
     before = [
       "rke2-server.service"
       "rke2lab-zfs-containerd.service"
+      # avahi publishes <cluster>-<node>.local over mDNS (./host-access.nix) — set the hostname first.
       "avahi-daemon.service"
     ];
-    unitConfig.ConditionPathExists = "/run/rke2lab/node.env";
+    unitConfig.ConditionPathExists = "/var/lib/rke2lab/node.env";
     serviceConfig = {
       Type = "oneshot";
       RemainAfterExit = true;
-      EnvironmentFile = "/run/rke2lab/node.env";
+      EnvironmentFile = "/var/lib/rke2lab/node.env";
     };
     script = ''
       set -euo pipefail

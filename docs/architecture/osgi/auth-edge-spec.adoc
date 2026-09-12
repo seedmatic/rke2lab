@@ -40,7 +40,10 @@ crosses no frontier.
   `contents:write` installation token AT THE POINT OF USE from the durable App credentials a consumer
   reveals from its own cellar case. The credential fields cross as plain strings so no `ghapp-contract`
   type is dragged into a consumer that mirrors the App material; empty = the mint edge is filtered out
-  (survey/preview) so the caller skips the push. This SUPERSEDES the former durable auth-seal
+  (survey/preview) so the caller skips the push. Its least-privilege twin `GithubReaderTokenMint` has
+  the SAME signature but mints a `contents:read` token — for a consumer that only READS a private repo
+  (a node fetching its rendered `manifests/<cluster>` branch to install its rke2 config), where a
+  write-scoped token is over-privileged. This SUPERSEDES the former durable auth-seal
   (`GithubToken` filed SEALED at an `AuthCoordinate` and revealed on fetch): an installation token is
   ephemeral (≈1 h), so a token sealed before provisioning had gone stale by the reveal after the cluster
   came up — mint-on-demand is the fix. `GithubToken` and `AuthCoordinate` are deleted.
@@ -48,7 +51,8 @@ crosses no frontier.
   `FLOXHUB → flox auth token`, and shells nothing else. Pure `ProcessBuilder` over the JDK, no embedded
   jars, mirroring incus-edge's ssh contact. Its sibling `GithubWriterTokenMintEdge` realises
   `GithubWriterTokenMint` by delegating to the ghapp `GithubAppMinter` (the JWT-signing GitHub contact);
-  it is `cultivating`-gated, so it activates only when the minter is present.
+  it is `cultivating`-gated, so it activates only when the minter is present. `GithubReaderTokenMintEdge`
+  is its least-privilege twin — same delegation, `TokenScope.READER` (`contents:read`).
 * *seed-master* (host): the updater keeps the env-var precedence and the YAML upsert;
   `ensureLaunchSecretsToken` resolves `AuthTokenContact` from the registry
   (`singleSpiProvider(AuthTokenContact.class)` on the already-held `BootedFramework`) and passes it into
