@@ -547,16 +547,15 @@
           "osgi/domains/manifests/manifests-core/src/main/resources/crds";
 
         # rke2-adoption-controller re-exported the same way as flox-controller: the
-        # controller binary + its OCI image (cross-built via the linux-builder) + the
-        # ClusterAdoption CRD store path. Same darwin-eval guard.
+        # controller binary + the ClusterAdoption CRD store path. The OCI image is NO
+        # LONGER re-exported or baked — the controller rides the flox runtime (the
+        # cluster-api/rke2-adoption-controller flox env installs the binary from the
+        # flox-catalogue), so only the binary + CRD are needed here. Same darwin-eval guard.
         rke2AdoptionControllerPackages =
           let adoptPkgs = rke2-adoption-controller.packages.${system} or { };
           in (if adoptPkgs ? rke2-adoption-controller
               then { inherit (adoptPkgs) rke2-adoption-controller; }
               else { })
-          // (if adoptPkgs ? rke2-adoption-controller-image
-                then { inherit (adoptPkgs) rke2-adoption-controller-image; }
-                else { })
           // (if adoptPkgs ? rke2-adoption-controller-crds
                 then { inherit (adoptPkgs) rke2-adoption-controller-crds; }
                 else { });
@@ -1074,7 +1073,7 @@ USAGE
       nixosConfigurations.rke2-node-base = nixpkgs.lib.nixosSystem {
         system = "aarch64-linux";
         specialArgs = {
-          inherit flox flox-runtime flox-controller rke2-adoption-controller;
+          inherit flox flox-runtime flox-controller;
           ndh = inputs.ndh;
         };
         modules = [

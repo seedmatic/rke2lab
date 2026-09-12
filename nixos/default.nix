@@ -19,7 +19,9 @@
     ./flox-runtime.nix # flox NRI plugin OCI hooks + /etc/flox.toml (workload envs = runtime FloxEnv CRs, not baked)
     ./flox-carrier.nix # the minimal nix OCI base image every flox-injected pod runs (baked → rke2 air-gap import)
     ./flox-controller.nix # the flox-controller node-agent image (baked → rke2 air-gap import; it produces the carriers)
-    ./rke2-adoption-controller.nix # the CAPI adoption controller image (baked → rke2 air-gap import; adopts the running control plane)
+    # NOTE: rke2-adoption-controller is NO LONGER baked — it rides the flox runtime like the mesh
+    # workloads (cluster-api/rke2-adoption-controller FloxEnv installs the binary from the
+    # flox-catalogue onto the flox carrier). See Rke2AdoptionControllerManifestsUnit.
     ./ndh-bringup-runtime.nix # ndh bringup-runtime profile symlink (manage-tailnet's trampoline command contract, visible in flox pods)
     ./host-access.nix # dbus-over-TCP + mDNS, so the operator reaches the node
     ./nix-env.nix # nix.settings + the node toolbox on PATH

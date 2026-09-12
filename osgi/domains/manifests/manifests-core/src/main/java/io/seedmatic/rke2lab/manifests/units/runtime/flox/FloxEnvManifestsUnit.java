@@ -131,6 +131,30 @@ public final class FloxEnvManifestsUnit extends AbstractManifestsUnit {
       createEnv(scope, resolver, "tailscale-debug", FloxEnvFolder.MESH, tailscaleManifest(true));
       createEnv(scope, resolver, "headplane-debug", FloxEnvFolder.MESH, headplaneManifest(true));
     }
+    // cluster-api/rke2-adoption-controller — the in-cluster CAPI adoption controller on the flox
+    // runtime (replaces the baked node-base OCI image). A pure Go kubebuilder binary driven by
+    // exec,
+    // so the env carries ONLY the workload package (like kdns-prod); no debug flavor. Installed
+    // from
+    // the catalog via floxcatalog:catalogue#rke2-adoption-controller.
+    createEnv(
+        scope,
+        resolver,
+        "rke2-adoption-controller",
+        FloxEnvFolder.CLUSTER_API,
+        adoptionControllerManifest());
+  }
+
+  /**
+   * The flox manifest for the rke2-adoption-controller env: only the controller binary from the
+   * catalog. A pure Go binary run by exec (no shell/kubectl in-env), so — unlike the mesh envs — it
+   * needs no toolchain packages; the flox carrier supplies the shell {@code flox activate}
+   * bootstraps from.
+   */
+  private Map<String, Object> adoptionControllerManifest() {
+    final Map<String, Object> install = new LinkedHashMap<>();
+    install.put("rke2-adoption-controller", flakeRef("rke2-adoption-controller"));
+    return manifest(install);
   }
 
   private void createEnv(

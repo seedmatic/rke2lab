@@ -2,12 +2,16 @@ package io.seedmatic.rke2lab.manifests.units.clusterapi;
 
 import io.seedmatic.rke2lab.manifests.AbstractManifestsUnit;
 import io.seedmatic.rke2lab.manifests.Cdk8sApiObjectResolver;
+import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
 import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
+import io.seedmatic.rke2lab.manifests.contract.FloxAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.ManifestLayer;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import io.seedmatic.rke2lab.manifests.units.cluster.ClusterRefs;
+import io.seedmatic.rke2lab.manifests.units.runtime.flox.FloxEnvFolder;
 import io.seedmatic.rke2lab.manifests.upstream.UpstreamYamlInclusion;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.cdk8s.ApiObject;
@@ -34,9 +38,13 @@ import software.constructs.Construct;
  *
  * <p>The CRD is single-sourced from the rke2-adoption-controller flake (its controller-gen output,
  * staged onto the classpath at {@code /crds/} by seedMasterJar / {@code nix run
- * .#stage-rke2-adoption-controller-crd}) — never re-modelled or vendored. The image is baked into
- * the node-base ({@code nixos/rke2-adoption-controller.nix}) and pulled {@code IfNotPresent}: the
- * RepoTag here MUST match that image's tag (the flake VERSION).
+ * .#stage-rke2-adoption-controller-crd}) — never re-modelled or vendored. The controller BINARY is
+ * delivered on the FLOX RUNTIME, not a baked image: the Deployment runs the minimal flox carrier
+ * ({@code FloxDebugPolicy.prodImage()}) and the {@code cluster-api/rke2-adoption-controller} flox
+ * env ({@link io.seedmatic.rke2lab.manifests.units.runtime.flox.FloxEnvManifestsUnit}, sourced from
+ * the flox-catalogue as {@code floxcatalog:catalogue#rke2-adoption-controller}) puts the binary on
+ * PATH via the flox NRI plugin — the {@code environment.<c>} annotation on the pod template opts
+ * in.
  */
 public final class Rke2AdoptionControllerManifestsUnit extends AbstractManifestsUnit {
 
@@ -47,12 +55,6 @@ public final class Rke2AdoptionControllerManifestsUnit extends AbstractManifests
   public static final String OUTPUT_DIR = "rke2-adoption-controller";
 
   private static final String NAME = "rke2-adoption-controller";
-
-  /**
-   * The baked image RepoTag — MUST match {@code nixos/rke2-adoption-controller.nix}'s tar (the
-   * flake VERSION). Pulled IfNotPresent: rke2 air-imports the baked tar, so it is always local.
-   */
-  private static final String IMAGE = "io.seedmatic.rke2-adoption-controller:0.0.0-develop";
 
   /** The staged CRD classpath resource (single source: the rke2-adoption-controller flake). */
   private static final String CLUSTERADOPTION_CRD_RESOURCE =
@@ -217,6 +219,53 @@ public final class Rke2AdoptionControllerManifestsUnit extends AbstractManifests
     deployment.addDependency(serviceAccount);
     deployment.addDependency(clusterRoleBinding);
     deployment.addDependency(resolver.require(ClusterRefs.RUNTIME_SYSTEM_NAMESPACE));
+
+    // The controller runs on the FLOX RUNTIME, not a baked node-base image: the container is the
+    // minimal flox carrier (prodImage()); the controller BINARY comes from the
+    // cluster-api/rke2-adoption-controller flox env (FloxEnvManifestsUnit), put on PATH by the flox
+    // NRI plugin, so `command: [rke2-adoption-controller]` resolves. The environment.<c> annotation
+    // opts the container in (the flox-controller webhook gates scheduling on the env being
+    // realised);
+    // HOME/UID/GID set the run context (root, mirroring kdns). Prod env only — no debug flavor.
+    final String floxEnvironment = FloxEnvFolder.CLUSTER_API.value() + "/" + NAME;
+
+    final Map<String, Object> container = new LinkedHashMap<>();
+    container.put("name", "controller");
+    container.put("image", ManifestSynthesisContext.current().floxDebugPolicy().prodImage());
+    container.put("imagePullPolicy", "IfNotPresent");
+    container.put("command", List.of(NAME));
+    container.put(
+        "args", List.of("--health-probe-bind-address=:8081", "--metrics-bind-address=:8080"));
+    container.put("env", List.of(Map.of("name", "HOME", "value", "/root")));
+    container.put(
+        "livenessProbe",
+        Map.of(
+            "httpGet", Map.of("path", "/healthz", "port", 8081),
+            "initialDelaySeconds", 15,
+            "periodSeconds", 20));
+    container.put(
+        "readinessProbe",
+        Map.of(
+            "httpGet", Map.of("path", "/readyz", "port", 8081),
+            "initialDelaySeconds", 5,
+            "periodSeconds", 10));
+    container.put(
+        "resources",
+        Map.of(
+            "requests", Map.of("cpu", "10m", "memory", "64Mi"),
+            "limits", Map.of("memory", "128Mi")));
+    container.put(
+        "volumeMounts",
+        List.of(
+            Map.of("mountPath", "/.config/flox", "name", "flox-config"),
+            Map.of("mountPath", "/.cache/flox", "name", "flox-cache")));
+
+    final Map<String, String> floxAnnotations = new LinkedHashMap<>();
+    floxAnnotations.put(FloxAnnotation.ENVIRONMENT.forContainer("controller"), floxEnvironment);
+    floxAnnotations.put(FloxAnnotation.HOME.forContainer("controller"), "/root");
+    floxAnnotations.put(FloxAnnotation.UID.forContainer("controller"), "0");
+    floxAnnotations.put(FloxAnnotation.GID.forContainer("controller"), "0");
+
     deployment.addJsonPatch(
         JsonPatch.add(
             "/spec",
@@ -228,38 +277,17 @@ public final class Rke2AdoptionControllerManifestsUnit extends AbstractManifests
                 "template",
                 Map.of(
                     "metadata",
-                    Map.of("labels", labels),
+                    Map.of("labels", labels, "annotations", floxAnnotations),
                     "spec",
                     Map.of(
                         "serviceAccountName",
                         NAME,
                         "containers",
+                        new Object[] {container},
+                        "volumes",
                         new Object[] {
-                          Map.of(
-                              "name",
-                              "controller",
-                              "image",
-                              IMAGE,
-                              "imagePullPolicy",
-                              "IfNotPresent",
-                              "args",
-                              new Object[] {
-                                "--health-probe-bind-address=:8081", "--metrics-bind-address=:8080"
-                              },
-                              "livenessProbe",
-                              Map.of(
-                                  "httpGet", Map.of("path", "/healthz", "port", 8081),
-                                  "initialDelaySeconds", 15,
-                                  "periodSeconds", 20),
-                              "readinessProbe",
-                              Map.of(
-                                  "httpGet", Map.of("path", "/readyz", "port", 8081),
-                                  "initialDelaySeconds", 5,
-                                  "periodSeconds", 10),
-                              "resources",
-                              Map.of(
-                                  "requests", Map.of("cpu", "10m", "memory", "64Mi"),
-                                  "limits", Map.of("memory", "128Mi")))
+                          Map.of("name", "flox-config", "emptyDir", Map.of()),
+                          Map.of("name", "flox-cache", "emptyDir", Map.of())
                         })))));
   }
 }

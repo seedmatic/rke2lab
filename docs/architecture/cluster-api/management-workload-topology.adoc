@@ -425,7 +425,7 @@ impersonation, no creds-less kubeconfig.
 flowchart LR
   subgraph MGMT["bioskop-mgmt"]
     CAPI["CAPI pod<br/>kubeconfig.server = egress FQDN"]
-    EG["egress ProxyGroup (operator)<br/>Service &lt;w&gt;-apiserver<br/>tailnet-target-ip: 10.80.&lt;w&gt;.10"]
+    EG["egress: ExternalName Service &lt;w&gt;-apiserver<br/>+ ProxyGroup type:egress<br/>(owned by rke2-adoption-controller)<br/>tailnet-target-ip: 10.80.&lt;w&gt;.10"]
   end
   subgraph W["*-wrkld"]
     CONN["operator Connector<br/>advertises VIP 10.80.&lt;w&gt;.10/32 + LB pool /26"]
@@ -436,24 +436,48 @@ flowchart LR
   CONN --> VIP
 ----
 
-Four rendered pieces, all derived from the blueprint SSOT:
+Four pieces — TWO rendered from the blueprint SSOT, TWO owned by the `rke2-adoption-controller`:
 
-. *`controlPlaneEndpoint` = the VIP* — unchanged. It is what the workload's OWN nodes use to join
-  their control plane (a management-internal `.svc.cluster.local` name would not resolve there) and
-  what kube-vip binds; it cannot be redirected. (`ClusterApiCrRenderer` sets
+. *(rendered) `controlPlaneEndpoint` = the VIP* — unchanged. It is what the workload's OWN nodes use
+  to join their control plane (a management-internal `.svc.cluster.local` name would not resolve
+  there) and what kube-vip binds; it cannot be redirected. (`ClusterApiCrRenderer` sets
   `controlPlaneEndpoint.host = vip`.)
-. *`RKE2ControlPlane.serverConfig.tlsSan` += the egress Service FQDN*
-  (`<w>-apiserver.tailscale-system.svc.cluster.local`) — so the end-to-end TLS the CAPI pod opens
-  validates. Rendered by `ClusterApiCrRenderer`, derived from the cluster name.
-. *Override `<cluster>-kubeconfig.server` = `https://<egress FQDN>:6443`* — CAPRKE2 issues it at the
-  VIP by default; the `rke2-adoption-controller` (which already holds the CA) rewrites the server.
-  The kubeconfig `server` is the ONE place that diverges from `controlPlaneEndpoint`.
-. *The egress itself* — a `ProxyGroup type: egress` + a per-workload `Service` annotated
-  `tailscale.com/tailnet-target-ip: <VIP>`, the symmetric twin of the ingress Connector.
+. *(rendered) `RKE2ControlPlane.serverConfig.tlsSan` += the egress Service FQDN*
+  (`<w>-apiserver.tailscale-system.svc.cluster.local`, deterministic) — so the end-to-end TLS the
+  CAPI pod opens validates. Rendered by `ClusterApiCrRenderer`, derived from the cluster name.
+. *(controller) Override `<cluster>-kubeconfig.server` = `https://<egress FQDN>:6443`* — CAPRKE2
+  issues it at the VIP by default; the `rke2-adoption-controller` rewrites the server. The kubeconfig
+  `server` is the ONE place that diverges from `controlPlaneEndpoint`.
+. *(controller) The egress itself* — a `ProxyGroup type: egress` + a per-adopted-cluster `ExternalName`
+  Service `<w>-apiserver` annotated `tailscale.com/proxy-group` + `tailscale.com/tailnet-target-ip:
+  <VIP>`. This is NOT a Flux-rendered `ManifestsUnit`: the tailscale operator MUTATES the Service's
+  `spec.externalName` (it wires egress by creating a ClusterIP Service + EndpointSlice + an egress
+  ConfigMap the ProxyGroup pods read via `/etc/proxies`, then repoints `externalName` at that
+  ClusterIP). A Flux SSA force-apply would fight that mutation and flap the Service. So the
+  `rke2-adoption-controller` OWNS it — reconciling it idempotently (touching `externalName` only when
+  empty) alongside the kubeconfig patch, since reach is a facet of adoption. One owner, no race.
+
+.Live probe (2026-09-12) — the ProxyGroup-egress wiring model
+[NOTE]
+====
+Confirmed on `bioskop-mgmt` (operator `v1.102.3`): a `ProxyGroup type: egress` + an annotated
+Service is wired by the operator's `service-pg-reconciler` NOT by mutating the Service into anything
+Flux-hostile in a *separate* object graph — it creates a ClusterIP Service + EndpointSlice + a
+`<pg>-egress-config` ConfigMap (operator-owned), and repoints the user Service's `spec.externalName`.
+The proxy pod configures egress from `/etc/proxies`. Because that one user-owned field
+(`externalName`) is operator-mutated, GitOps (Flux) must not manage the Service — hence the
+controller owns it (decision above). The ProxyGroup itself is cluster-scoped; the operator watches
+all namespaces (`OPERATOR_NAMESPACE=` empty).
+====
 
 NOTE: The self-adoption reach (management cluster adopting itself) does NOT use this path — the
 controller is in-cluster and uses `kubernetes.default.svc` (see the two-reaches table above). The
 egress path is for the WORKLOAD reach: a management pod reaching another cluster's VIP.
+
+The `rke2-adoption-controller` itself does NOT ride the nixos node-base image; it is delivered as a
+FloxEnv workload (its Deployment carries the flox-controller annotations
+`flox.seedmatic.io/environment.<c>` / `nix-build.<c>`), per the all-workloads-on-flox-runtime
+principle. Rendered by `Rke2AdoptionControllerManifestsUnit` (cluster-api domain).
 
 [[sovereign-headscale-reach]]
 === Migrating the reach to a sovereign Headscale (deferred chantier)
