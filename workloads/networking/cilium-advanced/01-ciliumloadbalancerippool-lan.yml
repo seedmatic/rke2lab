@@ -8,7 +8,7 @@ metadata:
   name: lan
 spec:
   blocks:
-  - cidr: 192.168.1.192/27
+  - cidr: 192.168.1.136/29
   serviceSelector:
     matchLabels:
       io.cilium/lb-ipam-pool: lan
