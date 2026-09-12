@@ -9,6 +9,7 @@ data:
     flox.seedmatic.io/v1alpha1|FloxEnv|rke2lab-system|tailscale
     flox.seedmatic.io/v1alpha1|FloxEnv|rke2lab-system|headplane
     flox.seedmatic.io/v1alpha1|FloxEnv|rke2lab-system|tailnet
+    flox.seedmatic.io/v1alpha1|FloxEnv|rke2lab-system|rke2-adoption-controller
 kind: ConfigMap
 metadata:
   annotations:

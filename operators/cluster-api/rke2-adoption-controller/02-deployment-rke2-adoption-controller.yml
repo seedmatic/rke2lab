@@ -16,6 +16,11 @@ spec:
       app.kubernetes.io/name: rke2-adoption-controller
   template:
     metadata:
+      annotations:
+        flox.seedmatic.io/environment.controller: cluster-api/rke2-adoption-controller
+        flox.seedmatic.io/gid.controller: "0"
+        flox.seedmatic.io/home.controller: /root
+        flox.seedmatic.io/uid.controller: "0"
       labels:
         app.kubernetes.io/component: controller
         app.kubernetes.io/name: rke2-adoption-controller
@@ -24,7 +29,12 @@ spec:
       - args:
         - --health-probe-bind-address=:8081
         - --metrics-bind-address=:8080
-        image: io.seedmatic.rke2-adoption-controller:0.0.0-develop
+        command:
+        - rke2-adoption-controller
+        env:
+        - name: HOME
+          value: /root
+        image: rke2lab/flox-carrier:0.1.0
         imagePullPolicy: IfNotPresent
         livenessProbe:
           httpGet:
@@ -45,4 +55,14 @@ spec:
           requests:
             cpu: 10m
             memory: 64Mi
+        volumeMounts:
+        - mountPath: /.config/flox
+          name: flox-config
+        - mountPath: /.cache/flox
+          name: flox-cache
       serviceAccountName: rke2-adoption-controller
+      volumes:
+      - emptyDir: {}
+        name: flox-config
+      - emptyDir: {}
+        name: flox-cache

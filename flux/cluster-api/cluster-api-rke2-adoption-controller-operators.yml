@@ -13,6 +13,11 @@ spec:
   - name: cluster-api-cluster-api-operator-crds
   - name: cluster-api-cluster-api-operator-operators
   - name: cluster-api-cluster-api-operator-workloads
+  - name: runtime-flox-controller-crds
+  - name: runtime-flox-controller-operators
+  - name: runtime-flox-controller-workloads
+  - name: runtime-flox-webhook-operators
+  - name: runtime-flox-webhook-workloads
   force: true
   interval: 5m
   path: ./operators/cluster-api/rke2-adoption-controller
