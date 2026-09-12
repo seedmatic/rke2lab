@@ -15,8 +15,6 @@ spec:
   - name: runtime-flox-catalog-operators
   - name: runtime-flox-catalog-workloads
   - name: runtime-flox-controller-crds
-  - name: runtime-flox-controller-operators
-  - name: runtime-flox-controller-workloads
   force: true
   interval: 5m
   path: ./workloads/runtime/flox-envs

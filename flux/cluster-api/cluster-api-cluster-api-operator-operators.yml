@@ -11,7 +11,6 @@ spec:
       name: sops-age
   dependsOn:
   - name: cluster-api-cluster-api-operator-crds
-  - name: cluster-api-cluster-api-operator-workloads
   - name: platform-cert-manager-foundation
   - name: platform-cert-manager-workloads
   - name: platform-cluster-issuer-foundation

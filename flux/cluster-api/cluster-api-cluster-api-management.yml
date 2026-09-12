@@ -14,8 +14,6 @@ spec:
   - name: cluster-api-cluster-api-operator-operators
   - name: cluster-api-cluster-api-operator-workloads
   - name: cluster-api-rke2-adoption-controller-crds
-  - name: cluster-api-rke2-adoption-controller-operators
-  - name: cluster-api-rke2-adoption-controller-workloads
   force: true
   interval: 5m
   path: ./workloads/cluster-api/cluster-api-management

@@ -14,8 +14,6 @@ spec:
   - name: cluster-runtime-system-namespace-workloads
   - name: gitops-flux-instance
   - name: runtime-flox-controller-crds
-  - name: runtime-flox-controller-operators
-  - name: runtime-flox-controller-workloads
   force: true
   interval: 5m
   path: ./operators/runtime/flox-catalog
