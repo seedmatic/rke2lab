@@ -1,0 +1,43 @@
+{
+  "lockfile-version": 1,
+  "manifest": {
+    "schema-version": "1.10.0",
+    "install": {
+      "rke2-adoption-controller": {
+        "flake": "path:../../..#rke2-adoption-controller"
+      }
+    },
+    "options": {
+      "systems": [
+        "aarch64-linux"
+      ]
+    }
+  },
+  "packages": [
+    {
+      "install_id": "rke2-adoption-controller",
+      "locked-url": "path:/private/var/lib/git/seedmatic/rke2lab.d/flox-catalogue?lastModified=1789232392&narHash=sha256-AX2fmaA5TmkfWp%2BE/dvQLIYGMV7VKMB4vNU3Oxigoe8%3D",
+      "flake-description": "Flox runtime env catalog: per-workload packages (kdns, headplane, headscale, tailscale) the flox-nri-plugin injects. The plugin itself now lives in github:seedmatic/flox-nri-plugin (consumed as the flox-runtime input of the rke2lab flake).",
+      "locked-flake-attr-path": "packages.aarch64-linux.rke2-adoption-controller",
+      "derivation": "/nix/store/w42hnc05nz5a4m4s9pgbyz037zg25cl1-io.seedmatic.rke2-adoption-controller-0.0.0-develop.drv",
+      "outputs": {
+        "out": "/nix/store/fd6l6ghfhl87h8kyb0j5bfy7wc9bbk6b-io.seedmatic.rke2-adoption-controller-0.0.0-develop"
+      },
+      "output-names": [
+        "out"
+      ],
+      "outputs-to-install": [
+        "out"
+      ],
+      "requested-outputs-to-install": [],
+      "package-system": "aarch64-linux",
+      "system": "aarch64-linux",
+      "name": "io.seedmatic.rke2-adoption-controller-0.0.0-develop",
+      "pname": "io.seedmatic.rke2-adoption-controller",
+      "version": "0.0.0-develop",
+      "broken": false,
+      "unfree": false,
+      "priority": 5
+    }
+  ]
+}

@@ -43,6 +43,17 @@
     # ndh (public) carries manage-tailnet + the tailscale fork
     # (packages.<sys>.tailscale). Follows rke2lab's pin — see above.
     ndh.follows = "rke2lab/ndh";
+
+    # The rke2-adoption-controller flake (rke2lab orphan branch) owns the Go
+    # controller + ClusterAdoption CRD. We re-export its BINARY below so the
+    # cluster-api/rke2-adoption-controller FloxEnv installs it into the flox
+    # carrier — the controller stops riding a baked node-base OCI image (see
+    # rke2lab .claude/rke2-adoption-controller-floxenv-plan.md). Follows our
+    # nixpkgs/utils so it dedups with the rest of the catalog.
+    rke2-adoption-controller.url = "github:seedmatic/rke2lab/rke2-adoption-controller";
+    rke2-adoption-controller.inputs.nixpkgs.follows = "nixpkgs";
+    rke2-adoption-controller.inputs.flake-utils.follows = "flake-utils";
+    rke2-adoption-controller.inputs.flake-commons.follows = "flake-commons";
   };
 
   outputs = {
@@ -53,6 +64,7 @@
     headplane,
     headscale,
     ndh,
+    rke2-adoption-controller,
     ...
   }:
     flake-utils.lib.eachSystem [
@@ -310,6 +322,15 @@
         # makes the in-cluster render secret-FULL (the cellar fills from `.secrets`)
         # rather than secret-blind. aarch64-linux for the pod; darwin for parity.
         git-sops-filter = ndh.packages.${system}.git-sops-filter;
+
+        # Re-exported from the rke2-adoption-controller flake (rke2lab orphan
+        # branch): the in-cluster controller BINARY — NOT the `-image` OCI output
+        # the node-base baking used. The cluster-api/rke2-adoption-controller
+        # FloxEnv installs it via floxcatalog:catalogue#rke2-adoption-controller so
+        # the flox carrier runs it from PATH, replacing the baked image.
+        # aarch64-linux for the node; darwin rides along for local parity.
+        rke2-adoption-controller =
+          rke2-adoption-controller.packages.${system}.rke2-adoption-controller;
 
         default = kdns;
       };

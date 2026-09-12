@@ -1,0 +1,19 @@
+# rke2-adoption-controller env: the in-cluster CAPI adoption controller binary,
+# mounted by the flox NRI plugin under `flox.seedmatic.io/environment.<container>`
+# = "cluster-api/rke2-adoption-controller". A pure Go kubebuilder binary driven by
+# exec (no shell scripts, unlike the mesh envs), so the env carries only the
+# workload package — the flox carrier provides the shell `flox activate` bootstraps
+# from. Replaces the baked node-base OCI image (see rke2lab
+# .claude/rke2-adoption-controller-floxenv-plan.md).
+schema-version = "1.10.0"
+
+[install]
+
+  [install.rke2-adoption-controller]
+  # Workload package in the parent catalog flake. Relative `path:` from this env
+  # dir (environment.d/cluster-api/rke2-adoption-controller/) so ../../.. = the
+  # catalog root — same hop the mesh envs use, avoiding nix's /var/run symlink trap.
+  flake = "path:../../..#rke2-adoption-controller"
+
+[options]
+systems = ["aarch64-linux"]
