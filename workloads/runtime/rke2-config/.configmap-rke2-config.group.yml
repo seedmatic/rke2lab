@@ -12,7 +12,7 @@ data:
     v1|ConfigMap||etcd.yaml
     v1|ConfigMap||node-inetaddr.yaml
     v1|ConfigMap||tls-san.yaml
-    v1|ConfigMap||token.yaml
+    v1|Secret||token.yaml
 kind: ConfigMap
 metadata:
   annotations:
