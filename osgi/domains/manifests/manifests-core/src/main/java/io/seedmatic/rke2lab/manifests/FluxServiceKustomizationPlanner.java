@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.seedmatic.rke2lab.manifests.contract.FloxAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.ManifestExplodeResult;
+import io.seedmatic.rke2lab.manifests.contract.ManifestLayer;
 import io.seedmatic.rke2lab.manifests.units.clusterapi.ClusterApiOperatorManifestsUnit;
 import io.seedmatic.rke2lab.manifests.units.gitops.FluxRootManifestsUnit;
 import io.seedmatic.rke2lab.manifests.units.runtime.flox.FloxControllerManifestsUnit;
@@ -41,12 +42,17 @@ import org.slf4j.LoggerFactory;
  *       intra-/cross-domain graph (e.g. {@code headplane → headscale}); a dep resolves to every
  *       cell of its coord (a multi-layer service is waited on in full); and
  *   <li>the DERIVED {@code CRD → CR} edges — for every rendered CR, the cell(s) that PROVIDE its
- *       CRD. A CRD is provided either by a cell that RENDERS it (scanned {@code
- *       CustomResourceDefinition} docs → {@link DocScan#crdProviderCoord}) or by a cell that
- *       INSTALLS it at runtime (an operator/HelmChart — the declared {@link #RUNTIME_INSTALLERS}
- *       map). The consumer depends on every cell of the provider's coord, so both the CRD and the
- *       controller that serves it are up first. This REPLACES the old global layer barrier: no more
- *       false coupling (a {@code networking} workload no longer waits on {@code cicd}'s operator).
+ *       CRD. When the CRD is RENDERED (scanned {@code CustomResourceDefinition} docs → {@link
+ *       DocScan#crdProviderCoord}) it auto-routes to the provider's {@code crds} layer, and the CR
+ *       depends on THAT crds cell ALONE — NOT the provider's operators/workloads. A CR only needs
+ *       its CRD to be admitted; the controller reconciles it eventually (controller-runtime lists on
+ *       startup) and an operator-installed {@code failurePolicy: Fail} webhook is handled by Flux
+ *       retry — so K8s/Flux converge without a deterministic operators-layer wait. ONLY a
+ *       RUNTIME-installed CRD (an operator/HelmChart — the declared {@link #RUNTIME_INSTALLERS} map,
+ *       e.g. the tailscale {@code Connector}) keeps the full provider coord, because the CR's apply
+ *       itself fails until that operators cell has registered the CRD. This REPLACES the old global
+ *       layer barrier: no more false coupling (a {@code networking} workload no longer waits on
+ *       {@code cicd}'s operator, nor on a rendered-CRD provider's controller).
  *   <li>the FLOX-RUNTIME edge — a cell whose pod templates consume a flox env / nix-build store (a
  *       {@code flox.seedmatic.io/*} pod-template annotation) waits on the flox-controller runtime
  *       cells ({@code runtime/flox-webhook} + {@code runtime/flox-controller}). The webhook's
@@ -326,7 +332,35 @@ final class FluxServiceKustomizationPlanner {
                 return; // a provider, a built-in, or a distro-shipped group — no edge to derive
               }
               final String providerCoord = resolveProvider(gk, scan, consumers);
-              final Set<String> providerCells = cellNamesOfCoord(providerCoord, layersByCoord);
+              // A CR needs only its CRD to be ADMITTED. When the CRD is RENDERED it auto-routes to
+              // the provider's `crds` layer, so the CR depends on that ONE crds cell — NOT the
+              // provider's operators/workloads. The controller that reconciles the CR is an
+              // eventual
+              // concern (controller-runtime lists existing CRs on startup), and an
+              // operator-installed
+              // `failurePolicy: Fail` admission webhook that gates the apply is handled by Flux
+              // retry
+              // — neither warrants a deterministic operators-layer wait (K8s/Flux converge). ONLY a
+              // RUNTIME-registered CRD keeps the full provider coord: a HelmChart operator (the
+              // tailscale Connector's tailscale.com CRD) registers it at runtime, NOT on a crds
+              // layer, so the CR's apply itself fails until that operators cell is up.
+              final Set<String> providerLayers =
+                  layersByCoord.getOrDefault(providerCoord, Set.of());
+              final Set<String> providerCells;
+              if (scan.crdProviderCoord().containsKey(gk)
+                  && providerLayers.contains(ManifestLayer.CRDS.value())) {
+                final int slash = providerCoord.indexOf('/');
+                providerCells =
+                    Set.of(
+                        cellName(
+                            new Cell(
+                                ManifestLayer.CRDS.value(),
+                                providerCoord.substring(0, slash),
+                                providerCoord.substring(slash + 1)),
+                            layersByCoord));
+              } else {
+                providerCells = cellNamesOfCoord(providerCoord, layersByCoord);
+              }
               if (providerCells.isEmpty()) {
                 throw new IllegalStateException(
                     "CR "
@@ -338,11 +372,7 @@ final class FluxServiceKustomizationPlanner {
                         + "', which renders no cell in this tree — the CR outlives its installer");
               }
               for (final Cell consumer : consumers) {
-                // Skip only the consumer's OWN cell, NOT its whole coord: when the CRD provider
-                // shares the consumer's coord (an operator whose HelmChart sits in the operators
-                // layer while its CR sits in workloads — the tailscale Connector), the real
-                // cross-layer edge (workloads -> operators) must still be emitted. A coord-level
-                // skip suppressed it, so the CR dry-ran before the operator registered its CRD.
+                // Skip only the consumer's OWN cell (a unit whose CR + CRD share one cell).
                 final String consumerName = cellName(consumer, layersByCoord);
                 for (final String providerCell : providerCells) {
                   if (!providerCell.equals(consumerName)) {
