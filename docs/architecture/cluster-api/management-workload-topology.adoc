@@ -285,6 +285,169 @@ member, so the management cluster reaches each workload node regardless of host 
 the bare-metal Mac, never a node.
 ====
 
+[[cp-endpoint-reach]]
+== Reaching the control-plane endpoint — the two reaches
+
+Adoption (<<mgmt-adoption>>) and any Tier-2 reconcile need the CAPI controllers to OPEN A CLIENT to
+the target cluster's apiserver. CAPI's `ClusterCacheTracker`/`ClusterAccessor` builds that client
+from the `<cluster>-kubeconfig` Secret, whose `server` is the `controlPlaneEndpoint` (the kube-vip
+VIP). So the endpoint MUST be reachable from wherever the controller runs. There are TWO distinct
+reaches, solved differently — conflating them cost a debugging session.
+
+.The two reaches
+[cols="1,3",options="header"]
+|===
+| Reach | How the controller reaches the target apiserver
+
+| *Self-adoption* — the management cluster adopting ITSELF (`bioskop-mgmt` owns its own node)
+| The controller runs INSIDE the target. It must NOT use the external VIP (the VIP sits on the
+  cluster's own isolated `vmnet0`, and routing it back in is fragile); it uses the k8s-native
+  in-cluster endpoint `https://kubernetes.default.svc:443`. The `<cluster>-kubeconfig` CAPRKE2
+  generates points at the VIP, so self-adoption must OVERRIDE it (mint a kubeconfig whose `server` is
+  `kubernetes.default.svc`, from the same cluster CA). The VIP stays the endpoint for EXTERNAL
+  clients only.
+
+| *Workload reach* — the management cluster reaching ANOTHER cluster (`bioskop-mgmt` → `*-wrkld`)
+| The controller (a pod on the management cluster) must reach the workload's VIP at the NETWORK
+  layer. `kubernetes.default.svc` is useless here (it is the MANAGEMENT apiserver, not the
+  workload's). This is a HARD CAPN prerequisite, verbatim: kube-vip — _"The management cluster can
+  connect to the VIP address"_; OVN — _"The management cluster can reach the OVN uplink network"_.
+  CAPN does not PROVIDE reachability; it REQUIRES it.
+|===
+
+=== Why the VIP on `vmnet0` is not reachable — and the decisive constraint
+
+The VIP is a per-cluster address on the isolated `vmnet0` segment
+(`10.80.<hostThird+7>.0/24`.host(10), from `ClusterNetworkBlueprint`). Nodes are MULTI-HOMED —
+`vmnet0` (isolated per host/cluster) + `lan0` (the shared LAN) — which is exactly why cilium peers
+BGP over `lan0`, never `vmnet0` (see
+link:cilium-bgp-multi-host-topology.adoc#multihoming[the multi-homing rationale]). The same isolation
+blocks the VIP: a controller on another cluster has no route to `10.80.<w>.x`.
+
+Two facts settle HOW to bridge it:
+
+. *`nikopol-nixos` is itinerant.* `bioskop` is a fixed bare-metal on the home LAN; `nikopol-nixos` is
+  a ROAMING VM reachable only over the tailnet (mobile hotspot, often CGNAT). So the ONLY transport
+  common to both hosts is the <<mesh,tailnet>> — there is never a shared L2 or routable uplink
+  cross-host.
+. *The VIP is a NODE-level address* (it lives on `vmnet0`, a node interface), so it belongs to the
+  <<mesh,node plane (`mammoth-skate`)>>, not the workload plane (Headscale, for pods↔pods).
+
+=== The mechanism — the tailscale-operator Connector, two locks
+
+The management cluster already reaches every workload NODE over `mammoth-skate` (regardless of host).
+We extend that to the VIP through the in-cluster *tailscale-operator*, which
+`TailscaleManifestsUnit` already deploys: it creates a `Connector` (`<cluster>-controlplane`,
+`tag:k8s`) in `subnetRouter` mode that advertises the cluster's *vmnet supernet* — the `/18` that
+holds every cluster's kube-vip VIP (`10.80.<w>.10`) and LB span. The controller pod then routes to
+the workload VIP through the tailnet — including when `nikopol-nixos` is roaming (DERP relays
+traverse the CGNAT; once punched, Tailscale upgrades to a direct path). CAPN consumes the
+pre-existing kube-vip endpoint via its load-balancer `external` mode (it does not orchestrate the LB;
+it uses the address).
+
+Advertising a route is not enough — TWO independent locks must both open, and BOTH are provisioned
+declaratively in ndh's `manage-tailnet` (`--sync-acl`), derived from the blueprint's `"vmnet"`
+segment (`10.80.0.0/18`), never hardcoded:
+
+. *Route approval* — `autoApprovers.routes` must approve the `/18` for the advertiser's tag
+  (`tag:k8s`, the operator Connector — NOT `tag:nixos`, which owns the baremetal host subnet
+  routers). Without it the route sits `pending approval` (the console `Subnets ⚠️`), and because
+  `TailnetPurgeManifestsUnit` wipes devices each grow, a manual approval would lapse on every
+  re-grow — the auto-approver makes it survive.
+. *ACL `accept`* — the client must be ACL-permitted to REACH `10.80.x`, or the approved route never
+  even enters its netmap. The `/18` is added to the relevant `accept` rule's `dst`.
+
+[mermaid,topology-cp-endpoint-reach,svg]
+----
+flowchart LR
+  subgraph MGMT["bioskop-mgmt (fixed)"]
+    CAPI["CAPI/CAPN pod"]
+    OP["tailscale-operator<br/>Connector controlplane (tag:k8s)<br/>subnetRouter: 10.80.0.0/18"]
+  end
+  subgraph TS["node plane — mammoth-skate (tailnet + DERP)"]
+    R{{"route approved (autoApprovers, tag:k8s)<br/>+ ACL accept dst 10.80.0.0/18<br/>— both from ndh manage-tailnet"}}
+  end
+  subgraph WL["*-wrkld on nikopol-nixos (itinerant)"]
+    VIP["kube-vip VIP<br/>10.80.&lt;w&gt;.10:6443"]
+  end
+  OP -.->|advertises /18| R
+  CAPI -->|routes via tailnet| R
+  R -->|DERP then direct| VIP
+----
+
+.Decision (2026-09-12), validated live, and the alternatives rejected
+[TIP]
+====
+*Chosen — advertise the vmnet `/18` over `mammoth-skate` (Tailscale SaaS) FIRST.* Zero new
+component: the operator's `Connector` already advertises it, the node plane already carries the
+itinerant host, and DERP handles the CGNAT. The two locks (route approval + ACL accept) are made
+declarative in ndh's `manage-tailnet`, derived from the blueprint `"vmnet"` segment — so they cover
+every future cluster and survive purge/re-grow. *Validated live (2026-09-12):* from `bioskop`,
+`10.80.7.10:6443` (the mgmt apiserver VIP) is reachable through the tailnet — DERP first, then a
+direct path.
+
+A self-hosted `Headscale` may REPLACE the SaaS control-server later for sovereignty — but NOT on the
+on-demand management cluster (an itinerant node behind CGNAT could not register with a control-server
+behind the home NAT; self-hosted Headscale would need DERP + a public, always-live endpoint). Its
+host is deferred.
+
+*Rejected — a shared-L2 VIP:* there is no shared L2 with an itinerant host.
+
+*Rejected (cross-host) — an OVN uplink load balancer:* CAPN's `ovn` template puts the endpoint on a
+ROUTABLE uplink — the clean production model — but there is no uplink common to a fixed host and a
+roaming one, so it cannot serve the cross-host reach, and it adds a second SDN beside cilium. It
+remains a possibility for a purely intra-host workload; out of scope here.
+====
+
+=== The workload reach — the CAPI pod egresses through the operator
+
+The Connector above makes the workload VIP REACHABLE on the tailnet; it does not by itself route a
+management POD to it. The cluster nodes are NOT tailscale clients (no `services.tailscale` on the
+node-base — the cluster joins the tailnet only through the operator), so a pod does not inherit a
+tailnet route from its node. The management CAPI pod therefore egresses through the
+*tailscale-operator* on the management side — the symmetric twin of the workload's ingress Connector.
+
+That egress is an L4 (TCP) forward, NOT a TLS-terminating proxy — contrast the operator's
+`apiServerProxy`, which terminates TLS and authenticates by tailnet identity + impersonation
+(incompatible with the client-certificate kubeconfig CAPRKE2 issues). So the TLS stays END-TO-END
+(CAPI ↔ workload apiserver) and the client cert survives: adoption keeps its native auth, no
+impersonation, no creds-less kubeconfig.
+
+[mermaid,topology-workload-egress,svg]
+----
+flowchart LR
+  subgraph MGMT["bioskop-mgmt"]
+    CAPI["CAPI pod<br/>kubeconfig.server = egress FQDN"]
+    EG["egress ProxyGroup (operator)<br/>Service &lt;w&gt;-apiserver<br/>tailnet-target-ip: 10.80.&lt;w&gt;.10"]
+  end
+  subgraph W["*-wrkld"]
+    CONN["operator Connector<br/>advertises 10.80.&lt;w&gt;.0/18"]
+    VIP["kube-vip VIP<br/>10.80.&lt;w&gt;.10:6443"]
+  end
+  CAPI -->|ClusterIP/DNS| EG
+  EG -->|"L4 (TLS pass-through)"| CONN
+  CONN --> VIP
+----
+
+Four rendered pieces, all derived from the blueprint SSOT:
+
+. *`controlPlaneEndpoint` = the VIP* — unchanged. It is what the workload's OWN nodes use to join
+  their control plane (a management-internal `.svc.cluster.local` name would not resolve there) and
+  what kube-vip binds; it cannot be redirected. (`ClusterApiCrRenderer` sets
+  `controlPlaneEndpoint.host = vip`.)
+. *`RKE2ControlPlane.serverConfig.tlsSan` += the egress Service FQDN*
+  (`<w>-apiserver.tailscale-system.svc.cluster.local`) — so the end-to-end TLS the CAPI pod opens
+  validates. Rendered by `ClusterApiCrRenderer`, derived from the cluster name.
+. *Override `<cluster>-kubeconfig.server` = `https://<egress FQDN>:6443`* — CAPRKE2 issues it at the
+  VIP by default; the `rke2-adoption-controller` (which already holds the CA) rewrites the server.
+  The kubeconfig `server` is the ONE place that diverges from `controlPlaneEndpoint`.
+. *The egress itself* — a `ProxyGroup type: egress` + a per-workload `Service` annotated
+  `tailscale.com/tailnet-target-ip: <VIP>`, the symmetric twin of the ingress Connector.
+
+NOTE: The self-adoption reach (management cluster adopting itself) does NOT use this path — the
+controller is in-cluster and uses `kubernetes.default.svc` (see the two-reaches table above). The
+egress path is for the WORKLOAD reach: a management pod reaching another cluster's VIP.
+
 [[why-separation]]
 == Why separation, not self-management
 

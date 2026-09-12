@@ -159,6 +159,9 @@ kubectl exec -n kube-system <cilium-pod> -- cilium bgp routes available  ipv4 un
 * link:management-workload-topology.adoc#incus-tenancy[Management / Workload Topology — Incus tenancy]
   — why per-cluster Incus projects share this fabric (`features.networks=false`) instead of nesting
   engines, keeping cross-cluster nodes BGP peers on one bridge.
+* link:management-workload-topology.adoc#cp-endpoint-reach[Management / Workload Topology — reaching
+  the control-plane endpoint] — the same `vmnet0`/`lan0` multi-homing rationale applied to the VIP:
+  why the kube-vip VIP is reached over the tailnet (subnet-route), not the isolated `vmnet0`.
 * Implementation: `CiliumAdvancedManifestsUnit` / `CiliumConfigManifestsUnit`
   (`osgi/domains/manifests/manifests-core/.../units/networking/`).
 * https://docs.cilium.io/en/stable/network/bgp-control-plane/[Cilium BGP Control Plane docs].
