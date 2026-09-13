@@ -152764,11 +152764,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1788981767,
-        "narHash": "sha256-TLD+8sCdxR50+HzhGha1rNtNKBKZ114q2UeOM7QOyCg=",
+        "lastModified": 1789198596,
+        "narHash": "sha256-NrmUPwg8JnXfcP0y5hYAJDg3lTC78AKZny6/lJMAEeo=",
         "owner": "seedmatic",
         "repo": "ndh",
-        "rev": "ad423dc84c048e83806aca99c3ed96c1ff1ada0e",
+        "rev": "4d627a91b28c59fa07779c37200cd38e46ce207f",
         "type": "github"
       },
       "original": {
