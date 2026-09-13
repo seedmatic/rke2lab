@@ -5,6 +5,28 @@ cluster (`bioskop-wrkld`) is greenfield-created. The settled *architecture* live
 (management-workload-topology, manifests-rendered-branches, the completion plan); this file is the
 engineering backlog + resume point.
 
+## ★★ SESSION RESUME (2026-09-13 cont.) — seed-incluster controller SHIPPED (code), ClusterProvision wired; cold-start pending
+
+Le design cluster-seeding (adopt-first, ClusterProvision+ClusterAdoption, fédération tier-B) a été GRAVÉ EN DOC (`docs/architecture/cluster-api/cluster-seeding-controller.adoc` + ancre reframée + mémoire `capi-cluster-seeding-mirror-design`) PUIS codé. **4 repos cohérents + poussés :**
+
+| repo | HEAD | quoi |
+|---|---|---|
+| **seed-incluster** (ex-rke2-adoption-controller, orphan branch) | `b120aac2c` | rename complet (module Go, cmd, groupe CRD `cluster.seedmatic.io`, flake pname/attrs, .flox) ; **CRD `ClusterProvision`** (Kind workload/management, Remote, Nodes all-pets) ; **`ClusterProvisionReconciler`** (intent Flux → CreateOrUpdate+SetControllerReference une ClusterAdoption, Owns, mirror phase) ; **reconcile d'adoption adapté** : all-pets (boucle CP pets, plus `-master` seul) + ownerRef `Cluster`→ClusterAdoption (cascade delete) + **détection présence status-driven** (lit `LXCMachine.status[InstanceProvisioned]` — signal CAPN épinglé : True=présent, False/`InstanceDeleted`=absent — PAS de sonde incus directe) + rollup accessibilité (`Cluster.RemoteConnectionProbe`) + requeue ; **garde anti-suicide** (finalizer `cluster.seedmatic.io/self-adoption-guard` + env `SELF_CLUSTER_NAME` → refuse la suppression de sa propre ClusterAdoption). `nix build .#seed-incluster` vert (vendorHash `L4MK8X4i…`). |
+| **flox-controller** | `127688d` (develop) | **propagation relock** : FloxCatalog reconciler stampe son `Status.Revision` comme `flox.seedmatic.io/relock` sur ses FloxEnvs → re-lock auto au bump catalogue (comblait le gap : catalog bumpé mais FloxEnv figé). Idempotent + loop-safe. |
+| **flox-catalogue** | `81a895609` | re-lock env→b120aac2c ; **app `nix run .#lock-envs`** (writeShellApplication, flox bundé, inline — remplace lock-envs.sh) |
+| **rke2lab** | `ce738fea0` | rename consumers + **wiring `SeedInclusterManifestsUnit`** (RBAC `clusterprovisions`+status, inclut la CRD ClusterProvision, env `SELF_CLUSTER_NAME`) + **`ClusterApiWorkloadManifestsUnit` rend un `ClusterProvision`(bioskop-wrkld)** recipe (nodes=master+peer1+peer2, remote `https://<host>-nixos:8443`) au lieu du CR-set brut + `ClusterApiCrRenderer` réduit (builders CR-set morts supprimés — CR-set bâti in-cluster) ; flake.lock seed-incluster→b120aac2c + flox-controller→127688d ; reactor compile. |
+
+**Invariants gravés (mémoire) :** adopt = réconcilier-avec-l'existant idempotent ; **≥1 instance matche (quel que soit l'état) ⇒ cluster EXISTE ⇒ adopt, jamais greenfield un rival** (provision only si ZÉRO match) ; single-adopter par PLAN (récursif) ; **fédération tier-B** (nikopol-mgmt PROVISIONNÉ IN-CLUSTER par bioskop-mgmt, pas standalone ; STANDALONE=root seul, IN_CLUSTER=tout le reste) ; remote=cluster-level ; taxonomie provisioner (bootstrap=zéro-match→greenfield ; recover=≥1→adopt) ; **delete-recreate PAS patch** (providerID immuable), au nom pet, forme-provision (providerID vide + vrai bootstrap).
+
+**Ce que le COLD-START (nouvelle image) valide :** nouvelles CRDs propres (etcd neuf → pas de stale `adoption.seedmatic.io`, donc PAS de `kubectl delete crd`) ; seed-incluster b120aac2c (flox-controller 127688d propage le relock) ; **bioskop-mgmt self-adopte** ; **ClusterProvision(bioskop-wrkld) réconcilié MAIS pas provisionné** (day-0 = 3 CP absents → adopt-attempt bloqué CAPN `InstanceProvisioned=False` → attendu, l'EXECUTION du provision n'est pas codée).
+
+**FOLLOW-UPS (cadrés) :**
+1. **day-0 provision EXECUTION** : nœud absent (CAPN `InstanceDeleted`) → **delete + re-create le LXCMachine au MÊME nom pet, `providerID` VIDE + vrai bootstrap RKE2Config** → CAPN launch déterministe. Le CP-determinism (CAPRKE2 accepte-t-il un owned CP Machine pré-créé avec vrai bootstrap ?) = le « harder-case » de l'ancre, à vérifier en source CAPRKE2.
+2. **staging CRDs → `target/generated-resources` (design fait)** : aujourd'hui staged dans `src/main/resources/crds` (source) → stale au refactor de groupe. Fix : cible `manifests-core/target/generated-resources/crds` (wipé par `clean`) ; pom `<resources>` (src + generated) ; **remplacer les 2 participants CRD de l'extension par une exec `exec-maven-plugin` phase `generate-resources`** (POST-clean — sinon clean wipe ; le participant est pré-clean) lançant `nix run .#stage-*-crd` (gaté `RKE2LAB_CRD_STAGED`/`-Dflox.crd-staging.skip`) ; GARDER le listener bundle-staging de l'extension ; buildReactorExe : `clean`→stage(store-paths)→`package`. Les apps flake `stage-*-crd` + `floxControllerCrdResourceDir` → le chemin generated.
+3. **rename `ExecutionEnclosure.OPERATOR` → `STANDALONE`** (Java host-runtime — le 3e rename, PAS encore fait).
+4. **workers** (au-delà des 3 CP pets).
+5. **auto-stamp relock côté render** (optionnel — le flox-controller propage déjà).
+
 ## ★ SESSION RESUME (2026-09-13) — mgmt adoption CLOSED; next = bioskop-wrkld birth
 
 **The 2026-09-12 "ONE BLOCKER" (CP endpoint / `RemoteConnectionProbe=False`) is RESOLVED.**
