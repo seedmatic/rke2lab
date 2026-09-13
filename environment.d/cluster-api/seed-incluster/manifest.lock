@@ -3,8 +3,8 @@
   "manifest": {
     "schema-version": "1.10.0",
     "install": {
-      "rke2-adoption-controller": {
-        "flake": "path:../../..#rke2-adoption-controller"
+      "seed-incluster": {
+        "flake": "path:../../..#seed-incluster"
       }
     },
     "options": {
@@ -15,13 +15,13 @@
   },
   "packages": [
     {
-      "install_id": "rke2-adoption-controller",
-      "locked-url": "path:/private/var/lib/git/seedmatic/rke2lab.d/flox-catalogue?lastModified=1789232392&narHash=sha256-AX2fmaA5TmkfWp%2BE/dvQLIYGMV7VKMB4vNU3Oxigoe8%3D",
+      "install_id": "seed-incluster",
+      "locked-url": "path:/private/var/lib/git/seedmatic/rke2lab.d/flox-catalogue?lastModified=1789309034&narHash=sha256-IlPBBTk1AUv0LoY%2B4OKQ/rdJch7XYy1S8Q47%2BX8yd2c%3D",
       "flake-description": "Flox runtime env catalog: per-workload packages (kdns, headplane, headscale, tailscale) the flox-nri-plugin injects. The plugin itself now lives in github:seedmatic/flox-nri-plugin (consumed as the flox-runtime input of the rke2lab flake).",
-      "locked-flake-attr-path": "packages.aarch64-linux.rke2-adoption-controller",
-      "derivation": "/nix/store/w42hnc05nz5a4m4s9pgbyz037zg25cl1-io.seedmatic.rke2-adoption-controller-0.0.0-develop.drv",
+      "locked-flake-attr-path": "packages.aarch64-linux.seed-incluster",
+      "derivation": "/nix/store/zk04g63j20fm9iipzpdxb2r3xd9aigrd-io.seedmatic.seed-incluster-0.0.0-develop.drv",
       "outputs": {
-        "out": "/nix/store/fd6l6ghfhl87h8kyb0j5bfy7wc9bbk6b-io.seedmatic.rke2-adoption-controller-0.0.0-develop"
+        "out": "/nix/store/llp1nslrh11avy0r2p6kqw7g4l0dba9f-io.seedmatic.seed-incluster-0.0.0-develop"
       },
       "output-names": [
         "out"
@@ -32,8 +32,8 @@
       "requested-outputs-to-install": [],
       "package-system": "aarch64-linux",
       "system": "aarch64-linux",
-      "name": "io.seedmatic.rke2-adoption-controller-0.0.0-develop",
-      "pname": "io.seedmatic.rke2-adoption-controller",
+      "name": "io.seedmatic.seed-incluster-0.0.0-develop",
+      "pname": "io.seedmatic.seed-incluster",
       "version": "0.0.0-develop",
       "broken": false,
       "unfree": false,
