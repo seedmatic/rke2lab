@@ -118,21 +118,28 @@ public final class RuntimeRke2ConfigManifestsUnit extends AbstractManifestsUnit 
             entry("with-node-id", false),
             entry("node-name", id.nodeHostname()),
             entry("etcd-expose-metrics", false)));
+    // The node's dual-stack address (v4,v6): cluster-cidr + service-cidr are dual-stack, and rke2
+    // rejects a node-ip that does not share their IP version(s). The v6 is the node's vmnet ULA
+    // (embedded-v4, fd96:…:{cc}20::<ipv4>) delivered by the vmnet bridge's stateful DHCPv6
+    // reservation (GrowNetworkResolver) — a real address the node holds. Named once so node-ip and
+    // the kubelet-arg override below share it.
+    final String nodeIp = net.nodeHostInetAddr() + "," + net.nodeHostInet6Addr();
     createConfigMap(
         scope,
         "node-inetaddr.yaml",
         "Node IP fragment",
         "|ConfigMap|default|rke2-node-inetaddr",
-        // Dual-stack node-ip (v4,v6): cluster-cidr + service-cidr are dual-stack, and rke2 rejects
-        // a
-        // node-ip that does not share their IP version(s) ("must share the same IP version"). The
-        // v6
-        // is the node's vmnet ULA (embedded-v4, fd96:…:{cc}20::<ipv4>) delivered by the vmnet
-        // bridge's
-        // stateful DHCPv6 reservation (GrowNetworkResolver) — a real address the node holds, so
-        // kube-
-        // let can bind it.
-        Map.of("node-ip", net.nodeHostInetAddr() + "," + net.nodeHostInet6Addr()));
+        // node-ip feeds advertise-address + the apiserver/kubelet cert SANs. The kubelet-arg
+        // DUPLICATE
+        // is deliberate: rke2 does NOT propagate the `node-ip` config to the kubelet's `--node-ip`
+        // when the address is DHCP-`dynamic` (our vmnet addresses are DHCP reservations), so the
+        // kubelet auto-detected and registered its InternalIP as cilium_host — a pod-cidr IP absent
+        // from the kubelet serving cert, breaking `kubectl logs/exec` + metrics with an x509
+        // mismatch.
+        // Forcing --node-ip via kubelet-arg (the documented escape hatch) pins InternalIP to
+        // node-ip,
+        // which IS in the cert. Proven live: it flips InternalIP from 10.44.0.68 to 10.80.0.10.
+        orderedMap(entry("node-ip", nodeIp), entry("kubelet-arg", List.of("node-ip=" + nodeIp))));
     // Node labels are NOT delivered here: kubelet applies --node-labels only at the node's first
     // registration, so a fragment glob'd from the cluster post-join is ignored. They are written
     // at boot before rke2-server by the nixos oneshot rke2lab-node-labels (nixos/rke2.nix).
