@@ -508,6 +508,9 @@ public class ManifestSynthesisScenario
     }
     final String cluster = facet.identity().orElseThrow().clusterId();
     final boolean push = facet.facets().delivery().push();
+    // No token when push is off (survey / preview). When armed, revealGithubToken resolves it — the
+    // mint fails loud at its OWN frontier (GithubWriterTokenMintEdge throws rather than returning a
+    // blank token), so a present token is always usable and the caller holds no empty-token case.
     final Optional<String> token = push ? revealGithubToken() : Optional.empty();
     // The bot identity + signing key are enclosure-resolved (§ pac-in-cluster-render-spec, auth):
     // OPERATOR reads the sops-smudged ndh key-store at hand; IN_CLUSTER the git tree is
@@ -594,12 +597,17 @@ public class ManifestSynthesisScenario
    * OPERATOR mint wins when both are reachable (an operator run never sets the env).
    */
   private Optional<String> revealGithubToken() {
+    // The edge (writerTokenMint) and the App credentials (revealGithubApp) are each Optional —
+    // absent
+    // in a survey/preview or an enclosure that does not mint. But mint itself returns a token or
+    // THROWS (GithubWriterTokenMintEdge fails loud on a blank), so once both are present the value
+    // is
+    // a real token — no empty-token case to filter here.
     final Optional<String> minted =
         writerTokenMint.flatMap(
             mint ->
                 revealGithubApp()
-                    .flatMap(
-                        app -> mint.mint(app.appId(), app.installationId(), app.privateKeyPem())));
+                    .map(app -> mint.mint(app.appId(), app.installationId(), app.privateKeyPem())));
     return minted.or(
         () ->
             Optional.ofNullable(System.getenv("RKE2LAB_PUSH_TOKEN"))
@@ -745,7 +753,7 @@ public class ManifestSynthesisScenario
     return readerTokenMint.flatMap(
         mint ->
             revealGithubApp()
-                .flatMap(app -> mint.mint(app.appId(), app.installationId(), app.privateKeyPem())));
+                .map(app -> mint.mint(app.appId(), app.installationId(), app.privateKeyPem())));
   }
 
   /**
