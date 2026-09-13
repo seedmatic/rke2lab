@@ -60,19 +60,18 @@ public final class RuntimeRke2ConfigManifestsUnit extends AbstractManifestsUnit 
             entry("cluster-cidr", net.clusterPodCidr())));
     createConfigMap(
         scope,
-        "cluster-init.yaml",
-        "Cluster init flag (only true on first master)",
-        "|ConfigMap|default|rke2-cluster-init",
-        Map.of("cluster-init", true));
-    createConfigMap(
-        scope,
         "core.yaml",
         "Core RKE2 settings",
         "|ConfigMap|default|rke2-core",
-        orderedMap(
-            entry("write-kubeconfig-mode", "0640"),
-            entry("bind-address", "0.0.0.0"),
-            entry("cni", "cilium")));
+        // cni is NOT set here: it is STATIC (cilium on every node) and lives in the node-base's
+        // `services.rke2.cni = "cilium"` (nixos/rke2.nix), which writes it to config.yaml. rke2
+        // merges
+        // config.yaml + config.yaml.d and CONCATENATES list-valued flags like --cni, so setting it
+        // in
+        // both produced `[cilium, cilium]` — a fatal "may only provide multiple values if multus is
+        // the first value". Per-cluster config belongs on the branch; static config stays
+        // node-base.
+        orderedMap(entry("write-kubeconfig-mode", "0640"), entry("bind-address", "0.0.0.0")));
     createConfigMap(
         scope,
         "debug.yaml",
