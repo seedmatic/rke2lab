@@ -1,0 +1,694 @@
+= Cluster Seeding Controller — seed-incluster
+:toc: left
+:toclevels: 3
+
+The in-cluster twin of `seed-master`. Where `seed-master` seeds a cluster from
+the *host* (Pulumi/nix, out-of-band), `seed-incluster` is the *in-cluster*
+reconciler that brings CAPI's view of the fleet into being and keeps it true —
+**by adopting the clusters that are already running, not by re-provisioning
+them**. It realises the adoption handoff that
+link:management-workload-topology.adoc[Management / Workload Topology] describes
+as a direction (its
+link:management-workload-topology.adoc#mgmt-adoption[Adoption — the Pulumi→CAPI
+handoff] section) and closes its open *workload follow-up*.
+
+== Overview — what, why, the problem it solves
+
+CAPI/CAPRKE2/CAPN natively *provision* clusters: they launch instances and
+bootstrap a fresh control plane. They do **not** natively *adopt* an
+RKE2-on-Incus control plane that is already running — the exact situation this
+project lives in, for two structural reasons:
+
+. *Cold-start survivability.* The management cluster is nix-seeded and
+  reconstructible from git; a cold-start (`pulumi destroy` + recreate) **wipes
+  its etcd**, so every CAPI object describing the fleet vanishes. But the
+  *workload* clusters are independent Incus infra with their own etcd — they
+  **survive**. Re-provisioning them from a fresh management plane would destroy
+  live clusters. They must be **re-adopted**, idempotently, from the surviving
+  reality.
+. *Single-owner (Flux ↔ CAPI/CAPN).* If Flux renders the full CAPI CR-set and
+  CAPI/CAPN then mutates those same objects during reconcile, two reconcilers
+  fight over one object → SSA flap. One object = one owner.
+
+`seed-incluster` resolves both. It reconciles a rich *intention*
+(`ClusterProvision`, Flux-owned) into a CAPI CR-set it **owns** (so those
+objects leave the Flux set), and its reconcile is **adopt-first**: it always
+tries to describe the running reality before it ever provisions. A wiped
+management etcd is re-derived, not lost.
+
+[TIP]
+====
+The controller code exists today as the `rke2-adoption-controller`
+(`ClusterAdoption` CRD, per-step status conditions, owned `Machine` +
+concrete `LXCMachine(providerID)`). This document is the design of its
+*evolution*: add the `ClusterProvision` intention resource, the adopt-first
+state machine, and generalise from a single control-plane node to the full
+*all-pets* node list (see <<all-pets>>). The renames it implies
+(`rke2-adoption-controller` → `seed-incluster`, group
+`adoption.seedmatic.io` → `cluster.seedmatic.io`,
+`ExecutionEnclosure.OPERATOR` → `STANDALONE`) are tracked in <<naming>>.
+====
+
+== The core primitive — adopt = reconcile with an already-running cluster
+
+This is the central capability, and the one thing CAPI cannot do for us:
+
+[IMPORTANT]
+====
+**Adopting a cluster = reconciling CAPI's description with a control plane that
+is ALREADY running, idempotently.**
+
+* *Match* the running instance by its **deterministic providerID**
+  (`lxc:///<cluster>-<node>`) — no fuzzy discovery: the node name is SSOT
+  (`ClusterNetworkBlueprint.CANONICAL_NODE_NAMES`).
+* *Materialise* the CAPI CR-set in **adopt mode**: `providerID` pre-set +
+  **bootstrap SKIPPED**, so CAPRKE2 does not re-bootstrap and CAPN does not
+  re-launch — CAPI merely **describes** the existing node.
+* *Idempotent*: re-runnable on every reconcile (cold-start, requeue) — it
+  re-attaches without churn. The adopt-first state machine guarantees it.
+====
+
+Proven today for the management cluster (self-adoption: `RemoteConnectionProbe=True`).
+The design generalises it to the workload and makes it cold-start-idempotent.
+
+== The two resources, two roles (do NOT merge them)
+
+Extending `ClusterAdoption` with "how to create a cluster" mixes two roles.
+Instead, two resources in group `cluster.seedmatic.io`:
+
+[cols="1,3",options="header"]
+|===
+| resource | role (single)
+
+| **`ClusterProvision`** (new) | **Bring a cluster into existence** — the
+intention: the node list (all pets), addressing, identity, image, versions.
+Rendered by Flux, one per cluster, Flux-owned.
+| **`ClusterAdoption`** (exists, role unchanged) | **Describe / re-adopt** a
+cluster that is RUNNING — the CAPI mirror, cold-start-safe. The controller
+**attaches** it to the `ClusterProvision` once the control plane is reachable.
+|===
+
+Two verbs, two CRs, two roles: **Provision** (bring into existence) ↔
+**Adoption** (describe the existing).
+
+[[all-pets]]
+=== All nodes are named pets — no cattle
+
+Every node (control plane *and* workers) is a **named pet** from the blueprint
+(`<cluster>-<node>`, `CANONICAL_NODE_NAMES`), bootstrapped once by CAPN then
+adopted by `providerID`. **CAPI is a full mirror**; a cold-start re-adopts
+*everything* uniformly (same per-node reconcile). No node is ever discarded.
+
+This is the resolution of the *workload follow-up* the topology anchor left
+open: `MachineDeployment` workers carry CAPI-minted **random** names, whose
+`Machine`↔instance linkage lives only in the management etcd — a cold-start
+loses the linkage and the fresh CAPI cannot recognise the survivors (different
+names) → it leaks orphans and re-provisions. Deterministic pet names make every
+node re-matchable by `providerID` after any cold-start. So
+`ClusterProvision.spec` carries the **blueprint node list**, not a
+cattle pool + replica count.
+
+== Reconcile — the adopt-first invariant
+
+[source,text]
+----
+reconcile(ClusterProvision):        # INVARIANT: always try adoption FIRST
+  for each node (pet) in the blueprint list:
+    node present (providerID) + control plane healthy ?
+      adoptable      → ADOPTED      (describe it; create/refresh ClusterAdoption)   # day-1 / cold-start
+      absent         → PROVISION    (CAPN launches it) → reloop → ADOPT             # day-0 / disaster
+      present-sick   → DEGRADED     (NEITHER adopt NOR provision — surface + retry)
+----
+
+A provision **always begins by attempting an adoption**; provision is merely the
+*fallback* for the "absent" case. There is no up-front "mode" to choose — the
+adopt-first invariant collapses day-0 / cold-start / recovery into ONE
+idempotent path.
+
+=== State machine — `ClusterProvision.status.phase`
+
+Level-triggered, never "kill/restart" — it manages a *state*. The management
+cold-start wipes the etcd → the `ClusterAdoption` (which lived there)
+disappears; what survives is the `ClusterProvision` (Flux re-renders it from
+git) + the running workload. So the controller **re-derives reality every
+reconcile**; the `ClusterAdoption` is the *result* of a successful adopt
+(re-created), not a persistent flag.
+
+[mermaid,cluster-seeding-state-machine,svg]
+----
+flowchart TD
+  start(["reconcile"]) --> adopting
+  adopting{{"ADOPTING<br/>adopt-first, ALWAYS<br/>reads providerID + RemoteConnectionProbe (watch, no probe)"}}:::hot
+  adopting -->|"nodes present + CP healthy"| adopted["ADOPTED<br/>create/refresh ClusterAdoption + CAPI mirror"]:::ok
+  adopting -->|"nodes ABSENT"| provisioning["PROVISIONING<br/>CAPN launches the missing nodes"]:::work
+  adopting -->|"present + CP SICK"| degraded["DEGRADED<br/>NEVER re-provision (= data loss)<br/>surface + retry"]:::bad
+  provisioning -->|"nodes up — reloop"| adopting
+  adopted -->|"re-reconcile / cold-start (mgmt etcd wiped)"| adopting
+  degraded -->|"retry (backoff)"| adopting
+
+  classDef hot fill:#ffe6cc,stroke:#d79b00
+  classDef ok fill:#d5e8d4,stroke:#82b366
+  classDef work fill:#dae8fc,stroke:#6c8ebf
+  classDef bad fill:#f8cecc,stroke:#b85450
+----
+
+Every state **passes back through `Adopting`** — the adopt-first invariant made
+concrete. `Provisioning` is reached ONLY via "nodes absent", never from
+`Degraded` (present-sick). Destroying a present node = data loss, so
+`present-sick` never provisions.
+
+=== Watch model — thin controller, derived from CAPI/CAPN
+
+The controller `Owns` the CAPI CRs it creates (`Cluster`, `RKE2ControlPlane`,
+`LXCCluster`, `Machine`, `LXCMachine`) → their events requeue its reconcile → it
+**derives** `phase` from the conditions CAPI/CAPN *already maintain* — it does
+NOT run its own probe:
+
+[cols="1,2",options="header"]
+|===
+| question | signal it reads (never re-measures)
+
+| CP healthy? | `Cluster.RemoteConnectionProbe` / `ControlPlaneInitialized` —
+CAPI probes the workload apiserver for us.
+| node present? | `LXCMachine`/`Machine` status — CAPN reflects the Incus
+instance.
+|===
+
+This is the "thin controller / rich intention" principle: `seed-master` (SSOT
+`ClusterNetworkBlueprint`) fills the `ClusterProvision` with concrete values;
+the controller only *materialises* (templates) the CR-set and owns it — **zero
+addressing logic in Go** (that would duplicate the Java blueprint → drift).
+
+== Where seed-incluster runs — the single-adopter topology invariant
+
+[IMPORTANT]
+====
+**A cluster is adopted by EXACTLY ONE management plane.** Two `seed-incluster`
+instances adopting the same cluster ⇒ two owners of the same
+`ClusterAdoption` + CAPI CR-set ⇒ SSA flap. This is *one object = one owner*
+raised to the **cluster** grain. Corollary: seed-incluster runs *where the
+management plane lives*, not "in every cluster so it manages itself".
+====
+
+* **seed-incluster runs in every management plane** — today (single host in
+  play) that is **the management cluster alone**; under the cross-host
+  federation (<<cross-host,tier B below>>) each mgmt tier runs one (`bioskop-mgmt`
+  + `nikopol-mgmt`). A plane's etcd carries the CRs (`ClusterProvision` /
+  `ClusterAdoption`) for itself *and* its children (rendered on
+  `manifests/<host>-mgmt`; the plane's Flux applies them).
+* **The workload is a MANAGED cluster, not a plane.** It is adopted *from* its
+  parent mgmt; it does **not** run seed-incluster (that would be a second adopter
+  of the same cluster).
+* **Only the ROOT self-adopts — because it is the ONLY out-of-band boot.** The
+  root (`bioskop-mgmt`) is the single cluster `seed-master` seeds STANDALONE;
+  nothing above it can adopt it, so it self-adopts in-cluster. Every non-root
+  cluster (workload OR sub-plane) is **born in-cluster** by its parent's
+  seed-incluster and adopted by that parent → never self-adopts. See
+  <<cross-host>> for the federated recursion.
+* **"Can a cluster already managed by CAPI/CAPN be adopted in-cluster?" → No.**
+  It already has its single adopter (the parent plane); adoption happens **once,
+  from the management plane**. Re-adopting from inside = double-owner.
+
+[[cross-host]]
+=== Cross-host — the two-tier direction (preferred over direct remote-Incus)
+
+Reaching a second bare-metal (`nikopol-nixos`, over the tailnet) is the next
+step. Two candidate topologies:
+
+[cols="1,3",options="header"]
+|===
+| topology | shape
+
+| **B — two-tier management (PREFERRED)** | `bioskop-mgmt` manages
+`nikopol-mgmt`; `nikopol-mgmt` manages `nikopol-wrkld` **locally** (local Incus,
+same host). Only the rare *mgmt-of-mgmt* hop crosses the tailnet; the frequent
+workload machine-lifecycle stays host-local. Matches the anchor's operating-model
+preference — a host-local management "removes the cross-host and tailnet
+dependencies entirely (a fresh local management + git is all it needs)". Each
+host is autonomous.
+| A — single plane, remote Incus | `bioskop-mgmt` drives CAPN across TWO Incus
+remotes (`bioskop-nixos` local + `nikopol-nixos` over the tailnet) and manages
+`nikopol-wrkld` directly. Fewer clusters, but it couples the frequent workload
+machine-lifecycle to the fragile cross-host reach (CGNAT, roaming host).
+|===
+
+.One CAPN, many Incus remotes — the remote is a CLUSTER-level target
+[NOTE]
+====
+A single CAPN in a management plane drives **multiple Incus remotes** — this is
+CAPN's native model (verified against `cluster-api-provider-incus` in the anchor):
+each `LXCCluster.spec.secretRef` names ONE remote's identity Secret (`server` /
+`server-crt` + client cert/key), and all that cluster's `LXCMachine`s provision
+into it. So `IncusIdentitySecretManifestsUnit` becomes **per-remote** (it renders
+one `<cluster>-incus-identity` today).
+
+The remote is therefore a **cluster-level** target, NOT per-node:
+`ClusterProvision.spec.remote` names it (endpoint + per-remote CAPN identity
+Secret), and every node of the cluster lands on that one remote. A cluster never
+spans two remotes — the anchor's shared-fabric model (BGP/clustermesh,
+`features.networks=false`) requires a cluster's nodes to be L2/L3 peers on one
+host's bridge. Cross-host is BETWEEN clusters (the mgmt-of-mgmt hop), never within
+one. Under tier B, each plane targets at most ONE non-local remote at a time:
+`bioskop-mgmt` uses `nikopol-nixos`'s remote only to birth `nikopol-mgmt-master`;
+`nikopol-wrkld` is local to its own plane.
+====
+
+[IMPORTANT]
+.Real federation — a sub-plane is BORN in-cluster, not standalone-seeded
+====
+The federation crux: **`nikopol-mgmt` is NOT bootstrapped by `seed-master`
+(the STANDALONE, out-of-band boot). It is PROVISIONED in-cluster by
+`bioskop-mgmt`'s seed-incluster** — the same provision-then-adopt funnel, its
+single mgmt node born via CAPN on `nikopol-nixos`'s remote Incus, then adopted.
+Once up, `nikopol-mgmt` provisions `nikopol-wrkld` **locally**.
+
+This resolves the anchor's chicken-and-egg per tier. "CAPI cannot create the
+cluster that runs CAPI" bites the **root only** — where the creator would be the
+created. A non-root plane has a CAPI *above* it (its parent), so the creator
+(`bioskop-mgmt`'s CAPI) differs from the created (`nikopol-mgmt`'s CAPI); no
+paradox. Hence the exact mapping onto the <<naming,enclosure axis>>:
+
+* **`STANDALONE` = the ROOT, and it alone** — `seed-master` seeds `bioskop-mgmt`
+  out-of-band. The one irreducible nix floor; it births exactly ONE cluster, ever.
+* **`IN_CLUSTER` = everything else, recursively** — `seed-incluster` births +
+  adopts every descendant: workloads (leaves) AND sub-management-planes. The
+  fleet is CAPI-native turtles-all-the-way-down on a single nix floor.
+
+Single-adopter composes cleanly across the tiers:
+
+* `bioskop-mgmt` = **root** — self-adopts (nothing above it; the sole STANDALONE
+  boot). Its seed-incluster births+adopts: itself, `bioskop-wrkld`, `nikopol-mgmt`.
+* `nikopol-mgmt` = **mid tier** — PROVISIONED + adopted in-cluster by
+  `bioskop-mgmt` (does NOT self-adopt), YET RUNS its own seed-incluster to
+  birth+manage its child `nikopol-wrkld`. "Being a plane" (manages children) and
+  "who births/adopts me" (the parent) are orthogonal roles.
+* `nikopol-wrkld` = **leaf** — provisioned+adopted by `nikopol-mgmt`, runs no
+  seed-incluster.
+
+So each cluster has EXACTLY ONE adopter (its parent plane; the root adopts
+itself). The cross-host Incus remote shrinks to birthing ONE node
+(`nikopol-mgmt-master`), never the whole workload fleet. B is clean because it is
+the same adopt-first controller *composed*, not a new mechanism — real federation.
+====
+
+[mermaid,cluster-seeding-topology,svg]
+----
+graph TB
+  subgraph mgmt["management cluster = THE management plane (seed-incluster HERE)"]
+    si["seed-incluster<br/>the single adopter"]:::mut
+    cpMgmt["ClusterProvision/Adoption (mgmt) — self"]:::code
+    cpWl["ClusterProvision/Adoption (workload) — managed"]:::code
+  end
+  si -->|"adopts (root, self)"| mgmtNodes[("mgmt rke2+etcd<br/>bootstrapped out-of-band")]:::store
+  si -->|"adopts (from the mgmt)"| wlNodes[("workload rke2+etcd<br/>independent Incus infra")]:::store
+  cpMgmt -.-> si
+  cpWl -.-> si
+  note["workload: MANAGED cluster<br/>does NOT run seed-incluster<br/>(else 2nd owner)"]:::bad -.-> wlNodes
+
+  classDef code fill:#dae8fc,stroke:#6c8ebf
+  classDef store fill:#d5e8d4,stroke:#82b366
+  classDef mut fill:#ffe6cc,stroke:#d79b00
+  classDef bad fill:#f8cecc,stroke:#b85450
+----
+
+[[federation-now]]
+== Federation is first-class — design for it now, not later
+
+The model is **inherently recursive**: a management plane births + adopts its
+children with the same adopt-first controller, and a child that is *itself a
+management plane* then does the same for ITS children. Retrofitting the tier /
+cluster-kind / remote dimensions later would reshape both `ClusterProvision` and
+the render — so they are baked in from the start. Federation is not a distant
+mode; it is the single mechanism *composed*.
+
+.The self-similar reconcile
+[TIP]
+====
+There is ONE controller and ONE reconcile (adopt-first), run in every plane. A
+plane does not know or care whether a child is a leaf workload or a sub-plane at
+the level of *provisioning* it — it births the child's nodes and adopts them
+identically. The only difference is the child's **render flavor** (what manifests
+land inside it), carried by the cluster KIND in the spec. So "federation" adds no
+new control path — it is the leaf case applied to a child that happens to run its
+own seed-incluster.
+====
+
+Four concrete requirements this places on the design NOW:
+
+. *Cluster KIND in `ClusterProvision.spec`* — `workload` (leaf) vs `management`
+  (sub-plane). It selects the **render flavor** of the child: a `management`
+  child gets the CAPI operator + `seed-incluster` + its OWN `ClusterProvision`s
+  for its children rendered into it; a `workload` child gets only the app stack.
+  This is the per-cluster/role synthesis the anchor already foresaw
+  (`manifests.publish.{domain}` becoming per-cluster).
+. *CR placement follows the tier boundary* — a plane owns the `ClusterProvision`s
+  of ITS children, in its own rendered branch (`manifests/<host>-mgmt`).
+  `bioskop-mgmt`'s branch carries provisions for `{bioskop-wrkld, nikopol-mgmt}`
+  (+ its self-`ClusterAdoption`); `nikopol-mgmt`'s branch carries the provision
+  for `{nikopol-wrkld}`. The tier boundary = the branch/etcd boundary.
+. *Level-triggered tier ordering* — `nikopol-wrkld`'s `ClusterProvision` lives in
+  `nikopol-mgmt`'s etcd, which does not exist until `bioskop-mgmt` has
+  provisioned+adopted `nikopol-mgmt`. No explicit orchestration: each plane's
+  adopt-first reconcile converges once its own control plane is up. The tiers
+  bootstrap outside-in, purely by level-triggered convergence.
+. *The remote is cluster-level* (see the NOTE above) — `spec.remote` targets one
+  Incus engine; the cross-host reach is used only to birth a sub-plane's single
+  node, not a whole fleet.
+
+=== Figure 1 — Boot lineage: the tiers and who births whom
+
+One STANDALONE boot at the root; everything below is born IN-CLUSTER, recursively.
+The enclosure axis is the colour: purple = the one nix floor, orange = a management
+plane (runs seed-incluster), green = a leaf (runs none).
+
+[mermaid,cluster-seeding-federation-lineage,svg]
+----
+graph TB
+  sm["seed-master · STANDALONE<br/>the ONE out-of-band nix boot"]:::floor
+  subgraph ROOT["ROOT tier"]
+    b["bioskop-mgmt<br/>seed-incluster · SELF-adopts"]:::plane
+  end
+  subgraph MID["MID tier — born IN-CLUSTER, adopted BY the root"]
+    n["nikopol-mgmt<br/>seed-incluster · adopted by parent"]:::plane
+  end
+  subgraph LEAVES["LEAF tier — no seed-incluster"]
+    bw[("bioskop-wrkld")]:::leaf
+    nw[("nikopol-wrkld")]:::leaf
+  end
+  sm -->|"nix-seeds ONCE — the only STANDALONE boot"| b
+  b -.->|"self-adopt (root has no parent)"| b
+  b -->|"births + adopts · LOCAL"| bw
+  b ==>|"births + adopts over REMOTE Incus (tailnet)<br/>— the ONE cross-host hop"| n
+  n -->|"births + adopts · LOCAL"| nw
+
+  classDef floor fill:#e1d5e7,stroke:#9673a6,stroke-width:1.5px
+  classDef plane fill:#ffe6cc,stroke:#d79b00,stroke-width:1.5px
+  classDef leaf fill:#d5e8d4,stroke:#82b366
+----
+
+*Heavy arrow* = the single cross-host hop (birth a sub-plane's node on a remote
+Incus). Everything else is local; `seed-master` touches only the root.
+
+=== Figure 2 — Federated bootstrap: outside-in, level-triggered
+
+Each tier converges once its own control plane is up; there is no orchestrator,
+only adopt-first reconciles firing as their inputs come to exist.
+
+[mermaid,cluster-seeding-federation-sequence,svg]
+----
+sequenceDiagram
+  participant SM as seed-master (STANDALONE)
+  participant B as bioskop-mgmt · seed-incluster
+  participant RX as nikopol-nixos Incus (remote)
+  participant N as nikopol-mgmt · seed-incluster
+  participant NW as nikopol-wrkld
+  Note over SM,B: ROOT — the nix floor
+  SM->>B: nix-seed out-of-band, then SELF-adopt
+  Note over B,N: MID — the root births a sub-PLANE
+  B->>B: reconcile ClusterProvision(nikopol-mgmt) · adopt-first
+  B->>RX: node absent → CAPN provisions nikopol-mgmt-master<br/>(remote Incus API, over tailnet)
+  RX-->>B: instance up
+  B->>N: adopt (reach VIP over tailnet) → nikopol-mgmt Adopted
+  Note over N,NW: LEAF — the sub-plane births its child, LOCALLY
+  N->>N: reconcile ClusterProvision(nikopol-wrkld) · adopt-first
+  N->>NW: provisions + adopts (LOCAL Incus)
+  Note over SM,NW: cold-start(bioskop-mgmt): survivors RE-ADOPTED outside-in,<br/>nothing re-provisioned
+----
+
+=== Figure 3 — Deployment: two bare-metals, one cross-host hop, one CA
+
+The frequent machine-lifecycle stays local on each host; only the rare
+mgmt-of-mgmt hop crosses the tailnet. Mutual TLS is CA-based — both engines trust
+our owned root, so no per-cert exchange.
+
+[mermaid,cluster-seeding-federation-deployment,svg]
+----
+graph TB
+  ca{{"our Incus PKI — mammoth-skate-tls root<br/>server + client certs minted from it"}}:::pki
+  subgraph BM1["«bare-metal» bioskop · bioskop-nixos"]
+    e1["Incus engine<br/>trusts our CA (seeded by ndh)"]:::engine
+    b["bioskop-mgmt · ROOT plane<br/>seed-incluster + CAPN"]:::plane
+    bw[("bioskop-wrkld<br/>leaf")]:::leaf
+  end
+  subgraph BM2["«bare-metal» nikopol · nikopol-nixos"]
+    e2["Incus engine<br/>trusts our CA (seeded by ndh)"]:::engine
+    n["nikopol-mgmt · MID plane<br/>seed-incluster + CAPN"]:::plane
+    nw[("nikopol-wrkld<br/>leaf")]:::leaf
+  end
+  ca -.->|"CA-trust"| e1
+  ca -.->|"CA-trust"| e2
+  b -->|"CAPN · local"| e1
+  e1 --> bw
+  n -->|"CAPN · local"| e2
+  e2 --> nw
+  b ==>|"CAPN → e2 API :8443 over tailnet<br/>births nikopol-mgmt-master · ONE cross-host hop"| e2
+  e2 --> n
+
+  classDef pki fill:#f8cecc,stroke:#b85450
+  classDef engine fill:#f5f5f5,stroke:#888
+  classDef plane fill:#ffe6cc,stroke:#d79b00,stroke-width:1.5px
+  classDef leaf fill:#d5e8d4,stroke:#82b366
+----
+
+*Legend*: red = our owned PKI root (both engines trust it → CA-based mutual TLS);
+grey = an Incus engine (ndh-provisioned hypervisor); orange = a management plane
+(seed-incluster + CAPN); green = a leaf cluster. Heavy arrow = the single
+cross-host hop (birthing the sub-plane's node on the remote engine).
+
+.The addressing foundation already exists — one SSOT, two provisioning layers
+[NOTE]
+====
+Federation does not need new addressing: the `ClusterNetworkBlueprint` **already
+defines both hosts** — `hostOf(clusterName)` derives the host from the cluster
+name, and `hostId()` enumerates them (`bioskop` = 0, `nikopol` = 1; TEST = 2),
+with every span a pure `f(clusterId = (hostId << 1) | roleId)`. So `bioskop-mgmt`
+can already carry BOTH host identities.
+
+That one SSOT feeds **two** provisioning layers, and the split is the point:
+
+* **ndh provisions the HYPERVISOR** — the NixOS host `nikopol-nixos` + its Incus
+  engine + fabric. ndh consumes the netplan/dataplan (the anchor's per-host disko
+  → `catalog.datasets`), so it stands up the remote engine with the right network
+  identity.
+* **seed-incluster provisions the CLUSTER NODE** — `nikopol-mgmt-master` *on* that
+  remote engine, from the same blueprint.
+
+So the remaining work is not to DEFINE the cross-host identities (they exist) but
+to PROJECT them: derive `ClusterProvision.spec.remote` + the per-remote CAPN
+identity Secret from the blueprint's host dimension — the "rich intention / thin
+controller" principle applied to the remote.
+====
+
+.The cross-host trust is a WIRING gap, not a missing channel — the secure channel already exists
+[NOTE]
+====
+rke2lab and ndh **already share the sops age key** (encrypt/decrypt) **and the git
+smudge/clean filters** (ndh's `git-sops-filter` SSOT). They are therefore in ONE
+sops trust domain: anything one encrypts to the shared age key, the other
+decrypts. So the cross-host trust does NOT need a new secure channel — that framing
+was overstated. Two consequences:
+
+* *The transport exists.* The material rides the already-shared sops-encrypted git
+  + the existing rke2lab → ndh flow (the dataplan seed-master owns, pulled into
+  ndh's `catalog.datasets`). The remaining work is **placement + wiring**, not
+  building a channel.
+* *Most of the material is PUBLIC.* Incus trust is by **cert fingerprint**: ndh
+  needs only the CAPN client cert's PUBLIC part to add to `nikopol-nixos`'s trust
+  store; the returned `server-crt` is public too. The PRIVATE keys stay put (the
+  CAPN client key in the cluster-side identity Secret; the server key on the
+  hypervisor). So the shared age key only ever guards the little that is truly
+  secret — the bulk of the handshake is public certs.
+
+The LOCAL case (`bioskop`, its own Incus) is already covered
+(`IncusIdentitySecretManifestsUnit` + a locally-trusted engine).
+====
+
+.We OWN the Incus PKI — cross-host trust is a build-time derivation, not a runtime exchange
+[IMPORTANT]
+====
+The Incus server certs are OURS: we mint them (from the ndh `mammoth-skate-tls`
+root — the same PKI behind "deterministic cluster access" and the BYO-CA cellar
+material), and so is the CAPN client cert. When you own the authority, mutual TLS
+trust is **CA-based**, not a per-cert exchange:
+
+* ndh configures each Incus engine to **trust our CA** when it provisions the
+  hypervisor (the engine's own `server-crt` is minted from the same root).
+* Any client cert minted from that root is then accepted by **every** engine
+  automatically — by CA membership. No `incus trust add` per remote, no per-cert
+  handshake.
+
+So `bioskop` / `nikopol` (and their CAPN) are authorized to reach **all Incus
+remotes in their network** at generation time — which is exactly what the anchor
+means by "the CAPN identity can be shared, trusted by both hypervisors": the share
+works BECAUSE both trust our CA.
+
+The residue is therefore purely **build-time**: derive the server certs + the
+client cert from our root, coherent with the blueprint's host identities, and seed
+the CA trust into each engine at provision (ndh). Nothing is exchanged at runtime;
+the shared age key only ever carries the PRIVATE keys — which do not move anyway.
+See <<open-items>>.
+====
+
+== Ownership & operator view
+
+Chain of **ownerRefs** (cascade). Only the `ClusterProvision` (git/Flux)
+survives a cold-start → it re-seeds the chain. `kubectl delete clusterprovision`
+⇒ cascade GC.
+
+[mermaid,cluster-seeding-ownership,svg]
+----
+flowchart LR
+  cp["ClusterProvision<br/>intent · Flux/git<br/>SURVIVES cold-start"]:::code
+  ca["ClusterAdoption<br/>mirror · created by seed-incluster<br/>mgmt etcd — wiped on cold-start"]:::code
+  capi["CAPI Cluster<br/>+ RKE2ControlPlane + LXCCluster + Machines"]:::code
+  op(["operator"]):::mut
+  cp -->|"ownerRef — creates the child once adopted"| ca
+  ca -->|"ownerRef — creates/describes"| capi
+  op -.->|"kubectl get clusterprovision → PHASE (durable pane)"| cp
+  op -.->|"kubectl get clusters (standard CAPI)"| capi
+  classDef code fill:#dae8fc,stroke:#6c8ebf
+  classDef mut fill:#ffe6cc,stroke:#d79b00
+----
+
+* `kubectl get clusterprovision -A` → `PHASE` · `ENDPOINT` (VIP) · `NODES`
+  (ready/total) — the single durable pane, always present (git-backed).
+* `kubectl get clusters -A` → the familiar CAPI view — free, because we mirror
+  into CAPI.
+
+== Root-resource asymmetry (the two CRs are not always paired)
+
+* **mgmt** (bootstrap) = root is `ClusterAdoption` ALONE. seed-master
+  bootstraps it out-of-band; seed-incluster runs *inside* it and cannot
+  self-provision → adopt-only.
+* **workload** = root is `ClusterProvision` → it owns a `ClusterAdoption`.
+
+At a mgmt cold-start both converge to `Adopted` (the mgmt self-adopts, since the
+control plane is necessarily up when seed-incluster runs; the survived workload
+is re-adopted) — nothing is re-provisioned.
+
+== System context (C4 L1)
+
+[mermaid,cluster-seeding-context,svg]
+----
+graph TB
+  OP["«person»<br/>Operator"]
+  subgraph git["manifests/&lt;host&gt;-mgmt (git, rendered by seed-master)"]
+    intent["ClusterProvision — cluster INTENTION<br/>node list + CIDRs + VIP + identity + image"]:::code
+  end
+  flux["Flux"]:::mut -->|"owns / applies (sole owner)"| intent
+  subgraph mgmtplane["mgmt cluster — CAPI plane"]
+    ctrl["seed-incluster (provision + adoption)"]:::mut
+    adopt["ClusterAdoption<br/>(describes a LIVE cluster)"]:::code
+    capi["CAPI CR-set<br/>Cluster · RKE2ControlPlane · LXCCluster · Machines"]:::code
+  end
+  intent -->|"watch"| ctrl
+  ctrl -->|"creates+owns ONCE the CP is reachable"| adopt
+  adopt -->|"creates+owns (mirror)"| capi
+  subgraph wl["workload — independent Incus infra (survives mgmt cold-start)"]
+    cp[("pets &lt;name&gt;-master/-peerN/-workerN<br/>rke2 + etcd (DURABLE state)")]:::store
+  end
+  adopt -.->|"describes / reconciles (all nodes)"| cp
+  capn["CAPN (Incus provider)"]:::builder -->|"launches ABSENT nodes (provision mode)"| cp
+  ctrl -->|"provision (new) OR adopt (by providerID, skip bootstrap)"| cp
+  OP -->|"kubectl get clusterprovision"| intent
+
+  classDef code fill:#dae8fc,stroke:#6c8ebf
+  classDef store fill:#d5e8d4,stroke:#82b366
+  classDef mut fill:#ffe6cc,stroke:#d79b00
+  classDef builder fill:#e1d5e7,stroke:#9673a6
+----
+
+*Legend*: blue = declarative/CR · green = durable state (read-only, to
+reconcile) · orange = reconciler/runtime · purple = infra provisioner.
+
+== Anti-patterns
+
+[cols="1,1",options="header"]
+|===
+| ❌ Don't | ✅ Do instead
+
+| Run seed-incluster inside the workload so it "manages itself".
+| Run it only in the management plane; the workload is adopted *from* the mgmt
+(single-adopter invariant). A second adopter = double-owner flap.
+| Re-provision a node that is present but its CP is sick.
+| `Degraded` — surface + retry adopt. Re-provision ONLY when the node is truly
+absent (`providerID` not found). Destroying a present node loses its etcd.
+| Model workers as a `MachineDeployment` cattle pool (random names + replicas).
+| All nodes are named pets from the blueprint, adopted by `providerID` — the
+only shape that survives a cold-start (random names leak, see <<all-pets>>).
+| Compute addressing (CIDRs, VIP, providerID) in the Go controller.
+| `seed-master` fills the `ClusterProvision` from the `ClusterNetworkBlueprint`
+SSOT; the controller only templates + owns. Go-side addressing duplicates the
+blueprint → drift.
+| Run a home-grown health probe in the controller.
+| Derive `phase` from `Cluster.RemoteConnectionProbe` /
+`LXCMachine` status via `Owns`/watch — CAPI/CAPN already maintain them.
+| Extend `ClusterAdoption` with "how to create a cluster".
+| Two resources, two roles: `ClusterProvision` (create) + `ClusterAdoption`
+(describe). Merging mixes roles.
+|===
+
+[[naming]]
+== Naming & rename mechanics (tracked, not yet done)
+
+[cols="1,1,2",options="header"]
+|===
+| from | to | why
+
+| `ExecutionEnclosure.OPERATOR` | `STANDALONE` | The enum's own doc says
+"a *standalone* process". `OPERATOR` mixed the *who* with the *nature*;
+`STANDALONE` names the nature (a process outside a cluster: `.secrets` + ndh
+files) opposite `IN_CLUSTER`. `HOST` rejected (collides with the Incus/nixos
+host everywhere: `/srv/host`, `HostPathCatalog`, the `host/` module).
+| `rke2-adoption-controller` | `seed-incluster` | It no longer only "adopts" —
+it provisions + adopts + re-adopts. Named by *locality* (the axis that
+distinguishes it from `seed-master`); `seed-cluster` rejected (collides with
+`ClusterSeedScenario`).
+| group `adoption.seedmatic.io` | `cluster.seedmatic.io` | Named by the *domain*
+(cluster lifecycle: `ClusterProvision` + `ClusterAdoption` + future cluster
+CRs), not the producer → decoupled from the controller name (a CRD group is
+near-immutable), no `seed…seedmatic` stutter, and a direct parallel of CAPI's
+own `cluster.x-k8s.io` (fitting our mirror role).
+|===
+
+`seed-master` is **kept** — the flagship module, huge blast radius; "master"
+carries its primacy as the primary out-of-band seeder.
+
+[[open-items]]
+== Open items
+
+. **`ClusterProvision.spec` shape (federation-native from the start)** —
+  cluster-level `{ remote (target Incus endpoint + per-remote CAPN identity
+  Secret; local or over the tailnet), Incus project }` + the pet node list, per
+  node `{ name (blueprint), role (CP/worker), profile, image }`. The `role` must
+  also express whether the child is a **workload (leaf)** or a **sub-management
+  plane** (so the parent knows to expect a seed-incluster inside it) — see
+  <<federation-now>>.
+. **Cross-host Incus trust (federation)** — a build-time PKI derivation, NOT a
+  runtime exchange: we own the Incus PKI (`mammoth-skate-tls` root), so mint the
+  server certs + the CAPN client cert from it and seed CA-trust into each engine
+  at provision (ndh). CA membership authorizes bioskop/nikopol to reach every
+  remote in-network — no per-cert `trust add`. Residue: derive the certs coherent
+  with the blueprint host identities + author the per-remote identity Secret.
+. **Rename mechanics** — order + CRD-group migration for the three renames
+  above.
+
+== Related documentation
+
+* link:management-workload-topology.adoc[Management / Workload Topology] — the
+  anchor this realises: the mgmt/workload split, the adoption handoff
+  (its `mgmt-adoption` section), the reconstruct-don't-persist cold-start model,
+  and the self-hosting direction. This controller is its in-cluster realisation +
+  the resolution of its open *workload follow-up* (all pets).
+* link:cluster-addressing-plan.adoc[Cluster Addressing Plan] — the addressing
+  SSOT (`ClusterNetworkBlueprint`) that fills the `ClusterProvision` intention;
+  the source of every `providerID`, VIP and CIDR the controller templates.
+* link:manifests-rendered-branches.adoc[Manifests Rendered Branches] — how the
+  `ClusterProvision` reaches the management cluster (`manifests/<host>-mgmt`,
+  Flux-applied).
+* link:cluster-api-bootstrap-requirements.adoc[Cluster API Bootstrap
+  Requirements] — the declarative CAPI/CAPN/CAPRKE2 install
+  (`Rke2AdoptionControllerManifestsUnit` deploys this controller on the flox
+  runtime).
+</content>
+</invoke>
