@@ -32,7 +32,6 @@ class BootstrapConfigFromTest {
     assertEquals("bioskop-nixos.local", boot.imageBuilderHost());
     assertEquals("rke2lab", boot.profileName());
     assertEquals("lan-br", boot.lanBridgeParent());
-    assertEquals("vmnet-br", boot.vmnetNetworkName());
     assertEquals("mammoth-skate.ts.net", boot.tailnet());
     // The automount root routes over the tailscale MagicDNS FQDN, not the LAN mDNS .local.
     assertEquals("/net/bioskop.local", boot.netPrefix());
