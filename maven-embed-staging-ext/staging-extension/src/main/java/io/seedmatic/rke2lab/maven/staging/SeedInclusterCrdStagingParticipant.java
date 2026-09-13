@@ -11,16 +11,17 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Stages the {@code ClusterAdoption} CRD (single-sourced from the seed-incluster flake
- * input, never vendored) into manifests-core's resources BEFORE the reactor executes — the twin of
- * {@link FloxControllerCrdStagingParticipant}, for the second CRD the manifest synthesis emits into
- * the cluster's {@code crds} layer ({@code SeedInclusterManifestsUnit}).
+ * Stages the seed-incluster CRDs ({@code ClusterAdoption} + {@code ClusterProvision},
+ * single-sourced from the seed-incluster flake input, never vendored) into manifests-core's
+ * resources BEFORE the reactor executes — the twin of {@link FloxControllerCrdStagingParticipant},
+ * for the CRDs the manifest synthesis emits into the cluster's {@code crds} layer ({@code
+ * SeedInclusterManifestsUnit}).
  *
- * <p><b>Why here.</b> The CRD is staged by {@code nix run .#stage-seed-incluster-crd}.
- * The nix {@code buildReactorExe} runs it in its buildPhase; a plain {@code ./mvnw} build does NOT
- * — so without this bridge a controller re-lock would leave the on-disk CRD stale (a legitimate
- * cache hit shipping the old schema). {@code afterProjectsRead} runs ONCE, after the POMs are read
- * but before any project is hashed/built.
+ * <p><b>Why here.</b> The CRD is staged by {@code nix run .#stage-seed-incluster-crd}. The nix
+ * {@code buildReactorExe} runs it in its buildPhase; a plain {@code ./mvnw} build does NOT — so
+ * without this bridge a controller re-lock would leave the on-disk CRD stale (a legitimate cache
+ * hit shipping the old schema). {@code afterProjectsRead} runs ONCE, after the POMs are read but
+ * before any project is hashed/built.
  *
  * <p><b>Guards.</b> Skipped when {@code RKE2LAB_CRD_STAGED} is set (the nix build already staged in
  * its buildPhase and a nested {@code nix run} in that sandbox has no daemon/network — the SAME
@@ -45,12 +46,12 @@ public class SeedInclusterCrdStagingParticipant extends AbstractMavenLifecyclePa
   public void afterProjectsRead(final MavenSession session) throws MavenExecutionException {
     if (System.getenv(STAGED_MARKER) != null) {
       log.info(
-          "ClusterAdoption CRD staging: skipped ({} set — the nix build already staged it)",
+          "seed-incluster CRD staging: skipped ({} set — the nix build already staged it)",
           STAGED_MARKER);
       return;
     }
     if (skipRequested(session)) {
-      log.info("ClusterAdoption CRD staging: skipped (-D{}=true)", SKIP_PROPERTY);
+      log.info("seed-incluster CRD staging: skipped (-D{}=true)", SKIP_PROPERTY);
       return;
     }
     final boolean packagesCrd =
@@ -61,21 +62,21 @@ public class SeedInclusterCrdStagingParticipant extends AbstractMavenLifecyclePa
     }
 
     final File root = session.getRequest().getMultiModuleProjectDirectory();
-    log.info("ClusterAdoption CRD staging: nix run {} (in {})", STAGE_APP, root);
+    log.info("seed-incluster CRD staging: nix run {} (in {})", STAGE_APP, root);
     try {
       final int rc =
           new ProcessBuilder("nix", "run", STAGE_APP).directory(root).inheritIO().start().waitFor();
       if (rc != 0) {
         throw new MavenExecutionException(
-            "ClusterAdoption CRD staging failed: `nix run " + STAGE_APP + "` exited " + rc,
+            "seed-incluster CRD staging failed: `nix run " + STAGE_APP + "` exited " + rc,
             (Throwable) null);
       }
     } catch (final IOException e) {
       throw new MavenExecutionException(
-          "ClusterAdoption CRD staging: cannot run `nix` (is the flox env active?)", e);
+          "seed-incluster CRD staging: cannot run `nix` (is the flox env active?)", e);
     } catch (final InterruptedException e) {
       Thread.currentThread().interrupt();
-      throw new MavenExecutionException("ClusterAdoption CRD staging interrupted", e);
+      throw new MavenExecutionException("seed-incluster CRD staging interrupted", e);
     }
   }
 
