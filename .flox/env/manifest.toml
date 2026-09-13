@@ -1,4 +1,4 @@
-## rke2-adoption-controller — dev toolchain.
+## seed-incluster — dev toolchain.
 ## `flox activate` provides everything to work on the controller: build, codegen,
 ## and cluster tooling. Mirrors flox-controller's dev env (same discipline).
 schema-version = "1.14.0"

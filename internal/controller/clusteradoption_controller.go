@@ -16,7 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	adoptionv1alpha1 "github.com/seedmatic/rke2-adoption-controller/api/v1alpha1"
+	adoptionv1alpha1 "github.com/seedmatic/seed-incluster/api/v1alpha1"
 )
 
 const (
@@ -43,8 +43,8 @@ type ClusterAdoptionReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups=adoption.seedmatic.io,resources=clusteradoptions,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=adoption.seedmatic.io,resources=clusteradoptions/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=cluster.seedmatic.io,resources=clusteradoptions,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=cluster.seedmatic.io,resources=clusteradoptions/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters;machines,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=rke2controlplanes,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=lxcclusters;lxcmachines;lxcmachinetemplates,verbs=get;list;watch;create;update;patch

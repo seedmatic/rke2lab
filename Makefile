@@ -1,4 +1,4 @@
-# rke2-adoption-controller dev tasks. Run inside the repo's flox env (`flox activate`),
+# seed-incluster dev tasks. Run inside the repo's flox env (`flox activate`),
 # which provides go, controller-gen, kubectl and make (see .flox/env/manifest.toml) — so
 # the tools are on PATH and there is nothing to download.
 

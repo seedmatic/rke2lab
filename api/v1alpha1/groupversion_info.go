@@ -1,6 +1,6 @@
-// Package v1alpha1 contains the ClusterAdoption API (group adoption.seedmatic.io).
+// Package v1alpha1 contains the ClusterAdoption API (group cluster.seedmatic.io).
 // +kubebuilder:object:generate=true
-// +groupName=adoption.seedmatic.io
+// +groupName=cluster.seedmatic.io
 package v1alpha1
 
 import (
@@ -10,7 +10,7 @@ import (
 
 var (
 	// GroupVersion is the group/version for the ClusterAdoption API.
-	GroupVersion = schema.GroupVersion{Group: "adoption.seedmatic.io", Version: "v1alpha1"}
+	GroupVersion = schema.GroupVersion{Group: "cluster.seedmatic.io", Version: "v1alpha1"}
 
 	// SchemeBuilder registers the API types into a runtime.Scheme.
 	SchemeBuilder = &scheme.Builder{GroupVersion: GroupVersion}

@@ -1,5 +1,7 @@
-// Command rke2-adoption-controller runs the ClusterAdoption controller: it adopts running
-// RKE2-on-Incus control planes (Pulumi-bootstrapped) into Cluster API by creating the CR-set
+// Command seed-incluster runs the cluster-seeding controller: the in-cluster twin of seed-master.
+// It reconciles ClusterProvision (Flux-owned intent) adopt-first and owns the ClusterAdoption that
+// adopts running RKE2-on-Incus control planes (Pulumi-bootstrapped) into Cluster API by creating
+// the CR-set
 // and the OWNED control-plane Machine + concrete LXCMachine (providerID), so CAPRKE2/CAPN bind
 // to the existing instance instead of provisioning a fresh one. See docs/design.adoc.
 package main
@@ -16,8 +18,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	adoptionv1alpha1 "github.com/seedmatic/rke2-adoption-controller/api/v1alpha1"
-	"github.com/seedmatic/rke2-adoption-controller/internal/controller"
+	adoptionv1alpha1 "github.com/seedmatic/seed-incluster/api/v1alpha1"
+	"github.com/seedmatic/seed-incluster/internal/controller"
 )
 
 // version is stamped at build time via -ldflags "-X main.version=...".
@@ -46,14 +48,14 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
-	setupLog.Info("starting rke2-adoption-controller", "version", version)
+	setupLog.Info("starting seed-incluster", "version", version)
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
 		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "rke2-adoption-controller.adoption.seedmatic.io",
+		LeaderElectionID:       "seed-incluster.cluster.seedmatic.io",
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")

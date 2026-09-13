@@ -1,4 +1,4 @@
-module github.com/seedmatic/rke2-adoption-controller
+module github.com/seedmatic/seed-incluster
 
 go 1.23.0
 

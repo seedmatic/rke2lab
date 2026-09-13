@@ -4,27 +4,30 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.1
-  name: clusteradoptions.adoption.seedmatic.io
+  name: clusterprovisions.cluster.seedmatic.io
 spec:
-  group: adoption.seedmatic.io
+  group: cluster.seedmatic.io
   names:
-    kind: ClusterAdoption
-    listKind: ClusterAdoptionList
-    plural: clusteradoptions
+    kind: ClusterProvision
+    listKind: ClusterProvisionList
+    plural: clusterprovisions
     shortNames:
-    - capiadopt
-    singular: clusteradoption
+    - capiprov
+    singular: clusterprovision
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
     - jsonPath: .spec.clusterName
       name: Cluster
       type: string
+    - jsonPath: .spec.kind
+      name: Kind
+      type: string
+    - jsonPath: .spec.controlPlaneEndpoint.host
+      name: Endpoint
+      type: string
     - jsonPath: .status.phase
       name: Phase
-      type: string
-    - jsonPath: .status.adoptedInstance
-      name: Instance
       type: string
     - jsonPath: .status.conditions[?(@.type=="Ready")].status
       name: Ready
@@ -35,8 +38,10 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: ClusterAdoption is the request to adopt one running RKE2-on-Incus
-          control plane into CAPI.
+        description: |-
+          ClusterProvision is the Flux-owned intent to bring one cluster into existence and keep it
+          described in Cluster API — reconciled adopt-first by the controller, which owns the derived
+          ClusterAdoption.
         properties:
           apiVersion:
             description: |-
@@ -57,19 +62,20 @@ spec:
             type: object
           spec:
             description: |-
-              ClusterAdoptionSpec is the recipe seed-master fills for one cluster to be adopted into
-              Cluster API. The controller expands it into the full CAPI CR-set (Cluster + LXCCluster +
-              RKE2ControlPlane + LXCMachineTemplate) and — the part GitOps cannot do — creates the OWNED
-              control-plane Machine + concrete LXCMachine (providerID) so CAPRKE2/CAPN adopt the RUNNING
-              Pulumi-bootstrapped instance instead of provisioning a fresh one. The BYO-CA Secrets
-              (<clusterName>-{ca,cca,etcd,peer-etcd}) and the identity Secret are delivered by seed-master
-              into Namespace (branch, sops-encrypted); this controller only references them.
+              ClusterProvisionSpec is the INTENT seed-master renders for one cluster — the Flux-owned recipe
+              for bringing a cluster into existence AND keeping it described in Cluster API. The controller
+              reconciles it ADOPT-FIRST: every reconcile it tries to describe the running reality (match each
+              pet by providerID, skip bootstrap) before it ever provisions; a node that is genuinely absent is
+              the only case CAPN launches. From this intent the controller OWNS a ClusterAdoption (the mirror
+              that describes the running cluster) — the ownership split: Flux owns the intent (git-backed,
+              survives a cold-start), the controller owns the adoption (re-derived from reality).
+
+              Every field is filled by seed-master from the ClusterNetworkBlueprint SSOT; the controller
+              templates, it never computes addressing.
             properties:
               clusterName:
-                description: |-
-                  ClusterName is the CAPI Cluster name to create and adopt (e.g. "bioskop-mgmt"). The
-                  control-plane instance adopted is "<ClusterName>-master" with providerID
-                  "lxc:///<ClusterName>-master" — the deterministic name Pulumi grew.
+                description: ClusterName is the CAPI Cluster name to bring to existence
+                  and adopt (e.g. "bioskop-wrkld").
                 minLength: 1
                 type: string
               clusterNetwork:
@@ -108,23 +114,9 @@ spec:
                 - host
                 - port
                 type: object
-              controlPlaneReplicas:
-                description: |-
-                  ControlPlaneReplicas is the RKE2ControlPlane replica count — 1 for a management
-                  cluster (single control node), 3 for a workload HA plane.
-                format: int32
-                minimum: 1
-                type: integer
-              identitySecretName:
-                description: |-
-                  IdentitySecretName is the CAPN per-remote incus identity Secret the LXCCluster.secretRef
-                  names (e.g. "bioskop-incus-identity"), resolved in Namespace.
-                minLength: 1
-                type: string
               image:
-                description: |-
-                  Image pins the nix-built node-base by fingerprint and the RKE2 version — the SAME
-                  node-base the running instance booted on (so the adopted machine template matches).
+                description: Image pins the nix-built node-base by fingerprint — the
+                  SAME node-base the instances boot on.
                 properties:
                   fingerprint:
                     minLength: 1
@@ -132,6 +124,17 @@ spec:
                 required:
                 - fingerprint
                 type: object
+              kind:
+                default: workload
+                description: |-
+                  Kind is the cluster's federated role — "workload" (a leaf) or "management" (a sub-plane that
+                  itself runs a seed-incluster for ITS children). It records topological intent; the controller
+                  provisions/adopts both identically (the difference is the render flavor seed-master delivers
+                  INTO the cluster, not how it is birthed).
+                enum:
+                - workload
+                - management
+                type: string
               kubeVIPVersion:
                 description: KubeVIPVersion pins the kube-vip image the control-plane
                   bootstrap deploys.
@@ -139,10 +142,60 @@ spec:
                 type: string
               namespace:
                 description: |-
-                  Namespace is where the CAPI CR-set and the referenced Secrets live (e.g.
-                  "rke2lab-bioskop-mgmt").
+                  Namespace is where the CAPI CR-set, the owned ClusterAdoption, and the referenced Secrets live
+                  (e.g. "rke2lab-bioskop-wrkld").
                 minLength: 1
                 type: string
+              nodes:
+                description: |-
+                  Nodes is the explicit PET list — every control-plane replica AND worker is a deterministic
+                  blueprint name (CANONICAL_NODE_NAMES), adopted by providerID. No cattle / no MachineDeployment
+                  replica count: a named pet is the only shape that re-matches its survivor after a cold-start.
+                items:
+                  description: NodeSpec is one named pet of the cluster.
+                  properties:
+                    name:
+                      description: |-
+                        Name is the deterministic instance name (e.g. "bioskop-wrkld-master") — the providerID basis
+                        (lxc:///<name>) and the LXCMachine object name CAPN matches against the running instance.
+                      minLength: 1
+                      type: string
+                    role:
+                      description: |-
+                        Role is "control-plane" (an etcd-member server, counts toward the RKE2ControlPlane replicas) or
+                        "worker".
+                      enum:
+                      - control-plane
+                      - worker
+                      type: string
+                  required:
+                  - name
+                  - role
+                  type: object
+                minItems: 1
+                type: array
+              remote:
+                description: |-
+                  Remote is the target Incus engine for THIS cluster's nodes — cluster-level, not per-node
+                  (CAPN's LXCCluster.secretRef names one remote; a cluster's nodes share one host's fabric).
+                properties:
+                  endpoint:
+                    description: |-
+                      Endpoint is the Incus API endpoint (e.g. "https://bioskop-nixos:8443") — the local engine, or a
+                      cross-host one reached over the tailnet.
+                    minLength: 1
+                    type: string
+                  identitySecretName:
+                    description: |-
+                      IdentitySecretName is the per-remote CAPN identity Secret that the LXCCluster.secretRef names,
+                      resolved in Namespace. The controller ALSO uses its client cert to PROBE instance presence on
+                      this remote (the adopt-vs-provision decision). Its trust is CA-based (our owned Incus PKI).
+                    minLength: 1
+                    type: string
+                required:
+                - endpoint
+                - identitySecretName
+                type: object
               rke2Version:
                 description: RKE2Version is the CAPRKE2 control-plane version (e.g.
                   "v1.34.8+rke2r2").
@@ -152,25 +205,23 @@ spec:
             - clusterName
             - clusterNetwork
             - controlPlaneEndpoint
-            - controlPlaneReplicas
-            - identitySecretName
             - image
             - kubeVIPVersion
             - namespace
+            - nodes
+            - remote
             - rke2Version
             type: object
           status:
-            description: ClusterAdoptionStatus records what the controller observed.
+            description: ClusterProvisionStatus records what the controller observed.
             properties:
-              adoptedInstance:
+              adoptionRef:
                 description: |-
-                  AdoptedInstance is the instance name the owned Machine binds (e.g.
-                  "bioskop-mgmt-master").
+                  AdoptionRef is the name of the ClusterAdoption this ClusterProvision owns (in Namespace),
+                  created once the intent is handed off; empty until then.
                 type: string
               conditions:
-                description: |-
-                  Conditions follow the standard metav1.Condition contract — one per adoption step (see the
-                  Condition* constants), so the reconcile progress + any failure are visible per-step.
+                description: Conditions follow the standard metav1.Condition contract.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -229,14 +280,9 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
-              controlPlaneUID:
-                description: |-
-                  ControlPlaneUID is the observed RKE2ControlPlane UID the owned Machine's ownerRef carries —
-                  the piece GitOps could not pre-set; empty until the RCP is observable.
-                type: string
               lastReconcileTime:
                 description: LastReconcileTime is when the controller last reconciled
-                  this ClusterAdoption.
+                  this ClusterProvision.
                 format: date-time
                 type: string
               observedGeneration:
@@ -245,12 +291,7 @@ spec:
                 format: int64
                 type: integer
               phase:
-                description: Phase is the coarse lifecycle stage.
-                type: string
-              providerID:
-                description: |-
-                  ProviderID is the providerID the owned Machine/LXCMachine carry (e.g.
-                  "lxc:///bioskop-mgmt-master").
+                description: Phase is the coarse funnel stage.
                 type: string
             type: object
         type: object
