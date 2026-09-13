@@ -6,6 +6,7 @@ import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.ingress.FunnelLeaf;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import io.seedmatic.rke2lab.manifests.units.cluster.ClusterRefs;
+import io.seedmatic.rke2lab.manifests.units.runtime.flox.FloxCatalogManifestsUnit;
 import java.util.List;
 import java.util.Map;
 import org.cdk8s.ApiObject;
@@ -127,18 +128,30 @@ public final class FluxReceiverManifestsUnit extends AbstractManifestsUnit {
                 new Object[] {"ping", "push"},
                 "secretRef",
                 Map.of("name", WEBHOOK_TOKEN_SECRET),
+                // Every GitRepository fed by THIS repo's pushes: the rendered-branch source AND the
+                // flox-catalogue source (both on github.com/seedmatic/rke2lab, so one webhook
+                // delivery
+                // covers them). Omitting flox-catalogue left a catalog push waiting on the 5m poll
+                // —
+                // the FloxCatalog revision, hence the FloxEnv relock propagation, only advanced
+                // late.
                 "resources",
                 new Object[] {
-                  Map.of(
-                      "apiVersion",
-                      "source.toolkit.fluxcd.io/v1",
-                      "kind",
-                      "GitRepository",
-                      "name",
-                      FluxRootManifestsUnit.GIT_REPOSITORY_NAME,
-                      "namespace",
-                      NAMESPACE)
+                  gitRepositoryResource(FluxRootManifestsUnit.GIT_REPOSITORY_NAME),
+                  gitRepositoryResource(FloxCatalogManifestsUnit.GIT_REPOSITORY_NAME)
                 })));
+  }
+
+  private static Map<String, Object> gitRepositoryResource(final String name) {
+    return Map.of(
+        "apiVersion",
+        "source.toolkit.fluxcd.io/v1",
+        "kind",
+        "GitRepository",
+        "name",
+        name,
+        "namespace",
+        NAMESPACE);
   }
 
   private void createFunnelIngress(final Construct scope) {
