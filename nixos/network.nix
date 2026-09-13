@@ -9,16 +9,21 @@
 # the target becomes truthful. (External WAN egress can still settle a few seconds past the lease, so
 # the boot-time fetch keeps its own reachability retry — see ./rke2.nix rke2lab-rke2-config.)
 #
-# DNS + mDNS are NOT taken over here: this is an incus CONTAINER, so /etc/resolv.conf is provided by
-# incus (networking.useHostResolvConf) and .local is answered by avahi (userspace — ./host-access.nix).
-# systemd-resolved is deliberately DISABLED: enabling networkd turns it on by default as networkd's
-# DNS backend, but it is unsupported alongside the host resolv.conf a container inherits
-# (networking.useHostResolvConf, which asserts against resolved). That is ndh's VM-only path — here
-# DNS stays incus's resolv.conf and .local stays avahi. networkd owns links/addresses/routes only.
-{ lib, ... }:
+# DNS: systemd-resolved manages it — the standard networkd companion. networkd hands resolved the
+# per-link DNS from the lan0 DHCP lease and resolved serves it via its stub resolver (127.0.0.53).
+# `networking.useHostResolvConf` MUST be OFF: the incus container default is ON, and that combination
+# both asserts against resolved AND — once networkd took over the links — left /etc/resolv.conf with
+# NO nameserver (DNS silently broke: `ping: Name or service not known`, networkd got the lease DNS but
+# nothing wrote it to resolv.conf). Off → resolved owns /etc/resolv.conf and egress DNS works. mDNS
+# `.local` stays with avahi (userspace — ./host-access.nix); resolved does no mDNS (off by default),
+# so the two do not collide. networkd owns links/addresses/routes; resolved owns DNS.
+{ ... }:
 {
   systemd.network.enable = true;
-  services.resolved.enable = lib.mkForce false;
+  services.resolved.enable = true;
+  # incus containers default useHostResolvConf ON — asserts against resolved AND yields an empty
+  # resolv.conf under networkd. Off so resolved owns DNS (fed by the DHCP lease via networkd).
+  networking.useHostResolvConf = false;
   # networkd owns the interfaces; keep the legacy per-interface DHCP scripting (dhcpcd) off.
   networking.useDHCP = false;
 
