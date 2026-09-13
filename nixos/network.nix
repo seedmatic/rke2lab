@@ -34,8 +34,9 @@
     timeout = 60;
   };
 
-  # lan0 — the canonical LAN bridge (same L2 as the operator's Mac): the node's EXTERNAL egress.
-  # Preferred default route (lowest metric).
+  # lan0 — the canonical LAN bridge (same L2 as the operator's Mac): the node's EXTERNAL egress and,
+  # since vmnet0 takes no gateway (below), the SOLE default route. Low metric kept as an explicit
+  # preference in case another egress link is ever added.
   systemd.network.networks."10-lan0" = {
     matchConfig.Name = "lan0";
     networkConfig.DHCP = "yes";
@@ -44,13 +45,19 @@
     linkConfig.RequiredForOnline = "routable";
   };
 
-  # vmnet0 — the per-cluster internal bridge (pod/cluster comms). Required for online (rke2 needs
-  # it), backup default route (higher metric).
+  # vmnet0 — the per-cluster INTERNAL bridge: inter-node / pod-cluster comms ONLY, never an egress
+  # path. Its incus-managed DHCP advertises 10.80.0.1 as a default gateway, but that gateway does NOT
+  # route to the internet; installing it as a default route black-holes public traffic whenever it
+  # out-prioritises lan0 (proven live: vmnet0's default metric 200 beat lan0's, so `ping www.free.fr`
+  # left via 10.80.0.1 and died — the manual `ip route del default dev vmnet0` confirmed the fix).
+  # UseGateway=false drops that default route (v4 + v6): the node keeps only the 10.80.0.0/21 link
+  # route (automatic from the address) for inter-node reach, and lan0 stays the sole default. Still
+  # required-for-online — rke2 needs the cluster link up.
   systemd.network.networks."10-vmnet0" = {
     matchConfig.Name = "vmnet0";
     networkConfig.DHCP = "yes";
-    dhcpV4Config.RouteMetric = 200;
-    ipv6AcceptRAConfig.RouteMetric = 200;
+    dhcpV4Config.UseGateway = false;
+    ipv6AcceptRAConfig.UseGateway = false;
     linkConfig.RequiredForOnline = "routable";
   };
 }
