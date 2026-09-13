@@ -5,6 +5,230 @@ cluster (`bioskop-wrkld`) is greenfield-created. The settled *architecture* live
 (management-workload-topology, manifests-rendered-branches, the completion plan); this file is the
 engineering backlog + resume point.
 
+## ★ SESSION RESUME (2026-09-13) — mgmt adoption CLOSED; next = bioskop-wrkld birth
+
+**The 2026-09-12 "ONE BLOCKER" (CP endpoint / `RemoteConnectionProbe=False`) is RESOLVED.**
+`bioskop-mgmt` SELF-ADOPTS: `RemoteConnectionProbe=True` + `ControlPlaneInitialized=True`,
+`ClusterAdoption Adopted`. The exact fix chain (VIP in the serving cert + VIP reach over the tailnet
++ node-ip dual-stack + tls-san mDNS + kubelet `--node-ip` + vmnet v6 /64 + flox cache) is in the
+`mgmt-capi-self-adoption-shipped` memory — NOT necessarily the kubeconfig-override the 2026-09-12 note
+below proposed; read the memory for what actually shipped. Feature branch to `179649ddc`. **The
+mgmt-adoption pilot is PROVEN LIVE** — the whole section below is superseded on the endpoint.
+
+**Federation = designed & de-risked (doc-only this session).**
+`docs/architecture/cluster-api/cluster-seeding-controller.adoc` graves the seed-incluster controller
+(ClusterProvision + ClusterAdoption, adopt-first, single-adopter, tier-B "born in-cluster", CA-owned
+Incus trust) + reframes the topology anchor. Decided: **no wall** → defer nikopol integration;
+ClusterProvision + the 3 renames (`rke2-adoption-controller`→`seed-incluster`, `OPERATOR`→`STANDALONE`,
+group→`cluster.seedmatic.io`) are a DEDICATED code session, not now. See `capi-cluster-seeding-mirror-design` memory.
+
+**Focus now = greenfield `bioskop-wrkld`** (a leaf, LOCAL to bioskop-nixos — exercises the core
+adopt/create path with zero federation complexity, AND builds the multi-cluster foundation federation
+later extends per-remote). Most foundations DONE. Short remaining path (expect drift — this is a compass):
+
+1. **Workload generalization of the adoption controller** (the existing "NEXT item 2" below): render a
+   `ClusterAdoption`(replicas:3) for the workload + add the **incus-instance probe** (adopt-or-create:
+   set/omit `providerID`) → `ClusterApiWorkloadManifestsUnit` shrinks to recipe-only, its raw CR-set
+   builders die (atomically). All-pets (#4): each of the 3 CP + workers = a stable-named adopted pet
+   (dissolves the ordinal problem). **Coherence note:** build on the CURRENT controller/`ClusterAdoption`
+   path; keep the ClusterProvision/adopt-first/all-pets invariants in mind; the CR modernization + renames
+   ride the dedicated code session — do NOT half-introduce them here.
+2. **Dataplan cluster dimension** (foundation 3, ⏸ paused) — the workload's ZFS datasets
+   `tank/rke2lab/<cluster>/…`; forks decided, resume-open = how NetplanScenario gets its cluster (mirror
+   into dataplan).
+3. **Lift the workload freeze** — the transitional `spec.paused:true` (`98f94fa66`) → presence-in-
+   `workloadTargets` IS the trigger (the settled un-paused model); un-pause when birthing.
+4. **2b second render** — the `-wrkld` app-stack branch + who triggers its first render.
+
+## ★ SESSION RESUME (2026-09-12) — mgmt adoption 90% PROVEN LIVE; blocked on the CP endpoint [SUPERSEDED — endpoint resolved 2026-09-13, see above]
+
+**The in-cluster rke2-adoption-controller works and CAPN ADOPTED the running mgmt instance** —
+`LXCMachine bioskop-mgmt-master InstanceProvisioned=True` (the core adopt-by-name+providerID mechanism
+is PROVEN live), `InfrastructureReady=True`, `BootstrapConfigReady=True`, kubeconfig generated, node
+providerID `lxc:///bioskop-mgmt-master` aligned. `ClusterAdoption` phase=Adopted (the controller did its
+job). The controller reconcile flow (RCP paused-at-birth → read UID → owned Machine+LXCMachine+sentinel →
+unpause) runs clean.
+
+**Committed + pushed.** Controller branch `rke2-adoption-controller` @ `86b280c62` (scaffold + reconciler +
+per-step status + apiGroup fix; image cross-builds aarch64-linux). Feature branch commits: `c9e1f73d0`
+(mgmt CA delivery + ClusterAdoption recipe + delegate + workload-unit delegates), `9383f76d5` (deploy unit
++ flake input/image/CRD wiring + nixos bake + staging participant + doc), `7ca1feb92` (ManagementClusterCa
+keep-backfill via sops decrypt), `cbaad5e08`+`79142c2d3` (the 4 adoptability fixes). flake.lock pins the
+controller.
+
+**The 4 adoptability fixes (all live-validated except the endpoint):**
+1. Instance NAME = `identity.nodeHostname()` (the FULL `<cluster>-<node>` = `bioskop-mgmt-master`), was
+   `config.nodeName()`/`nodeName()` = the short ref `master` → CAPN found nothing. VALIDATED (instance
+   renamed, adopted).
+2. Node providerID = `lxc:///<hostname>` via kubelet-arg drop-in (`rke2lab-provider-id`, from
+   RKE2LAB_NODE_HOSTNAME) + `--disable-cloud-controller` (rke2 CCM would stamp `rke2://` immutable, and
+   can't resolve `lxc:///`; kubelet self-reports addresses — cloudProvider unset, no uninitialized taint).
+   VALIDATED (node born `lxc:///bioskop-mgmt-master`, Ready).
+3. Controller: Machine `spec.infrastructureRef` = v1beta2 contract ref `{apiGroup,kind,name}` (was
+   `apiVersion` → webhook reject) + per-step status conditions persisted even on error (the observability
+   that pinpointed each blocker). VALIDATED.
+4. `GrowIdentityView.nodeName → nodeRef` (anti-trap: it's the SHORT node ref, NOT a name — cost 2 identical
+   errors this session). The pervasive cross-domain `nodeName`→`nodeRef` (systemd/netplan/incus contracts,
+   the `RKE2LAB_NODE_NAME` env + nixos consumers) → the existing `.claude/terminology-refactor-plan.md`.
+
+**★ THE ONE BLOCKER — the control-plane endpoint (a NETWORK-TOPOLOGY decision).** `RemoteConnectionProbe=
+False` → CAPI can't reach the mgmt apiserver → NodeRef unbound → `ControlPlaneInitialized=False`. Root: the
+ClusterAdoption recipe's `controlPlaneEndpoint` = the blueprint VIP `10.80.7.10`, which sits on the vmnet
+**cluster supernet `10.80.0.0/18` (bioskop `/21`)** — and that supernet is **NOT tailscale-advertised**
+(only the incus net `172.16.7.0/24` is, per `ndh/catalog/default.nix` `advertiseCidr`). So the VIP is
+unreachable from bioskop (no route — confirmed via `netstat -rn`) AND from the CAPI controller pods. The
+mgmt master is on the physical LAN (`192.168.1.131`/lan0) + the unrouted vmnet VIP; reached by the operator
+via mDNS `bioskop-mgmt-master.local` (pods can't mDNS). **DECISION FOR TOMORROW:**
+- **A (lean)** — advertise `10.80.0.0/21` into the tailnet (subnet-router) so the VIP becomes reachable
+  everywhere (operator + pods via node) → `controlPlaneEndpoint = VIP`, stable + deterministic + HA-ready.
+  ⚠️ advertise is a Tailscale-console / Headscale step today (per ndh docs), not just code. Matches the
+  user's mental model ("I thought we routed the VIP via tailscale" — it is NOT, only 172.16.7 is).
+- **B** — `controlPlaneEndpoint = bioskop-mgmt-master.local` (mDNS, the deterministic name) + a CoreDNS
+  fix so in-cluster pods resolve `.local`. Stays on the LAN, no tailscale dep.
+Whichever: also fix the apiserver **tls-san** so the serving cert covers the chosen endpoint.
+
+**TODO before deciding: REVIEW THE NETPLAN DOC IN THE SPECS** (the VIP / vmnet supernet / tailscale-advertise
+topology — `docs/.../deterministic-cluster-access.adoc` + the netplan spec) — the endpoint decision hinges on
+what the vmnet VIP is *meant* to be and how it should be routed.
+  - READ `docs/architecture/patterns/netplan-blueprint-single-source.adoc` (2026-09-12): it documents the
+    ADDRESSING (per-cluster vmnet `/21` = the incus bridge `10.80.x`; LAN/LB `/27` spans; the blueprint
+    carries `host/lan/lb/node/vip`) but is **SILENT on the VIP/CP-endpoint REACHABILITY** — nothing says how
+    the VIP is routed/reached (operator? pods? cross-cluster? tailscale?). The VIP `10.80.7.10` is a
+    CLUSTER-INTERNAL address on the vmnet incus bridge by construction. So the fix has two readings:
+    (a) VIP is internal-only → the adoption fix is **pod→vmnet0 routing on the node** (the CAPI controllers
+    are pods; they could reach the node-local VIP if cilium routes pod→vmnet0) — NOT a tailscale change;
+    (b) VIP needs external reach → advertise `10.80.0.0/21` via tailscale. TOMORROW: decide + **write the
+    missing "CP-endpoint reachability" section into the netplan spec**, then fix the recipe endpoint + tls-san.
+
+**★★ RESOLVED at end of 2026-09-12 (the k8s-native answer — supersedes the A/B above):** the endpoint is a
+FALSE dichotomy — there are TWO distinct reaches and the VIP is only one of them:
+- **Inbound (EXTERNAL clients → apiserver) = the VIP.** kubectl/operator, joining nodes, external
+  controllers. Its reachability is an *external* routing concern (advertise / put on a client-reachable
+  net). It is NOT meant to be routed INSIDE the cluster.
+- **In-cluster (pods → apiserver) = the `kubernetes.default.svc` Service (ClusterIP 10.48.0.1).** k8s's
+  built-in mechanism (kube-proxy/cilium DNAT to the real apiserver endpoints). No VIP, no vmnet routing.
+
+Q1 (who assigns the VIP): the **blueprint computes it** (`ClusterNetworkBlueprint`: `10.80.<hostThird+7>.0/24`
+`.host(10)` = `10.80.7.10`) and the **node network config assigns it as a STATIC secondary /32 on vmnet0** —
+NOT kube-vip (no kube-vip pod on the Pulumi-grown mgmt; single node, no floating). It lives on the internal
+vmnet incus bridge.
+
+Q2 (the CAPI controller's DUAL role, self-hosted): it is BOTH (1) a **management-cluster client** — manages
+the CRs via its ServiceAccount → `kubernetes.default` (works); and (2) a **workload-cluster client** — for
+self-hosted the "workload cluster" IS the mgmt, and CAPI connects via `<cluster>-kubeconfig` whose server is
+the VIP `https://10.80.7.10:6443` (CONFIRMED by decoding the secret) → unreachable from the pods →
+RemoteConnectionProbe=False. **FIX (the resolution): override/pre-create `bioskop-mgmt-kubeconfig` to point at
+`https://kubernetes.default.svc:443`** (the controller HAS the mgmt CA via the BYO-CA secrets → it can mint
+this kubeconfig; CAPRKE2's LookupOrGenerate reuses an existing secret, doesn't overwrite). Then BOTH roles use
+in-cluster paths; the VIP stays untouched as the external inbound endpoint. **Do NOT route the VIP inside the
+cluster** (a cluster-specific CNI-egress hack — avoid).
+
+**TOMORROW (concrete):**
+1. Code the kubeconfig override in the rke2-adoption-controller: mint/replace `<cluster>-kubeconfig` (server
+   `https://kubernetes.default.svc:443`, cluster CA + an admin client cert from the mgmt CA it already holds).
+2. **CAVEAT to validate**: CAPI may assert `controlPlaneEndpoint` == the kubeconfig server; confirm it accepts
+   a DIVERGENT in-cluster kubeconfig (the k0smotron self-hosted pattern does this). If it rejects, fall back to
+   making the VIP pod-reachable OR a self-hosted-specific ClusterCacheTracker config.
+3. Write the netplan-spec section: **"two reaches — inbound VIP (external clients) vs in-cluster
+   `kubernetes.default` (controllers); never route the VIP inside."**
+4. Re-validate → NodeRef binds → ControlPlaneInitialized=True → **mgmt adoption loop CLOSED**.
+
+**Fast iteration**: the controller runs LOCALLY (`go run ./cmd/... ` against the mgmt via the operator
+kubeconfig, KUBECONFIG=.local.d/kubeconfig.yaml) — proven; use it to iterate reconcile logic without a
+re-grow. (During this session the in-cluster controller Deployment was `scale=0`'d + the CRD kubectl-applied
+for local runs; a re-grow / Flux restores them.) **Deferred**: FloxEnv delivery of the controller (backlog
+above), workload generalization (adopt-or-create via an incus instance probe — set/omit providerID).
+
+## ★ SESSION RESUME (2026-09-11) — the adoption pivot + in-cluster render CLOSED
+
+**In-cluster secret-full render = SHIPPED + validated live.** The GitOps loop closes in-cluster.
+Fixes (pushed on `feature/nixos-node-substrate`): git-sops FloxEnv `[hook.on-activate]` + `spec.inject
+SOPS_AGE_KEY` (webhook) → `.secrets` smudges in-cluster; render token read RAW from PaC `git-provider-token`
+(`560605b06`); flox-controller builds in a **host-cgroup scope** (`systemd-run --scope`, flox-controller
+`ade0940`) — nsenter enters mount/pid/net but NOT cgroup → builds OOM'd the 2Gi pod; DaemonSet limit
+2Gi→512Mi. Reach gate: `github-app` + `admin` (operator-pki) flipped **`Reach.IN_CLUSTER`** + **re-file-on-keep**
+(`cdd84240f`+`dce20119b`, GithubAppScenario + ClusterPkiSealScenario) — the flip was inert because seals are
+idempotent-KEEP (reach frozen at first seal in the durable cellar); re-filing on keep converges it. VALIDATED
+live: `manifests/bioskop-mgmt@ba24d5e5` (in-cluster render) has gtm(App/key/ClusterToken/HelmChart)+pac+githubapp
++kubeconfig, no drop. **No durable-cellar duplication** (Pulumi keys `Entry` by URN/coordinate = 1 per coord,
+verified in `.pulumi-state/.pulumi/stacks/rke2lab/dev.json`).
+
+**NEW FOUNDATION — CAPN workload leak → ADOPTION (Pulumi→CAPI handoff).** Root: CAPN control-plane instances
+are CAPI-random-named (`<cluster>-control-plane-<random>`) + the Machine↔instance linkage lives ONLY in the
+mgmt etcd → a mgmt cold-start wipes it AND mints new random names → orphans the still-running workload instances
+in the one `rke2lab` Incus project (leak grows each cold-start). **Fix = adoption, CONFIRMED viable:** CAPN's
+`LXCMachine` adopts by name+providerID (`GetInstanceName()`=`c.Name`, `providerID`=`lxc:///<name>`, adopt branch
+`internal/controller/lxcmachine/controller_normal.go:37` when providerID pre-set + instance found). State is
+RECONSTRUCTED at bootstrap (surviving instances + persisted PKI [reach/NODE_BOOTSTRAP] + deterministic blueprint),
+NOT etcd-persisted → dissolves the self-management paradox's cold-start half; **erases the ephemeral-bootstrap+
+pivot need**. Vision GRAVED: `docs/.../management-workload-topology.adoc` `[[mgmt-adoption]]` (+ reframed
+why-separation + self-hosted), commit `1d4d69860` (local, unpushed). **NOT k0smotron** (hosted CP inverts the
+coupling — workload CP would die with the on-demand mgmt; + k0s≠rke2). CAPN implements the adoption recipe natively.
+
+**WORKLOAD FREEZE = SHIPPED (`98f94fa66`, pushed).** The workload `Cluster` is rendered **`spec.paused: true`** —
+a TRANSITIONAL freeze that caps the CAPN cold-start leak until its grow is revisited on adoption. Decision
+settled: use **`spec.paused`** (the DECLARATIVE input WE author), NOT the raw annotation — CAPI propagates the
+`cluster.x-k8s.io/paused` annotation onto owned resources itself (separation of roles). The no-`spec.paused` ban
+(`501e5fb08`) is LIFTED for this transitional case; its two Flux concerns are handled: the Cluster cell already
+renders `wait:false` (VERIFIED — `FluxServiceKustomizationPlanner:405`, no never-Ready wedge), and we must NOT
+prune while paused (finalizer→Terminating wedge) — un-pause first when the adoption grow lands. Javadoc +
+inline comment on `ClusterApiWorkloadManifestsUnit` updated to match. **NEXT = the mgmt-adoption PILOT (below).**
+
+**★ MGMT ADOPTION = BUILT end-to-end (2026-09-11), pending a live re-grow to validate.** The pilot did
+NOT go the GitOps-CR-set route — a hard blocker forced a PIVOT: CAPRKE2 REFUSES a control-plane `Machine`
+that lacks its `RKE2ControlPlane` ownerRef (`rke2controlplane_controller.go:463-467`, "mixed management
+mode"), and that ownerRef needs the RCP's `uid` — assigned by the API server at creation, UNKNOWABLE to a
+GitOps render. So the CR-set is created **IN-CLUSTER by a dedicated Go controller** instead.
+
+Pieces (all committed, green, image cross-builds; NOT yet live-grown):
+- **`rke2-adoption-controller`** — a dedicated ORPHAN branch of this repo (separate Go build, kubebuilder/
+  controller-runtime, image cross-built aarch64-linux, pushed `54406f849`). CRD `ClusterAdoption`
+  (`adoption.seedmatic.io/v1alpha1`) = the recipe; the reconciler expands it into the full CR-set + the
+  OWNED `Machine`+`LXCMachine`(providerID)+bootstrap sentinel, RCP **paused-at-birth** (annotation direct,
+  closes the init race) → reads the RCP uid → unpause. Idempotent → re-adopts each cold-start. CAPI CRs
+  UNSTRUCTURED (no typed CAPI/CAPRKE2/CAPN dep).
+- **seed-master (`c9e1f73d0`)** delivers material only: `ClusterApiManagementManifestsUnit` renders the
+  `ClusterAdoption` CR + the 4 BYO-CA (`ManagementClusterCa`/`Material`, the mgmt LIVE CA, reach IN_CLUSTER)
+  + identity Secret. NO raw CR-set for the mgmt.
+- **deploy + nix (`9383f76d5`)**: `Rke2AdoptionControllerManifestsUnit` (Deployment+RBAC+CRD, operators/crds
+  layers); flake input (same-repo branch) + re-export + `stage-rke2-adoption-controller-crd` app +
+  buildReactorExe snippet; nixos bake into node-base; `Rke2AdoptionControllerCrdStagingParticipant` (dev-loop
+  staging — needs `./mvnw -f maven-embed-staging-ext/pom.xml install` to load). Doc: `deterministic-cluster-access.adoc`.
+
+**★ ADOPT-vs-CREATE (graved — the KEY insight for the workload generalization).** The switch is
+`LXCMachine.spec.ProviderID`, which the CONTROLLER sets — NOT auto-decided by CAPN
+(`controller_normal.go:37` vs `:109`): providerID SET + instance present → **adopt**; providerID SET +
+instance ABSENT → `InstanceDeleted` (does NOT create); providerID EMPTY → **`launchInstance` creates** at
+the deterministic name. So to get "adopt-if-survived-else-create", the controller must **probe the incus
+instance** and set/omit providerID accordingly. **Mgmt = always adopt** (the controller runs ON the mgmt →
+the instance exists whenever it runs; Pulumi bootstraps/creates it, the controller never does). **Workload
+generalization = the controller probes incus presence** → adopt survivors, else CAPN creates deterministically
+— this is the durable re-adoption/re-creation AND dissolves the 3-CP ordinal problem (each replica = a
+`ClusterAdoption`-driven owned Machine at a stable name, no `machineNamingStrategy` ordinal needed).
+
+**NEXT:**
+1. **Re-grow the mgmt** (LIVE, user runs) → bake the controller image + render → Flux applies (CRD +
+   controller Deployment + `ClusterAdoption` CR + CA/identity Secrets) → controller reconciles → watch
+   `kubectl get clusteradoption -A` → `status.phase: Adopted`. First empirical proof of adopt-by-providerID.
+2. **Workload generalization**: render a `ClusterAdoption`(replicas:3) for the workload too; add the
+   **incus instance probe** to the controller (adopt-or-create); then `ClusterApiWorkloadManifestsUnit`
+   shrinks to recipe-only (like mgmt) and the delegate's CR-set builders (`lxcCluster`/`rke2ControlPlane`/
+   `lxcMachineTemplate`) become DEAD → remove them **atomically** in that change (they are ALIVE now — the
+   workload still renders the raw paused CR-set; do NOT remove before the generalization).
+DEFERRED: cold-start observation (did the workload instance survive the destroy — empirical root confirmation).
+
+**★ BACKLOG (model fix, 2026-09-12) — deliver rke2-adoption-controller via a FloxEnv, not baked.** We bake
+the controller image into the node-base (nixos/rke2-adoption-controller.nix, air-gap import) by MIMICRY of
+flox-controller — but flox-controller MUST bake (it delivers FloxEnvs → can't deliver itself, chicken/egg),
+whereas the adoption controller has NO such constraint. Baking violates the `all-workloads-on-flox-runtime`
+principle AND couples every controller fix to a node-base rebuild + master restart (felt live this session: a
+one-line apiGroup fix needed a re-grow). Fix = deliver it as a FloxEnv like any workload (annotation + nix
+closure) → an update is flox-controller reconciling the new closure + `rollout restart` of the pod, NO node
+restart. Caveat to validate at migration: the flox-delivered controller comes up AFTER the flox runtime — confirm
+adoption is not so boot-critical it must precede the runtime (likely fine; adoption can wait for flox-ready). Not
+now — orthogonal to whether adoption WORKS (the bake validates the mechanism); a delivery refactor once the
+mgmt-adoption live loop is proven green.
+
 ## Premise — settled model B (docs, commit `15af9c5e5`)
 
 Workload CAPI CRs (`Cluster`/`LXCCluster`/`RKE2ControlPlane`/`RKE2ConfigTemplate`/`LXCMachineTemplate`/`MachineDeployment`)
