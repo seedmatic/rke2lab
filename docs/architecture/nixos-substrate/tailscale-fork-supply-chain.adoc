@@ -253,7 +253,7 @@ nix eval '.#packages.aarch64-linux.tailscale.ldflags' \
   --apply 'fs: builtins.filter (f: builtins.isString f && builtins.match ".*gitCommitStamp.*" f != null) fs'
 #   -> [ "-X tailscale.com/version.gitCommitStamp=<new-fork-rev>" ]
 # Optional hygiene: refresh the committed env locks (see NOTE below):
-flox activate -- ./lock-envs.sh mesh/tailscale mesh/tailscale-debug
+nix run .#lock-envs -- mesh/tailscale mesh/tailscale-debug
 git commit -m "chore(lock): bump rke2lab (mesh tailscale 1.<NEW>)" flake.lock environment.d/mesh/tailscale*/manifest.lock
 git push origin flox-catalogue
 ----
@@ -264,7 +264,7 @@ The runtime mesh install ref is `floxcatalog:catalogue#tailscale`, which the
 flox-controller resolves against the *catalogue flake output* at the reconciled
 commit — not against `environment.d/mesh/tailscale/manifest.lock`. That committed
 `manifest.lock` is for local `flox activate` reproducibility, not the in-cluster
-mesh path; re-locking it (`flox activate -- ./lock-envs.sh mesh/tailscale
+mesh path; re-locking it (`nix run .#lock-envs -- mesh/tailscale
 mesh/tailscale-debug`, needs an aarch64-linux builder) is a hygiene step, not a
 rollout gate.
 ====
