@@ -21,16 +21,16 @@ import org.cdk8s.JsonPatch;
 import software.constructs.Construct;
 
 /**
- * Renders the {@code ClusterProvision} INTENT (recipe) for each WORKLOAD cluster onto the MANAGEMENT
- * cluster's own branch ({@code manifests/<host>-mgmt}) — model B: the CR lives where CAPI runs, so
- * the management cluster's Flux applies it and the in-cluster {@code seed-incluster} controller
- * reconciles it adopt-first into a DIFFERENT cluster ({@code <host>-wrkld}). There is no imperative
- * {@code kubectl apply} and no {@code -wrkld}-branch CRs (that branch carries only the workload's
- * own app stack).
+ * Renders the {@code ClusterProvision} INTENT (recipe) for each WORKLOAD cluster onto the
+ * MANAGEMENT cluster's own branch ({@code manifests/<host>-mgmt}) — model B: the CR lives where
+ * CAPI runs, so the management cluster's Flux applies it and the in-cluster {@code seed-incluster}
+ * controller reconciles it adopt-first into a DIFFERENT cluster ({@code <host>-wrkld}). There is no
+ * imperative {@code kubectl apply} and no {@code -wrkld}-branch CRs (that branch carries only the
+ * workload's own app stack).
  *
  * <p>This unit no longer renders the raw CAPI CR-set (Cluster/LXCCluster/RKE2ControlPlane/
- * MachineDeployment). That set is materialised IN-CLUSTER by {@code seed-incluster} from the
- * {@code ClusterProvision} — the piece GitOps cannot pre-set (the owned Machines' ownerRef UID + the
+ * MachineDeployment). That set is materialised IN-CLUSTER by {@code seed-incluster} from the {@code
+ * ClusterProvision} — the piece GitOps cannot pre-set (the owned Machines' ownerRef UID + the
  * adopt-vs-provision decision are in-cluster facts). So this unit's job narrows to the DECLARATIVE
  * recipe + the credentials the controller expands the CR-set from.
  *
@@ -40,8 +40,8 @@ import software.constructs.Construct;
  * unit derives that cluster's whole {@link ClusterNetworkBlueprint} from its {@link
  * WorkloadTarget#clusterName()} — pod/service CIDRs, the kube-vip VIP — pins the image to {@link
  * ImageState#imageFingerprint()} and the RKE2 version to {@link ImageState#rke2Version()} (the
- * node-base identity the incus scion forwarded), and lists the control-plane pets ({@code
- * master + peer1 + peer2} = 3 etcd members; peer3 dropped for workloads — a workload is NOT the full
+ * node-base identity the incus scion forwarded), and lists the control-plane pets ({@code master +
+ * peer1 + peer2} = 3 etcd members; peer3 dropped for workloads — a workload is NOT the full
  * CANONICAL 4-server topology). Workers are a follow-up (none listed yet).
  *
  * <p>No-op when there are no targets (a mgmt-only / standalone run) or when no {@link ImageState}
@@ -50,11 +50,11 @@ import software.constructs.Construct;
  * unit renders nothing rather than a misleading placeholder.
  *
  * <p>The per-remote CAPN identity Secret {@code <host>-incus-identity} (foundation 5) and the four
- * CAPRKE2 BYO-CA Secrets are rendered HERE ON THE BRANCH via the shared {@link ClusterApiCrRenderer}
- * (the SAME collaborator {@link ClusterApiManagementManifestsUnit} uses), sops-encrypted, when their
- * material is revealed (a secret-full render). One {@code rke2lab} incus project (foundation 4
- * dropped — instance names are globally unique via the blueprint), so the Secret carries {@code
- * project: rke2lab}.
+ * CAPRKE2 BYO-CA Secrets are rendered HERE ON THE BRANCH via the shared {@link
+ * ClusterApiCrRenderer} (the SAME collaborator {@link ClusterApiManagementManifestsUnit} uses),
+ * sops-encrypted, when their material is revealed (a secret-full render). One {@code rke2lab} incus
+ * project (foundation 4 dropped — instance names are globally unique via the blueprint), so the
+ * Secret carries {@code project: rke2lab}.
  */
 public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit {
 
