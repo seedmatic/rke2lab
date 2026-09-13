@@ -11,12 +11,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Stages the {@code ClusterAdoption} CRD (single-sourced from the rke2-adoption-controller flake
+ * Stages the {@code ClusterAdoption} CRD (single-sourced from the seed-incluster flake
  * input, never vendored) into manifests-core's resources BEFORE the reactor executes — the twin of
  * {@link FloxControllerCrdStagingParticipant}, for the second CRD the manifest synthesis emits into
- * the cluster's {@code crds} layer ({@code Rke2AdoptionControllerManifestsUnit}).
+ * the cluster's {@code crds} layer ({@code SeedInclusterManifestsUnit}).
  *
- * <p><b>Why here.</b> The CRD is staged by {@code nix run .#stage-rke2-adoption-controller-crd}.
+ * <p><b>Why here.</b> The CRD is staged by {@code nix run .#stage-seed-incluster-crd}.
  * The nix {@code buildReactorExe} runs it in its buildPhase; a plain {@code ./mvnw} build does NOT
  * — so without this bridge a controller re-lock would leave the on-disk CRD stale (a legitimate
  * cache hit shipping the old schema). {@code afterProjectsRead} runs ONCE, after the POMs are read
@@ -31,15 +31,15 @@ import org.slf4j.LoggerFactory;
  */
 @Named
 @Singleton
-public class Rke2AdoptionControllerCrdStagingParticipant extends AbstractMavenLifecycleParticipant {
+public class SeedInclusterCrdStagingParticipant extends AbstractMavenLifecycleParticipant {
 
   private static final Logger log =
-      LoggerFactory.getLogger(Rke2AdoptionControllerCrdStagingParticipant.class);
+      LoggerFactory.getLogger(SeedInclusterCrdStagingParticipant.class);
 
   private static final String STAGED_MARKER = "RKE2LAB_CRD_STAGED";
   private static final String SKIP_PROPERTY = "flox.crd-staging.skip";
   private static final String CRD_PACKAGING_MODULE = "manifests-core";
-  private static final String STAGE_APP = ".#stage-rke2-adoption-controller-crd";
+  private static final String STAGE_APP = ".#stage-seed-incluster-crd";
 
   @Override
   public void afterProjectsRead(final MavenSession session) throws MavenExecutionException {

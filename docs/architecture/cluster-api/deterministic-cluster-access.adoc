@@ -390,7 +390,7 @@ input carrying the workload cluster names:
 
 The management cluster is adopted into CAPI in-cluster (see
 xref:management-workload-topology.adoc[the topology doc] `[[mgmt-adoption]]`): the
-`rke2-adoption-controller` creates the CAPI CR-set describing the RUNNING control plane, and CAPRKE2
+`seed-incluster` creates the CAPI CR-set describing the RUNNING control plane, and CAPRKE2
 adopts it only if it finds the four `<mgmt>-{ca,cca,etcd,peer-etcd}` BYO-CA Secrets carrying the
 cluster's *LIVE* CA — the very CA the running apiserver issues from, or the minted admin cert is
 rejected. That CA is the mgmt cluster's own node bundle (`CLUSTER_CA_BUNDLE`), which is already

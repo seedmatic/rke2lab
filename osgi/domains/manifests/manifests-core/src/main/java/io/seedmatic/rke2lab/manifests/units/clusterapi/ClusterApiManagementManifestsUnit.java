@@ -24,7 +24,7 @@ import software.constructs.Construct;
 /**
  * Renders the MANAGEMENT cluster's ADOPTION request onto its own branch ({@code
  * manifests/<host>-mgmt}) — a single {@code ClusterAdoption} CR (the recipe) plus the material the
- * in-cluster {@code rke2-adoption-controller} needs: the four CAPRKE2 BYO-CA Secrets (from {@link
+ * in-cluster {@code seed-incluster} needs: the four CAPRKE2 BYO-CA Secrets (from {@link
  * ManifestSynthesisContext#managementCas()}) and the CAPN identity Secret.
  *
  * <p>Unlike {@link ClusterApiWorkloadManifestsUnit}, this unit does NOT render the raw CAPI CR-set
@@ -171,7 +171,7 @@ public final class ClusterApiManagementManifestsUnit extends AbstractManifestsUn
             scope,
             "clusteradoption-" + cluster,
             ApiObjectProps.builder()
-                .apiVersion("adoption.seedmatic.io/v1alpha1")
+                .apiVersion("cluster.seedmatic.io/v1alpha1")
                 .kind("ClusterAdoption")
                 .metadata(
                     ApiObjectMetadata.builder()
@@ -179,7 +179,7 @@ public final class ClusterApiManagementManifestsUnit extends AbstractManifestsUn
                         .namespace(namespace)
                         .annotations(
                             packageProfile.packageAnnotations(
-                                "adoption.seedmatic.io|ClusterAdoption|"
+                                "cluster.seedmatic.io|ClusterAdoption|"
                                     + namespace
                                     + "|"
                                     + cluster))
