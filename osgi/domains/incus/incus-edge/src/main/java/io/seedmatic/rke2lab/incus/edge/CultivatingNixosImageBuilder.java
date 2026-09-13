@@ -165,6 +165,21 @@ public final class CultivatingNixosImageBuilder implements ImageBuilder {
     return "";
   }
 
+  /**
+   * The last {@code maxChars} of {@code text}, trimmed forward to the next line boundary — a
+   * bounded, readable excerpt for an error message that must cross the JSON seed-broker seam
+   * without exceeding the SeedCodec read limit.
+   */
+  private static String tail(String text, int maxChars) {
+    if (text.length() <= maxChars) {
+      return text;
+    }
+    final int cut = text.length() - maxChars;
+    final int nl = text.indexOf('\n', cut);
+    final int from = nl >= 0 ? nl + 1 : cut;
+    return "…(" + from + " earlier chars elided)\n" + text.substring(from);
+  }
+
   private void runCommandOrThrow(
       Path workingDirectory, List<String> command, String failureMessage) {
     final ProcessBuilder pb = new ProcessBuilder(command);
@@ -178,14 +193,23 @@ public final class CultivatingNixosImageBuilder implements ImageBuilder {
       final int exitCode = process.waitFor();
 
       if (exitCode != 0) {
+        // A failed nix build dumps every derivation's output — the full log runs to many MB (the
+        // functional-test suite alone is ~20 MB). Print it so the operator sees the real failure in
+        // the run log, but the exception message carries only a BOUNDED TAIL: this message rides
+        // the
+        // jGiven runbook back across the seed-broker seam, and a multi-MB string blows the
+        // SeedCodec
+        // read limit — the decode then fails and masks the real cause behind "Failed to decode
+        // SeedEnvelope" (see ClusterSeedScenario the_instance_is_provisioned).
+        System.out.println(output);
         throw new ImageBuildException(
             failureMessage
                 + " (exit="
                 + exitCode
                 + ")\nCommand: "
                 + String.join(" ", command)
-                + "\nOutput:\n"
-                + output);
+                + "\nOutput (tail; full log above):\n"
+                + tail(output, 4000));
       }
     } catch (IOException ex) {
       throw new ImageBuildException(failureMessage + ": " + ex.getMessage(), ex);
@@ -222,14 +246,23 @@ public final class CultivatingNixosImageBuilder implements ImageBuilder {
       final int exitCode = process.waitFor();
 
       if (exitCode != 0) {
+        // A failed nix build dumps every derivation's output — the full log runs to many MB (the
+        // functional-test suite alone is ~20 MB). Print it so the operator sees the real failure in
+        // the run log, but the exception message carries only a BOUNDED TAIL: this message rides
+        // the
+        // jGiven runbook back across the seed-broker seam, and a multi-MB string blows the
+        // SeedCodec
+        // read limit — the decode then fails and masks the real cause behind "Failed to decode
+        // SeedEnvelope" (see ClusterSeedScenario the_instance_is_provisioned).
+        System.out.println(output);
         throw new ImageBuildException(
             failureMessage
                 + " (exit="
                 + exitCode
                 + ")\nCommand: "
                 + String.join(" ", command)
-                + "\nOutput:\n"
-                + output);
+                + "\nOutput (tail; full log above):\n"
+                + tail(output, 4000));
       }
     } catch (IOException ex) {
       throw new ImageBuildException(failureMessage + ": " + ex.getMessage(), ex);
