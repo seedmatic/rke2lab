@@ -118,6 +118,10 @@ const (
 	ConditionMachineCreated = "MachineCreated"
 	// ConditionUnpaused — the RKE2ControlPlane + Cluster were un-paused (adoption released).
 	ConditionUnpaused = "Unpaused"
+	// ConditionAccessible — CAPI's RemoteConnectionProbe on the Cluster is True (the apiserver
+	// answers). Gates Adopted together with instance presence: an adoption is complete only when the
+	// control-plane pets are all present AND the cluster is reachable — never on the CR-set alone.
+	ConditionAccessible = "Accessible"
 	// ConditionReady — a roll-up: every step above succeeded this reconcile.
 	ConditionReady = "Ready"
 )

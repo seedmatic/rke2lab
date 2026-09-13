@@ -235,8 +235,17 @@ func (r *ClusterAdoptionReconciler) reconcileSteps(
 	}
 	// The safety invariant: any present control-plane pet means the cluster EXISTS — we adopt it and
 	// NEVER greenfield a rival. Only a cluster with ZERO present pets is a true day-0 bootstrap.
-	r.mark(a, adoptionv1alpha1.ConditionMachineCreated, true, "Observed",
-		fmt.Sprintf("%d/%d present, %d absent (provision follow-up), %d pending", present, cpPets, absent, pending))
+	// MachineCreated is True ONLY when EVERY control-plane pet is present: the CR-set + owned Machines
+	// existing is NOT adoption — CAPN must confirm each instance. Absent/pending pets keep this False
+	// (reason AwaitingInstances), so derivePhase stays Adopting rather than lying "Adopted".
+	allPresent := cpPets > 0 && present == cpPets
+	if allPresent {
+		r.mark(a, adoptionv1alpha1.ConditionMachineCreated, true, "Observed",
+			fmt.Sprintf("%d/%d present", present, cpPets))
+	} else {
+		r.mark(a, adoptionv1alpha1.ConditionMachineCreated, false, "AwaitingInstances",
+			fmt.Sprintf("%d/%d present, %d absent (provision follow-up), %d pending", present, cpPets, absent, pending))
+	}
 
 	// 4. Unpause: the owned Machines exist, so on unpause CAPRKE2 counts them (no re-init of an
 	//    adopted replica); CAPN adopts the present instances. Clear the RCP paused annotation + the
@@ -259,12 +268,19 @@ func (r *ClusterAdoptionReconciler) reconcileSteps(
 	if accessible {
 		access = "reachable"
 	}
+	if accessible {
+		r.mark(a, adoptionv1alpha1.ConditionAccessible, true, "Reachable",
+			"apiserver reachable (RemoteConnectionProbe)")
+	} else {
+		r.mark(a, adoptionv1alpha1.ConditionAccessible, false, "Unreachable",
+			"apiserver not reachable yet (RemoteConnectionProbe)")
+	}
 	a.Status.AdoptedInstance = fmt.Sprintf("%d/%d present (%d absent, %d pending) · apiserver %s",
 		present, cpPets, absent, pending, access)
 
 	log.FromContext(ctx).Info("adoption reconciled", "cluster", spec.ClusterName,
 		"present", present, "pets", cpPets, "accessible", accessible)
-	if pending > 0 || !accessible {
+	if !allPresent || !accessible {
 		return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
 	}
 	return ctrl.Result{}, nil
@@ -303,6 +319,7 @@ func (r *ClusterAdoptionReconciler) derivePhase(
 		adoptionv1alpha1.ConditionControlPlaneObserved,
 		adoptionv1alpha1.ConditionMachineCreated,
 		adoptionv1alpha1.ConditionUnpaused,
+		adoptionv1alpha1.ConditionAccessible,
 	}
 	for _, step := range steps {
 		if !conditionTrue(a.Status.Conditions, step) {
@@ -315,7 +332,7 @@ func (r *ClusterAdoptionReconciler) derivePhase(
 		}
 	}
 	r.mark(a, adoptionv1alpha1.ConditionReady, true, "Adopted",
-		"CR-set created; owned Machine created; un-paused")
+		"all control-plane pets present and apiserver reachable")
 	return adoptionv1alpha1.PhaseAdopted
 }
 
