@@ -1,7 +1,5 @@
 package io.seedmatic.rke2lab.auth.contract;
 
-import java.util.Optional;
-
 /**
  * The auth domain's on-demand GitHub READ-token verb — the least-privilege twin of {@link
  * GithubWriterTokenMint}: from the durable one-org-owned App credentials (revealed by a consumer
@@ -18,12 +16,17 @@ import java.util.Optional;
  * strings, no {@code ghapp-contract} type dragged into the mirroring consumer); the realised {@code
  * auth-edge} impl delegates to the ghapp minter with the {@code READER} scope.
  *
- * <p>{@link Optional#empty()} when the token cannot be minted (the {@code cultivating}-gated edge
- * is filtered out of a survey/preview, or its mint dependency is absent) — the caller then files no
- * token, honest inertness rather than a fabricated credential.
+ * <p>Fail-loud at this frontier (the twin of the writer verb): an inability to produce a usable
+ * token THROWS, it never returns a blank one. A caller that must not mint — a survey/preview where
+ * the {@code cultivating}-gated edge is filtered out, or an enclosure with no App credentials —
+ * never resolves the edge and never calls this. So consumers hold no {@code Optional} from the mint
+ * itself: a valid token, or an exception.
  */
 public interface GithubReaderTokenMint {
 
-  /** A fresh {@code contents:read} installation token for the one org-owned App, or empty. */
-  Optional<String> mint(String appId, String installationId, String privateKeyPem);
+  /**
+   * A fresh {@code contents:read} installation token for the one org-owned App. Throws when a
+   * usable token cannot be minted (an empty or failed mint) — never returns a blank credential.
+   */
+  String mint(String appId, String installationId, String privateKeyPem);
 }

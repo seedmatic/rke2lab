@@ -1,7 +1,5 @@
 package io.seedmatic.rke2lab.auth.contract;
 
-import java.util.Optional;
-
 /**
  * The auth domain's on-demand GitHub push-token verb: from the durable one-org-owned App
  * credentials (revealed by a consumer from its OWN cellar case), mint a FRESH {@code
@@ -17,12 +15,17 @@ import java.util.Optional;
  * ghapp-contract} type is dragged into a consumer that deliberately mirrors the App material (the
  * manifests synthesis). The realised {@code auth-edge} impl delegates to the ghapp minter.
  *
- * <p>{@link Optional#empty()} when the token cannot be minted (the {@code cultivating}-gated edge
- * is filtered out of a survey/preview, or its mint dependency is absent) — the caller then skips
- * the push, honest inertness rather than a fabricated credential.
+ * <p>Fail-loud at this frontier: an inability to produce a usable token THROWS, it never returns a
+ * blank one. A caller that must not mint — a survey/preview where the {@code cultivating}-gated
+ * edge is filtered out, or an enclosure with no App credentials — simply never resolves the edge
+ * and never calls this. So the token's presence is mandatory once the mint is invoked, and
+ * consumers hold no {@code Optional} from the mint itself: a valid token, or an exception.
  */
 public interface GithubWriterTokenMint {
 
-  /** A fresh {@code contents:write} installation token for the one org-owned App, or empty. */
-  Optional<String> mint(String appId, String installationId, String privateKeyPem);
+  /**
+   * A fresh {@code contents:write} installation token for the one org-owned App. Throws when a
+   * usable token cannot be minted (an empty or failed mint) — never returns a blank credential.
+   */
+  String mint(String appId, String installationId, String privateKeyPem);
 }

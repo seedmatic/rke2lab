@@ -214,7 +214,7 @@ public class VersionBumpScenario
           .flatMap(plot -> cellar.fetch(plot, GhAppCase.GITHUB_APP, GithubAppMaterial.class))
           .flatMap(
               app ->
-                  writerTokenMint.flatMap(
+                  writerTokenMint.map(
                       mint -> mint.mint(app.appId(), app.installationId(), app.privateKeyPem())));
     }
 

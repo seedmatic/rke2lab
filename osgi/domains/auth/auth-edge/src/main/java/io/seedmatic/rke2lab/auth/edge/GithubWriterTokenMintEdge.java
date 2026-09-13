@@ -4,7 +4,6 @@ import io.seedmatic.rke2lab.auth.contract.GithubWriterTokenMint;
 import io.seedmatic.rke2lab.ghapp.contract.GithubAppCredentials;
 import io.seedmatic.rke2lab.ghapp.contract.GithubAppMinter;
 import io.seedmatic.rke2lab.ghapp.contract.TokenScope;
-import java.util.Optional;
 import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
 import org.osgi.service.component.annotations.Reference;
@@ -34,10 +33,19 @@ public final class GithubWriterTokenMintEdge implements GithubWriterTokenMint {
   }
 
   @Override
-  public Optional<String> mint(String appId, String installationId, String privateKeyPem) {
-    return Optional.of(
+  public String mint(String appId, String installationId, String privateKeyPem) {
+    final String token =
         minter
             .mint(new GithubAppCredentials(appId, installationId, privateKeyPem), TokenScope.WRITER)
-            .token());
+            .token();
+    if (token == null || token.isBlank()) {
+      throw new IllegalStateException(
+          "the GitHub App WRITER (contents:write) mint returned an empty token for app "
+              + appId
+              + " installation "
+              + installationId
+              + " — the App credentials or the GitHub minter are at fault, not the caller");
+    }
+    return token;
   }
 }
