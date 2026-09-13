@@ -30,7 +30,7 @@
             # UNSTRUCTURED, no typed CAPI/CAPRKE2/CAPN module import), so the vendor hash
             # matches. Regenerate after a go.mod change: set to lib.fakeHash, `nix build`,
             # paste the printed hash.
-            vendorHash = "sha256-tE7KeOIlejx5Jjaphouo9rgbQOsVOxjhvewZOyZw5ME=";
+            vendorHash = "sha256-L4MK8X4iveyVbBJmJrPXQxh4e+gtuQP1yk0QifYqhUA=";
             subPackages = [ "cmd/seed-incluster" ];
             env.CGO_ENABLED = 0;
             ldflags = [ "-s" "-w" "-X main.version=${version}" ];

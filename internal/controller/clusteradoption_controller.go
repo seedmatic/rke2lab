@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	adoptionv1alpha1 "github.com/seedmatic/seed-incluster/api/v1alpha1"
@@ -24,6 +25,18 @@ const (
 	clusterNameLabel  = "cluster.x-k8s.io/cluster-name"
 	controlPlaneLabel = "cluster.x-k8s.io/control-plane"
 	clusterSecretType = "cluster.x-k8s.io/secret"
+
+	// CAPN's LXCMachine instance-presence signal (cluster-api-provider-incus
+	// api/v1alpha2/condition_consts.go) — read from the LXCMachine WE create, instead of probing
+	// Incus ourselves. InstanceProvisioned=True (reason InstanceProvisioned) = instance present
+	// (adopted); =False reason InstanceDeleted = absent ("does not exist anymore").
+	capnInstanceProvisionedCondition = "InstanceProvisioned"
+	capnInstanceDeletedReason        = "InstanceDeleted"
+
+	// CAPI's Cluster accessibility signal — "the apiserver is reachable" (the blocker that flipped
+	// True at the mgmt self-adoption WIN). The operator-view rollup: presence (InstanceProvisioned)
+	// answers "does the cluster exist?", this answers "is its access available?".
+	capiRemoteConnectionProbeCondition = "RemoteConnectionProbe"
 )
 
 // The GVKs of the CAPI/CAPN/CAPRKE2 objects the controller builds. Handled UNSTRUCTURED so the
@@ -37,10 +50,19 @@ var (
 	gvkLXCMachineTemplate = schema.GroupVersionKind{Group: "infrastructure.cluster.x-k8s.io", Version: "v1alpha2", Kind: "LXCMachineTemplate"}
 )
 
+// selfAdoptionFinalizer guards the ClusterAdoption of the cluster this controller RUNS ON. Deleting
+// it would cascade (ownerRef) to the CAPI Cluster and suicide the management plane, so we keep this
+// finalizer on a self-adoption and refuse to remove it — the deletion blocks by design.
+const selfAdoptionFinalizer = "cluster.seedmatic.io/self-adoption-guard"
+
 // ClusterAdoptionReconciler adopts a running RKE2-on-Incus control plane into Cluster API.
 type ClusterAdoptionReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+	// SelfCluster is the name of the cluster this controller runs IN (SELF_CLUSTER_NAME env, set by
+	// seed-master from the blueprint). A ClusterAdoption whose clusterName equals it is a
+	// self-adoption — its deletion is refused (would tear down the management plane).
+	SelfCluster string
 }
 
 // +kubebuilder:rbac:groups=cluster.seedmatic.io,resources=clusteradoptions,verbs=get;list;watch;create;update;patch;delete
@@ -59,6 +81,25 @@ func (r *ClusterAdoptionReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	var adoption adoptionv1alpha1.ClusterAdoption
 	if err := r.Get(ctx, req.NamespacedName, &adoption); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	// Self-adoption guard: the ClusterAdoption of the cluster this controller RUNS ON must never be
+	// torn down (its ownerRef'd Cluster would cascade-delete = suicide the management plane). We
+	// hold a finalizer on it and refuse to remove it, so an accidental delete/prune blocks by design.
+	self := r.SelfCluster != "" && adoption.Spec.ClusterName == r.SelfCluster
+	if !adoption.DeletionTimestamp.IsZero() {
+		if self && controllerutil.ContainsFinalizer(&adoption, selfAdoptionFinalizer) {
+			log.FromContext(ctx).Info(
+				"refusing to delete the self-adoption — would suicide the management cluster; keeping finalizer",
+				"cluster", adoption.Spec.ClusterName)
+			return ctrl.Result{}, nil
+		}
+		return ctrl.Result{}, nil // non-self: nothing held → GC + the ownerRef cascade proceed
+	}
+	if self && controllerutil.AddFinalizer(&adoption, selfAdoptionFinalizer) {
+		if err := r.Update(ctx, &adoption); err != nil {
+			return ctrl.Result{}, err
+		}
 	}
 
 	result, reconcileErr := r.reconcileSteps(ctx, &adoption)
@@ -99,17 +140,20 @@ func (r *ClusterAdoptionReconciler) reconcileSteps(
 	r.mark(a, adoptionv1alpha1.ConditionMaterialReady, true, "MaterialReady",
 		"BYO-CA + identity Secrets present")
 
-	instance := spec.ClusterName + "-master"
-	providerID := "lxc:///" + instance
-	a.Status.AdoptedInstance = instance
-	a.Status.ProviderID = providerID
+	pets := petsOf(spec)
 
-	// 1. The infra + control-plane skeleton. The Cluster is created paused; the RKE2ControlPlane
-	//    carries the paused annotation DIRECTLY (inert from birth — no wait for CAPI to propagate
-	//    the Cluster's paused, closing the init race where the RCP would provision a random-named
-	//    control plane before the owned Machine exists).
+	// 1. The infra + control-plane skeleton. The Cluster is OWNED by this ClusterAdoption
+	//    (SetControllerReference) — adopting a cluster makes us its owner, so deleting the adoption
+	//    (or, transitively, its parent ClusterProvision) cascades to the Cluster and CAPI tears the
+	//    fleet down. Created paused; the RCP carries the paused annotation DIRECTLY (inert from
+	//    birth, closing the init race before the owned Machines exist).
+	cluster := r.clusterObj(spec, true)
+	if err := controllerutil.SetControllerReference(a, cluster, r.Scheme); err != nil {
+		r.mark(a, adoptionv1alpha1.ConditionCRSetCreated, false, "Error", "Cluster ownerRef: "+err.Error())
+		return ctrl.Result{}, err
+	}
 	for _, obj := range []*unstructured.Unstructured{
-		r.clusterObj(spec, true),
+		cluster,
 		r.lxcClusterObj(spec),
 		r.lxcMachineTemplateObj(spec),
 		r.rke2ControlPlaneObj(spec, true),
@@ -121,9 +165,9 @@ func (r *ClusterAdoptionReconciler) reconcileSteps(
 		}
 	}
 	r.mark(a, adoptionv1alpha1.ConditionCRSetCreated, true, "Created",
-		"Cluster/LXCCluster/LXCMachineTemplate/RKE2ControlPlane ensured (paused)")
+		"Cluster(owned)/LXCCluster/LXCMachineTemplate/RKE2ControlPlane ensured (paused)")
 
-	// 2. Read the RKE2ControlPlane UID — the piece GitOps cannot pre-set. The owned Machine's
+	// 2. Read the RKE2ControlPlane UID — the piece GitOps cannot pre-set. Each owned Machine's
 	//    ownerRef must carry it, else CAPRKE2 refuses ("mixed management mode") and never adopts.
 	rcpUID, err := r.rcpUID(ctx, spec)
 	if err != nil {
@@ -139,34 +183,90 @@ func (r *ClusterAdoptionReconciler) reconcileSteps(
 	r.mark(a, adoptionv1alpha1.ConditionControlPlaneObserved, true, "Observed",
 		"RKE2ControlPlane UID "+string(rcpUID))
 
-	// 3. The adopted pair: the bootstrap sentinel (marks the Machine already-bootstrapped so CAPI
-	//    never re-bootstraps the running node), the concrete LXCMachine (providerID → CAPN adopts
-	//    the existing instance), and the OWNED control-plane Machine (ownerRef=RCP UID).
-	for _, obj := range []*unstructured.Unstructured{
-		r.bootstrapSecretObj(spec),
-		r.lxcMachineObj(spec, providerID),
-		r.machineObj(spec, providerID, rcpUID),
-	} {
-		if err := r.ensure(ctx, obj); err != nil {
-			r.mark(a, adoptionv1alpha1.ConditionMachineCreated, false, "Error",
-				obj.GetKind()+" "+obj.GetName()+": "+err.Error())
-			return ctrl.Result{}, err
+	// 3. ADOPT, per control-plane PET: pre-create the owned Machine + concrete
+	//    LXCMachine(providerID = lxc:///<pet>) + bootstrap sentinel, so CAPRKE2 counts it as one of
+	//    ITS replicas (adoption, no re-bootstrap) and CAPN ADOPTS the running instance (providerID
+	//    set + instance present). We do NOT probe Incus ourselves — CAPN owns the Incus connection
+	//    (from the identity Secret) + the cross-host reach; it reports present/absent on the
+	//    LXCMachine status. Idempotent (ensure = create-if-absent), so a cold-start re-affirms the
+	//    owned pair and CAPN re-adopts the survivor.
+	//
+	//    NOTE — day-0 provisioning is the follow-up: an ABSENT pet leaves its owned LXCMachine in
+	//    CAPN's "instance not found" state (providerID set + no instance). Turning that into a
+	//    provision (re-create the LXCMachine at the SAME pet name with providerID EMPTY -> CAPN
+	//    launches it deterministically) is derived from CAPN's own status — see the design's
+	//    adopt-first funnel. Handled next; today this loop is adopt-all (the mgmt/cold-start case).
+	//    (Workers are also a follow-up — petsOf keeps them out of this control-plane loop.)
+	cpPets, present, absent, pending := 0, 0, 0, 0
+	for _, pet := range pets {
+		if pet.Role != adoptionv1alpha1.NodeRoleControlPlane {
+			continue
+		}
+		cpPets++
+		for _, obj := range []*unstructured.Unstructured{
+			r.bootstrapSecretObj(spec, pet.Name),
+			r.lxcMachineObj(spec, pet.Name),
+			r.machineObj(spec, pet.Name, rcpUID),
+		} {
+			if err := r.ensure(ctx, obj); err != nil {
+				r.mark(a, adoptionv1alpha1.ConditionMachineCreated, false, "Error",
+					obj.GetKind()+" "+obj.GetName()+": "+err.Error())
+				return ctrl.Result{}, err
+			}
+		}
+		// STATUS-DRIVEN presence: read CAPN's verdict on the LXCMachine WE created — no direct Incus
+		// probe (CAPN owns the connection + the cross-host reach). InstanceProvisioned=True -> the
+		// instance is present (adopted); =False/InstanceDeleted -> absent (day-0 provision follow-up:
+		// re-create at the pet name with providerID EMPTY + a real bootstrap); unset -> CAPN has not
+		// decided yet (requeue).
+		isPresent, decided, perr := r.lxcMachinePresence(ctx, spec, pet.Name)
+		if perr != nil {
+			r.mark(a, adoptionv1alpha1.ConditionMachineCreated, false, "Error", "presence "+pet.Name+": "+perr.Error())
+			return ctrl.Result{}, perr
+		}
+		switch {
+		case !decided:
+			pending++
+		case isPresent:
+			present++
+		default:
+			absent++
 		}
 	}
-	r.mark(a, adoptionv1alpha1.ConditionMachineCreated, true, "Created",
-		"owned Machine + LXCMachine(providerID) + bootstrap sentinel ensured")
+	// The safety invariant: any present control-plane pet means the cluster EXISTS — we adopt it and
+	// NEVER greenfield a rival. Only a cluster with ZERO present pets is a true day-0 bootstrap.
+	r.mark(a, adoptionv1alpha1.ConditionMachineCreated, true, "Observed",
+		fmt.Sprintf("%d/%d present, %d absent (provision follow-up), %d pending", present, cpPets, absent, pending))
 
-	// 4. Unpause: the owned Machine now exists, so on unpause the RCP counts it (numMachines ==
-	//    replicas → no init) and CAPN adopts the instance (providerID + existing instance). Clear
-	//    the RCP paused annotation and the Cluster's spec.paused.
+	// 4. Unpause: the owned Machines exist, so on unpause CAPRKE2 counts them (no re-init of an
+	//    adopted replica); CAPN adopts the present instances. Clear the RCP paused annotation + the
+	//    Cluster's paused.
 	if err := r.unpause(ctx, spec); err != nil {
 		r.mark(a, adoptionv1alpha1.ConditionUnpaused, false, "Error", err.Error())
 		return ctrl.Result{}, err
 	}
 	r.mark(a, adoptionv1alpha1.ConditionUnpaused, true, "Unpaused",
-		"RKE2ControlPlane + Cluster un-paused — CAPRKE2 adopts the owned Machine, CAPN the instance")
+		"RKE2ControlPlane + Cluster un-paused")
 
-	log.FromContext(ctx).Info("adoption reconciled", "cluster", spec.ClusterName, "instance", instance)
+	// 5. Accessibility rollup (operator view): CAPI's RemoteConnectionProbe on the Cluster = the
+	//    apiserver is reachable. Surface it (distinct from instance presence) so
+	//    `kubectl get clusteradoption` — and, mirrored, `clusterprovision` — tell whether cluster
+	//    ACCESS is available. Requeue until the fleet is fully present AND reachable, so the phase
+	//    converges on a live cluster (and a still-absent pet keeps being re-observed for the day-0
+	//    provision follow-up).
+	accessible, _ := r.clusterAccessible(ctx, spec)
+	access := "unreachable"
+	if accessible {
+		access = "reachable"
+	}
+	a.Status.AdoptedInstance = fmt.Sprintf("%d/%d present (%d absent, %d pending) · apiserver %s",
+		present, cpPets, absent, pending, access)
+
+	log.FromContext(ctx).Info("adoption reconciled", "cluster", spec.ClusterName,
+		"present", present, "pets", cpPets, "accessible", accessible)
+	if pending > 0 || !accessible {
+		return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
+	}
 	return ctrl.Result{}, nil
 }
 
@@ -398,17 +498,18 @@ func (r *ClusterAdoptionReconciler) lxcMachineTemplateObj(spec adoptionv1alpha1.
 	return obj
 }
 
-func (r *ClusterAdoptionReconciler) lxcMachineObj(spec adoptionv1alpha1.ClusterAdoptionSpec, providerID string) *unstructured.Unstructured {
-	obj := r.newObj(gvkLXCMachine, spec.ClusterName+"-master", spec)
+func (r *ClusterAdoptionReconciler) lxcMachineObj(spec adoptionv1alpha1.ClusterAdoptionSpec, nodeName string) *unstructured.Unstructured {
+	obj := r.newObj(gvkLXCMachine, nodeName, spec)
 	obj.SetLabels(map[string]string{clusterNameLabel: spec.ClusterName})
 	body := lxcMachineSpec(spec.Image.Fingerprint)
-	body["providerID"] = providerID
+	// providerID = lxc:///<name> → CAPN adopts the existing instance (this pet is present).
+	body["providerID"] = "lxc:///" + nodeName
 	obj.Object["spec"] = body
 	return obj
 }
 
-func (r *ClusterAdoptionReconciler) machineObj(spec adoptionv1alpha1.ClusterAdoptionSpec, providerID string, rcpUID types.UID) *unstructured.Unstructured {
-	obj := r.newObj(gvkMachine, spec.ClusterName+"-master", spec)
+func (r *ClusterAdoptionReconciler) machineObj(spec adoptionv1alpha1.ClusterAdoptionSpec, nodeName string, rcpUID types.UID) *unstructured.Unstructured {
+	obj := r.newObj(gvkMachine, nodeName, spec)
 	obj.SetLabels(map[string]string{
 		clusterNameLabel:  spec.ClusterName,
 		controlPlaneLabel: "",
@@ -423,34 +524,100 @@ func (r *ClusterAdoptionReconciler) machineObj(spec adoptionv1alpha1.ClusterAdop
 	}})
 	obj.Object["spec"] = map[string]any{
 		"clusterName": spec.ClusterName,
-		"providerID":  providerID,
+		"providerID":  "lxc:///" + nodeName,
 		"version":     spec.RKE2Version,
 		"bootstrap": map[string]any{
 			// dataSecretName WITHOUT configRef → CAPI marks bootstrap provided and never
 			// re-bootstraps the already-running node (verified against the core Machine controller).
-			"dataSecretName": spec.ClusterName + "-adopted-bootstrap",
+			"dataSecretName": nodeName + "-adopted-bootstrap",
 		},
 		// CAPI v1beta2 contract ref: {apiGroup, kind, name} — NOT apiVersion (the v1beta1 shape,
 		// which the Machine webhook rejects as "spec.infrastructureRef.apiGroup: Required value").
 		"infrastructureRef": map[string]any{
 			"apiGroup": gvkLXCMachine.Group,
 			"kind":     gvkLXCMachine.Kind,
-			"name":     spec.ClusterName + "-master",
+			"name":     nodeName,
 		},
 	}
 	return obj
 }
 
-func (r *ClusterAdoptionReconciler) bootstrapSecretObj(spec adoptionv1alpha1.ClusterAdoptionSpec) *unstructured.Unstructured {
+func (r *ClusterAdoptionReconciler) bootstrapSecretObj(spec adoptionv1alpha1.ClusterAdoptionSpec, nodeName string) *unstructured.Unstructured {
 	obj := &unstructured.Unstructured{}
 	obj.SetGroupVersionKind(schema.GroupVersionKind{Version: "v1", Kind: "Secret"})
-	obj.SetName(spec.ClusterName + "-adopted-bootstrap")
+	obj.SetName(nodeName + "-adopted-bootstrap")
 	obj.SetNamespace(spec.Namespace)
 	obj.SetLabels(map[string]string{clusterNameLabel: spec.ClusterName})
 	obj.Object["type"] = clusterSecretType
 	// Content is never consumed for an already-running node; a sentinel is enough.
 	obj.Object["stringData"] = map[string]any{"value": "", "format": "cloud-config"}
 	return obj
+}
+
+// petsOf is the explicit pet list, or the legacy single control-plane master when Nodes is empty
+// (the management cluster's shape).
+func petsOf(spec adoptionv1alpha1.ClusterAdoptionSpec) []adoptionv1alpha1.NodeSpec {
+	if len(spec.Nodes) > 0 {
+		return spec.Nodes
+	}
+	return []adoptionv1alpha1.NodeSpec{
+		{Name: spec.ClusterName + "-master", Role: adoptionv1alpha1.NodeRoleControlPlane},
+	}
+}
+
+// lxcMachinePresence reads CAPN's verdict on the pet's instance from the LXCMachine we created — the
+// status-driven presence check (no direct Incus probe; CAPN owns the connection + reach). decided
+// is false while CAPN has not yet set the InstanceProvisioned condition (the caller requeues).
+func (r *ClusterAdoptionReconciler) lxcMachinePresence(
+	ctx context.Context, spec adoptionv1alpha1.ClusterAdoptionSpec, nodeName string,
+) (present, decided bool, err error) {
+	lm := &unstructured.Unstructured{}
+	lm.SetGroupVersionKind(gvkLXCMachine)
+	if getErr := r.Get(ctx, types.NamespacedName{Namespace: spec.Namespace, Name: nodeName}, lm); getErr != nil {
+		if apierrors.IsNotFound(getErr) {
+			return false, false, nil
+		}
+		return false, false, getErr
+	}
+	conditions, _, _ := unstructured.NestedSlice(lm.Object, "status", "conditions")
+	for _, raw := range conditions {
+		cond, ok := raw.(map[string]any)
+		if !ok || cond["type"] != capnInstanceProvisionedCondition {
+			continue
+		}
+		status, _ := cond["status"].(string)
+		reason, _ := cond["reason"].(string)
+		switch {
+		case status == "True":
+			return true, true, nil
+		case status == "False" && reason == capnInstanceDeletedReason:
+			return false, true, nil
+		}
+	}
+	return false, false, nil
+}
+
+// clusterAccessible reads CAPI's RemoteConnectionProbe on the Cluster — the accessibility signal
+// that rolls ClusterAdoption -> ClusterProvision (distinct from instance presence). known=false
+// while the condition is unset.
+func (r *ClusterAdoptionReconciler) clusterAccessible(
+	ctx context.Context, spec adoptionv1alpha1.ClusterAdoptionSpec,
+) (accessible, known bool) {
+	cl := &unstructured.Unstructured{}
+	cl.SetGroupVersionKind(gvkCluster)
+	if err := r.Get(ctx, types.NamespacedName{Namespace: spec.Namespace, Name: spec.ClusterName}, cl); err != nil {
+		return false, false
+	}
+	conditions, _, _ := unstructured.NestedSlice(cl.Object, "status", "conditions")
+	for _, raw := range conditions {
+		cond, ok := raw.(map[string]any)
+		if !ok || cond["type"] != capiRemoteConnectionProbeCondition {
+			continue
+		}
+		status, _ := cond["status"].(string)
+		return status == "True", true
+	}
+	return false, false
 }
 
 func (r *ClusterAdoptionReconciler) rke2ControlPlaneObj(spec adoptionv1alpha1.ClusterAdoptionSpec, paused bool) *unstructured.Unstructured {

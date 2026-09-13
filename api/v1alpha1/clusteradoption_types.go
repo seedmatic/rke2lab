@@ -50,6 +50,18 @@ type ClusterAdoptionSpec struct {
 	// KubeVIPVersion pins the kube-vip image the control-plane bootstrap deploys.
 	// +kubebuilder:validation:MinLength=1
 	KubeVIPVersion string `json:"kubeVIPVersion"`
+
+	// Nodes is the explicit PET list (all-pets). When set, the reconciler adopts/provisions each
+	// named node — control-plane replicas AND workers — superseding the single-master assumption.
+	// Empty = the legacy single control-plane node "<clusterName>-master" (the management cluster).
+	// +optional
+	Nodes []NodeSpec `json:"nodes,omitempty"`
+
+	// RemoteEndpoint is the target Incus API endpoint the reconciler PROBES for instance presence
+	// (adopt vs provision) and CAPN provisions into. Empty = the local engine, resolved from the
+	// identity Secret's `server` (the management cluster's own host).
+	// +optional
+	RemoteEndpoint string `json:"remoteEndpoint,omitempty"`
 }
 
 // APIEndpoint is a host:port control-plane endpoint (the kube-vip VIP).

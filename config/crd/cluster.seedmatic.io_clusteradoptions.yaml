@@ -143,6 +143,39 @@ spec:
                   "rke2lab-bioskop-mgmt").
                 minLength: 1
                 type: string
+              nodes:
+                description: |-
+                  Nodes is the explicit PET list (all-pets). When set, the reconciler adopts/provisions each
+                  named node — control-plane replicas AND workers — superseding the single-master assumption.
+                  Empty = the legacy single control-plane node "<clusterName>-master" (the management cluster).
+                items:
+                  description: NodeSpec is one named pet of the cluster.
+                  properties:
+                    name:
+                      description: |-
+                        Name is the deterministic instance name (e.g. "bioskop-wrkld-master") — the providerID basis
+                        (lxc:///<name>) and the LXCMachine object name CAPN matches against the running instance.
+                      minLength: 1
+                      type: string
+                    role:
+                      description: |-
+                        Role is "control-plane" (an etcd-member server, counts toward the RKE2ControlPlane replicas) or
+                        "worker".
+                      enum:
+                      - control-plane
+                      - worker
+                      type: string
+                  required:
+                  - name
+                  - role
+                  type: object
+                type: array
+              remoteEndpoint:
+                description: |-
+                  RemoteEndpoint is the target Incus API endpoint the reconciler PROBES for instance presence
+                  (adopt vs provision) and CAPN provisions into. Empty = the local engine, resolved from the
+                  identity Secret's `server` (the management cluster's own host).
+                type: string
               rke2Version:
                 description: RKE2Version is the CAPRKE2 control-plane version (e.g.
                   "v1.34.8+rke2r2").

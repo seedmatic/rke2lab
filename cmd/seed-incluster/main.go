@@ -63,10 +63,19 @@ func main() {
 	}
 
 	if err := (&controller.ClusterAdoptionReconciler{
+		Client:      mgr.GetClient(),
+		Scheme:      mgr.GetScheme(),
+		SelfCluster: os.Getenv("SELF_CLUSTER_NAME"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "ClusterAdoption")
+		os.Exit(1)
+	}
+
+	if err := (&controller.ClusterProvisionReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "ClusterAdoption")
+		setupLog.Error(err, "unable to create controller", "controller", "ClusterProvision")
 		os.Exit(1)
 	}
 
