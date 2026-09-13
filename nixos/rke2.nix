@@ -205,7 +205,13 @@
       dropin=/etc/rancher/rke2/config.yaml.d/40-provider-id.yaml
       install -d -m 0755 "$(dirname "$dropin")"
       {
-        echo "kubelet-arg:"
+        # `kubelet-arg+` APPENDS: rke2 config.yaml.d REPLACES a list key with the alphabetically-last
+        # file's value, and node-inetaddr.yaml (rendered on the branch) also sets `kubelet-arg` (for
+        # --node-ip) and sorts AFTER this file — so a plain `kubelet-arg:` here was silently dropped,
+        # the node registered with NO spec.providerID, and CAPI could never bind the Machine to it
+        # (NodeHealthy stuck "Waiting for a Node with spec.providerID lxc:///<node> to exist"). Both
+        # producers use the `+` append form so node-ip and provider-id coexist.
+        echo "kubelet-arg+:"
         # RKE2LAB_NODE_HOSTNAME (the full <cluster>-<node>), NOT RKE2LAB_NODE_NAME (the short ref
         # `master`): the providerID must equal the incus instance name (= the hostname), which is
         # what CAPN/the LXCMachine carry.
