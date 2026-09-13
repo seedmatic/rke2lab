@@ -7,6 +7,7 @@ import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
 import io.seedmatic.rke2lab.manifests.contract.FloxAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.ManifestLayer;
+import io.seedmatic.rke2lab.manifests.node.DefaultNodeEnvContext;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import io.seedmatic.rke2lab.manifests.units.cluster.ClusterRefs;
 import io.seedmatic.rke2lab.manifests.units.runtime.flox.FloxEnvFolder;
@@ -54,9 +55,12 @@ public final class SeedInclusterManifestsUnit extends AbstractManifestsUnit {
 
   private static final String NAME = "seed-incluster";
 
-  /** The staged CRD classpath resource (single source: the seed-incluster flake). */
+  /** The staged CRD classpath resources (single source: the seed-incluster flake). */
   private static final String CLUSTERADOPTION_CRD_RESOURCE =
       "/crds/cluster.seedmatic.io_clusteradoptions.yaml";
+
+  private static final String CLUSTERPROVISION_CRD_RESOURCE =
+      "/crds/cluster.seedmatic.io_clusterprovisions.yaml";
 
   // Deployment + RBAC ride the operators layer; the CRD auto-routes to crds by kind.
   private final PackageMetadataProfile packageProfile =
@@ -74,8 +78,10 @@ public final class SeedInclusterManifestsUnit extends AbstractManifestsUnit {
 
   @Override
   protected void doSynthesize(final Construct scope, final ManifestsUnitContext context) {
-    // The ClusterAdoption CRD — a CustomResourceDefinition, auto-routed to the crds layer by kind.
+    // The ClusterAdoption + ClusterProvision CRDs — CustomResourceDefinitions, auto-routed to the
+    // crds layer by kind.
     new UpstreamYamlInclusion(scope, CLUSTERADOPTION_CRD_RESOURCE, packageProfile, context.yaml());
+    new UpstreamYamlInclusion(scope, CLUSTERPROVISION_CRD_RESOURCE, packageProfile, context.yaml());
 
     final String namespace = ClusterRefs.RUNTIME_SYSTEM_NAMESPACE.name();
     final ApiObject serviceAccount = createServiceAccount(scope, context.resolver(), namespace);
@@ -133,12 +139,12 @@ public final class SeedInclusterManifestsUnit extends AbstractManifestsUnit {
             new Object[] {
               Map.of(
                   "apiGroups", new Object[] {"cluster.seedmatic.io"},
-                  "resources", new Object[] {"clusteradoptions"},
+                  "resources", new Object[] {"clusteradoptions", "clusterprovisions"},
                   "verbs",
                       new Object[] {"get", "list", "watch", "create", "update", "patch", "delete"}),
               Map.of(
                   "apiGroups", new Object[] {"cluster.seedmatic.io"},
-                  "resources", new Object[] {"clusteradoptions/status"},
+                  "resources", new Object[] {"clusteradoptions/status", "clusterprovisions/status"},
                   "verbs", new Object[] {"get", "update", "patch"}),
               Map.of(
                   "apiGroups", new Object[] {"cluster.x-k8s.io"},
@@ -234,7 +240,18 @@ public final class SeedInclusterManifestsUnit extends AbstractManifestsUnit {
     container.put("command", List.of(NAME));
     container.put(
         "args", List.of("--health-probe-bind-address=:8081", "--metrics-bind-address=:8080"));
-    container.put("env", List.of(Map.of("name", "HOME", "value", "/root")));
+    // SELF_CLUSTER_NAME = the cluster this controller runs IN (the render subject). It guards the
+    // controller's OWN ClusterAdoption from deletion (no management-plane suicide, see the
+    // reconciler).
+    final String selfCluster =
+        ManifestSynthesisContext.current()
+            .bootstrapIdentity()
+            .clusterNameOrDefault(DefaultNodeEnvContext.DEFAULT_CLUSTER_NAME);
+    container.put(
+        "env",
+        List.of(
+            Map.of("name", "HOME", "value", "/root"),
+            Map.of("name", "SELF_CLUSTER_NAME", "value", selfCluster)));
     container.put(
         "livenessProbe",
         Map.of(
