@@ -9,7 +9,7 @@ import io.seedmatic.rke2lab.manifests.units.clusterapi.ClusterApiOperatorManifes
 import io.seedmatic.rke2lab.manifests.units.clusterapi.ClusterApiWorkloadManifestsUnit;
 import io.seedmatic.rke2lab.manifests.units.clusterapi.ClusterKubeconfigManifestsUnit;
 import io.seedmatic.rke2lab.manifests.units.clusterapi.ImageStateConfigMapManifestsUnit;
-import io.seedmatic.rke2lab.manifests.units.clusterapi.Rke2AdoptionControllerManifestsUnit;
+import io.seedmatic.rke2lab.manifests.units.clusterapi.SeedInclusterManifestsUnit;
 import java.util.List;
 import org.osgi.service.component.annotations.Component;
 
@@ -29,7 +29,7 @@ public final class ClusterApiDomainRegistrar implements ManifestsDomainRegistrar
             new ImageStateConfigMapManifestsUnit(),
             new ClusterApiOperatorManifestsUnit(),
             new ClusterKubeconfigManifestsUnit(),
-            new Rke2AdoptionControllerManifestsUnit(),
+            new SeedInclusterManifestsUnit(),
             new ClusterApiManagementManifestsUnit(renderer),
             new ClusterApiWorkloadManifestsUnit(renderer)));
   }

@@ -21,13 +21,12 @@ import org.cdk8s.JsonPatch;
 import software.constructs.Construct;
 
 /**
- * Deploys the in-cluster {@code rke2-adoption-controller} + its {@code ClusterAdoption} CRD. The
- * controller reconciles the {@code ClusterAdoption} recipe {@link
- * ClusterApiManagementManifestsUnit} renders: it creates the CAPI CR-set and the OWNED
- * control-plane {@code Machine} + concrete {@code LXCMachine}(providerID) — the piece GitOps cannot
- * do (the ownerRef UID is assigned in-cluster) — so CAPRKE2/CAPN adopt the RUNNING
- * Pulumi-bootstrapped control plane instead of provisioning a fresh one, closing the cold-start
- * leak.
+ * Deploys the in-cluster {@code seed-incluster} + its {@code ClusterAdoption} CRD. The controller
+ * reconciles the {@code ClusterAdoption} recipe {@link ClusterApiManagementManifestsUnit} renders:
+ * it creates the CAPI CR-set and the OWNED control-plane {@code Machine} + concrete {@code
+ * LXCMachine}(providerID) — the piece GitOps cannot do (the ownerRef UID is assigned in-cluster) —
+ * so CAPRKE2/CAPN adopt the RUNNING Pulumi-bootstrapped control plane instead of provisioning a
+ * fresh one, closing the cold-start leak.
  *
  * <p>Layering (mirrors {@code FloxControllerManifestsUnit}): the Deployment + RBAC are on the
  * {@code operators} layer (the controller is healthy before the {@code ClusterAdoption} CR
@@ -36,36 +35,35 @@ import software.constructs.Construct;
  * ClusterRuntimeNamespaceManifestsUnit}). dependsOn the CAPI operator unit so the CAPI/CAPN/CAPRKE2
  * CRDs the controller creates CRs against exist.
  *
- * <p>The CRD is single-sourced from the rke2-adoption-controller flake (its controller-gen output,
- * staged onto the classpath at {@code /crds/} by seedMasterJar / {@code nix run
- * .#stage-rke2-adoption-controller-crd}) — never re-modelled or vendored. The controller BINARY is
- * delivered on the FLOX RUNTIME, not a baked image: the Deployment runs the minimal flox carrier
- * ({@code FloxDebugPolicy.prodImage()}) and the {@code cluster-api/rke2-adoption-controller} flox
- * env ({@link io.seedmatic.rke2lab.manifests.units.runtime.flox.FloxEnvManifestsUnit}, sourced from
- * the flox-catalogue as {@code floxcatalog:catalogue#rke2-adoption-controller}) puts the binary on
- * PATH via the flox NRI plugin — the {@code environment.<c>} annotation on the pod template opts
- * in.
+ * <p>The CRD is single-sourced from the seed-incluster flake (its controller-gen output, staged
+ * onto the classpath at {@code /crds/} by seedMasterJar / {@code nix run
+ * .#stage-seed-incluster-crd}) — never re-modelled or vendored. The controller BINARY is delivered
+ * on the FLOX RUNTIME, not a baked image: the Deployment runs the minimal flox carrier ({@code
+ * FloxDebugPolicy.prodImage()}) and the {@code cluster-api/seed-incluster} flox env ({@link
+ * io.seedmatic.rke2lab.manifests.units.runtime.flox.FloxEnvManifestsUnit}, sourced from the
+ * flox-catalogue as {@code floxcatalog:catalogue#seed-incluster}) puts the binary on PATH via the
+ * flox NRI plugin — the {@code environment.<c>} annotation on the pod template opts in.
  */
-public final class Rke2AdoptionControllerManifestsUnit extends AbstractManifestsUnit {
+public final class SeedInclusterManifestsUnit extends AbstractManifestsUnit {
 
   public static final String MANIFEST_UNIT_ID =
-      ManifestDomainCatalog.CLUSTER_API + "/adoption-controller";
+      ManifestDomainCatalog.CLUSTER_API + "/seed-incluster";
 
   /** Exploded package dir (relative to the cluster-api domain); diverges from the id segment. */
-  public static final String OUTPUT_DIR = "rke2-adoption-controller";
+  public static final String OUTPUT_DIR = "seed-incluster";
 
-  private static final String NAME = "rke2-adoption-controller";
+  private static final String NAME = "seed-incluster";
 
-  /** The staged CRD classpath resource (single source: the rke2-adoption-controller flake). */
+  /** The staged CRD classpath resource (single source: the seed-incluster flake). */
   private static final String CLUSTERADOPTION_CRD_RESOURCE =
-      "/crds/adoption.seedmatic.io_clusteradoptions.yaml";
+      "/crds/cluster.seedmatic.io_clusteradoptions.yaml";
 
   // Deployment + RBAC ride the operators layer; the CRD auto-routes to crds by kind.
   private final PackageMetadataProfile packageProfile =
       new PackageMetadataProfile(
           ManifestDomainCatalog.CLUSTER_API, OUTPUT_DIR, false, ManifestLayer.OPERATORS);
 
-  public Rke2AdoptionControllerManifestsUnit() {
+  public SeedInclusterManifestsUnit() {
     super(MANIFEST_UNIT_ID, List.of(ClusterApiOperatorManifestsUnit.MANIFEST_UNIT_ID));
   }
 
@@ -93,7 +91,7 @@ public final class Rke2AdoptionControllerManifestsUnit extends AbstractManifests
     final ApiObject serviceAccount =
         new ApiObject(
             scope,
-            "serviceaccount-rke2-adoption-controller",
+            "serviceaccount-seed-incluster",
             ApiObjectProps.builder()
                 .apiVersion("v1")
                 .kind("ServiceAccount")
@@ -117,7 +115,7 @@ public final class Rke2AdoptionControllerManifestsUnit extends AbstractManifests
     final ApiObject clusterRole =
         new ApiObject(
             scope,
-            "clusterrole-rke2-adoption-controller",
+            "clusterrole-seed-incluster",
             ApiObjectProps.builder()
                 .apiVersion("rbac.authorization.k8s.io/v1")
                 .kind("ClusterRole")
@@ -134,12 +132,12 @@ public final class Rke2AdoptionControllerManifestsUnit extends AbstractManifests
             "/rules",
             new Object[] {
               Map.of(
-                  "apiGroups", new Object[] {"adoption.seedmatic.io"},
+                  "apiGroups", new Object[] {"cluster.seedmatic.io"},
                   "resources", new Object[] {"clusteradoptions"},
                   "verbs",
                       new Object[] {"get", "list", "watch", "create", "update", "patch", "delete"}),
               Map.of(
-                  "apiGroups", new Object[] {"adoption.seedmatic.io"},
+                  "apiGroups", new Object[] {"cluster.seedmatic.io"},
                   "resources", new Object[] {"clusteradoptions/status"},
                   "verbs", new Object[] {"get", "update", "patch"}),
               Map.of(
@@ -166,7 +164,7 @@ public final class Rke2AdoptionControllerManifestsUnit extends AbstractManifests
     final ApiObject binding =
         new ApiObject(
             scope,
-            "clusterrolebinding-rke2-adoption-controller",
+            "clusterrolebinding-seed-incluster",
             ApiObjectProps.builder()
                 .apiVersion("rbac.authorization.k8s.io/v1")
                 .kind("ClusterRoleBinding")
@@ -203,7 +201,7 @@ public final class Rke2AdoptionControllerManifestsUnit extends AbstractManifests
     final ApiObject deployment =
         new ApiObject(
             scope,
-            "deployment-rke2-adoption-controller",
+            "deployment-seed-incluster",
             ApiObjectProps.builder()
                 .apiVersion("apps/v1")
                 .kind("Deployment")
@@ -222,8 +220,8 @@ public final class Rke2AdoptionControllerManifestsUnit extends AbstractManifests
 
     // The controller runs on the FLOX RUNTIME, not a baked node-base image: the container is the
     // minimal flox carrier (prodImage()); the controller BINARY comes from the
-    // cluster-api/rke2-adoption-controller flox env (FloxEnvManifestsUnit), put on PATH by the flox
-    // NRI plugin, so `command: [rke2-adoption-controller]` resolves. The environment.<c> annotation
+    // cluster-api/seed-incluster flox env (FloxEnvManifestsUnit), put on PATH by the flox
+    // NRI plugin, so `command: [seed-incluster]` resolves. The environment.<c> annotation
     // opts the container in (the flox-controller webhook gates scheduling on the env being
     // realised);
     // HOME/UID/GID set the run context (root, mirroring kdns). Prod env only — no debug flavor.

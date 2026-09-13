@@ -17,7 +17,7 @@ public enum FloxEnvFolder {
   NETWORKING("networking"),
   MESH("mesh"),
   // The cluster-api tier — in-cluster CAPI machinery delivered on the flox runtime instead of a
-  // baked node-base image. Holds the rke2-adoption-controller env (the Go controller binary).
+  // baked node-base image. Holds the seed-incluster env (the Go controller binary).
   CLUSTER_API("cluster-api"),
   // The cross-cutting toolchain tier — NOT a workload domain. `toolchains` holds composable
   // capability envs a step activates or `[include]`s regardless of domain: `git-sops` (git + sops +

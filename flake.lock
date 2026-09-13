@@ -281884,33 +281884,6 @@
         "type": "github"
       }
     },
-    "rke2-adoption-controller": {
-      "inputs": {
-        "flake-commons": [
-          "flake-commons"
-        ],
-        "flake-utils": [
-          "flake-utils"
-        ],
-        "nixpkgs": [
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1789163436,
-        "narHash": "sha256-NZWW7SyUeIULpvAtEjf9TgDIE5hEAqYoIuP4ByqEnN0=",
-        "owner": "seedmatic",
-        "repo": "rke2lab",
-        "rev": "86b280c62e093bf1a03c3727a420dbf180fe963d",
-        "type": "github"
-      },
-      "original": {
-        "owner": "seedmatic",
-        "ref": "rke2-adoption-controller",
-        "repo": "rke2lab",
-        "type": "github"
-      }
-    },
     "root": {
       "inputs": {
         "flake-commons": "flake-commons",
@@ -281929,7 +281902,7 @@
           "flake-commons",
           "nixpkgs"
         ],
-        "rke2-adoption-controller": "rke2-adoption-controller",
+        "seed-incluster": "seed-incluster",
         "sops-nix": [
           "flake-commons",
           "sops-nix"
@@ -284177,6 +284150,33 @@
         "owner": "rust-lang",
         "ref": "nightly",
         "repo": "rust-analyzer",
+        "type": "github"
+      }
+    },
+    "seed-incluster": {
+      "inputs": {
+        "flake-commons": [
+          "flake-commons"
+        ],
+        "flake-utils": [
+          "flake-utils"
+        ],
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1789307975,
+        "narHash": "sha256-4XbISoY8qy2Bc+/SFIxBTlpKXt6NkaFgPlxmINLHMio=",
+        "owner": "seedmatic",
+        "repo": "rke2lab",
+        "rev": "c0373f25cc3c64f56d524d9129acfa02f75a47a7",
+        "type": "github"
+      },
+      "original": {
+        "owner": "seedmatic",
+        "ref": "seed-incluster",
+        "repo": "rke2lab",
         "type": "github"
       }
     },
