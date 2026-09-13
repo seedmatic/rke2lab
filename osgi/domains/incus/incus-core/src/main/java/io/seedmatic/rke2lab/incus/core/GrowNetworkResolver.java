@@ -61,17 +61,20 @@ public final class GrowNetworkResolver {
     config.put("ipv4.nat", "false");
     config.put("ipv4.dhcp", "true");
     config.put("ipv4.dhcp.ranges", local.wan().dhcpRange());
-    // Dual-stack: pin the vmnet's DETERMINISTIC ULA prefix (fd96:…:{cc}00::/56) — without
-    // ipv6.address
-    // incus auto-assigns a RANDOM ULA and the node's v6 could never be predicted for node-ip.
-    // Stateful
-    // DHCPv6 so the per-node embedded-v4 reservations below (raw.dnsmasq) are honoured; SLAAC would
-    // instead hand out EUI-64 addresses that node-ip cannot name. NAT off — the vmnet is internal.
+    // Dual-stack: pin the vmnet's DETERMINISTIC ULA prefix — without ipv6.address incus
+    // auto-assigns
+    // a RANDOM ULA and the node's v6 could never be predicted for node-ip. Use the NODE /64
+    // (fd96:…:{cc}20::/64, where every node's embedded-v4 v6 lives), NOT the cluster /56: dnsmasq's
+    // DHCPv6 rejects a prefix shorter than /64 ("prefix length must be at least 64"). Stateful
+    // DHCPv6
+    // so the per-node embedded-v4 reservations below (raw.dnsmasq) are honoured; SLAAC would
+    // instead
+    // hand out EUI-64 addresses node-ip cannot name. NAT off — the vmnet is internal.
     config.put(
         "ipv6.address",
-        local.host().clusterGatewayInetaddr6().getHostAddress()
+        local.nodeNetwork().nodeGatewayInetaddr6().getHostAddress()
             + "/"
-            + local.host().clusterCidr6().prefixLength());
+            + local.nodeNetwork().nodeCidr6().prefixLength());
     config.put("ipv6.nat", "false");
     config.put("ipv6.dhcp", "true");
     config.put("ipv6.dhcp.stateful", "true");
