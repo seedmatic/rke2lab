@@ -130,16 +130,26 @@ public final class RuntimeRke2ConfigManifestsUnit extends AbstractManifestsUnit 
         "Node IP fragment",
         "|ConfigMap|default|rke2-node-inetaddr",
         // node-ip feeds advertise-address + the apiserver/kubelet cert SANs. The kubelet-arg
-        // DUPLICATE
-        // is deliberate: rke2 does NOT propagate the `node-ip` config to the kubelet's `--node-ip`
-        // when the address is DHCP-`dynamic` (our vmnet addresses are DHCP reservations), so the
-        // kubelet auto-detected and registered its InternalIP as cilium_host — a pod-cidr IP absent
-        // from the kubelet serving cert, breaking `kubectl logs/exec` + metrics with an x509
-        // mismatch.
-        // Forcing --node-ip via kubelet-arg (the documented escape hatch) pins InternalIP to
-        // node-ip,
-        // which IS in the cert. Proven live: it flips InternalIP from 10.44.0.68 to 10.80.0.10.
-        orderedMap(entry("node-ip", nodeIp), entry("kubelet-arg", List.of("node-ip=" + nodeIp))));
+        // DUPLICATE is deliberate: rke2 does NOT propagate the `node-ip` config to the kubelet's
+        // `--node-ip` when the address is DHCP-`dynamic` (our vmnet addresses are DHCP
+        // reservations),
+        // so the kubelet auto-detected and registered its InternalIP as cilium_host — a pod-cidr IP
+        // absent from the kubelet serving cert, breaking `kubectl logs/exec` + metrics with an x509
+        // mismatch. Forcing --node-ip via kubelet-arg (the documented escape hatch) pins InternalIP
+        // to node-ip, which IS in the cert. Proven live: flips InternalIP from 10.44.0.68 to
+        // 10.80.0.10.
+        //
+        // The `+` suffix APPENDS instead of replacing: rke2 config.yaml.d otherwise OVERWRITES a
+        // list-valued key with the alphabetically-last file's value, so this fragment
+        // (node-inetaddr)
+        // silently dropped the `provider-id=` kubelet-arg the per-node oneshot writes to
+        // 40-provider-id.yaml — the node then registered with NO spec.providerID and CAPI could
+        // never
+        // bind the Machine to it (NodeHealthy stuck "Waiting for a Node with spec.providerID … to
+        // exist"). Both producers use `kubelet-arg+` so node-ip and provider-id coexist regardless
+        // of
+        // file order.
+        orderedMap(entry("node-ip", nodeIp), entry("kubelet-arg+", List.of("node-ip=" + nodeIp))));
     // Node labels are NOT delivered here: kubelet applies --node-labels only at the node's first
     // registration, so a fragment glob'd from the cluster post-join is ignored. They are written
     // at boot before rke2-server by the nixos oneshot rke2lab-node-labels (nixos/rke2.nix).
