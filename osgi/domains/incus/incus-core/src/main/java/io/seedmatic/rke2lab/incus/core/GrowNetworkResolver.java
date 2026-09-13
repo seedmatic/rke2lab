@@ -46,10 +46,10 @@ public final class GrowNetworkResolver {
   }
 
   /**
-   * The Incus {@code vmnet} network's config map — the seven keys the bridge takes. The addresses,
-   * DHCP range and per-node leases derive from the blueprint; {@code ipv4.nat}/{@code ipv4.dhcp}/
-   * {@code dns.mode}/{@code bridge.driver} are the fixed policy of a per-cluster provisioning
-   * bridge.
+   * The Incus {@code vmnet} network's config map — the keys the bridge takes. The addresses (v4 +
+   * v6), DHCP ranges and per-node leases derive from the blueprint; {@code ipv4.nat}/{@code
+   * ipv4.dhcp}/{@code ipv6.*}/{@code dns.mode}/{@code bridge.driver} are the fixed policy of a
+   * per-cluster provisioning bridge.
    */
   private Map<String, String> vmnetBridgeConfig(String cluster, ClusterNetworkBlueprint local) {
     final Map<String, String> config = new LinkedHashMap<>();
@@ -61,6 +61,20 @@ public final class GrowNetworkResolver {
     config.put("ipv4.nat", "false");
     config.put("ipv4.dhcp", "true");
     config.put("ipv4.dhcp.ranges", local.wan().dhcpRange());
+    // Dual-stack: pin the vmnet's DETERMINISTIC ULA prefix (fd96:…:{cc}00::/56) — without
+    // ipv6.address
+    // incus auto-assigns a RANDOM ULA and the node's v6 could never be predicted for node-ip.
+    // Stateful
+    // DHCPv6 so the per-node embedded-v4 reservations below (raw.dnsmasq) are honoured; SLAAC would
+    // instead hand out EUI-64 addresses that node-ip cannot name. NAT off — the vmnet is internal.
+    config.put(
+        "ipv6.address",
+        local.host().clusterGatewayInetaddr6().getHostAddress()
+            + "/"
+            + local.host().clusterCidr6().prefixLength());
+    config.put("ipv6.nat", "false");
+    config.put("ipv6.dhcp", "true");
+    config.put("ipv6.dhcp.stateful", "true");
     config.put("dns.mode", "none");
     config.put("bridge.driver", "native");
     config.put("raw.dnsmasq", rawDnsmasq(cluster));
@@ -68,7 +82,10 @@ public final class GrowNetworkResolver {
   }
 
   /**
-   * One {@code dhcp-host=<wanMac>,<nodeIp>,<cluster>-<node>} line per cluster node, newline-joined.
+   * One dual-stack {@code dhcp-host=<wanMac>,<nodeIpv4>,[<nodeIpv6>],<cluster>-<node>} line per
+   * cluster node, newline-joined. The bracketed IPv6 is the stateful DHCPv6 reservation (see {@code
+   * ipv6.dhcp.stateful} above): the node's embedded-v4 ULA, so it deterministically holds the
+   * address node-ip names.
    */
   private String rawDnsmasq(String cluster) {
     return ClusterNetworkBlueprint.CANONICAL_NODE_NAMES.stream()
@@ -79,7 +96,9 @@ public final class GrowNetworkResolver {
                     + blueprint.wan().hostMacaddr().value()
                     + ","
                     + blueprint.nodeNetwork().nodeHostInetaddr().getHostAddress()
-                    + ","
+                    + ",["
+                    + blueprint.nodeNetwork().nodeHostInetaddr6().getHostAddress()
+                    + "],"
                     + cluster
                     + "-"
                     + blueprint.node().name())

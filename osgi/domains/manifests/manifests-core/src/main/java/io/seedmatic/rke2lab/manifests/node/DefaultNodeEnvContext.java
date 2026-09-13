@@ -68,6 +68,7 @@ public final class DefaultNodeEnvContext implements NodeEnvContext {
         .clusterPodCidr(blueprint.podCidrDualStack())
         .clusterServiceCidr(blueprint.serviceCidrDualStack())
         .nodeHostInetAddr(blueprint.nodeNetwork().nodeHostInetaddr().getHostAddress())
+        .nodeHostInet6Addr(blueprint.nodeNetwork().nodeHostInetaddr6().getHostAddress())
         .nodeNetworkCidr(blueprint.nodeNetwork().nodeCidr().toString())
         .nodeNetworkGatewayAddr(blueprint.nodeNetwork().nodeGatewayInetaddr().getHostAddress())
         .clusterLoadBalancerCidr(blueprint.loadBalancer().lbCidr().toString())
