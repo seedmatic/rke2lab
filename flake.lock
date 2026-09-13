@@ -282653,6 +282653,10 @@
           "flake-commons",
           "flake-utils"
         ],
+        "flox": [
+          "flake-commons",
+          "flox"
+        ],
         "headplane": "headplane",
         "headscale": "headscale",
         "kdns-src": "kdns-src",

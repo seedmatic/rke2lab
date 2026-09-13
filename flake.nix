@@ -6,6 +6,11 @@
     nixpkgs.follows = "flake-commons/nixpkgs";
     flake-utils.follows = "flake-commons/flake-utils";
 
+    # flox CLI — bundled into the `lock-envs` app (nix run .#lock-envs) via
+    # runtimeInputs, so re-locking env manifest.lock files needs no pre-activated
+    # flox on PATH. Follows the aggregator's flox (same pin as rke2lab / ndh).
+    flox.follows = "flake-commons/flox";
+
     # Per-workload sources. Adding a new workload package usually means a new
     # input + a new entry in `packages` below; the per-env manifest.toml then
     # references it via `flake = path:.../runtime/flox#<output>`.
@@ -65,6 +70,7 @@
     headscale,
     ndh,
     seed-incluster,
+    flox,
     ...
   }:
     flake-utils.lib.eachSystem [
@@ -276,7 +282,55 @@
           platforms = platforms.unix;
         };
       };
+      # Regenerate the committed env manifest.lock files. Each env's manifest.toml
+      # pins packages by a RELATIVE flake path (path:../../..#pkg); nix resolves
+      # path: against CWD, so an env is locked from its OWN dir. Run from the catalog
+      # repo root (writes into the worktree, not the read-only store):
+      #   nix run .#lock-envs                                 # all envs
+      #   nix run .#lock-envs -- cluster-api/seed-incluster    # some
+      lockEnvsApp = pkgs.writeShellApplication {
+        name = "lock-envs";
+        runtimeInputs = [flox.packages.${system}.default pkgs.coreutils];
+        text = ''
+          root="environment.d"
+          if [[ ! -d "$root" ]]; then
+            echo "run from the flox-catalogue repo root (no ./$root here)" >&2
+            exit 1
+          fi
+          if [[ "$#" -gt 0 ]]; then
+            envs=("$@")
+          else
+            mapfile -t envs < <(cd "$root" && for m in */*/manifest.toml; do echo "''${m%/manifest.toml}"; done)
+          fi
+          rc=0
+          for e in "''${envs[@]}"; do
+            d="$root/$e"
+            if [[ ! -f "$d/manifest.toml" ]]; then
+              echo "SKIP $e (no manifest.toml)"
+              continue
+            fi
+            printf 'lock %s ... ' "$e"
+            if (cd "$d" && flox lock-manifest manifest.toml) >"$d/manifest.lock.tmp" 2>"$d/.lockerr"; then
+              mv "$d/manifest.lock.tmp" "$d/manifest.lock"
+              echo "OK ($(wc -c <"$d/manifest.lock") bytes)"
+            else
+              echo "FAILED"
+              sed 's/^/    /' "$d/.lockerr"
+              rm -f "$d/manifest.lock.tmp"
+              rc=1
+            fi
+            rm -f "$d/.lockerr"
+          done
+          exit "$rc"
+        '';
+      };
     in {
+      apps.lock-envs = {
+        type = "app";
+        program = "${lockEnvsApp}/bin/lock-envs";
+        meta.description = "Re-lock env manifest.lock files under environment.d/ via flox lock-manifest (run from the catalog repo root)";
+      };
+
       packages = {
         inherit kdns kdns-debug;
         inherit headplane-debug;
