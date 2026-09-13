@@ -749,8 +749,7 @@ public class ClusterSeedScenario
               config.incusRemoteAddress().toString(),
               config.incusConfigFolder() == null ? "" : config.incusConfigFolder().toString(),
               config.profileName(),
-              config.lanBridgeParent(),
-              config.vmnetNetworkName());
+              config.lanBridgeParent());
       // The per-node bootstrap material the GROW lays into the guest through the UNIFORM cloud-init
       // channel (write_files; the same channel CAPN/CAPRKE2 use for a workload node). All opaque
       // here. Two sources, both dual-realm cases the transactional cellar reveals (read-your-writes

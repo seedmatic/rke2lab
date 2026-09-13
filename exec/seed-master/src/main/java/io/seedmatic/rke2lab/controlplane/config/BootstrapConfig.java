@@ -26,7 +26,6 @@ public record BootstrapConfig(
     String imageBuilderHost,
     String profileName,
     String lanBridgeParent,
-    String vmnetNetworkName,
     String tailnet,
     URI apiEndpoint,
     Path kubeconfigRef,
@@ -48,7 +47,6 @@ public record BootstrapConfig(
   private static final String IMAGE_ALIAS = "node-base";
   private static final String DEFAULT_PROFILE_NAME = "rke2lab";
   private static final String DEFAULT_LAN_BRIDGE_PARENT = "lan-br";
-  private static final String DEFAULT_VMNET_NETWORK_NAME = "vmnet-br";
   // The tailscale tailnet DNS suffix. Resolvable host/automount addresses use the MagicDNS FQDN
   // <host>.<tailnet> so they route over the tailscale overlay (stable across the physical LAN),
   // rather than the LAN mDNS <host>.local. Package-visible so the ghapp CLI pre-fills the App
@@ -109,7 +107,6 @@ public record BootstrapConfig(
         config.image().builderHost().orElseGet(() -> nixosMdnsHost),
         config.profile().name().orElse(DEFAULT_PROFILE_NAME),
         config.network().lanBridgeParent().orElse(DEFAULT_LAN_BRIDGE_PARENT),
-        config.network().vmnetNetworkName().orElse(DEFAULT_VMNET_NETWORK_NAME),
         config.network().tailnet().orElse(DEFAULT_TAILNET),
         config.api().endpoint().orElse(DEFAULT_API_ENDPOINT),
         kubeconfigRef,

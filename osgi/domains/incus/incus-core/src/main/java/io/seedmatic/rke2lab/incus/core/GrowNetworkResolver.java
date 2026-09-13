@@ -32,13 +32,25 @@ public final class GrowNetworkResolver {
 
   /**
    * Assemble the view for the {@code node} of {@code cluster} (the node the instance grows for).
+   * The grown node's NIC hwaddrs + the bridge it attaches to come from its own blueprint; the
+   * bridges to ensure are EVERY cluster co-located on the host ({@link
+   * ClusterNetworkBlueprint#clustersOnSameHost}) — vmnet is isolated per-cluster, so a workload
+   * cluster's bridge + dnsmasq reservations must exist for CAPN to DHCP-provision it in-cluster,
+   * even though only this node grows standalone.
    */
   public GrowNetworkView resolve(String cluster, String node) {
-    final ClusterNetworkBlueprint blueprint = synthesize(cluster, node);
+    final ClusterNetworkBlueprint grown = synthesize(cluster, node);
+    final Map<String, Map<String, String>> bridges = new LinkedHashMap<>();
+    for (final String coLocated : grown.clustersOnSameHost()) {
+      final ClusterNetworkBlueprint coLocatedBlueprint = synthesize(coLocated, "master");
+      bridges.put(
+          coLocatedBlueprint.vmnetBridgeName(), vmnetBridgeConfig(coLocated, coLocatedBlueprint));
+    }
     return new GrowNetworkView(
-        blueprint.lan().hostMacaddr().value(),
-        blueprint.wan().hostMacaddr().value(),
-        vmnetBridgeConfig(cluster, blueprint));
+        grown.lan().hostMacaddr().value(),
+        grown.wan().hostMacaddr().value(),
+        grown.vmnetBridgeName(),
+        bridges);
   }
 
   private ClusterNetworkBlueprint synthesize(String cluster, String node) {

@@ -23,6 +23,14 @@
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>domain-annotations</artifactId>
     </dependency>
+    <!-- ClusterRole (MGMT/WRKLD): the single cluster-role identity, owned by manifests-contract.
+         The blueprint derives roleId/vmnetBridgeName from it rather than re-defining the roles.
+         This is the same direction manifests-core already depends on netplan-contract (no cycle:
+         neither manifests-contract nor manifests-ingress-contract references netplan-contract). -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>manifests-contract</artifactId>
+    </dependency>
     <!-- The seed-broker seam: NetplanRunbookInput carries @SeedContract("runbook") + @Amendment(SOIL)
          and NetplanCoordinate holds the Amend/Shape/Runbook meta-coordinates. Like manifests-contract. -->
     <dependency>

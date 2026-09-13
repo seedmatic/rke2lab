@@ -32,9 +32,6 @@ public enum ClusterRole {
    * survey renders.
    */
   public static ClusterRole of(final String clusterName) {
-    if (clusterName == null) {
-      return MGMT;
-    }
     final int dash = clusterName.indexOf('-');
     final String role = dash < 0 ? "" : clusterName.substring(dash + 1);
     return switch (role) {

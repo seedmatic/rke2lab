@@ -79,7 +79,7 @@ public final class InstanceGrow {
    */
   public void grow(InstanceGrowPlan plan, NodeBootstrapMaterial material) {
     final Project project = ensureProject();
-    ensureNetwork(config.vmnetNetworkName(), project, plan.network());
+    ensureNetworks(project, plan.network());
     final Output<String> profileName = ensureProfile(project);
     final Output<String> imageFingerprint = ensureImage(plan.image(), project);
     final Instance instance =
@@ -106,18 +106,29 @@ public final class InstanceGrow {
   }
 
   /**
-   * Ensure the per-cluster {@code vmnet} bridge from the plan's flat network view. Skips the
-   * canonical host-provided LAN bridge and any bridge the provider reports UNMANAGED (a provider
-   * invoke, not ssh). The vmnet network's config map is the plan's — the scion assembled it
-   * OSGi-side from the netplan blueprint; the host only poses it.
+   * Ensure EVERY vmnet bridge the host carries — one per cluster co-located on it (vmnet is
+   * isolated per-cluster), so a workload cluster's bridge + dnsmasq reservations exist for CAPN to
+   * DHCP-provision it in-cluster even though only the management node grows standalone. The scion
+   * assembled each bridge's config OSGi-side from the netplan blueprint; the host only poses it.
    */
-  private void ensureNetwork(String networkName, Resource projectDependency, GrowNetworkView view) {
+  private void ensureNetworks(Resource projectDependency, GrowNetworkView view) {
+    view.bridges()
+        .forEach((name, bridgeConfig) -> ensureNetwork(name, bridgeConfig, projectDependency));
+  }
+
+  /**
+   * Ensure one vmnet bridge from its resolved config. Skips the canonical host-provided LAN bridge
+   * and any bridge the provider reports UNMANAGED (a provider invoke, not ssh); an already-existing
+   * bridge is adopted, not re-declared (its config is host-owned).
+   */
+  private void ensureNetwork(
+      String networkName, Map<String, String> bridgeConfig, Resource projectDependency) {
     if (networkName.equals(config.lanBridgeParent())) {
       log.accept(
           "incus network ensure: skipping canonical host-provided bridge (" + networkName + ")");
       return;
     }
-    // vmnet-br lives in the default project (only OVN networks are allowed in non-default
+    // vmnet bridges live in the default project (only OVN networks are allowed in non-default
     // projects).
     final String networkProject = "default";
     if (importLookup.isUnmanagedNetwork(networkName, networkProject)) {
@@ -143,7 +154,7 @@ public final class InstanceGrow {
             .name(networkName)
             .type("bridge")
             .project("default")
-            .config(view.dnsmasqConfig())
+            .config(bridgeConfig)
             .build(),
         options);
   }
@@ -499,7 +510,7 @@ public final class InstanceGrow {
     final GrowNetworkView network = plan.network();
     final List<InstanceDeviceArgs> devices = new ArrayList<>();
     devices.add(nic("lan0", network.lanHwaddr(), "lan0", "bridged", config.lanBridgeParent()));
-    devices.add(nic("vmnet0", network.wanHwaddr(), "vmnet0", "bridged", config.vmnetNetworkName()));
+    devices.add(nic("vmnet0", network.wanHwaddr(), "vmnet0", "bridged", network.nodeBridgeName()));
     devices.add(unixChar("kmsg.dev", "/dev/kmsg", "/dev/kmsg"));
     devices.add(unixChar("zfs.dev", "/dev/zfs", "/dev/zfs"));
     return List.copyOf(devices);

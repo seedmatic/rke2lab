@@ -34,7 +34,6 @@ public enum InfraDomain {
     InfraConfigFragment contribute(ConfigLoader loader) {
       return new Rke2labConfig.NetworkConfig(
           loader.optional(domainId(), "lanBridgeParent"),
-          loader.optional(domainId(), "vmnetNetworkName"),
           loader.optionalBoolean(domainId(), "automount"),
           loader.optional(domainId(), "tailnet"));
     }

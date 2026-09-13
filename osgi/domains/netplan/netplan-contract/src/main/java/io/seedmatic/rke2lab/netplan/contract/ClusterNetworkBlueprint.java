@@ -1,5 +1,6 @@
 package io.seedmatic.rke2lab.netplan.contract;
 
+import io.seedmatic.rke2lab.manifests.contract.ClusterRole;
 import java.net.InetAddress;
 import java.util.List;
 import java.util.Objects;
@@ -125,7 +126,7 @@ public record ClusterNetworkBlueprint(
     validateNodeName(nodeName);
 
     final int hostId = hostId(hostOf(clusterName));
-    final int roleId = roleId(roleOf(clusterName));
+    final int roleId = ClusterRole.of(clusterName).ordinal();
     final int clusterId = (hostId << 1) | roleId;
 
     final int nodeId = nodeId(nodeName);
@@ -282,10 +283,32 @@ public record ClusterNetworkBlueprint(
     return dash < 0 ? clusterName : clusterName.substring(0, dash);
   }
 
-  /** The role token — the {@code <role>} of {@code <host>-<role>} (after the first dash). */
-  private static String roleOf(String clusterName) {
-    final int dash = clusterName.indexOf('-');
-    return dash < 0 ? "" : clusterName.substring(dash + 1);
+  /** This cluster's {@link ClusterRole} — parsed from its {@code <host>-<role>} name. */
+  public ClusterRole role() {
+    return ClusterRole.of(cluster.name());
+  }
+
+  /**
+   * This cluster's Incus {@code vmnet} bridge name — the per-cluster INTERNAL bridge each cluster
+   * gets its own (isolated /21, gateway .1). Deterministic + role-scoped ({@code vmnet-mgmt},
+   * {@code vmnet-wrkld}) so BOTH the standalone grow (which creates + attaches the node's NIC) and
+   * CAPN (which attaches provisioned workload instances) name the SAME bridge. Role-scoped, not
+   * host-scoped: each host runs its own Incus daemon, so the name need not carry the host. Stays
+   * within Incus's 15-char network-name limit ({@code vmnet-} + role ≤ 11).
+   */
+  public String vmnetBridgeName() {
+    return "vmnet-" + role().token();
+  }
+
+  /**
+   * Every cluster co-located on the SAME host as THIS one — one per {@link ClusterRole}, itself
+   * included. The host's grow ensures a vmnet bridge (+ dnsmasq reservations) for each, so a
+   * workload cluster is DHCP-provisionable in-cluster (CAPN) even though only the management node
+   * is grown standalone. Purely functional off the blueprint (no Incus query, no manifests facet).
+   */
+  public List<String> clustersOnSameHost() {
+    final String host = hostOf(cluster.name());
+    return List.of(ClusterRole.values()).stream().map(role -> host + "-" + role.token()).toList();
   }
 
   private static int hostId(String host) {
@@ -299,14 +322,6 @@ public record ClusterNetworkBlueprint(
                   + host
                   + "' — no LAN slice allocated; add it to hostId() + the"
                   + " addressing plan (only bioskop/nikopol/test are carved into 192.168.1.128/25)");
-    };
-  }
-
-  private static int roleId(String role) {
-    return switch (role) {
-      case "mgmt" -> 0;
-      case "wrkld" -> 1;
-      default -> 0;
     };
   }
 
