@@ -252,8 +252,11 @@ public final class Rke2AdoptionControllerManifestsUnit extends AbstractManifests
     container.put(
         "resources",
         Map.of(
-            "requests", Map.of("cpu", "10m", "memory", "64Mi"),
-            "limits", Map.of("memory", "128Mi")));
+            // 128Mi OOM-killed the manager at startup (exit 137, crash-looping): a controller-
+            // runtime manager's informer cache sync spikes past it, on top of the flox-carrier
+            // runtime overhead the pod carries. 256Mi absorbs the startup spike.
+            "requests", Map.of("cpu", "10m", "memory", "128Mi"),
+            "limits", Map.of("memory", "256Mi")));
     container.put(
         "volumeMounts",
         List.of(
