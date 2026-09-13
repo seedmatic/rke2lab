@@ -59,5 +59,16 @@
     dhcpV4Config.UseGateway = false;
     ipv6AcceptRAConfig.UseGateway = false;
     linkConfig.RequiredForOnline = "routable";
+    # Force a link-layer DUID (DUID-LL = the MAC, no vendor/timestamp) for the stateful DHCPv6
+    # client. WHY: the vmnet bridge's dnsmasq pins each node's deterministic address by a
+    # MAC-keyed reservation (`dhcp-host=52:54:00:00:00:00,10.80.0.10,[fd96:…::a50:a],…`). DHCPv6
+    # has no chaddr, so dnsmasq can only recover the client MAC by extracting it from a link-layer
+    # DUID; networkd's DEFAULT DUID-EN (systemd enterprise 43793) carries no MAC, so the v6
+    # reservation never matched and the node leased a DYNAMIC address instead of `::a50:a`. The
+    # kubelet then rejected the (unresolvable) v6 half of its dual-stack --node-ip and set NO
+    # node addresses at all — breaking `kubectl logs`/`exec` cluster-wide. DUID-LL restores the
+    # match, so the node gets its deterministic v6 and --node-ip validates. (v4 is unaffected:
+    # dnsmasq matches the MAC from the DHCPv4 chaddr directly.)
+    dhcpV6Config.DUIDType = "link-layer";
   };
 }
