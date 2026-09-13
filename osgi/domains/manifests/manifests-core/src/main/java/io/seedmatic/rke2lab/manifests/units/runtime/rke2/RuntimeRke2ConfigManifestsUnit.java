@@ -116,7 +116,7 @@ public final class RuntimeRke2ConfigManifestsUnit extends AbstractManifestsUnit 
         "|ConfigMap|default|rke2-etcd",
         orderedMap(
             entry("with-node-id", false),
-            entry("node-name", id.clusterName() + "-" + id.nodeName()),
+            entry("node-name", id.nodeHostname()),
             entry("etcd-expose-metrics", false)));
     createConfigMap(
         scope,
@@ -148,6 +148,12 @@ public final class RuntimeRke2ConfigManifestsUnit extends AbstractManifestsUnit 
                 "gateway",
                 "0.0.0.0",
                 "127.0.0.1",
+                // The node's mDNS FQDN (SOT: NamePlan.nodeMdnsFqdn, not re-concatenated): kubectl
+                // and the operator dial the apiserver at <cluster>-<node>.local:6443 (avahi-
+                // published, ./host-access.nix), so the serving cert MUST carry it or `x509:
+                // certificate is valid for …, not <cluster>-<node>.local`. rke2 auto-adds the bare
+                // hostname but NOT the .local FQDN.
+                id.nodeMdnsFqdn(),
                 // The kube-vip VIP — where kube-vip binds the apiserver and what CAPI's
                 // clustercache
                 // (+ any VIP-endpoint kubeconfig) dials, so the serving cert MUST be valid for it,
