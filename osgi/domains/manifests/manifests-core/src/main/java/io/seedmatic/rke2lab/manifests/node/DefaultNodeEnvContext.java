@@ -58,6 +58,8 @@ public final class DefaultNodeEnvContext implements NodeEnvContext {
         .nodeId(blueprint.node().id())
         .nodeKind(blueprint.node().type().kind())
         .incusRemoteName(clusterName)
+        .nodeHostname(blueprint.names().nodeHostname())
+        .nodeMdnsFqdn(blueprint.names().nodeMdnsFqdn())
         .build();
   }
 
