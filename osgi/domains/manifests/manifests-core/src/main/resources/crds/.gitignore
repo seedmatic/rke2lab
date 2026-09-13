@@ -1,4 +1,0 @@
-# CRDs staged from component flakes (e.g. `nix run .#stage-flox-controller-crd`,
-# or seedMasterJar at release). controller-gen in each component is the single
-# source — never commit a staged copy here.
-*.yaml

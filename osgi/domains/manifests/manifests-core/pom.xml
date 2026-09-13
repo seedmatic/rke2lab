@@ -24,6 +24,10 @@
       this core into its -exec jar; pass debug knobs via -D system properties
       on that invocation if needed.
     -->
+    <!-- Skip the exec-plugin CRD staging (below). Default false: a plain `./mvnw` build stages via
+         `nix run`. Set true where nix cannot run it: the nix reactor build (buildReactorExe stages
+         the store CRDs itself, post-clean) and any host with no nix on PATH. -->
+    <flox.crd-staging.skip>false</flox.crd-staging.skip>
   </properties>
 
   <dependencies>
@@ -200,6 +204,60 @@
               <capturedStderrFileName>@executionId@.stderr</capturedStderrFileName>
               <binaryResolutionMethod>external</binaryResolutionMethod>
               <externalBinaryPath>${maven.multiModuleProjectDirectory}/.flox/run/aarch64-darwin.rke2lab-run/bin/shellcheck</externalBinaryPath>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <!-- Stage the flox-controller + seed-incluster CRDs (single-sourced from their flakes, never
+           vendored) into target/generated-resources/crds. In generate-resources (POST-clean, unlike
+           the old lifecycle participant which ran pre-clean and had to stage into src/): `mvn clean`
+           wipes the dir, so a renamed/removed CRD never lingers as stale output. Run from the repo
+           root so `.#stage-*-crd` resolves the flake. Skipped with -Dflox.crd-staging.skip=true (the
+           nix reactor build stages the store CRDs itself; any nix-less host opts out the same way). -->
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>stage-crds</id>
+            <goals>
+              <goal>exec</goal>
+            </goals>
+            <phase>generate-resources</phase>
+            <configuration>
+              <skip>${flox.crd-staging.skip}</skip>
+              <workingDirectory>${maven.multiModuleProjectDirectory}</workingDirectory>
+              <executable>sh</executable>
+              <arguments>
+                <argument>-c</argument>
+                <!-- Pass THIS build's profile-specific dir (target~claude / target~nxmatic / target)
+                     so the CRDs land where build-helper embeds from; Maven resolves the property
+                     before sh sees it. -->
+                <argument>nix run .#stage-flox-controller-crd -- "${project.build.directory}/generated-resources/crds" &amp;&amp; nix run .#stage-seed-incluster-crd -- "${project.build.directory}/generated-resources/crds"</argument>
+              </arguments>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <!-- Put the generated crds/ on the classpath at /crds/ (target/classes/crds) so bnd embeds
+           the CRDs into the bundle, exactly as a src/main/resources/crds dir would have. -->
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>build-helper-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>add-crd-resources</id>
+            <goals>
+              <goal>add-resource</goal>
+            </goals>
+            <phase>generate-resources</phase>
+            <configuration>
+              <resources>
+                <resource>
+                  <directory>${project.build.directory}/generated-resources/crds</directory>
+                  <targetPath>crds</targetPath>
+                </resource>
+              </resources>
             </configuration>
           </execution>
         </executions>
