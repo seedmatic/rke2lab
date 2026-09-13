@@ -51,7 +51,11 @@ public final class FloxCatalogManifestsUnit extends AbstractManifestsUnit {
    */
   public static final String FLOX_CATALOG_NAME = "catalogue";
 
-  private static final String GIT_REPOSITORY_NAME = "flox-catalogue";
+  /**
+   * The Flux GitRepository tracking {@link #CATALOGUE_BRANCH}; the Receiver reconciles it on push.
+   */
+  public static final String GIT_REPOSITORY_NAME = "flox-catalogue";
+
   private static final String REPO_URL = "https://github.com/seedmatic/rke2lab.git";
   private static final String APP_AUTH_SECRET = "githubapp";
 

@@ -214,7 +214,16 @@ public final class FloxControllerManifestsUnit extends AbstractManifestsUnit {
               Map.of(
                   "apiGroups", new Object[] {""},
                   "resources", new Object[] {"pods"},
-                  "verbs", new Object[] {"get", "list", "watch", "update"})
+                  "verbs", new Object[] {"get", "list", "watch", "update"}),
+              // On a FloxEnv re-lock the FloxEnvReconciler rolls the workloads that CONSUME the env
+              // (patch a pod-template marker → native rolling restart), so the running pods adopt
+              // the
+              // freshly realised binary instead of keeping the closure resolved at their last
+              // start.
+              Map.of(
+                  "apiGroups", new Object[] {"apps"},
+                  "resources", new Object[] {"deployments", "daemonsets", "statefulsets"},
+                  "verbs", new Object[] {"get", "list", "watch", "patch"})
             }));
     return clusterRole;
   }
