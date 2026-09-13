@@ -431,17 +431,21 @@
         # overwrite ("Permission denied"). `install -m 644` unlinks + rewrites with a
         # writable mode, so re-staging in the dev loop / the render app is idempotent (the
         # crds/ dir is gitignored, so the mode is ours to set).
+        # Stages into the shell var "$dest" the CALLER sets — the profile-specific Maven build dir
+        # (${project.build.directory}/generated-resources/crds, i.e. target~claude / target~nxmatic /
+        # target), NOT a hardcoded path: build-helper embeds from ${project.build.directory}, so a
+        # fixed `target/` would miss a `-Pnxmatic` build's target~nxmatic and ship a CRD-less jar.
         stageFloxControllerCrds = nixpkgs.lib.optionalString (floxControllerCrds != null) ''
-          mkdir -p ${floxControllerCrdResourceDir}
-          install -m 644 ${floxControllerCrds}/*.yaml ${floxControllerCrdResourceDir}/
+          mkdir -p "$dest"
+          install -m 644 ${floxControllerCrds}/*.yaml "$dest/"
         '';
 
         # Same as stageFloxControllerCrds, for the ClusterAdoption CRD — the two share the
         # crds/ resource dir, so the DaemonSet + management units emit both into the cluster's
         # crds layer. Empty when the adoption flake has no output for this system.
         stageSeedInclusterCrds = nixpkgs.lib.optionalString (seedInclusterCrds != null) ''
-          mkdir -p ${floxControllerCrdResourceDir}
-          install -m 644 ${seedInclusterCrds}/*.yaml ${floxControllerCrdResourceDir}/
+          mkdir -p "$dest"
+          install -m 644 ${seedInclusterCrds}/*.yaml "$dest/"
         '';
 
         # One reactor build, factored: the shared Maven-in-nix closure (repo src, the
@@ -459,13 +463,18 @@
           buildPhase = ''
             STAGING_EXTENSION_REPO=${stagingExtensionRepoFor pkgs}
             ${mavenHostPrelude}
+            # CRDs stage into target/generated-resources/crds (crdStagingDir), which `clean` wipes —
+            # so clean FIRST, then install the store CRDs, then package. `-Dflox.crd-staging.skip`
+            # tells manifests-core's exec plugin to SKIP its own `nix run .#stage-*-crd` (a nested
+            # nix run has no daemon/network in this sandbox); a plain `./mvnw` build omits the flag,
+            # so that exec staging runs post-clean there.
+            mvnHost -Dshfmt.version=${pkgs.shfmt.version} -DskipTests ${mvnArgs} clean
+            # The store build runs the DEFAULT profile, so the module build dir is plain target/ —
+            # crdStagingDir. (A -Pnxmatic/-Pclaude build would use target~*, but this sandbox does not.)
+            dest=${crdStagingDir}
             ${stageFloxControllerCrds}
             ${stageSeedInclusterCrds}
-            # The CRDs are already staged above; tell the staging-extension's lifecycle participants
-            # to SKIP their `nix run .#stage-*-crd` (a nested nix run has no daemon/network in this
-            # sandbox). A plain `./mvnw` build has no marker, so the participants stage there.
-            export RKE2LAB_CRD_STAGED=1
-            mvnHost -Dshfmt.version=${pkgs.shfmt.version} -DskipTests ${mvnArgs} clean package
+            mvnHost -Dshfmt.version=${pkgs.shfmt.version} -DskipTests -Dflox.crd-staging.skip=true ${mvnArgs} package
           '';
 
           installPhase = ''
@@ -565,8 +574,13 @@
         # classpath (crds/ resource) by seedMasterJar for release and by
         # `nix run .#stage-flox-controller-crd` for the dev loop.
         floxControllerCrds = (flox-controller.packages.${system} or { }).flox-controller-crds or null;
-        floxControllerCrdResourceDir =
-          "osgi/domains/manifests/manifests-core/src/main/resources/crds";
+        # Staged into the module's target/ (generated), NOT src/: `mvn clean` wipes it, so a
+        # renamed/removed CRD never lingers as a stale checked-out source file (and no .gitignore
+        # marker is buried in src to advertise a "resource" dir that is really generated output).
+        # build-helper add-resource (manifests-core pom) puts it on the classpath at /crds/. Holds
+        # BOTH CRD sets (flox-controller + seed-incluster).
+        crdStagingDir =
+          "osgi/domains/manifests/manifests-core/target/generated-resources/crds";
 
         # seed-incluster re-exported the same way as flox-controller: the
         # controller binary + the ClusterAdoption CRD store path. The OCI image is NO
@@ -1015,8 +1029,12 @@ USAGE
           type = "app";
           program = toString (pkgs.writeShellScript "stage-flox-controller-crd" ''
             set -euo pipefail
+            # $1 = the Maven build dir to stage into (the exec-plugin passes the profile-specific
+            # ${"$"}{project.build.directory}/generated-resources/crds); defaults to crdStagingDir
+            # for a bare `nix run` in the dev loop.
+            dest="''${1:-${crdStagingDir}}"
             ${stageFloxControllerCrds}
-            echo "staged flox-controller CRD into ${floxControllerCrdResourceDir}/ from ${floxControllerCrds}"
+            echo "staged flox-controller CRD into $dest/ from ${floxControllerCrds}"
           '');
           meta.description = "Stage the flox-controller CRD (from the flake) onto the manifest-synthesis classpath";
         };
@@ -1029,8 +1047,11 @@ USAGE
           type = "app";
           program = toString (pkgs.writeShellScript "stage-seed-incluster-crd" ''
             set -euo pipefail
+            # $1 = the Maven build dir to stage into (see stage-flox-controller-crd); defaults to
+            # crdStagingDir for a bare `nix run` in the dev loop.
+            dest="''${1:-${crdStagingDir}}"
             ${stageSeedInclusterCrds}
-            echo "staged ClusterAdoption CRD into ${floxControllerCrdResourceDir}/ from ${seedInclusterCrds}"
+            echo "staged ClusterAdoption CRD into $dest/ from ${seedInclusterCrds}"
           '');
           meta.description = "Stage the ClusterAdoption CRD (from the flake) onto the manifest-synthesis classpath";
         };
