@@ -123,7 +123,16 @@ public final class RuntimeRke2ConfigManifestsUnit extends AbstractManifestsUnit 
         "node-inetaddr.yaml",
         "Node IP fragment",
         "|ConfigMap|default|rke2-node-inetaddr",
-        Map.of("node-ip", net.nodeHostInetAddr()));
+        // Dual-stack node-ip (v4,v6): cluster-cidr + service-cidr are dual-stack, and rke2 rejects
+        // a
+        // node-ip that does not share their IP version(s) ("must share the same IP version"). The
+        // v6
+        // is the node's vmnet ULA (embedded-v4, fd96:…:{cc}20::<ipv4>) delivered by the vmnet
+        // bridge's
+        // stateful DHCPv6 reservation (GrowNetworkResolver) — a real address the node holds, so
+        // kube-
+        // let can bind it.
+        Map.of("node-ip", net.nodeHostInetAddr() + "," + net.nodeHostInet6Addr()));
     // Node labels are NOT delivered here: kubelet applies --node-labels only at the node's first
     // registration, so a fragment glob'd from the cluster post-join is ignored. They are written
     // at boot before rke2-server by the nixos oneshot rke2lab-node-labels (nixos/rke2.nix).

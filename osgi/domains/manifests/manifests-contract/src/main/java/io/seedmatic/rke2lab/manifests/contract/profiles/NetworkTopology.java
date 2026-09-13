@@ -19,6 +19,7 @@ public record NetworkTopology(
     String clusterPodCidr,
     String clusterServiceCidr,
     String nodeHostInetAddr,
+    String nodeHostInet6Addr,
     String nodeNetworkCidr,
     String nodeNetworkGatewayAddr,
     String clusterLoadBalancerCidr,
@@ -41,6 +42,7 @@ public record NetworkTopology(
     clusterPodCidr = nullToBlank(clusterPodCidr);
     clusterServiceCidr = nullToBlank(clusterServiceCidr);
     nodeHostInetAddr = nullToBlank(nodeHostInetAddr);
+    nodeHostInet6Addr = nullToBlank(nodeHostInet6Addr);
     nodeNetworkCidr = nullToBlank(nodeNetworkCidr);
     nodeNetworkGatewayAddr = nullToBlank(nodeNetworkGatewayAddr);
     clusterLoadBalancerCidr = nullToBlank(clusterLoadBalancerCidr);
@@ -79,6 +81,7 @@ public record NetworkTopology(
     private String clusterPodCidr = "";
     private String clusterServiceCidr = "";
     private String nodeHostInetAddr = "";
+    private String nodeHostInet6Addr = "";
     private String nodeNetworkCidr = "";
     private String nodeNetworkGatewayAddr = "";
     private String clusterLoadBalancerCidr = "";
@@ -113,6 +116,11 @@ public record NetworkTopology(
 
     public Builder nodeHostInetAddr(final String v) {
       this.nodeHostInetAddr = v;
+      return this;
+    }
+
+    public Builder nodeHostInet6Addr(final String v) {
+      this.nodeHostInet6Addr = v;
       return this;
     }
 
@@ -192,6 +200,7 @@ public record NetworkTopology(
           clusterPodCidr,
           clusterServiceCidr,
           nodeHostInetAddr,
+          nodeHostInet6Addr,
           nodeNetworkCidr,
           nodeNetworkGatewayAddr,
           clusterLoadBalancerCidr,
