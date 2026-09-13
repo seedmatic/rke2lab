@@ -21,58 +21,40 @@ import org.cdk8s.JsonPatch;
 import software.constructs.Construct;
 
 /**
- * Renders the Cluster API CR set that greenfield-creates each WORKLOAD cluster, onto the MANAGEMENT
- * cluster's own branch ({@code manifests/<host>-mgmt}) — model B: the CRs live where CAPI runs, so
- * the management cluster's Flux applies them and CAPI/CAPN/CAPRKE2 reconcile a DIFFERENT cluster
- * ({@code <host>-wrkld}). There is no imperative {@code kubectl apply} and no {@code -wrkld}-branch
- * CRs (that branch carries only the workload's own app stack).
+ * Renders the {@code ClusterProvision} INTENT (recipe) for each WORKLOAD cluster onto the MANAGEMENT
+ * cluster's own branch ({@code manifests/<host>-mgmt}) — model B: the CR lives where CAPI runs, so
+ * the management cluster's Flux applies it and the in-cluster {@code seed-incluster} controller
+ * reconciles it adopt-first into a DIFFERENT cluster ({@code <host>-wrkld}). There is no imperative
+ * {@code kubectl apply} and no {@code -wrkld}-branch CRs (that branch carries only the workload's
+ * own app stack).
+ *
+ * <p>This unit no longer renders the raw CAPI CR-set (Cluster/LXCCluster/RKE2ControlPlane/
+ * MachineDeployment). That set is materialised IN-CLUSTER by {@code seed-incluster} from the
+ * {@code ClusterProvision} — the piece GitOps cannot pre-set (the owned Machines' ownerRef UID + the
+ * adopt-vs-provision decision are in-cluster facts). So this unit's job narrows to the DECLARATIVE
+ * recipe + the credentials the controller expands the CR-set from.
  *
  * <p>The render subject stays {@link ManifestSynthesisContext#bootstrapIdentity()} (the management
  * cluster); the workload clusters ride beside it as {@link
  * ManifestSynthesisContext#workloadTargets()} (the manifests-facet sub-facet). For each target this
  * unit derives that cluster's whole {@link ClusterNetworkBlueprint} from its {@link
- * WorkloadTarget#clusterName()} — pod/service CIDRs, the kube-vip VIP — and pins the machine image
- * to {@link ImageState#imageFingerprint()} and the RKE2 version to {@link
- * ImageState#rke2Version()}, both the node-base identity the incus scion forwarded (foundation 1b).
- * So the workload boots the SAME nix-built node-base the management cluster grew on.
- *
- * <p>The common CAPI objects (namespace, LXCCluster, LXCMachineTemplate, RKE2ControlPlane, the four
- * BYO-CA Secrets, the CAPN identity Secret) are built by the shared {@link ClusterApiCrRenderer}
- * this unit is handed at construction and delegates to — the SAME collaborator {@link
- * ClusterApiManagementManifestsUnit} uses. Only the workload-specific objects live here: the {@code
- * Cluster} (rendered {@code spec.paused: true}, a TRANSITIONAL FREEZE — see below) and the worker
- * {@code MachineDeployment} + its {@code RKE2ConfigTemplate}.
- *
- * <p>The Cluster is currently rendered {@code spec.paused: true} — a TRANSITIONAL FREEZE. CAPN
- * control-plane instances are CAPI-random-named and their linkage lives only in the management
- * etcd, so a management cold-start re-provisions a fresh set and orphans the running one (a growing
- * leak in the one {@code rke2lab} Incus project). Pausing stops CAPN reconciling the Cluster → no
- * re-provision → the leak is capped, until the workload grow is revisited on the ADOPTION model
- * (owned {@code Machine}/{@code LXCMachine} + {@code providerID} → the existing instances; see
- * {@code management-workload-topology.adoc} {@code [[mgmt-adoption]]}). {@code spec.paused} is the
- * DECLARATIVE input we author; CAPI propagates the {@code cluster.x-k8s.io/paused} annotation onto
- * owned resources (separation of roles). This reverses the earlier no-paused stance, whose two
- * Flux-incompatibility concerns are HANDLED here: (1) a paused Cluster never goes Ready → this cell
- * already renders {@code wait: false} (CAPI is long+async; see {@code
- * FluxServiceKustomizationPlanner}), so no {@code wait: true} wedge; (2) a paused Cluster can't be
- * deleted (the finalizer never clears → prune deadlocks the namespace {@code Terminating}), so we
- * must NOT prune it while paused — un-pause first when the adoption grow lands. Underlying trigger
- * is still presence in {@code workloadTargets}. The worker {@code MachineDeployment} carries {@code
- * replicas: 0} (workers are a later 2.C sub-phase — a pure replica bump). The control plane is
- * {@code master + peer1 + peer2} = 3 etcd members (peer3 is dropped for workloads; a workload is
- * NOT the full CANONICAL 4-server topology).
+ * WorkloadTarget#clusterName()} — pod/service CIDRs, the kube-vip VIP — pins the image to {@link
+ * ImageState#imageFingerprint()} and the RKE2 version to {@link ImageState#rke2Version()} (the
+ * node-base identity the incus scion forwarded), and lists the control-plane pets ({@code
+ * master + peer1 + peer2} = 3 etcd members; peer3 dropped for workloads — a workload is NOT the full
+ * CANONICAL 4-server topology). Workers are a follow-up (none listed yet).
  *
  * <p>No-op when there are no targets (a mgmt-only / standalone run) or when no {@link ImageState}
  * is bound (a secret-blind in-cluster render / a bare survey): without the image fingerprint the
- * CRs would pin a non-existent image, so — like {@link ImageStateConfigMapManifestsUnit} — the unit
- * renders nothing rather than a misleading placeholder.
+ * recipe would pin a non-existent image, so — like {@link ImageStateConfigMapManifestsUnit} — the
+ * unit renders nothing rather than a misleading placeholder.
  *
- * <p>The per-remote CAPN identity Secret {@code <host>-incus-identity} the {@code
- * LXCCluster.secretRef} names (foundation 5) and the four CAPRKE2 BYO-CA Secrets are rendered HERE
- * ON THE BRANCH, sops-encrypted, when their material is revealed (a secret-full render). They are
- * NOT on {@code NODE_BOOTSTRAP} — Flux does not need them to reconcile, so they ride the branch
- * like the rest. One {@code rke2lab} incus project (foundation 4 dropped — instance names are
- * globally unique via the blueprint), so the Secret carries {@code project: rke2lab}.
+ * <p>The per-remote CAPN identity Secret {@code <host>-incus-identity} (foundation 5) and the four
+ * CAPRKE2 BYO-CA Secrets are rendered HERE ON THE BRANCH via the shared {@link ClusterApiCrRenderer}
+ * (the SAME collaborator {@link ClusterApiManagementManifestsUnit} uses), sops-encrypted, when their
+ * material is revealed (a secret-full render). One {@code rke2lab} incus project (foundation 4
+ * dropped — instance names are globally unique via the blueprint), so the Secret carries {@code
+ * project: rke2lab}.
  */
 public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit {
 
@@ -144,63 +126,32 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
         image.rke2Version().startsWith("v") ? image.rke2Version() : "v" + image.rke2Version();
     final String kubeVipVersion =
         ManifestSynthesisContext.current().componentVersions().of(Component.KUBE_VIP);
+    // The workload's Incus remote — its host's engine (bioskop-nixos / nikopol-nixos). Intent
+    // value;
+    // the controller/CAPN authenticate from the identity Secret (which also carries `server`).
+    final String remoteEndpoint = "https://" + target.host() + "-nixos:8443";
 
     final ApiObject namespaceObject = renderer.namespace(scope, cluster, namespace, packageProfile);
-    final ApiObject lxcCluster =
-        renderer.lxcCluster(
-            scope,
-            cluster,
-            namespace,
-            vip,
-            APISERVER_PORT,
-            identitySecret,
-            packageProfile,
-            namespaceObject);
-    final ApiObject controlPlaneTemplate =
-        renderer.lxcMachineTemplate(
-            scope,
-            cluster,
-            namespace,
-            "control-plane",
-            image.imageFingerprint(),
-            packageProfile,
-            namespaceObject);
-    final ApiObject controlPlane =
-        renderer.rke2ControlPlane(
-            scope,
-            cluster,
-            namespace,
-            vip,
-            rke2Version,
-            WORKLOAD_CONTROL_PLANE_REPLICAS,
-            kubeVipVersion,
-            controlPlaneTemplate,
-            packageProfile,
-            namespaceObject);
-    createCluster(scope, cluster, namespace, vip, blueprint, controlPlane, lxcCluster);
+    createClusterProvision(
+        scope,
+        cluster,
+        namespace,
+        vip,
+        rke2Version,
+        kubeVipVersion,
+        identitySecret,
+        remoteEndpoint,
+        blueprint,
+        image,
+        namespaceObject);
 
-    // Worker set — authored dormant (MachineDeployment replicas 0); 2.C bumps it. Its own image +
-    // bootstrap templates so the bump needs no new CRs.
-    final ApiObject workerTemplate =
-        renderer.lxcMachineTemplate(
-            scope,
-            cluster,
-            namespace,
-            "worker",
-            image.imageFingerprint(),
-            packageProfile,
-            namespaceObject);
-    final ApiObject configTemplate =
-        createRke2ConfigTemplate(scope, cluster, namespace, namespaceObject);
-    createWorkerMachineDeployment(
-        scope, cluster, namespace, rke2Version, configTemplate, workerTemplate, namespaceObject);
-
-    // The CREDENTIALS this cluster needs, rendered ON THE BRANCH sops-encrypted, only when their
-    // material is revealed (a secret-full render): the per-remote CAPN identity and the four
-    // CAPRKE2
-    // BYO-CA Secrets (so CAPRKE2 delivers OUR mammoth-skate CA to the workload node instead of
-    // self-generating). A secret-blind render must not run steady-state, else it pushes them empty
-    // and Flux prunes the populated ones.
+    // The CREDENTIALS seed-incluster expands the CR-set with, rendered ON THE BRANCH
+    // sops-encrypted,
+    // only when their material is revealed (a secret-full render): the per-remote CAPN identity and
+    // the four CAPRKE2 BYO-CA Secrets (so CAPRKE2 delivers OUR mammoth-skate CA to the workload
+    // node
+    // instead of self-generating). A secret-blind render must not run steady-state, else it pushes
+    // them empty and Flux prunes the populated ones.
     final Optional<IncusIdentityMaterial> identity =
         ManifestSynthesisContext.current().incusIdentity();
     final Optional<WorkloadClusterCasMaterial.Entry> workloadCa =
@@ -230,186 +181,75 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
                 namespaceObject));
   }
 
-  private ApiObject createCluster(
+  // The ClusterProvision INTENT (recipe) for a workload — the Flux-owned CR that seed-incluster
+  // reconciles adopt-first into the CAPI CR-set (Cluster/LXCCluster/RKE2ControlPlane + the owned
+  // Machines). Every value derives from the blueprint SSOT (VIP, CIDRs) + the node-base ImageState;
+  // the controller templates, it never computes addressing. Control-plane pets are
+  // master+peer1+peer2 (WORKLOAD_CONTROL_PLANE_REPLICAS; peer3 dropped — a workload is NOT the full
+  // CANONICAL 4-server topology). Workers are a follow-up (none listed yet).
+  private void createClusterProvision(
       final Construct scope,
       final String cluster,
       final String namespace,
       final String vip,
+      final String rke2Version,
+      final String kubeVipVersion,
+      final String identitySecret,
+      final String remoteEndpoint,
       final ClusterNetworkBlueprint blueprint,
-      final ApiObject controlPlane,
-      final ApiObject lxcCluster) {
-    final ApiObject clusterObject =
+      final ImageState image,
+      final ApiObject namespaceObject) {
+    final List<Object> nodes =
+        ClusterNetworkBlueprint.CANONICAL_NODE_NAMES.stream()
+            .limit(WORKLOAD_CONTROL_PLANE_REPLICAS)
+            .map(node -> (Object) Map.of("name", cluster + "-" + node, "role", "control-plane"))
+            .toList();
+    final ApiObject provision =
         new ApiObject(
             scope,
-            "cluster-" + cluster,
+            "clusterprovision-" + cluster,
             ApiObjectProps.builder()
-                .apiVersion("cluster.x-k8s.io/v1beta2")
-                .kind("Cluster")
+                .apiVersion("cluster.seedmatic.io/v1alpha1")
+                .kind("ClusterProvision")
                 .metadata(
                     ApiObjectMetadata.builder()
                         .name(cluster)
                         .namespace(namespace)
                         .annotations(
                             packageProfile.packageAnnotations(
-                                "cluster.x-k8s.io|Cluster|" + namespace + "|" + cluster))
+                                "cluster.seedmatic.io|ClusterProvision|"
+                                    + namespace
+                                    + "|"
+                                    + cluster))
                         .build())
                 .build());
-    clusterObject.addDependency(controlPlane);
-    clusterObject.addDependency(lxcCluster);
-    clusterObject.addJsonPatch(
-        JsonPatch.add(
-            "/spec",
-            Map.of(
-                // FREEZE (transitional): paused stops CAPN reconciling this Cluster, so a
-                // management
-                // cold-start no longer re-provisions a fresh (random-named) control-plane set and
-                // orphans the running one — capping the leak until the workload grow is revisited
-                // on
-                // the ADOPTION model (owned Machine/LXCMachine + providerID → existing instances;
-                // see
-                // management-workload-topology.adoc [[mgmt-adoption]]). spec.paused is the
-                // DECLARATIVE
-                // input we author; CAPI propagates the cluster.x-k8s.io/paused annotation onto
-                // owned
-                // resources (separation of roles). Safe here: the Cluster cell renders wait:false
-                // (FluxServiceKustomizationPlanner), so a never-Ready paused Cluster does not wedge
-                // its Flux Kustomization; and we must NOT prune it while paused (the finalizer
-                // would
-                // never clear → namespace Terminating) — unpause first when the adoption grow
-                // lands.
-                "paused",
-                true,
-                "clusterNetwork",
-                Map.of(
-                    "pods",
-                    Map.of("cidrBlocks", List.of(blueprint.podCidr())),
-                    "services",
-                    Map.of("cidrBlocks", List.of(blueprint.serviceCidr())),
-                    "serviceDomain",
-                    "cluster.local"),
-                "controlPlaneEndpoint",
-                Map.of("host", vip, "port", APISERVER_PORT),
-                "controlPlaneRef",
-                Map.of(
-                    "apiGroup",
-                    "controlplane.cluster.x-k8s.io",
-                    "kind",
-                    "RKE2ControlPlane",
-                    "name",
-                    cluster + "-control-plane"),
-                "infrastructureRef",
-                Map.of(
-                    "apiGroup",
-                    "infrastructure.cluster.x-k8s.io",
-                    "kind",
-                    "LXCCluster",
-                    "name",
-                    cluster))));
-    return clusterObject;
-  }
-
-  private ApiObject createWorkerMachineDeployment(
-      final Construct scope,
-      final String cluster,
-      final String namespace,
-      final String rke2Version,
-      final ApiObject configTemplate,
-      final ApiObject workerTemplate,
-      final ApiObject namespaceObject) {
-    final String name = cluster + "-md-0";
-    final ApiObject deployment =
-        new ApiObject(
-            scope,
-            "machinedeployment-" + name,
-            ApiObjectProps.builder()
-                .apiVersion("cluster.x-k8s.io/v1beta2")
-                .kind("MachineDeployment")
-                .metadata(
-                    ApiObjectMetadata.builder()
-                        .name(name)
-                        .namespace(namespace)
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "cluster.x-k8s.io|MachineDeployment|" + namespace + "|" + name))
-                        .build())
-                .build());
-    deployment.addDependency(configTemplate);
-    deployment.addDependency(workerTemplate);
-    deployment.addDependency(namespaceObject);
-    deployment.addJsonPatch(
+    provision.addDependency(namespaceObject);
+    provision.addJsonPatch(
         JsonPatch.add(
             "/spec",
             Map.of(
                 "clusterName",
                 cluster,
-                // Dormant: workers are a later 2.C sub-phase (a pure replica bump).
-                "replicas",
-                0,
-                "selector",
-                Map.of("matchLabels", Map.of("cluster.x-k8s.io/cluster-name", cluster)),
-                "template",
+                "namespace",
+                namespace,
+                "kind",
+                "workload",
+                "controlPlaneEndpoint",
+                Map.of("host", vip, "port", APISERVER_PORT),
+                "clusterNetwork",
                 Map.of(
-                    "spec",
-                    Map.of(
-                        "version",
-                        rke2Version,
-                        "clusterName",
-                        cluster,
-                        "bootstrap",
-                        Map.of(
-                            "configRef",
-                            Map.of(
-                                "apiGroup",
-                                "bootstrap.cluster.x-k8s.io",
-                                "kind",
-                                "RKE2ConfigTemplate",
-                                "name",
-                                cluster + "-agent")),
-                        "infrastructureRef",
-                        Map.of(
-                            "apiGroup",
-                            "infrastructure.cluster.x-k8s.io",
-                            "kind",
-                            "LXCMachineTemplate",
-                            "name",
-                            cluster + "-worker"))))));
-    return deployment;
-  }
-
-  private ApiObject createRke2ConfigTemplate(
-      final Construct scope,
-      final String cluster,
-      final String namespace,
-      final ApiObject namespaceObject) {
-    final String name = cluster + "-agent";
-    final ApiObject configTemplate =
-        new ApiObject(
-            scope,
-            "rke2configtemplate-" + name,
-            ApiObjectProps.builder()
-                .apiVersion("bootstrap.cluster.x-k8s.io/v1beta2")
-                .kind("RKE2ConfigTemplate")
-                .metadata(
-                    ApiObjectMetadata.builder()
-                        .name(name)
-                        .namespace(namespace)
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "bootstrap.cluster.x-k8s.io|RKE2ConfigTemplate|"
-                                    + namespace
-                                    + "|"
-                                    + name))
-                        .build())
-                .build());
-    configTemplate.addDependency(namespaceObject);
-    // airGapped like the control plane: the worker node-base bakes rke2 too, so CAPRKE2's install
-    // no-ops onto the baked binary (inert /opt/install.sh). Workers are replicas:0 today; the
-    // role=server-vs-agent split of the homogeneous image (rke2.nix bakes role=server) is the
-    // remaining reconciliation before workers are enabled (phase 2.C).
-    configTemplate.addJsonPatch(
-        JsonPatch.add(
-            "/spec",
-            Map.of("template", Map.of("spec", Map.of("agentConfig", Map.of("airGapped", true))))));
-    return configTemplate;
+                    "podCIDRs", List.of(blueprint.podCidr()),
+                    "serviceCIDRs", List.of(blueprint.serviceCidr()),
+                    "serviceDomain", "cluster.local"),
+                "image",
+                Map.of("fingerprint", image.imageFingerprint()),
+                "rke2Version",
+                rke2Version,
+                "kubeVIPVersion",
+                kubeVipVersion,
+                "remote",
+                Map.of("endpoint", remoteEndpoint, "identitySecretName", identitySecret),
+                "nodes",
+                nodes)));
   }
 }
