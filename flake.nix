@@ -12,6 +12,28 @@
   # unless `accept-flake-config = true` is set.
   nixConfig.pure-eval = false;
 
+  # The binary caches this flake's builds — chiefly the NixOS node-base image
+  # (nixosConfigurations.rke2-node-base) — resolve their closure from, beyond the cache.nixos.org
+  # default. Declared here so ANY consumer (CI, a fresh machine, an external clone) substitutes
+  # instead of rebuilding, WITHOUT relying on the fleet's system-wide cache-trust config (ndh). These
+  # are ADDITIVE (extra-*), so a consumer's own substituters are augmented, never replaced.
+  # `--accept-flake-config` (osgi/.../incus/edge/build-node-base-image.sh) honours them; both are
+  # public-read caches already under the builder's trusted-substituters, so no prompt.
+  #   - cache.flox.dev     : flox pins a CUSTOM nix (2.31.5 from the NixOS/nix GitHub tag — a security
+  #                          bump over nixpkgs' 2.31.3, flox/flox pkgs/nix), absent from cache.nixos.org.
+  #                          Without it the aarch64-linux builder rebuilds nix from source and runs its
+  #                          flaky functional test suite (build-remote-trustless, shell) → build breaks.
+  #   - nxmatic.cachix.org : our own published artifacts (the flox-runtime NRI plugin, flox-controller,
+  #                          the carriers) the node-base bakes, built against flake-commons' nixpkgs fork.
+  nixConfig.extra-substituters = [
+    "https://cache.flox.dev"
+    "https://nxmatic.cachix.org"
+  ];
+  nixConfig.extra-trusted-public-keys = [
+    "flox-cache-public-1:7F4OyH7ZCnFhcze3fJdfyXYLQw/aV7GEed86nQ7IsOs="
+    "nxmatic.cachix.org-1:huMghYiwDpPa1PMXHXK4G1Dp4QOZjgsNqxcjf/AjuJ0="
+  ];
+
   inputs = {
     # INVARIANT: nix-darwin-home must NEVER be an input of this flake.
     # The two repos relate in opposite scopes: nix-darwin-home depends on rke2lab
