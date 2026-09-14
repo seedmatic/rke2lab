@@ -42,7 +42,7 @@
                 yq eval -o=yaml                   '(.data // {}) | with_entries(.value |= from_yaml)'                   "$manifest" > "$dest/$name"
                 count=$((count + 1))
               done < <(find "${self}" -type f \( -name '*.yaml' -o -name '*.yml' \) -print0)
-              echo "[install-rke2-config] installed $count RKE2_CONFIG fragment(s) for"                    "cluster $cluster into $dest"
+              echo "[install-rke2-config] installed $count fragment(s) for cluster $cluster into $dest"
             '';
           };
           app = { type = "app"; program = "${installer}/bin/install-rke2-config"; };
