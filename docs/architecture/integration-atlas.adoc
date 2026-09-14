@@ -320,6 +320,11 @@ monotone before/after figures.
   preview`/`up`: the output gate, the preview `ExecutionCondition` (`RunMode` re-posed off the erased
   `LiveGate`), the null-safety governance note, and the graved avant/après of the BDD-as-engine turn
   (Diagram Q). Folds in link:bdd/bdd.adoc[the pipeline (OSGi-owned)].
+* link:atlas/cluster-seeding.adoc[In-cluster seeding view (seed-incluster)] — the in-cluster twin of
+  the host seed: the 2×2 (`ClusterIntention`/`PoolIntention` + `ClusterAdoption`/`PoolAdoption`),
+  adopt-first, and the roster-persistence turn (Diagram W) — the cluster→git *reflector* +
+  `PoolReflection` giving an **unconditionally-deterministic** model by owning the missing git direction.
+  A key system element; see link:cluster-api/cluster-seeding-controller.adoc[the spec].
 * link:atlas/cellar-secrets.adoc[Cellar secrets & the clean/smudge filter] (⚠️ Design Only) — the
   secrets/filter subsystem: stack config + worktree secrets unified on the one amendment channel
   (coordinate = domain · role = kind · sensitivity = attribute); the git-modelled cellar clean/smudge

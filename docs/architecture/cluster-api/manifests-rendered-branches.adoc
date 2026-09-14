@@ -560,3 +560,4 @@ into, rather than co-developing both at once.
 * link:../bootstrap/stagea-stageb-handoff-contract.adoc[Stage A → Stage B Handoff] — the bootstrap boundary this reframes
 * link:../osgi/manifests-bdd-spec.adoc[Manifests BDD spec] — the `manifests` synthesis scion and its bot committer
 * link:github-credential-model.adoc[GitHub Credential Model] — the auth companion: every push/pull of these branches mints a scoped token from ONE `seedmatic`-org-owned GitHub App (no personal PAT); the `FluxRoot` `secretRef` carries the App-auth Secret (appID + installationID + the cluster's App key)
+* link:cluster-seeding-controller.adoc#reflector[Cluster Seeding Controller — the reflector] — the OTHER writer of the managing branch: the cluster→git *reflector* commits a reflector-owned `PoolReflection` (the observed roster) onto this branch, a file DISJOINT from the render's output (no 3-way merge; render owns everything else, the reflector owns only `PoolReflection`)

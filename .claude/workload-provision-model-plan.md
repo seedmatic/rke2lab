@@ -294,6 +294,95 @@ The 2×2 decomposition reworks the CRDs + reconcilers + moves the state machine 
   CAPRKE2, so a WRKLD render must not fail-loud demanding a reader mint.
 - [ ] **C7. Étape B** — the `vmnet-<role>` NIC on the pool's `LXCMachineTemplate`.
 
+## ACTED — the reflector (cluster→git) IS the workload model (canonical for self)
+
+> DECIDED 2026-09-14 (not reserve). The reflector gives a STRONGER determinism than canonical:
+> canonical is deterministic *conditionally* (assumes reality never drifts from the declared roster —
+> under any drift/scale, git reflects the INTENT, not reality); the reflector is deterministic
+> *unconditionally* (git is reconciled FROM reality → git == reality → cold-start reproduces the actual
+> cluster, even after scaling). Build ORDER: C4b greenfield first (the cluster must be born), then the
+> reflector loop on top. Honest scope note: at bioskop-wrkld's 3 FIXED pets the reflected roster ==
+> the canonical roster, so the write-back is functionally a no-op UNTIL we scale — but it is the model,
+> not an option.
+>
+> **GRAVED (2026-09-14, specs/atlas):** the full design is now in
+> `docs/architecture/cluster-api/cluster-seeding-controller.adoc` (§reflector — figures F1 round-trip,
+> F3 precedence, F4 boundary; §recreate F5; §greenfield-arm) + the new atlas L1 view
+> `docs/architecture/atlas/cluster-seeding.adoc` (Diagram W, avant→après), registered in
+> `integration-atlas.adoc`. Carrier finalized = **`PoolReflection`** CR (NOT ConfigMap). Term "reflector"
+> KEPT (qualified "cluster→git reflector" in the atlas to avoid the pipeline `ShapeReflector` clash).
+> Below the ConfigMap wording is superseded by `PoolReflection`.
+
+- **What we reflect = ONLY our intents** (`cluster.seedmatic.io` — `Cluster/PoolIntention`). The CAPI /
+  CAPRKE2 / CAPN graph is NOT ours — never committed, always runtime-derived from the intent roster.
+- **Git write-surface (minimal, name-based):** the controller commits ONLY (a) **a `PoolReflection` CR**
+  (per pool, `cluster.seedmatic.io` — a DEDICATED typed CR, **NOT a ConfigMap** [decision 2026-09-14]:
+  the ConfigMap was the untyped odd-one-out amid the typed CR family) — the observed-state annex of a
+  `PoolIntention`, whose spec is the observed roster (`{name, pool}` per pet); and (b) **owner
+  annotations** — the etcd `ownerReferences` translated to a UID-free, cold-start-durable form.
+  `PoolReflection` completes a role TRIAD: `PoolIntention` (desired, Flux/git) · `PoolAdoption`
+  (observed EPHEMERAL, etcd) · `PoolReflection` (observed DURABLE, reflector/git).
+- **etcd↔git ownerRef translation (the controller is the bidirectional translator):**
+  - etcd = native `ownerReferences` (UID, k8s GC works in-cluster);
+  - git = annotation mirroring OwnerReference MINUS the UID:
+    `cluster.seedmatic.io/owner-ref: {"apiVersion","kind","name","namespace"}`
+    (namespace same-ns-implied by k8s ownerRef rule; explicit is fine / future cross-ns).
+  - **export (cluster→git):** read the object (with its UID ownerRef) → strip the UID → write the
+    name-based annotation → commit.
+  - **reconcile (git→cluster), the inverse — a self-healing invariant EVERY loop:** the object comes
+    back from Flux with the annotation, NO ownerRef (the old UID is dead); the controller reads the
+    annotation, finds the owner by `{kind,name,namespace}`, and RE-STAMPS the native `ownerRef` (new
+    UID) once the owner exists. ⇒ the **annotation is the source of truth of the relation; the ownerRef
+    is a derived etcd projection** the controller re-maintains each reconcile. Exactly Velero's
+    ownerRef-remap-on-restore pattern.
+- **Precedence encoded by PRESENCE:** no annex ConfigMap (pre-adoption / day-0 greenfield) → seed from
+  the Intention's canonical roster; annex present (post-adoption) → the controller PREFERS its observed
+  roster. The object's existence IS the "observed is now authoritative" switch → the day-0→steady-state
+  handoff is not a special rule, it's the presence of the annex. **The controller reads the roster as
+  `annex-if-present ELSE Intention.spec.nodes` — build C4b through this lens so the reflector slots in
+  without rework.**
+- **No git merge — disjoint files:** the Intention file = seed-master-owned; the state-ConfigMap file =
+  reflector-owned. Two committers, disjoint paths → git NEVER 3-way-merges. Both `fetch→apply→commit→
+  push` with retry-on-conflict, NEVER force-push (the `image-automation-controller` loop — the blessed
+  Flux precedent for cluster→git; git write token via the existing `github-token` App machinery). The
+  precedence decision lives in the CONTROLLER (annex presence), not in git's merge semantics — which is
+  where it belongs (reconciling desired-vs-observed = a reconciler's job).
+- **Boundary — mgmt (self) is the PRINCIPLED exception, canonical ALWAYS:** maps onto the existing
+  `STANDALONE` vs `IN_CLUSTER` Enclosure. mgmt = STANDALONE/self = the cluster the controller RUNS ON →
+  it CANNOT reflect its own state during its own cold-start (at mgmt bootstrap the controller does not
+  exist yet — chicken-and-egg). So mgmt's roster is canonical NOT because it is single-node, but because
+  it is self (holds even if mgmt grew to 3 fixed nodes). Workloads = IN_CLUSTER/managed → their CRs live
+  in the mgmt's etcd (survives a workload-only cold-start), the controller observes them → reflector-
+  eligible. Symmetry: **STANDALONE = canonical (self can't reflect itself); IN_CLUSTER = reflector.**
+
+### Design-close addenda (2026-09-14 session)
+
+- **Recreate gestures + who resurrects (all end in greenfield, Intention present):**
+  `delete clusters.cluster.x-k8s.io` → CAPI ordered teardown of the whole graph + CAPN destroys
+  instances → OUR `ClusterAdoption` re-`ensure`s the Cluster from the still-present Intention →
+  probe dead → greenfield → reborn. Self-serializes (a terminating Cluster with deletionTimestamp is
+  seen by `ensure` and NOT recreated until fully finalized). Our `Adoption`/`Intention` CRs SURVIVE a
+  Cluster delete (they OWN the Cluster, not vice-versa) — that is WHY it reborns. Wire it: add
+  `Owns(&Cluster{})` (+ `Owns(&LXCCluster{})`) to `ClusterAdoptionReconciler.SetupWithManager` so a
+  Cluster delete triggers a prompt re-ensure (today only the PoolAdoption watch does it indirectly).
+  To DRIVE the annex mirror, `PoolAdoptionReconciler` should `Owns(&Machine{})` / watch `LXCMachine`
+  so a presence change re-reflects. **The annex is a pure DERIVED cache with ZERO command semantics** —
+  deleting it does nothing durable (next reflect re-writes it from observed reality; VMs untouched).
+  The gestures that MEAN something: Intention presence (via `workloadTargets`) = manage-or-not;
+  physical instance liveness (probe) = adopt-or-greenfield. Teardown CAUSES the annex to empty (reflector
+  observes 0), never the reverse.
+- **Annex-semantics FORK — decision deferred to when scaling opens (moot at 3 fixed pets, annex==Intention):**
+  does the annex mirror raw LIVENESS or DESIRED MEMBERSHIP?
+  - **reset-baseline** (mirror liveness): empties on any observed teardown → a delete-to-recreate of a
+    SCALED cluster downsizes it back to the Intention seed (recreate = clean slate). Simple.
+  - **restore-scaled** (mirror desired membership): prune ONLY on deliberate roster removal (Intention
+    scale-down), NOT on transient teardown → a delete-to-recreate keeps the scaled set. This is what
+    actually makes the reflector do its job (preserve scaling). LEAN = restore-scaled.
+  NB an emergent asymmetry under reset-baseline: controller UP during teardown (delete-to-recreate) →
+  empties → reset; controller DOWN (full-lab cold-start) → the git annex is untouched → restores scaled.
+  Behavior depends on whether the controller witnessed the teardown — a reason to prefer restore-scaled
+  (deterministic regardless of controller uptime).
+
 Sequence: C1 (CRDs) → C2 (reconcilers) → C3 (render) → C6 (quick) → C5 (config-model) → C4 (execution)
 → C7 (NIC). Live deploy/re-grow = USER's. **DONE: C1, C2, C2-bis, C3, C6, C5. NEXT: C4, C7.**
 

@@ -223,6 +223,44 @@ The SAME funnel runs at TWO grains (the 2×2 resource model): each `PoolIntentio
 FloxEnvs Ready" shape). Existence (the anti-greenfield guard) and reachability live on
 `ClusterAdoption` (cluster-level); pet presence lives on `PoolAdoption` (per pool).
 
+[[greenfield-arm]]
+=== Greenfield — the provision-shape arm (the day-0 action)
+
+The funnel ADOPTS by default; the one branch that PROVISIONS is the greenfield arm,
+reached ONLY when the cluster-level existence verdict is FALSE (zero live pet anywhere —
+the operator-armed day-0). It is a **cluster-grain, one-time arm**, not a per-pet reactive
+flip:
+
+* **The probe is adopt-shape, observe-only.** Existence is established by declaring the
+  roster's `LXCMachine`s in ADOPT shape (`providerID = lxc:///<pet>` set) and reading
+  CAPN's `InstanceProvisioned` — adopt-shape NEVER launches, so probing is safe. All
+  `InstanceDeleted` ⇒ existence = false.
+* **Flip to provision-shape (the arm).** `providerID` is immutable, so an absent pet's
+  `LXCMachine` is **re-created** provision-shape: `providerID` EMPTY (CAPN then LAUNCHES)
+  + the `Machine`'s `bootstrap.configRef` → an `RKE2Config` (instead of the adopt sentinel
+  `dataSecretName`).
+* **`RKE2Config` = a COPY of the live `RKE2ControlPlane` spec** (`agentConfig` + `files` +
+  `preRKE2Commands`): CAPRKE2 ROLLS a Machine whose bootstrap spec does not deep-equal the
+  RCP's, so the provision config MUST mirror it.
+* **RCP paused until the CR-set is stable, then unpaused.** The RCP carries the paused
+  annotation from birth (inert); it is unpaused only once every named pet is materialized
+  in the chosen shape — else CAPRKE2 would scale a random-named rival while an owned
+  Machine is being re-created. On unpause CAPRKE2 inits the first `control-node`, joins the
+  rest (init/join automatic; token + server-URL free).
+
+[NOTE]
+====
+Outcome 2 (`absent & exists` → PROVISION as JOIN, in <<existence>>) is currently a
+**HOLD** — the implementation defers the JOIN recovery. With ≥1 live pet the cluster
+EXISTS, so it is adopted and NEVER greenfielded; a missing pet is surfaced
+(`Degraded` / `Adopting`), not auto-provisioned. Only outcome 3 (zero live) arms greenfield.
+Re-adding a single missing pet to a live cluster (the JOIN path) is a future refinement.
+====
+
+The greenfield verdict is CLUSTER-grain: a pool gates its arm on
+`ClusterAdoption.status.existence`, never pool-local presence — a pool must not provision
+its pets if ANY other pool has a live pet (moot at one pool, structural for federation).
+
 === Watch model — thin controller, derived from CAPI/CAPN
 
 The controller `Owns` the CAPI CRs it creates (`Cluster`, `RKE2ControlPlane`,
@@ -795,6 +833,254 @@ flowchart LR
 * `kubectl get clusters -A` → the familiar CAPI view — free, because we mirror
   into CAPI.
 
+[[reflector]]
+== The reflector — cluster→git (roster persistence, unconditional determinism)
+
+Adopt-first re-derives the CAPI CR-set from the *intention* every reconcile, so a
+cluster is deterministic — but only **conditionally**: it assumes the running
+reality never drifts from the declared roster. The instant a cluster's node set
+diverges from `ClusterIntention.spec` (dynamic scaling → CAPI-minted names, a node
+replaced), the branch reflects the *intent*, not *reality*; a cold-start then
+reproduces what the render *believes*, not what *was*.
+
+The **reflector** closes that gap by running the OTHER direction, **cluster→git**:
+the controller observes the live cluster and commits the observed roster back onto
+the managing branch, so the branch is reconciled FROM reality. `git == reality`,
+and a cold-start reproduces the actual cluster even after scaling — **unconditional**
+determinism.
+
+[IMPORTANT]
+====
+Determinism has two grades, and the reflector is not "more deterministic" magic —
+it changes *which* is guaranteed:
+
+* **conditional** (canonical roster) — a pure `f(clusterName)`; deterministic, but
+  git may `≠` reality under any drift/scale.
+* **unconditional** (reflector) — git is reconciled from reality → it *is* reality →
+  a cold-start restores the actual set.
+
+So the reflector is the tool for the NON-deterministic case (dynamic scaling). With
+named pets and no scaling you already have determinism; the reflector is what you
+reach for once you open scaling.
+====
+
+[[reflector-boundary]]
+=== A WORKLOAD capability — the root is the structural exception
+
+The reflector maps exactly onto the <<naming,`STANDALONE` vs `IN_CLUSTER`>> axis,
+and the boundary is not a preference — it is structural:
+
+[cols="1,1,2",options="header"]
+|===
+| enclosure | roster source | why
+
+| **`STANDALONE` (root / self)** | **canonical, ALWAYS** | The root is the cluster
+seed-incluster RUNS ON. It **cannot reflect its own state during its own
+cold-start** — at the root's bootstrap the controller does not exist yet
+(chicken-and-egg). Canonical NOT because it is single-node, but because it is
+*self* — it holds even if the root grew to N fixed control nodes.
+| **`IN_CLUSTER` (managed workloads)** | **reflected** (`PoolReflection`) `ELSE` canonical seed |
+A workload's CRs live in the MANAGING plane's etcd (survives a workload-only
+cold-start); the plane's controller observes the workload → can reflect it. This
+is where dynamic scaling would pay.
+|===
+
+[mermaid,cluster-seeding-determinism-boundary,svg]
+----
+graph TB
+  subgraph STANDALONE["STANDALONE — the ROOT (self)"]
+    r["bioskop-mgmt<br/>seed-incluster runs HERE"]:::plane
+    rc["roster = CANONICAL (Intention seed)<br/>self can't reflect its own cold-start"]:::src
+  end
+  subgraph INCLUSTER["IN_CLUSTER — managed workloads"]
+    w[("bioskop-wrkld · nikopol-wrkld<br/>CRs live in the MANAGING plane's etcd")]:::store
+    wr["roster = REFLECTED (PoolReflection) ELSE seed<br/>the plane observes → reflects"]:::code
+  end
+  r --> rc
+  w --> wr
+  classDef plane fill:#ffe6cc,stroke:#d79b00,stroke-width:1.5px
+  classDef src fill:#e1d5e7,stroke:#9673a6
+  classDef store fill:#d5e8d4,stroke:#82b366
+  classDef code fill:#dae8fc,stroke:#6c8ebf
+----
+
+=== What is reflected — ONLY our intents
+
+The reflector's git write-surface is **minimal and bounded to our own objects**:
+
+* **`PoolReflection`** — a DEDICATED CR (`cluster.seedmatic.io`, per pool), the
+  reflector-owned observed-state of a `PoolIntention`. Its spec is the observed roster
+  (`{name, pool}` per pet = the membership relation, typed). It completes a role triad
+  with the 2×2: `PoolIntention` (desired, Flux/git) · `PoolAdoption` (observed EPHEMERAL,
+  controller/etcd — phase/presence) · **`PoolReflection`** (observed DURABLE,
+  reflector/git — the persisted roster). It is the git-durable sibling of the ephemeral
+  `PoolAdoption`. A typed CR — NOT a `ConfigMap` — so it validates, carries columns,
+  and reads clearly amid the typed CR family (a `ConfigMap` would be the untyped odd one
+  out). The cluster view aggregates its pools' `PoolReflection`s (no `ClusterReflection`,
+  as `ClusterAdoption` aggregates `PoolAdoption`).
+* **a name-based owner annotation** — the etcd `ownerReferences` rendered UID-free
+  (below).
+
+The CAPI / CAPRKE2 / CAPN graph (`Cluster`, `Machine`, `LXCMachine`, `RKE2ControlPlane`)
+is **NOT ours** — never committed, always re-derived from the roster. `PoolReflection` is
+a sibling of the render's own root `local-config`/facet `ConfigMap`, except the facet is
+render-owned (regenerated) while `PoolReflection` is **reflector-owned** (a disjoint file
+— see <<reflector-no-merge>>).
+
+[IMPORTANT]
+`PoolReflection` is a **pure derived cache with ZERO command semantics**. Deleting it does
+nothing durable — the next reflect re-writes it from observed reality, and the running
+instances are untouched (a CR cannot kill a VM). The two levers that MEAN something stay:
+**Intention presence** (via `workloadTargets`) = manage-or-not; **physical liveness** (the
+CAPN probe) = adopt-or-greenfield. Teardown CAUSES the reflection to empty (the reflector
+observes 0), never the reverse.
+
+[[reflector-translation]]
+=== etcd ↔ git — the controller is a bidirectional ownerRef translator
+
+An etcd `ownerReference` carries a **UID**, and every UID is regenerated at a
+cold-start — git cannot carry it. So the relation is stored two ways by medium, and
+the controller translates between them:
+
+* **etcd** — native `ownerReferences` (UID; k8s GC works in-cluster);
+* **git** — an annotation mirroring `OwnerReference` MINUS the UID:
++
+[source,yaml]
+----
+metadata:
+  annotations:
+    cluster.seedmatic.io/owner-ref: |
+      {"apiVersion":"cluster.seedmatic.io/v1alpha1","kind":"PoolIntention",
+       "name":"bioskop-wrkld-control-node","namespace":"rke2lab-bioskop-wrkld"}
+----
++
+(`namespace` is same-ns-implied by the k8s ownerRef rule; explicit is harmless and
+future-proofs cross-ns.)
+
+The annotation is the **source of truth of the relation**; the `ownerRef` is a
+**derived etcd projection** the controller re-maintains. The round-trip:
+
+[mermaid,cluster-seeding-reflector-roundtrip,svg]
+----
+sequenceDiagram
+  participant C as seed-incluster
+  participant E as etcd (in-cluster)
+  participant G as git (manifests/&lt;mgmt&gt;)
+  participant F as Flux
+  Note over C,G: EXPORT — cluster→git
+  C->>E: read observed Machines + ownerRef (UID)
+  C->>C: strip UID → build owner-ref annotation {kind,name,namespace}
+  C->>G: commit PoolReflection (roster) + annotation<br/>(App-token · retry-on-conflict · NEVER force-push)
+  Note over G,E: RECONCILE — git→cluster (the inverse)
+  G->>F: PoolReflection present on branch
+  F->>E: apply PoolReflection (annotation, NO ownerRef — old UID is dead)
+  C->>E: read annotation → resolve owner {kind,name,namespace}<br/>→ re-stamp ownerRef (NEW UID) once the owner exists
+  Note over C,E: re-stamp = a self-healing invariant EVERY reconcile
+----
+
+The re-stamp is not a special cold-start path: every reconcile, an object bearing the
+`owner-ref` annotation without a live `ownerRef` gets it re-stamped. Exactly the
+`OwnerReference`-remap-on-restore pattern Velero uses.
+
+[[reflector-precedence]]
+=== Precedence by presence — PoolReflection ELSE the canonical seed
+
+The controller reads the roster through a precedence that encodes the day-0 →
+steady-state handoff in a single object's *existence*:
+
+[mermaid,cluster-seeding-roster-precedence,svg]
+----
+flowchart TD
+  start(["reconcile — pick the roster"]) --> q{"PoolReflection present?"}
+  q -->|"yes · adopted before"| refl["roster = OBSERVED (PoolReflection.spec)"]:::code
+  q -->|"no · day-0 greenfield"| seed["roster = PoolIntention.spec.nodes<br/>(canonical seed)"]:::src
+  refl --> probe["CAPN probe (liveness)<br/>DECIDES adopt vs greenfield"]:::hot
+  seed --> probe
+  classDef code fill:#dae8fc,stroke:#6c8ebf
+  classDef src fill:#e1d5e7,stroke:#9673a6
+  classDef hot fill:#ffe6cc,stroke:#d79b00
+----
+
+Pre-adoption (no `PoolReflection`) the Intention's canonical roster seeds; post-adoption
+the reflection's observed roster is preferred. The reflection's *presence* IS the
+"observed is now authoritative" switch — no special rule. Crucially, `PoolReflection` only
+ever supplies the **names to probe**; the adopt-vs-greenfield DECISION stays the liveness
+probe (see <<existence>>). Never greenfield from reflection-absence: a lost reflection over
+live nodes must NOT greenfield a rival.
+
+[[reflector-no-merge]]
+=== No git merge — disjoint files, no force-push
+
+Two committers touch the managing branch: `seed-master`'s render (git→cluster source)
+and the reflector (cluster→git). They never 3-way-merge, because they own **disjoint
+files**: the render owns the Intention + everything else; the reflector owns ONLY the
+`PoolReflection` file. Both `fetch → apply → commit → push` with **retry-on-conflict** and
+**never force-push** — the `image-automation-controller` loop (the blessed Flux
+precedent for a controller committing to git; the git write token is the existing
+`github-token` App machinery). The precedence decision lives in the CONTROLLER
+(`PoolReflection` presence), not in git's merge semantics — a reconciler's job, not git's.
+
+.The commit worktree is a CACHE — ephemeral by default, a PVC only if it earns it
+[NOTE]
+====
+To `fetch → commit → push` the reflector needs a local checkout. That worktree is a
+pure **cache** (re-clonable by `git clone`); losing it just re-clones. And the write is
+rare (roster changes only) and tiny (one `PoolReflection`), needing no branch history
+(a shallow `fetch HEAD` suffices) and no secrets (a non-secret roster → no costly sops
+re-smudge). So the default is **ephemeral** — a shallow clone per reflect, or go-git
+in-memory (billy) — stateless, HA-friendly, no node-pinning (the `image-automation-controller`
+does exactly this: clone to a tmpdir per run).
+
+A **PVC** persists the worktree across pod restarts (skips the re-clone) but is an RWO
+volume → it **pins the pod to a node** and frets with HA (RWO + leader-election: only the
+leader can mount). A PVC for a re-clonable cache is over-provisioned; adopt it ONLY if
+clones prove expensive (large/many branches, or an intolerable cold-start re-clone
+latency), and size it as a cache (openebs-zfs RWO), accepting the node-pinning.
+====
+
+.The reflector needs NO sops — go-git filter-blindness is safe here (unlike the render)
+[NOTE]
+====
+The managing branch wires sops smudge/clean git filters (`.gitattributes`
+`filter=sops-*`) on its secret files. The reflector writes a **non-secret** roster, so it
+never smudges (reads no secret) nor cleans a sops file (modifies none). Committing **only
+the `PoolReflection` file** (a targeted stage, not `add -A`) keeps sops paths entirely out
+of its way — so **no `git-sops` FloxEnv import into the controller's flox env** (that is the
+RENDER's need — full secrets: the render's `git-sops` FloxEnv + `SOPS_AGE_KEY` injection,
+a different concern).
+
+go-git does **not** invoke external smudge/clean filters (a known limitation). For the
+reflector this is SAFE and even preferable: the object store always holds the *clean*
+(= sops-encrypted) form, and go-git doing neither smudge nor clean is an **identity**
+round-trip on those blobs (clone → working tree → staged → SAME blob) — no corruption, no
+plaintext leak. The ONLY hazard is a **mixed toolchain** (real-git checkout smudges →
+plaintext working tree → a go-git commit without clean would store plaintext). Avoid it by
+staying in go-git for both clone and commit AND staging only the `PoolReflection` — then
+sops blobs are never re-touched regardless. Verify the chosen go-git version's filter behaviour when
+implementing (see <<open-items>>).
+====
+
+[[reflector-semantics]]
+=== Reflection semantics — reset-baseline vs restore-scaled (deferred)
+
+Whether `PoolReflection` mirrors raw LIVENESS or DESIRED MEMBERSHIP is a fork deferred
+until scaling opens (moot at fixed named pets, where the reflection == the Intention
+roster):
+
+[cols="1,2",options="header"]
+|===
+| option | consequence
+
+| **reset-baseline** (mirror liveness) | empties on any observed teardown → a
+delete-to-recreate of a SCALED cluster downsizes it back to the seed (recreate = clean
+slate). Emergent, uptime-dependent asymmetry: controller UP during teardown → reset;
+controller DOWN (full-lab cold-start) → the git `PoolReflection` survives → restores scaled.
+| **restore-scaled** (mirror desired membership) *(lean)* | prune ONLY on deliberate
+roster removal (an Intention scale-down), NOT on transient teardown → a delete-to-recreate
+keeps the scaled set. This is what actually makes the reflector do its job (preserve
+scaling), and it is deterministic regardless of controller uptime.
+|===
+
 == Root-resource asymmetry (self vs managed — same CR shape)
 
 Both clusters render the **same intent** (`ClusterIntention` + a control-node
@@ -812,6 +1098,65 @@ remote endpoint. The residual asymmetry is *self vs managed*, not the CR shape:
 
 At a mgmt cold-start every cluster converges back to `Adopted` — the mgmt
 self-adopts, the survived workload is re-adopted — nothing is re-provisioned.
+
+[[recreate]]
+== Recreate & rebirth — operator gestures
+
+Because the CAPI CR-set is OWNED by the mirror, which is OWNED (in intent) by the
+Flux/git Intention, the levers that mean something are few, and they all resolve
+through the same adopt-first funnel. What each gesture does:
+
+[cols="2,3,1",options="header"]
+|===
+| gesture | effect | reborn?
+
+| `kubectl delete clusters.cluster.x-k8s.io/<c>` | CAPI **ordered teardown** (RCP,
+LXCCluster, Machines → LXCMachines) → CAPN destroys the Incus instances. Our
+`ClusterAdoption`/`Intention` SURVIVE (they OWN the Cluster, not vice-versa) →
+`ensure` re-creates it from the still-present Intention. | **yes** (auto)
+| kill the Incus instance(s) | liveness → 0; the Intention is present → the probe finds
+nothing alive → greenfield. The operator-armed day-0 (see <<existence>>). | **yes**
+| delete the Intention from etcd (still in `workloadTargets`) | ownerRef cascade tears
+the mirror + CAPI graph + instances down → Flux/the render re-applies the Intention →
+greenfield. | **yes**
+| remove the cluster from `workloadTargets` | the render stops emitting the Intention →
+cascade teardown, no re-render. | **no** (decommission)
+| delete the `PoolReflection` | nothing durable — re-written next reflect;
+the VMs are untouched (a cache, <<reflector>>). | no-op
+|===
+
+[mermaid,cluster-seeding-recreate,svg]
+----
+sequenceDiagram
+  actor OP as operator
+  participant K as kube-apiserver (mgmt)
+  participant CAPI as CAPI / CAPN
+  participant C as seed-incluster
+  OP->>K: kubectl delete cluster bioskop-wrkld
+  CAPI->>CAPI: ordered teardown — RCP · LXCCluster · Machines → LXCMachines
+  CAPI->>CAPI: CAPN destroys the Incus instances
+  Note over C,K: our Adoption + Intention SURVIVE (they OWN the Cluster, not vice-versa)
+  C->>K: reconcile → Cluster absent → ensure() re-creates it from the Intention
+  Note over C,CAPI: ensure sees a still-terminating Cluster (deletionTimestamp) and WAITS<br/>— it recreates only once fully finalized → no rival, self-serialized
+  C->>CAPI: probe the roster → all dead → GREENFIELD → reborn
+----
+
+Two invariants make this safe:
+
+* **Adopt-first serializes the race.** Between the teardown (slow — CAPN drains the
+  instances) and the fresh Intention, there is no rival: the controller HOLDS while any
+  instance is still alive and greenfields ONLY once CAPN has finished — "cascade drains,
+  THEN reborn", never a provision on top of dying nodes.
+* **`ensure` is create-if-absent.** A `Cluster` still carrying a `deletionTimestamp` is
+  seen and left alone; recreation waits for full finalization.
+
+[TIP]
+Wire `Owns(&Cluster{})` (+ `Owns(&LXCCluster{})`) on `ClusterAdoptionReconciler` so a
+direct `delete cluster` triggers a PROMPT re-ensure. Without it the rebirth still happens
+— indirectly, via the `PoolAdoption` presence probe (instances gone → phase change →
+watch → `ClusterAdoption` re-ensure) — but `Owns` makes the self-heal immediate.
+Deleting `clusters.cluster.x-k8s.io` reaches UNDER our SOT (the Intention); it works, but
+the clean recreate at our layer is the Intention/`workloadTargets` gesture.
 
 == System context (C4 L1)
 
@@ -883,6 +1228,22 @@ blueprint → drift.
 | Per-node values are LOCAL facts — resolved on-node by oneshots (`node-labels` +
 `provider-id` already are; `node-ip` joins them). The per-cluster branch carries
 per-POOL profiles + cluster-common; it cannot hold N nodes' per-node config.
+
+| Treat `PoolReflection` as a control signal (delete it to decommission / recreate).
+| It is a DERIVED cache with zero command semantics (<<reflector>>) — deleting it is a
+no-op (re-written next reflect; VMs untouched). Toggle the Intention (`workloadTargets`);
+arm greenfield by killing the instances.
+| Decide greenfield from `PoolReflection` ABSENCE.
+| Decide from the CAPN liveness probe; `PoolReflection` only supplies the roster NAMES to
+probe. A lost reflection over live nodes must NOT greenfield a rival.
+| Reflect the CAPI/CAPN graph (`Machine`/`LXCMachine`) to git.
+| Reflect ONLY our intents' `PoolReflection` (+ owner annotation); the CAPI graph
+re-derives from the roster and is never committed.
+| Commit the reflector's git with a mixed toolchain (real-git smudge + go-git commit) or
+`add -A`.
+| go-git BOTH ends + stage ONLY the `PoolReflection` — filter-blind is an identity
+round-trip on the sops-encrypted blobs (no plaintext leak); a mixed toolchain would store
+plaintext.
 |===
 
 [[naming]]
@@ -935,9 +1296,30 @@ carries its primacy as the primary out-of-band seeder.
   with the blueprint host identities + author the per-remote identity Secret.
 . **Rename mechanics** — order + CRD-group migration for the three renames
   above.
+. **Greenfield provision-shape arm (the day-0 action, C4b)** — give `Provisioning` its
+  action per <<greenfield-arm>>: cluster-existence verdict via the adopt-shape probe →
+  flip absent pets to provision-shape (`providerID` empty + `Machine.bootstrap.configRef`
+  → `RKE2Config` = copy of the live RCP spec) + RCP paused-until-stable. Gate on
+  `ClusterAdoption.status.existence`. Add `Owns(&Cluster{})`/`Owns(&LXCCluster{})` (prompt
+  recreate self-heal) + `Owns(&Machine{})` (reflect trigger) to the reconcilers'
+  `SetupWithManager`.
+. **The reflector — cluster→git (WORKLOAD only; <<reflector>>)** — deferred until dynamic
+  scaling opens (moot at fixed named pets, the reflection == the Intention roster). When
+  built: the `PoolReflection` CR (roster, typed) + name-based `owner-ref` annotation; the
+  export/re-stamp ownerRef translation; the precedence read (`PoolReflection ELSE seed`);
+  the go-git commit loop (`image-automation-controller` pattern — App-token,
+  retry-on-conflict, NEVER force-push, stage ONLY the `PoolReflection`); prune symmetry
+  (reflector prunes within a live cluster via a finalizer; the render/manifests-cli prunes
+  whole orphan `PoolReflection`s for clusters dropped from `workloadTargets`). **VERIFY** the chosen go-git version's smudge/clean filter
+  behaviour + the mixed-toolchain plaintext hazard. Worktree ephemeral by default (PVC only
+  if clones prove costly). Annex-semantics fork (lean **restore-scaled**) to be settled then.
 
 == Related documentation
 
+* link:../atlas/cluster-seeding.adoc[Atlas L1 — In-cluster seeding view] — the global
+  vision / avant→après of this subsystem (Diagram W): the 2×2, the greenfield-arm, and the
+  cluster→git reflector + `PoolReflection` turn to unconditional determinism. Start there
+  for the system-level framing; this document is the detail.
 * link:management-workload-topology.adoc[Management / Workload Topology] — the
   anchor this realises: the mgmt/workload split, the adoption handoff
   (its `mgmt-adoption` section), the reconstruct-don't-persist cold-start model,

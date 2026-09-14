@@ -1,0 +1,115 @@
+= Atlas L1 — In-cluster seeding view (seed-incluster)
+:toc: left
+:toclevels: 3
+
+_Level-1 (per-subsystem) view of the link:../integration-atlas.adoc[integration atlas] (L0)._
+_L0 shows how this subsystem integrates with the others and the value that emerges; this file is the detail._
+
+The in-cluster twin of the link:seed.adoc[host-side seed orchestration]. Where that view runs
+`pulumi preview`/`up` from the host (out-of-band, the STANDALONE root boot), this subsystem —
+`seed-incluster` — is the *in-cluster* reconciler that brings CAPI's view of the fleet into being and
+keeps it true, **by adopting the clusters already running, not re-provisioning them**. The full spec
+(resource model, funnel, config ownership, federation) is
+link:../cluster-api/cluster-seeding-controller.adoc[Cluster Seeding Controller]; this view frames the
+**avant→après** of the current evolution: the roster-persistence turn that makes the model
+*unconditionally* deterministic.
+
+[NOTE]
+.Terminology — "reflector" here ≠ the pipeline reflectors
+====
+This view's *cluster→git reflector* (a controller that mirrors observed state into git, in the sense of
+Flux's `image-reflector-controller`) is UNRELATED to the host pipeline's `ShapeReflector` /
+`SplitReflector` / `ManifestsAmendReflector` (Java-reflection / amendment-merge components in
+link:seed.adoc[the seed L1] + link:config.adoc[config L1]). Different subsystem, different sense of
+"reflect". It is always qualified "cluster→git reflector" here, and its resource is `PoolReflection`.
+====
+
+[[thesis]]
+== The thesis — determinism is a property of git↔reality, and we own the missing direction
+
+Adopt-first re-derives the CAPI CR-set from the *intention* every reconcile, so a cluster is
+deterministic — but only **conditionally**: it assumes the running reality never drifts from the
+declared roster. The moment a node set diverges from `ClusterIntention.spec` (dynamic scaling →
+CAPI-minted random names, a replaced node), the branch reflects the *intent*, not *reality*, and a
+cold-start reproduces what the render *believes*, not what *was*.
+
+The system already runs one direction — **git→cluster** (Flux applies the render; the controller
+adopts). The missing key element is the OTHER direction, **cluster→git**: a controller that observes
+the live cluster and commits its observed roster back onto the managing branch, so git is reconciled
+FROM reality. `git == reality` → a cold-start reproduces the *actual* cluster, even after scaling.
+That is **unconditional** determinism, and it is the role newly given to the cluster→git reflector.
+
+[[diagram-w]]
+== Diagram W — the seeding model: BEFORE (codebase) vs AFTER (vision)
+
+Blue = shipped, untouched. Green = added (the vision). Red-dashed = a gap deliberately closed.
+
+[mermaid]
+....
+flowchart LR
+  subgraph B[before — codebase: the 2×2, CONDITIONAL determinism]
+    b_int["ClusterIntention / PoolIntention<br/>desired · Flux/git"]
+    b_ad["ClusterAdoption / PoolAdoption<br/>observed EPHEMERAL · etcd (wiped at cold-start)"]
+    b_ros["roster = Intention.spec.nodes (canonical)<br/>match by providerID · adopt-first"]
+    b_det["determinism CONDITIONAL<br/>git reflects INTENT, not reality"]
+    b_gap["Provisioning phase reached, NO action<br/>(the greenfield gap)"]
+    b_int --> b_ad --> b_ros --> b_det
+    b_ad -.-> b_gap
+  end
+  subgraph A[after — vision: the ROLE TRIAD + the cluster→git reflector]
+    a_int["ClusterIntention / PoolIntention<br/>desired · Flux/git"]
+    a_ad["ClusterAdoption / PoolAdoption<br/>observed EPHEMERAL · etcd"]
+    a_refl["PoolReflection<br/>observed DURABLE · cluster→git reflector · git"]
+    a_ref["cluster→git reflector<br/>ownerRef↔annotation round-trip<br/>(image-automation pattern · App-token)"]
+    a_det["determinism UNCONDITIONAL<br/>git RECONCILED FROM reality → git == reality"]
+    a_arm["greenfield provision-shape ARM<br/>probe → RKE2Config=copy(RCP) · RCP paused-until-stable"]
+    a_bnd["boundary — STANDALONE=canonical (self can't reflect itself)<br/>IN_CLUSTER=reflected"]
+    a_int --> a_ad
+    a_ad --> a_refl --> a_ref --> a_det
+    a_ad --> a_arm
+    a_det -.-> a_bnd
+  end
+  classDef built fill:#eef,stroke:#88a,stroke-width:1px;
+  classDef new fill:#d4f4dd,stroke:#2e7d32,stroke-width:2px;
+  classDef gone fill:#fdd,stroke:#c33,stroke-width:2px,stroke-dasharray:4 3;
+  class b_int,b_ad,b_ros,b_det,a_int,a_ad built;
+  class b_gap gone;
+  class a_refl,a_ref,a_det,a_arm,a_bnd new;
+....
+
+== Verdict — does it hold?
+
+. *Additive — a third ROLE, not a reshape.* The 2×2 stays: `Intention` (desired) + `Adoption`
+  (observed, ephemeral). The vision ADDS one role — `PoolReflection` (observed, DURABLE) — the
+  git-persisted sibling of the ephemeral `Adoption`. The reconcile gains a roster-source precedence
+  (`PoolReflection ELSE the canonical seed`) and an export/re-stamp step; no existing path is reshaped.
+  The one deliberate erasure is the *greenfield gap* (the `Provisioning` phase that reached no action).
+
+. *The reflector is not a new orchestrator.* It mirrors reality into git via the blessed
+  `image-automation-controller` loop (`fetch → commit → push`, retry-on-conflict, never force-push,
+  App-token). The precedence decision lives in the controller (`PoolReflection` presence), not in git's
+  merge semantics; the two committers (render, reflector) own disjoint files, so git never 3-way-merges.
+
+. *ownerRef survives the UID death.* etcd `ownerReferences` carry a UID regenerated at every cold-start;
+  the reflector translates them to a name-based `owner-ref` annotation on export and re-stamps the
+  native ownerRef on reconcile — the annotation is the source of truth of the relation, the ownerRef a
+  derived projection. Exactly Velero's remap-on-restore.
+
+. *The boundary is structural, not a preference.* The root (`STANDALONE`, self) stays canonical because
+  it CANNOT reflect its own state during its own cold-start (the controller does not exist yet at its
+  bootstrap); only `IN_CLUSTER` managed clusters — observed by their managing plane — are
+  reflector-eligible. So determinism is unconditional exactly where it can be.
+
+Conclusion: *additive — one new role (`PoolReflection`) + one new direction (cluster→git) turn a
+conditionally-deterministic model into an unconditionally-deterministic one, closing the greenfield gap
+in passing.* Status: DESIGNED — the 2×2 + adopt-first are shipped; the greenfield-arm (C4b) and the
+cluster→git reflector are the coded residue (the reflector deferred until dynamic scaling opens, moot at
+fixed named pets). See link:../cluster-api/cluster-seeding-controller.adoc#reflector[the reflector spec].
+
+== Related documentation
+
+* link:../cluster-api/cluster-seeding-controller.adoc[Cluster Seeding Controller] — the full spec:
+  resource model (2×2 + `PoolReflection`), adopt-first funnel, greenfield-arm, the reflector, federation.
+* link:seed.adoc[Seed orchestration L1 (host-side)] — the STANDALONE twin that seeds the root out-of-band.
+* link:../management-workload-topology.adoc[Management / Workload Topology] — the `STANDALONE` vs
+  `IN_CLUSTER` axis the reflector boundary maps onto.
