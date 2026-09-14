@@ -166,22 +166,107 @@ The 2×2 decomposition reworks the CRDs + reconcilers + moves the state machine 
   config.yaml.d fragment (`data | value|=from_yaml`), and injects them as `RKE2ControlPlane.files` — so
   a provisioned replica boots with the same config a standalone node git-fetches, no git/read-token on
   the node. Gated like the BYO-CA (essential config: wait for Flux). Added the `configmaps` RBAC.
-- [ ] **C4b. Provision execution (greenfield) — LIVE SPIKE FIRST** (user's call 2026-09-14). Destructive
-  (creates/destroys real Incus instances) + CAPRKE2 semantics unverifiable without a live cluster, so:
-  grow `bioskop-wrkld` greenfield, OBSERVE CAPRKE2/CAPN, THEN code the exact flip. Design captured, two
-  uncertainties to resolve live:
-  - **The delete-recreate is inherent but its safety is uncertain.** adopt-first: default ADOPT shape
-    (providerID set, sentinel bootstrap) → on CAPN `InstanceDeleted` (confirmed absent), flip to PROVISION
-    (providerID EMPTY + real bootstrap). `Machine.spec.bootstrap` + `LXCMachine.spec.providerID` are
-    IMMUTABLE → the flip = delete+recreate. But deleting an RCP-owned Machine → the RCP recreates it
-    (random name) → breaks the named-pet invariant. Likely needs the swap done RCP-PAUSED — in tension
-    with the unpause adoption needs. Resolve live.
-  - **Pre-created named pets × the RCP's native replica provisioning is unclear.** CAPRKE2 natively
-    creates its OWN replicas (Machine + RKE2Config from `RCP.spec`, generated names). Does a pre-created
-    RCP-owned Machine with a custom `bootstrap.configRef` provision with OUR config, or conflict with the
-    RCP's replica management? Observe live.
-  - NB: the day-0 app-branch Tekton bootstrap-render (one-off PipelineRun) is a SEPARATE app-stack
-    concern (post-up), NOT a boot-blocker.
+- [ ] **C4b. Greenfield provision — STATE-MACHINE IMPLEMENTATION PLAN** (spike DONE + CAPRKE2 source read
+  DONE; code NOT started). The per-pet delete-recreate flip I started was WRONG (user correction
+  2026-09-14). Decision is CLUSTER-LEVEL, adopt-first, per `docs/architecture/cluster-api/cluster-seeding-controller.adoc`
+  §Reconcile (l.169-177) + the user's restatement.
+
+  **The state machine — THREE cluster-level outcomes (adopt-first, never greenfield a rival):**
+  1. **Adopt succeeds** (all pets present by providerID + `RemoteConnectionProbe` reachable) → **ADOPTED, stop.**
+     CODED + PROVEN LIVE (mgmt self-adoption, `ccad711fb` unpause fix).
+  2. **≥1 live machine but adopt incomplete** → **HOLD, stop** (Adopting/Degraded; retry). User: "s'il existe
+     au moins une machine vivante, on s'arrête aussi" — DON'T provision the missing ones. ⚠️ This SIMPLIFIES
+     the spec, which says `absent & exists → PROVISION as JOIN` (l.174). For the current scope (bioskop-wrkld
+     = zero machines) both agree on greenfield; the provision-as-JOIN recovery case = DEFER (decision: spec
+     says join, user leans hold).
+  3. **Zero live machines** (existence=false, operator-armed by dropping Incus nodes) → **GREENFIELD: create
+     the cluster via CAPRKE2.** ← THE MISSING TRANSITION = C4b.
+  Existence = ∃ ≥1 pet present by providerID (ANY pool), aggregated on `ClusterAdoption`.
+
+  **What's coded:** adopt path (adopt-shape pets → CAPN presence → RCP adopt → C4a config-inject); existence
+  aggregation; phase routing (Adopting/Provisioning/Adopted/Degraded). But `Provisioning` currently takes NO
+  action (the gap).
+
+  **CAPRKE2 v0.25.2 contract (from the source read — the enablement; `ghcr.io/rancher/cluster-api-provider-rke2-*:v0.25.2`):**
+  - RCP **ADOPTS pre-created named Machines** (ownerRef→RCP + labels `cluster-name`+`control-plane`), NO rival,
+    IF `replicas == len(ownedMachines)`. Counts by ownerRef+label only (no hash/annotation needed).
+  - **Mixed-mode guard**: EVERY CP-labelled Machine for the cluster must be RCP-owned or the RCP HALTS.
+  - Machine (provision): labels + ownerRef→RCP + `spec.clusterName` + `spec.version==rcp.spec.version` +
+    `bootstrap.configRef`→RKE2Config + `infrastructureRef`→LXCMachine.
+  - **RKE2Config.spec MUST deep-equal `rcp.spec` (rke2ConfigSpec inline: `agentConfig`+`files`+`preRKE2Commands`)
+    or the RCP ROLLS the machine** (→ random-name replacement). ⇒ BUILD it by COPYING the LIVE RCP's
+    `{agentConfig,files,preRKE2Commands}` (CAPI defaults them, e.g. `agentConfig.format: cloud-config`). Owner→Machine.
+  - **init vs join = AUTOMATIC** (bootstrap controller: first while `ClusterControlPlaneInitialized`=false takes
+    a per-cluster init lock; rest join once the serving secret + `status.availableServerIPs` exist). NOT encoded.
+  - **token + server-URL = FREE** (generated into `<cluster>-token`; init URL from `spec.controlPlaneEndpoint.Host`:9345).
+  - **BYO-CA = automatic by naming** `<cluster>-{ca,cca,etcd,peer-etcd}` — the `materialMissing` gate already ensures.
+  - LXCMachine (provision): `providerID` EMPTY → CAPN CREATES; ownerRef→Machine; OMIT `TemplateClonedFrom*` annots.
+
+  **WHY pre-create named pets even for greenfield (the crux, user-confirmed 2026-09-14):** letting the RCP
+  create its own control-nodes uses RANDOM names (`<rcp>-xxxxx`, `GenerateName` — CAPRKE2 contract). Random
+  names break the pets-named invariant → a later cold-start can't re-adopt by deterministic name
+  (`lxc:///<cluster>-<node>`) → it would re-greenfield a rival. So greenfield MUST pre-create the NAMED pets
+  in provision-shape; CAPRKE2 adopts them (0 rival if `replicas==count`), inits the first, joins the rest.
+
+  **Coding approach — CLUSTER-grain shape decision, NO per-pet flip:**
+  - The pet's shape is dictated by the CLUSTER existence verdict, decided BEFORE materializing pets:
+    existence=true → adopt-shape (providerID set) [current]; existence=false → provision-shape (providerID
+    empty + Machine configRef + RKE2Config=copy of live RCP rke2ConfigSpec) → CAPRKE2 inits first, joins rest.
+  - `gvkRKE2Config` (`bootstrap.cluster.x-k8s.io/v1beta2`) already added to `controller_shared.go`.
+  - **RCP-rival guard:** RCP stays PAUSED until the pet CR-set is stable (all named pets materialized owned),
+    THEN unpause → CAPRKE2 provisions/inits/joins. (RCP paused ≠ bootstrap paused; joins wait on RCP-populated
+    `status.availableServerIPs`, so unpause once stable.)
+
+  **⚠️ OPEN DECISION (blocker for coding — user was undecided, "je suis perdu"):** how to establish existence
+  BEFORE materializing pets, to avoid the adopt-then-flip churn:
+  - (a) **adopt-shape probe** (spec-literal, providerID-based): create adopt-shape LXCMachines (never provision) →
+    read CAPN `InstanceProvisioned` → existence. If false → recreate pets provision-shape (a ONE-TIME
+    cluster-level arm, not per-pet reactive). Keeps a recreate.
+  - (b) **direct Incus query** (user's "statuer si le cluster a des machines dans Incus au runtime"):
+    seed-incluster lists Incus instances via the `<host>-incus-identity` creds → existence with ZERO CRs →
+    create the right shape upfront, no recreate. Adds an Incus client to the controller; diverges from the
+    spec's providerID-based existence.
+  - **RESOLVED (user, 2026-09-14): pick (a) CAPN probe — stay in the CAPN layer.** (b) direct-Incus is
+    REJECTED: CAPN OWNS the Incus connection (its whole purpose); a seed-incluster Incus client would
+    DUPLICATE CAPN and break the layering (same spirit as "one owner per manifest"). Existence goes THROUGH
+    CAPN: create the LXCMachine in adopt shape (providerID `lxc:///<cluster>-<node>` set → CAPN never
+    creates, only reports present / `InstanceDeleted`). The **providerID stays the matching KEY** (spec l.147)
+    — but CAPN confronts it to Incus reality, not us directly.
+  - **Consequence — FLEXIBLE arbitrary-node discovery is DROPPED** (it required the direct query that bypasses
+    the layer). CAPN can only probe a KNOWN roster (we hand it the `<cluster>-<node>` names to check), it does
+    not "discover" arbitrary running nodes. Fine for our scope: the roster is known (`CANONICAL_NODE_NAMES`).
+  - **Greenfield via CAPN** = probe adopt (all `InstanceDeleted`) → existence=false → transition to
+    provision-shape. The adopt→provision recreate (providerID is immutable) is INHERENT to CAPN, but it is a
+    **one-time day-0 ARM** (not per-pet reactive churn), done **RCP-PAUSED** (else the RCP scales a rival while
+    the owned Machine is recreated — CAPRKE2 contract). Post-compaction sub-question: minimize/structure that
+    recreate cleanly (cluster-level arm, RCP paused until the provision CR-set is stable, then unpause).
+
+  **★★ RESOLVED (CAPN v0.9.0 source read, `github.com/lxc/cluster-api-provider-incus`) — NO in-layer node
+  discovery.** CAPN surfaces NO cluster instance-list via any CRD/status/controller (`LXCClusterStatus` has
+  only `Initialization.Provisioned` + conditions). The ONLY k8s-visible existence signal is
+  per-declared-`LXCMachine` `InstanceProvisioned` — CAPN does a **GET-by-name** on Incus
+  (`controller_normal.go:37-47`: `GetInstanceState(instanceName)` → `Instance not found` → `InstanceDeleted`).
+  Findings that shape the design:
+  - **Grouping key = the config key `user.cluster-name`** (CAPN tags every launched instance with
+    `user.cluster-name`/`-namespace`/`-machine-name`/`-cluster-role`, `controller_util_launch.go:92-95`), NOT
+    the `lxc:///<cluster>-` providerID/name prefix (fragile — the name is the CAPI object name). ⇐ corrects the
+    earlier note.
+  - providerID = `lxc:///<name>`, `<name>` = LXCMachine object name = Incus instance name.
+  - A bulk `ListInstances`/`GetInstancesFull` exists but under `internal/` (not importable); an external
+    controller could reuse the upstream `lxc/incus/v6/client` lib + the `<host>-incus-identity` secret to list
+    by `user.cluster-name` (~20 lines). This is a READ (discovery), NOT a reconcile bypass — CAPN keeps
+    launch/delete. So the earlier "direct-Incus = bypass CAPN" worry is softer: it duplicates no reconcile.
+  **DECISION (settles the fork):** for our scope the roster is KNOWN (`CANONICAL_NODE_NAMES`), so establish
+  existence by **probing the known roster via CAPN GET-by-name** (declare adopt-shape LXCMachines, read
+  `InstanceProvisioned`) — IN-LAYER, no direct query, no flexible discovery. FLEXIBLE discovery (unknown
+  roster) would need the direct Incus read by `user.cluster-name` — DEFER (not needed now). So: adopt-probe
+  the CANONICAL roster → all `InstanceDeleted` ⇒ existence=false ⇒ greenfield (one-time day-0 arm to
+  provision-shape, RCP-paused). Code the greenfield transition on this basis.
+
+  **Code touch-points (seed-incluster):** `ClusterAdoptionReconciler` (existence verdict, mechanism a/b),
+  `PoolAdoptionReconciler` (consume cluster existence; shape = adopt|provision; provision builders
+  `rke2ConfigObj`/provision `machineObj`/`lxcMachineObj`; RCP pause-until-stable). NB: day-0 app-branch Tekton
+  render = SEPARATE app-stack concern (post-up), not a boot-blocker.
 - [x] **C5. Config-model refactor — DONE** (rke2lab `5b143c96b` C5.1, `574a43485` C5.2, `cd23927fb`
   C5.3, `1cb9d3c26` C5.4). config = VISIBLE k8s resources in the mgmt (Flux-applied):
   - **C5.1** `RuntimeRke2ConfigManifestsUnit` (`5b143c96b`): iterates `{subject if MGMT} ∪
