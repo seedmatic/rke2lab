@@ -284,15 +284,23 @@
           platforms = platforms.unix;
         };
       };
-      # Regenerate the committed env manifest.lock files. Each env's manifest.toml
-      # pins packages by a RELATIVE flake path (path:../../..#pkg); nix resolves
-      # path: against CWD, so an env is locked from its OWN dir. Run from the catalog
-      # repo root (writes into the worktree, not the read-only store):
+      # Regenerate the committed env manifest.lock files, then COMMIT the real
+      # bumps. Each env's manifest.toml pins packages by a RELATIVE flake path
+      # (path:../../..#pkg); nix resolves path: against CWD, so an env is locked
+      # from its OWN dir. Run from the catalog repo root (writes into the worktree,
+      # not the read-only store):
       #   nix run .#lock-envs                                 # all envs
       #   nix run .#lock-envs -- cluster-api/seed-incluster    # some
+      #
+      # A re-lock ALWAYS rewrites each package's `locked-url` — it embeds a narHash
+      # of the WHOLE catalog tree (a path: self-reference), so it churns on every
+      # run with no fixpoint, while the derivation/outputs stay put. So we diff the
+      # freshly-locked file against HEAD with `locked-url` stripped: pure churn is
+      # reverted (never staged), only a real derivation/outputs change is kept and
+      # committed. Idempotent — a no-op run leaves a clean tree and makes no commit.
       lockEnvsApp = pkgs.writeShellApplication {
         name = "lock-envs";
-        runtimeInputs = [flox.packages.${system}.default pkgs.coreutils];
+        runtimeInputs = [flox.packages.${system}.default pkgs.coreutils pkgs.git pkgs.jq];
         text = ''
           root="environment.d"
           if [[ ! -d "$root" ]]; then
@@ -304,7 +312,11 @@
           else
             mapfile -t envs < <(cd "$root" && for m in */*/manifest.toml; do echo "''${m%/manifest.toml}"; done)
           fi
+          # Meaningful projection = the lock minus the volatile per-package locked-url.
+          proj='del(.packages[]."locked-url")'
           rc=0
+          bumped=()
+          paths=()
           for e in "''${envs[@]}"; do
             d="$root/$e"
             if [[ ! -f "$d/manifest.toml" ]]; then
@@ -312,17 +324,39 @@
               continue
             fi
             printf 'lock %s ... ' "$e"
-            if (cd "$d" && flox lock-manifest manifest.toml) >"$d/manifest.lock.tmp" 2>"$d/.lockerr"; then
-              mv "$d/manifest.lock.tmp" "$d/manifest.lock"
-              echo "OK ($(wc -c <"$d/manifest.lock") bytes)"
-            else
+            if ! (cd "$d" && flox lock-manifest manifest.toml) >"$d/manifest.lock.tmp" 2>"$d/.lockerr"; then
               echo "FAILED"
               sed 's/^/    /' "$d/.lockerr"
-              rm -f "$d/manifest.lock.tmp"
+              rm -f "$d/manifest.lock.tmp" "$d/.lockerr"
               rc=1
+              continue
             fi
             rm -f "$d/.lockerr"
+            new_proj=$(jq -S "$proj" "$d/manifest.lock.tmp")
+            if old=$(git show "HEAD:$d/manifest.lock" 2>/dev/null); then
+              old_proj=$(printf '%s' "$old" | jq -S "$proj")
+            else
+              old_proj=""   # untracked -> a new env, always a real bump
+            fi
+            if [[ -n "$old_proj" && "$new_proj" == "$old_proj" ]]; then
+              # only locked-url churned -> drop it, restore the committed file
+              rm -f "$d/manifest.lock.tmp"
+              git checkout -q -- "$d/manifest.lock" 2>/dev/null || true
+              echo "unchanged (churn dropped)"
+            else
+              mv "$d/manifest.lock.tmp" "$d/manifest.lock"
+              git add -- "$d/manifest.lock"
+              bumped+=("$e")
+              paths+=("$d/manifest.lock")
+              echo "BUMPED ($(wc -c <"$d/manifest.lock") bytes)"
+            fi
           done
+          if [[ "''${#paths[@]}" -gt 0 ]]; then
+            git commit -q -m "chore(lock): re-lock envs (''${bumped[*]})" -- "''${paths[@]}"
+            echo "committed ''${#paths[@]} env(s): ''${bumped[*]}"
+          else
+            echo "no real bumps — nothing to commit"
+          fi
           exit "$rc"
         '';
       };
