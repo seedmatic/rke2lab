@@ -1,15 +1,17 @@
-# RKE2 server + the node's substrate-ready target. The per-cluster rke2 config (dual-stack CIDRs,
-# apiserver tls-san incl. the kube-vip VIP, node-ip, etcd node-name, token, …) is NOT baked here —
-# the node-base image is homogeneous across clusters. It is rendered onto the manifests/<cluster>
-# branch by RuntimeRke2ConfigManifestsUnit and installed into config.yaml.d at boot by
-# `nix run <branch>#install-rke2-config` (rke2lab-rke2-config, below) — the same delivery whether the
-# node is grown standalone (seed-master) or in-cluster (CAPRKE2). Only the STATIC, cluster-invariant
-# knobs live here (extraFlags disables) or as per-node oneshots (node-labels, provider-id).
+# RKE2 server + the node's substrate-ready target. The per-CLUSTER rke2 config (dual-stack CIDRs,
+# apiserver tls-san incl. the kube-vip VIP, …) is NOT baked here — the node-base image is homogeneous
+# across clusters. It is rendered per (cluster × pool) onto the MANAGEMENT cluster's manifests/<mgmt>
+# branch by RuntimeRke2ConfigManifestsUnit and installed into config.yaml.d at boot by `nix run
+# <branch>#install-rke2-config` (rke2lab-rke2-config, below) for the self/root control-plane node; a
+# CAPRKE2 workload node takes it from its RKE2Config instead. Only the STATIC, cluster-invariant knobs
+# live here (extraFlags disables). The PER-NODE facts (node-ip, node-labels, provider-id) are the
+# node's own address/identity, resolved on-node by the oneshots below (never rendered per node); the
+# rke2 join token is owned by CAPRKE2's bootstrap provider, not rendered on the branch.
 # cni="cilium" so rke2 deploys its bundled cilium as the CNI
 # (the node reaches Ready WITHOUT waiting on Flux); the bootstrap lane (bootstrap-manifests.nix) seeds
 # the HelmChartConfig rke2-cilium that customises that addon (BGP, clustermesh, gatewayAPI, …), and
 # the seeded Flux operator then reconciles the rest from the rendered branch.
-{ config, ... }:
+{ config, pkgs, ... }:
 {
   services.rke2 = {
     enable = true;
@@ -43,22 +45,21 @@
   # gate the wantedBy=multi-user rke2-server could start config-less and mis-cluster-init.
   systemd.services.rke2-server.after = [ "cloud-init.service" ];
 
-  # The UNIFORM per-cluster rke2 config installer. The per-cluster config (dual-stack CIDRs, tls-san
-  # incl. the VIP, node-ip, etcd node-name, and the sops-encrypted token Secret) is rendered onto the
-  # manifests/<cluster> branch by RuntimeRke2ConfigManifestsUnit; this runs `nix run
-  # <branch>#install-rke2-config`, which globs the branch for the RKE2_CONFIG fragments and extracts
-  # each into config.yaml.d — the SAME logic whether the node was grown standalone (seed-master) or
-  # in-cluster (CAPRKE2). It gates on rke2-config.env (delivered by BOTH grow paths), NOT node.env
-  # (mgmt-only), so it runs on every node. Inputs arrive as files at fixed paths — never env/CR/branch:
+  # The rke2 config installer for the self/root control-plane node. The per-cluster config (dual-stack
+  # CIDRs, tls-san incl. the VIP) is rendered per (cluster × pool) onto the management branch by
+  # RuntimeRke2ConfigManifestsUnit as non-secret ConfigMaps; this runs `nix run
+  # <branch>#install-rke2-config`, which globs the branch for the RKE2_CONFIG fragments of THIS node's
+  # own cluster (namespace rke2lab-<cluster>, derived from the hostname) and extracts each into
+  # config.yaml.d. It gates on rke2-config.env; a CAPRKE2 workload node takes its config from its
+  # RKE2Config (seed-incluster), not this app. Inputs arrive as files at fixed paths:
   #   - rke2-config.env : RKE2LAB_MANIFESTS_REF/REV (the branch + pinned rev to fetch) — non-secret.
-  #   - sops-age.key    : the age key (the SAME file sops-nix uses, ./sops.nix) → SOPS_AGE_KEY_FILE.
   #   - nix-github.conf : an `access-tokens = github.com=<token>` nix.conf line (fresh App token,
   #                       root-only). SINGLE-USE: the script sets NIX_CONFIG="!include <file>" for
   #                       this run only (not a permanent unit env — that would outlive the value) and
   #                       DELETES the file on exit (trap), so no live/stale token lingers on the node.
   systemd.services.rke2lab-rke2-config = {
-    description = "rke2lab per-cluster rke2 config install (nix run <branch>#install-rke2-config)";
-    # Runs on every node the branch feeds (mgmt + workload) — gated on the ref file, not node.env.
+    description = "rke2lab rke2 config install (nix run <branch>#install-rke2-config)";
+    # Gated on the ref file the grower delivers (not node.env).
     unitConfig.ConditionPathExists = "/run/rke2lab/rke2-config.env";
     after = [
       "cloud-init.service"
@@ -74,10 +75,6 @@
       # unreachable), so the script retries — give it room before systemd's start timeout fires.
       TimeoutStartSec = "600";
       EnvironmentFile = "/run/rke2lab/rke2-config.env";
-      # SOPS_AGE_KEY_FILE only — its file is a stable, long-lived input (sops-nix uses the SAME one).
-      # The github token is NOT declared here: it is single-use; the script reads it via NIX_CONFIG
-      # only for the fetch, then erases it once the install SUCCEEDS.
-      Environment = [ "SOPS_AGE_KEY_FILE=/var/lib/rke2lab/sops-age.key" ];
     };
     script = ''
       set -euo pipefail
@@ -206,16 +203,65 @@
       install -d -m 0755 "$(dirname "$dropin")"
       {
         # `kubelet-arg+` APPENDS: rke2 config.yaml.d REPLACES a list key with the alphabetically-last
-        # file's value, and node-inetaddr.yaml (rendered on the branch) also sets `kubelet-arg` (for
-        # --node-ip) and sorts AFTER this file — so a plain `kubelet-arg:` here was silently dropped,
-        # the node registered with NO spec.providerID, and CAPI could never bind the Machine to it
-        # (NodeHealthy stuck "Waiting for a Node with spec.providerID lxc:///<node> to exist"). Both
-        # producers use the `+` append form so node-ip and provider-id coexist.
+        # file's value, and the 35-node-ip.yaml drop-in (rke2lab-node-ip, below) also sets
+        # `kubelet-arg` (for --node-ip) and sorts BEFORE this file — so a plain `kubelet-arg:` here
+        # would clobber it, the node registered with NO spec.providerID, and CAPI could never bind the
+        # Machine to it (NodeHealthy stuck "Waiting for a Node with spec.providerID lxc:///<node> to
+        # exist"). Both producers use the `+` append form so node-ip and provider-id coexist.
         echo "kubelet-arg+:"
         # RKE2LAB_NODE_HOSTNAME (the full <cluster>-<node>), NOT RKE2LAB_NODE_NAME (the short ref
         # `master`): the providerID must equal the incus instance name (= the hostname), which is
         # what CAPN/the LXCMachine carry.
         echo "  - provider-id=lxc:///''${RKE2LAB_NODE_HOSTNAME}"
+      } >"$dropin"
+    '';
+  };
+
+  # The node's --node-ip, its own dual-stack vmnet0 address (the DHCP reservation the vmnet bridge
+  # pins from the blueprint). PER-NODE (the address is the node's own), so an on-node oneshot read
+  # LIVE from vmnet0 — never rendered per node on the branch. rke2 does NOT propagate the `node-ip`
+  # config to the kubelet's `--node-ip` for a DHCP-`dynamic` address (our vmnet addresses are DHCP
+  # reservations), so the kubelet auto-detects and registers cilium_host (a pod-cidr IP absent from
+  # the serving cert) → x509 mismatch breaking `kubectl logs`/`exec` + metrics. Forcing --node-ip via
+  # kubelet-arg (the documented escape hatch) pins InternalIP to node-ip, which IS in the cert.
+  # Gated on node.env (mgmt-only, like provider-id): a CAPRKE2 workload node takes its node-ip from
+  # CAPN's CloudProviderNodePatch / its RKE2Config instead. Runs AFTER rke2lab-rke2-config (which
+  # wipes+reinstalls config.yaml.d) so this drop-in survives, and after network-online so vmnet0 holds
+  # its reserved address.
+  systemd.services.rke2lab-node-ip = {
+    description = "rke2lab kubelet node-ip drop-in (the node's own dual-stack vmnet0 address)";
+    unitConfig.ConditionPathExists = "/var/lib/rke2lab/node.env";
+    after = [
+      "rke2lab-identity.service"
+      "rke2lab-rke2-config.service"
+      "network-online.target"
+    ];
+    wants = [ "network-online.target" ];
+    requires = [ "rke2lab-identity.service" ];
+    before = [ "rke2-server.service" ];
+    requiredBy = [ "rke2-server.service" ];
+    path = [ pkgs.iproute2 pkgs.gawk pkgs.coreutils ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+    };
+    script = ''
+      set -euo pipefail
+      dropin=/etc/rancher/rke2/config.yaml.d/35-node-ip.yaml
+      install -d -m 0755 "$(dirname "$dropin")"
+      v4="$(ip -4 -o addr show dev vmnet0 scope global | awk '{print $4}' | cut -d/ -f1 | head -n1)"
+      v6="$(ip -6 -o addr show dev vmnet0 scope global | awk '{print $4}' | cut -d/ -f1 | head -n1)"
+      if [ -z "$v4" ]; then
+        echo "[rke2lab-node-ip] FATAL: vmnet0 has no global IPv4 address" >&2
+        exit 1
+      fi
+      # Dual-stack when v6 is present (cluster-cidr + service-cidr are dual-stack, so rke2 wants a
+      # dual node-ip); v4-only otherwise, rather than wedge the boot on a lagging v6 lease.
+      if [ -n "$v6" ]; then nodeip="$v4,$v6"; else nodeip="$v4"; fi
+      {
+        echo "node-ip: $nodeip"
+        echo "kubelet-arg+:"
+        echo "  - node-ip=$nodeip"
       } >"$dropin"
     '';
   };
