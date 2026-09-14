@@ -28,6 +28,9 @@
       "claude-code": {
         "pkg-path": "claude-code"
       },
+      "clusterctl": {
+        "pkg-path": "clusterctl"
+      },
       "dasel": {
         "pkg-path": "dasel",
         "version": "3.3.0"
@@ -2473,6 +2476,64 @@
       "priority": 5
     },
     {
+      "attr_path": "clusterctl",
+      "broken": false,
+      "derivation": "/nix/store/vl982sbzsp93qcw88fbkaxxphxn6zyfk-clusterctl-1.12.2.drv",
+      "description": "Kubernetes cluster API tool",
+      "install_id": "clusterctl",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=5b2c2d84341b2afb5647081c1386a80d7a8d8605",
+      "name": "clusterctl-1.12.2",
+      "pname": "clusterctl",
+      "rev": "5b2c2d84341b2afb5647081c1386a80d7a8d8605",
+      "rev_count": 963917,
+      "rev_date": "2026-03-16T07:26:50Z",
+      "scrape_date": "2026-03-17T04:42:03.619546Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.12.2",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/778jxvqkkq2417wf7khzfwm3w1w9z4n1-clusterctl-1.12.2"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "clusterctl",
+      "broken": false,
+      "derivation": "/nix/store/n65gmpass9h3p8cvagv512j4xcx69c58-clusterctl-1.12.2.drv",
+      "description": "Kubernetes cluster API tool",
+      "install_id": "clusterctl",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=5b2c2d84341b2afb5647081c1386a80d7a8d8605",
+      "name": "clusterctl-1.12.2",
+      "pname": "clusterctl",
+      "rev": "5b2c2d84341b2afb5647081c1386a80d7a8d8605",
+      "rev_count": 963917,
+      "rev_date": "2026-03-16T07:26:50Z",
+      "scrape_date": "2026-03-17T05:14:38.732454Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.12.2",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/8dkagw89sav6kk19sfbvpjqa0il0pw6l-clusterctl-1.12.2"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
       "attr_path": "dasel",
       "broken": false,
       "derivation": "/nix/store/np07g2vxsvjchvckv8j7asjh4m2baqsh-dasel-3.3.0.drv",
@@ -3687,6 +3748,9 @@
         },
         "claude-code": {
           "pkg-path": "claude-code"
+        },
+        "clusterctl": {
+          "pkg-path": "clusterctl"
         },
         "dasel": {
           "pkg-path": "dasel",

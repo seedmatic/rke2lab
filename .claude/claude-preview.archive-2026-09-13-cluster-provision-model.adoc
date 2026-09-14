@@ -1,0 +1,290 @@
+= Brainstorm — modèle de ressource « cluster que JE possède » (adopt CP + provision workers)
+:toc: macro
+
+// Whiteboard neuf (2026-09-13). Le précédent (VIP-reach / egress-CAPI) est archivé :
+// .claude/claude-preview.archive-2026-09-13-vip-reach-egress-capi.adoc
+
+toc::[]
+
+== Le déclencheur
+
+`bioskop-mgmt` est **adopté** dans CAPI et sain (RemoteConnectionProbe=True, ControlPlaneInitialized=True). Reste `bioskop-wrkld` : Cluster `Paused`, aucun infra CR (`LXCCluster`), MachineDeployment DESIRED 0. Comment le faire vivre ?
+
+Deux drivers, dont un DÉCISIF (cold-start) :
+
+. **Cold-start du mgmt ⇒ le workload SURVIT.** Le workload est de l'infra incus indépendante (son propre control plane + etcd). Un re-provision du mgmt (etcd neuf, CAPI vide) ne doit PAS re-provisionner le workload — ça détruirait un cluster vivant. Il faut le **RÉ-ADOPTER**.
+. **Conflit single-owner Flux ↔ CAPI/CAPN.** Si Flux rend le CR-set CAPI complet et que CAPI/CAPN mute ces mêmes objets pendant le provisioning → flap SSA. Règle : un objet = un réconciliateur.
+
+== L'inflexion d'archi qui en découle
+
+**CAPI = un MIROIR d'adoption des clusters qui tournent, PAS un provisionneur.**
+
+* Control plane = **bootstrappé par Pulumi/seed-master** (nom déterministe `<cluster>-master`, providerID `lxc:///<cluster>-master`) → **adopté** (décrit dans CAPI). Survit au cold-start ⇒ re-décrit, jamais re-provisionné.
+* Workers = **des pets nommés eux aussi** (#4 tranché — PAS de bétail/MachineDeployment) : chaque worker = nom déterministe du blueprint (`<cluster>-<node>`), provisionné par CAPN au day-0 PUIS adopté par `providerID` comme le CP. CAPI = miroir intégral ; le cold-start ré-adopte *tout* uniformément. C'est la résolution du « workload follow-up » que l'ancre `management-workload-topology.adoc` laissait ouvert (les random-names de MachineDeployment leakent au cold-start → pets déterministes).
+
+Vaut pour mgmt ET workload — on ne l'appliquait qu'au mgmt.
+
+== Ce que `ClusterAdoption` (adoption.seedmatic.io) possède AUJOURD'HUI
+
+[cols="1,3"]
+|===
+| champ | rôle
+| `clusterName` | crée+adopte le CAPI Cluster ; CP instance = `<name>-master`
+| `clusterNetwork` | podCIDRs / serviceCIDRs / serviceDomain
+| `controlPlaneEndpoint` | le VIP kube-vip (host:port)
+| `controlPlaneReplicas` | 1 (mgmt) / 3 (workload HA)
+| `identitySecretName` | l'identité CAPN (`<host>-incus-identity`)
+| `image.fingerprint` | l'image node-base
+| `kubeVIPVersion`, `rke2Version` | versions
+| `namespace` | ns CAPI
+|===
+
+⇒ Taillé pour **créer+adopter le CP SINGLE d'un cluster grown-par-Pulumi**. C'est déjà une bonne « intention ».
+
+== Ce qui MANQUE pour le workload
+
+* **Workers / CAPN** : zéro champ. Il faut le pool worker = template machine (projet Incus, profil, image, identité) + replicas. C'est le SEUL volet réellement « provisionné ».
+* **La dichotomie adopt(CP) / provision(workers)** : ClusterAdoption ne modélise que le CP adopté.
+* **Scoping Incus per-cluster** (projet) — gap mono-cluster.
+
+== Décision : DEUX ressources, DEUX rôles (ne PAS mélanger)
+
+Élargir `ClusterAdoption` avec le « comment créer un cluster » = **mauvais design** (mélange les rôles). À la place :
+
+[cols="1,3"]
+|===
+| ressource | rôle (unique)
+| **`ClusterProvision`** (nouveau — paire avec `ClusterAdoption`) | **CRÉER / amener à l'existence** un cluster : l'intention (CP + worker pools, adressage, identité, image, versions). Rendue par Flux, une par cluster.
+| **`ClusterAdoption`** (existante, rôle INCHANGÉ) | **DÉCRIRE / ré-adopter** un cluster qui TOURNE (le miroir CAPI ; cold-start-safe). Le contrôleur l'**attache** au `ClusterProvision` **une fois le cluster disponible**.
+|===
+
+Vocabulaire : **Provision** (amener à l'existence) ↔ **Adoption** (décrire l'existant). Deux verbes, deux CR, deux rôles.
+
+=== La logique du contrôleur (reconcile niveau-déclenché)
+
+----
+reconcile(ClusterProvision):        # INVARIANT : TOUJOURS tenter l'adoption d'abord
+  tente ADOPT — nœuds présents (par providerID) + CP sain ?
+    adoptable       → Adopted    (décrit l'existant ; crée/rafraîchit la ClusterAdoption)   # day-1 / cold-start
+    absent          → PROVISION  (CAPN fait naître les nœuds) → reboucle → ADOPT            # day-0 / sinistre
+    présent-malade  → Degraded   (NI adopt NI provision — surface + retry)
+----
+
+Un `provision` **commence toujours par tenter une adoption** ; provision = le simple **fallback** du cas « absent ». Pas de "mode" à choisir en amont — l'invariant adopt-first collapse day-0 / cold-start / reprise en UN chemin idempotent.
+
+Même reconcile pour day-0 / cold-start / reprise-sur-sinistre — self-healing. **Provision vs adopt = le MÊME CR-set CAPI, deux modes** : provision = `LXCMachine` crée une instance neuve (CAPRKE2 bootstrappe) ; adopt = le CR-set référence l'instance existante par `providerID` (`lxc:///<name>-master`), **skip bootstrap** (ce que le rke2-adoption-controller fait déjà pour le mgmt). Pas de circularité.
+
+=== Machine à états + modèle de watch (résout #1)
+
+Le **cold-start du mgmt WIPE son etcd** → la `ClusterAdoption` disparaît (elle y vivait). Survivent : le `ClusterProvision` (Flux le re-rend depuis Git) + le workload qui tourne. Donc le contrôleur **re-dérive la réalité à chaque reconcile** ; la `ClusterAdoption` est le RÉSULTAT d'un adopt réussi (re-créée), PAS un flag persistant.
+
+État sur `ClusterProvision.status.phase` (level-triggered, jamais "kill"/restart — on gère un état) :
+
+* instance ABSENTE (providerID introuvable) → `Provisioning` → CAPN → CP up → `Adopting`
+* instance PRÉSENTE + CP sain → `Adopting` → `Adopted` (crée `ClusterAdoption` + miroir CAPI)
+* instance PRÉSENTE + CP MALADE → `Degraded` — **JAMAIS re-provisionner** (détruire un nœud présent = perte). Surface + retry adopt. Re-provision UNIQUEMENT si le nœud est vraiment absent.
+
+**Le contrôleur WATCH les CR CAPI qu'il crée** (`Owns` : Cluster, RKE2ControlPlane, LXCCluster, Machine, LXCMachine) → leurs events requeue le reconcile du `ClusterProvision` → il agrège leur statut dans son `phase`. **Conséquence "contrôleur mince"** : PAS de sonde maison — il DÉRIVE l'état des conditions que CAPI/CAPN maintiennent déjà : `Cluster.RemoteConnectionProbe` / `ControlPlaneInitialized` (CAPI sonde le workload) = « CP sain ? » ; statut `LXCMachine`/`Machine` (CAPN) = « instance présente ? ». Il réutilise, ne re-sonde pas.
+
+=== ★ LE CŒUR : adopter = réconcilier avec un cluster DÉJÀ EXISTANT (idempotent)
+
+C'est LA capacité centrale — et ce qui manque à généraliser (aujourd'hui prouvé seulement pour le mgmt). L'`Adopting` du funnel doit :
+
+* **matcher** le cluster déjà en marche par son **providerID déterministe** (`lxc:///<cluster>-<node>`) — pas de découverte floue : le nom est SOT (blueprint `CANONICAL_NODE_NAMES`).
+* **matérialiser** le CR-set CAPI en **mode adopt** : `providerID` posé + **bootstrap SKIPPÉ** → CAPRKE2 ne re-bootstrappe pas, CAPN ne re-crée pas l'instance → CAPI **décrit** le CP/les nœuds existants, ne les provisionne jamais.
+* être **IDEMPOTENT** : ré-exécutable à chaque reconcile (cold-start, requeue) → ré-attache sans churn. La machine à états adopt-first le garantit.
+
+Raison d'être de `seed-incluster` : CAPI/CAPRKE2 ne savent pas nativement « adopter un rke2-on-incus qui tourne » ; le contrôleur pose le CR-set qui le décrit. Prouvé pour le mgmt (self-adoption, `RemoteConnectionProbe=True`) → **à généraliser au workload + rendre idempotent (cold-start)**.
+
+Flux ne possède QUE la nouvelle ressource (intention). Le contrôleur possède la `ClusterAdoption` (dérivée de la réalité) + le CR-set CAPI. Un objet = un owner.
+
+=== Le flux (day-0 → cold-start)
+
+. Flux rend la NOUVELLE ressource (intention) sur `manifests/<host>-mgmt`.
+. Le contrôleur la réconcilie → **provisionne** (CP + workers).
+. Une fois le CP **disponible** (joignable), le contrôleur **crée+attache une `ClusterAdoption`** (child, ownerRef → la nouvelle ressource) → celle-ci crée/possède le CAPI Cluster décrivant le cluster vivant.
+. **Cold-start du mgmt** : Flux re-rend l'intention → le contrôleur voit que le CP **tourne déjà** (via la `ClusterAdoption` / une sonde) → **NE re-provisionne PAS** → ré-adopte. La `ClusterAdoption` attachée EST le garde-fou « ça existe, on adopte » qui bloque le re-provision.
+
+== Vocabulaire / renommage (le contrôleur déborde son nom)
+
+Le contrôleur ne fait plus qu'"adopter" — il **provisionne + adopte + ré-adopte**. `rke2-adoption-controller` sous-vend le rôle. Le tout s'ancre sur l'axe de l'`ExecutionEnclosure`.
+
+=== L'enclosure = l'axe (locality/nature), tranché ✓
+
+`ExecutionEnclosure` (host/host-runtime) portait `OPERATOR` / `IN_CLUSTER` — axes mélangés (OPERATOR = le QUI, IN_CLUSTER = la NATURE). Le doc de l'enum dit déjà « OPERATOR = a **standalone** process ». On aligne sur la nature :
+
+* `OPERATOR` → **`STANDALONE`** (un processus autonome hors cluster : `.secrets` + fichiers ndh). Pas `HOST` (collision avec l'hôte incus/nixos partout : `/srv/host`, `HostPathCatalog`, le module `host/`…).
+* `IN_CLUSTER` inchangé (un pod k8s : Secrets du cluster).
+
+=== Les deux semeurs
+
+* **`seed-master`** (INCHANGÉ) — le semeur `STANDALONE`, day-0/host, orchestrateur *primaire* du bootstrap. Pas de gain à le renommer (module phare, blast radius énorme) ; "master" porte la primauté.
+* **`seed-incluster`** (contrôleur, ex-`rke2-adoption-controller`) — le semeur `IN_CLUSTER`, steady-state. Nommé par la **localité** (l'axe qui le distingue de seed-master), et évite la collision avec `ClusterSeedScenario`/"cluster seed" qu'aurait eue `seed-cluster`.
+* Ses 2 CR = les 2 **modes** : `ClusterProvision` (semer du neuf) / `ClusterAdoption` (adopter ce qui pousse).
+
+=== Blast radius
+
+* **Enclosure** (plus petit) : `OPERATOR` → `STANDALONE` dans `ExecutionEnclosure` + ses consommateurs (`ExecutionEnvironment`, les gates render/publish).
+* **Contrôleur** (transverse) : repo/branche orpheline `rke2-adoption-controller` · FloxEnv `cluster-api/rke2-adoption-controller` · Deployment + RBAC + SA · groupe CRD (`adoption.seedmatic.io` → **`cluster.seedmatic.io`**) · `Rke2AdoptionControllerManifestsUnit` · `Rke2AdoptionControllerCrdStagingParticipant` · docs + mémoire.
+* **Groupe CRD** (le plus figé — un groupe est quasi-immuable, migration coûteuse) : les RBAC (`apiGroups: ["adoption.seedmatic.io"]` dans `Rke2AdoptionControllerManifestsUnit`) · le nom du CRD staged `/crds/adoption.seedmatic.io_clusteradoptions.yaml` · le `groupName` kubebuilder dans le repo Go · le `apiVersion` des CR rendus par `ClusterApiManagementManifestsUnit`.
+
+== Figures
+
+=== Modèle de composants — qui possède quoi
+
+[mermaid]
+....
+graph TB
+  subgraph git["manifests/&lt;host&gt;-mgmt (Git, rendu par seed-master)"]
+    intent["ClusterProvision — INTENTION cluster<br/>CP + worker pools + CIDRs + VIP + identité + image"]:::code
+  end
+  flux["Flux"]:::mut -->|"possède / applique (seul owner)"| intent
+
+  subgraph mgmtplane["mgmt cluster — plan CAPI"]
+    ctrl["controller (provision + adoption)"]:::mut
+    adopt["ClusterAdoption<br/>(décrit un cluster VIVANT — rôle inchangé)"]:::code
+    capi["CR-set CAPI<br/>Cluster · RKE2ControlPlane · LXCCluster · MachineDeployment"]:::code
+  end
+  intent -->|"watch"| ctrl
+  ctrl -->|"crée+possède UNE FOIS le CP dispo"| adopt
+  adopt -->|"crée+possède (miroir)"| capi
+
+  subgraph wl["workload — infra incus INDÉPENDANTE (survit au cold-start mgmt)"]
+    cp[("nœuds pets &lt;name&gt;-master/-peerN/-workerN<br/>rke2 + etcd (state DURABLE)")]:::store
+  end
+  adopt -.->|"décrit / réconcilie (tous les nœuds)"| cp
+  capn["CAPN (provider incus)"]:::builder -->|"provisionne les nœuds ABSENTS (mode provision)"| cp
+  ctrl -->|"provision (neuf) OU adopt (par providerID, skip bootstrap)"| cp
+
+  classDef code fill:#dae8fc,stroke:#6c8ebf
+  classDef store fill:#d5e8d4,stroke:#82b366
+  classDef mut fill:#ffe6cc,stroke:#d79b00
+  classDef builder fill:#e1d5e7,stroke:#9673a6
+....
+
+Bleu = déclaratif/CR · Vert = state durable (read-only à réconcilier) · Orange = réconciliateur/runtime · Violet = provisionneur d'infra.
+
+=== Séquence — day-0 puis cold-start du mgmt
+
+[mermaid]
+....
+sequenceDiagram
+  participant Flux
+  participant Ctrl as controller
+  participant WL as workload (infra incus)
+  participant CA as ClusterAdoption
+  Note over Flux,CA: DAY-0 (création)
+  Flux->>Ctrl: applique l'INTENTION (nouvelle ressource)
+  Ctrl->>WL: provisionne CP + workers
+  WL-->>Ctrl: CP disponible (joignable)
+  Ctrl->>CA: crée + attache (ownerRef → intention)
+  CA->>CA: crée le CAPI Cluster (décrit le vivant)
+  Note over Flux,CA: COLD-START mgmt (CAPI vidé ; le workload TOURNE toujours)
+  Flux->>Ctrl: ré-applique l'INTENTION
+  Ctrl->>WL: le CP tourne-t-il déjà ?
+  WL-->>Ctrl: oui (joignable)
+  Ctrl->>CA: ré-crée la ClusterAdoption (PAS de re-provision)
+  CA->>CA: ré-adopte (re-décrit)
+....
+
+=== Machine à états — `ClusterProvision.status.phase` (funnel adopt-first)
+
+[mermaid]
+....
+flowchart TD
+  start(["reconcile"]) --> adopting
+  adopting{{"ADOPTING<br/>adopt-first, TOUJOURS<br/>lit providerID + RemoteConnectionProbe (watch, pas de sonde)"}}:::hot
+  adopting -->|"nœuds présents + CP sain"| adopted["ADOPTED<br/>crée/rafraîchit ClusterAdoption + miroir CAPI"]:::ok
+  adopting -->|"nœuds ABSENTS"| provisioning["PROVISIONING<br/>CAPN fait naître les nœuds"]:::work
+  adopting -->|"présents + CP MALADE"| degraded["DEGRADED<br/>JAMAIS re-provisionner (= perte)<br/>surface + retry"]:::bad
+  provisioning -->|"nœuds up — reboucle"| adopting
+  adopted -->|"re-reconcile / cold-start (etcd mgmt wipé)"| adopting
+  degraded -->|"retry (backoff)"| adopting
+
+  classDef hot fill:#ffe6cc,stroke:#d79b00
+  classDef ok fill:#d5e8d4,stroke:#82b366
+  classDef work fill:#dae8fc,stroke:#6c8ebf
+  classDef bad fill:#f8cecc,stroke:#b85450
+....
+
+Tous les états **repassent par `Adopting`** = l'invariant adopt-first matérialisé. `Provisioning` n'est atteint QUE via « nœuds absents », et jamais depuis `Degraded` (présent-malade). `Adopting` ne SONDE pas : il lit les conditions que CAPI/CAPN maintiennent (watch + `Owns`).
+
+=== Relation ClusterProvision ↔ ClusterAdoption + vue opérateur
+
+Chaîne d'**ownerRef** (cascade). Seul le `ClusterProvision` (Git/Flux) survit au cold-start → il re-sème la chaîne. `kubectl delete clusterprovision` ⇒ GC en cascade.
+
+[mermaid]
+....
+flowchart LR
+  cp["ClusterProvision<br/>intent · Flux/Git<br/>SURVIT le cold-start"]:::code
+  ca["ClusterAdoption<br/>miroir · créé par seed-incluster<br/>etcd mgmt — wipé au cold-start"]:::code
+  capi["CAPI Cluster<br/>+ RKE2ControlPlane + LXCCluster + Machines"]:::code
+  op(["opérateur"]):::mut
+  cp -->|"ownerRef — crée l'enfant une fois adopté"| ca
+  ca -->|"ownerRef — crée/décrit"| capi
+  op -.->|"kubectl get clusterprovision → PHASE (pane durable)"| cp
+  op -.->|"kubectl get clusters (CAPI standard)"| capi
+  classDef code fill:#dae8fc,stroke:#6c8ebf
+  classDef mut fill:#ffe6cc,stroke:#d79b00
+....
+
+* **`kubectl get clusterprovision -A`** → `PHASE` · `ENDPOINT` (VIP) · `NODES` (prêts/total) — le pane unique, TOUJOURS présent (Git-backed).
+* **`kubectl get clusters -A`** → la vue CAPI familière (Available/Provisioned) — gratuite car on miroite dans CAPI.
+
+== Topologie des plans de management — où tourne seed-incluster (invariant single-adopter)
+
+**Un cluster est adopté par EXACTEMENT UN plan de management.** Deux `seed-incluster` qui adoptent le même cluster ⇒ deux owners du même `ClusterAdoption` + CR-set CAPI ⇒ flap SSA. C'est le principe *un objet = un owner* remonté au grain **cluster**. Corollaire : on ne fait PAS tourner seed-incluster dans chaque cluster « pour qu'il se gère » — on le fait tourner **là où vit le plan de management**.
+
+* **`seed-incluster` ne tourne que dans un plan de management.** Aujourd'hui = **le mgmt seul**. Son etcd porte les CR (`ClusterProvision`/`ClusterAdoption`) du mgmt *et* du workload (déjà acquis : les CR workload sont rendus sur `manifests/<host>-mgmt`, Flux du mgmt les applique).
+* **Le workload est un cluster MANAGÉ, pas un plan.** Il est adopté **depuis** le mgmt ; il **ne fait pas tourner seed-incluster** — sinon il devient un 2e adopteur du même cluster (double-owner).
+* **Le mgmt s'auto-adopte in-cluster parce qu'il est la RACINE** : rien au-dessus ne peut l'adopter (bootstrappé hors-bande par seed-master/Pulumi). Self-adoption in-cluster = le mécanisme *du cluster racine*. Tout cluster non-racine est adopté par son plan parent → ne s'auto-adopte jamais.
+* **Réponse à « un cluster déjà managé par CAPI/CAPN peut-il être adopté in-cluster ? »** : non. Il a déjà son unique adopteur (le plan parent) ; l'adoption a lieu **une fois, depuis le plan de management**. Le ré-adopter de l'intérieur = double-owner.
+* **Quand seed-incluster ailleurs ?** Seulement si on introduit un **2e étage de management** (mgmt régional/fédéré gérant sa propre flotte) : chaque cluster *de l'étage mgmt* fait tourner seed-incluster (self + enfants) ; les clusters **feuilles** (workload) jamais. Topologie hiérarchique — hors cas actuel.
+
+[mermaid]
+....
+graph TB
+  subgraph mgmt["mgmt cluster = LE plan de management (seed-incluster ICI)"]
+    si["seed-incluster<br/>l'unique adopteur"]:::mut
+    cpMgmt["ClusterProvision/Adoption (mgmt) — self"]:::code
+    cpWl["ClusterProvision/Adoption (workload) — managé"]:::code
+  end
+  si -->|"adopte (racine, self)"| mgmtNodes[("mgmt rke2+etcd<br/>bootstrappé hors-bande")]:::store
+  si -->|"adopte (depuis le mgmt)"| wlNodes[("workload rke2+etcd<br/>infra incus indépendante")]:::store
+  cpMgmt -.-> si
+  cpWl -.-> si
+  note["workload : cluster MANAGÉ<br/>ne fait PAS tourner seed-incluster<br/>(sinon 2e owner)"]:::bad -.-> wlNodes
+
+  classDef code fill:#dae8fc,stroke:#6c8ebf
+  classDef store fill:#d5e8d4,stroke:#82b366
+  classDef mut fill:#ffe6cc,stroke:#d79b00
+  classDef bad fill:#f8cecc,stroke:#b85450
+....
+
+== Principe directeur (déjà acquis)
+
+**Contrôleur MINCE + intention RICHE.** seed-master (qui a le `ClusterNetworkBlueprint` = SOT adressage : VIP, CIDRs, projet Incus, identité, image) **remplit l'intention avec des valeurs CONCRÈTES** ; le contrôleur ne fait que **matérialiser** (templating) le CR-set CAPI + en devenir l'owner (ownerRef, `controller=true`) ⇒ ces objets **sortent du set Flux**. **ZÉRO logique d'adressage en Go** (sinon on duplique le blueprint Java → divergence).
+
+== Tranché ✓
+
+* **2 ressources, 2 rôles** : `ClusterProvision` (nouveau, intention) + `ClusterAdoption` (existant, miroir). Pas de mélange.
+* **Contrôleur = `seed-incluster`** (jumeau in-cluster de seed-master).
+* **Reconcile niveau-déclenché** : CP vivant ? adopt : provision (self-healing day-0/cold-start/sinistre).
+* **Provision vs adopt = même CR-set CAPI, 2 modes** : neuf (CAPRKE2 bootstrap) vs existant (par `providerID`, skip bootstrap). Provisionné via **CAPN** (pas Pulumi pour le workload).
+* **Ownership** : Flux possède le `ClusterProvision` ; seed-incluster possède la `ClusterAdoption` + le CR-set CAPI (hors set Flux).
+* **Intention riche / contrôleur mince** : seed-master (SOT `ClusterNetworkBlueprint`) remplit le `ClusterProvision` en valeurs concrètes ; zéro logique d'adressage en Go.
+* **Un cluster = UN adopteur** (single-owner au grain cluster) : `seed-incluster` ne tourne QUE dans un plan de management ; aujourd'hui = le mgmt seul, qui adopte lui-même (racine) ET le workload (managé depuis le mgmt). Le workload ne fait PAS tourner seed-incluster (= 2e owner du même cluster). Détails § topologie ci-dessous.
+* **#4 PAS de bétail — TOUS les nœuds = pets nommés adoptés** (option B, user validé) : chaque nœud = nom déterministe du blueprint (`CANONICAL_NODE_NAMES`), bootstrappé + adopté par `providerID` ; **CAPI = miroir intégral** ; cold-start ré-adopte *tout* (CP + workers, même reconcile par nœud) — aucun nœud pré-existant n'est jeté. `ClusterProvision.spec` s'appuie sur la liste de nœuds du blueprint (pas un pool cattle+replicas).
+* **Groupe CRD = `cluster.seedmatic.io`** (ex-`adoption.seedmatic.io`) : nommé par le DOMAINE (cluster lifecycle), pas par le producteur. Découplé du nom du contrôleur (qu'on renomme), pas de stutter `seed…seedmatic`, et parallèle direct de CAPI (`cluster.x-k8s.io`) — cohérent avec notre rôle de miroir. Porte `ClusterProvision` + `ClusterAdoption` (+ futurs CR cluster).
+
+== À trancher (reste)
+
+. **`spec` du `ClusterProvision`** : liste de nœuds pets (pas un pool cattle+replicas — #4 tranché) = { nom (blueprint), rôle CP/worker, projet Incus, profil, image, identité CAPN } — forme exacte ?
+. **Mécanique des renommages** : `rke2-adoption-controller` → `seed-incluster` + `OPERATOR` → `STANDALONE` + groupe CRD `adoption.seedmatic.io` → `cluster.seedmatic.io` (ordre, migration du groupe CRD).
+
+// TRANCHÉ (déplacés) :
+// - #1 détection "CP vivant" : PAS de sonde maison — dérivé de CAPI/CAPN
+//   (Cluster.RemoteConnectionProbe/ControlPlaneInitialized = CP sain ; statut LXCMachine = instance présente).
+//   Le contrôleur mince RÉUTILISE ces conditions via Owns/watch. Voir "machine à états + watch".
+// - #3 groupe CRD → cluster.seedmatic.io (voir "Tranché ✓").
+// - #4 workers au cold-start → option B, tout en pets nommés adoptés (voir "Tranché ✓").
