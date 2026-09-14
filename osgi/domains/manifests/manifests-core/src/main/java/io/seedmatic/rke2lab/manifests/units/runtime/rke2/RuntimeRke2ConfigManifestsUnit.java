@@ -6,32 +6,57 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator;
 import io.seedmatic.rke2lab.manifests.AbstractManifestsUnit;
+import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
 import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
+import io.seedmatic.rke2lab.manifests.contract.ClusterRole;
 import io.seedmatic.rke2lab.manifests.contract.ManifestAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
-import io.seedmatic.rke2lab.manifests.contract.node.NodeEnvContext;
-import io.seedmatic.rke2lab.manifests.contract.profiles.BootstrapIdentity;
-import io.seedmatic.rke2lab.manifests.contract.profiles.NetworkTopology;
+import io.seedmatic.rke2lab.manifests.node.DefaultNodeEnvContext;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
+import io.seedmatic.rke2lab.netplan.contract.ClusterNetworkBlueprint;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import org.cdk8s.ApiObject;
 import org.cdk8s.ApiObjectMetadata;
 import org.cdk8s.ApiObjectProps;
 import org.cdk8s.JsonPatch;
 import software.constructs.Construct;
 
+/**
+ * Renders the RKE2 boot config ({@code config.yaml.d} fragments) for a MANAGEMENT render — the
+ * management cluster serves the config of everything it manages. It emits fragments for the SUBJECT
+ * (only when the subject is itself a management cluster — a workload's config lives on its
+ * manager's branch, not its own) PLUS every {@link ManifestSynthesisContext#workloadTargets()
+ * workload target}. A workload render produces nothing here.
+ *
+ * <p>The fragments are the CONTROL-PLANE pool's config: the only consumers of these branch
+ * fragments are control-plane nodes. Workers are bootstrap-injected by CAPRKE2 (their config rides
+ * the {@code RKE2ConfigTemplate}), never {@code install-rke2-config}, so there is no cross-pool
+ * "common" set to factor out — everything rendered here is server config for the {@code
+ * control-node} pool. Per cluster the fragments land under {@code
+ * rke2-config/<cluster>/control-node/} (the branch subtree {@code install-rke2-config} roots its
+ * fetch at) and are stamped into namespace {@code rke2lab-<cluster>} (the SAME namespace the
+ * cluster-api units create + own — this unit references it, does not create a second one). Dropping
+ * {@code LOCAL_CONFIG} makes them REAL Flux-applied ConfigMaps, so seed-incluster can read the
+ * visible resource to bootstrap-inject a managed cluster.
+ *
+ * <p>Per-node facts are NOT baked here — {@code node-ip}, {@code node-name}, {@code advertise-
+ * address} are the node's own vmnet address / hostname, resolved on-node by the nixos oneshots
+ * ({@code rke2lab-node-labels}/{@code -provider-id}/{@code -node-ip}), never rendered per node. The
+ * rke2 join token is NOT rendered either — CAPRKE2's bootstrap provider owns it.
+ */
 public final class RuntimeRke2ConfigManifestsUnit extends AbstractManifestsUnit {
 
   public static final String MANIFEST_UNIT_ID = ManifestDomainCatalog.RUNTIME + "/rke2-config";
 
-  private static final ObjectMapper YAML_SCALAR_SERIALIZER = createYamlScalarSerializer();
+  /** The one control-plane pool; the branch subtree + the config namespace both key on it. */
+  private static final String CONTROL_NODE_POOL = "control-node";
 
-  private final PackageMetadataProfile packageProfile =
-      new PackageMetadataProfile("runtime", "rke2-config");
+  private static final ObjectMapper YAML_SCALAR_SERIALIZER = createYamlScalarSerializer();
 
   public RuntimeRke2ConfigManifestsUnit() {
     super(MANIFEST_UNIT_ID, List.of());
@@ -39,211 +64,164 @@ public final class RuntimeRke2ConfigManifestsUnit extends AbstractManifestsUnit 
 
   @Override
   protected void doSynthesize(final Construct scope, final ManifestsUnitContext context) {
-    final NodeEnvContext nodeEnvContext = context.nodeEnvContext();
-    final BootstrapIdentity id = nodeEnvContext.bootstrapIdentity();
-    final NetworkTopology net = nodeEnvContext.networkTopology();
+    final ManifestSynthesisContext synth = ManifestSynthesisContext.current();
+    // The clusters this management render serves config for: the subject IFF it is a management
+    // cluster (a workload's config lives on its manager's branch), plus every workload target.
+    final Set<String> clusters = new LinkedHashSet<>();
+    final String subject =
+        synth.bootstrapIdentity().clusterNameOrDefault(DefaultNodeEnvContext.DEFAULT_CLUSTER_NAME);
+    if (ClusterRole.of(subject) == ClusterRole.MGMT) {
+      clusters.add(subject);
+    }
+    synth.workloadTargets().forEach(target -> clusters.add(target.clusterName()));
+    clusters.forEach(cluster -> renderControlNodeConfig(scope, cluster));
+  }
+
+  private void renderControlNodeConfig(final Construct scope, final String cluster) {
+    final ClusterNetworkBlueprint blueprint =
+        ClusterNetworkBlueprint.builder()
+            .cluster(cluster)
+            .node("master")
+            .deriveRecipeModel()
+            .build();
+    final String namespace = "rke2lab-" + cluster;
+    final PackageMetadataProfile profile =
+        new PackageMetadataProfile(
+            ManifestDomainCatalog.RUNTIME, "rke2-config/" + cluster + "/" + CONTROL_NODE_POOL);
 
     createConfigMap(
         scope,
-        "advertise-address.yaml",
-        "Advertise address fragment",
-        "|ConfigMap|default|rke2-advertise-address",
-        Map.of("advertise-address", net.nodeHostInetAddr()));
-    createConfigMap(
-        scope,
+        cluster,
+        namespace,
+        profile,
         "cidrs.yaml",
         "Network CIDRs fragment",
-        "|ConfigMap|default|rke2-cidrs",
         orderedMap(
             entry("kube-controller-manager-arg", List.of("node-cidr-mask-size-ipv4=24")),
-            entry("service-cidr", net.clusterServiceCidr()),
-            entry("cluster-cidr", net.clusterPodCidr())));
+            entry("service-cidr", blueprint.serviceCidrDualStack()),
+            entry("cluster-cidr", blueprint.podCidrDualStack())));
     createConfigMap(
         scope,
+        cluster,
+        namespace,
+        profile,
         "core.yaml",
         "Core RKE2 settings",
-        "|ConfigMap|default|rke2-core",
         // cni is NOT set here: it is STATIC (cilium on every node) and lives in the node-base's
-        // `services.rke2.cni = "cilium"` (nixos/rke2.nix), which writes it to config.yaml. rke2
-        // merges
-        // config.yaml + config.yaml.d and CONCATENATES list-valued flags like --cni, so setting it
-        // in
-        // both produced `[cilium, cilium]` — a fatal "may only provide multiple values if multus is
-        // the first value". Per-cluster config belongs on the branch; static config stays
-        // node-base.
+        // `services.rke2.cni = "cilium"` (nixos/rke2.nix). rke2 CONCATENATES list-valued flags like
+        // --cni across config.yaml + config.yaml.d, so setting it in both produced `[cilium,
+        // cilium]`
+        // — a fatal "may only provide multiple values if multus is the first value".
         orderedMap(entry("write-kubeconfig-mode", "0640"), entry("bind-address", "0.0.0.0")));
     createConfigMap(
         scope,
+        cluster,
+        namespace,
+        profile,
         "debug.yaml",
         "Enable RKE2 debug logging for manifest watcher",
-        "|ConfigMap|default|debug",
         orderedMap(entry("v", "4"), entry("debug", "false")));
     createConfigMap(
         scope,
+        cluster,
+        namespace,
+        profile,
         "disable.yaml",
         "Disable list fragment",
-        "|ConfigMap|default|rke2-disable",
         Map.of(
             "disable",
             List.of(
-                // Keep RKE2's snapshot controller + validation webhook disabled.
-                // The openebs-zfs chart already ships its own snapshot-controller
-                // sidecar in its localpv-controller deployment; running RKE2's
-                // alongside would mean two controllers reconciling the same
-                // VolumeSnapshot CRs.
+                // Keep RKE2's snapshot controller + validation webhook disabled: the openebs-zfs
+                // chart ships its own snapshot-controller sidecar, so running RKE2's alongside
+                // would
+                // mean two controllers reconciling the same VolumeSnapshot CRs. rke2-snapshot-
+                // controller-crd stays ENABLED (not listed) so the upstream VolumeSnapshot CRDs
+                // exist
+                // — the openebs-zfs snapshot-controller v8 hard-fails without them.
                 "rke2-snapshot-controller",
                 "rke2-snapshot-validation-webhook",
-                // rke2-snapshot-controller-crd is *enabled* (i.e. not in this
-                // list) so the upstream VolumeSnapshot{,Content,Class} CRDs
-                // exist on the cluster. Without them the openebs-zfs-bundled
-                // snapshot-controller v8 hard-fails at startup ("Exiting due
-                // to failure to ensure CRDs exist"). The CRDs themselves are
-                // pure data — they don't bring a controller of their own —
-                // so installing them is the minimum-viable fix that makes the
-                // openebs-zfs controller pod healthy without introducing a
-                // second snapshot-controller.
                 "rke2-ingress-nginx")));
     createConfigMap(
         scope,
+        cluster,
+        namespace,
+        profile,
         "etcd-metrics.yaml",
         "Etcd metrics fragment",
-        "|ConfigMap|default|rke2-etcd-metrics",
         Map.of("etcd-expose-metrics", true));
     createConfigMap(
         scope,
+        cluster,
+        namespace,
+        profile,
         "etcd.yaml",
         "Etcd settings fragment",
-        "|ConfigMap|default|rke2-etcd",
-        orderedMap(
-            entry("with-node-id", false),
-            entry("node-name", id.nodeHostname()),
-            entry("etcd-expose-metrics", false)));
-    // The node's dual-stack address (v4,v6): cluster-cidr + service-cidr are dual-stack, and rke2
-    // rejects a node-ip that does not share their IP version(s). The v6 is the node's vmnet ULA
-    // (embedded-v4, fd96:…:{cc}20::<ipv4>) delivered by the vmnet bridge's stateful DHCPv6
-    // reservation (GrowNetworkResolver) — a real address the node holds. Named once so node-ip and
-    // the kubelet-arg override below share it.
-    final String nodeIp = net.nodeHostInetAddr() + "," + net.nodeHostInet6Addr();
+        // node-name dropped: it is the node's own hostname (a per-node fact) — rke2 derives it on
+        // the node; not rendered here.
+        orderedMap(entry("with-node-id", false), entry("etcd-expose-metrics", false)));
     createConfigMap(
         scope,
-        "node-inetaddr.yaml",
-        "Node IP fragment",
-        "|ConfigMap|default|rke2-node-inetaddr",
-        // node-ip feeds advertise-address + the apiserver/kubelet cert SANs. The kubelet-arg
-        // DUPLICATE is deliberate: rke2 does NOT propagate the `node-ip` config to the kubelet's
-        // `--node-ip` when the address is DHCP-`dynamic` (our vmnet addresses are DHCP
-        // reservations),
-        // so the kubelet auto-detected and registered its InternalIP as cilium_host — a pod-cidr IP
-        // absent from the kubelet serving cert, breaking `kubectl logs/exec` + metrics with an x509
-        // mismatch. Forcing --node-ip via kubelet-arg (the documented escape hatch) pins InternalIP
-        // to node-ip, which IS in the cert. Proven live: flips InternalIP from 10.44.0.68 to
-        // 10.80.0.10.
-        //
-        // The `+` suffix APPENDS instead of replacing: rke2 config.yaml.d otherwise OVERWRITES a
-        // list-valued key with the alphabetically-last file's value, so this fragment
-        // (node-inetaddr)
-        // silently dropped the `provider-id=` kubelet-arg the per-node oneshot writes to
-        // 40-provider-id.yaml — the node then registered with NO spec.providerID and CAPI could
-        // never
-        // bind the Machine to it (NodeHealthy stuck "Waiting for a Node with spec.providerID … to
-        // exist"). Both producers use `kubelet-arg+` so node-ip and provider-id coexist regardless
-        // of
-        // file order.
-        orderedMap(entry("node-ip", nodeIp), entry("kubelet-arg+", List.of("node-ip=" + nodeIp))));
-    // Node labels are NOT delivered here: kubelet applies --node-labels only at the node's first
-    // registration, so a fragment glob'd from the cluster post-join is ignored. They are written
-    // at boot before rke2-server by the nixos oneshot rke2lab-node-labels (nixos/rke2.nix).
-    createConfigMap(
-        scope,
+        cluster,
+        namespace,
+        profile,
         "tls-san.yaml",
-        "TLS SAN fragment",
-        "|ConfigMap|default|rke2-tls-san",
-        Map.of(
-            "tls-san",
-            List.of(
-                "localhost",
-                "gateway",
-                "0.0.0.0",
-                "127.0.0.1",
-                // The node's mDNS FQDN (SOT: NamePlan.nodeMdnsFqdn, not re-concatenated): kubectl
-                // and the operator dial the apiserver at <cluster>-<node>.local:6443 (avahi-
-                // published, ./host-access.nix), so the serving cert MUST carry it or `x509:
-                // certificate is valid for …, not <cluster>-<node>.local`. rke2 auto-adds the bare
-                // hostname but NOT the .local FQDN.
-                id.nodeMdnsFqdn(),
-                // The kube-vip VIP — where kube-vip binds the apiserver and what CAPI's
-                // clustercache
-                // (+ any VIP-endpoint kubeconfig) dials, so the serving cert MUST be valid for it,
-                // or
-                // `x509: certificate is valid for …, not 10.80.<w>.10` → RemoteConnectionProbe
-                // fails +
-                // ControlPlaneInitialized stalls. REPLACES the VIP subnet GATEWAY (.1) that sat
-                // here
-                // by mistake: a router is never an apiserver endpoint, so it had no place in the
-                // SAN.
-                net.vipHostInetAddr(),
-                net.nodeNetworkGatewayAddr(),
-                net.nodeHostInetAddr(),
-                net.lanHostInetAddr())));
-    // The rke2 join token is SENSITIVE — a ConfigMap holding it would commit plaintext, so it is a
-    // Secret. Its stringData rides the branch sops-encrypted (`.sops.yaml` encrypted_regex covers
-    // stringData; the exploder gives an RKE2_CONFIG Secret the sops-guarded `.secret-*.yml` name),
-    // and install-rke2-config decrypts it at boot before writing config.yaml.d/token.yaml.
-    createSecret(
-        scope,
-        "token.yaml",
-        "RKE2 token fragment (sops-encrypted on the branch)",
-        "|Secret|default|rke2-token",
-        Map.of("token", id.clusterToken()));
+        "TLS SAN fragment (all-nodes superset)",
+        Map.of("tls-san", tlsSanSuperset(cluster, blueprint)));
+  }
+
+  /**
+   * The cert's SAN set, a cluster-wide SUPERSET valid for every control-plane node regardless of
+   * which one this render's node is: the VIP (kube-vip binds the apiserver here; CAPI's
+   * clustercache dials it), every canonical node's mDNS {@code .local} FQDN (kubectl/operator dial
+   * {@code <cluster>-<node>.local}; rke2 auto-adds the bare hostname but NOT the FQDN), the
+   * node-network gateway + LAN host address, and the loopback set. rke2 auto-adds each node's own
+   * IP.
+   */
+  private static List<Object> tlsSanSuperset(
+      final String cluster, final ClusterNetworkBlueprint blueprint) {
+    final LinkedHashSet<Object> sans = new LinkedHashSet<>();
+    sans.add("localhost");
+    sans.add("gateway");
+    sans.add("0.0.0.0");
+    sans.add("127.0.0.1");
+    sans.add(blueprint.vip().vipHostInetaddr().getHostAddress());
+    sans.add(blueprint.nodeNetwork().nodeGatewayInetaddr().getHostAddress());
+    sans.add(blueprint.lan().hostInetaddr().getHostAddress());
+    for (final String node : ClusterNetworkBlueprint.CANONICAL_NODE_NAMES) {
+      final ClusterNetworkBlueprint per =
+          ClusterNetworkBlueprint.builder().cluster(cluster).node(node).deriveRecipeModel().build();
+      sans.add(per.names().nodeMdnsFqdn());
+    }
+    return List.copyOf(sans);
   }
 
   private void createConfigMap(
       final Construct scope,
+      final String cluster,
+      final String namespace,
+      final PackageMetadataProfile profile,
       final String name,
       final String description,
-      final String upstreamIdentifier,
       final Map<String, Object> data) {
-    createFragment(scope, "ConfigMap", "/data", name, description, upstreamIdentifier, data);
-  }
-
-  private void createSecret(
-      final Construct scope,
-      final String name,
-      final String description,
-      final String upstreamIdentifier,
-      final Map<String, Object> data) {
-    createFragment(scope, "Secret", "/stringData", name, description, upstreamIdentifier, data);
-  }
-
-  // One RKE2_CONFIG fragment resource — a ConfigMap (payload under /data) or a Secret (under
-  // /stringData). Both carry LOCAL_CONFIG (nothing applies them; they exist only for the boot-time
-  // install-rke2-config app to extract) + RKE2_CONFIG (the app's marker). The Secret variant is
-  // what
-  // the exploder gives the sops-guarded `.secret-*.yml` name, so its stringData commits encrypted.
-  private void createFragment(
-      final Construct scope,
-      final String kind,
-      final String payloadPath,
-      final String name,
-      final String description,
-      final String upstreamIdentifier,
-      final Map<String, Object> data) {
+    // One RKE2_CONFIG ConfigMap fragment (payload under /data). RKE2_CONFIG marks it for the boot-
+    // time install-rke2-config app; NO LOCAL_CONFIG, so Flux applies it as a real ConfigMap that
+    // seed-incluster can read to bootstrap-inject a managed cluster. metadata.name doubles as the
+    // config.yaml.d filename install-rke2-config writes; namespace rke2lab-<cluster> scopes it.
     final ApiObject fragment =
         new ApiObject(
             scope,
-            kind.toLowerCase(Locale.ROOT) + "-rke2-" + name.replace('.', '-'),
+            "configmap-rke2-" + cluster + "-" + name.replace('.', '-'),
             ApiObjectProps.builder()
                 .apiVersion("v1")
-                .kind(kind)
+                .kind("ConfigMap")
                 .metadata(
                     ApiObjectMetadata.builder()
                         .name(name)
+                        .namespace(namespace)
                         .annotations(
-                            packageProfile.packageAnnotations(
-                                upstreamIdentifier,
+                            profile.packageAnnotations(
+                                "|ConfigMap|" + namespace + "|" + name,
                                 Map.of(
-                                    ManifestAnnotation.LOCAL_CONFIG.key(),
-                                    "true",
                                     ManifestAnnotation.RKE2_CONFIG.key(),
                                     "true",
                                     "description.kpt.dev",
@@ -251,7 +229,7 @@ public final class RuntimeRke2ConfigManifestsUnit extends AbstractManifestsUnit 
                         .build())
                 .build());
 
-    fragment.addJsonPatch(JsonPatch.add(payloadPath, toConfigMapData(data)));
+    fragment.addJsonPatch(JsonPatch.add("/data", toConfigMapData(data)));
   }
 
   private static Map<String, String> toConfigMapData(final Map<String, Object> data) {
