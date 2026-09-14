@@ -1104,18 +1104,19 @@ public class ManifestSynthesisScenario
               });
     }
 
-    // The per-cluster RKE2 config installer, written at the branch root so the branch is a
-    // self-installing flake: a node (standalone via seed-master, or in-cluster via CAPRKE2) runs
-    // `nix run <this-branch>#install-rke2-config` at boot and the app globs THIS branch tree for
-    // the
-    // RKE2_CONFIG-annotated ConfigMaps (RuntimeRke2ConfigManifestsUnit renders them; the exploder
-    // keeps their <name> verbatim) and extracts each `.data` into /etc/rancher/rke2/config.yaml.d.
+    // The RKE2 config installer, written at the branch root so the branch is a self-installing
+    // flake: the SELF/root control-plane node (grown standalone by seed-master) runs `nix run
+    // <this-branch>#install-rke2-config` at boot; the app globs THIS branch tree for the
+    // RKE2_CONFIG-annotated ConfigMaps (RuntimeRke2ConfigManifestsUnit renders them as normal
+    // Flux-applied ConfigMaps) and extracts each `.data` into /etc/rancher/rke2/config.yaml.d.
+    // Because a management branch now carries the config of EVERY cluster it manages (one namespace
+    // rke2lab-<cluster> per cluster), the app filters to THIS node's cluster — derived from its
+    // hostname <cluster>-<node> — so a mgmt node never installs a co-located workload's config.
+    // (Managed workload nodes take their config from CAPRKE2 via seed-incluster, not this app.)
     // The install LOGIC is cluster-invariant, so flake.nix is a STATIC asset (like .sops.yaml) —
-    // the
-    // per-cluster variance lives entirely in the ConfigMap data the app reads from ${self}. The one
-    // render-time bind is the nixpkgs pin: taken from the SOURCE flake.lock so the installer's
-    // yq-go
-    // is the node-base's own nixpkgs (a store cache-hit at boot, no cold fetch).
+    // the per-cluster variance lives entirely in the ConfigMap data the app reads from ${self}. The
+    // one render-time bind is the nixpkgs pin: taken from the SOURCE flake.lock so the installer's
+    // yq-go is the node-base's own nixpkgs (a store cache-hit at boot, no cold fetch).
     private static final String NIXPKGS_REV_TOKEN = "@NIXPKGS_REV@";
 
     private void recordInstallConfigFlake(Path root) {
@@ -1140,10 +1141,10 @@ public class ManifestSynthesisScenario
     private static final String INSTALL_CONFIG_FLAKE =
         """
         {
-          description = "rke2lab per-cluster RKE2 config installer — extracts the RKE2_CONFIG \
-        ConfigMaps rendered on this manifests/<cluster> branch into \
-        /etc/rancher/rke2/config.yaml.d. Run identically at boot by a standalone (seed-master) or \
-        an in-cluster (CAPRKE2) node: nix run <this-branch>#install-rke2-config.";
+          description = "rke2lab RKE2 config installer — extracts the RKE2_CONFIG ConfigMaps of \
+        THIS node's cluster (namespace rke2lab-<cluster>, derived from the hostname) from this \
+        management branch into /etc/rancher/rke2/config.yaml.d. Run at boot by the self/root \
+        control-plane node (seed-master): nix run <this-branch>#install-rke2-config.";
 
           # Pinned to the node-base's own nixpkgs rev (injected at render from the source
           # flake.lock) so the installer's yq-go is a store cache-hit on the node — no cold fetch.
@@ -1159,15 +1160,17 @@ public class ManifestSynthesisScenario
                 let
                   installer = pkgs.writeShellApplication {
                     name = "install-rke2-config";
-                    # sops decrypts the sensitive fragments (the rke2 token Secret) with SOPS_AGE_KEY
-                    # from the environment; sops only encrypts data/stringData VALUES, so kind +
-                    # annotations stay readable without a key.
-                    runtimeInputs = [ pkgs.yq-go pkgs.sops pkgs.coreutils pkgs.findutils ];
+                    runtimeInputs = [ pkgs.yq-go pkgs.coreutils pkgs.findutils ];
                     text = ''
                       dest=/etc/rancher/rke2/config.yaml.d
                       install -d -m 0755 "$dest"
+                      # This node's cluster, from its hostname (<cluster>-<node>): a management branch
+                      # carries the config of EVERY cluster it manages (one namespace rke2lab-<cluster>
+                      # each), so install ONLY this node's fragments — never a co-located cluster's.
+                      cluster="$(cat /proc/sys/kernel/hostname)"
+                      cluster="''${cluster%-*}"
                       # Reinstall from the branch: wipe the fragments this installer owns first. The
-                      # per-node oneshots (node-labels, provider-id) write their drop-ins AFTER this.
+                      # per-node oneshots (node-labels, provider-id, node-ip) write drop-ins AFTER this.
                       find "$dest" -maxdepth 1 -type f \\( -name '*.yaml' -o -name '*.yml' \\) -delete
                       count=0
                       while IFS= read -r -d "" manifest; do
@@ -1175,21 +1178,21 @@ public class ManifestSynthesisScenario
                           '.metadata.annotations["io.seedmatic.rke2lab/rke2-config"] // "false"' \
                           "$manifest")"
                         [ "$marked" = "true" ] || continue
+                        # Only THIS node's cluster — the fragment's namespace (rke2lab-<cluster>)
+                        # encodes it; the mandatory filter that keeps co-located clusters apart.
+                        ns="$(yq eval -r '.metadata.namespace // ""' "$manifest")"
+                        [ "$ns" = "rke2lab-$cluster" ] || continue
                         name="$(yq eval -r '.metadata.name' "$manifest")"
-                        # Decrypt in place if the fragment carries a sops block (the token Secret);
-                        # otherwise read it as-is. Then extract the config payload (ConfigMap .data or
-                        # Secret .stringData), parsing each value from its embedded YAML.
-                        if [ "$(yq eval -r 'has("sops")' "$manifest")" = "true" ]; then
-                          plain="$(sops --decrypt "$manifest")"
-                        else
-                          plain="$(cat "$manifest")"
-                        fi
-                        printf '%s' "$plain" | yq eval -o=yaml \
-                          '(.data // .stringData // {}) | with_entries(.value |= from_yaml)' \
-                          > "$dest/$name"
+                        # Extract the config payload (ConfigMap .data), parsing each value from its
+                        # embedded YAML. The fragments are non-secret ConfigMaps committed plaintext
+                        # (the sops gitattributes binds only *-secret-* files), so no decryption.
+                        yq eval -o=yaml \
+                          '(.data // {}) | with_entries(.value |= from_yaml)' \
+                          "$manifest" > "$dest/$name"
                         count=$((count + 1))
                       done < <(find "${self}" -type f \\( -name '*.yaml' -o -name '*.yml' \\) -print0)
-                      echo "[install-rke2-config] installed $count RKE2_CONFIG fragment(s) into $dest"
+                      echo "[install-rke2-config] installed $count RKE2_CONFIG fragment(s) for" \
+                           "cluster $cluster into $dest"
                     '';
                   };
                   app = { type = "app"; program = "${installer}/bin/install-rke2-config"; };
