@@ -47,7 +47,6 @@ public final class DefaultManifestExplodeService implements ManifestExplodeServi
   private static final Logger LOG = LoggerFactory.getLogger(DefaultManifestExplodeService.class);
 
   private static final String CRD_KIND = "CustomResourceDefinition";
-  private static final String SECRET_KIND = "Secret";
 
   private final YamlMapper yaml;
 
@@ -158,25 +157,18 @@ public final class DefaultManifestExplodeService implements ManifestExplodeServi
    * Resolves the per-resource file name from annotations, not from the resource name:
    *
    * <ul>
-   *   <li>{@link ManifestAnnotation#RKE2_CONFIG} ConfigMap: verbatim {@code <name>} (visible) so
-   *       the {@code install-rke2-config} app can extract it into {@code config.yaml.d}.
-   *   <li>{@link ManifestAnnotation#RKE2_CONFIG} Secret (a sensitive fragment, e.g. the rke2
-   *       token): the sops-safe {@code .secret-<name>.yml} dotfile name the {@code **}/{@code
-   *       .secret-*.yml} guard binds, so its {@code stringData} commits ENCRYPTED — NOT the
-   *       verbatim ConfigMap name. The installer keys on the annotation, not the filename, so it
-   *       still finds it.
    *   <li>{@link ManifestAnnotation#MANIFEST_GROUP} or {@link ManifestAnnotation#LOCAL_CONFIG}:
    *       hidden {@code .<kind>-<name>.yml} dotfile, never linked / globbed.
-   *   <li>otherwise: {@code <order>-<kind>-<name>.yml} for cluster apply.
+   *   <li>otherwise: {@code <order>-<kind>-<name>.yml} for cluster apply. This includes {@link
+   *       ManifestAnnotation#RKE2_CONFIG} ConfigMaps — they take the normal visible name so Flux
+   *       APPLIES them (a real ConfigMap seed-incluster reads to bootstrap-inject a managed
+   *       cluster); {@code install-rke2-config} keys on the annotation, not the filename, so the
+   *       branch fetch still finds them. A node-only sensitive fragment rides the {@link
+   *       ManifestAnnotation#NODE_BOOTSTRAP} lane instead (diverted out of the tree entirely).
    * </ul>
    */
   private String fileNameFor(
       JsonNode document, String kind, Optional<String> namespace, String name) {
-    if (isAnnotated(document, ManifestAnnotation.RKE2_CONFIG.key())) {
-      return SECRET_KIND.equals(kind)
-          ? "." + kind.toLowerCase(Locale.ROOT) + "-" + name + ".yml"
-          : name;
-    }
     if (isAnnotated(document, ManifestAnnotation.MANIFEST_GROUP.key())
         || isAnnotated(document, ManifestAnnotation.LOCAL_CONFIG.key())) {
       return "." + kind.toLowerCase(Locale.ROOT) + "-" + name + ".yml";

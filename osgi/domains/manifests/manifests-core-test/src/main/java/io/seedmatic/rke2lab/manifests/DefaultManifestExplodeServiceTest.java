@@ -55,21 +55,22 @@ class DefaultManifestExplodeServiceTest {
   }
 
   @Test
-  void rke2ConfigFragmentKeepsVerbatimName(@TempDir Path tmp) throws IOException {
-    // RKE2_CONFIG wins over LOCAL_CONFIG: the fragment stays visible (globbable) even though it
-    // carries local-config so the cluster never applies it.
+  void rke2ConfigConfigMapTakesVisibleName(@TempDir Path tmp) throws IOException {
+    // An RKE2_CONFIG ConfigMap takes the normal visible name so Flux APPLIES it (a real ConfigMap
+    // seed-incluster reads to bootstrap-inject a managed cluster); install-rke2-config keys on the
+    // annotation, not the filename, so the branch fetch still finds it. namespaced → 02 prefix.
     final Map<String, Object> document =
         resource(
             "ConfigMap",
             "core.yaml",
-            null,
+            "rke2lab-bioskop-wrkld",
             "runtime",
-            "rke2-config",
-            Map.of(
-                ManifestAnnotation.LOCAL_CONFIG.key(), "true",
-                ManifestAnnotation.RKE2_CONFIG.key(), "true"));
+            "rke2-config/bioskop-wrkld/control-node",
+            Map.of(ManifestAnnotation.RKE2_CONFIG.key(), "true"));
 
-    assertEquals("workloads/runtime/rke2-config/core.yaml", explodeOne(tmp, document));
+    assertEquals(
+        "workloads/runtime/rke2-config/bioskop-wrkld/control-node/02-configmap-core.yaml.yml",
+        explodeOne(tmp, document));
   }
 
   @Test
