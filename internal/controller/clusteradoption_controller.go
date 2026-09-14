@@ -105,9 +105,14 @@ func (r *ClusterAdoptionReconciler) reconcileSteps(
 		return ctrl.Result{}, err
 	}
 
-	// 1. The cluster-scoped CR-set: Cluster (paused) + LXCCluster, OWNED by this ClusterAdoption
+	// 1. The cluster-scoped CR-set: Cluster (UNPAUSED) + LXCCluster, OWNED by this ClusterAdoption
 	//    (adopting a cluster makes us its owner, so deleting the adoption cascades to the Cluster).
-	cluster := r.clusterObj(spec, true)
+	//    The Cluster is NOT paused: a paused Cluster propagates to its LXCMachines, so CAPN's
+	//    IsPaused would SKIP them → never report presence → existence stays false → the old
+	//    unpause-on-existence never fired (deadlock). The rival-init guard is the RKE2ControlPlane's
+	//    OWN paused annotation (inert from birth, un-paused by PoolAdoption once its owned Machines
+	//    exist) — the Cluster does not need to be paused for that.
+	cluster := r.clusterObj(spec, false)
 	if err := controllerutil.SetControllerReference(a, cluster, r.Scheme); err != nil {
 		r.mark(a, adoptionv1alpha1.ConditionCRSetCreated, false, "Error", "Cluster ownerRef: "+err.Error())
 		return ctrl.Result{}, err
@@ -124,7 +129,7 @@ func (r *ClusterAdoptionReconciler) reconcileSteps(
 			return ctrl.Result{}, err
 		}
 	}
-	r.mark(a, adoptionv1alpha1.ConditionCRSetCreated, true, "Created", "Cluster(owned)/LXCCluster ensured (paused)")
+	r.mark(a, adoptionv1alpha1.ConditionCRSetCreated, true, "Created", "Cluster(owned)/LXCCluster ensured (unpaused)")
 
 	// 2. Aggregate the per-pool PoolAdoptions of this cluster.
 	agg, err := r.aggregatePools(ctx, spec)
@@ -159,12 +164,12 @@ func (r *ClusterAdoptionReconciler) reconcileSteps(
 			fmt.Sprintf("%d/%d pools Adopted", agg.adopted, agg.total))
 	}
 
-	// 3. Unpause the Cluster once existence holds (the pools' owned Machines exist, so CAPI won't
-	//    init a rival). The pool RCP is un-paused by its own PoolAdoption reconciler.
-	if agg.existence {
-		if err := r.unpauseCluster(ctx, spec); err != nil {
-			return ctrl.Result{}, err
-		}
+	// 3. Ensure the Cluster is un-paused — UNCONDITIONALLY, so a Cluster left paused by an earlier
+	//    version self-heals (ensure is create-if-absent and would not patch it). CAPN needs the
+	//    LXCMachines un-paused to adopt them and report presence; the rival-init guard is the RCP's
+	//    own paused annotation, not the Cluster's.
+	if err := r.unpauseCluster(ctx, spec); err != nil {
+		return ctrl.Result{}, err
 	}
 
 	// 4. Reachability rollup (operator view): CAPI's RemoteConnectionProbe on the Cluster.
