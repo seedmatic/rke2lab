@@ -9,7 +9,7 @@ import (
 // + RKE2ConfigTemplate (worker pool), the LXCMachineTemplate, and — the part GitOps cannot do — the
 // OWNED per-pet Machine + concrete LXCMachine (providerID) so CAPRKE2/CAPN adopt the RUNNING
 // Pulumi-bootstrapped instances instead of provisioning fresh ones. It runs the per-pool adopt-first
-// funnel and reports presence; cluster reachability is aggregated at the ClusterAdoption grain, not
+// state machine and reports presence; cluster reachability is aggregated at the ClusterAdoption grain, not
 // here. The BYO-CA Secrets (<cluster>-{ca,cca,etcd,peer-etcd}) — needed by a control-plane pool —
 // are delivered by seed-master into Namespace; this controller only references them.
 type PoolAdoptionSpec struct {
@@ -47,7 +47,7 @@ type PoolAdoptionSpec struct {
 	Nodes []PetSpec `json:"nodes"`
 }
 
-// PoolAdoptionPhase is the per-pool adopt-first funnel — the grain the state machine actually runs
+// PoolAdoptionPhase is the per-pool adopt-first state machine — the grain it actually runs
 // on (a pool is the natural unit of provision/adopt, like RKE2ControlPlane vs MachineDeployment
 // reconcile separately). ClusterAdoption aggregates these + reachability.
 type PoolAdoptionPhase string
@@ -88,7 +88,7 @@ const (
 
 // PoolAdoptionStatus records what the controller observed at the pool grain.
 type PoolAdoptionStatus struct {
-	// Phase is the per-pool funnel stage.
+	// Phase is the per-pool state machine stage.
 	// +optional
 	Phase PoolAdoptionPhase `json:"phase,omitempty"`
 
@@ -140,7 +140,7 @@ type PoolAdoptionStatus struct {
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // PoolAdoption is the pool-level mirror of one node pool of a running cluster in CAPI — it owns the
-// pool's RCP/MD + templates + per-pet Machine/LXCMachine and runs the per-pool adopt-first funnel.
+// pool's RCP/MD + templates + per-pet Machine/LXCMachine and runs the per-pool adopt-first state machine.
 type PoolAdoption struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

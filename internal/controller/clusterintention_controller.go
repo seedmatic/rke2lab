@@ -98,7 +98,7 @@ func specFromClusterIntention(ci *adoptionv1alpha1.ClusterIntention) adoptionv1a
 	}
 }
 
-// clusterIntentionPhaseFor maps the owned ClusterAdoption's aggregate phase onto the intent funnel
+// clusterIntentionPhaseFor maps the owned ClusterAdoption's aggregate phase onto the intent state machine
 // phase — 1:1. A reconcile error (PhaseFailed) surfaces as Degraded.
 func clusterIntentionPhaseFor(a adoptionv1alpha1.ClusterAdoptionPhase) adoptionv1alpha1.ClusterIntentionPhase {
 	switch a {

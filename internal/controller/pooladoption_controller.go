@@ -21,7 +21,7 @@ import (
 
 // PoolAdoptionReconciler adopts one node pool of a running RKE2-on-Incus cluster into Cluster API.
 // It owns the pool CR-set — the RKE2ControlPlane (control-plane pool) + LXCMachineTemplate + the
-// per-pet Machine/LXCMachine — and runs the per-pool adopt-first funnel: every reconcile it aligns
+// per-pet Machine/LXCMachine — and runs the per-pool adopt-first state machine: every reconcile it aligns
 // the CR-set to the running reality (match each pet by providerID, skip bootstrap) before it ever
 // provisions; only a genuinely-absent pet is a day-0 provision. Reachability is aggregated at the
 // ClusterAdoption grain, not here. Symmetric with ClusterAdoptionReconciler.
@@ -200,10 +200,10 @@ func (r *PoolAdoptionReconciler) reconcileSteps(
 	return ctrl.Result{}, nil
 }
 
-// derivePhase rolls the per-step conditions (+ the reconcile error) into the per-pool funnel phase.
-// Adopting is the hub every reconcile enters; it rests at Adopted / Provisioning once the funnel
+// derivePhase rolls the per-step conditions (+ the reconcile error) into the per-pool state machine phase.
+// Adopting is the hub every reconcile enters; it rests at Adopted / Provisioning once the state machine
 // resolves. present-sick (Degraded) is a CLUSTER-grain verdict (reachability) — the pool cannot
-// observe it, so this funnel never emits Degraded; a step error surfaces as Failed.
+// observe it, so this state machine never emits Degraded; a step error surfaces as Failed.
 func (r *PoolAdoptionReconciler) derivePhase(
 	a *adoptionv1alpha1.PoolAdoption, reconcileErr error,
 ) adoptionv1alpha1.PoolAdoptionPhase {

@@ -50,7 +50,7 @@ type PoolIntentionSpec struct {
 	Nodes []PetSpec `json:"nodes"`
 }
 
-// PoolIntentionPhase mirrors the owned PoolAdoption per-pool funnel phase back onto the intent (see
+// PoolIntentionPhase mirrors the owned PoolAdoption per-pool state machine phase back onto the intent (see
 // the state machine in docs/architecture/cluster-api/cluster-seeding-controller.adoc).
 type PoolIntentionPhase string
 
@@ -77,7 +77,7 @@ const (
 
 // PoolIntentionStatus records what the controller observed.
 type PoolIntentionStatus struct {
-	// Phase mirrors the owned PoolAdoption per-pool funnel phase.
+	// Phase mirrors the owned PoolAdoption per-pool state machine phase.
 	// +optional
 	Phase PoolIntentionPhase `json:"phase,omitempty"`
 

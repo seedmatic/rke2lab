@@ -30,7 +30,7 @@ type ClusterAdoptionSpec struct {
 }
 
 // ClusterAdoptionPhase is the coarse AGGREGATE lifecycle of a cluster adoption — a roll-up of the
-// per-pool PoolAdoption funnels plus cluster reachability (see the state machine in
+// per-pool PoolAdoption state machines plus cluster reachability (see the state machine in
 // docs/architecture/cluster-api/cluster-seeding-controller.adoc). Adopting is the always-entry hub;
 // a reconcile rests at Adopted (all pools present + apiserver reachable), Provisioning (a pool has an
 // absent pet → CAPN launches), or Degraded (present but the control plane is unreachable — surface +

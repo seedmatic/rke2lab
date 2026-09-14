@@ -235,7 +235,7 @@ spec:
                 format: int64
                 type: integer
               phase:
-                description: Phase mirrors the owned PoolAdoption per-pool funnel
+                description: Phase mirrors the owned PoolAdoption per-pool state machine
                   phase.
                 type: string
             type: object

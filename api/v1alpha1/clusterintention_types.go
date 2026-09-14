@@ -38,7 +38,7 @@ type ClusterIntentionSpec struct {
 
 // ClusterIntentionPhase mirrors the ClusterAdoption aggregate phase back onto the intent, so
 // `kubectl get clusterintention` is the single durable pane even after a cold-start wipes the
-// ClusterAdoption. The states are the aggregate adopt-first funnel (see the state machine in
+// ClusterAdoption. The states are the aggregate adopt-first state machine (see the state machine in
 // docs/architecture/cluster-api/cluster-seeding-controller.adoc).
 type ClusterIntentionPhase string
 

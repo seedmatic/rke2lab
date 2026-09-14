@@ -145,7 +145,7 @@ func (r *ClusterAdoptionReconciler) reconcileSteps(
 			fmt.Sprintf("no pet present across %d pool(s)", agg.total))
 	}
 
-	// PoolsAdopted rolls up the pool funnels; its reason carries "Provisioning" so derivePhase can
+	// PoolsAdopted rolls up the pool state machines; its reason carries "Provisioning" so derivePhase can
 	// route the aggregate phase there.
 	switch {
 	case agg.total > 0 && agg.adopted == agg.total:

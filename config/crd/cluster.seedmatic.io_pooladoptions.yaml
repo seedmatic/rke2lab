@@ -43,7 +43,7 @@ spec:
       openAPIV3Schema:
         description: |-
           PoolAdoption is the pool-level mirror of one node pool of a running cluster in CAPI — it owns the
-          pool's RCP/MD + templates + per-pet Machine/LXCMachine and runs the per-pool adopt-first funnel.
+          pool's RCP/MD + templates + per-pet Machine/LXCMachine and runs the per-pool adopt-first state machine.
         properties:
           apiVersion:
             description: |-
@@ -68,7 +68,7 @@ spec:
               controller builds the pool CR-set — the RKE2ControlPlane (control-plane pool) or MachineDeployment
               OWNED per-pet Machine + concrete LXCMachine (providerID) so CAPRKE2/CAPN adopt the RUNNING
               Pulumi-bootstrapped instances instead of provisioning fresh ones. It runs the per-pool adopt-first
-              funnel and reports presence; cluster reachability is aggregated at the ClusterAdoption grain, not
+              state machine and reports presence; cluster reachability is aggregated at the ClusterAdoption grain, not
               here. The BYO-CA Secrets (<cluster>-{ca,cca,etcd,peer-etcd}) — needed by a control-plane pool —
               are delivered by seed-master into Namespace; this controller only references them.
             properties:
@@ -245,7 +245,7 @@ spec:
                 format: int32
                 type: integer
               phase:
-                description: Phase is the per-pool funnel stage.
+                description: Phase is the per-pool state machine stage.
                 type: string
               present:
                 description: Present is how many pets CAPN confirms present by providerID.

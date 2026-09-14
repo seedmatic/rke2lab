@@ -98,7 +98,7 @@ func specFromPoolIntention(pi *adoptionv1alpha1.PoolIntention) adoptionv1alpha1.
 	}
 }
 
-// poolIntentionPhaseFor maps the owned PoolAdoption's funnel phase onto the intent funnel phase.
+// poolIntentionPhaseFor maps the owned PoolAdoption's state machine phase onto the intent state machine phase.
 func poolIntentionPhaseFor(a adoptionv1alpha1.PoolAdoptionPhase) adoptionv1alpha1.PoolIntentionPhase {
 	switch a {
 	case adoptionv1alpha1.PoolPhaseAdopted:
