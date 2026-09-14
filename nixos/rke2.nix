@@ -64,6 +64,11 @@
     after = [
       "cloud-init.service"
       "network-online.target"
+      # install-rke2-config derives THIS node's cluster from its hostname (<cluster>-<node>) to filter
+      # the branch to its own config; rke2lab-identity sets that hostname (transient, from node.env),
+      # so it must run first — else the app reads the image's baked default and the filter matches
+      # nothing. A no-op ordering on a workload node where rke2lab-identity is condition-skipped.
+      "rke2lab-identity.service"
     ];
     wants = [ "network-online.target" ];
     before = [ "rke2-server.service" ];
