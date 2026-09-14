@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -15,6 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/yaml"
 
 	adoptionv1alpha1 "github.com/seedmatic/seed-incluster/api/v1alpha1"
 )
@@ -36,6 +38,7 @@ type PoolAdoptionReconciler struct {
 // +kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=rke2controlplanes,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=lxcmachines;lxcmachinetemplates,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create
+// +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
 
 // Reconcile drives one PoolAdoption. Every object is created-if-absent, so a re-reconcile (and a
 // cold-start, which wipes etcd and re-creates the CR-set) safely re-adopts the SURVIVING instances
@@ -86,7 +89,26 @@ func (r *PoolAdoptionReconciler) reconcileSteps(
 			"waiting for seed-master Secret "+missing)
 		return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
 	}
-	r.mark(a, adoptionv1alpha1.PoolConditionMaterialReady, true, "MaterialReady", "BYO-CA Secrets present")
+
+	// The workload's RKE2 config.yaml.d, bootstrap-injected: seed-incluster reads the visible
+	// ConfigMaps rke2lab renders per (cluster × pool) into this namespace and turns each into a
+	// CAPRKE2 File on the RKE2ControlPlane — so a provisioned replica gets the same config a
+	// standalone node git-fetches via install-rke2-config, with NO git fetch / read token on the
+	// node. Gated like the BYO-CA: the config (dual-stack CIDRs, VIP tls-san) is essential, so wait
+	// until Flux has applied it rather than provision a mis-configured node. Injected into the RCP
+	// ONCE at creation (ensure is create-if-absent), so it must be ready before the RCP is stamped.
+	configFiles, err := r.clusterConfigFiles(ctx, spec)
+	if err != nil {
+		r.mark(a, adoptionv1alpha1.PoolConditionMaterialReady, false, "Error", err.Error())
+		return ctrl.Result{}, err
+	}
+	if len(configFiles) == 0 {
+		r.mark(a, adoptionv1alpha1.PoolConditionMaterialReady, false, "ConfigMissing",
+			"waiting for Flux to apply the RKE2 config ConfigMaps in "+spec.Namespace)
+		return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
+	}
+	r.mark(a, adoptionv1alpha1.PoolConditionMaterialReady, true, "MaterialReady",
+		"BYO-CA Secrets + RKE2 config present")
 
 	a.Status.TotalPets = int32(len(spec.Nodes))
 
@@ -95,7 +117,7 @@ func (r *PoolAdoptionReconciler) reconcileSteps(
 	//    the owned Machines exist). The Cluster + LXCCluster are the ClusterAdoption's, not ours.
 	for _, obj := range []*unstructured.Unstructured{
 		r.lxcMachineTemplateObj(spec),
-		r.rke2ControlPlaneObj(spec, true),
+		r.rke2ControlPlaneObj(spec, true, configFiles),
 	} {
 		// Own the pool CR-set for cascade GC: deleting the PoolAdoption (or, transitively, its parent
 		// PoolIntention) tears down RCP + template; the RCP in turn owns the per-pet Machines.
@@ -283,6 +305,65 @@ func (r *PoolAdoptionReconciler) materialMissing(ctx context.Context, spec adopt
 	return "", nil
 }
 
+// clusterConfigFiles reads the workload's visible RKE2 config ConfigMaps (rendered per (cluster×pool)
+// by rke2lab into namespace rke2lab-<cluster>, annotated rke2ConfigAnnotation) and reconstructs each
+// into a CAPRKE2 File that writes /etc/rancher/rke2/config.yaml.d/<name>. This is the bootstrap-inject
+// delivery: a CAPRKE2-provisioned node gets the same config.yaml.d a standalone node git-fetches via
+// install-rke2-config — without any git fetch or read token on the workload node. Sorted by name for
+// a deterministic RKE2ControlPlane spec (no reconcile churn).
+func (r *PoolAdoptionReconciler) clusterConfigFiles(
+	ctx context.Context, spec adoptionv1alpha1.PoolAdoptionSpec,
+) ([]any, error) {
+	var cms corev1.ConfigMapList
+	if err := r.List(ctx, &cms, client.InNamespace(spec.Namespace)); err != nil {
+		return nil, err
+	}
+	byName := map[string]corev1.ConfigMap{}
+	names := make([]string, 0, len(cms.Items))
+	for _, cm := range cms.Items {
+		if cm.Annotations[rke2ConfigAnnotation] != "true" {
+			continue
+		}
+		byName[cm.Name] = cm
+		names = append(names, cm.Name)
+	}
+	sort.Strings(names)
+	files := make([]any, 0, len(names))
+	for _, name := range names {
+		content, err := reconstructConfigFragment(byName[name].Data)
+		if err != nil {
+			return nil, fmt.Errorf("config fragment %s: %w", name, err)
+		}
+		files = append(files, map[string]any{
+			"path":        "/etc/rancher/rke2/config.yaml.d/" + name,
+			"owner":       "root:root",
+			"permissions": "0644",
+			"content":     content,
+		})
+	}
+	return files, nil
+}
+
+// reconstructConfigFragment turns a ConfigMap's data (key -> a YAML-encoded scalar/list/map) into the
+// config.yaml.d file body {key: parsedValue}, mirroring install-rke2-config's
+// `(.data) | with_entries(.value |= from_yaml)`. Keys are sorted by the JSON-backed marshaller, so
+// the content is deterministic across reconciles.
+func reconstructConfigFragment(data map[string]string) (string, error) {
+	doc := make(map[string]any, len(data))
+	for key, encoded := range data {
+		var parsed any
+		if err := yaml.Unmarshal([]byte(encoded), &parsed); err != nil {
+			return "", fmt.Errorf("key %s: %w", key, err)
+		}
+		doc[key] = parsed
+	}
+	out, err := yaml.Marshal(doc)
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
+}
+
 func (r *PoolAdoptionReconciler) rcpUID(ctx context.Context, spec adoptionv1alpha1.PoolAdoptionSpec) (types.UID, error) {
 	rcp := &unstructured.Unstructured{}
 	rcp.SetGroupVersionKind(gvkRKE2ControlPlane)
@@ -402,13 +483,17 @@ func (r *PoolAdoptionReconciler) bootstrapSecretObj(spec adoptionv1alpha1.PoolAd
 	return obj
 }
 
-func (r *PoolAdoptionReconciler) rke2ControlPlaneObj(spec adoptionv1alpha1.PoolAdoptionSpec, paused bool) *unstructured.Unstructured {
+func (r *PoolAdoptionReconciler) rke2ControlPlaneObj(spec adoptionv1alpha1.PoolAdoptionSpec, paused bool, configFiles []any) *unstructured.Unstructured {
 	obj := newObj(gvkRKE2ControlPlane, controlPlaneName(spec.ClusterName), spec.Namespace)
 	if paused {
 		// Inert from birth — no wait for CAPI to propagate the Cluster's paused (closes the race
 		// where the RCP would initialize a random-named control plane before the owned Machine).
 		obj.SetAnnotations(map[string]string{pausedAnnotation: "true"})
 	}
+	// The kube-vip RBAC file + the bootstrap-injected config.yaml.d fragments (clusterConfigFiles):
+	// CAPRKE2 write_files these before rke2 starts, so a provisioned replica boots with the same
+	// per-cluster config (dual-stack CIDRs, VIP tls-san, …) a standalone node installs from the branch.
+	files := append([]any{kubeVIPRBACFile()}, configFiles...)
 	obj.Object["spec"] = map[string]any{
 		"replicas":     int64(len(spec.Nodes)),
 		"version":      spec.RKE2Version,
@@ -418,7 +503,7 @@ func (r *PoolAdoptionReconciler) rke2ControlPlaneObj(spec adoptionv1alpha1.PoolA
 		"registrationMethod":  "address",
 		"registrationAddress": spec.ControlPlaneEndpoint.Host,
 		"preRKE2Commands":     []any{kubeVIPBootstrapCommand(spec.ControlPlaneEndpoint.Host, spec.KubeVIPVersion)},
-		"files":               []any{kubeVIPRBACFile()},
+		"files":               files,
 		"machineTemplate": map[string]any{
 			"spec": map[string]any{
 				"infrastructureRef": map[string]any{

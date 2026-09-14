@@ -17,6 +17,12 @@ const (
 	controlPlaneLabel = "cluster.x-k8s.io/control-plane"
 	clusterSecretType = "cluster.x-k8s.io/secret"
 
+	// The annotation rke2lab stamps on the RKE2 config ConfigMaps it renders per (cluster × pool)
+	// into namespace rke2lab-<cluster> (RuntimeRke2ConfigManifestsUnit). seed-incluster reads them to
+	// bootstrap-inject a managed cluster's config.yaml.d — the same fragments a standalone node
+	// git-fetches via install-rke2-config, delivered here through CAPRKE2 instead.
+	rke2ConfigAnnotation = "io.seedmatic.rke2lab/rke2-config"
+
 	// CAPN's LXCMachine instance-presence signal (cluster-api-provider-incus
 	// api/v1alpha2/condition_consts.go) — read from the LXCMachine WE create, instead of probing
 	// Incus ourselves. InstanceProvisioned=True (reason InstanceProvisioned) = instance present
