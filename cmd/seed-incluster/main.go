@@ -1,9 +1,9 @@
 // Command seed-incluster runs the cluster-seeding controller: the in-cluster twin of seed-master.
-// It reconciles ClusterProvision (Flux-owned intent) adopt-first and owns the ClusterAdoption that
-// adopts running RKE2-on-Incus control planes (Pulumi-bootstrapped) into Cluster API by creating
-// the CR-set
-// and the OWNED control-plane Machine + concrete LXCMachine (providerID), so CAPRKE2/CAPN bind
-// to the existing instance instead of provisioning a fresh one. See docs/design.adoc.
+// It reconciles the Flux-owned intent (ClusterIntention + PoolIntention) adopt-first and owns the
+// mirror (ClusterAdoption + PoolAdoption) that adopts running RKE2-on-Incus clusters
+// (Pulumi-bootstrapped) into Cluster API by creating the CR-set and the OWNED per-pet Machine +
+// concrete LXCMachine (providerID), so CAPRKE2/CAPN bind to the existing instances instead of
+// provisioning fresh ones. See docs/architecture/cluster-api/cluster-seeding-controller.adoc.
 package main
 
 import (
@@ -62,6 +62,24 @@ func main() {
 		os.Exit(1)
 	}
 
+	// The 2×2 CR set — {ClusterIntention, PoolIntention} (Flux-owned intent, thin hand-off) ×
+	// {ClusterAdoption, PoolAdoption} (controller-owned mirror, the adopt-first work).
+	if err := (&controller.ClusterIntentionReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "ClusterIntention")
+		os.Exit(1)
+	}
+
+	if err := (&controller.PoolIntentionReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "PoolIntention")
+		os.Exit(1)
+	}
+
 	if err := (&controller.ClusterAdoptionReconciler{
 		Client:      mgr.GetClient(),
 		Scheme:      mgr.GetScheme(),
@@ -71,11 +89,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := (&controller.ClusterProvisionReconciler{
+	if err := (&controller.PoolAdoptionReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "ClusterProvision")
+		setupLog.Error(err, "unable to create controller", "controller", "PoolAdoption")
 		os.Exit(1)
 	}
 

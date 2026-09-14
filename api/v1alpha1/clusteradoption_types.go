@@ -4,29 +4,20 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// ClusterAdoptionSpec is the recipe seed-master fills for one cluster to be adopted into
-// Cluster API. The controller expands it into the full CAPI CR-set (Cluster + LXCCluster +
-// RKE2ControlPlane + LXCMachineTemplate) and — the part GitOps cannot do — creates the OWNED
-// control-plane Machine + concrete LXCMachine (providerID) so CAPRKE2/CAPN adopt the RUNNING
-// Pulumi-bootstrapped instance instead of provisioning a fresh one. The BYO-CA Secrets
-// (<clusterName>-{ca,cca,etcd,peer-etcd}) and the identity Secret are delivered by seed-master
-// into Namespace (branch, sops-encrypted); this controller only references them.
+// ClusterAdoptionSpec is the CLUSTER-LEVEL mirror the controller owns from a ClusterIntention. From
+// it the controller builds the cluster-scoped CAPI objects — Cluster + LXCCluster — and AGGREGATES
+// the per-pool PoolAdoptions into cluster-level existence + reachability. The pool CR-set
+// (RKE2ControlPlane / MachineDeployment / templates / Machines) is NOT built here; it belongs to the
+// PoolAdoption mirror of each PoolIntention. The identity Secret is delivered by seed-master into
+// Namespace (branch, sops-encrypted); this controller only references it.
 type ClusterAdoptionSpec struct {
-	// ClusterName is the CAPI Cluster name to create and adopt (e.g. "bioskop-mgmt"). The
-	// control-plane instance adopted is "<ClusterName>-master" with providerID
-	// "lxc:///<ClusterName>-master" — the deterministic name Pulumi grew.
+	// ClusterName is the CAPI Cluster name to create and adopt (e.g. "bioskop-wrkld").
 	// +kubebuilder:validation:MinLength=1
 	ClusterName string `json:"clusterName"`
 
-	// Namespace is where the CAPI CR-set and the referenced Secrets live (e.g.
-	// "rke2lab-bioskop-mgmt").
+	// Namespace is where the CAPI CR-set and the referenced Secrets live.
 	// +kubebuilder:validation:MinLength=1
 	Namespace string `json:"namespace"`
-
-	// ControlPlaneReplicas is the RKE2ControlPlane replica count — 1 for a management
-	// cluster (single control node), 3 for a workload HA plane.
-	// +kubebuilder:validation:Minimum=1
-	ControlPlaneReplicas int32 `json:"controlPlaneReplicas"`
 
 	// ControlPlaneEndpoint is the kube-vip VIP fronting the apiserver.
 	ControlPlaneEndpoint APIEndpoint `json:"controlPlaneEndpoint"`
@@ -34,101 +25,56 @@ type ClusterAdoptionSpec struct {
 	// ClusterNetwork carries the pod/service CIDRs + the service domain.
 	ClusterNetwork ClusterNetwork `json:"clusterNetwork"`
 
-	// Image pins the nix-built node-base by fingerprint and the RKE2 version — the SAME
-	// node-base the running instance booted on (so the adopted machine template matches).
-	Image ImageRef `json:"image"`
-
-	// IdentitySecretName is the CAPN per-remote incus identity Secret the LXCCluster.secretRef
-	// names (e.g. "bioskop-incus-identity"), resolved in Namespace.
-	// +kubebuilder:validation:MinLength=1
-	IdentitySecretName string `json:"identitySecretName"`
-
-	// RKE2Version is the CAPRKE2 control-plane version (e.g. "v1.34.8+rke2r2").
-	// +kubebuilder:validation:MinLength=1
-	RKE2Version string `json:"rke2Version"`
-
-	// KubeVIPVersion pins the kube-vip image the control-plane bootstrap deploys.
-	// +kubebuilder:validation:MinLength=1
-	KubeVIPVersion string `json:"kubeVIPVersion"`
-
-	// Nodes is the explicit PET list (all-pets). When set, the reconciler adopts/provisions each
-	// named node — control-plane replicas AND workers — superseding the single-master assumption.
-	// Empty = the legacy single control-plane node "<clusterName>-master" (the management cluster).
-	// +optional
-	Nodes []NodeSpec `json:"nodes,omitempty"`
-
-	// RemoteEndpoint is the target Incus API endpoint the reconciler PROBES for instance presence
-	// (adopt vs provision) and CAPN provisions into. Empty = the local engine, resolved from the
-	// identity Secret's `server` (the management cluster's own host).
-	// +optional
-	RemoteEndpoint string `json:"remoteEndpoint,omitempty"`
+	// Remote is the target Incus engine (endpoint + identity Secret) the LXCCluster.secretRef names.
+	Remote Remote `json:"remote"`
 }
 
-// APIEndpoint is a host:port control-plane endpoint (the kube-vip VIP).
-type APIEndpoint struct {
-	// +kubebuilder:validation:MinLength=1
-	Host string `json:"host"`
-	// +kubebuilder:validation:Minimum=1
-	Port int32 `json:"port"`
-}
-
-// ClusterNetwork carries the pod/service CIDRs and the service domain.
-type ClusterNetwork struct {
-	// +kubebuilder:validation:MinItems=1
-	PodCIDRs []string `json:"podCIDRs"`
-	// +kubebuilder:validation:MinItems=1
-	ServiceCIDRs []string `json:"serviceCIDRs"`
-	// +kubebuilder:default="cluster.local"
-	ServiceDomain string `json:"serviceDomain,omitempty"`
-}
-
-// ImageRef pins the nix-built node-base image.
-type ImageRef struct {
-	// +kubebuilder:validation:MinLength=1
-	Fingerprint string `json:"fingerprint"`
-}
-
-// ClusterAdoptionPhase is the coarse lifecycle of an adoption.
+// ClusterAdoptionPhase is the coarse AGGREGATE lifecycle of a cluster adoption — a roll-up of the
+// per-pool PoolAdoption funnels plus cluster reachability (see the state machine in
+// docs/architecture/cluster-api/cluster-seeding-controller.adoc). Adopting is the always-entry hub;
+// a reconcile rests at Adopted (all pools present + apiserver reachable), Provisioning (a pool has an
+// absent pet → CAPN launches), or Degraded (present but the control plane is unreachable — surface +
+// retry, NEVER re-provision).
 type ClusterAdoptionPhase string
 
 const (
-	// PhasePending — the CR-set has not been fully created yet.
+	// PhasePending — the Cluster/LXCCluster have not been created yet, or no pool has reported.
 	PhasePending ClusterAdoptionPhase = "Pending"
-	// PhaseAdopting — the CR-set exists and the owned Machine has been created; waiting for
-	// CAPRKE2/CAPN to bind it to the running instance.
+	// PhaseAdopting — the adopt-first hub: the cluster CR-set is being aligned / pools are converging.
 	PhaseAdopting ClusterAdoptionPhase = "Adopting"
-	// PhaseAdopted — the control plane is adopted (the Machine has a NodeRef / providerID
-	// bound) and the Cluster is unpaused.
+	// PhaseProvisioning — at least one pool reports an absent pet (CAPN InstanceDeleted); it launches
+	// the missing node(s). Present pets are NEVER touched (data-loss safety).
+	PhaseProvisioning ClusterAdoptionPhase = "Provisioning"
+	// PhaseAdopted — every pool is Adopted AND the apiserver is reachable (RemoteConnectionProbe);
+	// the Cluster is unpaused.
 	PhaseAdopted ClusterAdoptionPhase = "Adopted"
+	// PhaseDegraded — the pools are present but the control plane is unreachable ("present-sick").
+	// The controller retries adoption and NEVER re-provisions (destroying a present node loses etcd).
+	PhaseDegraded ClusterAdoptionPhase = "Degraded"
 	// PhaseFailed — a reconcile step errored; see the conditions for which and why.
 	PhaseFailed ClusterAdoptionPhase = "Failed"
 )
 
-// The condition types the reconciler reports, one per step of the adoption flow — so `kubectl
-// describe clusteradoption` shows exactly HOW FAR the reconcile got and WHERE it stopped. Each is
-// set True on success, False (with a reason + the error message) on the step that failed.
+// The condition types the ClusterAdoption reconciler reports — the cluster-level aggregate steps.
 const (
-	// ConditionMaterialReady — the seed-master-delivered BYO-CA + identity Secrets are present.
-	ConditionMaterialReady = "MaterialReady"
-	// ConditionCRSetCreated — the Cluster/LXCCluster/LXCMachineTemplate/RKE2ControlPlane exist.
+	// ConditionCRSetCreated — the cluster-scoped Cluster + LXCCluster exist.
 	ConditionCRSetCreated = "CRSetCreated"
-	// ConditionControlPlaneObserved — the RKE2ControlPlane UID (for the Machine ownerRef) was read.
-	ConditionControlPlaneObserved = "ControlPlaneObserved"
-	// ConditionMachineCreated — the owned Machine + concrete LXCMachine(providerID) + sentinel exist.
-	ConditionMachineCreated = "MachineCreated"
-	// ConditionUnpaused — the RKE2ControlPlane + Cluster were un-paused (adoption released).
-	ConditionUnpaused = "Unpaused"
+	// ConditionExistence — at least one pool reports a present pet by providerID: the cluster EXISTS
+	// (the anti-greenfield guard — we adopt, never greenfield a rival).
+	ConditionExistence = "Existence"
+	// ConditionPoolsAdopted — every PoolAdoption of this cluster reports Adopted.
+	ConditionPoolsAdopted = "PoolsAdopted"
 	// ConditionAccessible — CAPI's RemoteConnectionProbe on the Cluster is True (the apiserver
-	// answers). Gates Adopted together with instance presence: an adoption is complete only when the
-	// control-plane pets are all present AND the cluster is reachable — never on the CR-set alone.
+	// answers). Gates Adopted together with pool adoption: complete only when all pools are Adopted
+	// AND the cluster is reachable.
 	ConditionAccessible = "Accessible"
-	// ConditionReady — a roll-up: every step above succeeded this reconcile.
+	// ConditionReady — a roll-up: every aggregate step above succeeded this reconcile.
 	ConditionReady = "Ready"
 )
 
-// ClusterAdoptionStatus records what the controller observed.
+// ClusterAdoptionStatus records what the controller observed at the cluster grain.
 type ClusterAdoptionStatus struct {
-	// Phase is the coarse lifecycle stage.
+	// Phase is the coarse aggregate lifecycle stage.
 	// +optional
 	Phase ClusterAdoptionPhase `json:"phase,omitempty"`
 
@@ -136,27 +82,28 @@ type ClusterAdoptionStatus struct {
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
-	// AdoptedInstance is the instance name the owned Machine binds (e.g.
-	// "bioskop-mgmt-master").
+	// Existence is the OR of every PoolAdoption's presence — true once ANY pet of ANY pool is present
+	// by providerID. The cluster EXISTS; the controller adopts and never greenfields a rival.
 	// +optional
-	AdoptedInstance string `json:"adoptedInstance,omitempty"`
+	Existence bool `json:"existence,omitempty"`
 
-	// ProviderID is the providerID the owned Machine/LXCMachine carry (e.g.
-	// "lxc:///bioskop-mgmt-master").
+	// Reachable is CAPI's RemoteConnectionProbe on the Cluster (the apiserver answers).
 	// +optional
-	ProviderID string `json:"providerID,omitempty"`
+	Reachable bool `json:"reachable,omitempty"`
 
-	// ControlPlaneUID is the observed RKE2ControlPlane UID the owned Machine's ownerRef carries —
-	// the piece GitOps could not pre-set; empty until the RCP is observable.
+	// PoolsTotal is the number of PoolAdoptions observed for this cluster.
 	// +optional
-	ControlPlaneUID string `json:"controlPlaneUID,omitempty"`
+	PoolsTotal int32 `json:"poolsTotal,omitempty"`
+
+	// PoolsAdopted is how many of them report Adopted.
+	// +optional
+	PoolsAdopted int32 `json:"poolsAdopted,omitempty"`
 
 	// LastReconcileTime is when the controller last reconciled this ClusterAdoption.
 	// +optional
 	LastReconcileTime metav1.Time `json:"lastReconcileTime,omitempty"`
 
-	// Conditions follow the standard metav1.Condition contract — one per adoption step (see the
-	// Condition* constants), so the reconcile progress + any failure are visible per-step.
+	// Conditions follow the standard metav1.Condition contract — one per aggregate step.
 	// +optional
 	// +listType=map
 	// +listMapKey=type
@@ -168,11 +115,14 @@ type ClusterAdoptionStatus struct {
 // +kubebuilder:resource:scope=Namespaced,shortName=capiadopt
 // +kubebuilder:printcolumn:name="Cluster",type=string,JSONPath=`.spec.clusterName`
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
-// +kubebuilder:printcolumn:name="Instance",type=string,JSONPath=`.status.adoptedInstance`
+// +kubebuilder:printcolumn:name="Exists",type=boolean,JSONPath=`.status.existence`
+// +kubebuilder:printcolumn:name="Reachable",type=boolean,JSONPath=`.status.reachable`
+// +kubebuilder:printcolumn:name="Pools",type=string,JSONPath=`.status.poolsAdopted`
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// ClusterAdoption is the request to adopt one running RKE2-on-Incus control plane into CAPI.
+// ClusterAdoption is the cluster-level mirror of a running RKE2-on-Incus cluster in CAPI — it owns
+// the Cluster + LXCCluster and aggregates the per-pool PoolAdoptions into existence + reachability.
 type ClusterAdoption struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

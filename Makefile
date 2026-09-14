@@ -6,7 +6,7 @@
 CONTROLLER_GEN ?= controller-gen
 
 .PHONY: all
-all: generate manifests fmt vet build ## Regenerate, format, vet and build.
+all: generate manifests rbac fmt vet build ## Regenerate, format, vet and build.
 
 .PHONY: generate
 generate: ## Regenerate DeepCopy methods (api/v1alpha1/zz_generated.deepcopy.go).
@@ -15,6 +15,10 @@ generate: ## Regenerate DeepCopy methods (api/v1alpha1/zz_generated.deepcopy.go)
 .PHONY: manifests
 manifests: ## Regenerate CRDs into config/crd (the single source rke2lab stages).
 	$(CONTROLLER_GEN) crd paths=./api/... output:crd:dir=config/crd
+
+.PHONY: rbac
+rbac: ## Regenerate the ClusterRole from the +kubebuilder:rbac markers into config/rbac (single-sourced; rke2lab includes it, no longer hand-lists the rules).
+	$(CONTROLLER_GEN) rbac:roleName=seed-incluster paths=./... output:rbac:artifacts:config=config/rbac
 
 .PHONY: fmt
 fmt: ## Format Go sources.

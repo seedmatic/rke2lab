@@ -1,0 +1,77 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: seed-incluster
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - create
+  - get
+  - list
+  - watch
+- apiGroups:
+  - cluster.seedmatic.io
+  resources:
+  - clusteradoptions
+  - clusterintentions
+  - pooladoptions
+  - poolintentions
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - cluster.seedmatic.io
+  resources:
+  - clusteradoptions/status
+  - clusterintentions/status
+  - pooladoptions/status
+  - poolintentions/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - cluster.x-k8s.io
+  resources:
+  - clusters
+  - machines
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - controlplane.cluster.x-k8s.io
+  resources:
+  - rke2controlplanes
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - infrastructure.cluster.x-k8s.io
+  resources:
+  - lxcclusters
+  - lxcmachines
+  - lxcmachinetemplates
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch

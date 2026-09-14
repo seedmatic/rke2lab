@@ -4,27 +4,27 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.1
-  name: clusterprovisions.cluster.seedmatic.io
+  name: poolintentions.cluster.seedmatic.io
 spec:
   group: cluster.seedmatic.io
   names:
-    kind: ClusterProvision
-    listKind: ClusterProvisionList
-    plural: clusterprovisions
+    kind: PoolIntention
+    listKind: PoolIntentionList
+    plural: poolintentions
     shortNames:
-    - capiprov
-    singular: clusterprovision
+    - capipool
+    singular: poolintention
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.clusterName
+    - jsonPath: .spec.clusterRef
       name: Cluster
       type: string
-    - jsonPath: .spec.kind
-      name: Kind
+    - jsonPath: .spec.pool
+      name: Pool
       type: string
-    - jsonPath: .spec.controlPlaneEndpoint.host
-      name: Endpoint
+    - jsonPath: .spec.role
+      name: Role
       type: string
     - jsonPath: .status.phase
       name: Phase
@@ -39,9 +39,8 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          ClusterProvision is the Flux-owned intent to bring one cluster into existence and keep it
-          described in Cluster API — reconciled adopt-first by the controller, which owns the derived
-          ClusterAdoption.
+          PoolIntention is the Flux-owned pool-level intent for one node pool of a cluster — reconciled
+          adopt-first by the controller, which owns the derived PoolAdoption.
         properties:
           apiVersion:
             description: |-
@@ -62,46 +61,24 @@ spec:
             type: object
           spec:
             description: |-
-              ClusterProvisionSpec is the INTENT seed-master renders for one cluster — the Flux-owned recipe
-              for bringing a cluster into existence AND keeping it described in Cluster API. The controller
-              reconciles it ADOPT-FIRST: every reconcile it tries to describe the running reality (match each
-              pet by providerID, skip bootstrap) before it ever provisions; a node that is genuinely absent is
-              the only case CAPN launches. From this intent the controller OWNS a ClusterAdoption (the mirror
-              that describes the running cluster) — the ownership split: Flux owns the intent (git-backed,
-              survives a cold-start), the controller owns the adoption (re-derived from reality).
-
-              Every field is filled by seed-master from the ClusterNetworkBlueprint SSOT; the controller
-              templates, it never computes addressing.
+              PoolIntentionSpec is the POOL-LEVEL intent seed-master renders for one node pool of a cluster —
+              the Flux-owned recipe for the pool's CAPI template shape (RKE2ControlPlane for a control-plane
+              pool, MachineDeployment + RKE2ConfigTemplate for a worker pool) + its LXCMachineTemplate + its
+              named pets. A cluster has N PoolIntentions (one per pool), each ownerRef'd to the ClusterIntention.
+              The controller reconciles each adopt-first and OWNS a PoolAdoption (the pool mirror). The
+              cluster-level facts (image, versions, VIP) are DUPLICATED here from the same blueprint SSOT so the
+              pool reconcile is decoupled from the cluster reconcile.
             properties:
-              clusterName:
-                description: ClusterName is the CAPI Cluster name to bring to existence
-                  and adopt (e.g. "bioskop-wrkld").
+              clusterRef:
+                description: |-
+                  ClusterRef is the name of the owning ClusterIntention (= its clusterName). The CAPI objects
+                  this pool builds reference the cluster by the deterministic name, so there is no runtime dep —
+                  just the naming convention (<cluster>, <cluster>-control-plane).
                 minLength: 1
                 type: string
-              clusterNetwork:
-                description: ClusterNetwork carries the pod/service CIDRs + the service
-                  domain.
-                properties:
-                  podCIDRs:
-                    items:
-                      type: string
-                    minItems: 1
-                    type: array
-                  serviceCIDRs:
-                    items:
-                      type: string
-                    minItems: 1
-                    type: array
-                  serviceDomain:
-                    default: cluster.local
-                    type: string
-                required:
-                - podCIDRs
-                - serviceCIDRs
-                type: object
               controlPlaneEndpoint:
-                description: ControlPlaneEndpoint is the kube-vip VIP fronting the
-                  apiserver.
+                description: ControlPlaneEndpoint is the kube-vip VIP — a control-plane
+                  pool registers its replicas on it.
                 properties:
                   host:
                     minLength: 1
@@ -115,8 +92,8 @@ spec:
                 - port
                 type: object
               image:
-                description: Image pins the nix-built node-base by fingerprint — the
-                  SAME node-base the instances boot on.
+                description: Image pins the nix-built node-base the pool's LXCMachines
+                  boot on / adopt.
                 properties:
                   fingerprint:
                     minLength: 1
@@ -124,101 +101,68 @@ spec:
                 required:
                 - fingerprint
                 type: object
-              kind:
-                default: workload
-                description: |-
-                  Kind is the cluster's federated role — "workload" (a leaf) or "management" (a sub-plane that
-                  itself runs a seed-incluster for ITS children). It records topological intent; the controller
-                  provisions/adopts both identically (the difference is the render flavor seed-master delivers
-                  INTO the cluster, not how it is birthed).
-                enum:
-                - workload
-                - management
-                type: string
               kubeVIPVersion:
-                description: KubeVIPVersion pins the kube-vip image the control-plane
-                  bootstrap deploys.
-                minLength: 1
+                description: |-
+                  KubeVIPVersion pins the kube-vip image a control-plane pool's bootstrap deploys (ignored by
+                  worker pools).
                 type: string
               namespace:
-                description: |-
-                  Namespace is where the CAPI CR-set, the owned ClusterAdoption, and the referenced Secrets live
-                  (e.g. "rke2lab-bioskop-wrkld").
+                description: Namespace is where the CAPI CR-set, the owned PoolAdoption,
+                  and the referenced Secrets live.
                 minLength: 1
                 type: string
               nodes:
-                description: |-
-                  Nodes is the explicit PET list — every control-plane replica AND worker is a deterministic
-                  blueprint name (CANONICAL_NODE_NAMES), adopted by providerID. No cattle / no MachineDeployment
-                  replica count: a named pet is the only shape that re-matches its survivor after a cold-start.
+                description: Nodes is the pool's explicit pet roster, adopted/provisioned
+                  by providerID (lxc:///<name>).
                 items:
-                  description: NodeSpec is one named pet of the cluster.
+                  description: |-
+                    PetSpec is one named pet of a pool — the deterministic instance name (CANONICAL_NODE_NAMES), the
+                    providerID basis (lxc:///<name>) and the LXCMachine object name CAPN matches the running instance
+                    against. No cattle / no replica count: a named pet is the only shape that re-matches its survivor
+                    after a cold-start.
                   properties:
                     name:
-                      description: |-
-                        Name is the deterministic instance name (e.g. "bioskop-wrkld-master") — the providerID basis
-                        (lxc:///<name>) and the LXCMachine object name CAPN matches against the running instance.
                       minLength: 1
-                      type: string
-                    role:
-                      description: |-
-                        Role is "control-plane" (an etcd-member server, counts toward the RKE2ControlPlane replicas) or
-                        "worker".
-                      enum:
-                      - control-plane
-                      - worker
                       type: string
                   required:
                   - name
-                  - role
                   type: object
                 minItems: 1
                 type: array
-              remote:
+              pool:
                 description: |-
-                  Remote is the target Incus engine for THIS cluster's nodes — cluster-level, not per-node
-                  (CAPN's LXCCluster.secretRef names one remote; a cluster's nodes share one host's fabric).
-                properties:
-                  endpoint:
-                    description: |-
-                      Endpoint is the Incus API endpoint (e.g. "https://bioskop-nixos:8443") — the local engine, or a
-                      cross-host one reached over the tailnet.
-                    minLength: 1
-                    type: string
-                  identitySecretName:
-                    description: |-
-                      IdentitySecretName is the per-remote CAPN identity Secret that the LXCCluster.secretRef names,
-                      resolved in Namespace. The controller ALSO uses its client cert to PROBE instance presence on
-                      this remote (the adopt-vs-provision decision). Its trust is CA-based (our owned Incus PKI).
-                    minLength: 1
-                    type: string
-                required:
-                - endpoint
-                - identitySecretName
-                type: object
-              rke2Version:
-                description: RKE2Version is the CAPRKE2 control-plane version (e.g.
-                  "v1.34.8+rke2r2").
+                  Pool is the pool identity (e.g. "control-node", "gpu-node"). It names the LXCMachineTemplate
+                  and (for workers) the MachineDeployment; the CAPI TREATMENT is Role, not this name.
                 minLength: 1
                 type: string
+              rke2Version:
+                description: RKE2Version is the CAPRKE2 version for this pool (control-plane
+                  RCP, or worker RKE2ConfigTemplate).
+                minLength: 1
+                type: string
+              role:
+                description: Role is the CAPI treatment this pool derives (control-plane
+                  vs worker).
+                enum:
+                - control-plane
+                - worker
+                type: string
             required:
-            - clusterName
-            - clusterNetwork
+            - clusterRef
             - controlPlaneEndpoint
             - image
-            - kubeVIPVersion
             - namespace
             - nodes
-            - remote
+            - pool
             - rke2Version
+            - role
             type: object
           status:
-            description: ClusterProvisionStatus records what the controller observed.
+            description: PoolIntentionStatus records what the controller observed.
             properties:
               adoptionRef:
-                description: |-
-                  AdoptionRef is the name of the ClusterAdoption this ClusterProvision owns (in Namespace),
-                  created once the intent is handed off; empty until then.
+                description: AdoptionRef is the name of the PoolAdoption this PoolIntention
+                  owns (in Namespace).
                 type: string
               conditions:
                 description: Conditions follow the standard metav1.Condition contract.
@@ -282,7 +226,7 @@ spec:
                 x-kubernetes-list-type: map
               lastReconcileTime:
                 description: LastReconcileTime is when the controller last reconciled
-                  this ClusterProvision.
+                  this PoolIntention.
                 format: date-time
                 type: string
               observedGeneration:
@@ -291,7 +235,8 @@ spec:
                 format: int64
                 type: integer
               phase:
-                description: Phase is the coarse funnel stage.
+                description: Phase mirrors the owned PoolAdoption per-pool funnel
+                  phase.
                 type: string
             type: object
         type: object
