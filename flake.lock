@@ -282634,11 +282634,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1789404403,
-        "narHash": "sha256-iYlhknIM3RTW5+nUSjS83vJf4kSh9xv4WLsSwcO4Nps=",
+        "lastModified": 1789408735,
+        "narHash": "sha256-AEj4hsHGCKIQQTU8u+VPDtMZSlOmLZeloBV7b/AYLec=",
         "owner": "seedmatic",
         "repo": "rke2lab",
-        "rev": "137d5dbcabde3c6888abbf567e2237831da964aa",
+        "rev": "46c11ff38c4235c79d434732d7812a0a8fd2b1d1",
         "type": "github"
       },
       "original": {
@@ -282671,7 +282671,10 @@
           "nixpkgs"
         ],
         "rke2lab": "rke2lab",
-        "seed-incluster": "seed-incluster_2"
+        "seed-incluster": [
+          "rke2lab",
+          "seed-incluster"
+        ]
       }
     },
     "rust-analyzer-src": {
@@ -284975,33 +284978,6 @@
         ],
         "nixpkgs": [
           "rke2lab",
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1789404257,
-        "narHash": "sha256-3qKya/rqPxe2McBSVeSbo/mV00O/MzRmXmhzOYWpJsE=",
-        "owner": "seedmatic",
-        "repo": "rke2lab",
-        "rev": "fc01196dc0290e852c52bf22ca73a586b52b4b40",
-        "type": "github"
-      },
-      "original": {
-        "owner": "seedmatic",
-        "ref": "seed-incluster",
-        "repo": "rke2lab",
-        "type": "github"
-      }
-    },
-    "seed-incluster_2": {
-      "inputs": {
-        "flake-commons": [
-          "flake-commons"
-        ],
-        "flake-utils": [
-          "flake-utils"
-        ],
-        "nixpkgs": [
           "nixpkgs"
         ]
       },

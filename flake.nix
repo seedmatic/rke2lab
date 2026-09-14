@@ -53,12 +53,14 @@
     # controller + ClusterAdoption CRD. We re-export its BINARY below so the
     # cluster-api/seed-incluster FloxEnv installs it into the flox
     # carrier — the controller stops riding a baked node-base OCI image (see
-    # rke2lab .claude/seed-incluster-floxenv-plan.md). Follows our
-    # nixpkgs/utils so it dedups with the rest of the catalog.
-    seed-incluster.url = "github:seedmatic/rke2lab/seed-incluster";
-    seed-incluster.inputs.nixpkgs.follows = "nixpkgs";
-    seed-incluster.inputs.flake-utils.follows = "flake-utils";
-    seed-incluster.inputs.flake-commons.follows = "flake-commons";
+    # rke2lab .claude/seed-incluster-floxenv-plan.md). rke2lab ALSO consumes
+    # this branch (its binary + the ClusterAdoption CRD + the ClusterRole it
+    # stages into manifest synthesis), so rke2lab is the single owner of the
+    # seed-incluster pin — same rule as ndh above. FOLLOW it here instead of
+    # re-pinning, or the catalog's binary would drift from the CRD/RBAC rke2lab
+    # renders (binary-vs-schema skew). A bump lives in rke2lab's flake.lock; the
+    # catalog picks it up when its `rke2lab` input refreshes.
+    seed-incluster.follows = "rke2lab/seed-incluster";
   };
 
   outputs = {
