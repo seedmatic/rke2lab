@@ -386,11 +386,19 @@ func (r *ClusterAdoptionReconciler) poolToCluster(ctx context.Context, obj clien
 	return reqs
 }
 
-// SetupWithManager wires the reconciler to ClusterAdoption events, the owned Cluster/LXCCluster's,
-// and the cluster's PoolAdoptions (for the aggregate).
+// SetupWithManager wires the reconciler to ClusterAdoption events, the owned Cluster/LXCCluster's
+// (a Cluster delete — the recreate/rebirth gesture — re-runs ensure at once, resurrecting it from the
+// surviving intention), and the cluster's PoolAdoptions (for the aggregate). The CAPI objects are
+// watched UNSTRUCTURED, so the controller keeps no typed CAPI module dependency.
 func (r *ClusterAdoptionReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	cluster := &unstructured.Unstructured{}
+	cluster.SetGroupVersionKind(gvkCluster)
+	lxcCluster := &unstructured.Unstructured{}
+	lxcCluster.SetGroupVersionKind(gvkLXCCluster)
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&adoptionv1alpha1.ClusterAdoption{}).
+		Owns(cluster).
+		Owns(lxcCluster).
 		Watches(&adoptionv1alpha1.PoolAdoption{}, handler.EnqueueRequestsFromMapFunc(r.poolToCluster)).
 		Named("clusteradoption").
 		Complete(r)
