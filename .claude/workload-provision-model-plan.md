@@ -15,12 +15,30 @@
 > - Build gotcha: use `package -Dmaven.build.cache.skipCache=true` (a bare `compile` fails sibling
 >   resolution; `-am package` builds the reactor jars). Staging needs nix (no `-Dflox.crd-staging.skip`).
 >
-> **NEXT:** C6 + C5 + C4a + C4b DONE (rke2lab `262938ba9` C6; `5b143c96b`/`574a43485`/`cd23927fb`/`1cb9d3c26`
-> C5.1–C5.4; seed-incluster `264d79694` C4a, `0938170e1` C4b greenfield arm). Remaining: **C7**
-> (`vmnet-<role>` NIC on the pool template) + the reflector loop (deferred until dynamic scaling opens).
+> **⚠️ PIVOT 2026-09-15 — C4b greenfield-arm REVERTED; the reflector comes FIRST.** The live re-grow
+> PROVED the C4b "adopt-shape probe → flip to provision-shape" model WRONG: seed-incluster deleting/
+> re-creating Machines to flip them FIGHTS CAPRKE2 (the RCP owns the Machines + maintains replicas) →
+> churn/deadlock. **User's corrected model (2026-09-15): seed-incluster only OBSERVES; CAPI/CAPN/CAPRKE2
+> create+delete the Machines.**
+> - **Greenfield** = `PoolReflection` ABSENT: seed-incluster creates Cluster + RCP(replicas=N) + template
+>   + config, UNPAUSED, and creates NO Machines — CAPRKE2 provisions its own → CAPN launches → the
+>   **reflector observes** the emergent roster and writes the first `PoolReflection`. Random CAPRKE2 names
+>   are FINE because the reflector persists them (that IS the unconditional determinism).
+> - **Adopt** = `PoolReflection` PRESENT (a prior life persisted the observed roster): pre-create the
+>   named Machines from that roster → CAPRKE2 adopts the surviving instances by name.
+> - **The switch is `PoolReflection` PRESENCE, not the CAPN liveness probe** (the graved `<<existence>>`
+>   axis must be revised — the CAPN adopt-shape probe as adopt/greenfield DECIDER is dropped).
+> - **Build ORDER inverted: the reflector is FIRST** (it produces the `PoolReflection` the decision reads).
+> Reverted: seed-incluster `10e4dc920` (reverts `0938170e1`), pushed. Live: seed-incluster deploy scaled
+> to 0, bioskop-wrkld frozen (`Cluster.paused=true`) — a failed CAPN launch attempt on -master may have
+> left an Incus residue to GC at teardown. Pins still at C4b (moot at 0 replicas; roll forward on the
+> reflector build).
+>
+> **NEXT:** build the reflector (`PoolReflection` CRD + observe→git loop + App-token) FIRST, then the
+> adopt/greenfield switch on presence, then greenfield=RCP-replicas-only. Then C7 (`vmnet-<role>` NIC).
 > Scope still LOCKED to `bioskop-wrkld` × `control-node`. Standing: commit freely on topic branches
-> (don't ask); push/relock/pulumi/kubectl = USER; French convo. All committed, NOT pushed (live checkpoint):
-> seed-incluster `0938170e1`, flox-catalogue `44cabfeb3`. C4b is validated by a live re-grow of bioskop-wrkld.
+> (don't ask); push/relock/pulumi/kubectl = USER (but the user ceded the checkpoint this session); French.
+> DONE (unchanged): C6, C5.1–C5.4, C4a (seed-incluster `264d79694`).
 
 Converged over the 2026-09-13 design session (bioskop-wrkld greenfield). Grave the
 specs/atlas first (this file is the worklist, not the spec), then adapt the codebase.
