@@ -1,0 +1,15 @@
+---
+apiVersion: tailscale.com/v1alpha1
+kind: Connector
+metadata:
+  annotations:
+    config.kubernetes.io/depends-on: helm.cattle.io/namespaces/tailscale-system/HelmChart/tailscale-operator
+    io.seedmatic.rke2lab/domain: tailscale
+    io.seedmatic.rke2lab/package: tailscale
+  name: controlplane
+spec:
+  hostname: bioskop-mgmt-controlplane
+  subnetRouter:
+    advertiseRoutes:
+    - 10.80.7.10/32
+    - 10.80.0.64/26

@@ -1,0 +1,70 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: cluster-api
+    io.seedmatic.rke2lab/layer: operators
+    io.seedmatic.rke2lab/package: seed-incluster
+  name: seed-incluster
+  namespace: rke2lab-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: controller
+      app.kubernetes.io/name: seed-incluster
+  template:
+    metadata:
+      annotations:
+        flox.seedmatic.io/environment.controller: cluster-api/seed-incluster
+        flox.seedmatic.io/gid.controller: "0"
+        flox.seedmatic.io/home.controller: /root
+        flox.seedmatic.io/uid.controller: "0"
+      labels:
+        app.kubernetes.io/component: controller
+        app.kubernetes.io/name: seed-incluster
+    spec:
+      containers:
+      - args:
+        - --health-probe-bind-address=:8081
+        - --metrics-bind-address=:8080
+        command:
+        - seed-incluster
+        env:
+        - name: HOME
+          value: /root
+        - name: SELF_CLUSTER_NAME
+          value: bioskop-mgmt
+        image: rke2lab/flox-carrier:0.1.0
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        name: controller
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          limits:
+            memory: 256Mi
+          requests:
+            cpu: 10m
+            memory: 128Mi
+        volumeMounts:
+        - mountPath: /.config/flox
+          name: flox-config
+        - mountPath: /.cache/flox
+          name: flox-cache
+      serviceAccountName: seed-incluster
+      volumes:
+      - emptyDir: {}
+        name: flox-config
+      - emptyDir: {}
+        name: flox-cache

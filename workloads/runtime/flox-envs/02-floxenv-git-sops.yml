@@ -1,0 +1,47 @@
+---
+apiVersion: flox.seedmatic.io/v1alpha1
+kind: FloxEnv
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: runtime
+    io.seedmatic.rke2lab/package: flox-envs
+  name: git-sops
+  namespace: rke2lab-system
+spec:
+  consumption: overlay
+  folder: toolchains
+  inject:
+  - name: SOPS_AGE_KEY
+    secretKeyRef:
+      key: age.agekey
+      name: sops-age
+      optional: true
+  manifest:
+    hook:
+      on-activate: |
+        if [ -f "$FLOX_ENV/sops" ]; then
+          git config --global include.path "$FLOX_ENV/sops"
+        else
+          echo >&2 "git-sops: include $FLOX_ENV/sops not found — sops-yaml filter NOT wired"
+        fi
+    install:
+      bash:
+        outputs: all
+        pkg-path: bash
+      coreutils:
+        outputs: all
+        pkg-path: coreutils
+      git:
+        pkg-path: git
+      git-sops-filter:
+        flake: floxcatalog:catalogue#git-sops-filter
+      gnugrep:
+        pkg-path: gnugrep
+      sops:
+        pkg-path: sops
+      yq-go:
+        pkg-path: yq-go
+    options:
+      systems:
+      - aarch64-linux
+    schema-version: 1.10.0

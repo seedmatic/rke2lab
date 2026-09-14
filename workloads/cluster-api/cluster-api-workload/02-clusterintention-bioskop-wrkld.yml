@@ -1,0 +1,25 @@
+---
+apiVersion: cluster.seedmatic.io/v1alpha1
+kind: ClusterIntention
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: cluster-api
+    io.seedmatic.rke2lab/package: cluster-api-workload
+  name: bioskop-wrkld
+  namespace: rke2lab-bioskop-wrkld
+spec:
+  clusterName: bioskop-wrkld
+  clusterNetwork:
+    podCIDRs:
+    - 10.45.0.0/16
+    serviceCIDRs:
+    - 10.49.0.0/16
+    serviceDomain: cluster.local
+  controlPlaneEndpoint:
+    host: 10.80.15.10
+    port: 6443
+  kind: workload
+  namespace: rke2lab-bioskop-wrkld
+  remote:
+    endpoint: https://bioskop-nixos:8443
+    identitySecretName: bioskop-incus-identity

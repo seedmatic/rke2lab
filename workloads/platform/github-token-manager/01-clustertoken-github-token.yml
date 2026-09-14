@@ -1,0 +1,22 @@
+---
+apiVersion: github.as-code.io/v1
+kind: ClusterToken
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: platform
+    io.seedmatic.rke2lab/package: github-token-manager
+  name: github-token
+spec:
+  appRef:
+    name: github-app
+    namespace: rke2lab-system
+  permissions:
+    contents: read
+    metadata: read
+  refreshInterval: 45m
+  secret:
+    annotations:
+      replicator.v1.mittwald.de/replication-allowed: "true"
+      replicator.v1.mittwald.de/replication-allowed-namespaces: rke2lab-system
+    name: github-token
+    namespace: rke2lab-secrets

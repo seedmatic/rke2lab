@@ -1,0 +1,22 @@
+---
+apiVersion: cilium.io/v2
+kind: CiliumBGPClusterConfig
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: networking
+    io.seedmatic.rke2lab/package: cilium-advanced
+  name: bgp-cluster-config
+spec:
+  bgpInstances:
+  - localASN: 64512
+    name: control-plane-bgp
+    peers:
+    - name: gateway-peer
+      peerASN: 65020
+      peerAddress: 10.80.0.1
+      peerConfigRef:
+        name: cilium-peer
+  nodeSelector:
+    matchExpressions:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists

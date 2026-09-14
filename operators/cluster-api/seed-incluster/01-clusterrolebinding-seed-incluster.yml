@@ -1,0 +1,17 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: cluster-api
+    io.seedmatic.rke2lab/layer: operators
+    io.seedmatic.rke2lab/package: seed-incluster
+  name: seed-incluster
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: seed-incluster
+subjects:
+- kind: ServiceAccount
+  name: seed-incluster
+  namespace: rke2lab-system

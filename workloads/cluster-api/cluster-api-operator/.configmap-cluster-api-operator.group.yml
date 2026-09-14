@@ -1,0 +1,37 @@
+---
+apiVersion: v1
+data:
+  members: |-
+    v1|Namespace||capi-operator-system
+    apiextensions.k8s.io/v1|CustomResourceDefinition||addonproviders.operator.cluster.x-k8s.io
+    apiextensions.k8s.io/v1|CustomResourceDefinition||bootstrapproviders.operator.cluster.x-k8s.io
+    apiextensions.k8s.io/v1|CustomResourceDefinition||controlplaneproviders.operator.cluster.x-k8s.io
+    apiextensions.k8s.io/v1|CustomResourceDefinition||coreproviders.operator.cluster.x-k8s.io
+    apiextensions.k8s.io/v1|CustomResourceDefinition||infrastructureproviders.operator.cluster.x-k8s.io
+    apiextensions.k8s.io/v1|CustomResourceDefinition||ipamproviders.operator.cluster.x-k8s.io
+    apiextensions.k8s.io/v1|CustomResourceDefinition||runtimeextensionproviders.operator.cluster.x-k8s.io
+    v1|ServiceAccount|capi-operator-system|capi-operator-manager
+    rbac.authorization.k8s.io/v1|Role|capi-operator-system|capi-operator-leader-election-role
+    rbac.authorization.k8s.io/v1|ClusterRole||capi-operator-manager-role
+    rbac.authorization.k8s.io/v1|RoleBinding|capi-operator-system|capi-operator-leader-election-rolebinding
+    rbac.authorization.k8s.io/v1|ClusterRoleBinding||capi-operator-manager-rolebinding
+    v1|Service|capi-operator-system|capi-operator-webhook-service
+    apps/v1|Deployment|capi-operator-system|capi-operator-controller-manager
+    cert-manager.io/v1|Certificate|capi-operator-system|capi-operator-serving-cert
+    admissionregistration.k8s.io/v1|MutatingWebhookConfiguration||capi-operator-mutating-webhook-configuration
+    admissionregistration.k8s.io/v1|ValidatingWebhookConfiguration||capi-operator-validating-webhook-configuration
+    v1|Namespace||capi-system
+    v1|Namespace||capn-system
+    v1|Namespace||caprke2-system
+    operator.cluster.x-k8s.io/v1alpha2|CoreProvider|capi-system|cluster-api
+    operator.cluster.x-k8s.io/v1alpha2|InfrastructureProvider|capn-system|incus
+    operator.cluster.x-k8s.io/v1alpha2|ControlPlaneProvider|caprke2-system|rke2
+    operator.cluster.x-k8s.io/v1alpha2|BootstrapProvider|caprke2-system|rke2
+kind: ConfigMap
+metadata:
+  annotations:
+    config.kubernetes.io/local-config: "true"
+    io.seedmatic.rke2lab/domain: cluster-api
+    io.seedmatic.rke2lab/manifest-group: "true"
+    io.seedmatic.rke2lab/package: cluster-api-operator
+  name: cluster-api-operator.group

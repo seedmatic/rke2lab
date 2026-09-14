@@ -1,0 +1,37 @@
+---
+apiVersion: flox.seedmatic.io/v1alpha1
+kind: FloxEnv
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: runtime
+    io.seedmatic.rke2lab/package: flox-envs
+  name: headplane
+  namespace: rke2lab-system
+spec:
+  consumption: overlay
+  folder: mesh
+  manifest:
+    install:
+      bash:
+        outputs: all
+        pkg-path: bash
+      coreutils:
+        outputs: all
+        pkg-path: coreutils
+      headplane:
+        flake: floxcatalog:catalogue#headplane
+      headplane-agent:
+        flake: floxcatalog:catalogue#headplane-agent
+      headplane-ssh-wasm:
+        flake: floxcatalog:catalogue#headplane-ssh-wasm
+      headscale:
+        flake: floxcatalog:catalogue#headscale
+      kubectl:
+        outputs: all
+        pkg-path: kubectl
+      yq-go:
+        pkg-path: yq-go
+    options:
+      systems:
+      - aarch64-linux
+    schema-version: 1.10.0

@@ -1,0 +1,19 @@
+---
+apiVersion: pipelinesascode.tekton.dev/v1alpha1
+kind: Repository
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: cicd
+    io.seedmatic.rke2lab/package: repository
+  name: rke2lab
+  namespace: rke2lab-system
+spec:
+  concurrency_limit: 1
+  params:
+  - name: cluster
+    value: bioskop-mgmt
+  - name: node
+    value: master
+  settings:
+    pipelinerun_provenance: source
+  url: https://github.com/seedmatic/rke2lab

@@ -1,0 +1,234 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.20.1
+    io.seedmatic.rke2lab/domain: cluster-api
+    io.seedmatic.rke2lab/layer: operators
+    io.seedmatic.rke2lab/package: seed-incluster
+  name: clusterintentions.cluster.seedmatic.io
+spec:
+  group: cluster.seedmatic.io
+  names:
+    kind: ClusterIntention
+    listKind: ClusterIntentionList
+    plural: clusterintentions
+    shortNames:
+    - capiintent
+    singular: clusterintention
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.clusterName
+      name: Cluster
+      type: string
+    - jsonPath: .spec.kind
+      name: Kind
+      type: string
+    - jsonPath: .spec.controlPlaneEndpoint.host
+      name: Endpoint
+      type: string
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: ".status.conditions[?(@.type==\"Ready\")].status"
+      name: Ready
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          ClusterIntention is the Flux-owned cluster-level intent to bring one cluster into existence and
+          keep it described in Cluster API — reconciled adopt-first by the controller, which owns the
+          derived ClusterAdoption and aggregates the per-pool PoolAdoptions into it.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              ClusterIntentionSpec is the CLUSTER-LEVEL intent seed-master renders for one cluster — the
+              Flux-owned recipe for its CAPI Cluster + LXCCluster. It carries ONLY cluster-scoped facts (VIP,
+              CIDRs, remote+identity, federated kind); the per-pool roster + templates live in the N
+              PoolIntention children (ownerRef'd to this ClusterIntention). The controller reconciles it
+              adopt-first and OWNS a ClusterAdoption (the cluster mirror, re-derived from reality) — the
+              ownership split: Flux owns the intent (git-backed, survives a cold-start), the controller owns the
+              mirror. Every field is filled from the ClusterNetworkBlueprint SSOT; the controller never computes
+              addressing.
+            properties:
+              clusterName:
+                description: ClusterName is the CAPI Cluster name to bring to existence and adopt (e.g. "bioskop-wrkld").
+                minLength: 1
+                type: string
+              clusterNetwork:
+                description: ClusterNetwork carries the pod/service CIDRs + the service domain.
+                properties:
+                  podCIDRs:
+                    items:
+                      type: string
+                    minItems: 1
+                    type: array
+                  serviceCIDRs:
+                    items:
+                      type: string
+                    minItems: 1
+                    type: array
+                  serviceDomain:
+                    default: cluster.local
+                    type: string
+                required:
+                - podCIDRs
+                - serviceCIDRs
+                type: object
+              controlPlaneEndpoint:
+                description: ControlPlaneEndpoint is the kube-vip VIP fronting the apiserver.
+                properties:
+                  host:
+                    minLength: 1
+                    type: string
+                  port:
+                    format: int32
+                    minimum: 1
+                    type: integer
+                required:
+                - host
+                - port
+                type: object
+              kind:
+                default: workload
+                description: Kind is the cluster's federated role — recorded topological intent (see ClusterKind).
+                enum:
+                - workload
+                - management
+                type: string
+              namespace:
+                description: |-
+                  Namespace is where the CAPI CR-set, the owned ClusterAdoption, the PoolIntention children, and
+                  the referenced Secrets live (e.g. "rke2lab-bioskop-wrkld").
+                minLength: 1
+                type: string
+              remote:
+                description: Remote is the target Incus engine for THIS cluster's nodes (endpoint + identity Secret).
+                properties:
+                  endpoint:
+                    description: |-
+                      Endpoint is the Incus API endpoint (e.g. "https://bioskop-nixos:8443") — the local engine, or a
+                      cross-host one reached over the tailnet. Empty = the local engine, resolved from the identity
+                      Secret's `server` (the management cluster's own host).
+                    type: string
+                  identitySecretName:
+                    description: |-
+                      IdentitySecretName is the per-remote CAPN identity Secret the LXCCluster.secretRef names,
+                      resolved in Namespace. Its CA-based trust is our owned Incus PKI.
+                    minLength: 1
+                    type: string
+                required:
+                - identitySecretName
+                type: object
+            required:
+            - clusterName
+            - clusterNetwork
+            - controlPlaneEndpoint
+            - namespace
+            - remote
+            type: object
+          status:
+            description: ClusterIntentionStatus records what the controller observed.
+            properties:
+              adoptionRef:
+                description: AdoptionRef is the name of the ClusterAdoption this ClusterIntention owns (in Namespace).
+                type: string
+              conditions:
+                description: Conditions follow the standard metav1.Condition contract.
+                items:
+                  description: Condition contains details for one aspect of the current state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: "^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$"
+                      type: string
+                    status:
+                      description: "status of the condition, one of True, False, Unknown."
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: "^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$"
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              lastReconcileTime:
+                description: LastReconcileTime is when the controller last reconciled this ClusterIntention.
+                format: date-time
+                type: string
+              observedGeneration:
+                description: ObservedGeneration is the spec generation this status reflects.
+                format: int64
+                type: integer
+              phase:
+                description: Phase mirrors the owned ClusterAdoption aggregate phase.
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

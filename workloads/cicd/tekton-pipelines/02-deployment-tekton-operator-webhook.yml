@@ -1,0 +1,59 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: cicd
+    io.seedmatic.rke2lab/package: tekton-pipelines
+  labels:
+    operator.tekton.dev/release: v0.81.1
+    version: v0.81.1
+  name: tekton-operator-webhook
+  namespace: tekton-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: tekton-operator-webhook
+  template:
+    metadata:
+      labels:
+        app: tekton-operator
+        name: tekton-operator-webhook
+    spec:
+      containers:
+      - env:
+        - name: KUBERNETES_MIN_VERSION
+          value: v1.0.0
+        - name: SYSTEM_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: WEBHOOK_POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: CONFIG_LOGGING_NAME
+          value: config-logging
+        - name: CONFIG_LEADERELECTION_NAME
+          value: tekton-operator-webhook-config-leader-election
+        - name: WEBHOOK_SERVICE_NAME
+          value: tekton-operator-webhook
+        - name: WEBHOOK_SECRET_NAME
+          value: tekton-operator-webhook-certs
+        - name: METRICS_DOMAIN
+          value: tekton.dev/operator
+        image: ghcr.io/tektoncd/operator/webhook-f2bb711aa8f0c0892856a4cbf6d9ddd8:v0.81.1@sha256:037744039c97f40a2457bdfb8ff6636c009f50a5567cb9cc4a8ff14ccda18681
+        name: tekton-operator-webhook
+        ports:
+        - containerPort: 8443
+          name: https-webhook
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+          seccompProfile:
+            type: RuntimeDefault
+      serviceAccountName: tekton-operator

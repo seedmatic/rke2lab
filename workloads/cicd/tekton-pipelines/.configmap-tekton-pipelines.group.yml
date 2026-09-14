@@ -1,0 +1,53 @@
+---
+apiVersion: v1
+data:
+  members: |-
+    v1|Namespace||tekton-operator
+    apiextensions.k8s.io/v1|CustomResourceDefinition||manualapprovalgates.operator.tekton.dev
+    apiextensions.k8s.io/v1|CustomResourceDefinition||openshiftpipelinesascodes.operator.tekton.dev
+    apiextensions.k8s.io/v1|CustomResourceDefinition||syncerservices.operator.tekton.dev
+    apiextensions.k8s.io/v1|CustomResourceDefinition||tektonaddons.operator.tekton.dev
+    apiextensions.k8s.io/v1|CustomResourceDefinition||tektonchains.operator.tekton.dev
+    apiextensions.k8s.io/v1|CustomResourceDefinition||tektonconfigs.operator.tekton.dev
+    apiextensions.k8s.io/v1|CustomResourceDefinition||tektondashboards.operator.tekton.dev
+    apiextensions.k8s.io/v1|CustomResourceDefinition||tektoninstallersets.operator.tekton.dev
+    apiextensions.k8s.io/v1|CustomResourceDefinition||tektonmulticlusterproxyaaes.operator.tekton.dev
+    apiextensions.k8s.io/v1|CustomResourceDefinition||tektonpipelines.operator.tekton.dev
+    apiextensions.k8s.io/v1|CustomResourceDefinition||tektonpruners.operator.tekton.dev
+    apiextensions.k8s.io/v1|CustomResourceDefinition||tektonresults.operator.tekton.dev
+    apiextensions.k8s.io/v1|CustomResourceDefinition||tektonschedulers.operator.tekton.dev
+    apiextensions.k8s.io/v1|CustomResourceDefinition||tektontriggers.operator.tekton.dev
+    v1|ServiceAccount|tekton-operator|tekton-operator
+    rbac.authorization.k8s.io/v1|Role|tekton-operator|tekton-operator-info
+    rbac.authorization.k8s.io/v1|ClusterRole||tekton-config-read-role
+    rbac.authorization.k8s.io/v1|ClusterRole||tekton-operator
+    rbac.authorization.k8s.io/v1|ClusterRole||tekton-pac-controller-role
+    rbac.authorization.k8s.io/v1|ClusterRole||tekton-result-read-role
+    rbac.authorization.k8s.io/v1|ClusterRole||tekton-scheduler-role
+    rbac.authorization.k8s.io/v1|RoleBinding|tekton-operator|tekton-operator-info
+    rbac.authorization.k8s.io/v1|ClusterRoleBinding||tekton-config-read-rolebinding
+    rbac.authorization.k8s.io/v1|ClusterRoleBinding||tekton-operator
+    rbac.authorization.k8s.io/v1|ClusterRoleBinding||tekton-pac-controller-role-binding
+    rbac.authorization.k8s.io/v1|ClusterRoleBinding||tekton-result-read-rolebinding
+    rbac.authorization.k8s.io/v1|ClusterRoleBinding||tekton-scheduler-rolebinding
+    v1|ConfigMap|tekton-operator|config-logging
+    v1|ConfigMap|tekton-operator|tekton-config-defaults
+    v1|ConfigMap|tekton-operator|tekton-config-observability
+    v1|ConfigMap|tekton-operator|tekton-operator-controller-config-leader-election
+    v1|ConfigMap|tekton-operator|tekton-operator-info
+    v1|ConfigMap|tekton-operator|tekton-operator-webhook-config-leader-election
+    v1|Secret|tekton-operator|tekton-operator-webhook-certs
+    v1|Service|tekton-operator|tekton-operator
+    v1|Service|tekton-operator|tekton-operator-webhook
+    apps/v1|Deployment|tekton-operator|tekton-operator
+    apps/v1|Deployment|tekton-operator|tekton-operator-webhook
+    v1|Namespace||tekton-pipelines
+    operator.tekton.dev/v1alpha1|TektonConfig||config
+kind: ConfigMap
+metadata:
+  annotations:
+    config.kubernetes.io/local-config: "true"
+    io.seedmatic.rke2lab/domain: cicd
+    io.seedmatic.rke2lab/manifest-group: "true"
+    io.seedmatic.rke2lab/package: tekton-pipelines
+  name: tekton-pipelines.group

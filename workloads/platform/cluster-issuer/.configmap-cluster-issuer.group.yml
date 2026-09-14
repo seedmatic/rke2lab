@@ -1,0 +1,14 @@
+---
+apiVersion: v1
+data:
+  members: |-
+    cert-manager.io/v1|ClusterIssuer||rke2lab-ca
+    v1|Secret|kube-system|rke2lab-ca-key-pair
+kind: ConfigMap
+metadata:
+  annotations:
+    config.kubernetes.io/local-config: "true"
+    io.seedmatic.rke2lab/domain: platform
+    io.seedmatic.rke2lab/manifest-group: "true"
+    io.seedmatic.rke2lab/package: cluster-issuer
+  name: cluster-issuer.group

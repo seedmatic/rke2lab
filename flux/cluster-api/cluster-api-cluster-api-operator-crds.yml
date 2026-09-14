@@ -1,0 +1,23 @@
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: cluster-api-cluster-api-operator-crds
+  namespace: flux-system
+spec:
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
+  dependsOn:
+  - name: platform-cluster-issuer-foundation
+  - name: platform-cluster-issuer-workloads
+  force: true
+  interval: 5m
+  path: ./crds/cluster-api/cluster-api-operator
+  prune: true
+  retryInterval: 30s
+  sourceRef:
+    kind: GitRepository
+    name: rke2lab
+  wait: true

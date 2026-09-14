@@ -1,0 +1,11 @@
+---
+apiVersion: cilium.io/v2alpha1
+kind: CiliumLoadBalancerIPPool
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: networking
+    io.seedmatic.rke2lab/package: cilium-advanced
+  name: vip
+spec:
+  blocks:
+  - cidr: 10.80.7.0/24

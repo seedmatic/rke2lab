@@ -1,0 +1,9 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: cluster-api
+    io.seedmatic.rke2lab/layer: operators
+    io.seedmatic.rke2lab/package: cluster-api-operator
+  name: capi-system

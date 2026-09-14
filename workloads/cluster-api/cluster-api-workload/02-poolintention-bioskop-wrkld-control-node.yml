@@ -1,0 +1,25 @@
+---
+apiVersion: cluster.seedmatic.io/v1alpha1
+kind: PoolIntention
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: cluster-api
+    io.seedmatic.rke2lab/package: cluster-api-workload
+  name: bioskop-wrkld-control-node
+  namespace: rke2lab-bioskop-wrkld
+spec:
+  clusterRef: bioskop-wrkld
+  controlPlaneEndpoint:
+    host: 10.80.15.10
+    port: 6443
+  image:
+    fingerprint: b9546a37b26c9446412bc5d0f0f8f2a6f6ef9c0411a30430a505d2ddcdc1a78a
+  kubeVIPVersion: v0.9.2
+  namespace: rke2lab-bioskop-wrkld
+  nodes:
+  - name: bioskop-wrkld-master
+  - name: bioskop-wrkld-peer1
+  - name: bioskop-wrkld-peer2
+  pool: control-node
+  rke2Version: v1.34.10+rke2r1
+  role: control-plane
