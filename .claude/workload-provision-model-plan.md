@@ -160,12 +160,28 @@ The 2×2 decomposition reworks the CRDs + reconcilers + moves the state machine 
       seed-incluster + relock to the pushed rev + commit. Full synthesis-RUN validation = live
       checkpoint. (b) **Docs rename** DONE (`18ed69a83`): the 3 .adoc reconciled to the 2×2 (0 old
       names remain).
-- [ ] **C4. Provision execution (greenfield) + workload config delivery** — for an absent pet:
-  providerID EMPTY + a real `RKE2Config` (BYO-CA + init/join). **seed-incluster READS the workload's
-  visible k8s config (per `cluster,pool`) + injects it into the `RKE2Config`** (bootstrap-inject = the
-  managed delivery path; NO git-fetch / read-token on the workload node). Gate provision on existence
-  (`<<existence>>`). NB: the day-0 app-branch Tekton bootstrap-render (one-off PipelineRun) is a
-  SEPARATE app-stack concern (post-up), NOT a boot-blocker.
+- [x] **C4a. Workload config bootstrap-inject — DONE** (seed-incluster `264d79694`).
+  `PoolAdoptionReconciler.clusterConfigFiles` lists the visible RKE2 config ConfigMaps rke2lab renders
+  into `rke2lab-<cluster>` (annotated `io.seedmatic.rke2lab/rke2-config`), reconstructs each
+  config.yaml.d fragment (`data | value|=from_yaml`), and injects them as `RKE2ControlPlane.files` — so
+  a provisioned replica boots with the same config a standalone node git-fetches, no git/read-token on
+  the node. Gated like the BYO-CA (essential config: wait for Flux). Added the `configmaps` RBAC.
+- [ ] **C4b. Provision execution (greenfield) — LIVE SPIKE FIRST** (user's call 2026-09-14). Destructive
+  (creates/destroys real Incus instances) + CAPRKE2 semantics unverifiable without a live cluster, so:
+  grow `bioskop-wrkld` greenfield, OBSERVE CAPRKE2/CAPN, THEN code the exact flip. Design captured, two
+  uncertainties to resolve live:
+  - **The delete-recreate is inherent but its safety is uncertain.** adopt-first: default ADOPT shape
+    (providerID set, sentinel bootstrap) → on CAPN `InstanceDeleted` (confirmed absent), flip to PROVISION
+    (providerID EMPTY + real bootstrap). `Machine.spec.bootstrap` + `LXCMachine.spec.providerID` are
+    IMMUTABLE → the flip = delete+recreate. But deleting an RCP-owned Machine → the RCP recreates it
+    (random name) → breaks the named-pet invariant. Likely needs the swap done RCP-PAUSED — in tension
+    with the unpause adoption needs. Resolve live.
+  - **Pre-created named pets × the RCP's native replica provisioning is unclear.** CAPRKE2 natively
+    creates its OWN replicas (Machine + RKE2Config from `RCP.spec`, generated names). Does a pre-created
+    RCP-owned Machine with a custom `bootstrap.configRef` provision with OUR config, or conflict with the
+    RCP's replica management? Observe live.
+  - NB: the day-0 app-branch Tekton bootstrap-render (one-off PipelineRun) is a SEPARATE app-stack
+    concern (post-up), NOT a boot-blocker.
 - [x] **C5. Config-model refactor — DONE** (rke2lab `5b143c96b` C5.1, `574a43485` C5.2, `cd23927fb`
   C5.3, `1cb9d3c26` C5.4). config = VISIBLE k8s resources in the mgmt (Flux-applied):
   - **C5.1** `RuntimeRke2ConfigManifestsUnit` (`5b143c96b`): iterates `{subject if MGMT} ∪
