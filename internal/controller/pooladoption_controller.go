@@ -11,14 +11,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/yaml"
 
 	adoptionv1alpha1 "github.com/seedmatic/seed-incluster/api/v1alpha1"
@@ -37,11 +34,9 @@ type PoolAdoptionReconciler struct {
 
 // +kubebuilder:rbac:groups=cluster.seedmatic.io,resources=pooladoptions,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=cluster.seedmatic.io,resources=pooladoptions/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=cluster.seedmatic.io,resources=clusteradoptions,verbs=get;list;watch
-// +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=machines,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=machines,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=rke2controlplanes,verbs=get;list;watch;create;update;patch
-// +kubebuilder:rbac:groups=bootstrap.cluster.x-k8s.io,resources=rke2configs,verbs=get;list;watch;create;update;patch
-// +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=lxcmachines;lxcmachinetemplates,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=lxcmachines;lxcmachinetemplates,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
 
@@ -156,55 +151,25 @@ func (r *PoolAdoptionReconciler) reconcileSteps(
 	r.mark(a, adoptionv1alpha1.PoolConditionControlPlaneObserved, true, "Observed",
 		"RKE2ControlPlane UID "+string(rcpUID))
 
-	// 3. Materialize each pet in the shape the CLUSTER-grain existence verdict dictates, then read
-	//    CAPN's presence. Two shapes:
-	//    - ADOPT (default / existence unknown or true): pre-create the owned Machine + concrete
-	//      LXCMachine(providerID = lxc:///<pet>) + bootstrap sentinel, so CAPRKE2 counts it as one of
-	//      ITS replicas (adoption, no re-bootstrap) and CAPN ADOPTS the running instance — and, for an
-	//      undecided cluster, this doubles as the observe-only probe (adopt-shape never launches).
-	//    - PROVISION (existence decided FALSE — zero live pet anywhere, the operator-armed day-0): the
-	//      greenfield arm, providerID EMPTY + a real RKE2Config bootstrap (<<greenfield-arm>>). The RCP
-	//      stays paused until every pet is materialized, else CAPRKE2 would scale a random-named rival.
-	//    We never probe Incus ourselves — CAPN owns the Incus connection and reports on the LXCMachine.
-	exists, existenceDecided, err := r.clusterExistence(ctx, spec)
-	if err != nil {
-		r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, false, "Error", "cluster existence: "+err.Error())
-		return ctrl.Result{}, err
-	}
-	greenfield := existenceDecided && !exists
-
-	var provisionConfigSpec map[string]any
-	if greenfield {
-		provisionConfigSpec, err = r.liveRCPConfigSpec(ctx, spec)
-		if err != nil {
-			r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, false, "Error", "live RCP spec: "+err.Error())
-			return ctrl.Result{}, err
-		}
-	}
-
-	present, absent, pending, flipping := 0, 0, 0, 0
+	// 3. ADOPT, per pet: pre-create the owned Machine + concrete LXCMachine(providerID = lxc:///<pet>)
+	//    + bootstrap sentinel, so CAPRKE2 counts it as one of ITS replicas (adoption, no re-bootstrap)
+	//    and CAPN ADOPTS the running instance. We do NOT probe Incus ourselves — CAPN owns the Incus
+	//    connection + cross-host reach; it reports present/absent on the LXCMachine status. Idempotent.
+	//
+	//    NOTE — day-0 provisioning is the follow-up (C4): an ABSENT pet leaves its owned LXCMachine in
+	//    CAPN's "instance not found" state. Turning that into a provision (re-create at the same name
+	//    with providerID EMPTY + a real bootstrap) is derived from CAPN's status.
+	present, absent, pending := 0, 0, 0
 	for _, pet := range spec.Nodes {
-		if greenfield {
-			materialized, perr := r.provisionPet(ctx, spec, pet.Name, rcpUID, provisionConfigSpec)
-			if perr != nil {
-				r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, false, "Error", "provision "+pet.Name+": "+perr.Error())
-				return ctrl.Result{}, perr
-			}
-			if !materialized {
-				flipping++
-				continue // still re-creating this pet in provision shape; presence re-reads next pass
-			}
-		} else {
-			for _, obj := range []*unstructured.Unstructured{
-				r.bootstrapSecretObj(spec, pet.Name),
-				r.lxcMachineObj(spec, pet.Name),
-				r.machineObj(spec, pet.Name, rcpUID),
-			} {
-				if err := ensure(ctx, r.Client, obj); err != nil {
-					r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, false, "Error",
-						obj.GetKind()+" "+obj.GetName()+": "+err.Error())
-					return ctrl.Result{}, err
-				}
+		for _, obj := range []*unstructured.Unstructured{
+			r.bootstrapSecretObj(spec, pet.Name),
+			r.lxcMachineObj(spec, pet.Name),
+			r.machineObj(spec, pet.Name, rcpUID),
+		} {
+			if err := ensure(ctx, r.Client, obj); err != nil {
+				r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, false, "Error",
+					obj.GetKind()+" "+obj.GetName()+": "+err.Error())
+				return ctrl.Result{}, err
 			}
 		}
 		isPresent, decided, perr := r.lxcMachinePresence(ctx, spec, pet.Name)
@@ -230,32 +195,19 @@ func (r *PoolAdoptionReconciler) reconcileSteps(
 	case allPresent:
 		r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, true, "Observed",
 			fmt.Sprintf("%d/%d present", present, len(spec.Nodes)))
-	case greenfield:
-		// The greenfield arm is engaged: absent pets are being provisioned (not adopted). NodesAbsent
-		// routes derivePhase to Provisioning.
-		r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, false, "NodesAbsent",
-			fmt.Sprintf("greenfield: %d/%d present, %d provisioning, %d flipping, %d pending",
-				present, len(spec.Nodes), absent, flipping, pending))
 	case absent > 0:
-		// A pet is absent but the cluster EXISTS (another pool is live): the JOIN case, held — surface
-		// it, never greenfield a rival. Adopting/Degraded, not Provisioning.
-		r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, false, "NodeMissing",
-			fmt.Sprintf("%d/%d present, %d absent — holding (cluster exists, not greenfielding)", present, len(spec.Nodes), absent))
+		// day-0 / disaster: a pet is genuinely absent (CAPN InstanceDeleted). NodesAbsent routes
+		// derivePhase to Provisioning — present pets stay untouched (never re-provisioned).
+		r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, false, "NodesAbsent",
+			fmt.Sprintf("%d/%d present, %d absent — provisioning, %d pending", present, len(spec.Nodes), absent, pending))
 	default:
 		r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, false, "AwaitingInstances",
 			fmt.Sprintf("%d/%d present, %d pending", present, len(spec.Nodes), pending))
 	}
 
-	// 4. Unpause the pool's RKE2ControlPlane. On unpause CAPRKE2 counts the owned Machines (adoption:
-	//    no re-init; greenfield: inits the first control-node, joins the rest). HOLD the unpause while a
-	//    greenfield flip is still settling — an RCP unpaused mid-flip would scale a random-named rival
-	//    while an owned Machine is being re-created (the CAPRKE2 mixed-mode contract). The Cluster's own
-	//    paused flag is the ClusterAdoption reconciler's to clear (cluster grain).
-	if flipping > 0 {
-		r.mark(a, adoptionv1alpha1.PoolConditionUnpaused, false, "AwaitingCRSet",
-			fmt.Sprintf("holding RCP paused: %d pet(s) still flipping to provision shape", flipping))
-		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
-	}
+	// 4. Unpause the pool's RKE2ControlPlane (the owned Machines exist, so on unpause CAPRKE2 counts
+	//    them — no re-init of an adopted replica). The Cluster's own paused flag is the
+	//    ClusterAdoption reconciler's to clear (cluster grain), gated on existence.
 	if err := r.unpauseRCP(ctx, spec); err != nil {
 		r.mark(a, adoptionv1alpha1.PoolConditionUnpaused, false, "Error", err.Error())
 		return ctrl.Result{}, err
@@ -263,7 +215,7 @@ func (r *PoolAdoptionReconciler) reconcileSteps(
 	r.mark(a, adoptionv1alpha1.PoolConditionUnpaused, true, "Unpaused", "RKE2ControlPlane un-paused")
 
 	log.FromContext(ctx).Info("pool reconciled", "cluster", spec.ClusterName, "pool", spec.Pool,
-		"present", present, "greenfield", greenfield, "pets", len(spec.Nodes))
+		"present", present, "pets", len(spec.Nodes))
 	if !allPresent {
 		return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
 	}
@@ -410,29 +362,6 @@ func reconstructConfigFragment(data map[string]string) (string, error) {
 		return "", err
 	}
 	return string(out), nil
-}
-
-// clusterExistence reads the cluster-grain existence verdict the ClusterAdoption aggregates from
-// EVERY pool's presence. A pool NEVER greenfields on its own absence — that would rival-provision a
-// pool whose cluster is alive through another pool (the JOIN case, deferred to a HOLD). Greenfield
-// arms ONLY when the whole cluster reports zero live pet (existence=false). decided is false until a
-// ClusterAdoption exists and has reconciled its aggregate at least once (caller holds, never arms).
-func (r *PoolAdoptionReconciler) clusterExistence(
-	ctx context.Context, spec adoptionv1alpha1.PoolAdoptionSpec,
-) (exists, decided bool, err error) {
-	var clusters adoptionv1alpha1.ClusterAdoptionList
-	if listErr := r.List(ctx, &clusters, client.InNamespace(spec.Namespace)); listErr != nil {
-		return false, false, listErr
-	}
-	for i := range clusters.Items {
-		ca := &clusters.Items[i]
-		if ca.Spec.ClusterName != spec.ClusterName {
-			continue
-		}
-		// ObservedGeneration != 0 ⇒ the aggregate has run at least once, so existence is meaningful.
-		return ca.Status.Existence, ca.Status.ObservedGeneration != 0, nil
-	}
-	return false, false, nil
 }
 
 func (r *PoolAdoptionReconciler) rcpUID(ctx context.Context, spec adoptionv1alpha1.PoolAdoptionSpec) (types.UID, error) {
@@ -592,82 +521,6 @@ func (r *PoolAdoptionReconciler) rke2ControlPlaneObj(spec adoptionv1alpha1.PoolA
 	return obj
 }
 
-// liveRCPConfigSpec reads the inline rke2ConfigSpec fields (agentConfig, files, preRKE2Commands) off
-// the LIVE RKE2ControlPlane. A provision-shape Machine's RKE2Config MUST deep-equal these or CAPRKE2
-// rolls the Machine (→ a random-named replacement that breaks the named-pet invariant). Copying the
-// live RCP is the only way to guarantee the match — CAPI has already defaulted the RCP (e.g.
-// agentConfig.format), so we mirror the defaulted truth, not our pre-creation guess.
-func (r *PoolAdoptionReconciler) liveRCPConfigSpec(
-	ctx context.Context, spec adoptionv1alpha1.PoolAdoptionSpec,
-) (map[string]any, error) {
-	rcp := &unstructured.Unstructured{}
-	rcp.SetGroupVersionKind(gvkRKE2ControlPlane)
-	if err := r.Get(ctx, types.NamespacedName{Namespace: spec.Namespace, Name: controlPlaneName(spec.ClusterName)}, rcp); err != nil {
-		return nil, err
-	}
-	out := map[string]any{}
-	for _, field := range []string{"agentConfig", "files", "preRKE2Commands"} {
-		if v, found, _ := unstructured.NestedFieldCopy(rcp.Object, "spec", field); found {
-			out[field] = v
-		}
-	}
-	return out, nil
-}
-
-// rke2ConfigObj is the per-pet bootstrap config a PROVISION-shape Machine references — a copy of the
-// live RCP rke2ConfigSpec, owned by the Machine so it GCs with the pet.
-func (r *PoolAdoptionReconciler) rke2ConfigObj(spec adoptionv1alpha1.PoolAdoptionSpec, nodeName string, configSpec map[string]any) *unstructured.Unstructured {
-	obj := newObj(gvkRKE2Config, nodeName, spec.Namespace)
-	obj.SetLabels(map[string]string{clusterNameLabel: spec.ClusterName})
-	obj.Object["spec"] = configSpec
-	return obj
-}
-
-// lxcMachineProvisionObj is the greenfield twin of lxcMachineObj: providerID is OMITTED, so CAPN
-// LAUNCHES a fresh instance at this name instead of adopting an existing one.
-func (r *PoolAdoptionReconciler) lxcMachineProvisionObj(spec adoptionv1alpha1.PoolAdoptionSpec, nodeName string) *unstructured.Unstructured {
-	obj := newObj(gvkLXCMachine, nodeName, spec.Namespace)
-	obj.SetLabels(map[string]string{clusterNameLabel: spec.ClusterName})
-	obj.Object["spec"] = lxcMachineSpec(spec.Image.Fingerprint)
-	return obj
-}
-
-// machineProvisionObj is the greenfield twin of machineObj: bootstrap.configRef → the per-pet
-// RKE2Config (CAPRKE2 renders the real cloud-init) instead of the adopt sentinel dataSecretName, and
-// no providerID (CAPN sets it once the launched instance is up).
-func (r *PoolAdoptionReconciler) machineProvisionObj(spec adoptionv1alpha1.PoolAdoptionSpec, nodeName string, rcpUID types.UID) *unstructured.Unstructured {
-	obj := newObj(gvkMachine, nodeName, spec.Namespace)
-	obj.SetLabels(map[string]string{
-		clusterNameLabel:  spec.ClusterName,
-		controlPlaneLabel: "",
-	})
-	obj.SetOwnerReferences([]metav1.OwnerReference{{
-		APIVersion:         gvkRKE2ControlPlane.GroupVersion().String(),
-		Kind:               gvkRKE2ControlPlane.Kind,
-		Name:               controlPlaneName(spec.ClusterName),
-		UID:                rcpUID,
-		Controller:         ptrBool(true),
-		BlockOwnerDeletion: ptrBool(true),
-	}})
-	obj.Object["spec"] = map[string]any{
-		"clusterName": spec.ClusterName,
-		"version":     spec.RKE2Version,
-		"bootstrap": map[string]any{
-			"configRef": map[string]any{
-				"apiGroup": gvkRKE2Config.Group,
-				"kind":     gvkRKE2Config.Kind,
-				"name":     nodeName,
-			},
-		},
-		"infrastructureRef": map[string]any{
-			"apiGroup": gvkLXCMachine.Group,
-			"kind":     gvkLXCMachine.Kind,
-			"name":     nodeName,
-		},
-	}
-	return obj
-}
-
 // lxcMachineSpec is the privileged-container LXCMachine/template body, pinned to our nix-built
 // node-base by fingerprint — mirrors rke2lab's InstanceGrow / ClusterApiCrRenderer.
 func lxcMachineSpec(fingerprint string) map[string]any {
@@ -736,128 +589,10 @@ subjects:
 	}
 }
 
-// provisionPet arms greenfield for one absent pet: it materializes the PROVISION-shape CR-set
-// (RKE2Config + providerID-empty LXCMachine + configRef Machine). providerID is immutable, so an
-// adopt-shape LXCMachine left by the probe is re-created — deleted this pass, rebuilt once GC
-// completes. Idempotent via the providerID discriminator: an already-provision-shape LXCMachine
-// (providerID empty) is left in place. materialized is false while a flip is still settling (caller
-// requeues, holds the RCP paused).
-func (r *PoolAdoptionReconciler) provisionPet(
-	ctx context.Context, spec adoptionv1alpha1.PoolAdoptionSpec, nodeName string, rcpUID types.UID, configSpec map[string]any,
-) (materialized bool, err error) {
-	if err := ensure(ctx, r.Client, r.rke2ConfigObj(spec, nodeName, configSpec)); err != nil {
-		return false, err
-	}
-	lmReady, err := r.ensureProvisionShape(ctx, spec, nodeName, gvkLXCMachine,
-		// adopt shape ⇔ providerID set (immutable → must re-create for a providerID-empty provision).
-		func(o *unstructured.Unstructured) bool {
-			pid, _, _ := unstructured.NestedString(o.Object, "spec", "providerID")
-			return pid != ""
-		},
-		func() *unstructured.Unstructured { return r.lxcMachineProvisionObj(spec, nodeName) })
-	if err != nil {
-		return false, err
-	}
-	mReady, err := r.ensureProvisionShape(ctx, spec, nodeName, gvkMachine,
-		// adopt shape ⇔ no bootstrap.configRef (the sentinel dataSecretName path).
-		func(o *unstructured.Unstructured) bool {
-			_, hasConfigRef, _ := unstructured.NestedMap(o.Object, "spec", "bootstrap", "configRef")
-			return !hasConfigRef
-		},
-		func() *unstructured.Unstructured { return r.machineProvisionObj(spec, nodeName, rcpUID) })
-	if err != nil {
-		return false, err
-	}
-	return lmReady && mReady, nil
-}
-
-// ensureProvisionShape brings one CAPI object to provision shape and reports whether it is settled:
-//   - absent            → create it provision-shape → ready
-//   - terminating       → wait (a prior re-create is still GC'ing) → not ready
-//   - adopt-shape       → delete it (re-create next pass, once GC completes) → not ready
-//   - already provision → leave it → ready
-//
-// The immutable fields (LXCMachine.providerID, Machine.bootstrap) force delete-then-create; keying the
-// verdict off each object's own shape makes the flip idempotent — no churn once both are provision-shape.
-func (r *PoolAdoptionReconciler) ensureProvisionShape(
-	ctx context.Context, spec adoptionv1alpha1.PoolAdoptionSpec, nodeName string,
-	gvk schema.GroupVersionKind, isAdoptShape func(*unstructured.Unstructured) bool,
-	provisionObj func() *unstructured.Unstructured,
-) (ready bool, err error) {
-	existing := newObj(gvk, nodeName, spec.Namespace)
-	getErr := r.Get(ctx, types.NamespacedName{Namespace: spec.Namespace, Name: nodeName}, existing)
-	switch {
-	case apierrors.IsNotFound(getErr):
-		if createErr := r.Create(ctx, provisionObj()); createErr != nil && !apierrors.IsAlreadyExists(createErr) {
-			return false, createErr
-		}
-		return true, nil
-	case getErr != nil:
-		return false, getErr
-	}
-	if !existing.GetDeletionTimestamp().IsZero() {
-		return false, nil
-	}
-	if isAdoptShape(existing) {
-		if delErr := r.Delete(ctx, existing); delErr != nil && !apierrors.IsNotFound(delErr) {
-			return false, delErr
-		}
-		return false, nil
-	}
-	return true, nil
-}
-
-// pooladoptionsForCluster lists the PoolAdoption reconcile requests of a cluster (by LabelCluster).
-func (r *PoolAdoptionReconciler) pooladoptionsForCluster(ctx context.Context, namespace, clusterName string) []reconcile.Request {
-	var pools adoptionv1alpha1.PoolAdoptionList
-	if err := r.List(ctx, &pools,
-		client.InNamespace(namespace),
-		client.MatchingLabels{adoptionv1alpha1.LabelCluster: clusterName},
-	); err != nil {
-		return nil
-	}
-	reqs := make([]reconcile.Request, 0, len(pools.Items))
-	for i := range pools.Items {
-		reqs = append(reqs, reconcile.Request{NamespacedName: types.NamespacedName{
-			Namespace: pools.Items[i].Namespace, Name: pools.Items[i].Name,
-		}})
-	}
-	return reqs
-}
-
-// clusterToPools maps a ClusterAdoption event to the PoolAdoption(s) of its cluster, so the cluster
-// existence verdict flipping (false → the greenfield arm) promptly re-runs each pool.
-func (r *PoolAdoptionReconciler) clusterToPools(ctx context.Context, obj client.Object) []reconcile.Request {
-	ca, ok := obj.(*adoptionv1alpha1.ClusterAdoption)
-	if !ok {
-		return nil
-	}
-	return r.pooladoptionsForCluster(ctx, ca.Namespace, ca.Spec.ClusterName)
-}
-
-// lxcMachineToPools maps an LXCMachine event to the PoolAdoption(s) of its cluster (matched by the
-// cluster-name label the controller stamps). CAPN updating the instance-presence condition thus
-// re-runs the pool at once, rather than waiting on the requeue — the honest presence trigger (the
-// LXCMachine's controller ownerRef is its Machine, not the PoolAdoption, so Owns would never fire).
-func (r *PoolAdoptionReconciler) lxcMachineToPools(ctx context.Context, obj client.Object) []reconcile.Request {
-	clusterName := obj.GetLabels()[clusterNameLabel]
-	if clusterName == "" {
-		return nil
-	}
-	return r.pooladoptionsForCluster(ctx, obj.GetNamespace(), clusterName)
-}
-
-// SetupWithManager wires the reconciler to PoolAdoption events, the per-pet LXCMachines (CAPN's
-// presence change re-runs the pool — the trigger the reflect loop will reuse once it ships), and the
-// cluster's ClusterAdoption (its existence verdict arms/dis-arms the greenfield branch). The CAPI
-// objects are watched UNSTRUCTURED, so the controller keeps no typed CAPI module dependency.
+// SetupWithManager wires the reconciler to PoolAdoption events + the owned pool CR-set's.
 func (r *PoolAdoptionReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	lxcMachine := &unstructured.Unstructured{}
-	lxcMachine.SetGroupVersionKind(gvkLXCMachine)
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&adoptionv1alpha1.PoolAdoption{}).
-		Watches(lxcMachine, handler.EnqueueRequestsFromMapFunc(r.lxcMachineToPools)).
-		Watches(&adoptionv1alpha1.ClusterAdoption{}, handler.EnqueueRequestsFromMapFunc(r.clusterToPools)).
 		Named("pooladoption").
 		Complete(r)
 }
