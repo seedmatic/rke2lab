@@ -56,34 +56,38 @@ flowchart LR
     b_int --> b_ad --> b_ros --> b_det
     b_ad -.-> b_gap
   end
-  subgraph A[after — vision: the ROLE TRIAD + the cluster→git reflector]
+  subgraph A[after — vision: OBSERVE + NOTE, the reflection IS the switch]
     a_int["ClusterIntention / PoolIntention<br/>desired · Flux/git"]
-    a_ad["ClusterAdoption / PoolAdoption<br/>observed EPHEMERAL · etcd"]
-    a_refl["PoolReflection<br/>observed DURABLE · cluster→git reflector · git"]
-    a_ref["cluster→git reflector<br/>ownerRef↔annotation round-trip<br/>(image-automation pattern · App-token)"]
-    a_det["determinism UNCONDITIONAL<br/>git RECONCILED FROM reality → git == reality"]
-    a_arm["greenfield provision-shape ARM<br/>probe → RKE2Config=copy(RCP) · RCP paused-until-stable"]
-    a_bnd["boundary — STANDALONE=canonical (self can't reflect itself)<br/>IN_CLUSTER=reflected"]
-    a_int --> a_ad
-    a_ad --> a_refl --> a_ref --> a_det
-    a_ad --> a_arm
-    a_det -.-> a_bnd
+    a_ref["cluster→git reflector<br/>OBSERVE Machines → NOTE the roster<br/>ownerRef↔annotation (image-automation · App-token)"]
+    a_refl["PoolReflection<br/>observed DURABLE roster · git"]
+    a_sw{"PoolReflection present?"}
+    a_adopt["ADOPT · pre-create the named Machines<br/>CAPRKE2 adopts by name"]
+    a_green["GREENFIELD · declare RCP(replicas)<br/>CAPRKE2 provisions its OWN · we only OBSERVE"]
+    a_det["determinism UNCONDITIONAL · git == reality<br/>CAPI/CAPN/CAPRKE2 own the Machine lifecycle"]
+    a_int --> a_ref --> a_refl --> a_sw
+    a_sw -->|"yes · lived before"| a_adopt
+    a_sw -->|"no · first boot / reset"| a_green
+    a_green -.->|"CAPRKE2 creates → reflector NOTES"| a_refl
+    a_adopt --> a_det
+    a_green --> a_det
   end
   classDef built fill:#eef,stroke:#88a,stroke-width:1px;
   classDef new fill:#d4f4dd,stroke:#2e7d32,stroke-width:2px;
   classDef gone fill:#fdd,stroke:#c33,stroke-width:2px,stroke-dasharray:4 3;
-  class b_int,b_ad,b_ros,b_det,a_int,a_ad built;
+  class b_int,b_ad,b_ros,b_det,a_int built;
   class b_gap gone;
-  class a_refl,a_ref,a_det,a_arm,a_bnd new;
+  class a_ref,a_refl,a_sw,a_adopt,a_green,a_det new;
 ....
 
 == Verdict — does it hold?
 
-. *Additive — a third ROLE, not a reshape.* The 2×2 stays: `Intention` (desired) + `Adoption`
-  (observed, ephemeral). The vision ADDS one role — `PoolReflection` (observed, DURABLE) — the
-  git-persisted sibling of the ephemeral `Adoption`. The reconcile gains a roster-source precedence
-  (`PoolReflection ELSE the canonical seed`) and an export/re-stamp step; no existing path is reshaped.
-  The one deliberate erasure is the *greenfield gap* (the `Provisioning` phase that reached no action).
+. *The reflection IS the switch, and we only OBSERVE.* The 2×2 stays; the vision ADDS one role —
+  `PoolReflection` (observed, DURABLE, git). Its PRESENCE decides adopt vs greenfield — NO runtime
+  liveness probe: present → adopt the observed roster (pre-create the named Machines); absent →
+  greenfield. The controller never drives the Machine lifecycle: in greenfield it declares the RCP
+  `replicas` and CAPRKE2 provisions; it only observes and NOTES the result. What it AVOIDS is the
+  reverted "flip" (the controller deleting/re-creating Machines to force a shape), which raced
+  CAPRKE2's replica controller.
 
 . *The reflector is not a new orchestrator.* It mirrors reality into git via the blessed
   `image-automation-controller` loop (`fetch → commit → push`, retry-on-conflict, never force-push,
@@ -100,11 +104,12 @@ flowchart LR
   bootstrap); only `IN_CLUSTER` managed clusters — observed by their managing plane — are
   reflector-eligible. So determinism is unconditional exactly where it can be.
 
-Conclusion: *additive — one new role (`PoolReflection`) + one new direction (cluster→git) turn a
-conditionally-deterministic model into an unconditionally-deterministic one, closing the greenfield gap
-in passing.* Status: DESIGNED — the 2×2 + adopt-first are shipped; the greenfield-arm (C4b) and the
-cluster→git reflector are the coded residue (the reflector deferred until dynamic scaling opens, moot at
-fixed named pets). See link:../cluster-api/cluster-seeding-controller.adoc#reflector[the reflector spec].
+Conclusion: *the reflector comes FIRST — it produces the `PoolReflection` whose PRESENCE is the
+adopt-vs-greenfield switch, turning a conditionally-deterministic model into an unconditionally-
+deterministic one (`git == reality`). The controller OBSERVES and NOTES; CAPI/CAPN/CAPRKE2 own the
+Machine lifecycle.* Status: DESIGNED — the 2×2 + adopt are shipped; the reverted greenfield "flip" is
+superseded; the reflector + the presence switch + greenfield-as-observe are the coded residue. See
+link:../cluster-api/cluster-seeding-controller.adoc#reflector[the reflector spec].
 
 == Related documentation
 
