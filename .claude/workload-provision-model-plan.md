@@ -327,7 +327,14 @@ The 2×2 decomposition reworks the CRDs + reconcilers + moves the state machine 
 - [x] **C6. `fileNodeGithubToken` skip for `WRKLD` — DONE** (rke2lab `262938ba9`). The cellar→devlxd
   token pose is the standalone-GROW mechanism only; a CAPI workload node takes its read token from
   CAPRKE2, so a WRKLD render must not fail-loud demanding a reader mint.
-- [ ] **C7. Étape B** — the `vmnet-<role>` NIC on the pool's `LXCMachineTemplate`.
+- [ ] **C7. Instance network on the `LXCMachineTemplate` — now on greenfield's CRITICAL PATH.**
+  The template carries `profiles:[rke2lab]` + image + LXC config but NO network `devices`; the
+  `rke2lab` profile gives the root disk, not the NICs. seed-master's `InstanceGrow` attaches TWO
+  NICs per instance: **`vmnet-<role>`** (internal cluster net — DHCP-reserved `node-ip`) AND a
+  **LAN** interface (public/internet reach — vmnet alone does NOT route to public). Without them a
+  CAPRKE2/CAPN-provisioned instance has no cluster IP AND no public reach → never joins (seen live
+  as `InstanceProvisioningFailed`). Fix = the template replicates InstanceGrow's full network attach
+  (both NICs). VERIFY the attach mechanism (profile vs per-instance device) first.
 
 ## ACTED — the reflector (cluster→git) IS the workload model (canonical for self)
 
