@@ -30,9 +30,13 @@ import software.constructs.Construct;
  * foundation} layer (ClusterRuntimeNamespaceManifestsUnit) so it exists by the time this
  * operators-layer SA/DaemonSet apply.
  *
- * <p>The CRD is single-sourced from the flox-controller flake (its controller-gen output, staged
- * onto the classpath at {@code /crds/} by seedMasterJar / {@code nix run
- * .#stage-flox-controller-crd}) — never re-modelled or vendored.
+ * <p>The CRDs AND the ClusterRole are single-sourced from the flox-controller flake (its
+ * controller-gen output: {@code crd} staged at {@code /crds/} by {@code nix run
+ * .#stage-flox-controller-crd}, and the {@code +kubebuilder:rbac} {@code role.yaml} staged at
+ * {@code /rbac/flox-controller/} by {@code nix run .#stage-flox-controller-rbac}) — never
+ * re-modelled or vendored (the RBAC rules used to be hand-listed here and drifted). Only the
+ * ServiceAccount, ClusterRoleBinding and DaemonSet stay authored here (the deployment-topology
+ * adaptation).
  */
 public final class FloxControllerManifestsUnit extends AbstractManifestsUnit {
 
@@ -48,6 +52,15 @@ public final class FloxControllerManifestsUnit extends AbstractManifestsUnit {
 
   private static final String FLOXCATALOG_CRD_RESOURCE =
       "/crds/flox.seedmatic.io_floxcatalogs.yaml";
+
+  /**
+   * The staged ClusterRole — single-sourced from the controller's {@code +kubebuilder:rbac} markers
+   * ({@code make rbac} → {@code config/rbac/role.yaml}, staged at {@code /rbac/flox-controller/} by
+   * {@code nix run .#stage-flox-controller-rbac}, a per-controller subdir so generic {@code
+   * role.yaml}s never collide). Its {@code metadata.name} is {@code flox-controller}
+   * (controller-gen {@code roleName}), matching the binding's {@code roleRef}.
+   */
+  private static final String RBAC_ROLE_RESOURCE = "/rbac/flox-controller/role.yaml";
 
   /** The replicated FloxHub token Secret (name + key match .secrets kubernetes.secrets.flox). */
   private static final String FLOXHUB_TOKEN_SECRET = "floxhub-token";
@@ -84,7 +97,14 @@ public final class FloxControllerManifestsUnit extends AbstractManifestsUnit {
 
     final String namespace = ClusterRefs.RUNTIME_SYSTEM_NAMESPACE.name();
     final ApiObject serviceAccount = createServiceAccount(scope, context.resolver(), namespace);
-    final ApiObject clusterRole = createClusterRole(scope);
+    // Single-sourced from the controller's +kubebuilder:rbac markers: INCLUDE the staged
+    // ClusterRole
+    // (name "flox-controller", matching the binding's roleRef) instead of hand-listing rules that
+    // drift.
+    final ApiObject clusterRole =
+        new UpstreamYamlInclusion(scope, RBAC_ROLE_RESOURCE, packageProfile, context.yaml())
+            .apiObjects()
+            .get(0);
     final ApiObject clusterRoleBinding = createClusterRoleBinding(scope, namespace);
     clusterRoleBinding.addDependency(serviceAccount);
     clusterRoleBinding.addDependency(clusterRole);
@@ -159,73 +179,6 @@ public final class FloxControllerManifestsUnit extends AbstractManifestsUnit {
                 .build());
     serviceAccount.addDependency(resolver.require(ClusterRefs.RUNTIME_SYSTEM_NAMESPACE));
     return serviceAccount;
-  }
-
-  private ApiObject createClusterRole(final Construct scope) {
-    // The controller's kubebuilder RBAC markers: watch FloxEnvs + FloxCatalogs cluster-wide and
-    // patch their status; read the Flux GitRepository a FloxCatalog resolves its catalog artifact
-    // from; ensure the nix-build PVC the webhook names; and watch + update pods for the
-    // scheduling-gate reconciler.
-    final ApiObject clusterRole =
-        new ApiObject(
-            scope,
-            "clusterrole-flox-controller",
-            ApiObjectProps.builder()
-                .apiVersion("rbac.authorization.k8s.io/v1")
-                .kind("ClusterRole")
-                .metadata(
-                    ApiObjectMetadata.builder()
-                        .name(NAME)
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "rbac.authorization.k8s.io|ClusterRole||" + NAME))
-                        .build())
-                .build());
-    clusterRole.addJsonPatch(
-        JsonPatch.add(
-            "/rules",
-            new Object[] {
-              Map.of(
-                  "apiGroups", new Object[] {"flox.seedmatic.io"},
-                  "resources", new Object[] {"floxenvs", "floxcatalogs"},
-                  // create: the controller self-provisions its embedded base carrier (EnsureBase).
-                  "verbs",
-                      new Object[] {"get", "list", "watch", "create", "update", "patch", "delete"}),
-              Map.of(
-                  "apiGroups", new Object[] {"flox.seedmatic.io"},
-                  "resources", new Object[] {"floxenvs/status", "floxcatalogs/status"},
-                  "verbs", new Object[] {"get", "update", "patch"}),
-              // FloxCatalog resolves its nix-flake catalog from a Flux GitRepository's reconciled
-              // artifact — a generic capability (read the Flux source), not an rke2lab coupling.
-              Map.of(
-                  "apiGroups", new Object[] {"source.toolkit.fluxcd.io"},
-                  "resources", new Object[] {"gitrepositories"},
-                  "verbs", new Object[] {"get", "list", "watch"}),
-              // The pod-mutating webhook ensures (create-if-absent) the per-step persistent
-              // nix-store
-              // PVC named by a nix-build pod's flox.seedmatic.io/nix-build.<c> annotation.
-              Map.of(
-                  "apiGroups", new Object[] {""},
-                  "resources", new Object[] {"persistentvolumeclaims"},
-                  "verbs", new Object[] {"get", "create"}),
-              // The scheduling-gate reconciler (PodGateReconciler) watches gated pods and, once
-              // every referenced FloxEnv is realised at the current generation, narrows their
-              // nodeAffinity + removes the env-ready gate — an update to the pod spec.
-              Map.of(
-                  "apiGroups", new Object[] {""},
-                  "resources", new Object[] {"pods"},
-                  "verbs", new Object[] {"get", "list", "watch", "update"}),
-              // On a FloxEnv re-lock the FloxEnvReconciler rolls the workloads that CONSUME the env
-              // (patch a pod-template marker → native rolling restart), so the running pods adopt
-              // the
-              // freshly realised binary instead of keeping the closure resolved at their last
-              // start.
-              Map.of(
-                  "apiGroups", new Object[] {"apps"},
-                  "resources", new Object[] {"deployments", "daemonsets", "statefulsets"},
-                  "verbs", new Object[] {"get", "list", "watch", "patch"})
-            }));
-    return clusterRole;
   }
 
   private ApiObject createClusterRoleBinding(final Construct scope, final String namespace) {

@@ -74,10 +74,11 @@ public final class SeedInclusterManifestsUnit extends AbstractManifestsUnit {
   /**
    * The staged ClusterRole — single-sourced from the controller's {@code +kubebuilder:rbac} markers
    * ({@code make rbac} → {@code config/rbac/role.yaml}, staged at {@code /rbac/} by {@code nix run
-   * .#stage-seed-incluster-rbac}). Its {@code metadata.name} is {@code seed-incluster}
-   * (controller-gen {@code roleName}), matching the binding's {@code roleRef} below.
+   * .#stage-seed-incluster-rbac}, into a per-controller subdir so controllers' generic {@code
+   * role.yaml} never collide). Its {@code metadata.name} is {@code seed-incluster} (controller-gen
+   * {@code roleName}), matching the binding's {@code roleRef} below.
    */
-  private static final String RBAC_ROLE_RESOURCE = "/rbac/role.yaml";
+  private static final String RBAC_ROLE_RESOURCE = "/rbac/seed-incluster/role.yaml";
 
   // Deployment + RBAC ride the operators layer; the CRD auto-routes to crds by kind.
   private final PackageMetadataProfile packageProfile =

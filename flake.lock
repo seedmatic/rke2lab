@@ -102818,12 +102818,10 @@
         ]
       },
       "locked": {
-        "lastModified": 1789318906,
-        "narHash": "sha256-0tTfanErUw7Yf0WeU1MftozYCG2cs5BenDqh7tmrOak=",
-        "owner": "seedmatic",
-        "repo": "flox-controller",
-        "rev": "ba3f14457c0a9981269d4f40db8b660b5146dc95",
-        "type": "github"
+        "lastModified": 1789374069,
+        "narHash": "sha256-OaCH5bUzbEToaRTvOiaP7amxfvjQG+iomXfj9J0HVTM=",
+        "path": "/private/var/lib/git/seedmatic/flox-controller.d/develop",
+        "type": "path"
       },
       "original": {
         "owner": "seedmatic",
@@ -284166,12 +284164,10 @@
         ]
       },
       "locked": {
-        "lastModified": 1789313009,
-        "narHash": "sha256-lIRPtk6RC/aUz/+d1tKhlkTKu3GN/bHeOhhXMKRgYeo=",
-        "owner": "seedmatic",
-        "repo": "rke2lab",
-        "rev": "b120aac2c9955aca6567e93a9bf716e06b7bb761",
-        "type": "github"
+        "lastModified": 1789371444,
+        "narHash": "sha256-zm5dUvE36QYgeG/C8itDxW8LB0U0cC4skoUBccNtLD4=",
+        "path": "/private/var/lib/git/seedmatic/rke2lab.d/seed-incluster",
+        "type": "path"
       },
       "original": {
         "owner": "seedmatic",
