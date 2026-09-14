@@ -22,12 +22,13 @@ import org.cdk8s.JsonPatch;
 import software.constructs.Construct;
 
 /**
- * Deploys the in-cluster {@code seed-incluster} + its {@code ClusterAdoption} CRD. The controller
- * reconciles the {@code ClusterAdoption} recipe {@link ClusterApiManagementManifestsUnit} renders:
- * it creates the CAPI CR-set and the OWNED control-plane {@code Machine} + concrete {@code
- * LXCMachine}(providerID) — the piece GitOps cannot do (the ownerRef UID is assigned in-cluster) —
- * so CAPRKE2/CAPN adopt the RUNNING Pulumi-bootstrapped control plane instead of provisioning a
- * fresh one, closing the cold-start leak.
+ * Deploys the in-cluster {@code seed-incluster} + its four {@code cluster.seedmatic.io} CRDs (the
+ * 2×2 intent/mirror set). The controller reconciles the {@code ClusterIntention} + {@code
+ * PoolIntention} intent {@link ClusterApiManagementManifestsUnit} / {@link
+ * ClusterApiWorkloadManifestsUnit} render: it creates the CAPI CR-set and the OWNED control-plane
+ * {@code Machine} + concrete {@code LXCMachine}(providerID) — the piece GitOps cannot do (the
+ * ownerRef UID is assigned in-cluster) — so CAPRKE2/CAPN adopt the RUNNING Pulumi-bootstrapped
+ * control plane instead of provisioning a fresh one, closing the cold-start leak.
  *
  * <p>Layering (mirrors {@code FloxControllerManifestsUnit}): the Deployment + RBAC are on the
  * {@code operators} layer (the controller is healthy before the {@code ClusterAdoption} CR
@@ -36,11 +37,15 @@ import software.constructs.Construct;
  * ClusterRuntimeNamespaceManifestsUnit}). dependsOn the CAPI operator unit so the CAPI/CAPN/CAPRKE2
  * CRDs the controller creates CRs against exist.
  *
- * <p>The CRD is single-sourced from the seed-incluster flake (its controller-gen output, staged
- * onto the classpath at {@code /crds/} by seedMasterJar / {@code nix run
- * .#stage-seed-incluster-crd}) — never re-modelled or vendored. The controller BINARY is delivered
- * on the FLOX RUNTIME, not a baked image: the Deployment runs the minimal flox carrier ({@code
- * FloxDebugPolicy.prodImage()}) and the {@code cluster-api/seed-incluster} flox env ({@link
+ * <p>The CRDs AND the ClusterRole are single-sourced from the seed-incluster flake (its
+ * controller-gen output: {@code crd} staged at {@code /crds/} by {@code nix run
+ * .#stage-seed-incluster-crd}, and the {@code +kubebuilder:rbac} {@code role.yaml} staged at {@code
+ * /rbac/} by {@code nix run .#stage-seed-incluster-rbac}) — never re-modelled or vendored (the RBAC
+ * rules used to be hand-listed here and drifted). Only the ServiceAccount, ClusterRoleBinding and
+ * Deployment stay authored here — the deployment-topology adaptation (namespace, flox carrier, env)
+ * the consumer owns. The controller BINARY is delivered on the FLOX RUNTIME, not a baked image: the
+ * Deployment runs the minimal flox carrier ({@code FloxDebugPolicy.prodImage()}) and the {@code
+ * cluster-api/seed-incluster} flox env ({@link
  * io.seedmatic.rke2lab.manifests.units.runtime.flox.FloxEnvManifestsUnit}, sourced from the
  * flox-catalogue as {@code floxcatalog:catalogue#seed-incluster}) puts the binary on PATH via the
  * flox NRI plugin — the {@code environment.<c>} annotation on the pod template opts in.
@@ -55,12 +60,24 @@ public final class SeedInclusterManifestsUnit extends AbstractManifestsUnit {
 
   private static final String NAME = "seed-incluster";
 
-  /** The staged CRD classpath resources (single source: the seed-incluster flake). */
-  private static final String CLUSTERADOPTION_CRD_RESOURCE =
-      "/crds/cluster.seedmatic.io_clusteradoptions.yaml";
+  /**
+   * The staged CRD classpath resources — the 2×2 set (single source: the seed-incluster flake,
+   * controller-gen output staged at {@code /crds/} by {@code nix run .#stage-seed-incluster-crd}).
+   */
+  private static final List<String> CRD_RESOURCES =
+      List.of(
+          "/crds/cluster.seedmatic.io_clusterintentions.yaml",
+          "/crds/cluster.seedmatic.io_poolintentions.yaml",
+          "/crds/cluster.seedmatic.io_clusteradoptions.yaml",
+          "/crds/cluster.seedmatic.io_pooladoptions.yaml");
 
-  private static final String CLUSTERPROVISION_CRD_RESOURCE =
-      "/crds/cluster.seedmatic.io_clusterprovisions.yaml";
+  /**
+   * The staged ClusterRole — single-sourced from the controller's {@code +kubebuilder:rbac} markers
+   * ({@code make rbac} → {@code config/rbac/role.yaml}, staged at {@code /rbac/} by {@code nix run
+   * .#stage-seed-incluster-rbac}). Its {@code metadata.name} is {@code seed-incluster}
+   * (controller-gen {@code roleName}), matching the binding's {@code roleRef} below.
+   */
+  private static final String RBAC_ROLE_RESOURCE = "/rbac/role.yaml";
 
   // Deployment + RBAC ride the operators layer; the CRD auto-routes to crds by kind.
   private final PackageMetadataProfile packageProfile =
@@ -78,14 +95,22 @@ public final class SeedInclusterManifestsUnit extends AbstractManifestsUnit {
 
   @Override
   protected void doSynthesize(final Construct scope, final ManifestsUnitContext context) {
-    // The ClusterAdoption + ClusterProvision CRDs — CustomResourceDefinitions, auto-routed to the
-    // crds layer by kind.
-    new UpstreamYamlInclusion(scope, CLUSTERADOPTION_CRD_RESOURCE, packageProfile, context.yaml());
-    new UpstreamYamlInclusion(scope, CLUSTERPROVISION_CRD_RESOURCE, packageProfile, context.yaml());
+    // The 2×2 cluster.seedmatic.io CRDs — CustomResourceDefinitions, auto-routed to the crds layer
+    // by kind.
+    for (final String crd : CRD_RESOURCES) {
+      new UpstreamYamlInclusion(scope, crd, packageProfile, context.yaml());
+    }
 
     final String namespace = ClusterRefs.RUNTIME_SYSTEM_NAMESPACE.name();
     final ApiObject serviceAccount = createServiceAccount(scope, context.resolver(), namespace);
-    final ApiObject clusterRole = createClusterRole(scope);
+    // Single-sourced from the controller's +kubebuilder:rbac markers: INCLUDE the staged
+    // ClusterRole
+    // (name "seed-incluster", matching the binding's roleRef) instead of hand-listing rules that
+    // drift.
+    final ApiObject clusterRole =
+        new UpstreamYamlInclusion(scope, RBAC_ROLE_RESOURCE, packageProfile, context.yaml())
+            .apiObjects()
+            .get(0);
     final ApiObject binding = createClusterRoleBinding(scope, namespace);
     binding.addDependency(serviceAccount);
     binding.addDependency(clusterRole);
@@ -112,58 +137,6 @@ public final class SeedInclusterManifestsUnit extends AbstractManifestsUnit {
                 .build());
     serviceAccount.addDependency(resolver.require(ClusterRefs.RUNTIME_SYSTEM_NAMESPACE));
     return serviceAccount;
-  }
-
-  private ApiObject createClusterRole(final Construct scope) {
-    // The controller's kubebuilder RBAC markers: own the ClusterAdoption CRs + status; create the
-    // CAPI/CAPN/CAPRKE2 CR-set (Cluster/Machine, RKE2ControlPlane, LXC*); read/create the Secrets
-    // seed-master delivers (BYO-CA + identity). Cluster-scoped: it reconciles per-namespace CRs.
-    final ApiObject clusterRole =
-        new ApiObject(
-            scope,
-            "clusterrole-seed-incluster",
-            ApiObjectProps.builder()
-                .apiVersion("rbac.authorization.k8s.io/v1")
-                .kind("ClusterRole")
-                .metadata(
-                    ApiObjectMetadata.builder()
-                        .name(NAME)
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "rbac.authorization.k8s.io|ClusterRole||" + NAME))
-                        .build())
-                .build());
-    clusterRole.addJsonPatch(
-        JsonPatch.add(
-            "/rules",
-            new Object[] {
-              Map.of(
-                  "apiGroups", new Object[] {"cluster.seedmatic.io"},
-                  "resources", new Object[] {"clusteradoptions", "clusterprovisions"},
-                  "verbs",
-                      new Object[] {"get", "list", "watch", "create", "update", "patch", "delete"}),
-              Map.of(
-                  "apiGroups", new Object[] {"cluster.seedmatic.io"},
-                  "resources", new Object[] {"clusteradoptions/status", "clusterprovisions/status"},
-                  "verbs", new Object[] {"get", "update", "patch"}),
-              Map.of(
-                  "apiGroups", new Object[] {"cluster.x-k8s.io"},
-                  "resources", new Object[] {"clusters", "machines"},
-                  "verbs", new Object[] {"get", "list", "watch", "create", "update", "patch"}),
-              Map.of(
-                  "apiGroups", new Object[] {"controlplane.cluster.x-k8s.io"},
-                  "resources", new Object[] {"rke2controlplanes"},
-                  "verbs", new Object[] {"get", "list", "watch", "create", "update", "patch"}),
-              Map.of(
-                  "apiGroups", new Object[] {"infrastructure.cluster.x-k8s.io"},
-                  "resources", new Object[] {"lxcclusters", "lxcmachines", "lxcmachinetemplates"},
-                  "verbs", new Object[] {"get", "list", "watch", "create", "update", "patch"}),
-              Map.of(
-                  "apiGroups", new Object[] {""},
-                  "resources", new Object[] {"secrets"},
-                  "verbs", new Object[] {"get", "list", "watch", "create"})
-            }));
-    return clusterRole;
   }
 
   private ApiObject createClusterRoleBinding(final Construct scope, final String namespace) {

@@ -448,6 +448,13 @@
           install -m 644 ${seedInclusterCrds}/*.yaml "$dest/"
         '';
 
+        # The seed-incluster ClusterRole, staged into $destRbac (the /rbac/ resource dir) — the
+        # single source SeedInclusterManifestsUnit includes. Empty when the flake has no rbac output.
+        stageSeedInclusterRbac = nixpkgs.lib.optionalString (seedInclusterRbac != null) ''
+          mkdir -p "$destRbac"
+          install -m 644 ${seedInclusterRbac}/*.yaml "$destRbac/"
+        '';
+
         # One reactor build, factored: the shared Maven-in-nix closure (repo src, the
         # mavenToolchain, the CRD staging, the `mvnHost` prelude, the spotless shfmt pin)
         # captured ONCE, parameterized by the mvn module selector and the exec jars to
@@ -474,6 +481,8 @@
             dest=${crdStagingDir}
             ${stageFloxControllerCrds}
             ${stageSeedInclusterCrds}
+            destRbac=${rbacStagingDir}
+            ${stageSeedInclusterRbac}
             mvnHost -Dshfmt.version=${pkgs.shfmt.version} -DskipTests -Dflox.crd-staging.skip=true ${mvnArgs} package
           '';
 
@@ -582,6 +591,13 @@
         crdStagingDir =
           "osgi/domains/manifests/manifests-core/target/generated-resources/crds";
 
+        # Same idea for the seed-incluster ClusterRole (single-sourced from its +kubebuilder:rbac
+        # markers via the flake): staged onto the classpath at /rbac/ so SeedInclusterManifestsUnit
+        # INCLUDES it instead of hand-listing the rules (which drift). build-helper add-resource
+        # (manifests-core pom) puts it at /rbac/; the staged dir is gitignored.
+        rbacStagingDir =
+          "osgi/domains/manifests/manifests-core/target/generated-resources/rbac";
+
         # seed-incluster re-exported the same way as flox-controller: the
         # controller binary + the ClusterAdoption CRD store path. The OCI image is NO
         # LONGER re-exported or baked — the controller rides the flox runtime (the
@@ -594,6 +610,9 @@
               else { })
           // (if seedPkgs ? seed-incluster-crds
                 then { inherit (seedPkgs) seed-incluster-crds; }
+                else { })
+          // (if seedPkgs ? seed-incluster-rbac
+                then { inherit (seedPkgs) seed-incluster-rbac; }
                 else { });
 
         # The ClusterAdoption CRD as a store path (single-sourced from the flake —
@@ -601,6 +620,11 @@
         # resource dir as the flox-controller CRD.
         seedInclusterCrds =
           (seed-incluster.packages.${system} or { }).seed-incluster-crds or null;
+
+        # The seed-incluster ClusterRole as a store path (controller-gen output from the markers,
+        # never vendored). Staged onto the /rbac/ classpath resource dir.
+        seedInclusterRbac =
+          (seed-incluster.packages.${system} or { }).seed-incluster-rbac or null;
 
         # Maven-build toolchain re-exported as individual packages, so the flox
         # env pins each tool to this flake's version
@@ -1054,6 +1078,22 @@ USAGE
             echo "staged ClusterAdoption CRD into $dest/ from ${seedInclusterCrds}"
           '');
           meta.description = "Stage the ClusterAdoption CRD (from the flake) onto the manifest-synthesis classpath";
+        };
+
+        # Stage the seed-incluster ClusterRole (single-sourced from the flake's +kubebuilder:rbac
+        # markers) onto the manifest-synthesis classpath at /rbac/ for the DEV loop. Release builds
+        # stage it inside seedMasterJar. The staged rbac/ dir is gitignored — controller-gen stays
+        # the single source, never a committed copy.
+        apps.stage-seed-incluster-rbac = {
+          type = "app";
+          program = toString (pkgs.writeShellScript "stage-seed-incluster-rbac" ''
+            set -euo pipefail
+            # $1 = the Maven build dir to stage into; defaults to rbacStagingDir for a bare `nix run`.
+            destRbac="''${1:-${rbacStagingDir}}"
+            ${stageSeedInclusterRbac}
+            echo "staged seed-incluster ClusterRole into $destRbac/ from ${toString seedInclusterRbac}"
+          '');
+          meta.description = "Stage the seed-incluster ClusterRole (from the flake) onto the manifest-synthesis classpath";
         };
 
         # Anti-drift gate: fail if the committed JSON diverges from the jar output
