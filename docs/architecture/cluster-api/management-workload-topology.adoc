@@ -37,9 +37,9 @@ its own node, not adoption of a foreign one.)
 The adoption handoff this document describes as a *direction* (<<mgmt-adoption>>,
 <<mgmt-self-hosted-hypothesis>>) is realised by an in-cluster controller,
 link:cluster-seeding-controller.adoc[`seed-incluster`] (ex-`rke2-adoption-controller`). It reconciles
-a rich intention (`ClusterProvision`, Flux-owned) into a CAPI CR-set it OWNS, **adopt-first**: every
-reconcile tries to describe the running reality before it ever provisions. Two refinements of the model
-below live there:
+a rich intention (`ClusterIntention` + per-pool `PoolIntention`, Flux-owned) into a CAPI CR-set it
+OWNS, **adopt-first**: every reconcile tries to describe the running reality before it ever provisions.
+Two refinements of the model below live there:
 
 * *All nodes are named PETS* — not cattle. The "greenfield-creates" above stays true for day-0, but the
   workers are NOT a random-named `MachineDeployment` pool: they are deterministic blueprint names
@@ -946,9 +946,9 @@ This topology changes three materialization surfaces:
 == Related documentation
 
 * link:cluster-seeding-controller.adoc[Cluster Seeding Controller — seed-incluster] — the in-cluster
-  realisation of the adoption handoff (<<mgmt-adoption>>): the `ClusterProvision`/`ClusterAdoption`
-  CRs, the adopt-first state machine, the single-adopter invariant, and the all-pets resolution of the
-  workload follow-up.
+  realisation of the adoption handoff (<<mgmt-adoption>>): the 2×2 CR set (`ClusterIntention` +
+  `PoolIntention` intent, `ClusterAdoption` + `PoolAdoption` mirror), the adopt-first state machine,
+  the single-adopter invariant, and the all-pets resolution of the workload follow-up.
 * link:../bootstrap/bootstrap-contract.adoc[Stage A Bootstrap Contract] — being reframed: Stage A
   seeds the dedicated management cluster (not a workload named `bioskop`).
 * link:../bootstrap/stagea-stageb-handoff-contract.adoc[Stage A/B Handoff Contract] — being
