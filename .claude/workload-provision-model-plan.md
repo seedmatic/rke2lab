@@ -15,9 +15,11 @@
 > - Build gotcha: use `package -Dmaven.build.cache.skipCache=true` (a bare `compile` fails sibling
 >   resolution; `-am package` builds the reactor jars). Staging needs nix (no `-Dflox.crd-staging.skip`).
 >
-> **NEXT (user's order was: rename→local-path→generalize→C6+C5; first three DONE):** C6 (quick) then
-> C5 (big), then C4, C7 — see the worklist below. Scope still LOCKED to `bioskop-wrkld` × `control-node`.
-> Standing: commit freely on topic branches (don't ask); push/relock/pulumi/kubectl = USER; French convo.
+> **NEXT:** C6 + C5 DONE (rke2lab `262938ba9` C6; `5b143c96b`/`574a43485`/`cd23927fb`/`1cb9d3c26`
+> C5.1–C5.4). Remaining: **C4** (provision execution greenfield + workload config bootstrap-inject via
+> seed-incluster) then **C7** (`vmnet-<role>` NIC on the pool template). Scope still LOCKED to
+> `bioskop-wrkld` × `control-node`. Standing: commit freely on topic branches (don't ask);
+> push/relock/pulumi/kubectl = USER; French convo. All C1–C6 committed, NOT pushed (live checkpoint).
 
 Converged over the 2026-09-13 design session (bioskop-wrkld greenfield). Grave the
 specs/atlas first (this file is the worklist, not the spec), then adapt the codebase.
@@ -164,23 +166,35 @@ The 2×2 decomposition reworks the CRDs + reconcilers + moves the state machine 
   managed delivery path; NO git-fetch / read-token on the workload node). Gate provision on existence
   (`<<existence>>`). NB: the day-0 app-branch Tekton bootstrap-render (one-off PipelineRun) is a
   SEPARATE app-stack concern (post-up), NOT a boot-blocker.
-- [ ] **C5. Config-model refactor** — config = VISIBLE k8s resources in the mgmt (Flux-applied):
-  - `RuntimeRke2ConfigManifestsUnit`: iterate `{subject} ∪ workloadTargets`, emit per
-    `(cluster × pool)` under `.../rke2-config/<cluster>/<pool>/` on `manifests/<mgmt>`, **DROP
-    `LOCAL_CONFIG`** so Flux APPLIES them (visible `ConfigMap`/`Secret`s). Split cluster-common vs
-    per-pool; DROP the join token fragment (CAPRKE2 owns it); `tls-san` all-nodes superset; DROP
-    per-node baking (node-ip/name/FQDN).
-  - `install-rke2-config` flake = the **SELF path** (mgmt/root git-fetch): **filter by `(cluster,
-    pool)` — MANDATORY** (install only THIS node's config, not the co-located workloads'). Node
-    derives cluster+pool from hostname. (Managed workloads use bootstrap-inject — C4, not this.)
-  - on-node `node-ip` oneshot (nixos/rke2.nix); `node=` param dissolves.
-  - ROOT branch layout migration flat → `<cluster>/<pool>/` (next re-grow). Workload branch = app
-    stack ONLY.
-- [ ] **C6. `fileNodeGithubToken` skip for `WRKLD`** (rke2lab manifests-bdd).
+- [x] **C5. Config-model refactor — DONE** (rke2lab `5b143c96b` C5.1, `574a43485` C5.2, `cd23927fb`
+  C5.3, `1cb9d3c26` C5.4). config = VISIBLE k8s resources in the mgmt (Flux-applied):
+  - **C5.1** `RuntimeRke2ConfigManifestsUnit` (`5b143c96b`): iterates `{subject if MGMT} ∪
+    workloadTargets` via `ManifestSynthesisContext.current()`, projects each cluster's blueprint,
+    emits per cluster under `rke2-config/<cluster>/control-node/` (package-name subpath), namespace
+    `rke2lab-<cluster>` (REFERENCED not created — the cluster-api units own it). Dropped LOCAL_CONFIG,
+    the join-token Secret (CAPRKE2 owns it), and all per-node baking (node-ip/name/advertise-addr).
+    `tls-san` = all-nodes superset. **Re-cadrage: no common/pool split** — workers are CAPRKE2-injected
+    (never fetch), so all branch fragments are control-plane config; there is no cross-pool common.
+  - **C5.2** exploder (`574a43485`): removed the RKE2_CONFIG verbatim-name short-circuit so the
+    ConfigMaps take the normal `02-configmap-*.yml` visible name → Flux applies them; install-rke2-config
+    keys on the annotation, not the filename. Dropped the unused SECRET_KIND; updated the exploder test.
+  - **C5.3** `install-rke2-config` flake (`cd23927fb`): the SELF/root path now filters to the node's
+    OWN cluster — derives it from the hostname `<cluster>-<node>`, keeps only fragments whose namespace
+    is `rke2lab-<cluster>` (the MANDATORY filter). Dropped the now-dead sops-decrypt path.
+  - **C5.4** `nixos/rke2.nix` (`1cb9d3c26`): on-node `rke2lab-node-ip` oneshot reads the node's own
+    dual-stack `vmnet0` address LIVE, writes `35-node-ip.yaml` (kubelet-arg+, coexists with provider-id),
+    gated on node.env (mgmt-only; workload takes node-ip from CAPN). Dropped SOPS_AGE_KEY_FILE (installer
+    no longer decrypts) + stale header comments. `node=` param already dissolved in C5.1.
+  - **DEFERRED to the live re-grow**: ROOT branch layout migration flat → `<cluster>/<control-node>/`
+    (lands with the filter at next re-grow). Workload branch = app stack ONLY. Full synthesis RUN +
+    Flux-apply validation = the live checkpoint (compile + exploder-test + nix-parse proven).
+- [x] **C6. `fileNodeGithubToken` skip for `WRKLD` — DONE** (rke2lab `262938ba9`). The cellar→devlxd
+  token pose is the standalone-GROW mechanism only; a CAPI workload node takes its read token from
+  CAPRKE2, so a WRKLD render must not fail-loud demanding a reader mint.
 - [ ] **C7. Étape B** — the `vmnet-<role>` NIC on the pool's `LXCMachineTemplate`.
 
 Sequence: C1 (CRDs) → C2 (reconcilers) → C3 (render) → C6 (quick) → C5 (config-model) → C4 (execution)
-→ C7 (NIC). Live deploy/re-grow = USER's.
+→ C7 (NIC). Live deploy/re-grow = USER's. **DONE: C1, C2, C2-bis, C3, C6, C5. NEXT: C4, C7.**
 
 ## (SUPERSEDED) Adapt (code) — monolithic sequence
 
