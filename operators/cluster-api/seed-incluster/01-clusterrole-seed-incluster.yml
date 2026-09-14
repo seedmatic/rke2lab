@@ -26,17 +26,6 @@ rules:
   - list
   - watch
 - apiGroups:
-  - bootstrap.cluster.x-k8s.io
-  resources:
-  - rke2configs
-  verbs:
-  - create
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
   - cluster.seedmatic.io
   resources:
   - clusteradoptions
@@ -66,20 +55,9 @@ rules:
   - cluster.x-k8s.io
   resources:
   - clusters
-  verbs:
-  - create
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - cluster.x-k8s.io
-  resources:
   - machines
   verbs:
   - create
-  - delete
   - get
   - list
   - patch
@@ -100,21 +78,10 @@ rules:
   - infrastructure.cluster.x-k8s.io
   resources:
   - lxcclusters
-  verbs:
-  - create
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - infrastructure.cluster.x-k8s.io
-  resources:
   - lxcmachines
   - lxcmachinetemplates
   verbs:
   - create
-  - delete
   - get
   - list
   - patch
