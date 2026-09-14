@@ -448,11 +448,20 @@
           install -m 644 ${seedInclusterCrds}/*.yaml "$dest/"
         '';
 
-        # The seed-incluster ClusterRole, staged into $destRbac (the /rbac/ resource dir) — the
-        # single source SeedInclusterManifestsUnit includes. Empty when the flake has no rbac output.
+        # The seed-incluster ClusterRole, staged into $destRbac/seed-incluster/ — a PER-CONTROLLER
+        # subdir so multiple controllers' generic `role.yaml` never collide in the shared /rbac/
+        # resource dir (SeedInclusterManifestsUnit includes /rbac/seed-incluster/role.yaml). Empty
+        # when the flake has no rbac output.
         stageSeedInclusterRbac = nixpkgs.lib.optionalString (seedInclusterRbac != null) ''
-          mkdir -p "$destRbac"
-          install -m 644 ${seedInclusterRbac}/*.yaml "$destRbac/"
+          mkdir -p "$destRbac/seed-incluster"
+          install -m 644 ${seedInclusterRbac}/*.yaml "$destRbac/seed-incluster/"
+        '';
+
+        # The flox-controller ClusterRole, staged into $destRbac/flox-controller/ (same per-controller
+        # subdir convention). FloxControllerManifestsUnit includes /rbac/flox-controller/role.yaml.
+        stageFloxControllerRbac = nixpkgs.lib.optionalString (floxControllerRbac != null) ''
+          mkdir -p "$destRbac/flox-controller"
+          install -m 644 ${floxControllerRbac}/*.yaml "$destRbac/flox-controller/"
         '';
 
         # One reactor build, factored: the shared Maven-in-nix closure (repo src, the
@@ -483,6 +492,7 @@
             ${stageSeedInclusterCrds}
             destRbac=${rbacStagingDir}
             ${stageSeedInclusterRbac}
+            ${stageFloxControllerRbac}
             mvnHost -Dshfmt.version=${pkgs.shfmt.version} -DskipTests -Dflox.crd-staging.skip=true ${mvnArgs} package
           '';
 
@@ -576,6 +586,9 @@
                 else { })
           // (if ctlPkgs ? flox-controller-crds
                 then { inherit (ctlPkgs) flox-controller-crds; }
+                else { })
+          // (if ctlPkgs ? flox-controller-rbac
+                then { inherit (ctlPkgs) flox-controller-rbac; }
                 else { });
 
         # The flox-controller CRD as a store path (single-sourced from the flake —
@@ -583,6 +596,10 @@
         # classpath (crds/ resource) by seedMasterJar for release and by
         # `nix run .#stage-flox-controller-crd` for the dev loop.
         floxControllerCrds = (flox-controller.packages.${system} or { }).flox-controller-crds or null;
+
+        # The flox-controller ClusterRole (controller-gen output from its markers). Staged onto the
+        # /rbac/flox-controller/ classpath resource dir — FloxControllerManifestsUnit includes it.
+        floxControllerRbac = (flox-controller.packages.${system} or { }).flox-controller-rbac or null;
         # Staged into the module's target/ (generated), NOT src/: `mvn clean` wipes it, so a
         # renamed/removed CRD never lingers as a stale checked-out source file (and no .gitignore
         # marker is buried in src to advertise a "resource" dir that is really generated output).
@@ -1091,9 +1108,22 @@ USAGE
             # $1 = the Maven build dir to stage into; defaults to rbacStagingDir for a bare `nix run`.
             destRbac="''${1:-${rbacStagingDir}}"
             ${stageSeedInclusterRbac}
-            echo "staged seed-incluster ClusterRole into $destRbac/ from ${toString seedInclusterRbac}"
+            echo "staged seed-incluster ClusterRole into $destRbac/seed-incluster/ from ${toString seedInclusterRbac}"
           '');
           meta.description = "Stage the seed-incluster ClusterRole (from the flake) onto the manifest-synthesis classpath";
+        };
+
+        # Stage the flox-controller ClusterRole (single-sourced from the flake's +kubebuilder:rbac
+        # markers) at /rbac/flox-controller/ for the DEV loop; release builds stage it in seedMasterJar.
+        apps.stage-flox-controller-rbac = {
+          type = "app";
+          program = toString (pkgs.writeShellScript "stage-flox-controller-rbac" ''
+            set -euo pipefail
+            destRbac="''${1:-${rbacStagingDir}}"
+            ${stageFloxControllerRbac}
+            echo "staged flox-controller ClusterRole into $destRbac/flox-controller/ from ${toString floxControllerRbac}"
+          '');
+          meta.description = "Stage the flox-controller ClusterRole (from the flake) onto the manifest-synthesis classpath";
         };
 
         # Anti-drift gate: fail if the committed JSON diverges from the jar output
