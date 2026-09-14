@@ -15,11 +15,12 @@
 > - Build gotcha: use `package -Dmaven.build.cache.skipCache=true` (a bare `compile` fails sibling
 >   resolution; `-am package` builds the reactor jars). Staging needs nix (no `-Dflox.crd-staging.skip`).
 >
-> **NEXT:** C6 + C5 DONE (rke2lab `262938ba9` C6; `5b143c96b`/`574a43485`/`cd23927fb`/`1cb9d3c26`
-> C5.1–C5.4). Remaining: **C4** (provision execution greenfield + workload config bootstrap-inject via
-> seed-incluster) then **C7** (`vmnet-<role>` NIC on the pool template). Scope still LOCKED to
-> `bioskop-wrkld` × `control-node`. Standing: commit freely on topic branches (don't ask);
-> push/relock/pulumi/kubectl = USER; French convo. All C1–C6 committed, NOT pushed (live checkpoint).
+> **NEXT:** C6 + C5 + C4a + C4b DONE (rke2lab `262938ba9` C6; `5b143c96b`/`574a43485`/`cd23927fb`/`1cb9d3c26`
+> C5.1–C5.4; seed-incluster `264d79694` C4a, `0938170e1` C4b greenfield arm). Remaining: **C7**
+> (`vmnet-<role>` NIC on the pool template) + the reflector loop (deferred until dynamic scaling opens).
+> Scope still LOCKED to `bioskop-wrkld` × `control-node`. Standing: commit freely on topic branches
+> (don't ask); push/relock/pulumi/kubectl = USER; French convo. All committed, NOT pushed (live checkpoint):
+> seed-incluster `0938170e1`, flox-catalogue `44cabfeb3`. C4b is validated by a live re-grow of bioskop-wrkld.
 
 Converged over the 2026-09-13 design session (bioskop-wrkld greenfield). Grave the
 specs/atlas first (this file is the worklist, not the spec), then adapt the codebase.
@@ -166,8 +167,24 @@ The 2×2 decomposition reworks the CRDs + reconcilers + moves the state machine 
   config.yaml.d fragment (`data | value|=from_yaml`), and injects them as `RKE2ControlPlane.files` — so
   a provisioned replica boots with the same config a standalone node git-fetches, no git/read-token on
   the node. Gated like the BYO-CA (essential config: wait for Flux). Added the `configmaps` RBAC.
-- [ ] **C4b. Greenfield provision — STATE-MACHINE IMPLEMENTATION PLAN** (spike DONE + CAPRKE2 source read
-  DONE; code NOT started). The per-pet delete-recreate flip I started was WRONG (user correction
+- [x] **C4b. Greenfield provision — DONE** (seed-incluster `0938170e1`, build+vet+gofmt green, NOT pushed).
+  `PoolAdoptionReconciler` now gives `Provisioning` its action: reads the cluster-grain verdict
+  `ClusterAdoption.status.existence` (`clusterExistence`); `greenfield = existenceDecided && !exists`. In
+  greenfield, `provisionPet` flips each pet to provision-shape via `ensureProvisionShape` (per-object:
+  absent→create provision / terminating→wait / adopt-shape→delete+recreate / provision→leave — keyed off
+  each object's OWN shape, idempotent): providerID-EMPTY LXCMachine + Machine `bootstrap.configRef`→per-pet
+  `RKE2Config` = copy of the LIVE RCP `{agentConfig,files,preRKE2Commands}` (`liveRCPConfigSpec`, so CAPRKE2
+  won't roll). `materialized` requires BOTH LXCMachine AND Machine in provision-shape; RCP held paused
+  (`flipping>0` → early requeue) until all pets stable, then unpaused. JOIN case (absent & cluster exists via
+  another pool) = HOLD reason `NodeMissing`→Adopting (never greenfield a rival). Watches: `ClusterAdoption`→
+  pools (verdict flip) + `LXCMachine`→pools by cluster label (presence trigger — the plan's `Owns(&Machine{})`
+  was WRONG: LXCMachine/Machine controller-ownerRef is the RCP/Machine, not PoolAdoption, so Owns never
+  fires). ClusterAdoption gained `Owns(Cluster)/Owns(LXCCluster)` (recreate/rebirth F5). RBAC: rke2configs
+  create + delete machines/lxcmachines + get clusteradoptions (`make rbac` regenerated `role.yaml`). NEXT for
+  C4b = live re-grow of bioskop-wrkld to validate greenfield end-to-end (tokens: relock rke2lab on the new
+  seed-incluster rev + push). — historical notes below (superseded by the shipped code):
+
+  The per-pet delete-recreate flip I started was WRONG (user correction
   2026-09-14). Decision is CLUSTER-LEVEL, adopt-first, per `docs/architecture/cluster-api/cluster-seeding-controller.adoc`
   §Reconcile (l.169-177) + the user's restatement.
 
@@ -384,7 +401,8 @@ The 2×2 decomposition reworks the CRDs + reconcilers + moves the state machine 
   (deterministic regardless of controller uptime).
 
 Sequence: C1 (CRDs) → C2 (reconcilers) → C3 (render) → C6 (quick) → C5 (config-model) → C4 (execution)
-→ C7 (NIC). Live deploy/re-grow = USER's. **DONE: C1, C2, C2-bis, C3, C6, C5. NEXT: C4, C7.**
+→ C7 (NIC). Live deploy/re-grow = USER's. **DONE: C1, C2, C2-bis, C3, C6, C5, C4a, C4b. NEXT: C7 (+ the
+reflector loop, deferred until dynamic scaling opens). Live re-grow of bioskop-wrkld validates C4b.**
 
 ## (SUPERSEDED) Adapt (code) — monolithic sequence
 
