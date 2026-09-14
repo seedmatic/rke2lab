@@ -51,6 +51,7 @@ manage-tailnet.flake = "github:seedmatic/rke2lab/feature/nixos-node-substrate#ma
 manage-tailnet.systems = ["aarch64-darwin"]
 k9s.pkg-path = "k9s"
 tektoncd-cli.pkg-path = "tektoncd-cli"
+clusterctl.pkg-path = "clusterctl"
 
 
 ## Environment Variables ---------------------------------------------

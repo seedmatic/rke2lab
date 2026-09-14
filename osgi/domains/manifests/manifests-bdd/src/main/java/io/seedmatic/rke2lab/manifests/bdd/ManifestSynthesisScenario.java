@@ -714,19 +714,26 @@ public class ManifestSynthesisScenario
    * the drain, never durable → never stale (the App creds are the durable source, the token is
    * not).
    *
-   * <p>A token is needed ONLY for a real, PUSHED, OPERATOR delivery — the standalone node that will
-   * fetch the branch this render pushed. So it files nothing when there is no worktree (a survey /
-   * CLI materialise), no push (nothing on the remote to fetch), or the render is IN_CLUSTER (a
-   * workload branch whose node takes its config + join token from CAPRKE2, never a github fetch).
-   * But once past those guards it is a real grow: a pushed OPERATOR render already minted a WRITER
-   * token for the push, so the reader edge MUST be present too — an empty mint is a wiring defect,
-   * and a silent skip would only surface as a cryptic node-boot fetch failure. So: fail LOUD.
+   * <p>A token is needed ONLY for a real, PUSHED, OPERATOR delivery of a MANAGEMENT cluster — the
+   * standalone node the GROW itself provisions and poses config onto via devlxd. So it files
+   * nothing when there is no worktree (a survey / CLI materialise), no push (nothing on the remote
+   * to fetch), the render is IN_CLUSTER (a re-render with no standalone grow behind it), or the
+   * cluster is a WORKLOAD ({@link ClusterRole#WRKLD}) — a CAPI-provisioned node takes its config +
+   * read token from the CAPRKE2 {@code RKE2Config} that seed-incluster bootstrap-injects, never
+   * this cellar→devlxd pose (the standalone-GROW mechanism only). But once past those guards it is
+   * a real grow: a pushed OPERATOR render already minted a WRITER token for the push, so the reader
+   * edge MUST be present too — an empty mint is a wiring defect, and a silent skip would only
+   * surface as a cryptic node-boot fetch failure. So: fail LOUD.
    */
   private void fileNodeGithubToken(ManifestsRunbookInput facet, Optional<LinkedWorktree> rendered) {
+    final ClusterRole role =
+        ClusterRole.of(
+            facet.identity().map(ManifestsRunbookInput.Identity::clusterName).orElse(""));
     if (rendered.isEmpty()
         || cellar == null
         || parcel.isEmpty()
         || !facet.facets().delivery().push()
+        || role == ClusterRole.WRKLD
         || enclosure.map(EnclosureGate::inCluster).orElse(false)) {
       return;
     }
