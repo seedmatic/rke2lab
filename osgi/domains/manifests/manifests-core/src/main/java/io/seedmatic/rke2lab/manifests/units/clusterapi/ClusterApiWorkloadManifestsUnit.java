@@ -12,27 +12,25 @@ import io.seedmatic.rke2lab.manifests.ingress.Component;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import io.seedmatic.rke2lab.netplan.contract.ClusterNetworkBlueprint;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import org.cdk8s.ApiObject;
-import org.cdk8s.ApiObjectMetadata;
-import org.cdk8s.ApiObjectProps;
-import org.cdk8s.JsonPatch;
 import software.constructs.Construct;
 
 /**
- * Renders the {@code ClusterProvision} INTENT (recipe) for each WORKLOAD cluster onto the
- * MANAGEMENT cluster's own branch ({@code manifests/<host>-mgmt}) — model B: the CR lives where
- * CAPI runs, so the management cluster's Flux applies it and the in-cluster {@code seed-incluster}
- * controller reconciles it adopt-first into a DIFFERENT cluster ({@code <host>-wrkld}). There is no
- * imperative {@code kubectl apply} and no {@code -wrkld}-branch CRs (that branch carries only the
- * workload's own app stack).
+ * Renders the {@code ClusterIntention} + {@code PoolIntention} intent (the 2×2 decomposition) for
+ * each WORKLOAD cluster onto the MANAGEMENT cluster's own branch ({@code manifests/<host>-mgmt}) —
+ * model B: the CRs live where CAPI runs, so the management cluster's Flux applies them and the
+ * in-cluster {@code seed-incluster} controller reconciles them adopt-first into a DIFFERENT cluster
+ * ({@code <host>-wrkld}). There is no imperative {@code kubectl apply} and no {@code -wrkld}-branch
+ * CRs (that branch carries only the workload's own app stack).
  *
  * <p>This unit no longer renders the raw CAPI CR-set (Cluster/LXCCluster/RKE2ControlPlane/
  * MachineDeployment). That set is materialised IN-CLUSTER by {@code seed-incluster} from the {@code
- * ClusterProvision} — the piece GitOps cannot pre-set (the owned Machines' ownerRef UID + the
- * adopt-vs-provision decision are in-cluster facts). So this unit's job narrows to the DECLARATIVE
- * recipe + the credentials the controller expands the CR-set from.
+ * ClusterIntention} (→ Cluster/LXCCluster) and the {@code PoolIntention} children (→
+ * RKE2ControlPlane + templates + the owned per-pet Machines) — the piece GitOps cannot pre-set (the
+ * owned Machines' ownerRef UID + the adopt-vs-provision decision are in-cluster facts). So this
+ * unit's job narrows to the DECLARATIVE recipe + the credentials the controller expands the CR-set
+ * from.
  *
  * <p>The render subject stays {@link ManifestSynthesisContext#bootstrapIdentity()} (the management
  * cluster); the workload clusters ride beside it as {@link
@@ -132,18 +130,43 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
     final String remoteEndpoint = "https://" + target.host() + "-nixos:8443";
 
     final ApiObject namespaceObject = renderer.namespace(scope, cluster, namespace, packageProfile);
-    createClusterProvision(
+    // The 2×2 intent: ONE cluster-level ClusterIntention + N pool-level PoolIntention (here just
+    // the
+    // control-node pool; worker pools are a follow-up). Both are Flux-owned and Flux-pruned;
+    // seed-incluster's reconcilers own the derived CAPI CR-set. Pets = master+peer1+peer2
+    // (WORKLOAD_CONTROL_PLANE_REPLICAS; peer3 dropped — a workload is NOT the full CANONICAL
+    // topology).
+    final ApiObject clusterIntention =
+        renderer.clusterIntention(
+            scope,
+            cluster,
+            namespace,
+            "workload",
+            vip,
+            APISERVER_PORT,
+            List.of(blueprint.podCidr()),
+            List.of(blueprint.serviceCidr()),
+            remoteEndpoint,
+            identitySecret,
+            packageProfile,
+            namespaceObject);
+    final List<String> pets =
+        ClusterNetworkBlueprint.CANONICAL_NODE_NAMES.stream()
+            .limit(WORKLOAD_CONTROL_PLANE_REPLICAS)
+            .map(node -> cluster + "-" + node)
+            .toList();
+    renderer.controlNodePoolIntention(
         scope,
         cluster,
         namespace,
         vip,
+        APISERVER_PORT,
         rke2Version,
         kubeVipVersion,
-        identitySecret,
-        remoteEndpoint,
-        blueprint,
-        image,
-        namespaceObject);
+        image.imageFingerprint(),
+        pets,
+        packageProfile,
+        clusterIntention);
 
     // The CREDENTIALS seed-incluster expands the CR-set with, rendered ON THE BRANCH
     // sops-encrypted,
@@ -179,77 +202,5 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
                 ca.etcdPeerCa(),
                 packageProfile,
                 namespaceObject));
-  }
-
-  // The ClusterProvision INTENT (recipe) for a workload — the Flux-owned CR that seed-incluster
-  // reconciles adopt-first into the CAPI CR-set (Cluster/LXCCluster/RKE2ControlPlane + the owned
-  // Machines). Every value derives from the blueprint SSOT (VIP, CIDRs) + the node-base ImageState;
-  // the controller templates, it never computes addressing. Control-plane pets are
-  // master+peer1+peer2 (WORKLOAD_CONTROL_PLANE_REPLICAS; peer3 dropped — a workload is NOT the full
-  // CANONICAL 4-server topology). Workers are a follow-up (none listed yet).
-  private void createClusterProvision(
-      final Construct scope,
-      final String cluster,
-      final String namespace,
-      final String vip,
-      final String rke2Version,
-      final String kubeVipVersion,
-      final String identitySecret,
-      final String remoteEndpoint,
-      final ClusterNetworkBlueprint blueprint,
-      final ImageState image,
-      final ApiObject namespaceObject) {
-    final List<Object> nodes =
-        ClusterNetworkBlueprint.CANONICAL_NODE_NAMES.stream()
-            .limit(WORKLOAD_CONTROL_PLANE_REPLICAS)
-            .map(node -> (Object) Map.of("name", cluster + "-" + node, "role", "control-plane"))
-            .toList();
-    final ApiObject provision =
-        new ApiObject(
-            scope,
-            "clusterprovision-" + cluster,
-            ApiObjectProps.builder()
-                .apiVersion("cluster.seedmatic.io/v1alpha1")
-                .kind("ClusterProvision")
-                .metadata(
-                    ApiObjectMetadata.builder()
-                        .name(cluster)
-                        .namespace(namespace)
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "cluster.seedmatic.io|ClusterProvision|"
-                                    + namespace
-                                    + "|"
-                                    + cluster))
-                        .build())
-                .build());
-    provision.addDependency(namespaceObject);
-    provision.addJsonPatch(
-        JsonPatch.add(
-            "/spec",
-            Map.of(
-                "clusterName",
-                cluster,
-                "namespace",
-                namespace,
-                "kind",
-                "workload",
-                "controlPlaneEndpoint",
-                Map.of("host", vip, "port", APISERVER_PORT),
-                "clusterNetwork",
-                Map.of(
-                    "podCIDRs", List.of(blueprint.podCidr()),
-                    "serviceCIDRs", List.of(blueprint.serviceCidr()),
-                    "serviceDomain", "cluster.local"),
-                "image",
-                Map.of("fingerprint", image.imageFingerprint()),
-                "rke2Version",
-                rke2Version,
-                "kubeVIPVersion",
-                kubeVipVersion,
-                "remote",
-                Map.of("endpoint", remoteEndpoint, "identitySecretName", identitySecret),
-                "nodes",
-                nodes)));
   }
 }

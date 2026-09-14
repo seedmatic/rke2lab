@@ -13,29 +13,26 @@ import io.seedmatic.rke2lab.manifests.node.DefaultNodeEnvContext;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import io.seedmatic.rke2lab.netplan.contract.ClusterNetworkBlueprint;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import org.cdk8s.ApiObject;
-import org.cdk8s.ApiObjectMetadata;
-import org.cdk8s.ApiObjectProps;
-import org.cdk8s.JsonPatch;
 import software.constructs.Construct;
 
 /**
- * Renders the MANAGEMENT cluster's ADOPTION request onto its own branch ({@code
- * manifests/<host>-mgmt}) — a single {@code ClusterAdoption} CR (the recipe) plus the material the
- * in-cluster {@code seed-incluster} needs: the four CAPRKE2 BYO-CA Secrets (from {@link
- * ManifestSynthesisContext#managementCas()}) and the CAPN identity Secret.
+ * Renders the MANAGEMENT cluster's SELF-adoption intent onto its own branch ({@code
+ * manifests/<host>-mgmt}) — the 2×2 intent (a cluster-level {@code ClusterIntention} + a single-pet
+ * control-node {@code PoolIntention}, a management cluster being ONE control node) plus the
+ * material the in-cluster {@code seed-incluster} needs: the four CAPRKE2 BYO-CA Secrets (from
+ * {@link ManifestSynthesisContext#managementCas()}) and the CAPN identity Secret. Identical intent
+ * to {@link ClusterApiWorkloadManifestsUnit} (both delegate to {@link ClusterApiCrRenderer}); the
+ * mgmt case only differs by kind ({@code management}), one pet, and a local (empty) remote
+ * endpoint.
  *
- * <p>Unlike {@link ClusterApiWorkloadManifestsUnit}, this unit does NOT render the raw CAPI CR-set
- * (Cluster/LXCCluster/RKE2ControlPlane/Machine). It cannot: adopting the RUNNING control plane
- * needs the OWNED {@code Machine}'s {@code ownerReference.uid} pointing at the {@code
- * RKE2ControlPlane}, and that UID is assigned by the API server at creation — unknowable to a
- * GitOps render. So the CR-set is created IN-CLUSTER by the controller (it reads the UID, closes
- * the paused init-race, marks bootstrap done), and seed-master's job here narrows to delivering the
- * DECLARATIVE recipe + the sealed material. The {@code ClusterAdoption} spec is exactly the recipe
- * the controller expands; it generalises verbatim to workload adoption (same CR, {@code
- * controlPlaneReplicas: 3}) — the next phase.
+ * <p>Neither unit renders the raw CAPI CR-set (Cluster/LXCCluster/RKE2ControlPlane/Machine). It
+ * cannot: adopting the RUNNING control plane needs the OWNED {@code Machine}'s {@code
+ * ownerReference.uid} pointing at the {@code RKE2ControlPlane}, and that UID is assigned by the API
+ * server at creation — unknowable to a GitOps render. So the CR-set is materialised IN-CLUSTER by
+ * the controller (it reads the UID, closes the paused init-race, marks bootstrap done), and
+ * seed-master's job here narrows to delivering the DECLARATIVE intent + the sealed material.
  *
  * <p>The recipe is derived, not configured: the VIP + pod/service CIDRs come from the mgmt
  * cluster's {@link ClusterNetworkBlueprint} (keyed by {@link
@@ -111,17 +108,42 @@ public final class ClusterApiManagementManifestsUnit extends AbstractManifestsUn
     final String kubeVipVersion = synth.componentVersions().of(Component.KUBE_VIP);
 
     final ApiObject namespaceObject = renderer.namespace(scope, cluster, namespace, packageProfile);
-    createClusterAdoption(
+    // The 2×2 intent for the mgmt cluster's SELF-adoption: a cluster-level ClusterIntention + a
+    // single-pet control-node PoolIntention (a management cluster is ONE control node). kind =
+    // management records the federated role (birthed/adopted identically to a workload). The Incus
+    // engine is local, so the remote endpoint is empty (resolved from the identity Secret's
+    // `server`).
+    final List<String> pets =
+        ClusterNetworkBlueprint.CANONICAL_NODE_NAMES.stream()
+            .limit(MANAGEMENT_CONTROL_PLANE_REPLICAS)
+            .map(node -> cluster + "-" + node)
+            .toList();
+    final ApiObject clusterIntention =
+        renderer.clusterIntention(
+            scope,
+            cluster,
+            namespace,
+            "management",
+            vip,
+            APISERVER_PORT,
+            List.of(blueprint.podCidr()),
+            List.of(blueprint.serviceCidr()),
+            "",
+            identitySecret,
+            packageProfile,
+            namespaceObject);
+    renderer.controlNodePoolIntention(
         scope,
         cluster,
         namespace,
         vip,
+        APISERVER_PORT,
         rke2Version,
         kubeVipVersion,
-        identitySecret,
-        blueprint,
-        image,
-        namespaceObject);
+        image.imageFingerprint(),
+        pets,
+        packageProfile,
+        clusterIntention);
 
     // The mgmt cluster's OWN LIVE CA (four BYO-CA Secrets) + the CAPN identity, rendered on the
     // branch sops-encrypted, only when revealed (a secret-full render). The controller guards on
@@ -153,67 +175,5 @@ public final class ClusterApiManagementManifestsUnit extends AbstractManifestsUn
                 image.incusProject(),
                 packageProfile,
                 namespaceObject));
-  }
-
-  private ApiObject createClusterAdoption(
-      final Construct scope,
-      final String cluster,
-      final String namespace,
-      final String vip,
-      final String rke2Version,
-      final String kubeVipVersion,
-      final String identitySecret,
-      final ClusterNetworkBlueprint blueprint,
-      final ImageState image,
-      final ApiObject namespaceObject) {
-    final ApiObject adoption =
-        new ApiObject(
-            scope,
-            "clusteradoption-" + cluster,
-            ApiObjectProps.builder()
-                .apiVersion("cluster.seedmatic.io/v1alpha1")
-                .kind("ClusterAdoption")
-                .metadata(
-                    ApiObjectMetadata.builder()
-                        .name(cluster)
-                        .namespace(namespace)
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "cluster.seedmatic.io|ClusterAdoption|"
-                                    + namespace
-                                    + "|"
-                                    + cluster))
-                        .build())
-                .build());
-    adoption.addDependency(namespaceObject);
-    adoption.addJsonPatch(
-        JsonPatch.add(
-            "/spec",
-            Map.of(
-                "clusterName",
-                cluster,
-                "namespace",
-                namespace,
-                "controlPlaneReplicas",
-                MANAGEMENT_CONTROL_PLANE_REPLICAS,
-                "controlPlaneEndpoint",
-                Map.of("host", vip, "port", APISERVER_PORT),
-                "clusterNetwork",
-                Map.of(
-                    "podCIDRs",
-                    List.of(blueprint.podCidr()),
-                    "serviceCIDRs",
-                    List.of(blueprint.serviceCidr()),
-                    "serviceDomain",
-                    "cluster.local"),
-                "image",
-                Map.of("fingerprint", image.imageFingerprint()),
-                "identitySecretName",
-                identitySecret,
-                "rke2Version",
-                rke2Version,
-                "kubeVIPVersion",
-                kubeVipVersion)));
-    return adoption;
   }
 }
