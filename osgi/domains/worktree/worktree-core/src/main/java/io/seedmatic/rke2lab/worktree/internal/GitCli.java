@@ -123,6 +123,16 @@ final class GitCli {
     run(true, "-C", worktreePath.toString(), "checkout", "HEAD", "--", relPath);
   }
 
+  /**
+   * Restore {@code pathspec} from HEAD into the working tree, TOLERANT of an unmatched pathspec
+   * (the path absent at HEAD → a no-op). For preserving a whole directory (e.g. the reflector's
+   * {@code reflections/}) across the wholesale render's {@code rm -rf .}, where the directory may
+   * not exist yet on a first render.
+   */
+  void restoreFromHeadTolerant(Path worktreePath, String pathspec) {
+    run(false, "-C", worktreePath.toString(), "checkout", "HEAD", "--", pathspec);
+  }
+
   /** Remove the linked worktree at {@code worktreePath} — tolerant of a path already gone. */
   void worktreeRemove(Path worktreePath) {
     run(false, "worktree", "remove", "--force", worktreePath.toString());

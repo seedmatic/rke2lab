@@ -76,6 +76,11 @@ final class JgitLinkedWorktree implements LinkedWorktree {
   }
 
   @Override
+  public void restoreFromHead(String pathspec) {
+    gitCli.restoreFromHeadTolerant(checkout.root(), pathspec);
+  }
+
+  @Override
   public void stage(List<Path> paths) {
     checkout.stage(paths);
   }

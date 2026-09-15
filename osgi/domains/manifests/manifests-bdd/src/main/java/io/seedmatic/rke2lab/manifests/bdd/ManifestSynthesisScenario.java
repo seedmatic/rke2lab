@@ -670,6 +670,13 @@ public class ManifestSynthesisScenario
     // as if the operator's seal had run. A no-op on a first grow (no asset yet) / a survey; on a
     // re-grow the fresh seal wins (importSealed skips a coordinate the overlay already carries).
     rehydrateInClusterAsset(rendered);
+    // Preserve the reflector's reflections/ documents across the wholesale render: prepare emptied
+    // the tree, so without this the cluster→git reflector's committed PoolReflection files would be
+    // staged as deletions and pushed away. The reflector owns those files' content; the render owns
+    // their SURVIVAL (the "escape" carve-out — a reflector-owned subtree the render never generates
+    // but must not delete). Tolerant of the dir being absent (a first render). See the reflector
+    // design in docs/architecture/cluster-api/cluster-seeding-controller.adoc.
+    rendered.ifPresent(worktree -> worktree.restoreFromHead(REFLECTIONS_DIR));
     // Resolve the effective facet per the sower's RenderMode: GROW/INIT keep the seeded facet
     // (the grow's Pulumi SSOT / the CLI args), UPDATE follows the branch HEAD, EDIT overlays the
     // sparse operator overrides on HEAD — so a steady-state render never silently resets the branch
@@ -800,6 +807,9 @@ public class ManifestSynthesisScenario
   // clean filter sops-encrypts the stringData at commit; local-config + its root placement (outside
   // every Flux Kustomization path) keep it unapplied — pure operator/render carrier.
   private static final String IN_CLUSTER_ASSET_FILE = ".secret-in-cluster-cellar.yml";
+  // The cluster→git reflector's subtree on the managing branch — a reflector-owned path the render
+  // never generates but PRESERVES across its wholesale regeneration (the escape carve-out).
+  private static final String REFLECTIONS_DIR = "reflections";
   private static final String ASSET_ENVELOPES_KEY = "envelopes";
 
   /**

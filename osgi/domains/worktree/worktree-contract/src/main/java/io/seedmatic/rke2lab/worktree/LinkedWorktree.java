@@ -49,6 +49,16 @@ public interface LinkedWorktree extends AutoCloseable {
   Optional<String> smudgeFromHead(String path);
 
   /**
+   * PRESERVE {@code pathspec} across the wholesale render: restore it from {@code HEAD} back into
+   * the working tree (which {@code prepare} emptied), TOLERANT of the pathspec being absent at HEAD
+   * (a no-op — a first render). Unlike {@link #smudgeFromHead} this reads nothing back; it exists
+   * so a subtree the render does NOT own (the reflector's {@code reflections/} documents) survives
+   * the {@code rm -rf .} + {@code stageAll} cycle instead of being staged as a deletion. The render
+   * owns everything else; this is the "escape" carve-out for a reflector-owned path.
+   */
+  void restoreFromHead(String pathspec);
+
+  /**
    * Stage the given paths for the next commit — additions/modifications for paths that exist,
    * removals for paths that no longer do. Each path may be absolute or resolved against {@link
    * #path()}. For staging a whole rendered tree (including files a re-render dropped), prefer
