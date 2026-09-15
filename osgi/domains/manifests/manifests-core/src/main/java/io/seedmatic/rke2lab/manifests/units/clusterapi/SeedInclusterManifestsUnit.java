@@ -221,11 +221,18 @@ public final class SeedInclusterManifestsUnit extends AbstractManifestsUnit {
         ManifestSynthesisContext.current()
             .bootstrapIdentity()
             .clusterNameOrDefault(DefaultNodeEnvContext.DEFAULT_CLUSTER_NAME);
+    // REFLECTOR_WRITE=true enables the cluster→git reflector loop: it commits observed
+    // PoolReflection
+    // documents onto the managing branch and the adopt-vs-greenfield decision reads them back from
+    // git.
+    // Safe to enable (self-skip + empty-roster guards; the render's escape carve-out preserves the
+    // documents). The repo URL is DERIVED from the Flux GitRepository, so no URL env is injected.
     container.put(
         "env",
         List.of(
             Map.of("name", "HOME", "value", "/root"),
-            Map.of("name", "SELF_CLUSTER_NAME", "value", selfCluster)));
+            Map.of("name", "SELF_CLUSTER_NAME", "value", selfCluster),
+            Map.of("name", "REFLECTOR_WRITE", "value", "true")));
     container.put(
         "livenessProbe",
         Map.of(
