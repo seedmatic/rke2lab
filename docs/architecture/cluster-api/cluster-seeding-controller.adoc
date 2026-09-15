@@ -1014,16 +1014,24 @@ ONLY to SIZE a greenfield RCP; once the cluster has run, the reflection is the r
 Reflection ↔ reality mismatches are CAPI/CAPN's to reconcile (their layer, not ours).
 
 [[reflector-no-merge]]
-=== No git merge — disjoint files, no force-push
+=== The render is WHOLESALE — the reflector's file survives by a render carve-out
 
-Two committers touch the managing branch: `seed-master`'s render (git→cluster source)
-and the reflector (cluster→git). They never 3-way-merge, because they own **disjoint
-files**: the render owns the Intention + everything else; the reflector owns ONLY the
-`PoolReflection` file. Both `fetch → apply → commit → push` with **retry-on-conflict** and
-**never force-push** — the `image-automation-controller` loop (the blessed Flux
-precedent for a controller committing to git; the git write token is the existing
-`github-token` App machinery). The precedence decision lives in the CONTROLLER
-(`PoolReflection` presence), not in git's merge semantics — a reconciler's job, not git's.
+Two committers touch the managing branch: `seed-master`'s render (git→cluster source) and the
+reflector (cluster→git). The render is **wholesale**: every publish empties the branch worktree
+(`git rm -rf .`) and re-materialises ONLY its own rendered files, committing with `git add -A`
+(deletions staged). So "disjoint files" is NOT enough on its own — a `PoolReflection` the render
+does not re-write would be committed as a DELETION and pushed away.
+
+The render therefore **carves out** the reflector's files: before staging, it **rehydrates** every
+live `PoolReflection` from HEAD — exactly the mechanism it already uses to preserve
+`.secret-in-cluster-cellar.yml` across the empty (`smudgeFromHead` / the rehydrate allow-list) — and
+prunes only the ORPHANS (a `PoolReflection` for a cluster dropped from `workloadTargets`). So the
+reflector owns the CONTENT of those files; the render owns their SURVIVAL across its wholesale
+regeneration. The two never 3-way-merge (disjoint paths); both `fetch → commit → push` with
+**retry-on-conflict** and **never force-push** — the `image-automation-controller` loop (the blessed
+Flux precedent for a controller committing to git; the git write token is the existing `github-token`
+App machinery). The precedence decision lives in the CONTROLLER (`PoolReflection` presence), not in
+git's merge semantics — a reconciler's job, not git's.
 
 .The commit worktree is a CACHE — ephemeral by default, a PVC only if it earns it
 [NOTE]
@@ -1323,6 +1331,13 @@ carries its primacy as the primary out-of-band seeder.
   (PVC only if clones prove costly). Prune symmetry (a finalizer prunes within a live cluster;
   the render/manifests-cli prunes orphan `PoolReflection`s for clusters dropped from
   `workloadTargets`). Annex-semantics fork (lean **restore-scaled**) settled when scaling opens.
+. **RENDER carve-out (rke2lab — a HARD dependency of the reflector).** The render is WHOLESALE
+  (`git rm -rf .` + `git add -A`, see <<reflector-no-merge>>), so a committed `PoolReflection`
+  vanishes on the next publish unless the render PRESERVES it. Add the `PoolReflection` files to the
+  render's rehydrate allow-list — the `smudgeFromHead` / `rehydrateInClusterAsset` path in
+  `ManifestSynthesisScenario`, the SAME mechanism that preserves `.secret-in-cluster-cellar.yml`:
+  rehydrate every live one from HEAD before `stageAll`, prune only the orphans (clusters dropped from
+  `workloadTargets`). Without this the reflector is not durable — code it alongside the reflector.
 . **Greenfield = declare the shape, observe, note (per <<greenfield-arm>>).** When no reflection:
   ensure `Cluster` + `RKE2ControlPlane`(`replicas` = seed size) + `LXCMachineTemplate` +
   injected config, UNPAUSED, and create NO `Machine`s → CAPRKE2 provisions its own → the
