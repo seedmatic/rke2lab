@@ -142,23 +142,28 @@ cattle pool + replica count.
 [[existence]]
 === Adopt vs greenfield is decided by the reflection — the deterministic path
 
-Before anything is provisioned, the controller asks ONE cluster-level question: **is there
-a `PoolReflection`?** — the observed roster the reflector persisted to git in a prior life
-(<<reflector>>). Its PRESENCE is the switch:
+Before anything is provisioned, the controller asks ONE cluster-level question: **is there a
+`PoolReflection` on the branch?** — the observed roster the reflector persisted to git in a prior
+life (<<reflector>>). It reads this **directly from git** (go-git), NOT from etcd — so the switch
+is immune to Flux apply-ordering at bootstrap (a reflection not-yet-applied to etcd would otherwise
+read as "absent" → a wrong greenfield, a rival cluster). Its PRESENCE on the branch is the switch:
 
-* **Reflection PRESENT** → the cluster has lived before → **ADOPT**. The reflected roster
-  names the pets; the controller pre-creates the named `Machine`s so CAPRKE2 adopts the
-  surviving instances by deterministic name.
+* **Reflection PRESENT** → the cluster has lived before → **ADOPT**. The reflected roster names
+  the pets; the controller pre-creates the named `Machine`s so CAPRKE2 adopts the surviving
+  instances by deterministic name.
 * **Reflection ABSENT** → never provisioned, or a deliberate greenfield reset (the operator
-  dropped the instances AND the manifests branch) → **GREENFIELD**. The controller creates
-  the `Cluster` + `RKE2ControlPlane` (replicas = the seed roster size) and lets CAPRKE2
-  provision its OWN control-nodes; the reflector then OBSERVES the emergent roster and writes
-  the first `PoolReflection`.
+  dropped the instances AND the manifests branch) → **GREENFIELD**. The controller creates the
+  `Cluster` + `RKE2ControlPlane` (replicas = the seed roster size) and lets CAPRKE2 provision its
+  OWN control-nodes; the reflector then OBSERVES the emergent roster and writes the first
+  `PoolReflection`.
 
 This is the reflector's gift: `git == reality`, so the reflection's presence is an
-**unconditionally deterministic** switch — no runtime liveness probe, no guessing. A
-management cold-start (etcd wiped) re-derives the reflection from git via Flux; the roster it
-carries is the one the cluster actually ran, even after scaling. Random CAPRKE2-minted node
+**unconditionally deterministic** switch — no runtime liveness probe, no Flux-timing race. Because
+the decision reads GIT (the durable truth), a management cold-start (etcd wiped) sees the true
+roster IMMEDIATELY — it never waits for Flux to re-apply it, even after scaling. The Flux-applied
+`PoolReflection` in etcd is then a **pure operator VIEW** (`kubectl get poolreflection` — the
+observed cluster state), never on the decision path. **If git is unreadable (token / network), the
+controller HOLDS — it NEVER greenfields on an unconfirmed absence.** Random CAPRKE2-minted node
 names are fine precisely because the reflector persists them and re-adopts them next boot.
 
 [IMPORTANT]
@@ -1007,7 +1012,8 @@ flowchart TD
 ----
 
 The reflection's *presence* IS the adopt-vs-greenfield switch — no special rule, no runtime
-probe. Present → ADOPT the observed roster (pre-create the named `Machine`s so CAPRKE2 adopts
+probe, and read **directly from git** (not etcd — immune to Flux apply-ordering; the etcd copy is
+an operator view only, see <<existence>>). Present → ADOPT the observed roster (pre-create the named `Machine`s so CAPRKE2 adopts
 by name); absent → GREENFIELD (create the RCP with `replicas`, CAPRKE2 provisions its own, the
 reflector writes the first reflection). The canonical `PoolIntention.spec.nodes` seed is used
 ONLY to SIZE a greenfield RCP; once the cluster has run, the reflection is the roster of record.
@@ -1325,8 +1331,10 @@ carries its primacy as the primary out-of-band seeder.
   + the name-based `owner-ref` annotation; the export/re-stamp ownerRef translation
   (<<reflector-translation>>); the OBSERVE→NOTE loop (watch `Machine`/`LXCMachine` → derive the
   roster → commit `PoolReflection` — `image-automation-controller` pattern: App-token,
-  retry-on-conflict, NEVER force-push, stage ONLY the `PoolReflection`); the presence switch
-  (`PoolReflection` present → adopt; absent → greenfield). **VERIFY** the chosen go-git version's
+  retry-on-conflict, NEVER force-push, stage ONLY the `PoolReflection`); go-git READ for the
+  DECISION (the presence switch reads the branch directly, NOT etcd → immune to Flux apply-ordering;
+  the etcd copy is an operator view only; HOLD if git is unreadable, never greenfield on an
+  unconfirmed absence). **VERIFY** the chosen go-git version's
   smudge/clean behaviour + the mixed-toolchain plaintext hazard. Worktree ephemeral by default
   (PVC only if clones prove costly). Prune symmetry (a finalizer prunes within a live cluster;
   the render/manifests-cli prunes orphan `PoolReflection`s for clusters dropped from
