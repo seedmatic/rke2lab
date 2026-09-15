@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/go-git/go-billy/v5/memfs"
@@ -16,6 +17,7 @@ import (
 	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/go-git/go-git/v5/storage/memory"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
@@ -30,10 +32,12 @@ import (
 // sops-filtered blobs round-trip as identity (go-git runs no smudge/clean) — safe because we stage
 // ONLY the reflection document. Never force-push; retry on a non-fast-forward.
 type ReflectorGit struct {
-	// Client reads the App-token Secret.
+	// Client reads the Flux GitRepository (for the repo URL) and the App-token Secret.
 	Client client.Client
-	// RepoURL is the git remote (e.g. https://github.com/seedmatic/rke2lab.git).
-	RepoURL string
+	// SourceRef is the Flux GitRepository whose spec.url is the managing repo — the in-cluster
+	// projection of the manifests SSOT (e.g. flux-system/rke2lab). The reflector DERIVES the repo URL
+	// from it, never a hard-coded/injected URL.
+	SourceRef types.NamespacedName
 	// TokenSecret is the App-token Secret (e.g. rke2lab-system/github-token) authenticating the push.
 	TokenSecret types.NamespacedName
 	// TokenSecretKey is the data key holding the token (e.g. "token").
@@ -54,6 +58,10 @@ func (g *ReflectorGit) WriteReflection(ctx context.Context, selfCluster string, 
 	if err != nil {
 		return fmt.Errorf("marshal PoolReflection: %w", err)
 	}
+	repoURL, err := g.readRepoURL(ctx)
+	if err != nil {
+		return err
+	}
 	token, err := g.readToken(ctx)
 	if err != nil {
 		return err
@@ -63,7 +71,7 @@ func (g *ReflectorGit) WriteReflection(ctx context.Context, selfCluster string, 
 
 	var lastErr error
 	for attempt := 0; attempt < reflectorMaxRetries; attempt++ {
-		lastErr = g.commitOnce(ctx, branch, relPath, body, auth)
+		lastErr = g.commitOnce(ctx, repoURL, branch, relPath, body, auth)
 		if lastErr == nil {
 			return nil
 		}
@@ -78,10 +86,10 @@ func (g *ReflectorGit) WriteReflection(ctx context.Context, selfCluster string, 
 
 // commitOnce clones the branch shallowly in-memory, writes the document if changed, commits, and
 // pushes. Returns git.ErrNonFastForwardUpdate (wrapped) when the push races another writer.
-func (g *ReflectorGit) commitOnce(ctx context.Context, branch, relPath string, body []byte, auth transport.AuthMethod) error {
+func (g *ReflectorGit) commitOnce(ctx context.Context, repoURL, branch, relPath string, body []byte, auth transport.AuthMethod) error {
 	fs := memfs.New()
 	repo, err := git.CloneContext(ctx, memory.NewStorage(), fs, &git.CloneOptions{
-		URL:           g.RepoURL,
+		URL:           repoURL,
 		Auth:          auth,
 		ReferenceName: plumbing.NewBranchReferenceName(branch),
 		SingleBranch:  true,
@@ -117,6 +125,21 @@ func (g *ReflectorGit) commitOnce(ctx context.Context, branch, relPath string, b
 	return nil
 }
 
+// readRepoURL derives the managing repo URL from the Flux GitRepository (spec.url) — the in-cluster
+// projection of the manifests SSOT, so the reflector never carries a hard-coded/injected URL.
+func (g *ReflectorGit) readRepoURL(ctx context.Context) (string, error) {
+	gr := &unstructured.Unstructured{}
+	gr.SetGroupVersionKind(gvkGitRepository)
+	if err := g.Client.Get(ctx, g.SourceRef, gr); err != nil {
+		return "", fmt.Errorf("read Flux GitRepository %s: %w", g.SourceRef, err)
+	}
+	url, found, err := unstructured.NestedString(gr.Object, "spec", "url")
+	if err != nil || !found || url == "" {
+		return "", fmt.Errorf("Flux GitRepository %s has no spec.url", g.SourceRef)
+	}
+	return url, nil
+}
+
 // readToken reads the App token from the configured Secret.
 func (g *ReflectorGit) readToken(ctx context.Context) (string, error) {
 	var s corev1.Secret
@@ -135,5 +158,49 @@ func (g *ReflectorGit) readToken(ctx context.Context) (string, error) {
 // render never generates and preserves via its escape allow-list), keeping it disjoint from the
 // render's files at the FILE grain.
 func reflectionPath(reflection *adoptionv1alpha1.PoolReflection) string {
-	return fmt.Sprintf("reflections/%s-%s.yaml", reflection.Spec.ClusterRef, reflection.Spec.Pool)
+	return reflectionRelPath(reflection.Spec.ClusterRef, reflection.Spec.Pool)
+}
+
+func reflectionRelPath(clusterRef, pool string) string {
+	return fmt.Sprintf("reflections/%s-%s.yaml", clusterRef, pool)
+}
+
+// ReadReflection reads a pool's reflection document from the managing branch (go-git, read-only) — the
+// DECISION source for the PoolAdoption reconciler. present is false (nil error) when the document is
+// absent (⇒ greenfield). It reads git DIRECTLY (not etcd), so the switch is immune to any Flux timing.
+func (g *ReflectorGit) ReadReflection(ctx context.Context, selfCluster, clusterRef, pool string) (reflection *adoptionv1alpha1.PoolReflection, present bool, err error) {
+	branch := "manifests/" + selfCluster
+	relPath := reflectionRelPath(clusterRef, pool)
+	repoURL, err := g.readRepoURL(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	token, err := g.readToken(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	auth := &githttp.BasicAuth{Username: "x-access-token", Password: token}
+
+	fs := memfs.New()
+	if _, err := git.CloneContext(ctx, memory.NewStorage(), fs, &git.CloneOptions{
+		URL:           repoURL,
+		Auth:          auth,
+		ReferenceName: plumbing.NewBranchReferenceName(branch),
+		SingleBranch:  true,
+		Depth:         1,
+	}); err != nil {
+		return nil, false, fmt.Errorf("clone %s: %w", branch, err)
+	}
+	data, rerr := util.ReadFile(fs, relPath)
+	if rerr != nil {
+		if errors.Is(rerr, os.ErrNotExist) {
+			return nil, false, nil // absent ⇒ greenfield
+		}
+		return nil, false, fmt.Errorf("read %s: %w", relPath, rerr)
+	}
+	var refl adoptionv1alpha1.PoolReflection
+	if err := yaml.Unmarshal(data, &refl); err != nil {
+		return nil, false, fmt.Errorf("unmarshal %s: %w", relPath, err)
+	}
+	return &refl, true, nil
 }

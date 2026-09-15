@@ -92,9 +92,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	// PoolAdoption reads the reflection (via Git, when enabled) for the adopt-vs-greenfield decision;
+	// Git nil ⇒ it adopts the canonical seed roster (reflector-disabled fallback).
 	if err := (&controller.PoolAdoptionReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:      mgr.GetClient(),
+		Scheme:      mgr.GetScheme(),
+		SelfCluster: os.Getenv("SELF_CLUSTER_NAME"),
+		Git:         reflectorGitFromEnv(mgr.GetClient()),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PoolAdoption")
 		os.Exit(1)

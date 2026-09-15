@@ -30,6 +30,11 @@ import (
 type PoolAdoptionReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+	// SelfCluster is the cluster this controller runs IN; the reflection lives on manifests/<SelfCluster>.
+	SelfCluster string
+	// Git reads the pool's reflection (the adopt-vs-greenfield switch). Nil ⇒ the reflector is
+	// disabled: adopt from the canonical seed roster (conditional-determinism fallback), never greenfield.
+	Git *ReflectorGit
 }
 
 // +kubebuilder:rbac:groups=cluster.seedmatic.io,resources=pooladoptions,verbs=get;list;watch;create;update;patch;delete
@@ -110,14 +115,26 @@ func (r *PoolAdoptionReconciler) reconcileSteps(
 	r.mark(a, adoptionv1alpha1.PoolConditionMaterialReady, true, "MaterialReady",
 		"BYO-CA Secrets + RKE2 config present")
 
-	a.Status.TotalPets = int32(len(spec.Nodes))
+	// Resolve the roster + mode from the reflection (the reflector's git-only record) — the
+	// adopt-vs-greenfield switch, read DIRECTLY from git (immune to any Flux timing):
+	//   - reflector disabled (Git nil) → ADOPT the canonical seed roster (conditional-determinism
+	//     fallback; never greenfield).
+	//   - reflection PRESENT → ADOPT the observed roster (pre-create the named Machines by name).
+	//   - reflection ABSENT → GREENFIELD (CAPRKE2 provisions replicas; we create NO Machines).
+	roster, greenfield, err := r.resolveRoster(ctx, spec)
+	if err != nil {
+		// Git unreadable ⇒ HOLD, never greenfield on an unconfirmed absence.
+		r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, false, "Error", "resolve roster: "+err.Error())
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
+	}
+	a.Status.TotalPets = int32(len(roster))
 
-	// 1. The pool's control-plane skeleton: LXCMachineTemplate + RKE2ControlPlane, created paused (the
-	//    RCP carries the paused annotation DIRECTLY — inert from birth, closing the init race before
-	//    the owned Machines exist). The Cluster + LXCCluster are the ClusterAdoption's, not ours.
+	// 1. The pool's control-plane skeleton: LXCMachineTemplate + RKE2ControlPlane (replicas = the
+	//    roster size), created paused (the RCP carries the paused annotation DIRECTLY — inert from
+	//    birth). The Cluster + LXCCluster are the ClusterAdoption's, not ours.
 	for _, obj := range []*unstructured.Unstructured{
 		r.lxcMachineTemplateObj(spec),
-		r.rke2ControlPlaneObj(spec, true, configFiles),
+		r.rke2ControlPlaneObj(spec, true, len(roster), configFiles),
 	} {
 		// Own the pool CR-set for cascade GC: deleting the PoolAdoption (or, transitively, its parent
 		// PoolIntention) tears down RCP + template; the RCP in turn owns the per-pet Machines.
@@ -151,63 +168,67 @@ func (r *PoolAdoptionReconciler) reconcileSteps(
 	r.mark(a, adoptionv1alpha1.PoolConditionControlPlaneObserved, true, "Observed",
 		"RKE2ControlPlane UID "+string(rcpUID))
 
-	// 3. ADOPT, per pet: pre-create the owned Machine + concrete LXCMachine(providerID = lxc:///<pet>)
-	//    + bootstrap sentinel, so CAPRKE2 counts it as one of ITS replicas (adoption, no re-bootstrap)
-	//    and CAPN ADOPTS the running instance. We do NOT probe Incus ourselves — CAPN owns the Incus
-	//    connection + cross-host reach; it reports present/absent on the LXCMachine status. Idempotent.
-	//
-	//    NOTE — day-0 provisioning is the follow-up (C4): an ABSENT pet leaves its owned LXCMachine in
-	//    CAPN's "instance not found" state. Turning that into a provision (re-create at the same name
-	//    with providerID EMPTY + a real bootstrap) is derived from CAPN's status.
-	present, absent, pending := 0, 0, 0
-	for _, pet := range spec.Nodes {
-		for _, obj := range []*unstructured.Unstructured{
-			r.bootstrapSecretObj(spec, pet.Name),
-			r.lxcMachineObj(spec, pet.Name),
-			r.machineObj(spec, pet.Name, rcpUID),
-		} {
-			if err := ensure(ctx, r.Client, obj); err != nil {
-				r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, false, "Error",
-					obj.GetKind()+" "+obj.GetName()+": "+err.Error())
-				return ctrl.Result{}, err
+	// 3. Materialise per the mode.
+	present, allPresent := 0, false
+	if greenfield {
+		// GREENFIELD: create NO Machines — CAPRKE2 provisions its own `replicas` control-nodes; the
+		// reflector then observes the emergent roster and writes the first reflection, so the NEXT
+		// reconcile reads it and ADOPTS. NodesAbsent routes derivePhase to Provisioning.
+		r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, false, "NodesAbsent",
+			fmt.Sprintf("greenfield: no reflection — CAPRKE2 provisioning %d control-node(s)", len(roster)))
+	} else {
+		// ADOPT, per pet in the ROSTER: pre-create the owned Machine + concrete LXCMachine(providerID)
+		// + bootstrap sentinel, so CAPRKE2 counts it as its replica (no re-bootstrap) and CAPN ADOPTS
+		// the running instance. Idempotent: a post-greenfield steady-state finds CAPRKE2's own Machines
+		// already present (no-op); a cold-start re-creates them → CAPN adopts the survivors by
+		// providerID. We never probe Incus ourselves — CAPN reports present/absent on the LXCMachine.
+		absent, pending := 0, 0
+		for _, pet := range roster {
+			for _, obj := range []*unstructured.Unstructured{
+				r.bootstrapSecretObj(spec, pet.Name),
+				r.lxcMachineObj(spec, pet.Name),
+				r.machineObj(spec, pet.Name, rcpUID),
+			} {
+				if err := ensure(ctx, r.Client, obj); err != nil {
+					r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, false, "Error",
+						obj.GetKind()+" "+obj.GetName()+": "+err.Error())
+					return ctrl.Result{}, err
+				}
+			}
+			isPresent, decided, perr := r.lxcMachinePresence(ctx, spec, pet.Name)
+			if perr != nil {
+				r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, false, "Error", "presence "+pet.Name+": "+perr.Error())
+				return ctrl.Result{}, perr
+			}
+			switch {
+			case !decided:
+				pending++
+			case isPresent:
+				present++
+			default:
+				absent++
 			}
 		}
-		isPresent, decided, perr := r.lxcMachinePresence(ctx, spec, pet.Name)
-		if perr != nil {
-			r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, false, "Error", "presence "+pet.Name+": "+perr.Error())
-			return ctrl.Result{}, perr
-		}
+		a.Status.Present, a.Status.Absent, a.Status.Pending = int32(present), int32(absent), int32(pending)
+
+		allPresent = len(roster) > 0 && present == len(roster)
 		switch {
-		case !decided:
-			pending++
-		case isPresent:
-			present++
+		case allPresent:
+			r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, true, "Observed",
+				fmt.Sprintf("%d/%d present", present, len(roster)))
+		case absent > 0:
+			// A reflected pet is absent (reflection ↔ reality mismatch) — HOLD, never greenfield a
+			// rival; the mismatch is CAPI/CAPN's to reconcile. NodeMissing → derivePhase Adopting.
+			r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, false, "NodeMissing",
+				fmt.Sprintf("%d/%d present, %d absent — holding (adopt, not greenfielding)", present, len(roster), absent))
 		default:
-			absent++
+			r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, false, "AwaitingInstances",
+				fmt.Sprintf("%d/%d present, %d pending", present, len(roster), pending))
 		}
 	}
-	a.Status.Present, a.Status.Absent, a.Status.Pending = int32(present), int32(absent), int32(pending)
 
-	// The safety invariant: any present pet means the cluster EXISTS — we adopt it and NEVER
-	// greenfield a rival. PetsPresent is True ONLY when EVERY pet is present.
-	allPresent := len(spec.Nodes) > 0 && present == len(spec.Nodes)
-	switch {
-	case allPresent:
-		r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, true, "Observed",
-			fmt.Sprintf("%d/%d present", present, len(spec.Nodes)))
-	case absent > 0:
-		// day-0 / disaster: a pet is genuinely absent (CAPN InstanceDeleted). NodesAbsent routes
-		// derivePhase to Provisioning — present pets stay untouched (never re-provisioned).
-		r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, false, "NodesAbsent",
-			fmt.Sprintf("%d/%d present, %d absent — provisioning, %d pending", present, len(spec.Nodes), absent, pending))
-	default:
-		r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, false, "AwaitingInstances",
-			fmt.Sprintf("%d/%d present, %d pending", present, len(spec.Nodes), pending))
-	}
-
-	// 4. Unpause the pool's RKE2ControlPlane (the owned Machines exist, so on unpause CAPRKE2 counts
-	//    them — no re-init of an adopted replica). The Cluster's own paused flag is the
-	//    ClusterAdoption reconciler's to clear (cluster grain), gated on existence.
+	// 4. Unpause the RCP. Adopt: the owned Machines exist → CAPRKE2 counts them (no re-init).
+	//    Greenfield: CAPRKE2 provisions its own replicas. The Cluster's paused flag is ClusterAdoption's.
 	if err := r.unpauseRCP(ctx, spec); err != nil {
 		r.mark(a, adoptionv1alpha1.PoolConditionUnpaused, false, "Error", err.Error())
 		return ctrl.Result{}, err
@@ -215,11 +236,31 @@ func (r *PoolAdoptionReconciler) reconcileSteps(
 	r.mark(a, adoptionv1alpha1.PoolConditionUnpaused, true, "Unpaused", "RKE2ControlPlane un-paused")
 
 	log.FromContext(ctx).Info("pool reconciled", "cluster", spec.ClusterName, "pool", spec.Pool,
-		"present", present, "pets", len(spec.Nodes))
-	if !allPresent {
+		"greenfield", greenfield, "present", present, "roster", len(roster))
+	if greenfield || !allPresent {
 		return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
 	}
 	return ctrl.Result{}, nil
+}
+
+// resolveRoster reads the reflection (the reflector's git-only record) to decide the mode + roster:
+//   - Git nil (reflector disabled)  → (seed roster, greenfield=false): adopt the canonical seed.
+//   - reflection PRESENT             → (observed roster, greenfield=false): adopt by observed name.
+//   - reflection ABSENT              → (seed roster, greenfield=true): CAPRKE2 provisions; seed sizes the RCP.
+//
+// A git read error propagates (caller HOLDS) — greenfield is never armed on an unconfirmed absence.
+func (r *PoolAdoptionReconciler) resolveRoster(ctx context.Context, spec adoptionv1alpha1.PoolAdoptionSpec) (roster []adoptionv1alpha1.PetSpec, greenfield bool, err error) {
+	if r.Git == nil {
+		return spec.Nodes, false, nil
+	}
+	reflection, present, err := r.Git.ReadReflection(ctx, r.SelfCluster, spec.ClusterName, spec.Pool)
+	if err != nil {
+		return nil, false, err
+	}
+	if !present {
+		return spec.Nodes, true, nil // greenfield — the seed sizes the RCP replicas
+	}
+	return reflection.Spec.Nodes, false, nil
 }
 
 // derivePhase rolls the per-step conditions (+ the reconcile error) into the per-pool state machine phase.
@@ -483,7 +524,7 @@ func (r *PoolAdoptionReconciler) bootstrapSecretObj(spec adoptionv1alpha1.PoolAd
 	return obj
 }
 
-func (r *PoolAdoptionReconciler) rke2ControlPlaneObj(spec adoptionv1alpha1.PoolAdoptionSpec, paused bool, configFiles []any) *unstructured.Unstructured {
+func (r *PoolAdoptionReconciler) rke2ControlPlaneObj(spec adoptionv1alpha1.PoolAdoptionSpec, paused bool, replicas int, configFiles []any) *unstructured.Unstructured {
 	obj := newObj(gvkRKE2ControlPlane, controlPlaneName(spec.ClusterName), spec.Namespace)
 	if paused {
 		// Inert from birth — no wait for CAPI to propagate the Cluster's paused (closes the race
@@ -495,7 +536,7 @@ func (r *PoolAdoptionReconciler) rke2ControlPlaneObj(spec adoptionv1alpha1.PoolA
 	// per-cluster config (dual-stack CIDRs, VIP tls-san, …) a standalone node installs from the branch.
 	files := append([]any{kubeVIPRBACFile()}, configFiles...)
 	obj.Object["spec"] = map[string]any{
-		"replicas":     int64(len(spec.Nodes)),
+		"replicas":     int64(replicas),
 		"version":      spec.RKE2Version,
 		"agentConfig":  map[string]any{"airGapped": true},
 		"serverConfig": map[string]any{},
