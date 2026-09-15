@@ -987,6 +987,101 @@ USAGE
           };
         });
 
+      # Propagate a seed-incluster bump across the three rke2lab worktrees — all
+      # branches of THIS repo, so `git worktree list` discovers them (no hard-coded
+      # paths). Push the seed-incluster branch, bump+push rke2lab's own
+      # seed-incluster pin, then bump flox-catalogue's rke2lab input + re-lock its
+      # seed-incluster env — STOPPING before the catalog push so the operator
+      # validates the artifact the cluster actually consumes. The chain is
+      # push-gated (a github: input only sees a rev once pushed), so the two
+      # upstream hops push automatically. Idempotent: a hop already at the target
+      # rev is skipped, and a no-op run makes no commit.
+      propagateSeedInclusterApp = pkgs.writeShellApplication {
+        name = "propagate-seed-incluster";
+        runtimeInputs = [pkgs.coreutils pkgs.git pkgs.jq pkgs.nix];
+        text = ''
+          RKE=$(git rev-parse --show-toplevel)
+          cur=$(git -C "$RKE" rev-parse --abbrev-ref HEAD)
+
+          wt_for_branch() {
+            local want=$1 path="" br=""
+            while IFS= read -r line; do
+              case $line in
+                "worktree "*) path=''${line#worktree } ;;
+                "branch refs/heads/"*)
+                  br=''${line#branch refs/heads/}
+                  [ "$br" = "$want" ] && { printf '%s\n' "$path"; return 0; } ;;
+              esac
+            done < <(git -C "$RKE" worktree list --porcelain)
+            return 1
+          }
+
+          lockrev() { # $1 flake.lock  $2 root-input name -> resolved node rev
+            # shellcheck disable=SC2016  # $i/$n/$nn are jq vars, not shell
+            jq -r --arg i "$2" '
+              .nodes.root.inputs[$i] as $n
+              | (if ($n|type)=="array" then $n[-1] else $n end) as $nn
+              | .nodes[$nn].locked.rev // empty' "$1"
+          }
+
+          SIC=$(wt_for_branch seed-incluster) || { echo "no worktree on branch 'seed-incluster'" >&2; exit 1; }
+          CAT=$(wt_for_branch flox-catalogue) || { echo "no worktree on branch 'flox-catalogue'" >&2; exit 1; }
+
+          cat_ref=$(jq -r '.nodes.rke2lab.original.ref' "$CAT/flake.lock")
+          if [ "$cat_ref" != "$cur" ]; then
+            echo "MISMATCH: flox-catalogue tracks rke2lab@$cat_ref but this worktree is on '$cur' —" >&2
+            echo "propagation would not reach the catalog. Stand on '$cat_ref' (or repoint the catalog)." >&2
+            exit 1
+          fi
+
+          echo "worktrees:"
+          echo "  seed-incluster : $SIC"
+          echo "  rke2lab ($cur) : $RKE"
+          echo "  flox-catalogue : $CAT"
+          echo
+
+          echo "== hop 1/3: seed-incluster -> push =="
+          if [ -n "$(git -C "$SIC" status --porcelain)" ]; then
+            echo "  note: seed-incluster worktree is dirty — only committed HEAD is pushed"
+          fi
+          sic_rev=$(git -C "$SIC" rev-parse HEAD)
+          git -C "$SIC" push origin seed-incluster
+          echo "  seed-incluster @ ''${sic_rev:0:9} pushed"
+          echo
+
+          echo "== hop 2/3: rke2lab -> flake update seed-incluster =="
+          before=$(lockrev "$RKE/flake.lock" seed-incluster)
+          ( cd "$RKE" && nix flake update seed-incluster --refresh )
+          after=$(lockrev "$RKE/flake.lock" seed-incluster)
+          if [ "$before" = "$after" ]; then
+            echo "  already at seed-incluster ''${after:0:9} — nothing to commit/push"
+          else
+            git -C "$RKE" commit -q -m "chore(flake): bump seed-incluster -> ''${after:0:9}" -- flake.lock
+            git -C "$RKE" push
+            echo "  bumped ''${before:0:9} -> ''${after:0:9}, committed + pushed"
+          fi
+          echo
+
+          echo "== hop 3/3: flox-catalogue -> flake update rke2lab + re-lock env =="
+          rke_before=$(lockrev "$CAT/flake.lock" rke2lab)
+          ( cd "$CAT" && nix flake update rke2lab --refresh )
+          rke_after=$(lockrev "$CAT/flake.lock" rke2lab)
+          # lock-envs auto-commits ONLY a real derivation bump (drops locked-url churn).
+          ( cd "$CAT" && nix run .#lock-envs )
+          if [ "$rke_before" != "$rke_after" ]; then
+            git -C "$CAT" commit -q -m "chore(flake): bump rke2lab -> ''${rke_after:0:9} (seed-incluster ''${after:0:9} via follows)" -- flake.lock
+            echo "  bumped rke2lab ''${rke_before:0:9} -> ''${rke_after:0:9}, committed (NOT pushed)"
+          else
+            echo "  catalog already at rke2lab ''${rke_after:0:9} — flake.lock unchanged"
+          fi
+          echo
+
+          ahead=$(git -C "$CAT" rev-list --count '@{u}..HEAD' 2>/dev/null || echo '?')
+          echo "DONE — flox-catalogue is $ahead commit(s) ahead. Review, then push:"
+          echo "    git -C $CAT log --oneline @{u}..HEAD"
+          echo "    git -C $CAT push"
+        '';
+      };
       in {
         packages = {
           inherit planJar networkBlueprintYaml networkBlueprintJson dataplanJson seedMasterJar;
@@ -1124,6 +1219,12 @@ USAGE
             echo "staged flox-controller ClusterRole into $destRbac/flox-controller/ from ${toString floxControllerRbac}"
           '');
           meta.description = "Stage the flox-controller ClusterRole (from the flake) onto the manifest-synthesis classpath";
+        };
+
+        apps.propagate-seed-incluster = {
+          type = "app";
+          program = "${propagateSeedInclusterApp}/bin/propagate-seed-incluster";
+          meta.description = "Propagate a seed-incluster bump: push seed-incluster, bump+push rke2lab, then bump flox-catalogue's rke2lab input + re-lock its env (stops before the catalog push for review)";
         };
 
         # Anti-drift gate: fail if the committed JSON diverges from the jar output
