@@ -8,14 +8,12 @@ import (
 	"os"
 	"time"
 
-	"github.com/go-git/go-billy/v5/memfs"
 	"github.com/go-git/go-billy/v5/util"
 	git "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
-	"github.com/go-git/go-git/v5/storage/memory"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
@@ -86,9 +84,18 @@ func (g *ReflectorGit) WriteReflection(ctx context.Context, selfCluster string, 
 
 // commitOnce clones the branch shallowly in-memory, writes the document if changed, commits, and
 // pushes. Returns git.ErrNonFastForwardUpdate (wrapped) when the push races another writer.
-func (g *ReflectorGit) commitOnce(ctx context.Context, repoURL, branch, relPath string, body []byte, auth transport.AuthMethod) error {
-	fs := memfs.New()
-	repo, err := git.CloneContext(ctx, memory.NewStorage(), fs, &git.CloneOptions{
+// cloneBranch shallow single-branch clones onto an EPHEMERAL disk tmpdir (NOT in-memory: an
+// in-memory clone of a large managing branch OOM-kills the controller). The caller MUST invoke the
+// returned cleanup (removes the tmpdir). go-git runs no smudge/clean filters even on disk, so sops
+// blobs round-trip as identity — safe, since only the reflection document is ever staged.
+func (g *ReflectorGit) cloneBranch(ctx context.Context, repoURL, branch string, auth transport.AuthMethod) (*git.Repository, *git.Worktree, func(), error) {
+	noop := func() {}
+	dir, err := os.MkdirTemp("", "reflector-")
+	if err != nil {
+		return nil, nil, noop, fmt.Errorf("tmpdir: %w", err)
+	}
+	cleanup := func() { _ = os.RemoveAll(dir) }
+	repo, err := git.PlainCloneContext(ctx, dir, false, &git.CloneOptions{
 		URL:           repoURL,
 		Auth:          auth,
 		ReferenceName: plumbing.NewBranchReferenceName(branch),
@@ -96,12 +103,24 @@ func (g *ReflectorGit) commitOnce(ctx context.Context, repoURL, branch, relPath 
 		Depth:         1,
 	})
 	if err != nil {
-		return fmt.Errorf("clone %s: %w", branch, err)
+		cleanup()
+		return nil, nil, noop, fmt.Errorf("clone %s: %w", branch, err)
 	}
 	wt, err := repo.Worktree()
 	if err != nil {
+		cleanup()
+		return nil, nil, noop, err
+	}
+	return repo, wt, cleanup, nil
+}
+
+func (g *ReflectorGit) commitOnce(ctx context.Context, repoURL, branch, relPath string, body []byte, auth transport.AuthMethod) error {
+	repo, wt, cleanup, err := g.cloneBranch(ctx, repoURL, branch, auth)
+	if err != nil {
 		return err
 	}
+	defer cleanup()
+	fs := wt.Filesystem
 
 	// No-op if the document is already byte-identical on the branch (avoid churn commits).
 	if existing, rerr := util.ReadFile(fs, relPath); rerr == nil && bytes.Equal(existing, body) {
@@ -181,17 +200,12 @@ func (g *ReflectorGit) ReadReflection(ctx context.Context, selfCluster, clusterR
 	}
 	auth := &githttp.BasicAuth{Username: "x-access-token", Password: token}
 
-	fs := memfs.New()
-	if _, err := git.CloneContext(ctx, memory.NewStorage(), fs, &git.CloneOptions{
-		URL:           repoURL,
-		Auth:          auth,
-		ReferenceName: plumbing.NewBranchReferenceName(branch),
-		SingleBranch:  true,
-		Depth:         1,
-	}); err != nil {
-		return nil, false, fmt.Errorf("clone %s: %w", branch, err)
+	_, wt, cleanup, err := g.cloneBranch(ctx, repoURL, branch, auth)
+	if err != nil {
+		return nil, false, err
 	}
-	data, rerr := util.ReadFile(fs, relPath)
+	defer cleanup()
+	data, rerr := util.ReadFile(wt.Filesystem, relPath)
 	if rerr != nil {
 		if errors.Is(rerr, os.ErrNotExist) {
 			return nil, false, nil // absent ⇒ greenfield
