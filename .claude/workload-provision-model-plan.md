@@ -448,3 +448,15 @@ reflector loop, deferred until dynamic scaling opens). Live re-grow of bioskop-w
 - [ ] **H.** Étape B: the `vmnet-<role>` NIC on the workload `LXCMachine`.
 
 Sequence: grave → A,B (quick) → C,D,E (the config-model refactor) → G (execution) → H → F (workers).
+
+## Future pass — typed APIs for all Go controllers (decided 2026-09-15)
+
+Our Go controllers (seed-incluster, flox-controller) speak CAPI/CAPN/CAPRKE2/Flux CRDs
+**unstructured** today (the `controller_shared.go` convention: no typed external-API module dep →
+version-decoupled + uniform). DECIDED: keep unstructured for now, but in a **future dedicated pass**
+migrate ALL our Go controllers onto the **structured/typed APIs** via each project's api-only module
+(Flux ships a separate `.../api` go module — cleanest; CAPI `sigs.k8s.io/cluster-api/api/v1beta2`;
+CAPRKE2/CAPN api packages). Trade to accept then: version-coupling (pin + track N api-module versions
+in sync with deployed CRDs) in exchange for compile-time safety + ergonomics (no more `NestedString`).
+Our OWN types (`cluster.seedmatic.io`) are already typed. Not scoped to the reflector work — a
+cross-controller hygiene pass.
