@@ -11,33 +11,20 @@ spec:
     kind: PoolReflection
     listKind: PoolReflectionList
     plural: poolreflections
-    shortNames:
-    - capipoolrefl
     singular: poolreflection
   scope: Namespaced
   versions:
-  - additionalPrinterColumns:
-    - jsonPath: .spec.clusterRef
-      name: Cluster
-      type: string
-    - jsonPath: .spec.pool
-      name: Pool
-      type: string
-    - jsonPath: .status.nodeCount
-      name: Nodes
-      type: string
-    - jsonPath: .status.lastReflectTime
-      name: Reflected
-      type: date
-    - jsonPath: .metadata.creationTimestamp
-      name: Age
-      type: date
-    name: v1alpha1
+  - name: v1alpha1
     schema:
       openAPIV3Schema:
         description: |-
-          PoolReflection is the reflector-owned, git-durable observed roster of one node pool — the DURABLE
-          sibling of the ephemeral PoolAdoption. Its presence is the adopt-vs-greenfield switch.
+          PoolReflection is the reflector-owned, git-durable observed roster of one node pool — a **GIT-ONLY
+          YAML document**, NOT an installed CRD and never applied to etcd (see the reflector design in
+          docs/architecture/cluster-api/cluster-seeding-controller.adoc). CR-shaped for readability; the
+          reflector marshals it onto the managing `manifests/<cluster>` branch (alongside the intentions,
+          preserved by the render's escape allow-list) and reads it back for the adopt-vs-greenfield decision.
+          Its PRESENCE in git is the switch. So it is a plain document type: no scheme registration, no
+          DeepCopyObject, no CRD manifest — it round-trips through sigs.k8s.io/yaml only.
         properties:
           apiVersion:
             description: |-
@@ -190,5 +177,3 @@ spec:
         type: object
     served: true
     storage: true
-    subresources:
-      status: {}

@@ -7,11 +7,14 @@ import (
 // PoolReflectionSpec is the OBSERVED, DURABLE roster of one node pool — the reflector's cluster→git
 // record of what the pool ACTUALLY ran. It completes the role triad with the 2×2: PoolIntention
 // (desired, Flux/git) · PoolAdoption (observed EPHEMERAL, controller/etcd) · PoolReflection (observed
-// DURABLE, reflector/git). The reflector watches the pool's Machines and commits this onto the
-// managing branch (manifests/<cluster>); Flux applies it back, so it survives a cold-start that wipes
-// etcd. Its PRESENCE is the adopt-vs-greenfield switch: present ⇒ the pool has lived, ADOPT the
-// observed roster (pre-create the named Machines so CAPRKE2 adopts by name); absent ⇒ first boot or a
-// deliberate reset, GREENFIELD (see docs/architecture/cluster-api/cluster-seeding-controller.adoc).
+// DURABLE, reflector/git). The reflector watches the pool's Machines and commits this as a YAML
+// document onto the managing manifests/<cluster> branch; it is git-only (never applied to etcd) and
+// survives a cold-start because git is durable. The reflector reads it back for the decision. Its
+// PRESENCE is the adopt-vs-greenfield switch: present ⇒ the pool has lived, ADOPT the observed roster
+// (pre-create the named Machines so CAPRKE2 adopts by name); absent ⇒ first boot or a deliberate
+// reset, GREENFIELD (see docs/architecture/cluster-api/cluster-seeding-controller.adoc).
+//
+// +kubebuilder:object:generate=false
 type PoolReflectionSpec struct {
 	// ClusterRef is the cluster this pool belongs to (= ClusterIntention.spec.clusterName). Carried so
 	// the cluster view can list its pools' reflections (LabelCluster), like PoolAdoption.
@@ -33,8 +36,10 @@ type PoolReflectionSpec struct {
 	Nodes []PetSpec `json:"nodes,omitempty"`
 }
 
-// PoolReflectionStatus is a light observability record — the reflection's VALUE is its spec (the
-// roster). It is not a state machine.
+// PoolReflectionStatus is a light in-document record (when it was last reflected) — the reflection's
+// VALUE is its spec (the roster). It is not a k8s status subresource (the document is git-only).
+//
+// +kubebuilder:object:generate=false
 type PoolReflectionStatus struct {
 	// ObservedGeneration is the spec generation this status reflects.
 	// +optional
@@ -55,34 +60,19 @@ type PoolReflectionStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
-// +kubebuilder:object:root=true
-// +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Namespaced,shortName=capipoolrefl
-// +kubebuilder:printcolumn:name="Cluster",type=string,JSONPath=`.spec.clusterRef`
-// +kubebuilder:printcolumn:name="Pool",type=string,JSONPath=`.spec.pool`
-// +kubebuilder:printcolumn:name="Nodes",type=string,JSONPath=`.status.nodeCount`
-// +kubebuilder:printcolumn:name="Reflected",type=date,JSONPath=`.status.lastReflectTime`
-// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
+// +kubebuilder:object:generate=false
 
-// PoolReflection is the reflector-owned, git-durable observed roster of one node pool — the DURABLE
-// sibling of the ephemeral PoolAdoption. Its presence is the adopt-vs-greenfield switch.
+// PoolReflection is the reflector-owned, git-durable observed roster of one node pool — a **GIT-ONLY
+// YAML document**, NOT an installed CRD and never applied to etcd (see the reflector design in
+// docs/architecture/cluster-api/cluster-seeding-controller.adoc). CR-shaped for readability; the
+// reflector marshals it onto the managing `manifests/<cluster>` branch (alongside the intentions,
+// preserved by the render's escape allow-list) and reads it back for the adopt-vs-greenfield decision.
+// Its PRESENCE in git is the switch. So it is a plain document type: no scheme registration, no
+// DeepCopyObject, no CRD manifest — it round-trips through sigs.k8s.io/yaml only.
 type PoolReflection struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	Spec   PoolReflectionSpec   `json:"spec,omitempty"`
 	Status PoolReflectionStatus `json:"status,omitempty"`
-}
-
-// +kubebuilder:object:root=true
-
-// PoolReflectionList is a list of PoolReflection.
-type PoolReflectionList struct {
-	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []PoolReflection `json:"items"`
-}
-
-func init() {
-	SchemeBuilder.Register(&PoolReflection{}, &PoolReflectionList{})
 }
