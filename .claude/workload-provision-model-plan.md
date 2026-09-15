@@ -449,14 +449,25 @@ reflector loop, deferred until dynamic scaling opens). Live re-grow of bioskop-w
 
 Sequence: grave → A,B (quick) → C,D,E (the config-model refactor) → G (execution) → H → F (workers).
 
-## Future pass — typed APIs for all Go controllers (decided 2026-09-15)
+## REVISED PLAN — migrate seed-incluster from Go to Java/fabric8 (decided 2026-09-15)
 
-Our Go controllers (seed-incluster, flox-controller) speak CAPI/CAPN/CAPRKE2/Flux CRDs
-**unstructured** today (the `controller_shared.go` convention: no typed external-API module dep →
-version-decoupled + uniform). DECIDED: keep unstructured for now, but in a **future dedicated pass**
-migrate ALL our Go controllers onto the **structured/typed APIs** via each project's api-only module
-(Flux ships a separate `.../api` go module — cleanest; CAPI `sigs.k8s.io/cluster-api/api/v1beta2`;
-CAPRKE2/CAPN api packages). Trade to accept then: version-coupling (pin + track N api-module versions
-in sync with deployed CRDs) in exchange for compile-time safety + ergonomics (no more `NestedString`).
-Our OWN types (`cluster.seedmatic.io`) are already typed. Not scoped to the reflector work — a
-cross-controller hygiene pass.
+> Supersedes the earlier "typed APIs for Go controllers" idea — fabric8's `java-generator` subsumes it.
+
+**DECISION: seed-incluster (Go/kubebuilder) will be MIGRATED into the Java codebase (rke2lab) as a
+fabric8-based controller.** Rationale: the whole monorepo is Java (seed-master, manifests, the OSGi/BDD
+engine); seed-incluster is the lone Go outlier. One language, one build, the team's expertise.
+- **External CRD APIs (Flux/CAPI/CAPN/CAPRKE2) = fabric8 `java-generator` POJOs from the CRD schemas** —
+  typed access WITHOUT importing upstream Go/Java framework modules, and version-decoupled (regenerate
+  from the deployed CRD YAML). This is the clean answer to the typed-vs-unstructured question.
+- **Controller framework**: fabric8 client + Java Operator SDK (JOSDK) — informers + reconcile loop;
+  fabric8 `crd-generator` for OUR CRDs (`cluster.seedmatic.io`), which flip from Go-source to Java POJOs.
+- **Codebase integration**: likely a NEW Maven module (a controller service), NOT necessarily OSGi (a
+  reconciler is not a pipeline scenario) — to be scoped at migration.
+- **JVM pod** in-cluster (the render pipeline already runs JVM in-cluster → acceptable).
+
+**TIMING (decided): grave this revised plan, but FINISH the reflector loop in Go FIRST** as a live-
+VALIDATED reference implementation, THEN port to Java. The graved design (specs/atlas, language-agnostic)
++ the validated Go = an executable spec for the Java port → lowest risk. So: complete the Go reflector
+DECISION (adopt/greenfield reading the reflection from git) + greenfield action + rke2lab escape/env,
+validate live, THEN migrate the whole controller to Java/fabric8. The Go code becomes the reference,
+not wasted.
