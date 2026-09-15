@@ -36,6 +36,8 @@ spec:
           value: /root
         - name: SELF_CLUSTER_NAME
           value: bioskop-mgmt
+        - name: REFLECTOR_WRITE
+          value: "true"
         image: rke2lab/flox-carrier:0.1.0
         imagePullPolicy: IfNotPresent
         livenessProbe:
