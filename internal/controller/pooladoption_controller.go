@@ -250,6 +250,13 @@ func (r *PoolAdoptionReconciler) reconcileSteps(
 //
 // A git read error propagates (caller HOLDS) — greenfield is never armed on an unconfirmed absence.
 func (r *PoolAdoptionReconciler) resolveRoster(ctx context.Context, spec adoptionv1alpha1.PoolAdoptionSpec) (roster []adoptionv1alpha1.PetSpec, greenfield bool, err error) {
+	// The SELF cluster (the mgmt plane this controller runs on) is CANONICAL — it is never reflected
+	// (the reflector skips it: it cannot reflect its own cold-start), so its roster is ALWAYS the
+	// seed and it is ADOPTED, never greenfielded. Reading a (never-written) reflection would find it
+	// absent → wrongly greenfield the management plane.
+	if r.SelfCluster != "" && spec.ClusterName == r.SelfCluster {
+		return spec.Nodes, false, nil
+	}
 	if r.Git == nil {
 		return spec.Nodes, false, nil
 	}

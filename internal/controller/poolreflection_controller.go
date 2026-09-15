@@ -63,6 +63,15 @@ func (r *PoolReflectionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
+	// Never reflect an EMPTY roster: nothing observed yet (a fresh greenfield still provisioning, or
+	// a torn-down cluster) → write NOTHING, so the reflection's ABSENCE keeps the decision in
+	// greenfield. An empty reflection would read as "adopt an empty roster" (RCP replicas 0) — wrong.
+	if len(roster) == 0 {
+		log.FromContext(ctx).Info("nothing observed yet — not reflecting (stays greenfield)",
+			"cluster", intention.Spec.ClusterRef, "pool", intention.Spec.Pool)
+		return ctrl.Result{RequeueAfter: time.Minute}, nil
+	}
+
 	reflection := r.reflectionObj(&intention, roster)
 	if r.Git != nil {
 		if err := r.Git.WriteReflection(ctx, r.SelfCluster, reflection); err != nil {
