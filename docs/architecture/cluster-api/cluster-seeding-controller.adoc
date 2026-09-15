@@ -152,17 +152,18 @@ read as "absent" → a wrong greenfield, a rival cluster). Its PRESENCE on the b
   the pets; the controller pre-creates the named `Machine`s so CAPRKE2 adopts the surviving
   instances by deterministic name.
 * **Reflection ABSENT** → never provisioned, or a deliberate greenfield reset (the operator
-  dropped the instances AND the manifests branch) → **GREENFIELD**. The controller creates the
-  `Cluster` + `RKE2ControlPlane` (replicas = the seed roster size) and lets CAPRKE2 provision its
-  OWN control-nodes; the reflector then OBSERVES the emergent roster and writes the first
-  `PoolReflection`.
+  dropped the instances AND the reflection document) → **GREENFIELD**. The controller
+  creates the `Cluster` + `RKE2ControlPlane` (replicas = the seed roster size) and lets CAPRKE2
+  provision its OWN control-nodes; the reflector then OBSERVES the emergent roster and writes the
+  first `PoolReflection`.
 
 This is the reflector's gift: `git == reality`, so the reflection's presence is an
 **unconditionally deterministic** switch — no runtime liveness probe, no Flux-timing race. Because
 the decision reads GIT (the durable truth), a management cold-start (etcd wiped) sees the true
-roster IMMEDIATELY — it never waits for Flux to re-apply it, even after scaling. The Flux-applied
-`PoolReflection` in etcd is then a **pure operator VIEW** (`kubectl get poolreflection` — the
-observed cluster state), never on the decision path. **If git is unreadable (token / network), the
+roster IMMEDIATELY — it never waits for anything to re-apply it, even after scaling. **Flux is OUT
+of the reflection loop**: the `PoolReflection` is a git-only document (never applied to etcd, no CRD);
+the operator view is the intention's **status** (`kubectl get poolintention` — the controller renders
+the observed roster there). The DECISION reads git. **If git is unreadable (token / network), the
 controller HOLDS — it NEVER greenfields on an unconfirmed absence.** Random CAPRKE2-minted node
 names are fine precisely because the reflector persists them and re-adopts them next boot.
 
@@ -178,7 +179,7 @@ Machines are CAPRKE2/CAPN's — the controller reads their status, it does not d
 ====
 
 Greenfield is therefore **operator-armed, never controller-decided**: the only way to arm a
-fresh day-0 is the operator dropping the cluster's reflection (its manifests branch) — a
+fresh day-0 is the operator dropping the cluster's reflection document (on the manifests branch) — a
 deliberate, human-in-the-loop reset. The controller never abandons a cluster whose reflection
 survives.
 
@@ -854,25 +855,31 @@ diverges from `ClusterIntention.spec` (dynamic scaling → CAPI-minted names, a 
 replaced), the branch reflects the *intent*, not *reality*; a cold-start then
 reproduces what the render *believes*, not what *was*.
 
-The **reflector** closes that gap by running the OTHER direction, **cluster→git**:
-the controller observes the live cluster and commits the observed roster back onto
-the managing branch, so the branch is reconciled FROM reality. `git == reality`,
+The **reflector** closes that gap by running the OTHER direction, **cluster→git**: a
+5th reconciler in seed-incluster observes the live cluster and commits the observed
+roster as a **git-only YAML document on the managing `manifests/<cluster>` branch**
+(alongside the intentions, preserved across the wholesale render by the render's *escape*
+allow-list — <<reflector-no-merge>>) — so git is reconciled FROM reality. `git == reality`,
 and a cold-start reproduces the actual cluster even after scaling — **unconditional**
-determinism.
+determinism. It is **uni-directional and self-contained**: it writes the document
+(observe→note) and reads it for the adopt-vs-greenfield DECISION; the operator view is the
+intention's **status** (no etcd copy — the document is never applied). **Flux is OUT of the
+reflection loop** — one owner, one place; Flux only reconciles the render's manifests.
 
 [IMPORTANT]
 ====
-Determinism has two grades, and the reflector is not "more deterministic" magic —
-it changes *which* is guaranteed:
+The reflector is FOUNDATIONAL, not a scaling add-on: its `PoolReflection`'s PRESENCE is
+the adopt-vs-greenfield switch (<<existence>>), so it is the FIRST thing built. It also
+raises determinism from **conditional** to **unconditional**:
 
 * **conditional** (canonical roster) — a pure `f(clusterName)`; deterministic, but
   git may `≠` reality under any drift/scale.
 * **unconditional** (reflector) — git is reconciled from reality → it *is* reality →
   a cold-start restores the actual set.
 
-So the reflector is the tool for the NON-deterministic case (dynamic scaling). With
-named pets and no scaling you already have determinism; the reflector is what you
-reach for once you open scaling.
+With named pets and no scaling the reflected roster == the seed, so the scaling *benefit*
+is latent — but the reflection's presence is STILL the boot-one adopt-vs-greenfield switch. That
+is why it is built first, not deferred to when scaling opens.
 ====
 
 [[reflector-boundary]]
@@ -949,15 +956,17 @@ reality mismatch — a reflection over gone instances, or a gone reflection over
 ours). Our controller only OBSERVES reality and NOTES it here.
 
 [[reflector-translation]]
-=== etcd ↔ git — the controller is a bidirectional ownerRef translator
+=== cluster→git export + a name-based owner annotation — GIT-ONLY
 
-An etcd `ownerReference` carries a **UID**, and every UID is regenerated at a
-cold-start — git cannot carry it. So the relation is stored two ways by medium, and
-the controller translates between them:
+The reflector is **uni-directional**: it EXPORTS (cluster→git) the observed roster + a name-based
+owner annotation onto the managing `manifests/<cluster>` branch (alongside the intentions). The
+`PoolReflection` is **git-only** — it is NEVER
+applied to etcd (no Flux, no controller apply, no ownerRef re-stamp). The adopt-vs-greenfield DECISION
+reads it from git; the operator sees the observed state on the *intention's status* (below).
 
-* **etcd** — native `ownerReferences` (UID; k8s GC works in-cluster);
-* **git** — an annotation mirroring `OwnerReference` MINUS the UID:
-+
+An etcd `ownerReference` carries a **UID** regenerated at every cold-start — git cannot carry it. So
+the reflection records its owner (its `PoolIntention`) UID-free, as an annotation:
+
 [source,yaml]
 ----
 metadata:
@@ -966,34 +975,25 @@ metadata:
       {"apiVersion":"cluster.seedmatic.io/v1alpha1","kind":"PoolIntention",
        "name":"bioskop-wrkld-control-node","namespace":"rke2lab-bioskop-wrkld"}
 ----
-+
-(`namespace` is same-ns-implied by the k8s ownerRef rule; explicit is harmless and
-future-proofs cross-ns.)
 
-The annotation is the **source of truth of the relation**; the `ownerRef` is a
-**derived etcd projection** the controller re-maintains. The round-trip:
+This is for **traceability + orphan detection** (git-side), not k8s GC: a reflection whose
+`PoolIntention` no longer exists is an ORPHAN → the reflector deletes its file on the
+`manifests/<cluster>` branch. There is no etcd copy to garbage-collect.
 
 [mermaid,cluster-seeding-reflector-roundtrip,svg]
 ----
 sequenceDiagram
   participant C as seed-incluster
-  participant E as etcd (in-cluster)
-  participant G as git (manifests/&lt;mgmt&gt;)
-  participant F as Flux
-  Note over C,G: EXPORT — cluster→git
-  C->>E: read observed Machines + ownerRef (UID)
-  C->>C: strip UID → build owner-ref annotation {kind,name,namespace}
-  C->>G: commit PoolReflection (roster) + annotation<br/>(App-token · retry-on-conflict · NEVER force-push)
-  Note over G,E: RECONCILE — git→cluster (the inverse)
-  G->>F: PoolReflection present on branch
-  F->>E: apply PoolReflection (annotation, NO ownerRef — old UID is dead)
-  C->>E: read annotation → resolve owner {kind,name,namespace}<br/>→ re-stamp ownerRef (NEW UID) once the owner exists
-  Note over C,E: re-stamp = a self-healing invariant EVERY reconcile
+  participant E as etcd
+  participant G as git (manifests/&lt;cluster&gt;)
+  Note over C,G: EXPORT — cluster→git (the reflector's ONLY write)
+  C->>E: observe live Machines (the roster)
+  C->>C: build PoolReflection + owner annotation {kind,name,namespace} (UID-free)
+  C->>G: commit onto manifests/&lt;cluster&gt;<br/>(App-token · retry-on-conflict · NEVER force-push)
+  Note over C,G: DECIDE — the controller reads manifests/&lt;cluster&gt; from git → adopt vs greenfield
+  Note over C,E: VIEW — the controller surfaces the observed roster on the intention's STATUS (kubectl)
+  Note over C,G: PRUNE — owner PoolIntention gone ⇒ reflector deletes its file (no etcd copy to GC)
 ----
-
-The re-stamp is not a special cold-start path: every reconcile, an object bearing the
-`owner-ref` annotation without a live `ownerRef` gets it re-stamped. Exactly the
-`OwnerReference`-remap-on-restore pattern Velero uses.
 
 [[reflector-precedence]]
 === Precedence by presence — PoolReflection ELSE the canonical seed
@@ -1011,33 +1011,36 @@ flowchart TD
   classDef src fill:#e1d5e7,stroke:#9673a6
 ----
 
-The reflection's *presence* IS the adopt-vs-greenfield switch — no special rule, no runtime
-probe, and read **directly from git** (not etcd — immune to Flux apply-ordering; the etcd copy is
-an operator view only, see <<existence>>). Present → ADOPT the observed roster (pre-create the named `Machine`s so CAPRKE2 adopts
-by name); absent → GREENFIELD (create the RCP with `replicas`, CAPRKE2 provisions its own, the
-reflector writes the first reflection). The canonical `PoolIntention.spec.nodes` seed is used
-ONLY to SIZE a greenfield RCP; once the cluster has run, the reflection is the roster of record.
-Reflection ↔ reality mismatches are CAPI/CAPN's to reconcile (their layer, not ours).
+The reflection's *presence* IS the adopt-vs-greenfield switch — no special rule, no runtime probe.
+It is read **directly from git** (the `PoolReflection` is git-only; there is no etcd copy — the
+operator view is the intention's status, <<reflector-translation>>). Reading git makes the switch
+immune to any apply-ordering at bootstrap. Present → ADOPT the observed roster (pre-create the named
+`Machine`s so CAPRKE2 adopts by name); absent → GREENFIELD (create the RCP with `replicas`, CAPRKE2
+provisions its own, the reflector writes the first reflection). The canonical `PoolIntention.spec.nodes`
+seed is used ONLY to SIZE a greenfield RCP; once the cluster has run, the reflection is the roster of
+record. Reflection ↔ reality mismatches are CAPI/CAPN's to reconcile (their layer, not ours).
 
 [[reflector-no-merge]]
-=== The render is WHOLESALE — the reflector's file survives by a render carve-out
+=== Same branch, the render's ESCAPE preserves the reflection — no CRD, no Flux
 
-Two committers touch the managing branch: `seed-master`'s render (git→cluster source) and the
-reflector (cluster→git). The render is **wholesale**: every publish empties the branch worktree
-(`git rm -rf .`) and re-materialises ONLY its own rendered files, committing with `git add -A`
-(deletions staged). So "disjoint files" is NOT enough on its own — a `PoolReflection` the render
-does not re-write would be committed as a DELETION and pushed away.
+The reflection document lives on the **managing `manifests/<cluster>` branch, alongside the
+intentions** — everything about the cluster in one place (its SOT). The render regenerates that branch
+**wholesale** (`git rm -rf .` + `git add -A` — any file it does not re-write is staged as a deletion),
+so the reflection must **escape** the render. It reuses the render's EXISTING escape mechanism: the
+rehydrate allow-list that already preserves `.secret-in-cluster-cellar.yml` across the empty
+(`smudgeFromHead` / `rehydrateInClusterAsset`). Adding the reflection document to that allow-list makes
+the render **rehydrate it from HEAD before staging** — it survives untouched. So **single-owner holds
+at the FILE grain**: the reflector owns the reflection document's CONTENT, the render owns everything
+else and merely PRESERVES the reflection across its regeneration.
 
-The render therefore **carves out** the reflector's files: before staging, it **rehydrates** every
-live `PoolReflection` from HEAD — exactly the mechanism it already uses to preserve
-`.secret-in-cluster-cellar.yml` across the empty (`smudgeFromHead` / the rehydrate allow-list) — and
-prunes only the ORPHANS (a `PoolReflection` for a cluster dropped from `workloadTargets`). So the
-reflector owns the CONTENT of those files; the render owns their SURVIVAL across its wholesale
-regeneration. The two never 3-way-merge (disjoint paths); both `fetch → commit → push` with
-**retry-on-conflict** and **never force-push** — the `image-automation-controller` loop (the blessed
-Flux precedent for a controller committing to git; the git write token is the existing `github-token`
-App machinery). The precedence decision lives in the CONTROLLER (`PoolReflection` presence), not in
-git's merge semantics — a reconciler's job, not git's.
+Two committers touch the branch (render + reflector), but never 3-way-merge — they own disjoint
+FILES. The reflector `fetch → commit → push`es its document with **retry-on-conflict** and **never
+force-push** (the `image-automation-controller` loop; git write token = the existing `github-token`
+App machinery); the render, re-fetching on a push conflict, rehydrates whatever reflection is at HEAD,
+so a concurrent reflect is never lost. **Flux is OUT of the reflection loop** — the document is
+git-only (never applied), read directly by the controller for the DECISION; no `PoolReflection` CRD, no
+Flux `GitRepository`/`Kustomization`/`dependsOn` for it. The decision lives in the CONTROLLER
+(`PoolReflection` presence in git), not in git's merge semantics.
 
 .The commit worktree is a CACHE — ephemeral by default, a PVC only if it earns it
 [NOTE]
@@ -1136,9 +1139,9 @@ LXCCluster, Machines → LXCMachines) → CAPN destroys the Incus instances. Our
 | kill the Incus instance(s) ONLY | the reflection SURVIVES → still ADOPT mode; the roster
 now names gone instances → CAPI/CAPN/CAPRKE2 reconcile that mismatch (their layer). Not, by
 itself, a greenfield. | (their layer)
-| drop the instances AND the `PoolReflection` (branch) | the deliberate GREENFIELD RESET:
-next reconcile sees no reflection → greenfield → CAPRKE2 re-provisions → reflector re-notes.
-The operator-armed day-0 (see <<existence>>). | **yes**
+| drop the instances AND the reflection document (on `manifests/<cluster>`) | the deliberate
+GREENFIELD RESET: next reconcile reads git, sees no reflection → greenfield → CAPRKE2 re-provisions
+→ reflector re-notes. The operator-armed day-0 (see <<existence>>). | **yes**
 | delete the Intention from etcd (still in `workloadTargets`) | ownerRef cascade tears
 the mirror + CAPI graph + instances down → Flux/the render re-applies the Intention →
 greenfield. | **yes**
@@ -1325,27 +1328,32 @@ carries its primacy as the primary out-of-band seeder.
   with the blueprint host identities + author the per-remote identity Secret.
 . **Rename mechanics** — order + CRD-group migration for the three renames
   above.
-. **The reflector — cluster→git — is the FIRST build (was deferred).** It produces the
-  `PoolReflection` on which the adopt-vs-greenfield switch (<<existence>>) turns, so it is
-  FOUNDATIONAL, not a scaling add-on. Pieces: the `PoolReflection` CR (observed roster, typed)
-  + the name-based `owner-ref` annotation; the export/re-stamp ownerRef translation
-  (<<reflector-translation>>); the OBSERVE→NOTE loop (watch `Machine`/`LXCMachine` → derive the
-  roster → commit `PoolReflection` — `image-automation-controller` pattern: App-token,
-  retry-on-conflict, NEVER force-push, stage ONLY the `PoolReflection`); go-git READ for the
-  DECISION (the presence switch reads the branch directly, NOT etcd → immune to Flux apply-ordering;
-  the etcd copy is an operator view only; HOLD if git is unreadable, never greenfield on an
-  unconfirmed absence). **VERIFY** the chosen go-git version's
-  smudge/clean behaviour + the mixed-toolchain plaintext hazard. Worktree ephemeral by default
-  (PVC only if clones prove costly). Prune symmetry (a finalizer prunes within a live cluster;
-  the render/manifests-cli prunes orphan `PoolReflection`s for clusters dropped from
-  `workloadTargets`). Annex-semantics fork (lean **restore-scaled**) settled when scaling opens.
-. **RENDER carve-out (rke2lab — a HARD dependency of the reflector).** The render is WHOLESALE
-  (`git rm -rf .` + `git add -A`, see <<reflector-no-merge>>), so a committed `PoolReflection`
-  vanishes on the next publish unless the render PRESERVES it. Add the `PoolReflection` files to the
-  render's rehydrate allow-list — the `smudgeFromHead` / `rehydrateInClusterAsset` path in
-  `ManifestSynthesisScenario`, the SAME mechanism that preserves `.secret-in-cluster-cellar.yml`:
-  rehydrate every live one from HEAD before `stageAll`, prune only the orphans (clusters dropped from
-  `workloadTargets`). Without this the reflector is not durable — code it alongside the reflector.
+. **The reflector — cluster→git — is the FIRST build.** It produces the `PoolReflection` on which
+  the adopt-vs-greenfield switch (<<existence>>) turns, so it is FOUNDATIONAL. A 5th reconciler in
+  seed-incluster, **uni-directional (observe → git), and Flux is OUT of its loop**:
+  * `PoolReflection` is a **git-only YAML document** on the managing `manifests/<cluster>` branch,
+    alongside the intentions — NOT an installed CRD (never applied to etcd). Keep a plain Go struct
+    (yaml tags) to (de)serialize it; CR-shaped for readability, but no scheme registration / deepcopy
+    / CRD manifest.
+  * OBSERVE→NOTE: watch `Machine`/`LXCMachine` → derive the roster → commit the document (App-token
+    `github-token`, retry-on-conflict, NEVER force-push) + a name-based `owner-ref` annotation
+    (traceability + orphan detection, <<reflector-translation>>).
+  * DECISION: read the document from git (presence = adopt vs greenfield) — no etcd, no Flux ordering.
+  * OPERATOR VIEW: surface the observed roster/count on the intention's **status** (`ClusterIntention`
+    / `PoolIntention.status`) — the controller's normal status render, so `kubectl get poolintention`
+    shows the live state. (No etcd `PoolReflection` copy.)
+  * PRUNE: the reflector deletes the orphan document from the branch (owner `PoolIntention` gone).
+  **VERIFY** the chosen go-git version's smudge/clean behaviour + the mixed-toolchain plaintext hazard.
+  Worktree ephemeral by default (PVC only if clones prove costly). Annex-semantics fork (lean
+  **restore-scaled**) settled when scaling opens.
+. **rke2lab render — add the reflection document to the ESCAPE allow-list (a HARD dependency).** The
+  reflection shares the wholesale `manifests/<cluster>` branch, so the render must PRESERVE it: add the
+  reflection document to the render's existing rehydrate/escape allow-list — the `smudgeFromHead` /
+  `rehydrateInClusterAsset` path in `ManifestSynthesisScenario`, the SAME mechanism that preserves
+  `.secret-in-cluster-cellar.yml` (rehydrate from HEAD before `stageAll`). No new Flux
+  `GitRepository`/`Kustomization` (Flux is out of the reflection loop), and **do NOT stage a
+  `PoolReflection` CRD** — there is none to install (it is a git-only
+  document).
 . **Greenfield = declare the shape, observe, note (per <<greenfield-arm>>).** When no reflection:
   ensure `Cluster` + `RKE2ControlPlane`(`replicas` = seed size) + `LXCMachineTemplate` +
   injected config, UNPAUSED, and create NO `Machine`s → CAPRKE2 provisions its own → the

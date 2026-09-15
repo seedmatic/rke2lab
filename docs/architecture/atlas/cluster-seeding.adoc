@@ -58,8 +58,8 @@ flowchart LR
   end
   subgraph A[after — vision: OBSERVE + NOTE, the reflection IS the switch]
     a_int["ClusterIntention / PoolIntention<br/>desired · Flux/git"]
-    a_ref["cluster→git reflector<br/>OBSERVE Machines → NOTE the roster<br/>ownerRef↔annotation (image-automation · App-token)"]
-    a_refl["PoolReflection<br/>observed DURABLE roster · git"]
+    a_ref["cluster→git reflector (uni-directional)<br/>OBSERVE Machines → NOTE the roster · Flux OUT<br/>image-automation · App-token"]
+    a_refl["PoolReflection<br/>git-only YAML doc · observed DURABLE roster<br/>on manifests/&lt;cluster&gt; (escape-preserved)"]
     a_sw{"PoolReflection present on the branch?<br/>(read from git — not etcd; immune to Flux timing)"}
     a_adopt["ADOPT · pre-create the named Machines<br/>CAPRKE2 adopts by name"]
     a_green["GREENFIELD · declare RCP(replicas)<br/>CAPRKE2 provisions its OWN · we only OBSERVE"]
@@ -82,11 +82,12 @@ flowchart LR
 == Verdict — does it hold?
 
 . *The reflection IS the switch, and we only OBSERVE.* The 2×2 stays; the vision ADDS one role —
-  `PoolReflection` (observed, DURABLE, git). Its PRESENCE decides adopt vs greenfield — NO runtime
-  liveness probe, and read directly from GIT (not etcd → immune to Flux apply-ordering at bootstrap;
-  the etcd copy is a pure operator view): present → adopt the observed roster (pre-create the named Machines); absent →
-  greenfield. The controller never drives the Machine lifecycle: in greenfield it declares the RCP
-  `replicas` and CAPRKE2 provisions; it only observes and NOTES the result. What it AVOIDS is the
+  `PoolReflection`, a **git-only YAML document** (observed, DURABLE) on the managing `manifests/<cluster>`
+  branch — NOT a CRD, never applied to etcd. Its PRESENCE decides adopt vs greenfield — NO runtime
+  liveness probe, read directly from GIT (immune to any apply-ordering; the operator view is the
+  intention's *status*, not an etcd copy): present → adopt the observed roster (pre-create the named
+  Machines); absent → greenfield. The controller never drives the Machine lifecycle: in greenfield it
+  declares the RCP `replicas` and CAPRKE2 provisions; it only observes and NOTES the result. What it AVOIDS is the
   reverted "flip" (the controller deleting/re-creating Machines to force a shape), which raced
   CAPRKE2's replica controller.
 
@@ -95,10 +96,10 @@ flowchart LR
   App-token). The precedence decision lives in the controller (`PoolReflection` presence), not in git's
   merge semantics; the two committers (render, reflector) own disjoint files, so git never 3-way-merges.
 
-. *ownerRef survives the UID death.* etcd `ownerReferences` carry a UID regenerated at every cold-start;
-  the reflector translates them to a name-based `owner-ref` annotation on export and re-stamps the
-  native ownerRef on reconcile — the annotation is the source of truth of the relation, the ownerRef a
-  derived projection. Exactly Velero's remap-on-restore.
+. *The document is git-only — no CRD, no etcd apply.* The reflector writes a name-based `owner-ref`
+  annotation (UID-free, so it survives the cold-start UID death) purely for TRACEABILITY + orphan
+  detection: a reflection whose owner `PoolIntention` is gone is deleted by the reflector on the branch.
+  There is no etcd copy and no ownerRef re-stamp — the operator view is the intention's status.
 
 . *The boundary is structural, not a preference.* The root (`STANDALONE`, self) stays canonical because
   it CANNOT reflect its own state during its own cold-start (the controller does not exist yet at its
