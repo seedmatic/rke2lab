@@ -43,22 +43,10 @@ rules:
   - clusterintentions/status
   - pooladoptions/status
   - poolintentions/status
-  - poolreflections/status
   verbs:
   - get
   - patch
   - update
-- apiGroups:
-  - cluster.seedmatic.io
-  resources:
-  - poolreflections
-  verbs:
-  - create
-  - get
-  - list
-  - patch
-  - update
-  - watch
 - apiGroups:
   - cluster.x-k8s.io
   resources:
@@ -94,4 +82,12 @@ rules:
   - list
   - patch
   - update
+  - watch
+- apiGroups:
+  - source.toolkit.fluxcd.io
+  resources:
+  - gitrepositories
+  verbs:
+  - get
+  - list
   - watch

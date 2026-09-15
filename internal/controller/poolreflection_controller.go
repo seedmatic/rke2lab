@@ -37,10 +37,10 @@ type PoolReflectionReconciler struct {
 	Git *ReflectorGit
 }
 
+// PoolReflection is a git-only YAML document (not a k8s resource), so no poolreflections RBAC.
 // +kubebuilder:rbac:groups=cluster.seedmatic.io,resources=poolintentions,verbs=get;list;watch
-// +kubebuilder:rbac:groups=cluster.seedmatic.io,resources=poolreflections,verbs=get;list;watch;create;update;patch
-// +kubebuilder:rbac:groups=cluster.seedmatic.io,resources=poolreflections/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=machines,verbs=get;list;watch
+// +kubebuilder:rbac:groups=source.toolkit.fluxcd.io,resources=gitrepositories,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 
 // Reconcile observes the pool's live Machines and reflects the roster to git. Anchored on the
@@ -49,6 +49,13 @@ func (r *PoolReflectionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	var intention adoptionv1alpha1.PoolIntention
 	if err := r.Get(ctx, req.NamespacedName, &intention); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	// The STANDALONE boundary: the SELF cluster (the mgmt plane this controller runs on) is CANONICAL,
+	// never reflected — it cannot reflect its own state during its own cold-start (the controller does
+	// not exist yet at its bootstrap). Only IN_CLUSTER managed clusters are reflector-eligible.
+	if r.SelfCluster != "" && intention.Spec.ClusterRef == r.SelfCluster {
+		return ctrl.Result{}, nil
 	}
 
 	roster, err := r.observeRoster(ctx, intention.Spec.ClusterRef, intention.Spec.Namespace)

@@ -9,11 +9,14 @@ package main
 import (
 	"flag"
 	"os"
+	"strings"
 
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
@@ -97,13 +100,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	// The reflector (cluster→git). Git is nil for now → OBSERVE-ONLY (derives + logs the roster,
-	// writes nothing); the go-git write surface (part b) wires Git once implemented.
+	// The reflector (cluster→git). Its git-write surface is enabled ONLY when REFLECTOR_REPO_URL is
+	// set (the rke2lab render wires the env); otherwise Git is nil → OBSERVE-ONLY (derives + logs the
+	// roster, writes nothing). Keeps the controller safe until the reflector is configured to write.
 	if err := (&controller.PoolReflectionReconciler{
 		Client:      mgr.GetClient(),
 		Scheme:      mgr.GetScheme(),
 		SelfCluster: os.Getenv("SELF_CLUSTER_NAME"),
-		Git:         nil,
+		Git:         reflectorGitFromEnv(mgr.GetClient()),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PoolReflection")
 		os.Exit(1)
@@ -122,5 +126,36 @@ func main() {
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
+	}
+}
+
+// reflectorGitFromEnv builds the reflector's git-write surface, or nil (OBSERVE-ONLY) when
+// REFLECTOR_WRITE is not "true". Write is opt-in (default OFF) so a deploy never surprise-writes; the
+// rke2lab render sets REFLECTOR_WRITE=true once the reflector loop is wanted live. The repo URL is
+// DERIVED from the Flux GitRepository (SourceRef, the in-cluster projection of the manifests SSOT) —
+// never injected. Token defaults to the gtm-minted Secret rke2lab-system/github-token key "token".
+func reflectorGitFromEnv(c client.Client) *controller.ReflectorGit {
+	if !strings.EqualFold(os.Getenv("REFLECTOR_WRITE"), "true") {
+		return nil
+	}
+	getenv := func(key, def string) string {
+		if v := os.Getenv(key); v != "" {
+			return v
+		}
+		return def
+	}
+	return &controller.ReflectorGit{
+		Client: c,
+		SourceRef: types.NamespacedName{
+			Namespace: getenv("REFLECTOR_SOURCE_NAMESPACE", "flux-system"),
+			Name:      getenv("REFLECTOR_SOURCE_NAME", "rke2lab"),
+		},
+		TokenSecret: types.NamespacedName{
+			Namespace: getenv("REFLECTOR_TOKEN_SECRET_NAMESPACE", "rke2lab-system"),
+			Name:      getenv("REFLECTOR_TOKEN_SECRET_NAME", "github-token"),
+		},
+		TokenSecretKey: getenv("REFLECTOR_TOKEN_SECRET_KEY", "token"),
+		AuthorName:     getenv("REFLECTOR_AUTHOR_NAME", "seed-incluster reflector"),
+		AuthorEmail:    getenv("REFLECTOR_AUTHOR_EMAIL", "seed-incluster@seedmatic.io"),
 	}
 }
