@@ -60,7 +60,7 @@ flowchart LR
     a_int["ClusterIntention / PoolIntention<br/>desired · Flux/git"]
     a_ref["cluster→git reflector<br/>OBSERVE Machines → NOTE the roster<br/>ownerRef↔annotation (image-automation · App-token)"]
     a_refl["PoolReflection<br/>observed DURABLE roster · git"]
-    a_sw{"PoolReflection present?"}
+    a_sw{"PoolReflection present on the branch?<br/>(read from git — not etcd; immune to Flux timing)"}
     a_adopt["ADOPT · pre-create the named Machines<br/>CAPRKE2 adopts by name"]
     a_green["GREENFIELD · declare RCP(replicas)<br/>CAPRKE2 provisions its OWN · we only OBSERVE"]
     a_det["determinism UNCONDITIONAL · git == reality<br/>CAPI/CAPN/CAPRKE2 own the Machine lifecycle"]
@@ -83,7 +83,8 @@ flowchart LR
 
 . *The reflection IS the switch, and we only OBSERVE.* The 2×2 stays; the vision ADDS one role —
   `PoolReflection` (observed, DURABLE, git). Its PRESENCE decides adopt vs greenfield — NO runtime
-  liveness probe: present → adopt the observed roster (pre-create the named Machines); absent →
+  liveness probe, and read directly from GIT (not etcd → immune to Flux apply-ordering at bootstrap;
+  the etcd copy is a pure operator view): present → adopt the observed roster (pre-create the named Machines); absent →
   greenfield. The controller never drives the Machine lifecycle: in greenfield it declares the RCP
   `replicas` and CAPRKE2 provisions; it only observes and NOTES the result. What it AVOIDS is the
   reverted "flip" (the controller deleting/re-creating Machines to force a shape), which raced
