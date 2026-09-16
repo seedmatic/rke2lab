@@ -573,15 +573,16 @@ func (r *PoolAdoptionReconciler) rke2ControlPlaneObj(spec adoptionv1alpha1.PoolA
 // node-base by fingerprint. It carries NO inline config/devices: CAPN references ONLY incus
 // profiles (both created at grow by rke2lab's InstanceGrow, in the same project CAPN provisions
 // into):
-//   - "node" — the common node profile: root disk + raw.lxc + security.* + linux.kernel_modules
-//     (the kernel-6.18-safe set) + the kmsg/zfs unix-char devices.
-//   - "node-<cluster>" — the cluster's two NICs (lan0 on lan-br, vmnet0 on vmnet-<role>) with
-//     DYNAMIC MAC/IP: the vmnet bridge already carries a dynamic ipv4.dhcp.ranges, so a random-MAC
-//     greenfield node DHCPs an IP (avahi/mDNS is IP-agnostic — no reservation needed).
+//   - "node-base" — the common node profile: root disk + raw.lxc + security.* +
+//     linux.kernel_modules (the kernel-6.18-safe set) + the kmsg/zfs unix-char devices + lan0 (the
+//     cluster-invariant LAN NIC on lan-br, shared by every cluster).
+//   - "node-<cluster>" — the cluster's ONLY per-cluster NIC: vmnet0 on vmnet-<role>, DYNAMIC MAC/IP
+//     (the vmnet bridge already carries a dynamic ipv4.dhcp.ranges, so a random-MAC greenfield node
+//     DHCPs an IP; avahi/mDNS is IP-agnostic — no reservation needed).
 func lxcMachineSpec(clusterName, fingerprint string) map[string]any {
 	return map[string]any{
 		"instanceType": "container",
-		"profiles":     []any{"node", nodeProfileName(clusterName)},
+		"profiles":     []any{"node-base", nodeProfileName(clusterName)},
 		"image":        map[string]any{"fingerprint": fingerprint},
 	}
 }
