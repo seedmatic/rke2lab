@@ -1,0 +1,19 @@
+apiVersion: cluster.seedmatic.io/v1alpha1
+kind: PoolReflection
+metadata:
+  annotations:
+    cluster.seedmatic.io/owner-ref: '{"apiVersion":"cluster.seedmatic.io/v1alpha1","kind":"PoolIntention","name":"bioskop-wrkld-control-node","namespace":"rke2lab-bioskop-wrkld"}'
+  creationTimestamp: null
+  labels:
+    cluster.seedmatic.io/cluster: bioskop-wrkld
+    cluster.seedmatic.io/pool: control-node
+  name: bioskop-wrkld-control-node
+  namespace: rke2lab-bioskop-wrkld
+spec:
+  clusterRef: bioskop-wrkld
+  namespace: rke2lab-bioskop-wrkld
+  nodes:
+  - name: bioskop-wrkld-control-plane-khf6f
+  pool: control-node
+status:
+  lastReflectTime: null
