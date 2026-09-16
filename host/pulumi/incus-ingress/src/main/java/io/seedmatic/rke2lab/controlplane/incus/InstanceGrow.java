@@ -86,11 +86,19 @@ public final class InstanceGrow {
   public void grow(InstanceGrowPlan plan, NodeBootstrapMaterial material) {
     final Project project = ensureProject();
     ensureNetworks(project, plan.network());
-    ensureNodeProfiles(project, plan.network());
-    final Output<String> profileName = ensureProfile(project);
+    // The instance's profiles, in incus precedence order (LAST wins): the grown cluster's
+    // node-<cluster> (vmnet0) then node-base (root+config+zfs+lan0). Each is an Output so the
+    // instance dependsOn BOTH profiles — ordered profile-before-instance.
+    final Output<String> nodeClusterProfile = ensureNodeProfiles(project, plan.network());
+    final Output<String> nodeBaseProfile = ensureProfile(project);
     final Output<String> imageFingerprint = ensureImage(plan.image(), project);
     final Instance instance =
-        createInstance(plan, project, profileName, imageFingerprint, material);
+        createInstance(
+            plan,
+            project,
+            List.of(nodeClusterProfile, nodeBaseProfile),
+            imageFingerprint,
+            material);
     poseNodeBaseAliasAndGcImages(imageFingerprint, instance);
   }
 
@@ -246,16 +254,29 @@ public final class InstanceGrow {
    * already-existing profile is adopted by omission (its config is host-owned), mirroring {@link
    * #ensureProfile}.
    */
-  private void ensureNodeProfiles(Resource projectDependency, GrowNetworkView view) {
-    view.clusterBridges()
-        .forEach((cluster, bridge) -> ensureNodeProfile(cluster, bridge, projectDependency));
+  private Output<String> ensureNodeProfiles(Resource projectDependency, GrowNetworkView view) {
+    Output<String> grownClusterProfile = null;
+    for (final var entry : view.clusterBridges().entrySet()) {
+      final Output<String> profile =
+          ensureNodeProfile(entry.getKey(), entry.getValue(), projectDependency);
+      // The grown node attaches to the cluster whose vmnet bridge == nodeBridgeName — return THAT
+      // profile's name Output so the instance dependsOn it (ordered profile-before-instance).
+      if (entry.getValue().bridgeName().equals(view.nodeBridgeName())) {
+        grownClusterProfile = profile;
+      }
+    }
+    if (grownClusterProfile == null) {
+      throw new IllegalStateException(
+          "no co-located cluster bridge matches the grown node's bridge " + view.nodeBridgeName());
+    }
+    return grownClusterProfile;
   }
 
-  private void ensureNodeProfile(
+  private Output<String> ensureNodeProfile(
       String cluster, GrowNetworkView.ClusterBridge bridge, Resource projectDependency) {
     final String profileName = "node-" + cluster;
     if (importLookup.existingProfileId(profileName, config.incusProject()).isPresent()) {
-      return;
+      return Output.of(profileName);
     }
     final CustomResourceOptions options =
         CustomResourceOptions.builder()
@@ -265,14 +286,15 @@ public final class InstanceGrow {
             .ignoreChanges(List.of("name", "project", "devices", "config", "description"))
             .build();
 
-    new Profile(
-        "seed-node-profile-" + cluster,
-        ProfileArgs.builder()
-            .name(profileName)
-            .project(config.incusProject())
-            .devices(List.of(profileNic("vmnet0", "vmnet0", "bridged", bridge.bridgeName())))
-            .build(),
-        options);
+    return new Profile(
+            "seed-node-profile-" + cluster,
+            ProfileArgs.builder()
+                .name(profileName)
+                .project(config.incusProject())
+                .devices(List.of(profileNic("vmnet0", "vmnet0", "bridged", bridge.bridgeName())))
+                .build(),
+            options)
+        .name();
   }
 
   private ProfileDeviceArgs profileNic(String name, String ifName, String nictype, String parent) {
@@ -288,21 +310,6 @@ public final class InstanceGrow {
   private ProfileDeviceArgs profileDevice(
       String name, String type, Map<String, String> properties) {
     return ProfileDeviceArgs.builder().name(name).type(type).properties(properties).build();
-  }
-
-  /**
-   * The grown node's per-cluster profile ({@code node-<cluster>}) — resolved as the co-located
-   * cluster whose vmnet bridge the node attaches to ({@link GrowNetworkView#nodeBridgeName}). The
-   * instance references {@code [node-<cluster>, node-base]}, mirroring the CAPN lxcMachineSpec.
-   */
-  private String grownClusterProfileName(GrowNetworkView network) {
-    for (final var entry : network.clusterBridges().entrySet()) {
-      if (entry.getValue().bridgeName().equals(network.nodeBridgeName())) {
-        return "node-" + entry.getKey();
-      }
-    }
-    throw new IllegalStateException(
-        "no co-located cluster bridge matches the grown node's bridge " + network.nodeBridgeName());
   }
 
   /**
@@ -365,7 +372,7 @@ public final class InstanceGrow {
   private Instance createInstance(
       InstanceGrowPlan plan,
       Resource projectDependency,
-      Output<String> profileName,
+      List<Output<String>> profileNames,
       Output<String> imageFingerprint,
       NodeBootstrapMaterial material) {
     // The privileged-container config (raw.lxc, security.*, kernel_modules) rides the `node`
@@ -415,11 +422,10 @@ public final class InstanceGrow {
             .project(config.incusProject())
             .image(imageFingerprint)
             // [node-<cluster>, node-base] — same set + order as the CAPN lxcMachineSpec (node-base
-            // LAST = precedence). The instance's own inline NICs (deterministic hwaddr, below)
-            // override the profiles' dynamic lan0/vmnet0, so the standalone keeps its reservation.
-            .profiles(
-                profileName.applyValue(
-                    base -> List.of(grownClusterProfileName(plan.network()), base)))
+            // LAST = precedence). Output.all threads BOTH profiles' create-dependencies. The
+            // instance's own inline NICs (deterministic hwaddr, below) override the profiles'
+            // dynamic lan0/vmnet0, so the standalone keeps its reservation.
+            .profiles(Output.all(profileNames))
             .config(configWithFingerprint)
             .running(true)
             .devices(seedInstanceDevices(plan))
