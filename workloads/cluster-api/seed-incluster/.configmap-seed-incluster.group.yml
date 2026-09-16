@@ -10,6 +10,7 @@ data:
     rbac.authorization.k8s.io/v1|ClusterRole||seed-incluster
     rbac.authorization.k8s.io/v1|ClusterRoleBinding||seed-incluster
     apps/v1|Deployment|rke2lab-system|seed-incluster
+    v1|Secret|rke2lab-system|github-token-write
 kind: ConfigMap
 metadata:
   annotations:
