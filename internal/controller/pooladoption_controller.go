@@ -582,7 +582,9 @@ func (r *PoolAdoptionReconciler) rke2ControlPlaneObj(spec adoptionv1alpha1.PoolA
 func lxcMachineSpec(clusterName, fingerprint string) map[string]any {
 	return map[string]any{
 		"instanceType": "container",
-		"profiles":     []any{"node-base", nodeProfileName(clusterName)},
+		// Profile ORDER matters — incus applies them left-to-right, LAST wins. node-base comes LAST so
+		// its root/config/zfs/lan0 take precedence over the per-cluster node-<cluster> (vmnet0 only).
+		"profiles":     []any{nodeProfileName(clusterName), "node-base"},
 		"image":        map[string]any{"fingerprint": fingerprint},
 	}
 }
