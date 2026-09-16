@@ -291,6 +291,21 @@ public final class InstanceGrow {
   }
 
   /**
+   * The grown node's per-cluster profile ({@code node-<cluster>}) — resolved as the co-located
+   * cluster whose vmnet bridge the node attaches to ({@link GrowNetworkView#nodeBridgeName}). The
+   * instance references {@code [node-<cluster>, node-base]}, mirroring the CAPN lxcMachineSpec.
+   */
+  private String grownClusterProfileName(GrowNetworkView network) {
+    for (final var entry : network.clusterBridges().entrySet()) {
+      if (entry.getValue().bridgeName().equals(network.nodeBridgeName())) {
+        return "node-" + entry.getKey();
+      }
+    }
+    throw new IllegalStateException(
+        "no co-located cluster bridge matches the grown node's bridge " + network.nodeBridgeName());
+  }
+
+  /**
    * Declare the seed image as a provider {@code Image} resource sourcing the edge-built artifacts,
    * and return its fingerprint {@link Output} for the instance. The edge {@code ImageBuilder} now
    * only BUILDS the artifacts (nix → metadata.tar.xz + rootfs.squashfs); the IMPORT is the
@@ -399,7 +414,12 @@ public final class InstanceGrow {
             .name(plan.identity().nodeHostname())
             .project(config.incusProject())
             .image(imageFingerprint)
-            .profiles(profileName.applyValue(List::of))
+            // [node-<cluster>, node-base] — same set + order as the CAPN lxcMachineSpec (node-base
+            // LAST = precedence). The instance's own inline NICs (deterministic hwaddr, below)
+            // override the profiles' dynamic lan0/vmnet0, so the standalone keeps its reservation.
+            .profiles(
+                profileName.applyValue(
+                    base -> List.of(grownClusterProfileName(plan.network()), base)))
             .config(configWithFingerprint)
             .running(true)
             .devices(seedInstanceDevices(plan))
