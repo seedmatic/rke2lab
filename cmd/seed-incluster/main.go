@@ -137,7 +137,8 @@ func main() {
 // REFLECTOR_WRITE is not "true". Write is opt-in (default OFF) so a deploy never surprise-writes; the
 // rke2lab render sets REFLECTOR_WRITE=true once the reflector loop is wanted live. The repo URL is
 // DERIVED from the Flux GitRepository (SourceRef, the in-cluster projection of the manifests SSOT) —
-// never injected. Token defaults to the gtm-minted Secret rke2lab-system/github-token key "token".
+// never injected. Token defaults to the gtm-minted WRITE Secret rke2lab-system/github-token-write
+// key "token" (contents:write — the push needs it; the read-only github-token would 403).
 func reflectorGitFromEnv(c client.Client) *controller.ReflectorGit {
 	if !strings.EqualFold(os.Getenv("REFLECTOR_WRITE"), "true") {
 		return nil
@@ -156,7 +157,7 @@ func reflectorGitFromEnv(c client.Client) *controller.ReflectorGit {
 		},
 		TokenSecret: types.NamespacedName{
 			Namespace: getenv("REFLECTOR_TOKEN_SECRET_NAMESPACE", "rke2lab-system"),
-			Name:      getenv("REFLECTOR_TOKEN_SECRET_NAME", "github-token"),
+			Name:      getenv("REFLECTOR_TOKEN_SECRET_NAME", "github-token-write"),
 		},
 		TokenSecretKey: getenv("REFLECTOR_TOKEN_SECRET_KEY", "token"),
 		AuthorName:     getenv("REFLECTOR_AUTHOR_NAME", "seed-incluster reflector"),
