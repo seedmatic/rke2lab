@@ -40,17 +40,20 @@ public final class GrowNetworkResolver {
    */
   public GrowNetworkView resolve(String cluster, String node) {
     final ClusterNetworkBlueprint grown = synthesize(cluster, node);
-    final Map<String, Map<String, String>> bridges = new LinkedHashMap<>();
+    final Map<String, GrowNetworkView.ClusterBridge> clusterBridges = new LinkedHashMap<>();
     for (final String coLocated : grown.clustersOnSameHost()) {
       final ClusterNetworkBlueprint coLocatedBlueprint = synthesize(coLocated, "master");
-      bridges.put(
-          coLocatedBlueprint.vmnetBridgeName(), vmnetBridgeConfig(coLocated, coLocatedBlueprint));
+      clusterBridges.put(
+          coLocated,
+          new GrowNetworkView.ClusterBridge(
+              coLocatedBlueprint.vmnetBridgeName(),
+              vmnetBridgeConfig(coLocated, coLocatedBlueprint)));
     }
     return new GrowNetworkView(
         grown.lan().hostMacaddr().value(),
         grown.wan().hostMacaddr().value(),
         grown.vmnetBridgeName(),
-        bridges);
+        clusterBridges);
   }
 
   private ClusterNetworkBlueprint synthesize(String cluster, String node) {

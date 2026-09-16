@@ -11,8 +11,10 @@ import java.util.TreeMap;
  * <p>vmnet is isolated per-cluster (each cluster gets its own bridge + /21 + dnsmasq reservations),
  * so a host that also hosts a workload cluster needs that cluster's bridge to exist BEFORE CAPN can
  * DHCP-provision its instances in-cluster — even though only the management node grows standalone.
- * {@link #bridges} is therefore keyed by bridge name ({@code
- * ClusterNetworkBlueprint.vmnetBridgeName}), one entry per cluster on the host; {@link
+ * {@link #clusterBridges} is therefore keyed by CLUSTER NAME ({@code
+ * ClusterNetworkBlueprint#clustersOnSameHost}), one entry per cluster on the host, each carrying
+ * its bridge name + resolved config — the cluster name is what names the per-cluster {@code
+ * node-<cluster>} incus profile (the NIC-bearing profile CAPN references, created at grow); {@link
  * #nodeBridgeName} is the one the grown node attaches to.
  *
  * <p>These all originate in the {@code ClusterNetworkBlueprint} ({@code netplan-contract},
@@ -25,11 +27,16 @@ public record GrowNetworkView(
     String lanHwaddr,
     String wanHwaddr,
     String nodeBridgeName,
-    Map<String, Map<String, String>> bridges) {
+    Map<String, ClusterBridge> clusterBridges) {
 
   public GrowNetworkView {
-    final TreeMap<String, Map<String, String>> canonical = new TreeMap<>();
-    bridges.forEach((name, config) -> canonical.put(name, new TreeMap<>(config)));
-    bridges = canonical;
+    clusterBridges = new TreeMap<>(clusterBridges);
+  }
+
+  /** One co-located cluster's vmnet bridge: its name and the resolved incus network config. */
+  public record ClusterBridge(String bridgeName, Map<String, String> config) {
+    public ClusterBridge {
+      config = new TreeMap<>(config);
+    }
   }
 }

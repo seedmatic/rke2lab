@@ -83,17 +83,29 @@ in
     serviceConfig = {
       Type = "oneshot";
       RemainAfterExit = true;
-      EnvironmentFile = "/var/lib/rke2lab/node.env";
+      # node.env is OPTIONAL (leading `-`): a CAPRKE2-driven greenfield node carries no node.env (it
+      # owns its own identity — mirroring rke2lab-identity's ConditionPathExists no-op), so
+      # RKE2LAB_NODE_NAME is unset there and the script falls back to the node's own hostname.
+      EnvironmentFile = "-/var/lib/rke2lab/node.env";
     };
     path = [
       pkgs.util-linux
       pkgs.zfs
     ];
+    # The tank pool + its parents are materialised by this node's own NixOS disko (the pool is
+    # in-container, so the node owns zfs create). The per-node containerd dataset is CREATED here
+    # if absent, then mounted: a standalone node's `master` dataset is baked by disko (create is a
+    # no-op → mount), a greenfield node's random-named dataset does not exist yet (create → mount) —
+    # so the snapshotter mount succeeds regardless of how the node was named/provisioned.
     script = ''
       set -euo pipefail
+      node="''${RKE2LAB_NODE_NAME:-$(cat /proc/sys/kernel/hostname)}"
       mountpoint=/var/lib/rancher/rke2/agent/containerd/io.containerd.snapshotter.v1.zfs
-      dataset="tank/rke2lab/control-nodes/''${RKE2LAB_NODE_NAME}/containerd"
+      dataset="tank/rke2lab/control-nodes/''${node}/containerd"
       install -d -m 0755 "$mountpoint"
+      if ! zfs list -H -o name "$dataset" >/dev/null 2>&1; then
+        zfs create -p -o mountpoint=legacy "$dataset"
+      fi
       if ! mountpoint -q "$mountpoint"; then
         mount -t zfs "$dataset" "$mountpoint"
       fi

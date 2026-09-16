@@ -26,7 +26,6 @@ import io.seedmatic.rke2lab.incus.ingress.InstanceGrowPlan;
 import io.seedmatic.rke2lab.incus.ingress.SplitImageFingerprint;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -80,6 +79,7 @@ public final class InstanceGrow {
   public void grow(InstanceGrowPlan plan, NodeBootstrapMaterial material) {
     final Project project = ensureProject();
     ensureNetworks(project, plan.network());
+    ensureNodeProfiles(project, plan.network());
     final Output<String> profileName = ensureProfile(project);
     final Output<String> imageFingerprint = ensureImage(plan.image(), project);
     final Instance instance =
@@ -112,8 +112,9 @@ public final class InstanceGrow {
    * assembled each bridge's config OSGi-side from the netplan blueprint; the host only poses it.
    */
   private void ensureNetworks(Resource projectDependency, GrowNetworkView view) {
-    view.bridges()
-        .forEach((name, bridgeConfig) -> ensureNetwork(name, bridgeConfig, projectDependency));
+    view.clusterBridges()
+        .values()
+        .forEach(cb -> ensureNetwork(cb.bridgeName(), cb.config(), projectDependency));
   }
 
   /**
@@ -177,22 +178,108 @@ public final class InstanceGrow {
             .ignoreChanges(List.of("name", "project", "devices", "config", "description"))
             .build();
 
+    // The common `node` profile: root disk + the privileged-container config + the kmsg/zfs
+    // unix-char devices EVERY rke2lab node needs. It carries NO NICs — those ride the per-cluster
+    // `node-<cluster>` profile (CAPN) or the standalone instance's own devices (deterministic MAC).
+    // Both standalone and CAPN reference this profile, so the node config is single-sourced here.
     final Profile profile =
         new Profile(
             "seed-profile",
             ProfileArgs.builder()
                 .name(config.profileName())
                 .project(config.incusProject())
+                .config(nodeProfileConfig())
                 .devices(
-                    ProfileDeviceArgs.builder()
-                        .name("root")
-                        .type("disk")
-                        .properties(Map.of("path", "/", "pool", "default"))
-                        .build())
+                    List.of(
+                        profileDevice("root", "disk", Map.of("path", "/", "pool", "default")),
+                        profileUnixChar("kmsg.dev", "/dev/kmsg", "/dev/kmsg"),
+                        profileUnixChar("zfs.dev", "/dev/zfs", "/dev/zfs")))
                 .build(),
             options);
 
     return profile.name();
+  }
+
+  /**
+   * The privileged-container config the {@code node} profile carries — the CAPN default kernel set
+   * MINUS the legacy iptables trio the nftables-only kernel-6.18 substrate dropped
+   * (ip_tables/ip6_tables/iptable_raw FATAL modprobe). Single source for standalone + CAPN nodes.
+   */
+  private Map<String, String> nodeProfileConfig() {
+    final Map<String, String> config = new LinkedHashMap<>();
+    config.put(
+        "raw.lxc",
+        String.join(
+            "\n",
+            "lxc.mount.auto = proc:rw sys:rw cgroup:rw",
+            "lxc.apparmor.profile = unconfined",
+            "lxc.cap.drop ="));
+    config.put("security.privileged", "true");
+    config.put("security.nesting", "true");
+    config.put("security.syscalls.intercept.bpf", "true");
+    config.put("security.syscalls.intercept.bpf.devices", "true");
+    config.put(
+        "linux.kernel_modules",
+        "ip_vs,ip_vs_rr,ip_vs_wrr,ip_vs_sh,netlink_diag,nf_nat,overlay,br_netfilter,xt_socket");
+    return config;
+  }
+
+  /**
+   * Ensure the per-cluster {@code node-<cluster>} profile for EVERY cluster co-located on the host
+   * — the NIC-bearing profile CAPN references ({@code profiles: [node, node-<cluster>]}) so a
+   * greenfield node gets its two interfaces: {@code lan0} on the canonical LAN bridge and {@code
+   * vmnet0} on the cluster's vmnet bridge. Both NICs are DYNAMIC (no hwaddr): incus generates a
+   * per-instance MAC and the vmnet bridge's {@code ipv4.dhcp.ranges} hands out an IP — no
+   * reservation (avahi/mDNS is IP-agnostic). The standalone node does NOT use this profile: it
+   * attaches its own per-instance NICs with the blueprint's deterministic hwaddrs. An
+   * already-existing profile is adopted by omission (its config is host-owned), mirroring {@link
+   * #ensureProfile}.
+   */
+  private void ensureNodeProfiles(Resource projectDependency, GrowNetworkView view) {
+    view.clusterBridges()
+        .forEach((cluster, bridge) -> ensureNodeProfile(cluster, bridge, projectDependency));
+  }
+
+  private void ensureNodeProfile(
+      String cluster, GrowNetworkView.ClusterBridge bridge, Resource projectDependency) {
+    final String profileName = "node-" + cluster;
+    if (importLookup.existingProfileId(profileName, config.incusProject()).isPresent()) {
+      return;
+    }
+    final CustomResourceOptions options =
+        CustomResourceOptions.builder()
+            .provider(providerContext.provider())
+            .retainOnDelete(true)
+            .dependsOn(List.of(projectDependency))
+            .ignoreChanges(List.of("name", "project", "devices", "config", "description"))
+            .build();
+
+    new Profile(
+        "seed-node-profile-" + cluster,
+        ProfileArgs.builder()
+            .name(profileName)
+            .project(config.incusProject())
+            .devices(
+                List.of(
+                    profileNic("lan0", "lan0", "bridged", config.lanBridgeParent()),
+                    profileNic("vmnet0", "vmnet0", "bridged", bridge.bridgeName())))
+            .build(),
+        options);
+  }
+
+  private ProfileDeviceArgs profileNic(String name, String ifName, String nictype, String parent) {
+    // No hwaddr → incus assigns a per-instance MAC (dynamic); the vmnet bridge's dhcp range gives
+    // the IP.
+    return profileDevice(name, "nic", Map.of("name", ifName, "nictype", nictype, "parent", parent));
+  }
+
+  private ProfileDeviceArgs profileUnixChar(String name, String source, String path) {
+    return profileDevice(name, "unix-char", Map.of("source", source, "path", path));
+  }
+
+  private ProfileDeviceArgs profileDevice(
+      String name, String type, Map<String, String> properties) {
+    return ProfileDeviceArgs.builder().name(name).type(type).properties(properties).build();
   }
 
   /**
@@ -258,18 +345,10 @@ public final class InstanceGrow {
       Output<String> profileName,
       Output<String> imageFingerprint,
       NodeBootstrapMaterial material) {
+    // The privileged-container config (raw.lxc, security.*, kernel_modules) rides the `node`
+    // profile
+    // (single source for standalone + CAPN); the instance carries only per-node state below.
     final Map<String, String> instanceConfig = new LinkedHashMap<>();
-    instanceConfig.put(
-        "raw.lxc",
-        String.join(
-            "\n",
-            "lxc.mount.auto = proc:rw sys:rw cgroup:rw",
-            "lxc.apparmor.profile = unconfined",
-            "lxc.cap.drop ="));
-    instanceConfig.put("security.privileged", "true");
-    instanceConfig.put("security.nesting", "true");
-    instanceConfig.put("security.syscalls.intercept.bpf", "true");
-    instanceConfig.put("security.syscalls.intercept.bpf.devices", "true");
     // The image-build checksum arms replaceOnChanges — a rebuilt node-base image (new fingerprint,
     // new checksum) recreates the instance onto it. A host-side trigger, never read by the guest.
     instanceConfig.put("user.rke2lab.imageBuildChecksum", plan.image().buildChecksum());
@@ -501,34 +580,26 @@ public final class InstanceGrow {
   }
 
   /**
-   * The 4 instance devices — 2 NICs (hwaddrs from the plan's network view) and 2 unix-char (fixed:
-   * {@code /dev/kmsg}, {@code /dev/zfs} for the in-guest zfs snapshotter mount). The NixOS {@code
-   * node-base} substrate bakes the node's config, so there are NO host disk mounts: the former
-   * {@code /srv/host} delivery is dissolved.
+   * The standalone node's 2 NICs, each with the blueprint's DETERMINISTIC hwaddr (so its reserved
+   * dnsmasq lease resolves) — {@code lan0} on the canonical LAN bridge, {@code vmnet0} on its
+   * cluster's bridge. The kmsg/zfs unix-char devices + root disk ride the {@code node} profile now
+   * (shared with CAPN); the NixOS {@code node-base} substrate bakes the node's config, so there are
+   * no host disk mounts. CAPN nodes instead get DYNAMIC NICs from the {@code node-<cluster>}
+   * profile.
    */
   private List<InstanceDeviceArgs> seedInstanceDevices(InstanceGrowPlan plan) {
     final GrowNetworkView network = plan.network();
-    final List<InstanceDeviceArgs> devices = new ArrayList<>();
-    devices.add(nic("lan0", network.lanHwaddr(), "lan0", "bridged", config.lanBridgeParent()));
-    devices.add(nic("vmnet0", network.wanHwaddr(), "vmnet0", "bridged", network.nodeBridgeName()));
-    devices.add(unixChar("kmsg.dev", "/dev/kmsg", "/dev/kmsg"));
-    devices.add(unixChar("zfs.dev", "/dev/zfs", "/dev/zfs"));
-    return List.copyOf(devices);
+    return List.of(
+        nic("lan0", network.lanHwaddr(), "lan0", "bridged", config.lanBridgeParent()),
+        nic("vmnet0", network.wanHwaddr(), "vmnet0", "bridged", network.nodeBridgeName()));
   }
 
   private InstanceDeviceArgs nic(
       String name, String hwaddr, String ifName, String nictype, String parent) {
-    return device(
-        name,
-        "nic",
-        Map.of("hwaddr", hwaddr, "name", ifName, "nictype", nictype, "parent", parent));
-  }
-
-  private InstanceDeviceArgs unixChar(String name, String source, String path) {
-    return device(name, "unix-char", Map.of("source", source, "path", path));
-  }
-
-  private InstanceDeviceArgs device(String name, String type, Map<String, String> properties) {
-    return InstanceDeviceArgs.builder().name(name).type(type).properties(properties).build();
+    return InstanceDeviceArgs.builder()
+        .name(name)
+        .type("nic")
+        .properties(Map.of("hwaddr", hwaddr, "name", ifName, "nictype", nictype, "parent", parent))
+        .build();
   }
 }

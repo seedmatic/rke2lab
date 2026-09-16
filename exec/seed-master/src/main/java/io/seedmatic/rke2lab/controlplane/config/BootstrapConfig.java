@@ -45,7 +45,7 @@ public record BootstrapConfig(
   // The one seed image's incus alias — the host adopts the built image by it. Single source here;
   // the build script (build-node-base-image.sh) hardcodes the SAME literal on the import side.
   private static final String IMAGE_ALIAS = "node-base";
-  private static final String DEFAULT_PROFILE_NAME = "rke2lab";
+  private static final String DEFAULT_PROFILE_NAME = "node";
   private static final String DEFAULT_LAN_BRIDGE_PARENT = "lan-br";
   // The tailscale tailnet DNS suffix. Resolvable host/automount addresses use the MagicDNS FQDN
   // <host>.<tailnet> so they route over the tailscale overlay (stable across the physical LAN),
