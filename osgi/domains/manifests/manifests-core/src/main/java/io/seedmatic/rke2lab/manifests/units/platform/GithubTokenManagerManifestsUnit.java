@@ -59,6 +59,13 @@ public final class GithubTokenManagerManifestsUnit extends AbstractManifestsUnit
 
   public static final String TOKEN_SECRET_KEY = "token";
 
+  /**
+   * The SECOND minted-token Secret — a {@code contents:write} token the seed-incluster reflector
+   * uses to push PoolReflection docs onto the managing branch. Separate from the read token
+   * (least-privilege: Flux/flox-controller keep read-only), same replication to rke2lab-system.
+   */
+  public static final String WRITE_TOKEN_SECRET_NAME = "github-token-write";
+
   private static final String APP_KEY_SECRET = "github-app-private-key";
   private static final String APP_KEY_DATA = "private-key.pem";
   private static final String APP_NAME = "github-app";
@@ -89,7 +96,17 @@ public final class GithubTokenManagerManifestsUnit extends AbstractManifestsUnit
     createHelmChart(scope);
     final ApiObject key = createAppKeySecret(scope, namespace, app);
     final ApiObject appCr = createApp(scope, namespace, app, key);
-    createClusterToken(scope, namespace, appCr);
+    // Two tokens off the same App: the read token (Flux/flox-controller fetch flakes) and the
+    // write token (seed-incluster reflector pushes PoolReflection docs).
+    createClusterToken(
+        scope, appCr, namespace, "githubclustertoken-github-token", TOKEN_SECRET_NAME, "read");
+    createClusterToken(
+        scope,
+        appCr,
+        namespace,
+        "githubclustertoken-github-token-write",
+        WRITE_TOKEN_SECRET_NAME,
+        "write");
   }
 
   /** The RKE2 HelmChart for gtm — kube-system, installs into rke2lab-system, OPERATORS layer. */
@@ -193,9 +210,11 @@ public final class GithubTokenManagerManifestsUnit extends AbstractManifestsUnit
   }
 
   /**
-   * The cluster-scoped {@code ClusterToken} CR — mints + refreshes the {@code github-token} Secret
-   * with a {@code contents:read}+{@code metadata:read} installation token (enough for nix to fetch
-   * the private flake inputs). refreshInterval < the App token's ~1h TTL.
+   * A cluster-scoped {@code ClusterToken} CR — mints + refreshes a {@code secretName} Secret with a
+   * {@code metadata:read}+{@code contents:<contentsPermission>} installation token. Two are
+   * created: {@code contents:read} ({@code github-token}, for nix to fetch private flake inputs)
+   * and {@code contents:write} ({@code github-token-write}, for the seed-incluster reflector's
+   * branch push). refreshInterval < the App token's ~1h TTL.
    *
    * <p>The minted Secret lands in the {@code rke2lab-secrets} datasource namespace, stamped (via
    * gtm's {@code spec.secret.annotations}) as a mittwald replication SOURCE authorised to the
@@ -203,20 +222,25 @@ public final class GithubTokenManagerManifestsUnit extends AbstractManifestsUnit
    * source credentials, rather than gtm minting into each namespace directly.
    */
   private void createClusterToken(
-      final Construct scope, final String namespace, final ApiObject appCr) {
+      final Construct scope,
+      final ApiObject appCr,
+      final String namespace,
+      final String resourceId,
+      final String secretName,
+      final String contentsPermission) {
     final ApiObject token =
         new ApiObject(
             scope,
-            "githubclustertoken-github-token",
+            resourceId,
             ApiObjectProps.builder()
                 .apiVersion(CRD_API_VERSION)
                 .kind("ClusterToken")
                 .metadata(
                     ApiObjectMetadata.builder()
-                        .name(TOKEN_SECRET_NAME)
+                        .name(secretName)
                         .annotations(
                             packageProfile.packageAnnotations(
-                                "github.as-code.io|ClusterToken||" + TOKEN_SECRET_NAME))
+                                "github.as-code.io|ClusterToken||" + secretName))
                         .build())
                 .build());
     token.addJsonPatch(
@@ -224,12 +248,12 @@ public final class GithubTokenManagerManifestsUnit extends AbstractManifestsUnit
             "/spec",
             Map.of(
                 "appRef", Map.of("name", APP_NAME, "namespace", namespace),
-                "permissions", Map.of("metadata", "read", "contents", "read"),
+                "permissions", Map.of("metadata", "read", "contents", contentsPermission),
                 "refreshInterval", "45m",
                 "secret",
                     Map.of(
                         "name",
-                        TOKEN_SECRET_NAME,
+                        secretName,
                         "namespace",
                         ClusterRefs.SECRETS_NAMESPACE,
                         "annotations",

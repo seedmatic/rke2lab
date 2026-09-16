@@ -10,6 +10,7 @@ import io.seedmatic.rke2lab.manifests.contract.ManifestLayer;
 import io.seedmatic.rke2lab.manifests.node.DefaultNodeEnvContext;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import io.seedmatic.rke2lab.manifests.units.cluster.ClusterRefs;
+import io.seedmatic.rke2lab.manifests.units.platform.GithubTokenManagerManifestsUnit;
 import io.seedmatic.rke2lab.manifests.units.runtime.flox.FloxEnvFolder;
 import io.seedmatic.rke2lab.manifests.upstream.UpstreamYamlInclusion;
 import java.util.LinkedHashMap;
@@ -116,6 +117,39 @@ public final class SeedInclusterManifestsUnit extends AbstractManifestsUnit {
     binding.addDependency(serviceAccount);
     binding.addDependency(clusterRole);
     createDeployment(scope, context.resolver(), namespace, serviceAccount, binding);
+    // The reflector's WRITE token: gtm mints github-token-write (contents:write) into
+    // rke2lab-secrets; this empty stub pulls it here (mittwald replicate-from) so the reflector
+    // reads rke2lab-system/github-token-write to push PoolReflection docs. The read-only
+    // github-token would 403 on push.
+    createWriteTokenReplicaStub(scope, context.resolver(), namespace);
+  }
+
+  private void createWriteTokenReplicaStub(
+      final Construct scope, final Cdk8sApiObjectResolver resolver, final String namespace) {
+    final String secretName = GithubTokenManagerManifestsUnit.WRITE_TOKEN_SECRET_NAME;
+    final ApiObject secret =
+        new ApiObject(
+            scope,
+            "secret-github-token-write",
+            ApiObjectProps.builder()
+                .apiVersion("v1")
+                .kind("Secret")
+                .metadata(
+                    ApiObjectMetadata.builder()
+                        .name(secretName)
+                        .namespace(namespace)
+                        .labels(Map.of("app.kubernetes.io/replicated", "true"))
+                        .annotations(
+                            packageProfile.packageAnnotations(
+                                "|Secret|" + namespace + "|" + secretName,
+                                Map.of(
+                                    "replicator.v1.mittwald.de/replicate-from",
+                                    ClusterRefs.SECRETS_NAMESPACE + "/" + secretName)))
+                        .build())
+                .build());
+    secret.addDependency(resolver.require(ClusterRefs.RUNTIME_SYSTEM_NAMESPACE));
+    // Empty stub — mittwald's replicate-from fills the `token` key from the source.
+    secret.addJsonPatch(JsonPatch.add("/type", "Opaque"));
   }
 
   private ApiObject createServiceAccount(
