@@ -13,7 +13,7 @@ spec:
     host: 10.80.15.10
     port: 6443
   image:
-    fingerprint: 11e0e669998a70df687c95316cbbadd7b3c20becb77a8ce9339f8e52b0b901b0
+    fingerprint: bf57d0000825107d0a85ce6d5fd7ca9e68117ee3926b5b8d8a62b24dfb57cc78
   kubeVIPVersion: v0.9.2
   namespace: rke2lab-bioskop-wrkld
   nodes:
