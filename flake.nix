@@ -990,14 +990,17 @@ USAGE
       # Propagate a seed-incluster bump across the three rke2lab worktrees — all
       # branches of THIS repo, so `git worktree list` discovers them (no hard-coded
       # paths). Push the seed-incluster branch, bump+push rke2lab's own
-      # seed-incluster pin, then bump flox-catalogue's rke2lab input + re-lock its
-      # seed-incluster env — STOPPING before the catalog push so the operator
-      # validates the artifact the cluster actually consumes. The chain is
-      # push-gated (a github: input only sees a rev once pushed), so the two
-      # upstream hops push automatically. Idempotent: a hop already at the target
-      # rev is skipped, and a no-op run makes no commit.
-      propagateSeedInclusterApp = pkgs.writeShellApplication {
-        name = "propagate-seed-incluster";
+      # seed-incluster pin, then bump flox-catalogue's rke2lab input + re-lock ALL its
+      # flox envs (via the catalog's own `lock-envs`, which now relocks every env — any
+      # env that follows rke2lab picks up the bump) AND push it too (all three hops
+      # auto-push for consistency — the operator gate is the deliberate invocation itself
+      # + the branch-match guard, not a manual final push). Pushing the catalog is what
+      # makes the cluster's FloxCatalog sync + the FloxEnvs re-realize. The chain is
+      # push-gated (a github: input only sees a rev once pushed), so each hop must push
+      # before the next resolves it. Idempotent: a hop already at the target rev is
+      # skipped, and a no-op run makes no commit and pushes nothing.
+      updateFloxEnvsApp = pkgs.writeShellApplication {
+        name = "update-flox-envs";
         runtimeInputs = [pkgs.coreutils pkgs.git pkgs.jq pkgs.nix];
         text = ''
           RKE=$(git rev-parse --show-toplevel)
@@ -1062,11 +1065,12 @@ USAGE
           fi
           echo
 
-          echo "== hop 3/3: flox-catalogue -> flake update rke2lab + re-lock env =="
+          echo "== hop 3/3: flox-catalogue -> flake update rke2lab + re-lock ALL envs =="
           rke_before=$(lockrev "$CAT/flake.lock" rke2lab)
           ( cd "$CAT" && nix flake update rke2lab --refresh )
           rke_after=$(lockrev "$CAT/flake.lock" rke2lab)
-          # lock-envs auto-commits ONLY a real derivation bump (drops locked-url churn).
+          # lock-envs relocks EVERY flox env (auto-commits ONLY real derivation bumps —
+          # drops locked-url churn); any env that follows rke2lab picks up the bump.
           ( cd "$CAT" && nix run .#lock-envs )
           if [ "$rke_before" != "$rke_after" ]; then
             git -C "$CAT" commit -q -m "chore(flake): bump rke2lab -> ''${rke_after:0:9} (seed-incluster ''${after:0:9} via follows)" -- flake.lock
@@ -1076,10 +1080,13 @@ USAGE
           fi
           echo
 
-          ahead=$(git -C "$CAT" rev-list --count '@{u}..HEAD' 2>/dev/null || echo '?')
-          echo "DONE — flox-catalogue is $ahead commit(s) ahead. Review, then push:"
-          echo "    git -C $CAT log --oneline @{u}..HEAD"
-          echo "    git -C $CAT push"
+          ahead=$(git -C "$CAT" rev-list --count '@{u}..HEAD' 2>/dev/null || echo 0)
+          if [ "''${ahead:-0}" -gt 0 ] 2>/dev/null; then
+            git -C "$CAT" push
+            echo "DONE — flox-catalogue pushed $ahead commit(s); the cluster's FloxCatalog will sync + the FloxEnv re-realize."
+          else
+            echo "DONE — flox-catalogue already up to date (nothing to push)."
+          fi
         '';
       };
       in {
@@ -1221,10 +1228,10 @@ USAGE
           meta.description = "Stage the flox-controller ClusterRole (from the flake) onto the manifest-synthesis classpath";
         };
 
-        apps.propagate-seed-incluster = {
+        apps.update-flox-envs = {
           type = "app";
-          program = "${propagateSeedInclusterApp}/bin/propagate-seed-incluster";
-          meta.description = "Propagate a seed-incluster bump: push seed-incluster, bump+push rke2lab, then bump flox-catalogue's rke2lab input + re-lock its env (stops before the catalog push for review)";
+          program = "${updateFloxEnvsApp}/bin/update-flox-envs";
+          meta.description = "Propagate a seed-incluster bump then update ALL flox envs: push seed-incluster, bump+push rke2lab, bump flox-catalogue's rke2lab input + re-lock every env + push";
         };
 
         # Anti-drift gate: fail if the committed JSON diverges from the jar output
