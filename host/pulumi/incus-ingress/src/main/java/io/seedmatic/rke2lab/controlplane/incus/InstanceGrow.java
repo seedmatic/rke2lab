@@ -178,10 +178,13 @@ public final class InstanceGrow {
             .ignoreChanges(List.of("name", "project", "devices", "config", "description"))
             .build();
 
-    // The common `node` profile: root disk + the privileged-container config + the kmsg/zfs
-    // unix-char devices EVERY rke2lab node needs. It carries NO NICs — those ride the per-cluster
-    // `node-<cluster>` profile (CAPN) or the standalone instance's own devices (deterministic MAC).
-    // Both standalone and CAPN reference this profile, so the node config is single-sourced here.
+    // The common node profile: root disk + the privileged-container config + kmsg/zfs unix-char +
+    // lan0 (the LAN NIC on the canonical, cluster-INVARIANT lan-br bridge — shared by every
+    // cluster,
+    // so it belongs here ONCE, not duplicated per node-<cluster>). The only per-cluster NIC is
+    // vmnet0, which rides the node-<cluster> profile. lan0 is dynamic (no hwaddr) — the standalone
+    // instance overrides it with a deterministic hwaddr via its own inline device. Both standalone
+    // and CAPN reference this profile, so the node config is single-sourced here.
     final Profile profile =
         new Profile(
             "seed-profile",
@@ -193,7 +196,8 @@ public final class InstanceGrow {
                     List.of(
                         profileDevice("root", "disk", Map.of("path", "/", "pool", "default")),
                         profileUnixChar("kmsg.dev", "/dev/kmsg", "/dev/kmsg"),
-                        profileUnixChar("zfs.dev", "/dev/zfs", "/dev/zfs")))
+                        profileUnixChar("zfs.dev", "/dev/zfs", "/dev/zfs"),
+                        profileNic("lan0", "lan0", "bridged", config.lanBridgeParent())))
                 .build(),
             options);
 
@@ -259,10 +263,7 @@ public final class InstanceGrow {
         ProfileArgs.builder()
             .name(profileName)
             .project(config.incusProject())
-            .devices(
-                List.of(
-                    profileNic("lan0", "lan0", "bridged", config.lanBridgeParent()),
-                    profileNic("vmnet0", "vmnet0", "bridged", bridge.bridgeName())))
+            .devices(List.of(profileNic("vmnet0", "vmnet0", "bridged", bridge.bridgeName())))
             .build(),
         options);
   }
