@@ -1,6 +1,6 @@
 source:
   sha: 7f8f696cc3bebd339b7c7b7dbc16aad6a18721b5
-  dirty: false
+  dirty: true
 facet:
   debug:
     mesh:
@@ -18,7 +18,7 @@ facet:
 image:
   imageAlias: node-base
   imageFingerprint: 164337efd99ee8e8fafc916b892ad145888b07da775444e273a451fc7c8c25d4
-  imageBuildChecksum: fe9115661a737f03d0667a249d75e0fa8fe1e0fc6389f123bbb61ece168dfe57
+  imageBuildChecksum: 90ed351a63e2b98495ae5e4873436a00f0fdb15d9f064c6f8f209ded55bff7a5
   incusProject: rke2lab
   incusRemoteAddress: https://bioskop-nixos:8443
   rke2Version: 1.34.10+rke2r1
