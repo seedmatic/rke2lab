@@ -570,22 +570,35 @@ func (r *PoolAdoptionReconciler) rke2ControlPlaneObj(spec adoptionv1alpha1.PoolA
 }
 
 // lxcMachineSpec is the privileged-container LXCMachine/template body, pinned to our nix-built
-// node-base by fingerprint. It carries NO inline config/devices: CAPN references ONLY incus
-// profiles (both created at grow by rke2lab's InstanceGrow, in the same project CAPN provisions
-// into):
-//   - "node-base" — the common node profile: root disk + raw.lxc + security.* +
-//     linux.kernel_modules (the kernel-6.18-safe set) + the kmsg/zfs unix-char devices + lan0 (the
-//     cluster-invariant LAN NIC on lan-br, shared by every cluster).
-//   - "node-<cluster>" — the cluster's ONLY per-cluster NIC: vmnet0 on vmnet-<role>, DYNAMIC MAC/IP
-//     (the vmnet bridge already carries a dynamic ipv4.dhcp.ranges, so a random-MAC greenfield node
-//     DHCPs an IP; avahi/mDNS is IP-agnostic — no reservation needed).
+// node-base by fingerprint.
+//
+// DEVICES ride the incus profiles (created at grow by rke2lab's InstanceGrow):
+//   - "node-base"      — root disk + kmsg/zfs unix-char + lan0 (the cluster-invariant LAN NIC).
+//   - "node-<cluster>" — the per-cluster vmnet0 (dynamic MAC/IP; the vmnet bridge's ipv4.dhcp.ranges
+//     hands out an IP — avahi/mDNS is IP-agnostic, no reservation). Order [node-<cluster>, node-base]
+//     — incus applies profiles left-to-right, node-base LAST = precedence.
+//
+// CONFIG is set INLINE here (not via the profiles): CAPN applies one of its embedded instance
+// profiles (kind/kubeadm/…, internal/static/embed/*.yaml) at the INSTANCE-config level, which
+// overrides our profiles — and every one of them sets linux.kernel_modules WITH the legacy iptables
+// trio (ip_tables/ip6_tables/iptable_raw) that FATAL-modprobes on the nftables-only kernel-6.18
+// substrate. LXCMachine.spec.config wins over that embedded default, so we re-assert the
+// kernel-6.18-safe set (+ the privileged raw.lxc/security our node-base needs) HERE.
 func lxcMachineSpec(clusterName, fingerprint string) map[string]any {
 	return map[string]any{
 		"instanceType": "container",
-		// Profile ORDER matters — incus applies them left-to-right, LAST wins. node-base comes LAST so
-		// its root/config/zfs/lan0 take precedence over the per-cluster node-<cluster> (vmnet0 only).
 		"profiles":     []any{nodeProfileName(clusterName), "node-base"},
 		"image":        map[string]any{"fingerprint": fingerprint},
+		"config": map[string]any{
+			"raw.lxc":                                 "lxc.mount.auto = proc:rw sys:rw cgroup:rw\nlxc.apparmor.profile = unconfined\nlxc.cap.drop =",
+			"security.privileged":                     "true",
+			"security.nesting":                        "true",
+			"security.syscalls.intercept.bpf":         "true",
+			"security.syscalls.intercept.bpf.devices": "true",
+			// The CAPN embedded set MINUS the legacy iptables trio (ip_tables/ip6_tables/iptable_raw)
+			// the nftables-only kernel-6.18 substrate dropped — else incus FATAL-modprobes at start.
+			"linux.kernel_modules": "ip_vs,ip_vs_rr,ip_vs_wrr,ip_vs_sh,netlink_diag,nf_nat,overlay,br_netfilter,xt_socket",
+		},
 	}
 }
 
