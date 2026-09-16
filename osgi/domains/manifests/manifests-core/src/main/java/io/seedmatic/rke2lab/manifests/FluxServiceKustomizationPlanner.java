@@ -45,14 +45,14 @@ import org.slf4j.LoggerFactory;
  *       CRD. When the CRD is RENDERED (scanned {@code CustomResourceDefinition} docs → {@link
  *       DocScan#crdProviderCoord}) it auto-routes to the provider's {@code crds} layer, and the CR
  *       depends on THAT crds cell ALONE — NOT the provider's operators/workloads. A CR only needs
- *       its CRD to be admitted; the controller reconciles it eventually (controller-runtime lists on
- *       startup) and an operator-installed {@code failurePolicy: Fail} webhook is handled by Flux
- *       retry — so K8s/Flux converge without a deterministic operators-layer wait. ONLY a
- *       RUNTIME-installed CRD (an operator/HelmChart — the declared {@link #RUNTIME_INSTALLERS} map,
- *       e.g. the tailscale {@code Connector}) keeps the full provider coord, because the CR's apply
- *       itself fails until that operators cell has registered the CRD. This REPLACES the old global
- *       layer barrier: no more false coupling (a {@code networking} workload no longer waits on
- *       {@code cicd}'s operator, nor on a rendered-CRD provider's controller).
+ *       its CRD to be admitted; the controller reconciles it eventually (controller-runtime lists
+ *       on startup) and an operator-installed {@code failurePolicy: Fail} webhook is handled by
+ *       Flux retry — so K8s/Flux converge without a deterministic operators-layer wait. ONLY a
+ *       RUNTIME-installed CRD (an operator/HelmChart — the declared {@link #RUNTIME_INSTALLERS}
+ *       map, e.g. the tailscale {@code Connector}) keeps the full provider coord, because the CR's
+ *       apply itself fails until that operators cell has registered the CRD. This REPLACES the old
+ *       global layer barrier: no more false coupling (a {@code networking} workload no longer waits
+ *       on {@code cicd}'s operator, nor on a rendered-CRD provider's controller).
  *   <li>the FLOX-RUNTIME edge — a cell whose pod templates consume a flox env / nix-build store (a
  *       {@code flox.seedmatic.io/*} pod-template annotation) waits on the flox-controller runtime
  *       cells ({@code runtime/flox-webhook} + {@code runtime/flox-controller}). The webhook's

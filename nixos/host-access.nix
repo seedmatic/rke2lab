@@ -46,11 +46,10 @@
   };
 
   # mDNS advertisement — the seed-master systemd adapter (and the incus remote) reach this node by
-  # its <cluster>-<node>.local name, so the node must ANSWER that name over mDNS. rke2lab-identity
-  # sets the hostname at runtime (ordered before avahi), and avahi publishes it + its LAN addresses.
-  # Without this the guest never advertises: nikopol-master.local is unresolvable and the adapter
-  # probe dies with UnknownHostException before it ever reaches dbus :12434 (the host
-  # nikopol-nixos.local resolves only because the HOST runs avahi; the guest must run its own).
+  # its <cluster>-<node>.local name, so the node must ANSWER that name over mDNS. avahi (userspace)
+  # does this — kept over systemd-resolved because this is an incus CONTAINER inheriting incus's
+  # /etc/resolv.conf, which resolved does not support (see ./network.nix). rke2lab-identity sets the
+  # hostname at runtime (ordered before avahi), and avahi publishes it + its LAN addresses.
   services.avahi = {
     enable = true;
     ipv4 = true;

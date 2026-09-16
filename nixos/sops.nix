@@ -22,7 +22,7 @@ in
   sops = {
     # The age identity and the bundle are delivered at runtime (devlxd) — never baked, never derived
     # from an ssh host key. Disable both auto-derivation paths.
-    age.keyFile = "/run/rke2lab/sops-age.key";
+    age.keyFile = "/var/lib/rke2lab/sops-age.key";
     age.sshKeyPaths = [ ];
     gnupg.sshKeyPaths = [ ];
 
@@ -31,7 +31,7 @@ in
     # (which would precede the devlxd delivery).
     validateSopsFiles = false;
     useSystemdActivation = true;
-    defaultSopsFile = "/run/rke2lab/cluster-ca-bundle.yaml";
+    defaultSopsFile = "/var/lib/rke2lab/cluster-ca-bundle.yaml";
 
     # The bring-your-own-CA set rke2 finds under server/tls before first boot: five leaf CAs
     # (each crt+key) plus the service-account issuer key. Placed here, rke2 skips CA generation and
@@ -60,7 +60,7 @@ in
   ];
 
   # The age identity + cluster-CA bundle now arrive through the UNIFORM cloud-init channel — the mgmt
-  # cloud-config `write_files` /run/rke2lab/{sops-age.key,cluster-ca-bundle.yaml} (see ./cloud-init.nix;
+  # cloud-config `write_files` /var/lib/rke2lab/{sops-age.key,cluster-ca-bundle.yaml} (see ./cloud-init.nix;
   # host GROW renders it). write_files runs in cloud-init.service, so sops-install-secrets waits on it,
   # then runs before rke2-server. The tie to rke2-server is WEAK (wantedBy, not requiredBy) and the
   # unit is GATED on the bundle's presence: a node whose channel carries no bundle (a CAPRKE2 workload
@@ -68,7 +68,7 @@ in
   # self-generates its CA on a bare mgmt survey — the pre-deterministic-PKI fallback, surfaced as a
   # skipped unit the rke2lab.target probe reports.
   systemd.services.sops-install-secrets = {
-    unitConfig.ConditionPathExists = "/run/rke2lab/cluster-ca-bundle.yaml";
+    unitConfig.ConditionPathExists = "/var/lib/rke2lab/cluster-ca-bundle.yaml";
     after = [ "cloud-init.service" ];
     before = [ "rke2-server.service" ];
     wantedBy = [ "rke2-server.service" ];

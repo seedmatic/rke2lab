@@ -30,12 +30,8 @@ public final class GrowIdentityResolver {
   public GrowIdentityView resolve(String cluster, String node) {
     final ClusterNetworkBlueprint blueprint =
         netplan.synthesize(new NetplanSynthesisRequest(cluster, node)).blueprint();
+    final String hostname = cluster + "-" + blueprint.node().name();
     return new GrowIdentityView(
-        blueprint.node().name(),
-        cluster + "-" + blueprint.node().name(),
-        blueprint.node().type().kind(),
-        blueprint.node().id(),
-        blueprint.podCidrDualStack(),
-        blueprint.serviceCidrDualStack());
+        blueprint.node().name(), hostname, blueprint.node().type().kind(), blueprint.node().id());
   }
 }

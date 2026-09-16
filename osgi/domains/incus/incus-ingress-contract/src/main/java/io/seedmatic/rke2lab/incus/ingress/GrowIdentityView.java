@@ -17,16 +17,10 @@ package io.seedmatic.rke2lab.incus.ingress;
  * ordinal. The host cannot read the blueprint typed, so the scion resolves it and projects these
  * flat values here; the host only poses them.
  *
- * <p>The {@code clusterPodCidr}/{@code clusterServiceCidr} are the PER-CLUSTER dual-stack spans
- * ({@code 10.<44+id>.0.0/16,fd00:<44+id>::/56}) the guest bakes into rke2's {@code cluster-cidr}/
- * {@code service-cidr} — homogeneous image, so the CIDRs cannot be a static nix literal (they
- * differ per cluster on the shared host); the node reads them back over devlxd and writes the rke2
- * config drop-in at boot (see {@code nixos/rke2.nix} {@code rke2lab-dualstack}).
+ * <p>The per-cluster rke2 config (dual-stack CIDRs, apiserver tls-san incl. the VIP, node-ip, …) is
+ * NOT delivered here: it is rendered onto the {@code manifests/<cluster>} branch by {@code
+ * RuntimeRke2ConfigManifestsUnit} and installed at boot by {@code nix run
+ * <branch>#install-rke2-config} — the same delivery for a standalone (seed-master) and an
+ * in-cluster (CAPRKE2) node. This view carries only the four per-node identity scalars.
  */
-public record GrowIdentityView(
-    String nodeRef,
-    String nodeHostname,
-    String nodeKind,
-    int nodeId,
-    String clusterPodCidr,
-    String clusterServiceCidr) {}
+public record GrowIdentityView(String nodeRef, String nodeHostname, String nodeKind, int nodeId) {}

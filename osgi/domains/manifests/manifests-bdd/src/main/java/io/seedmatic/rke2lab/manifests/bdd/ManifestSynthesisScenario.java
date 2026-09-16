@@ -13,6 +13,7 @@ import com.tngtech.jgiven.annotation.Hidden;
 import com.tngtech.jgiven.annotation.ProvidedScenarioState;
 import com.tngtech.jgiven.base.ScenarioTestBase;
 import com.tngtech.jgiven.impl.Scenario;
+import io.seedmatic.rke2lab.auth.contract.GithubReaderTokenMint;
 import io.seedmatic.rke2lab.auth.contract.GithubWriterTokenMint;
 import io.seedmatic.rke2lab.manifests.bdd.versions.GitBotIdentities;
 import io.seedmatic.rke2lab.manifests.contract.ClusterRole;
@@ -34,6 +35,8 @@ import io.seedmatic.rke2lab.manifests.contract.profiles.ManagementClusterCaMater
 import io.seedmatic.rke2lab.manifests.contract.profiles.OperatorPkiMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ReplicatorSourceSecretsMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.WorkloadClusterCasMaterial;
+import io.seedmatic.rke2lab.manifests.ingress.NodeGithubToken;
+import io.seedmatic.rke2lab.manifests.ingress.NodeGithubTokenCoordinate;
 import io.seedmatic.rke2lab.manifests.ingress.ServerManifestsBundle;
 import io.seedmatic.rke2lab.manifests.ingress.ServerManifestsCoordinate;
 import io.seedmatic.rke2lab.ndh.contract.NdhKeystoreReader;
@@ -46,6 +49,7 @@ import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.ScenarioPlaye
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.SeedScenario;
 import io.seedmatic.rke2lab.seed.broker.port.EnclosureGate;
 import io.seedmatic.rke2lab.seed.broker.port.Parcel;
+import io.seedmatic.rke2lab.seed.broker.port.Persistence;
 import io.seedmatic.rke2lab.seed.broker.port.SeedCoordinate;
 import io.seedmatic.rke2lab.seed.broker.port.Sensitivity;
 import io.seedmatic.rke2lab.worktree.GitIdentity;
@@ -173,6 +177,15 @@ public class ManifestSynthesisScenario
   // reveal. Absent under a survey/preview frontier → the push is skipped.
   @OsgiService(await = false)
   private Optional<GithubWriterTokenMint> writerTokenMint = Optional.empty();
+
+  // The on-demand READ-token mint (auth-edge, cultivating), the least-privilege twin: OPERATOR
+  // mints
+  // a FRESH contents:read token from the same durable App creds, filed SEALED + TRANSIENT for the
+  // node to fetch its rendered branch (fileNodeGithubToken). Absent under a survey/preview → no
+  // token
+  // filed (an in-cluster render's workload node takes its config from CAPRKE2, not a github fetch).
+  @OsgiService(await = false)
+  private Optional<GithubReaderTokenMint> readerTokenMint = Optional.empty();
 
   @Override
   public Scenario<Given, When, Then> getScenario() {
@@ -681,6 +694,58 @@ public class ManifestSynthesisScenario
         .and()
         .the_rendered_branch_is_delivered(rendered, deliveryPlan(effective, rendered));
     fileNodeBootstrap(rendered);
+    fileNodeGithubToken(effective, rendered);
+  }
+
+  /**
+   * Mint a FRESH {@code contents:read} github token (from the durable App creds this scenario
+   * already reveals) and file it SEALED + TRANSIENT under {@link
+   * NodeGithubTokenCoordinate#NODE_GITHUB_TOKEN} — the token the standalone GROW poses into the
+   * node's cloud-init so its {@code rke2lab-rke2-config} oneshot can fetch the private {@code
+   * manifests/<cluster>} branch it just pushed. TRANSIENT: read by the GROW this run, evicted at
+   * the drain, never durable → never stale (the App creds are the durable source, the token is
+   * not).
+   *
+   * <p>A token is needed ONLY for a real, PUSHED, OPERATOR delivery — the standalone node that will
+   * fetch the branch this render pushed. So it files nothing when there is no worktree (a survey /
+   * CLI materialise), no push (nothing on the remote to fetch), or the render is IN_CLUSTER (a
+   * workload branch whose node takes its config + join token from CAPRKE2, never a github fetch).
+   * But once past those guards it is a real grow: a pushed OPERATOR render already minted a WRITER
+   * token for the push, so the reader edge MUST be present too — an empty mint is a wiring defect,
+   * and a silent skip would only surface as a cryptic node-boot fetch failure. So: fail LOUD.
+   */
+  private void fileNodeGithubToken(ManifestsRunbookInput facet, Optional<LinkedWorktree> rendered) {
+    if (rendered.isEmpty()
+        || cellar == null
+        || parcel.isEmpty()
+        || !facet.facets().delivery().push()
+        || enclosure.map(EnclosureGate::inCluster).orElse(false)) {
+      return;
+    }
+    final ScenarioCellar tx = cellar;
+    final Parcel plot = parcel.orElseThrow();
+    final String token =
+        revealNodeGithubToken()
+            .orElseThrow(
+                () ->
+                    new IllegalStateException(
+                        "an OPERATOR push render could not mint the node's contents:read github"
+                            + " token — the reader-mint edge must be present alongside the writer"
+                            + " edge, or the grown node's rke2-config fetch will fail"));
+    tx.store(
+        plot,
+        NodeGithubTokenCoordinate.NODE_GITHUB_TOKEN,
+        new NodeGithubToken(token),
+        Sensitivity.SEALED,
+        Persistence.TRANSIENT);
+  }
+
+  /** Mint the node's fresh {@code contents:read} token from the revealed App creds, or empty. */
+  private Optional<String> revealNodeGithubToken() {
+    return readerTokenMint.flatMap(
+        mint ->
+            revealGithubApp()
+                .flatMap(app -> mint.mint(app.appId(), app.installationId(), app.privateKeyPem())));
   }
 
   /**
@@ -829,6 +894,9 @@ public class ManifestSynthesisScenario
     @ProvidedScenarioState ManifestDomainPolicy domainPolicy;
     @ProvidedScenarioState ManifestSynthesisResult result;
 
+    // The flake.lock reader the install-config flake render delegates its nixpkgs pin to.
+    private final FlakeLock flakeLock = new FlakeLock();
+
     public When the_policy_is_derived_from_the_facet() {
       // The domain set is a FUNCTION of the cluster's ROLE (parsed from the clusterName), not an
       // operator toggle: base infra always on, Cluster API MGMT-only, mesh + cicd WRKLD-only. The
@@ -937,6 +1005,7 @@ public class ManifestSynthesisScenario
           linkedWorktree -> {
             recordRenderFacet(linkedWorktree.path(), facet.facets(), facet.image());
             recordSopsPolicy(linkedWorktree.path());
+            recordInstallConfigFlake(linkedWorktree.path());
           });
       return self();
     }
@@ -1019,6 +1088,103 @@ public class ManifestSynthesisScenario
                 }
               });
     }
+
+    // The per-cluster RKE2 config installer, written at the branch root so the branch is a
+    // self-installing flake: a node (standalone via seed-master, or in-cluster via CAPRKE2) runs
+    // `nix run <this-branch>#install-rke2-config` at boot and the app globs THIS branch tree for
+    // the
+    // RKE2_CONFIG-annotated ConfigMaps (RuntimeRke2ConfigManifestsUnit renders them; the exploder
+    // keeps their <name> verbatim) and extracts each `.data` into /etc/rancher/rke2/config.yaml.d.
+    // The install LOGIC is cluster-invariant, so flake.nix is a STATIC asset (like .sops.yaml) —
+    // the
+    // per-cluster variance lives entirely in the ConfigMap data the app reads from ${self}. The one
+    // render-time bind is the nixpkgs pin: taken from the SOURCE flake.lock so the installer's
+    // yq-go
+    // is the node-base's own nixpkgs (a store cache-hit at boot, no cold fetch).
+    private static final String NIXPKGS_REV_TOKEN = "@NIXPKGS_REV@";
+
+    private void recordInstallConfigFlake(Path root) {
+      final String rev =
+          sourceWorktree
+              .flatMap(worktree -> worktree.readAtHead("flake.lock"))
+              .flatMap(flakeLock::nixpkgsRev)
+              .filter(sha -> !sha.isBlank())
+              .orElseThrow(
+                  () ->
+                      new IllegalStateException(
+                          "cannot render install-rke2-config flake: the source flake.lock has no"
+                              + " nixpkgs rev to pin the installer against"));
+      try {
+        Files.writeString(
+            root.resolve("flake.nix"), INSTALL_CONFIG_FLAKE.replace(NIXPKGS_REV_TOKEN, rev));
+      } catch (IOException ex) {
+        throw new UncheckedIOException("cannot record the install-rke2-config flake", ex);
+      }
+    }
+
+    private static final String INSTALL_CONFIG_FLAKE =
+        """
+        {
+          description = "rke2lab per-cluster RKE2 config installer — extracts the RKE2_CONFIG \
+        ConfigMaps rendered on this manifests/<cluster> branch into \
+        /etc/rancher/rke2/config.yaml.d. Run identically at boot by a standalone (seed-master) or \
+        an in-cluster (CAPRKE2) node: nix run <this-branch>#install-rke2-config.";
+
+          # Pinned to the node-base's own nixpkgs rev (injected at render from the source
+          # flake.lock) so the installer's yq-go is a store cache-hit on the node — no cold fetch.
+          inputs.nixpkgs.url = "github:NixOS/nixpkgs/@NIXPKGS_REV@";
+
+          outputs = { self, nixpkgs }:
+            let
+              systems = [ "aarch64-linux" "x86_64-linux" ];
+              forEachSystem = f:
+                nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
+            in {
+              apps = forEachSystem (pkgs:
+                let
+                  installer = pkgs.writeShellApplication {
+                    name = "install-rke2-config";
+                    # sops decrypts the sensitive fragments (the rke2 token Secret) with SOPS_AGE_KEY
+                    # from the environment; sops only encrypts data/stringData VALUES, so kind +
+                    # annotations stay readable without a key.
+                    runtimeInputs = [ pkgs.yq-go pkgs.sops pkgs.coreutils pkgs.findutils ];
+                    text = ''
+                      dest=/etc/rancher/rke2/config.yaml.d
+                      install -d -m 0755 "$dest"
+                      # Reinstall from the branch: wipe the fragments this installer owns first. The
+                      # per-node oneshots (node-labels, provider-id) write their drop-ins AFTER this.
+                      find "$dest" -maxdepth 1 -type f \\( -name '*.yaml' -o -name '*.yml' \\) -delete
+                      count=0
+                      while IFS= read -r -d "" manifest; do
+                        marked="$(yq eval -r \
+                          '.metadata.annotations["io.seedmatic.rke2lab/rke2-config"] // "false"' \
+                          "$manifest")"
+                        [ "$marked" = "true" ] || continue
+                        name="$(yq eval -r '.metadata.name' "$manifest")"
+                        # Decrypt in place if the fragment carries a sops block (the token Secret);
+                        # otherwise read it as-is. Then extract the config payload (ConfigMap .data or
+                        # Secret .stringData), parsing each value from its embedded YAML.
+                        if [ "$(yq eval -r 'has("sops")' "$manifest")" = "true" ]; then
+                          plain="$(sops --decrypt "$manifest")"
+                        else
+                          plain="$(cat "$manifest")"
+                        fi
+                        printf '%s' "$plain" | yq eval -o=yaml \
+                          '(.data // .stringData // {}) | with_entries(.value |= from_yaml)' \
+                          > "$dest/$name"
+                        count=$((count + 1))
+                      done < <(find "${self}" -type f \\( -name '*.yaml' -o -name '*.yml' \\) -print0)
+                      echo "[install-rke2-config] installed $count RKE2_CONFIG fragment(s) into $dest"
+                    '';
+                  };
+                  app = { type = "app"; program = "${installer}/bin/install-rke2-config"; };
+                in {
+                  install-rke2-config = app;
+                  default = app;
+                });
+            };
+        }
+        """;
   }
 
   /**

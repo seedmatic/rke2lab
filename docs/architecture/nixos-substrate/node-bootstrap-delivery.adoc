@@ -120,6 +120,20 @@ flowchart LR
 | The `@SeedContract("server-manifests")` record carrying the multi-doc YAML across the
   cellar; SEALED at rest.
 
+| `NodeGithubTokenCoordinate`
+| `manifests-ingress-contract` (`type=dual-realm`)
+| The twin `SeedCoordinate` for the node's github *fetch* token — the coordinate the synthesis
+  scion files under and the host GROW fetches by. Filed `Persistence.TRANSIENT` (not durable):
+  the App creds are the durable source, the minted token is not, so it never persists between
+  runs (the `github-token-mint-on-demand` discipline).
+
+| `NodeGithubToken`
+| `manifests-ingress-contract` (`type=dual-realm`)
+| The `@SeedContract("node-github-token")` record carrying the fresh `contents:read` App
+  installation token the standalone GROW poses into the node's cloud-init as
+  `/run/rke2lab/nix-github.conf`, where the `rke2lab-rke2-config` oneshot reads it (nix
+  `access-tokens`) to fetch the private `manifests/<cluster>` branch, then erases. SEALED at rest.
+
 | `ReplicatorSourceSecretsMaterial`
 | `manifests-contract` (bundle-only)
 | The mittwald-replicator SOURCE secrets (git basic-auth, docker dockerconfigjson, tailscale

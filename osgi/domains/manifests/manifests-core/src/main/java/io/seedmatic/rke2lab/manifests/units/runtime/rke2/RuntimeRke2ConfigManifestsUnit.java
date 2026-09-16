@@ -16,6 +16,7 @@ import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import org.cdk8s.ApiObject;
 import org.cdk8s.ApiObjectMetadata;
@@ -139,15 +140,29 @@ public final class RuntimeRke2ConfigManifestsUnit extends AbstractManifestsUnit 
                 "gateway",
                 "0.0.0.0",
                 "127.0.0.1",
-                net.vipGatewayInetAddr(),
+                // The kube-vip VIP — where kube-vip binds the apiserver and what CAPI's
+                // clustercache
+                // (+ any VIP-endpoint kubeconfig) dials, so the serving cert MUST be valid for it,
+                // or
+                // `x509: certificate is valid for …, not 10.80.<w>.10` → RemoteConnectionProbe
+                // fails +
+                // ControlPlaneInitialized stalls. REPLACES the VIP subnet GATEWAY (.1) that sat
+                // here
+                // by mistake: a router is never an apiserver endpoint, so it had no place in the
+                // SAN.
+                net.vipHostInetAddr(),
                 net.nodeNetworkGatewayAddr(),
                 net.nodeHostInetAddr(),
                 net.lanHostInetAddr())));
-    createConfigMap(
+    // The rke2 join token is SENSITIVE — a ConfigMap holding it would commit plaintext, so it is a
+    // Secret. Its stringData rides the branch sops-encrypted (`.sops.yaml` encrypted_regex covers
+    // stringData; the exploder gives an RKE2_CONFIG Secret the sops-guarded `.secret-*.yml` name),
+    // and install-rke2-config decrypts it at boot before writing config.yaml.d/token.yaml.
+    createSecret(
         scope,
         "token.yaml",
-        "RKE2 token fragment",
-        "|ConfigMap|default|rke2-token",
+        "RKE2 token fragment (sops-encrypted on the branch)",
+        "|Secret|default|rke2-token",
         Map.of("token", id.clusterToken()));
   }
 
@@ -157,13 +172,38 @@ public final class RuntimeRke2ConfigManifestsUnit extends AbstractManifestsUnit 
       final String description,
       final String upstreamIdentifier,
       final Map<String, Object> data) {
-    ApiObject configMap =
+    createFragment(scope, "ConfigMap", "/data", name, description, upstreamIdentifier, data);
+  }
+
+  private void createSecret(
+      final Construct scope,
+      final String name,
+      final String description,
+      final String upstreamIdentifier,
+      final Map<String, Object> data) {
+    createFragment(scope, "Secret", "/stringData", name, description, upstreamIdentifier, data);
+  }
+
+  // One RKE2_CONFIG fragment resource — a ConfigMap (payload under /data) or a Secret (under
+  // /stringData). Both carry LOCAL_CONFIG (nothing applies them; they exist only for the boot-time
+  // install-rke2-config app to extract) + RKE2_CONFIG (the app's marker). The Secret variant is
+  // what
+  // the exploder gives the sops-guarded `.secret-*.yml` name, so its stringData commits encrypted.
+  private void createFragment(
+      final Construct scope,
+      final String kind,
+      final String payloadPath,
+      final String name,
+      final String description,
+      final String upstreamIdentifier,
+      final Map<String, Object> data) {
+    final ApiObject fragment =
         new ApiObject(
             scope,
-            "configmap-rke2-" + name.replace('.', '-'),
+            kind.toLowerCase(Locale.ROOT) + "-rke2-" + name.replace('.', '-'),
             ApiObjectProps.builder()
                 .apiVersion("v1")
-                .kind("ConfigMap")
+                .kind(kind)
                 .metadata(
                     ApiObjectMetadata.builder()
                         .name(name)
@@ -180,7 +220,7 @@ public final class RuntimeRke2ConfigManifestsUnit extends AbstractManifestsUnit 
                         .build())
                 .build());
 
-    configMap.addJsonPatch(JsonPatch.add("/data", toConfigMapData(data)));
+    fragment.addJsonPatch(JsonPatch.add(payloadPath, toConfigMapData(data)));
   }
 
   private static Map<String, String> toConfigMapData(final Map<String, Object> data) {
