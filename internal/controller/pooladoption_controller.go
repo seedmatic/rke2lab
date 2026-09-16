@@ -475,7 +475,7 @@ func (r *PoolAdoptionReconciler) lxcMachinePresence(
 func (r *PoolAdoptionReconciler) lxcMachineTemplateObj(spec adoptionv1alpha1.PoolAdoptionSpec) *unstructured.Unstructured {
 	obj := newObj(gvkLXCMachineTemplate, controlPlaneName(spec.ClusterName), spec.Namespace)
 	obj.Object["spec"] = map[string]any{
-		"template": map[string]any{"spec": lxcMachineSpec(spec.Image.Fingerprint)},
+		"template": map[string]any{"spec": lxcMachineSpec(spec.ClusterName, spec.Image.Fingerprint)},
 	}
 	return obj
 }
@@ -483,7 +483,7 @@ func (r *PoolAdoptionReconciler) lxcMachineTemplateObj(spec adoptionv1alpha1.Poo
 func (r *PoolAdoptionReconciler) lxcMachineObj(spec adoptionv1alpha1.PoolAdoptionSpec, nodeName string) *unstructured.Unstructured {
 	obj := newObj(gvkLXCMachine, nodeName, spec.Namespace)
 	obj.SetLabels(map[string]string{clusterNameLabel: spec.ClusterName})
-	body := lxcMachineSpec(spec.Image.Fingerprint)
+	body := lxcMachineSpec(spec.ClusterName, spec.Image.Fingerprint)
 	// providerID = lxc:///<name> → CAPN adopts the existing instance (this pet is present).
 	body["providerID"] = "lxc:///" + nodeName
 	obj.Object["spec"] = body
@@ -570,23 +570,26 @@ func (r *PoolAdoptionReconciler) rke2ControlPlaneObj(spec adoptionv1alpha1.PoolA
 }
 
 // lxcMachineSpec is the privileged-container LXCMachine/template body, pinned to our nix-built
-// node-base by fingerprint — mirrors rke2lab's InstanceGrow / ClusterApiCrRenderer.
-func lxcMachineSpec(fingerprint string) map[string]any {
+// node-base by fingerprint. It carries NO inline config/devices: CAPN references ONLY incus
+// profiles (both created at grow by rke2lab's InstanceGrow, in the same project CAPN provisions
+// into):
+//   - "node" — the common node profile: root disk + raw.lxc + security.* + linux.kernel_modules
+//     (the kernel-6.18-safe set) + the kmsg/zfs unix-char devices.
+//   - "node-<cluster>" — the cluster's two NICs (lan0 on lan-br, vmnet0 on vmnet-<role>) with
+//     DYNAMIC MAC/IP: the vmnet bridge already carries a dynamic ipv4.dhcp.ranges, so a random-MAC
+//     greenfield node DHCPs an IP (avahi/mDNS is IP-agnostic — no reservation needed).
+func lxcMachineSpec(clusterName, fingerprint string) map[string]any {
 	return map[string]any{
 		"instanceType": "container",
-		"profiles":     []any{"rke2lab"},
+		"profiles":     []any{"node", nodeProfileName(clusterName)},
 		"image":        map[string]any{"fingerprint": fingerprint},
-		"config": map[string]any{
-			"raw.lxc":                                 "lxc.mount.auto = proc:rw sys:rw cgroup:rw\nlxc.apparmor.profile = unconfined\nlxc.cap.drop =",
-			"security.privileged":                     "true",
-			"security.nesting":                        "true",
-			"security.syscalls.intercept.bpf":         "true",
-			"security.syscalls.intercept.bpf.devices": "true",
-			// The CAPN default kernel-module set MINUS the legacy iptables trio the nftables-only
-			// kernel-6.18 substrate dropped (ip_tables/ip6_tables/iptable_raw FATAL modprobe).
-			"linux.kernel_modules": "ip_vs,ip_vs_rr,ip_vs_wrr,ip_vs_sh,netlink_diag,nf_nat,overlay,br_netfilter,xt_socket",
-		},
 	}
+}
+
+// nodeProfileName is the per-cluster incus profile carrying the node's NICs — the shared naming
+// contract with rke2lab's InstanceGrow (which CREATES it): "node-<cluster>".
+func nodeProfileName(clusterName string) string {
+	return "node-" + clusterName
 }
 
 func kubeVIPBootstrapCommand(vip, version string) string {
