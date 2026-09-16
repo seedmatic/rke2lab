@@ -202,7 +202,7 @@ public final class InstanceGrow {
     // and CAPN reference this profile, so the node config is single-sourced here.
     final Profile profile =
         new Profile(
-            "seed-profile",
+            "seed-node-base-profile",
             ProfileArgs.builder()
                 .name(NODE_BASE_PROFILE)
                 .project(config.incusProject())
