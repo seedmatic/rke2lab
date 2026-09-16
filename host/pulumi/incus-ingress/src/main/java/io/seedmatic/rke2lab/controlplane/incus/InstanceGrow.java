@@ -49,6 +49,13 @@ import java.util.function.Consumer;
  */
 public final class InstanceGrow {
 
+  /**
+   * The common node profile name — a FIXED convention (the twin of the {@code node-base} image
+   * alias), hardcoded on both sides of the Java/Go boundary: here for the standalone grow, and as a
+   * literal in seed-incluster's {@code lxcMachineSpec} for CAPN. It is NOT a per-deployment knob.
+   */
+  private static final String NODE_BASE_PROFILE = "node-base";
+
   private final IngressConfig config;
   private final IncusProviderContext providerContext;
   private final IncusImportLookup importLookup;
@@ -166,8 +173,8 @@ public final class InstanceGrow {
     // incus reads a profile's project back as null, and project is ForceNew, so an imported profile
     // is perpetually flagged for a replacement the import declaration then forbids. Only a virgin
     // host (no such profile) gets a fresh Pulumi-managed one.
-    if (importLookup.existingProfileId(config.profileName(), config.incusProject()).isPresent()) {
-      return Output.of(config.profileName());
+    if (importLookup.existingProfileId(NODE_BASE_PROFILE, config.incusProject()).isPresent()) {
+      return Output.of(NODE_BASE_PROFILE);
     }
 
     final CustomResourceOptions options =
@@ -189,7 +196,7 @@ public final class InstanceGrow {
         new Profile(
             "seed-profile",
             ProfileArgs.builder()
-                .name(config.profileName())
+                .name(NODE_BASE_PROFILE)
                 .project(config.incusProject())
                 .config(nodeProfileConfig())
                 .devices(

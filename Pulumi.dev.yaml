@@ -10,8 +10,6 @@ config:
     remoteIncus: bioskop-nixos
   rke2lab:node:
     name: master
-  rke2lab:profile:
-    name: rke2lab
   rke2lab:logging:
     level: debug # info,warn,debug 
   rke2lab:incus:

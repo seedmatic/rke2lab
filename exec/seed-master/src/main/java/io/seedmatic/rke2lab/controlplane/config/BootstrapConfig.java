@@ -24,7 +24,6 @@ public record BootstrapConfig(
     Path incusConfigFolder,
     String imageAlias,
     String imageBuilderHost,
-    String profileName,
     String lanBridgeParent,
     String tailnet,
     URI apiEndpoint,
@@ -45,7 +44,6 @@ public record BootstrapConfig(
   // The one seed image's incus alias — the host adopts the built image by it. Single source here;
   // the build script (build-node-base-image.sh) hardcodes the SAME literal on the import side.
   private static final String IMAGE_ALIAS = "node-base";
-  private static final String DEFAULT_PROFILE_NAME = "node-base";
   private static final String DEFAULT_LAN_BRIDGE_PARENT = "lan-br";
   // The tailscale tailnet DNS suffix. Resolvable host/automount addresses use the MagicDNS FQDN
   // <host>.<tailnet> so they route over the tailscale overlay (stable across the physical LAN),
@@ -105,7 +103,6 @@ public record BootstrapConfig(
         config.incus().configDir(),
         IMAGE_ALIAS,
         config.image().builderHost().orElseGet(() -> nixosMdnsHost),
-        config.profile().name().orElse(DEFAULT_PROFILE_NAME),
         config.network().lanBridgeParent().orElse(DEFAULT_LAN_BRIDGE_PARENT),
         config.network().tailnet().orElse(DEFAULT_TAILNET),
         config.api().endpoint().orElse(DEFAULT_API_ENDPOINT),

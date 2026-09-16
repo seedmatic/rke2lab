@@ -24,7 +24,6 @@ public record Rke2labConfig(
     InfraConfigRegistry infra,
     ClusterConfig cluster,
     NodeConfig node,
-    ProfileConfig profile,
     ApiConfig api,
     KubeconfigConfig kubeconfig,
     ProvisioningPolicyConfig provisioning,
@@ -98,7 +97,6 @@ public record Rke2labConfig(
                 loader.optional("cluster", "role"),
                 loader.optional("cluster", "remoteIncus")),
             new NodeConfig(loader.optional("node", "name")),
-            new ProfileConfig(loader.optional("profile", "name")),
             new ApiConfig(loader.optionalUri("api", "endpoint")),
             new KubeconfigConfig(loader.optionalPath("kubeconfig", "ref")),
             new ProvisioningPolicyConfig(
@@ -174,8 +172,6 @@ public record Rke2labConfig(
       Optional<String> host, Optional<String> role, Optional<String> remoteIncus) {}
 
   public record NodeConfig(Optional<String> name) {}
-
-  public record ProfileConfig(Optional<String> name) {}
 
   public record ApiConfig(Optional<URI> endpoint) {}
 
