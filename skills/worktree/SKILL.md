@@ -32,7 +32,7 @@ place the new worktree as a sibling under the same `<repo>.d/` container as
 
 - Pattern: `<worktree-store>/<org>/<repo>.d/<namespace>/<slug>` for worktrees,
   `<bare-store>/<org>/<repo>.git` for the bare repo.
-- **nikopol** (darwin VM on a tart/vz engine, host `vz.nikopol`) — the migrated
+- **nikopol** (darwin VM on a tart/vz engine, host `vzhost.nikopol`) — the migrated
   layout: `<worktree-store>` = `/Volumes/git-worktree-store`,
   `<bare-store>` = `/Volumes/git-bare-store`.
 - **bioskop** — not yet migrated to this volume layout; its roots differ, so
@@ -66,18 +66,25 @@ and **Claude backend** — then run the steps.
    ```bash
    git worktree add -b <namespace>/<slug> <worktree-store>/<org>/<repo>.d/<namespace>/<slug> "$src"
    ```
-3. **Re-smudge sops** (rke2lab family). `git worktree add` checks files out
-   **before** `.sops.yaml` is visible to the smudge filter, so sops-governed
-   files land ENCRYPTED and are unusable until re-smudged. Governed paths come
-   from `.gitattributes` (`filter=sops-yaml`) — currently `.secrets`,
-   `.ndh-ssh.d/keys.yaml`, `**/01-secret-*.yaml`. For each, re-decrypt:
+3. **Re-smudge sops** (any repo whose `.gitattributes` wires a sops smudge/clean
+   filter). `git worktree add` checks files out **before** `.sops.yaml` is visible
+   to the smudge filter, so sops-governed files land ENCRYPTED and are unusable
+   until re-smudged. Don't hardcode the file list — derive it from git's OWN
+   attribute resolution, so it auto-covers new paths, honours globs
+   (`**/01-secret-*.yaml`), and is a correct **no-op** for repos that DISABLE the
+   filter (e.g. `ndh`, whose `.gitattributes` intentionally carries no
+   `filter=sops-*` — its worktree MUST stay encrypted for eval-time `readFile`):
    ```bash
-   rm <file> && git checkout -- <file>
+   git ls-files -z | git check-attr --stdin -z filter \
+     | while IFS= read -r -d '' path; do
+         IFS= read -r -d '' _attr; IFS= read -r -d '' value
+         case "$value" in sops*) rm -f "$path" && git checkout -- "$path" ;; esac
+       done
    ```
-   Then verify no real secret still contains `ENC[`. **Mind false positives**:
-   schemas/docs may contain `ENC[` as literal text (e.g.
-   `.ndh-ssh.d/keys.schema.yaml`) and are NOT governed — trust `.gitattributes`,
-   not a blind `grep`. A clean `git status --porcelain` after this step confirms it.
+   Then verify: a clean `git status --porcelain` confirms every governed file
+   re-smudged. (Don't grep for `ENC[` blindly — schemas/docs like
+   `.ndh-ssh.d/keys.schema.yaml` carry it as literal text and are NOT governed;
+   the loop keys on the `filter` attribute itself, which is exactly right.)
 4. **Bridge the session history to your home config.** The Dock-launched VSCode
    extension host lists sessions from `$HOME/.claude/projects/<slug>/` — its own
    `$HOME/.claude`, not the workspace-scoped `CLAUDE_CONFIG_DIR`. The canonical
@@ -147,6 +154,37 @@ and **Claude backend** — then run the steps.
 7. **Open** that `.code-workspace` in a **new** VSCode window (one window = one
    worktree). Then `cd` into the worktree for any terminal work.
 
+## Merge / land the branch (squash by default)
+
+Squash is the default — one clean commit on the base. From the **base branch's**
+worktree (never squash-merge into a branch you're standing on inside the topic
+worktree):
+
+```bash
+git merge --squash <namespace>/<slug> && git commit    # on the base worktree
+```
+
+**⚠️ Subtree guard — applies ONLY if the branch touched `.claude/hub/`.** A squash
+flattens the subtree sync commits (`Squashed '.claude/hub/' …`, the sync-down
+merges) into one, orphaning `subtree pull` on the base (it loses the recorded
+base → messy re-merge, or `could not rev-parse split hash`). Two safe ways:
+
+- **Cheapest — don't squash *that* branch.** Plain `git merge` (or a fast-forward
+  when the base is an ancestor) carries the subtree markers along intact. Only
+  hub-touching branches need this; everything else squashes freely.
+- **Keep squash-by-default — re-anchor after.** First **sync the branch's hub edits
+  up** via the `hub-subtree-sync` skill (so the split reflects them), *then* on the
+  base:
+  ```bash
+  git rm -r .claude/hub && git commit -m "chore: re-anchor hub subtree"
+  git subtree add --prefix=.claude/hub claude-hub split/<hub-org>/dot-claude --squash
+  ```
+  This re-establishes a clean sync base at the current (synced) hub content. The
+  sync-up **must** precede the re-add, or the re-add overwrites your hub edits with
+  the stale split.
+
+Push the base, then tear down the worktree below.
+
 ## Finish / tear down
 
 A merged `<repo>.d/<namespace>/<slug>` worktree is **user-managed** under this
@@ -179,15 +217,14 @@ expected scaffolding for the next worktree placed there — leave it.
 ## Hub-subtree sync (only if this session edited `.claude/hub/…`)
 
 The `.claude/hub/` tree is a shared subtree of `claude-hub`. If you changed hub
-content, publish it **up** at session end, before merging the consumer branch.
-`.claude/hub/README-SUBTREE.md` is authoritative; the essentials:
+content, publish it **up** before landing the consumer branch — via the
+**`hub-subtree-sync` skill**, which owns the hardened procedure. Two invariants
+that bite if ignored:
 
-```bash
-git subtree split --prefix=.claude/hub --branch=split/<repo>/dot-claude   # NO --rejoin
-git push claude-hub split/<repo>/dot-claude
-# in the hub checkout: subtree pull --prefix=.claude … --squash, then push origin main
-git branch -D split/<repo>/dot-claude && git push claude-hub --delete split/<repo>/dot-claude
-```
-
-Keep `--squash` in **both** directions; **never** `--rejoin` (it fails with
-"refusing to merge unrelated histories" after a squash pull).
+- **NEVER delete the split branches** (`split/<org>/dot-claude*`). `subtree pull`
+  walks their recorded `Squashed … from A..B` bases; deleting a split GC's those
+  bases → `could not rev-parse split hash`. They are permanent anchors — keep them
+  (and any `refs/recovered/*`) forever, **including when you delete the consumer
+  branch or worktree** (teardown removes the worktree, never its split).
+- **`--squash` both directions, `--ignore-joins` on split, NEVER `--rejoin`** (it
+  fails "refusing to merge unrelated histories" after a squash pull).
