@@ -49,5 +49,5 @@ registry, the clinicians, or `ClinicalAccess`. This is the atlas's one amber "no
 degraded healing, [[doctor-remediation-model]]).
 
 **NEXT TOPIC = undecided** — step 2 (Referral) is the natural successor and would prove the deferred
-grant seam. Conventions reinforced this chantier: [[superpowers-assets-in-wip]] (plans/specs in wip/
+grant seam. Conventions reinforced this chantier: [[hub:superpowers-assets-in-wip]] (plans/specs in wip/
 not docs/), and verify the COMMIT builds (not just the tree) when a subagent dies mid-task.

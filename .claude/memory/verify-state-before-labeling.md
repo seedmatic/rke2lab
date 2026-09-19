@@ -21,5 +21,5 @@ For "is this refactor done": the literals are gone *as call-sites* (read them, d
 build is green. For "is this integrated": it's on the target branch AND builds there. Treat the work
 session's own "done" as a strong prior to verify, not to second-guess by supposition. This is the
 communication-side twin of [[single-source-of-truth-before-logic]] (read the fact from who defines it)
-and of [[model-substrate-alignment]] (describe the substrate that exists, not the one you assume).
+and of [[hub:model-substrate-alignment]] (describe the substrate that exists, not the one you assume).
 See also [[build-verification-gotchas]] (the green-build-lies gates — the objective test itself).

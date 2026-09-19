@@ -79,7 +79,7 @@ runtime boundary (pulumi/kubectl/incus/nix + harness settings) is gated.
   - OPEN for that branch: does `osgi/systemd/` get an aggregator pom (like `osgi/osgi-bench/`) or just
     a dir grouping? Decide on the spot. These become bnd library bundles (Export-Package) like manifests.
 - LATER steps: the `unitrepo-pulumi` ACL/mediation seam (host-side, faces both); bdd-core/bdd-ledger
-  split (oracle-validated). See [[step2-decomposition-state]] [[docrepo-dag-state]] for the roster.
+  split (oracle-validated). See [[step2-decomposition-state]] [[hub:docrepo-dag-state]] for the roster.
 
 See [[layout-skeleton-state]] (step 1, the host-parent hook), [[osgi-space-bundles-state]] (step 2,
 the GAV-not-relativePath fact + bundle pattern), [[bnd-annotations-spike-state]],

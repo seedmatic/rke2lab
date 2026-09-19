@@ -125,7 +125,7 @@ teardown. Act broadly without asking otherwise — only the runtime boundary is 
   the merge message, then teardown this worktree+branch+workspace.
 - After this, the pure/host sort is COMPLETE. NEXT layout steps (own branches): the `unitrepo-pulumi`
   ACL/mediation seam (host-side, faces both spaces); the bdd-core/bdd-ledger split inside seed-master
-  (oracle-validated). See [[step2-decomposition-state]] [[docrepo-dag-state]] for the roster.
+  (oracle-validated). See [[step2-decomposition-state]] [[hub:docrepo-dag-state]] for the roster.
 
 See [[host-space-state]] (step 3, the decision to group by domain + the fragment-vs-bundle finding),
 [[osgi-space-bundles-state]] (the bundle pattern + GAV-not-relativePath), [[layout-skeleton-state]],

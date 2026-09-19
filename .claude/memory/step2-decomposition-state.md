@@ -11,7 +11,7 @@ metadata:
 track). Step 1 (retire the walker) is SHIPPED to origin/main (merge `641d7782`): the Felix
 `UnitResolver` drives production manifest synthesis behind the type-state
 assembled->resolve()->coherent; `resolve()` is the single coherence-rule coordinator. The shipped
-resolver IS the decomposition ORACLE. See [[docrepo-dag-state]] STEP-2 TARGET, [[coherence-rules-coordinator]].
+resolver IS the decomposition ORACLE. See [[hub:docrepo-dag-state]] STEP-2 TARGET, [[coherence-rules-coordinator]].
 
 ## Workspace
 - Worktree: `rke2lab.d/design/step2-decomposition-spec` (branch `design/step2-decomposition-spec`,
@@ -26,7 +26,7 @@ resolver IS the decomposition ORACLE. See [[docrepo-dag-state]] STEP-2 TARGET, [
 - **Spike-first, then spec.** Design follows the proof (user reversed "pure design spec"). The oracle
   must EXECUTE on candidate cuts, not be hand-judged. Docs land in `wip/specs/` + `wip/plans/`
   (NOT `wip/superpowers/`, and NEVER mention "superpowers" in artifacts — user instruction
-  2026-06-16; supersedes [[superpowers-assets-in-wip]] path).
+  2026-06-16; supersedes [[hub:superpowers-assets-in-wip]] path).
 - **Cuts derived from REAL class coupling** (jdeps over bytecode), not hand-transcribed — this is what
   makes the oracle honest (a refusal is a discovery, not a confirmation). Crossing edges = the API/SPI
   catalogue: host->pure concrete = API to export; pure->host = leak to invert into an SPI.
@@ -81,7 +81,7 @@ Model B (config keys as a custom `unitrepo.config.key` resolution namespace, eac
 Provide/Require the resolver wires) was drawn, user chose it, and a spike proved it works
 *mechanically*. THEN the user asked "what did we miss from the OSGi standard?" — a completeness
 review grounded on the real jars (`~/.m2/repository/org/osgi/`, NOT memory) showed B is INFIDELE:
-the standard keeps config OUT of resolution. See [[check-osgi-standard-before-modeling]] (the meta-lesson).
+the standard keeps config OUT of resolution. See [[hub:check-osgi-standard-before-modeling]] (the meta-lesson).
 
 ## CORRECT MODEL — the 3 OSGi planes (verified on bytecode)
 
@@ -292,6 +292,6 @@ tag), `osgi-bench-tests` (P1+P2). bnd 7.3.0, version in PARENT pluginManagement.
   the files into the branch worktree + commit ON THE BRANCH (memory = branch work, arrives in main via
   merge). Durable fix (TODO): make the memory symlink follow the current worktree, not hard-point main.
 
-See [[osgi-test-in-vscode-three-ways]], [[check-osgi-standard-before-modeling]] (the meta-lesson),
-[[docrepo-dag-state]], [[coherence-rules-coordinator]], [[hub:model-substrate-alignment]],
-[[hub:specialist-as-ledger-northstar]], [[build-verification-gotchas]], [[diagram-preview-file]].
+See [[osgi-test-in-vscode-three-ways]], [[hub:check-osgi-standard-before-modeling]] (the meta-lesson),
+[[hub:docrepo-dag-state]], [[coherence-rules-coordinator]], [[hub:model-substrate-alignment]],
+[[hub:specialist-as-ledger-northstar]], [[build-verification-gotchas]], [[hub:diagram-preview-file]].

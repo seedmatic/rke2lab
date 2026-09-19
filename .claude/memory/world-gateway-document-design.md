@@ -174,5 +174,5 @@ NEXT, in order:
 Note: cdk8s-carrier staging fix (376e7d95 + 9e57ba82) ALREADY committed session 1 — done, separate.
 
 See [[multiplexor-two-models-design]] (the prior, now-revised design) [[cdk8s-carrier-flat-jar-pattern]]
-[[maven-build-cache-and-staging-verify]] [[options-always-as-c4-diagrams]] [[diagram-preview-file]]
+[[maven-build-cache-and-staging-verify]] [[options-always-as-c4-diagrams]] [[hub:diagram-preview-file]]
 [[object-graph-navigability-principle]].

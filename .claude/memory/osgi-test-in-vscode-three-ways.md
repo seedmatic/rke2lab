@@ -44,4 +44,4 @@ alternative that also works, but `system.packages.extra` is simpler and needs no
 testkit, get the service typed. Keep tests plain JUnit5 + `@OsgiSpike` so they run in VSCode AND
 surefire. The bnd *builder* (bnd-maven-plugin) is fine and in use; only the bnd *test runner* is
 incompatible with VSCode — don't conflate the two axes. See [[step2-decomposition-state]],
-[[test-tag-taxonomy-by-zone]], [[check-osgi-standard-before-modeling]].
+[[test-tag-taxonomy-by-zone]], [[hub:check-osgi-standard-before-modeling]].

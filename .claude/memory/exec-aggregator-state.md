@@ -115,7 +115,7 @@ each FULL `-Posgi` green (29 modules, 15 tests 0-skipped), `git status` clean:
   `osgi/manifests/manifests/` — that input path no longer resolves from repo root.
 - After this: pure/host/exec sort complete. LATER (own branches): `unitrepo-pulumi` ACL/mediation seam
   (host-side, 3rd member of osgi/unitrepo's domain); bdd-core/bdd-ledger split inside seed-master
-  (oracle-validated). See [[step2-decomposition-state]] [[docrepo-dag-state]] for the roster.
+  (oracle-validated). See [[step2-decomposition-state]] [[hub:docrepo-dag-state]] for the roster.
 
 See [[osgi-leaves-state]] (step 4, the domain-grouping rule + netplan landed flat), [[host-space-state]]
 (seed-master-stays-at-root WAS a step-3 call, now reversed: it gets a real home in exec/),

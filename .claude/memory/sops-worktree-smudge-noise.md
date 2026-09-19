@@ -52,5 +52,5 @@ The filters also leave macOS **AppleDouble** files (`._*`, e.g. `._.local.d`)
 as untracked noise → `git worktree remove` refuses with "contains modified or
 untracked files"; safe to `--force` once the commit is reachable on origin.
 
-Relates to the [[worktree-per-conversation]] rule — every per-conversation
+Relates to the [[hub:worktree-per-conversation]] rule — every per-conversation
 worktree in rke2lab surfaces this until the re-smudge is automated.

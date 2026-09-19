@@ -1,6 +1,6 @@
 ---
 name: intervention-provenance-state
-description: "★ EXECUTING 2026-06-14 on NEW branch feature/problem-oriented-provenance (worktree .claude/worktrees/feature+problem-oriented-provenance, fresh from origin/main). The 2026-06-14 brainstorm RESOLVED the model (problem-oriented medical record; spec+plan committed in wip/superpowers/). Subagent-driven exec UNDERWAY: Tasks 0-4 of 14 DONE & green (foundation cherry-picked + ProblemRef + Expectation/Intervention tagged). The OLD branch improve/operator-intervention-provenance stays a FROZEN cherry-pick reservoir (do not touch). See [[specialist-as-ledger-northstar]] for the model, [[model-substrate-alignment]] for why the old C3 writer was dropped."
+description: "★ EXECUTING 2026-06-14 on NEW branch feature/problem-oriented-provenance (worktree .claude/worktrees/feature+problem-oriented-provenance, fresh from origin/main). The 2026-06-14 brainstorm RESOLVED the model (problem-oriented medical record; spec+plan committed in wip/superpowers/). Subagent-driven exec UNDERWAY: Tasks 0-4 of 14 DONE & green (foundation cherry-picked + ProblemRef + Expectation/Intervention tagged). The OLD branch improve/operator-intervention-provenance stays a FROZEN cherry-pick reservoir (do not touch). See [[hub:specialist-as-ledger-northstar]] for the model, [[hub:model-substrate-alignment]] for why the old C3 writer was dropped."
 metadata: 
   node_type: memory
   type: project
@@ -44,7 +44,7 @@ WHAT SHIPPED, by increment:
   (`explains` = checkpoint-only covers all symptoms / symptom-specific covers its own;
   `explainsSymptom` checkpoint-agnostic = efficacy key). Expectation re-indexed by ProblemRef.
   Intervention tagged + persisted via STABLE-name InterventionResource + history-fold (writer/reader
-  twins of SystemdAdapterResource/MedicalRecordReader — the [[model-substrate-alignment]] win; the
+  twins of SystemdAdapterResource/MedicalRecordReader — the [[hub:model-substrate-alignment]] win; the
   "make the name unique" CRITICAL was correctly REJECTED).
 - **Task 8:** RecordInterventionCommand operator CLI (`--problem/--what/--provenance/--prescription-ref/
   --when/--backend`; testable core takes injected Instant + writer, never reads the wall clock).
@@ -87,14 +87,14 @@ it (problem-oriented model), so A/B/C were cherry-picked forward and extended wi
 
 **★ WHERE THE BRANCH LIVES NOW (workspace cleanup, 2026-06-14).** The branch was extracted from the main
 checkout into a DEDICATED worktree: `.claude/worktrees/improve+operator-intervention-provenance` (tip
-b3ede92d, clean). The main checkout is back on `main`, read-only ([[worktree-per-conversation]] rule). The
+b3ede92d, clean). The main checkout is back on `main`, read-only ([[hub:worktree-per-conversation]] rule). The
 branch's sole role now = **a cherry-pick reservoir** — do NOT rebase or merge it (a rebase would rewrite
 the SHAs and defeat cherry-picking the KEEP-candidate commits listed below). On creation the worktree's
 sops secrets came out encrypted and were re-smudged → see [[sops-worktree-smudge-noise]]. **RESUME in a
 FRESH session, NOT by continuing C/D here:**
-1. Re-read [[specialist-as-ledger-northstar]] (the full model: two memories, multi-time consultation =
+1. Re-read [[hub:specialist-as-ledger-northstar]] (the full model: two memories, multi-time consultation =
    the deferred agenda loop, ledger-backed specialist whose domain is outside seed-master's field) and
-   [[model-substrate-alignment]] (why the C3 writer's mechanism was wrong).
+   [[hub:model-substrate-alignment]] (why the C3 writer's mechanism was wrong).
 2. FINISH that brainstorm: Diagram 0 vocabulary was drawn (.claude/claude-preview.adoc, may be stale);
    the OPEN fork was "is a LedgerBackedSpecialist a subtype of Specialist (same diagnose(Referral) seam)
    or consulted differently" — the multi-time-consultation insight reframes it: the drift trigger is the
@@ -150,16 +150,16 @@ stack, …)` — two adjacent same-typed Strings, swapped, wrote under `<project
 `SchemaRef`), exposed via `InterventionLedgerLayout.ledger()`; C3/C4 take a `StackCoordinate` and unpack at the
 ONE Pulumi-API line, swap impossible. Scope discipline: do NOT change the shared
 `StackHandle.forBackend(Path,String,String)` signature (medical-record reader uses it too → backlog). Validates
-[[works-best-from-concrete-code]] — the smell only surfaced in concrete spike code, the correction propagated
+[[hub:works-best-from-concrete-code]] — the smell only surfaced in concrete spike code, the correction propagated
 back into the plan.
 
 **NEXT — SUPERSEDED by the PARKING banner at the top of this note.** The old linear C3→C5→D path is
 ABANDONED (C3's mechanism was the wrong model). Do NOT resume it. Resume = the fresh-session brainstorm
-described in the parking banner ([[specialist-as-ledger-northstar]] is the model to finish + spec).
+described in the parking banner ([[hub:specialist-as-ledger-northstar]] is the model to finish + spec).
 
 **Adjacent git state (2026-06-14):** `origin/main` is current and PUSHED — the workspace-cleanup session
 pushed 3 chore commits (gitignore + memory notes) via the `gh` credential-helper workaround
 (`GH_TOKEN= git -c credential.helper='!gh auth git-credential' push`), so the earlier "auth failing / not
-pushed" state is resolved for routine pushes (the [[maven-github-token-resolution]] backlog still stands
+pushed" state is resolved for routine pushes (the [[hub:maven-github-token-resolution]] backlog still stands
 for the Maven build path). NOTE: the live-probe fix ([[master-provisioning-state]]) lives on its own
 branch `fix/systemd-live-probe-contract`, NOT merged. This improve/ branch is independent of both.

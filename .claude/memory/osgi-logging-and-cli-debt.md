@@ -74,7 +74,7 @@ present state.
 ## Origin (the audit that found this)
 
 The user saw a `logback.xml` in an OSGi bundle and asked to sweep for ALL the standard OSGi services we
-missed/shadowed during the layout refactor — the [[check-osgi-standard-before-modeling]] discipline:
+missed/shadowed during the layout refactor — the [[hub:check-osgi-standard-before-modeling]] discipline:
 the spec usually provides what we hand-roll. Original read-only audit on design HEAD c3cfb58c; the
 triage verdicts above are the 2026-06-18 follow-up on @211063cd (post-R2).
 
@@ -102,6 +102,6 @@ The `osgi/netplan` services file was once misspelled `rk2lab` (missing the `e`) 
 silently never registered. Fixed at step 5 ([[exec-aggregator-state]]); grep-confirmed dead on
 @211063cd. Kept here as a single-source-of-truth-mismatch exemplar.
 
-See [[exec-aggregator-state]], [[osgi-leaves-state]], [[docrepo-dag-state]] (ServiceLoader=poor cousin),
-[[check-osgi-standard-before-modeling]] (the meta-discipline), [[osgi-runtime-migration-state]] (the
+See [[exec-aggregator-state]], [[osgi-leaves-state]], [[hub:docrepo-dag-state]] (ServiceLoader=poor cousin),
+[[hub:check-osgi-standard-before-modeling]] (the meta-discipline), [[osgi-runtime-migration-state]] (the
 runtime trunk + R4/R6 where the Pax Logging swap lands).

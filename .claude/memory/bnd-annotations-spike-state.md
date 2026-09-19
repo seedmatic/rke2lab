@@ -18,7 +18,7 @@ Felix resolver WORKS — NOT that the Java code is the source of truth. Today th
 - All three `*Component.java` are empty shells whose Javadoc literally says "its only role is to
   carry the header bnd emits".
 
-This VIOLATES the recorded discipline [[check-osgi-standard-before-modeling]] ("APPLY OSGi's
+This VIOLATES the recorded discipline [[hub:check-osgi-standard-before-modeling]] ("APPLY OSGi's
 principles, don't bypass them"): we recopied by hand what OSGi GENERATES from Java annotations.
 User's words: "le code java doit être la principale source of trust".
 
@@ -120,4 +120,4 @@ present under `OSGI-INF/metatype/` generated from annotations. Build: FULL `clea
 - All Maven through `flox activate -- ./mvnw …`.
 
 See [[step2-decomposition-state]] (the parent chantier + the 4-plane / static→dynamic roadmap),
-[[check-osgi-standard-before-modeling]] (the meta-lesson driving this), [[osgi-test-in-vscode-three-ways]].
+[[hub:check-osgi-standard-before-modeling]] (the meta-lesson driving this), [[osgi-test-in-vscode-three-ways]].

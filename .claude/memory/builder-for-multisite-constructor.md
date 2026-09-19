@@ -34,7 +34,7 @@ writer explicitly, and "no ledger → no persistence" mirrors the existing degra
 
 **SCOPE DISCIPLINE.** Apply to `Generalist` now (concrete: 3 params, 5 sites, in growth). Do NOT
 blanket-sweep all multi-site constructors — that's premature abstraction against the
-[[sequential-no-compat-workflow]] "one topic at a time" rule. GENERALIZE-LATER backlog: revisit when
+[[hub:sequential-no-compat-workflow]] "one topic at a time" rule. GENERALIZE-LATER backlog: revisit when
 a 2nd/3rd concrete multi-site-ctor-gaining-a-dependency case appears (rule of three). Lives alongside
 [[intervention-provenance-state]] (the chantier that surfaced it). Validates
-[[works-best-from-concrete-code]] — the pattern crystallized from a real refactor, not abstractly.
+[[hub:works-best-from-concrete-code]] — the pattern crystallized from a real refactor, not abstractly.

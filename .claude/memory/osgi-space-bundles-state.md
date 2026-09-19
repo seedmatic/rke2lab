@@ -1,6 +1,6 @@
 ---
 name: osgi-space-bundles-state
-description: "Step 2 of the new module layout (worktree refactor/osgi-space-bundles off design/target-module-layout): MOVE all the pure-OSGi code (manifests + unitrepo-core + unitrepo-handler-api) under osgi/ IN ONE go, AND bnd-ify them now (parent=bundle-parent, Export-Package, Provide/Require annotations by role). ★ This DELIBERATELY OVERRIDES the recorded 'bnd deferred to the loading track' decision in [[docrepo-dag-state]] — see why below. Born 2026-06-18."
+description: "Step 2 of the new module layout (worktree refactor/osgi-space-bundles off design/target-module-layout): MOVE all the pure-OSGi code (manifests + unitrepo-core + unitrepo-handler-api) under osgi/ IN ONE go, AND bnd-ify them now (parent=bundle-parent, Export-Package, Provide/Require annotations by role). ★ This DELIBERATELY OVERRIDES the recorded 'bnd deferred to the loading track' decision in [[hub:docrepo-dag-state]] — see why below. Born 2026-06-18."
 metadata:
   node_type: memory
   type: project
@@ -18,7 +18,7 @@ ONE sub-branch, two gestures kept conceptually distinct but shipped together:
 
 ## ★ THE OVERRIDE (must be recorded, not silent)
 
-[[docrepo-dag-state]] line ~324 records a GROUNDED user decision: **"bnd DEFERRED to the loading
+[[hub:docrepo-dag-state]] line ~324 records a GROUNDED user decision: **"bnd DEFERRED to the loading
 track"** — Concern A (consume the OSGi resolution API as a LIBRARY = what unitrepo-core is) needs NO
 bundle tooling; plain-JAR is correct; bnd belongs to Concern B (produce loadable bundles) at step 5.
 **We are now reversing that**, on purpose, because the context changed: we are building the TARGET
@@ -62,7 +62,7 @@ The reste-à-faire is ALREADY DEFINED — no need to redefine, just to wake it:
   seam — NOT YET created in rke2lab; the 3rd module the move does not yet have). Three caps + one
   proof: ingest checkpoint→Visit-unit, resolve standalone (Felix), load handler from store.
 - The RESOLUTION track (retire the walker) is ALREADY SHIPPED to origin/main; the MIGRATION track
-  (decomposition into bundles) is what THIS layout work executes. Full state in [[docrepo-dag-state]].
+  (decomposition into bundles) is what THIS layout work executes. Full state in [[hub:docrepo-dag-state]].
 - This move is migration-track step "4 unitrepo-core/-handler (born bundles)" + the manifests bundle,
   brought forward and made concrete on the target layout.
 
@@ -132,5 +132,5 @@ before teardown anyway).
   migrates), the `unitrepo-pulumi` ACL/mediation seam, the bdd-core/bdd-ledger split (oracle-validated).
 
 See [[bnd-annotations-spike-state]] (proven pattern), [[layout-skeleton-state]] (step 1 + bundle/fixture
-split), [[docrepo-dag-state]] (the overridden decision + the unitrepo V1 roadmap),
+split), [[hub:docrepo-dag-state]] (the overridden decision + the unitrepo V1 roadmap),
 [[merge-from-target-worktree]], [[build-verification-gotchas]], [[step2-decomposition-state]].

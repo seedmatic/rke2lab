@@ -8,7 +8,7 @@ metadata:
 ---
 
 Settled during step-1 walker-retirement (manifests resolver, branch
-`design/step1-walker-retirement-spec`). See [[docrepo-dag-state]] STEP 1 section.
+`design/step1-walker-retirement-spec`). See [[hub:docrepo-dag-state]] STEP 1 section.
 
 ## The decision
 
@@ -73,7 +73,7 @@ case the dependency unit `b/v` genuinely EXISTS, so a plain `(unit=b/v)` require
 happily — the closure is coherent AND complete, the violation is invisible to resolution
 and to any head-count. It's a **policy above resolution** (≈ the referral rule is hospital
 policy, not something the scheduler can infer from the roster). Hence an explicit rule
-that reports. [[specialist-as-ledger-northstar]] [[referral-roundtrip-state]]
+that reports. [[hub:specialist-as-ledger-northstar]] [[referral-roundtrip-state]]
 
 ## C4 view — the coordinator and the rule-context contract
 

@@ -15,10 +15,10 @@ on `feature/medical-record-accumulator` (subagent-driven-development, 2026-06-08
 - Module `pulumi-automation-ext`: StackSnapshot, StackCheckpoint, StackHistory(+Entry), StackHandle,
   exception hierarchy (StackException/Access/Content), PulumiBackendLayout. 20 tests.
 - New `pulumi-automation-ext-testkit` module: StackHistoryFixture (shared cross-module fixture,
-  src/main/java, scope=test — [[shared-test-fixtures-module]]).
+  src/main/java, scope=test — [[hub:shared-test-fixtures-module]]).
 - seed-master doctor records: Patient, Visit + 4 query views, MedicalRecord (pure clinical folds),
   DiagnosisReader (tolerant/additive), SnapshotSource + MedicalRecordReader (the fail-at-end
-  aggregator, [[error-handling-layered-contract]]), StackHandleSnapshotSource, MedicalRecordDump
+  aggregator, [[hub:error-handling-layered-contract]]), StackHandleSnapshotSource, MedicalRecordDump
   (offline YAML, lenient caller). seed-master 95 tests.
 - **Full reactor green gate: 130 tests (netplan 4, ext 20, manifests 11, seed-master 95), 0
   fail/error/skip, no Corrupted channel.** Verified by counting surefire, not BUILD SUCCESS.
@@ -65,7 +65,7 @@ recoverable from 180d1827).
 Environment: NORMAL repo (not worktree), branch feature/medical-record-accumulator, ~34 commits ahead
 of main, 130 tests green (docs commit changed no code, gate from 1a557f8d holds). ⚠️ BLOCKER for any
 merge/PR to main: `wip/sandbox/` is STILL TRACKED (8 files, not gitignored) and wip-guard
-([[wip-guard-hooks]], fires only when branch==main) blocks it. The design doc calls sandbox the
+([[hub:wip-guard-hooks]], fires only when branch==main) blocks it. The design doc calls sandbox the
 throwaway proof "not retained on main" → decide at finish: git rm wip/sandbox before merge, OR keep
 branch as-is. Present the 4 options (merge locally / push+PR / keep / discard) — user picks.
 

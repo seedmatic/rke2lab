@@ -96,7 +96,7 @@ Plan was converted .md→.adoc (render glitch FIXED — mermaid only renders in 
   `StackContentException` (bad JSON / missing version|latest|startTime|result / fromJson — NEVER retry).
   `snapshot()` & `entries()` declare `throws StackAccessException, StackContentException`. Classification
   trap honoured: catch `JsonProcessingException`(→Content) BEFORE `IOException`(→Access). Old
-  StackCheckpointException/StackHistoryException DELETED. All in [[error-handling-layered-contract]].
+  StackCheckpointException/StackHistoryException DELETED. All in [[hub:error-handling-layered-contract]].
 - Module test count so far: 18 (3 StackSnapshot + 4 StackCheckpoint + 6 StackHistory + 5 StackHandle).
 - Verified Pulumi 1.28.0: `LocalWorkspace.createOrSelectStack(String, Path)` → `WorkspaceStack`;
   `WorkspaceStack.exportStack()` → `StackDeployment` throws checked `AutomationException`.
@@ -107,5 +107,5 @@ dump+sandbox). Honour: lookup currency = StackHistory.Entry; MedicalRecord = imm
 clinical methods); MedicalRecordReader = aggregator (fail-at-end: partial record + addSuppressed enriched
 with WHICH Entry); offline = MedicalRecordDump YAML (catch+recover). Caveat Task 10: confirm
 `RemediationProgramRef` exposes `id()` + add `parse(String)`. Review rule = strict-diff + backlog
-([[review-scope-backlog]]); a pre-existing-code backlog is presented at the END. Reviews so far found
+([[hub:review-scope-backlog]]); a pre-existing-code backlog is presented at the END. Reviews so far found
 only the recurring "narrating javadoc" smell — keep instructing implementers to avoid it up front.

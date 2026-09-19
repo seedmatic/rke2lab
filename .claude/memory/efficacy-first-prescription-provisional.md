@@ -34,4 +34,4 @@ automated decision — so an arbitrary-but-documented pick is acceptable for now
 **WHY this is in memory not just a comment:** the user's instinct ("warn about it, we're not sure")
 is a standing collaboration signal — when a choice is arbitrary, mark it provisional honestly rather
 than bake it in silently as if principled. Mirrors the errors-as-control-values stance
-([[error-handling-layered-contract]]): don't deport an unresolved decision into invisible code.
+([[hub:error-handling-layered-contract]]): don't deport an unresolved decision into invisible code.

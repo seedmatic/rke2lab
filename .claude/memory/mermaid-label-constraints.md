@@ -58,7 +58,7 @@ curl -s -o out.svg -w "%{http_code}" -X POST http://bioskop-nixos.local:8000/mer
   regardless of size (verified: a 4-node diagram failed 0/4 while a byte-identical block rendered 200
   minutes earlier). RETRY, or switch server.
 
-**Server choice (2026-07-21 finding, refines [[diagram-preview-file]]):** `kroki.io` (online) was the
+**Server choice (2026-07-21 finding, refines [[hub:diagram-preview-file]]):** `kroki.io` (online) was the
 FLAKY one this session (intermittent chromium-spawn 400s); the LOCAL `http://bioskop-nixos.local:8000`
 returned 200 reliably and the user's preview then rendered. So when online kroki flakes, validate
 (and point `.asciidoctorconfig`) at the local server. Do NOT keep editing the diagram to "fix" a
@@ -68,4 +68,4 @@ server flake — that was the wasted-cycles trap this session.
 nested escaped quote is the classic breaker. Prefer apostrophes for inner quoting. Then scan for `—`,
 `;`, `<...>`, `()` in edge labels, and non-ASCII in subgraph titles. THEN render-check against kroki
 (above) before saying it is ready. See [[options-always-as-c4-diagrams]] [[collaborative-design-method]]
-[[diagram-preview-file]].
+[[hub:diagram-preview-file]].

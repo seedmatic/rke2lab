@@ -94,7 +94,7 @@ Three decisions taken WITH the user while cartographing the real code on the R4 
 
 The user flagged the right symptom: `ManifestYaml` used on BOTH sides of the frontier is a bad smell —
 it means **the host is doing manifest DESCRIPTION work, which belongs to the manifests world** ("OSGi
-describes, host actualises", [[model-substrate-alignment]]). So the 3 wrong-direction leaks are NOT 3
+describes, host actualises", [[hub:model-substrate-alignment]]). So the 3 wrong-direction leaks are NOT 3
 classes to relocate; they are 3 distinct seams to re-sew:
 
 - **Couture 1 (B1+B2 together):** `IncusResourceBootstrap.RuntimeEnvControlplaneOverlayWriter.write()`
@@ -195,5 +195,5 @@ Recorded in [[rename-contract-to-port-state]] + [[java-cleanup-backlog]].
 
 See [[osgi-runtime-migration-state]] (spec §4 is the runtime-target design this implements),
 [[osgi-runtime-r3-consume-references-state]] (dual-path + the deferred gate), [[osgi-runtime-r1-scr-state]]
-(embedded-Felix proof + typed-access trick), [[docrepo-dag-state]] (#1565 gRPC/TCCL),
-[[model-substrate-alignment]] (OSGi describes, host actualises), [[merge-from-target-worktree]].
+(embedded-Felix proof + typed-access trick), [[hub:docrepo-dag-state]] (#1565 gRPC/TCCL),
+[[hub:model-substrate-alignment]] (OSGi describes, host actualises), [[merge-from-target-worktree]].

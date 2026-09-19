@@ -43,4 +43,4 @@ like rke2lab:controlplane:SystemdAdapter are natural injection targets (mirror r
 
 Test stack/backend must be a throwaway, gitignored (model: wip/sandbox/.sb-state). NEVER touch dev.
 Relates to [[task14-readonly-preview-integration]], [[medical-record-query-api-state]],
-[[shared-test-fixtures-module]].
+[[hub:shared-test-fixtures-module]].

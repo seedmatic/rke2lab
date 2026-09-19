@@ -33,4 +33,4 @@ then, same as running the tests. This is the timing refinement of [[tidy-on-drif
 atlas before/after was tracking? If so, collapse it to current-state (shift the "after" forward), and
 only draw a new before/after if a NEXT evolution is now the live one. (b) do the feature's specs still
 carry "increment N / stage / SHIPPED / NOT-yet-built" scaffolding now that it is built? Strip it.
-Related: [[tidy-on-drift-widens-scope]] [[docs-diagrams-not-java]] [[spec-figure-first-reading-loop]].
+Related: [[tidy-on-drift-widens-scope]] [[hub:docs-diagrams-not-java]] [[spec-figure-first-reading-loop]].

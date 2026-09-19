@@ -23,7 +23,7 @@ into the `.adoc` specs.
   options are about where things live or how they relate. Code snippets MAY accompany but do not
   REPLACE the diagram.
 - The whiteboard is a **Claude artifact** now (default — self-contained HTML + mermaid, per
-  [[diagram-preview-file]]; `.claude/claude-preview.adoc` + kroki is the offline fallback); the chosen
+  [[hub:diagram-preview-file]]; `.claude/claude-preview.adoc` + kroki is the offline fallback); the chosen
   option then graduates into the permanent spec.
 - Pair with [[specs-current-at-brainstorm-end]] (the diagrams end up in the specs) and the brainstorm
   ritual.

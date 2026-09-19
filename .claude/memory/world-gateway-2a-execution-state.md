@@ -137,7 +137,7 @@ until zone-1/2 (host still calls old verbs) — expected, not a regression.
 (NEVER bare `test`); doctor-core-test via bare `test` on its module; full reactor to read the
 `realm-boundary` worklist shrink per zone.
 
-Branch kept, never merged ([[external-worktree-operating-model-state]]). Folds the
+Branch kept, never merged ([[hub:external-worktree-operating-model-state]]). Folds the
 [[doctor-graph-vs-dag-vocabulary-backlog]] rename. See [[world-gateway-document-design]]
 [[realm-boundary-gate]] [[maven-build-cache-and-staging-verify]]
 [[felixframeworkextension-renamed-outofcontainer]] [[options-always-as-c4-diagrams]].
