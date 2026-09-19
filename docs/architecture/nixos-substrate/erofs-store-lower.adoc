@@ -1,0 +1,264 @@
+= The EROFS store lower — /nix/store as overlay(read-only image + ZFS upper)
+:toc: macro
+:toclevels: 3
+
+toc::[]
+
+== Overview
+
+A node's `/nix/store` is not a ZFS dataset any more. It is an *overlay*: a read-only
+EROFS image carried by the node image as *its own disk*, plus a writable ZFS upper for
+everything written after bringup.
+
+The problem this solves is a build problem. The nested QEMU guest that assembles the
+node image used to materialise the closure file by file, and that is what the build
+cost. Measured on the builder:
+
+[cols="2,1,3"]
+|===
+| Work | Nature | Time in a ~3000 s build
+
+| sha256 over 9.3 GiB (ARMv8 crypto present)
+| bytes
+| 5–10 s
+
+| zstd-1 over 9.3 GiB
+| bytes
+| ~30–60 s
+
+| raw write of 9.3 GiB
+| bytes
+| ~90 s
+
+| *creating 260 121 files*
+| *operations*
+| *everything else (~2800 s)*
+|===
+
+All byte-work totals one to three minutes out of fifty. The rest is per-file
+operations at ~11 ms each — about 87 files/s against thousands/s natively. **The build
+was bound by operations, not bytes.**
+
+That single fact explains why every read-side attempt failed. `virtiofsd --cache=always`
+bought ×3.3 on the transport and left the total unchanged; DAX was never merged into
+mainline QEMU; a squashfs binary-cache source removed the virtiofs round-trips entirely
+(`virtiofsd read=0`, guest idle 54 % → 5 %) and the build still took ~50 min. The wall
+was never the transport. See <<Related documentation>> for the read-side record.
+
+So the *output format* changed instead of the input transport. `mkfs.erofs --tar=f`
+turns 260 k file creations into one sequential image write, and — the load-bearing
+detail — **it needs no root**. `zpool create` does, which is the whole reason the nested
+VM exists. Packing the store on the host is therefore the only way to move store
+production out of that VM *while staying a pure Nix derivation*: byte-identical across
+hosts, so Nix still dedups the fleet-wide bringup image.
+
+Result: the nested VM went from ~50 min to ~6 min.
+
+== C4 — Context
+
+[mermaid]
+....
+graph TD
+  subgraph host["Build host (bioskop-nixos) — no root needed"]
+    CI["closureInfo<br/>rootPaths = installSystemPath"]
+    MK["tar --files-from store-paths<br/>| mkfs.erofs --tar=f"]
+    IMG["store.img — EROFS<br/>label nix-store, uncompressed"]
+    CI --> MK --> IMG
+  end
+
+  subgraph vm["Nested QEMU guest — needs root"]
+    ZP["zpool create + datasets<br/>(disko)"]
+    INST["nixos-install<br/>bootloader + /etc"]
+    ZP --> INST
+  end
+
+  subgraph node["Node at runtime"]
+    RO["/nix/.ro-store<br/>erofs, ro, by-label"]
+    UP["/nix/.rw-store<br/>ZFS dataset"]
+    ST["/nix/store<br/>overlay(lower, upper)"]
+    RO --> ST
+    UP --> ST
+  end
+
+  IMG -.->|"attached read-only<br/>if=virtio"| vm
+  IMG ==>|"shipped as its own disk"| RO
+  INST --> node
+
+  classDef nor fill:#e6ffe9,stroke:#0a0,color:#050;
+  classDef roo fill:#fff4e6,stroke:#c60,color:#803;
+  class host nor
+  class vm roo
+....
+
+The nested VM survives, but it no longer writes the store: it creates the pools, drops
+the bootloader, and mounts the prebuilt lower so `nixos-install` finds the closure
+already present.
+
+== C4 — The three layers at runtime
+
+[mermaid]
+....
+graph LR
+  L["/nix/.ro-store<br/>erofs on vdf, ro=1<br/>659 paths, 2.6 GiB<br/>immutable, GC-proof"]
+  U["/nix/.rw-store/upper<br/>ZFS, recordsize=16K<br/>everything since bringup"]
+  S["/nix/store<br/>overlay — what the system sees"]
+  DB["/nix/var/nix/db<br/>the Nix database<br/>(own ZFS dataset)"]
+
+  L -->|lowerdir| S
+  U -->|upperdir| S
+  DB -.->|"declares both layers valid"| S
+
+  classDef ro fill:#e6f0ff,stroke:#06c,color:#035;
+  classDef rw fill:#e6ffe9,stroke:#0a0,color:#050;
+  classDef db fill:#fffbe6,stroke:#e0c000,color:#665c00;
+  class L ro
+  class U rw
+  class DB db
+....
+
+The database is the third layer and the one that is easy to forget. It lives in the
+upper, independent of the lower, and it is what makes the lower's paths *usable*: the
+installer replays `nix-store --load-db` against the target so every path the image
+carries is already valid there.
+
+=== The lower is not an install artifact
+
+Measured on `bioskop-nixos` after it switched to its runtime configuration:
+
+[cols="3,1"]
+|===
+| Of the 1658 paths in `/run/current-system`'s closure | Count
+
+| resolved *only* in the EROFS lower | *554 (33 %)*
+| resolved only in the ZFS upper | 1104
+| present in both | *0*
+| present in neither | 0
+|===
+
+Two consequences. Detaching the lower costs 554 paths, so it is the *base layer* of the
+running system, not a leftover. And with zero duplication, the switch to the runtime
+configuration wrote only the delta — 5.3 GiB into the upper instead of the whole
+closure — because the database already declared the lower's paths valid.
+
+The ratio decays: every `nixos-rebuild switch` feeds the upper, and as nixpkgs moves
+fewer runtime paths overlap the frozen bringup closure. Raising it again means baking a
+host's *runtime* closure via `runtimeSystemPath`, which tags the image per host and
+breaks the fleet-wide dedup the bringup image exists to preserve. That trade-off is
+deliberate, not an oversight.
+
+== The GC-root invariant — the critical one
+
+**The lower must carry a durable GC root, or a routine hygiene command silently poisons
+the store.**
+
+By construction the lower's contents are *exactly* the closure of the bringup toplevel —
+the image is packed from `closureInfo { rootPaths = [ installSystemPath ] }`. So one root
+on that toplevel covers it entirely; no per-path roots, no partial profile.
+
+[source,sh]
+----
+# modules/nixos/zfs.d/bringup-zfs-disk-images-install.sh, at install time
+ln -sfn @systemToplevel@ /mnt/zfs-root/nix/var/nix/gcroots/erofs-store-lower
+----
+
+❌ *Without it*, the lower is rooted only by **generation 1 of the system profile** —
+which is precisely what `nix-collect-garbage -d` prunes. Measured on `bioskop-nixos`:
+of the 659 lower paths, 554 are also reachable from the running system or the bringup
+profiles, leaving **105 that become garbage the moment generation 1 is dropped**. Nix
+then deletes them *through the overlay*, so overlayfs writes one whiteout per path into
+the upper. Three things follow, all bad:
+
+* the paths vanish from the store although the image still carries them,
+* the EROFS bytes stay, unreclaimable,
+* the whiteouts *persist* — a later lower providing those paths again stays masked.
+
+✅ *With the root*, `nix-collect-garbage -d` is safe: the whole lower is live, and the
+only reclaimable space is in the upper, which is where it should be.
+
+=== Whiteouts are the one thing the overlay cannot forgive
+
+The mount is a plain overlay — no `index=`, no `metacopy=`, no `redirect_dir=` — so
+overlayfs stores no origin handles and swapping the lower between two mounts is
+tolerated. Upper entries shadow the lower, which is harmless for a Nix store because the
+path name *is* the content hash: a shadowed path has identical content.
+
+Whiteouts are the exception. They are the only overlay state that can make a path the
+lower *does* provide unavailable, and they are created by deleting a lower path — that
+is, by GC. Hence the invariant above.
+
+== Updating or bumping the lower
+
+The lower is *not* freely replaceable. It is replaceable **together with a system
+generation**, under three conditions:
+
+. *Move the GC root* to the new toplevel, or the old lower stays pinned for nothing.
+. *Replay the registration* (`nix-store --load-db`) for the new closure. Skip it and Nix
+  treats the new paths as invalid, re-fetches them, and writes duplicates into the
+  upper — the lower's content becomes invisible.
+. *Do not pull the rug from under the booted system.* 554 lower paths serve the running
+  runtime; a bump that drops them breaks the boot unless those paths are materialised
+  into the upper first, or the system is switched to a generation the new lower covers.
+
+❌ Swapping the lower alone, expecting the upper to absorb the difference.
+✅ New lower + re-register + move the root + land on a covered generation, as one step.
+
+== Setup — how the pieces are wired
+
+Single source of truth for the names, so the disko layout, the runtime mount and the
+installer cannot drift: `ndh/modules/nixos/erofs-store-layout.nix` (label `nix-store`,
+`/nix/.ro-store`, `/nix/.rw-store`, dataset `nerd/nix/rwstore`).
+
+* *Packing* — `ndh/modules/nixos/erofs-store-image.nix`, the recipe from nixpkgs'
+  `virtualisation.useNixStoreImage`: `--force-uid=0 --force-gid=0 -T 0 -U <fixed>`, so
+  the bytes are deterministic and Nix dedups them fleet-wide (verified with
+  `nix-store --realise --check`).
+* *Uncompressed on purpose* — no `-z`. The scarce resource on the consuming side is CPU
+  (nested-KVM caps at 6 vCPUs), not bytes; host throughput is >1 GB/s. A compressed
+  lower trades one sequential write for a permanent decompression tax on every store
+  read. Only compress for a bandwidth-bound consumer.
+* *Runtime mount* — `ndh/modules/nixos/erofs-store-mount.nix`. Found *by filesystem
+  label*, never by device node: the hypervisor decides the virtio slot and that order is
+  not ours to pin. Observed live: the pool disks land on `vdb`…`vde` under Tart and the
+  store on `vdf`, a different order from the build VM.
+* *Upper on ZFS, never tmpfs* — nixpkgs' `qemu-vm.nix` puts the upper on tmpfs; with
+  8–16 GiB of builder RAM that is a real constraint, and at runtime the upper must
+  survive reboots.
+* *Its own disk, marked in the manifest* — `role: prebuilt`, so the Darwin side copies
+  it verbatim, never grows it to `vmDataDiskSizeGiB`, never probes it for ZFS partition
+  labels, and attaches it `:ro`.
+
+== Troubleshooting
+
+*Guest hangs in the initrd on `/dev/disk/by-label/nix-store`.* The store disk is not
+attached. Check the disk set the hypervisor was given; under Tart it comes from the
+bringup manifest's `images[]`, so a stale run manifest yields a disk set from a previous
+bundle. The manifest candidates are ordered *freshest-authority first* (env var → the
+effective user's materializer gcroot → the baked path → legacy XDG) precisely because a
+hand-placed XDG file used to win and silently start the VM against an older bundle.
+
+*Five disks expected, four attached.* The disk list could not be resolved from the
+manifest and an older code path fell back to a hardcoded `tank1/2/3 + recover` layout,
+which predates the store disk. Both the materializer and the run wrapper now fail loudly
+instead: failing where the information is missing beats failing three steps later on the
+guest console.
+
+*Paths missing from the store although the image carries them.* Whiteouts in
+`/nix/.rw-store/upper` (character devices, major/minor 0:0). Something GC'd a lower path.
+Check the GC root above; the whiteouts themselves must be removed by hand.
+
+*`nix copy` rewrites the whole closure into the upper.* The target database was not
+registered for the lower. `nix-store --load-db` against the target's `NIX_STATE_DIR` is
+what makes the image's paths valid there.
+
+*Build produces the image but nothing boots.* Verify the manifest actually lists the
+images: a `manifest.yaml` copied from the store keeps mode 0444, `yq -i` then fails to
+write it — and *reports the failure while exiting 0*, so `set -e` does not catch it and
+`images` stays `[]`.
+
+== Related documentation
+
+* link:substrate-model.adoc[The substrate model] — the vision this store layout serves: the closure is the config.
+* link:node-bootstrap-delivery.adoc[Node-side bootstrap delivery] — the other half of what reaches a node that no longer has `/srv/host`.
+* link:concern-ownership.adoc[Concern ownership] — where image-side responsibilities land.
+* link:../atlas/nixos-substrate.adoc[Atlas — NixOS substrate] — the before/after delta this becomes a component of.
+* link:tailscale-fork-supply-chain.adoc[Tailscale fork supply chain] — the sibling `ndh`-as-SSOT pattern, with its own bump runbook.

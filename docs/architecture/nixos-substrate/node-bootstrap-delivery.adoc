@@ -156,6 +156,7 @@ replicator fans each out to the target namespaces where the `replicate-from` pla
 == Related
 
 * link:substrate-model.adoc[The substrate model] — the vision this seam serves.
+* link:erofs-store-lower.adoc[The EROFS store lower] — the other thing the image now carries whole: the store, as a read-only EROFS disk with a ZFS upper.
 * link:concern-ownership.adoc[Concern ownership] — the CNI + Flux row of the redistribution table.
 * link:../atlas/nixos-substrate.adoc[Atlas — NixOS substrate] — the before/after delta.
 * `nixos/bootstrap-manifests.nix` — the guest oneshot (the consuming end of the devlxd key).
