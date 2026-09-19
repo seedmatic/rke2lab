@@ -53,6 +53,30 @@ Adding a fact: write the topic file, then one ≤200-char line in the right
 | Memory / workspace mechanics | 6 | [INDEX-memory-mechanics.md](INDEX-memory-mechanics.md) |
 | Backlogs / misc | 33 | [INDEX-backlogs.md](INDEX-backlogs.md) |
 
+## Renamed since these notes were written — translate before searching
+
+Checked against `feature/nixos-node-substrate` on 2026-09-19. Memory predating a
+rename keeps the old word, so a literal search finds nothing in the code.
+
+- **`world-gateway` → `seed-broker-port`** (`acd68a510`). Live branch: `seed-broker`
+  in 392 files, `world-gateway` in 14 (docs only). Memory still says
+  `world-gateway` in 49 files / 27 index entries — the `world-gateway-2a…2e`
+  entries name *chantier phases*, so their titles stay; only the vocabulary moved.
+- Spec chain, all three now one file `docs/architecture/osgi/seed-broker-spec.adoc`:
+  `multiplexor-spec.adoc` → `world-exchange-spec.adoc` (`7e289e236`) → renamed
+  again with the word (`adc113f61`, `acd68a510`).
+- Doc re-cut by nature (`e0945ec71`): `osgi/pipeline-spec.adoc` →
+  `docs/architecture/bdd/bdd.adoc`; `atlas/host-pipeline.adoc` →
+  `docs/architecture/atlas/seed.adoc`. Fully-qualified citations were fixed on
+  09-19; bare `pipeline-spec.adoc` mentions left alone — several are *about* the
+  re-cut, and `pipeline-spec-recut-plan.md` even carries the `git mv` command.
+- `osgi/two-gates-spec.adoc` is cited by two entries but **never existed** in any
+  commit — a promised doc that was never written.
+- `docs/manifests-architecture.adoc` → `docs/architecture/manifests/manifests-architecture.adoc`.
+- **Not stale, cross-repo:** `docs/host-builder-phases.adoc`,
+  `docs/operator-commands.adoc`, `docs/vm-operator-runbook.adoc` live in **ndh**.
+  22 of 76 cited paths looked missing; a third were simply another repo's.
+
 ## Known debt in this memory
 
 - **201 of 224 entries exceed the 200-char rule** (average 609). Compressing them

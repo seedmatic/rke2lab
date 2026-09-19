@@ -89,7 +89,7 @@ Orthogonal to the other two — about *how much* logic the grammar expresses, no
 ## RESOLUTION — the contributable refactor is CLOSED, it dissolves into the OSGi move (2026-07-02)
 
 Revisited from the pipeline side during the OSGi-ownership chantier (spec
-`docs/architecture/osgi/pipeline-spec.adoc`), planned as task "S2 — contributable seed". Reading the
+`docs/architecture/bdd/bdd.adoc`), planned as task "S2 — contributable seed". Reading the
 code before starting it confirmed, from the pipeline side, exactly what the "L2 ABANDONED" section above
 found from the module side — so S2 was abandoned, not scheduled:
 

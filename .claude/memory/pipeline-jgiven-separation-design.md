@@ -80,7 +80,7 @@ contributors OSGi-side (pure `Map`, no Pulumi across the seam) + assembly/write 
 TRIGGERS the reasoning pipeline in the detached case** — remote host-client commands it (passive until
 called; embedded = same call folded), or OSGi reasons on its own lifecycle + exposes result (then where
 does `RunMode` enter?). This `RunMode→OSGi→runbook` joint = the next brainstorm. Spec (extended
-2026-07-02) = `docs/architecture/osgi/pipeline-spec.adoc` (moved from `patterns/`, renamed from
+2026-07-02) = `docs/architecture/bdd/bdd.adoc` (moved from `patterns/`, renamed from
 `two-gates-spec`; `dsl-unification-exploration.adoc` DELETED and folded in).
 
 ## ★ NAMING + THREE LEVELS (2026-07-02, graved in pipeline-spec.adoc)

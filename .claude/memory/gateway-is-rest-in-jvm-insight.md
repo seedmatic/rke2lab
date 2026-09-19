@@ -51,7 +51,7 @@ compile-time typing at the door — the trade REST always makes).
 
 ## ATLAS-FIRST CONFRONTATION (2026-07-08, same session) — the insight is ALREADY the design-of-record
 
-Read `docs/architecture/osgi/world-gateway-spec.adoc` + `integration-atlas.adoc` +
+Read `docs/architecture/osgi/seed-broker-spec.adoc` + `integration-atlas.adoc` +
 [[multiplexor-two-models-design]] before deciding. Three findings that reframe the whole thing:
 
 1. **"REST in-JVM" is NOT a new idea — it is the shipped design-of-record.** The spec's title is
