@@ -31,7 +31,7 @@ Adding a fact: write the topic file, then one ≤200-char line in the right
 
 ## In flight
 
-- [★ nixos substrate — store /nix/store en EROFS+overlay (SHIPPÉ 2026-09-18, ndh)](nerd-nixos-image-build-slow-not-zfs-on-zfs.md) — build VM imbriquée ~6 min contre ~50 ; runtime validé sur nikopol. Reste : renew bioskop. See [[nerd-nixos-tart-vm-renew-procedure]] [[materializer-corp-mac-identity-gcroots]].
+- [★ nixos substrate — store /nix/store en EROFS+overlay (SHIPPÉ 2026-09-18, ndh)](nerd-nixos-image-build-slow-not-zfs-on-zfs.md) — build VM imbriquée ~6 min contre ~50. **2026-09-19 : nikopol-nixos RENEWÉ, bioskop-nixos en cours de grow.** ⚠️ le boot a été prouvé sur le bundle `rrh5j25j` (disques de pool 3482 MiB) ; `6b5a6475` les a retaillés à 1540 → bundle `h01wjv82`, pools ONLINE au build mais **jamais booté** — ce grow est le premier boot de ces octets. See [[nerd-nixos-tart-vm-renew-procedure]] [[materializer-corp-mac-identity-gcroots]].
 - [★ config RKE2 — livraison uniforme `nix run <branche>#install-rke2-config`](rke2-config-reconciliation-nixrun-delivery.md) — design tranché, code pas commencé ; plan `.claude/rke2-config-reconciliation-plan.md`.
 - [★ workload grow — fondations (modèle B tranché)](workload-grow-foundations-resume.md) — `bioskop-wrkld` bloqué sur fondations mono-cluster ; roadmap `.claude/workload-grow-foundations-plan.md`.
 - [★★ Cellier TRANSACTIONNEL — design convergé, code pas commencé](cellar-transactional-design-state.md) — ScenarioCellar universel + SeedRunLedger ; 4 étapes de fondation à coder.
