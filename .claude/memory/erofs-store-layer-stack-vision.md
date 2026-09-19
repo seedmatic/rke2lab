@@ -5,13 +5,16 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 0b18b1f3-3eda-496a-865d-1fbc722b0d30
-  modified: 2026-09-19T14:33:05.753Z
+  modified: 2026-09-19T14:48:53.115Z
 ---
 
-Brainstorm **convergé** le 2026-09-19, whiteboard dans
-`.claude/claude-preview.adoc` du worktree `feature/nixos-node-substrate` (484 lignes,
-figures C2 / C3a / C3b / C3c + un flow). Le précédent whiteboard est archivé sous
-`.claude/claude-preview.archive-2026-09-19-cluster-intention-capi-decomposition.adoc`.
+**La vision est SHIPPÉE EN SPEC** (rke2lab `a86a5a9f4`) :
+`docs/architecture/nixos-substrate/erofs-store-layer-stack.adoc` — la *vision*, distincte de
+`erofs-store-lower.adoc` qui décrit l'*acquis*. Renvois croisés bidirectionnels depuis le
+lower, `substrate-model`, `node-bootstrap-delivery`, l'atlas et `docs/README`. Le whiteboard
+d'origine est archivé sous
+`.claude/claude-preview.archive-2026-09-19-erofs-layer-stack-vision.adoc` — **ne plus le
+citer comme source vivante, lire la spec**.
 Suite de [[nerd-nixos-image-build-slow-not-zfs-on-zfs]] (l'EROFS shippé) — **cette entrée
 est la VISION, pas l'acquis**.
 
