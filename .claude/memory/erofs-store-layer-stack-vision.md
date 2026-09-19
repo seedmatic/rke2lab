@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 0b18b1f3-3eda-496a-865d-1fbc722b0d30
-  modified: 2026-09-19T12:25:54.032Z
+  modified: 2026-09-19T13:41:00.705Z
 ---
 
 Brainstorm **convergé** le 2026-09-19, whiteboard dans
@@ -73,11 +73,38 @@ source change · préservation/remplacement du disque root). Mode d'échec de la
 - Bundle neuf **déjà construit** : `/nix/store/b9f6dk7vxzqgfv62wx5xjm045p32dx9v-io.seedmatic.ndh-nerd-bringup-zfs-disk-images`
   (son `store.img` = `pbqwjqspi4qlf3phnf153ipg1mpz2s5b-…`, UUID `…a62` vérifié par `dump.erofs`).
 - **État de nikopol AVANT** (pour comparer) : marqueur → `h01wjv82…/store.img` ; disk.img
-  141217792, recover.img 1446256640, store.img 2776629248, tank1/2 4031328256,
+  141217792 (100 Go virtuels, GPT = `GUID_partition_scheme` + `EFI`, **pas** de
+  `disk.img.source`), recover.img 1446256640, store.img 2776629248, tank1/2 4031328256,
   tank3 4031324160 ; pools `tank` ONLINE **7,98 GiB alloués**, `recover` 644K.
 - **Protocole** : matérialiser sur nikopol-vzhost **SANS** `VM_FACTORY_RESET`, puis
   vérifier : pools préservés · `store.img` remplacé · marqueur à jour · le nœud boote.
 - **Filet** : en cas d'échec, renew (~11 min, chemin exercé 2× le 2026-09-18/19).
+
+**2026-09-19 — la porte a été DURCIE avant de lancer l'expérience** (ndh `47943f0b`, à la
+demande de l'utilisateur : « la taille du disque root n'est pas un marqueur fiable selon
+moi, on devrait durcir cette porte non ? » — il avait raison, j'avais mesuré qu'elle
+répondait « préserve » par **coïncidence** de tailles, 629 145 600 des deux côtés). Détail
+et leçon réutilisable : [[destructive-gate-needs-three-valued-probe]].
+
+Conséquences pour le protocole :
+
+- Les trois branches éprouvées sont désormais les branches **durcies** — pas celles qu'on
+  s'apprêtait à remplacer. C'est pour ça qu'on a durci d'abord.
+- Comportement attendu sur nikopol : disque root **préservé** avec un `[WARN] root disk
+  holds materialized content from another source` (marqueur absent + partition `EFI`
+  détectée) · 4 disques de pool **préservés** (`content-hint: ZFS` vérifié sur les 4 par
+  clone APFS, sans arrêter la VM) · `store.img` **remplacé** (marqueur `store.img.source`
+  en désaccord) et marqueur réécrit.
+- **Le materializer est déployé par `nix copy`, pas par nix-darwin** — nikopol-vzhost ne
+  fait PAS tourner nix-darwin. Build :
+  `nix build .#packages.aarch64-darwin.nerd-tart-nikopol-materialize`
+  → `/nix/store/ki3yy8zknv4sq1hv3dcx5qp3crhdjczy-nerd-tart-vm-materialize` (porte le script
+  durci + le bundle `b9f6dk7v…` + `nixos-system-nikopol-nixos-26.05.20260911.21a67dc`).
+  6 chemins manquants sur 1816, ~9,9 Go. Puis exécution **depuis le store path** sur le
+  vzhost. Pas besoin de `NDH_IMAGE_MANIFEST_OVERRIDE` : le bundle neuf est baké dedans.
+- Env vars utiles quand même : `NDH_IMAGE_MANIFEST_OVERRIDE` (gagne sur l'auto-résolution,
+  qui sort tôt si le chemin est déjà lisible), `NDH_IMAGE_STORE_OVERRIDE`,
+  `VM_FACTORY_RESET`, `TART_DISK_RELEASE_TIMEOUT_SECONDS` (nouveau).
 
 **Plan de l'utilisateur après l'expérience** : si concluante → basculer le whiteboard dans
 `docs/architecture/nixos-substrate/` + atlas → puis attaquer le code.

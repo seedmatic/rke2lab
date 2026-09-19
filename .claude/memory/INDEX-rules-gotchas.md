@@ -30,3 +30,4 @@ One line per entry (~200 chars); detail lives in the linked file.
 - [Validate at the boundary](validate-at-the-boundary.md) — validation discipline (ref by intervention-provenance).
 - [Master provisioning state](master-provisioning-state.md) — live-probe contract FIXED+PROVEN vs real master (branch fix/systemd-live-probe-contract, not merged). PARKED. Seed = operator out-of-band intervention → drift specialist source.
 
+- [Destructive gate needs a three-valued probe](destructive-gate-needs-three-valued-probe.md) — si une réponse négative déclenche une suppression, la sonde doit distinguer « absent » de « pas pu regarder » ; sinon toute panne d'introspection devient un ordre de suppression (ndh `47943f0b`). La taille n'est pas un marqueur.
