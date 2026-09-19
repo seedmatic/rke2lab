@@ -42,3 +42,20 @@ Chantier (2026-09-17) : le build de l'image disque nerd-nixos **sur bioskop-nixo
 Le build : `bringup-zfs-disk-image.nix` → `runInLinuxVM` (qemu `qemu-kvm-detect` = `[ -e /dev/kvm ] && accel=kvm:tcg`), store via virtiofsd, `buildcommand.sh` lance `bash $NDH_INSTALL_SCRIPT` (l.170, sortie sur console ttyAMA0 → log nix, `loglevel=4` la rend sparse). Shell debug = `hvc0` (socat sur shell.sock, séparé du log). `NDH_BUILD_OBSERVE` (env, PAS le catalog) gate seulement les métriques Vector, pas le log d'install.
 
 See [[nerd-nixos-tart-vm-renew-procedure]] [[materializer-corp-mac-identity-gcroots]].
+
+**★ À QUOI SERT LE DISQUE EROFS APRÈS LE SWITCH ? (mesuré sur bioskop-nixos, 2026-09-19).**
+Question légitime : l'EROFS porte la closure *bringup* (2,6 GiB) ; après `nixos-rebuild switch`
+la closure *runtime* part dans l'upper ZFS. Le lower devient-il un vestige ? **Non — il porte un
+tiers du système qui tourne.** Closure de `/run/current-system` = 1658 chemins, dont **554 (33 %)
+servis par le lower EROFS seul**, 1104 par l'upper seul, **0 dans les deux** et 0 dans aucun.
+Conséquences : (1) détacher `vdf` casse le boot (554 chemins perdus) — c'est la couche de base ;
+(2) **zéro duplication** → le switch n'a écrit que le delta (1104 chemins, 5,3 GiB dans l'upper au
+lieu des 1658), donc le lower a épargné ~2,6 GiB d'écritures du type coûteux (par fichier) ;
+(3) immuable, `ro=1` au niveau bloc, ni corruptible ni GC-able.
+**Réserve : le ratio DÉCROÎT.** Chaque switch alimente l'upper et, nixpkgs avançant, de moins en
+moins de chemins runtime recoupent la closure bringup gelée ; à terme le lower ne couvre plus que
+l'invariant. Pour le remonter il faudrait que l'EROFS porte la closure RUNTIME, c'est-à-dire
+renseigner `runtimeSystemPath` (laissé `null` à dessein) — mais y mettre la closure d'un hôte
+précis tague l'image par hôte et casse la dédup fleet-wide. **Arbitrage assumé : image identique
+pour toute la flotte CONTRE couverture maximale du lower.** À rouvrir explicitement si le coût des
+switches devient gênant.
