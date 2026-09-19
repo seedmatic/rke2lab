@@ -1,0 +1,32 @@
+# Rules / patterns / gotchas — section index (rke2lab memory)
+
+Section of the rke2lab memory index. Loaded on demand; the injected root is [MEMORY.md](MEMORY.md).
+One line per entry (~200 chars); detail lives in the linked file.
+
+## Rules / patterns / gotchas
+
+- [Non-null input rule](non-null-input-rule.md) — **rule:** never accept a nullable input; represent optionality at the boundary. Machine-enforce via `@NonNullByDefault` ([[java-cleanup-backlog]]).
+- [A null arg to our API is a rule violation](null-arg-is-a-rule-violation.md) — **feedback:** a null literal to OUR API = a violation (exposed the OSGi framework-bypass). Fail-fast on locally-verifiable conditions. See [[non-null-input-rule]].
+- [Synth-context channel rule](synth-context-channel-rule.md) — **rule:** the channel a synthesis dep uses = an objective test (does the ThreadLocal ownership invariant hold for all readers?). Data→ThreadLocal; service→@Reference. See [[capn-cert-ownership-incoherence]].
+- [Object-graph navigability — THE principle](object-graph-navigability-principle.md) — **★ feedback (load-bearing):** the single invariant behind the user's design instincts + their hérissement at statics — everything must be navigable in the object graph; a static is an ORPHAN node (reachable by name, unreachable by walking references). Explains DS-over-fragment, .internal-sealed-but-navigable, path-addressing, factory-as-instance, records-private. See [[prefer-non-static-inner-keep-the-graph]] [[multiplexor-two-models-design]].
+- [Prefer non-static inner — keep the graph](prefer-non-static-inner-keep-the-graph.md) — **preference:** default to non-static inner so the graph stays navigable; `static` only to deliberately cut it.
+- [Every module has a description](every-module-has-a-description.md) — **feedback:** give every pom its own `<description>` (bnd folds it into Bundle-Description); not `-removeheaders`.
+- [~/.m2 SNAPSHOT masking is CRITICAL](m2-snapshot-masking-is-critical.md) — **feedback (scar):** a stale project SNAPSHOT in ~/.m2 = a green build resolving a frozen jar = a LIE. The answer is a guardrail (no-snapshot-install enforcer), not persuasion. See [[osgi-baseline-install-discipline]].
+- [Build verification gotchas](build-verification-gotchas.md) — green build LIES (.mvn forces -DskipTests, build-cache replays, ECJ poison). Reliable: `clean package -pl :seed-master -am -Dmaven.build.cache.skipCache=true -DskipTests=false`; count surefire reports.
+- [Single source of truth before logic](single-source-of-truth-before-logic.md) — **feedback:** read a fact from who DEFINES it; if no API, provide one — never transcribe a computed fact. See [[no-system-out-use-logger]].
+- [No System.out — use the logger](no-system-out-use-logger.md) — **feedback:** never System.out/err, even for debug; use LogService/slf4j at trace/debug. See [[osgi-logging-and-cli-debt]].
+- [AskUserQuestion: mark (Recommended)](ask-question-mark-recommended.md) — **feedback:** lead with the recommended option FIRST + `(Recommended)` + my reasoning; the user uses my opinion as a foil. See [[standing-autonomy-except-runtime-config]].
+- [No code-as-explanation in docs](no-code-as-explanation-in-docs.md) — **feedback:** architecture docs explain with C4/UML figures + prose on the *why*, NOT Java/shell code walls ("le java on sait coder"); name+link symbols instead of inlining bodies; retire code walls (usually stale) when touching a doc. See [[spec-figure-first-reading-loop]] [[c4-diagrams-flowchart-not-native-dsl]].
+- [Say "vivant", not "prod"](say-vivant-not-prod.md) — **feedback:** the running/deployed system is "vivant" (FR) or "live", never "prod"/"production". The non-test path = "le boot vivant".
+- [Reconsider choices when revisiting](reconsider-choices-when-revisiting.md) — **feedback:** revisiting committed code → re-question the original choice; don't keep it on inertia or because an error symptom (a ClassCast/LinkageError) once drove it. Verify at source, bring a fork. Caught: cdk8s host-flat IS legit (IncusResourceBootstrap builds org.cdk8s.App), not a scope leftover. See [[verify-state-before-labeling]] [[single-source-of-truth-before-logic]].
+- [Standing autonomy except runtime config](standing-autonomy-except-runtime-config.md) — **feedback:** act without asking except runtime config (pulumi/kubectl/incus/nix; settings.json) + the integration merge. Don't over-use AskUserQuestion; don't strip accrued grants.
+- [rke2lab solo — no PR, merge direct](rke2lab-solo-no-pr-merge-direct.md) — **feedback:** solo repo, no PRs; integrate by direct rebase+ff to origin/main, then remove worktree + delete branch.
+- [squash-merge from the target's worktree](merge-from-target-worktree.md) — **feedback:** squash merge (one commit); Claude does it from the TARGET worktree, never the sub-branch's own session (can't saw off the branch it sits on). See [[standing-autonomy-except-runtime-config]].
+- [Verify state before labeling](verify-state-before-labeling.md) — **feedback:** never label a chantier DONE/IN-PROGRESS/blocked from a surface signal (a grep, a file's presence) — read what the code does + run the objective gate (build green). Caught calling osgi-boot-single-source 'IN PROGRESS' from a grep; it was done. Comms-twin of [[single-source-of-truth-before-logic]] / [[model-substrate-alignment]]. See [[build-verification-gotchas]].
+- [BDD/JGiven test strategy](bdd-jgiven-test-strategy.md) — tests = living docs; JGiven BDD on real use-cases; DSL-first prototype.
+- [Test tag taxonomy by zone](test-tag-taxonomy-by-zone.md) — SHIPPED. 4 orthogonal JUnit5 tags (host/osgi/live/spike); default excludes `live | spike`; suffix `*LiveTest`/`*SpikeTest`.
+- [DSL unification topic](dsl-unification-topic.md) — PARKED: one engine (JGiven), two layers. NEXT = prototype PreflightScenario.
+- [Builder for multisite constructor](builder-for-multisite-constructor.md) — builder pattern note.
+- [Validate at the boundary](validate-at-the-boundary.md) — validation discipline (ref by intervention-provenance).
+- [Master provisioning state](master-provisioning-state.md) — live-probe contract FIXED+PROVEN vs real master (branch fix/systemd-live-probe-contract, not merged). PARKED. Seed = operator out-of-band intervention → drift specialist source.
+
