@@ -3,7 +3,7 @@ name: memory-synthesis-prune-the-how
 description: "BACKLOG (user, 2026-06-20) — a dedicated POST-MERGE increment to synthesize the accumulated R4-era memory and PRUNE the how-it-was-done, keeping only the what/why. After R4 the repo memory has grown large (14+ R4 notes) with dense cross-references; much of it is process narrative (resume-states, WI-X-done logs, ★ history markers, resolved debates, pre-reload resume points) that, once shipped, only adds recall weight. Distinct nature from a code slice — a transverse memory-gardening pass, run on its own, NOT mixed into feature work."
 metadata:
   node_type: memory
-  type: project
+  type: feedback
 ---
 
 ## The need (user, 2026-06-20, during the R4 consolidation)

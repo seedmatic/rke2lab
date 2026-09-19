@@ -55,12 +55,14 @@ Adding a fact: write the topic file, then one ≤200-char line in the right
 
 ## Known debt in this memory
 
-- `INDEX-osgi-pipeline.md` carries 78 entries / 62 KB — 44% of all memory index
-  weight, average 780 chars per line. Nothing in it has been touched since
-  2026-08-14. Triage started: ~21 `type: project` entries are dormant chantiers
-  and archivable; 7 are `type: feedback` (durable, must stay); 4 are principles
-  mistyped as `project` (`prefer-osgi-edge-three-reasons`,
-  `orchestration-purity-benefit`, `gateway-is-rest-in-jvm-insight`,
-  `memory-synthesis-prune-the-how`) and want retyping, not archiving.
-- `cluster-seed-execution-state` is listed **twice** in that section.
-- 33 topic files are untracked in git, so they do not survive a machine change.
+- **201 of 224 entries exceed the 200-char rule** (average 609). Compressing them
+  is safe — every topic file is already 3-10× its index line — but verify per
+  entry first: `cluster-seed-execution-state` had its newest decision (fork B,
+  2026-07-08) living ONLY in the index line while the file stopped at 07-07.
+  Shortening blindly loses facts; that one was rescued into the file on 09-19.
+- `INDEX-osgi-pipeline.md` is 77 entries / 62 KB, nothing committed after
+  2026-08-14. It carries a `## À trancher` list of 16 dormant candidates —
+  **proposed, nothing moved**: a keyword+date heuristic misjudged three entries
+  there, so the call needs a human who knows the chantier.
+- No dead `[[link]]` check exists (the structure spec lists it as out of scope,
+  and dead refs have happened before).

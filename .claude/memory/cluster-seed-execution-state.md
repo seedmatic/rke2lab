@@ -269,3 +269,28 @@ DiscoverySelectors import = `org.junit.platform.engine.discovery.DiscoverySelect
 **Naming locked:** ClusterSeedScenario, *Stage (not *Phase), PendingMarkingScenarioExecutor, ClusterSeedRun
 (local), ClusterSeedTopic = the call-site kept. See [[bdd-pipeline-migration-plan]]
 [[cluster-seed-inbound-session-store]] [[jgiven-custom-executor-seam]] [[collaborative-design-method]].
+
+**★★ RESUME (2026-07-08) — fork B tranché : recomposition deux-mondes du seed scenario.**
+Récupéré depuis la ligne d'index le 2026-09-19 : ce bloc n'existait QUE là, alors que le reste
+du fichier s'arrête au 2026-07-07 — l'index portait la décision la plus récente, ce qui est
+exactement l'inversion que la convention interdit.
+
+Reprise pour réactiver `NestedRunbookTest` (le seul `@Disabled`, chemin d'échec
+cluster-readiness) → a divergé en une recomposition deux-mondes du seed scenario.
+**TRANCHÉ B** : sous-scénarios joués IN-CONTAINER, greffés par `addNestedStep` dans le runbook
+host ; les 2 nœuds OSGi = les 2 îlots jGiven d'origine (systemd-adapter, cluster-readiness).
+Le graft est **PROUVÉ comme rendu** (spike `CrossWorldGraftSpikeTest`) mais son **transport est
+STUBBÉ** → reste à câbler live.
+
+**Fragments fakes ABANDONNÉS pour jouer un scénario** (comportement figé) → remplacés par des
+MOCKS semés par le test dans Felix (`context().registerService` en `@BeforeAll`, configurable).
+Live ≠ test : le scénario principal est IDENTIQUE, consomme le registre, ne sème rien.
+
+**Incrément 1** = cluster-readiness in-container (patron `DoctorScenario`, DSL sur cluster-port,
+`cluster-core-test`). **Q1/Q3 tranchées** : tout-dans-OSGi RESSERRE la frontière (le host cesse
+d'importer cluster-port), et ZÉRO mot ajouté à world-gateway (`ObservationWire` +
+`ReadinessVerdict` suffisent). Figures + les 3 hand-offs dans `.claude/claude-preview.adoc`
+(§RECOMPOSITION, §B TRANCHÉ, §DISCIPLINE).
+
+See [[world-gateway-frontier-discipline]] [[per-domain-osgi-fakes-chantier]]
+[[bdd-pipeline-migration-plan]].

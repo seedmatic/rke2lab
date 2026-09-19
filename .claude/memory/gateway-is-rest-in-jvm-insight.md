@@ -2,7 +2,7 @@
 name: gateway-is-rest-in-jvm-insight
 description: "★ INSIGHT (user, 2026-07-08, end of the fork-B session): the world-gateway model IS 'REST, in-JVM' — transport the whole REQUEST through ONE door, not shared service-interface calls; each world keeps its OWN copy of the vocabulary (no shared *Wire twins). This collapses the seam to a single request/response broker and makes the doctor's 12 frontier words INTERNAL again. The next brainstorm starts here."
 metadata:
-  type: project
+  type: feedback
 ---
 
 **The insight (user, 2026-07-08):** "chacun peut garder sa propre version du vocabulaire, et on peut
