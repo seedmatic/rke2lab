@@ -20,3 +20,11 @@ metadata:
 **À faire** : (1) app flake `install-rke2-config` sur la branche ; (2) InstanceGrow pose ref+token + oneshot nix ; (3) preRKE2Command workload ; (4) **revert** `RKE2LAB_TLS_SANS` (GrowIdentityView.tlsSans/resolver/InstanceGrow) + oneshots nix dualstack/tls-san — **GARDER** disable-statique + `vipGateway→vipHost` dans le rendu ; (5) valider re-grow (VIP au cert). Réf de l'ancien script : branche `feature/cluster-seed-scenario` `osgi/.../systemd/systemd-scripts/rke2lab-config-install.sh`.
 
 See [[cp-endpoint-reach-tailnet-headscale-migration]] [[all-workloads-on-flox-runtime]] [[flox-controller-github-token-via-gtm]] [[github-token-mint-on-demand]].
+
+**★ CORRECTION (2026-09-19, vérifié contre `feature/nixos-node-substrate`) — « code pas commencé » était FAUX.**
+Le code existe et est câblé de bout en bout : `RuntimeRke2ConfigManifestsUnit`
+(`osgi/domains/manifests/manifests-core/.../units/runtime/rke2/`), `nixos/rke2.nix`, plus les
+points d'appel `InstanceGrow`, `NodeBootstrapMaterial`, `ManifestSynthesisScenario`,
+`DefaultManifestExplodeService`, `ClusterSeedScenario`, `GrowIdentityView` — 10 fichiers hors
+mémoire, commit `884fcd518` (« order rke2lab-rke2-config after rke2lab-identity »). Ce qui reste
+est de la **validation**, pas de l'écriture. Note antérieure conservée ci-dessus pour le design.

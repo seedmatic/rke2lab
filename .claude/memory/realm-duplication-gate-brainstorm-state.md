@@ -1,8 +1,11 @@
 ---
 name: realm-duplication-gate-brainstorm-state
-description: 2026-06-29 — the SEAM_PURITY idea became the DUPLICATE_REALM_CLASS static staging gate (SHIPPED green, cdk8s found + governed WARN). Brainstorm DECIDED the successor: an in-container diagnostic that drives the REAL BootPlanner (via BootPipeline.embedded) and observes the wiring, replacing this static gate for duplication while REALM_BOUNDARY stays. Design agreed, NOT yet built — implement next.
-metadata:
+description: "2026-06-29 — the SEAM_PURITY idea became the DUPLICATE_REALM_CLASS static staging gate (SHIPPED green, cdk8s found + governed WARN). Brainstorm DECIDED the successor: an in-container diagnostic that drives the REAL BootPlanner (via BootPipeline.embedded) and observes the wiring, replacing this static gate for duplication while REALM_BOUNDARY stays. Design agreed, NOT yet built — implement next."
+metadata: 
+  node_type: memory
   type: project
+  originSessionId: 0b18b1f3-3eda-496a-865d-1fbc722b0d30
+  modified: 2026-09-19T07:09:33.942Z
 ---
 
 ## STATUS 2026-07-28 (verified against the tree)
@@ -11,7 +14,10 @@ The static gate is COMMITTED and live — `maven-embed-staging-ext/staging-exten
 + `DuplicateRealmClassTest`, wired into `StagingExecutionStrategy`, `DUPLICATE_REALM_CLASS` in both
 `StagingGate` enums. So the "## The prototype (PARKED, not committed)" section at the bottom is
 HISTORICAL — it no longer describes reality (nothing is stashed at `7389e973` / `/tmp`). The
-`type=library → type=dual-realm` capability rename also shipped (commit `ebc8e19e`).
+`type=library → type=dual-realm` capability rename also shipped — **confirmed by substance, not by
+that SHA**: `ebc8e19e` resolves in no repo of the fleet (rebased away, or a typo), while `dual-realm`
+is present in 89 files of `feature/nixos-node-substrate` and no code carries `type=library` any more
+(checked 2026-09-19). Trust the fact, not the citation.
 
 STILL OPEN — the **governance chantier**, now DISENTANGLED into two DISTINCT static laws (the boot
 experiment settled it — see `.claude/governance-realm-gate-handoff.md`):

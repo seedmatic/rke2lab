@@ -31,3 +31,10 @@ metadata:
 - **Patrons de code (copier)** : le `HelmChart` rke2 = [CertManagerManifestsUnit](osgi/domains/manifests/manifests-core/.../units/platform/CertManagerManifestsUnit.java) (`helm.cattle.io/v1`, ns kube-system, spec repo/chart/version/targetNamespace/valuesContent ; pour OCI : `chart: "oci://ghcr.io/isometry/charts/github-token-manager"`, pas de `repo`). L'accès aux creds App = [GithubAppSecretManifestsUnit](osgi/domains/manifests/manifests-core/.../units/gitops/GithubAppSecretManifestsUnit.java) : `ManifestSynthesisContext.current().githubApp()` → `Optional<GithubAppMaterial>` `.appId()/.installationId()/.privateKeyPem()`. ⚠️ `App` CR `spec.appID`/`installationID` sont des **int** → `Integer.parseInt(material.appId())`.
 - **Ordre** : (1) `GithubTokenManagerManifestsUnit` (le cœur — HelmChart + Secret `private-key.pem` [data key `private-key.pem`, branche+sops] + `App` CR + `ClusterToken`→`github-token`) + la **registrer** (le registrar des ManifestsUnit / ManifestDomainCatalog) ; (2) planner : `github.as-code.io` runtime-installé (RUNTIME_INSTALLERS) ; (3) `FloxControllerManifestsUnit` monte `github-token` (secretKeyRef `data.token`→env) ; (4) flox-controller Go `internal/provisioner/exec.go` injecte `NIX_CONFIG += access-tokens` dans `cmd.Env`.
 - **Contexte** : le flox-controller in-cluster est cassé LIVE là-dessus (mesh envs 404 sur claude-hub). Séparément, le **workload `bioskop-wrkld`** attend un re-grow du fix profil `rke2lab` (`8da4406cb`) + delete du master CP échoué. See [[in-cluster-render-secret-full-via-git-sops-floxenv]] [[github-token-mint-on-demand]] [[flox-env-migration-design]].
+
+**★ CORRECTION (2026-09-19, vérifié contre `feature/nixos-node-substrate`) — « code PAS commencé,
+RESTE coder 4 pièces » était FAUX.** `GithubTokenManagerManifestsUnit` existe
+(`osgi/domains/manifests/manifests-core/.../units/platform/`), est enregistrée dans
+`PlatformDomainRegistrar`, et est câblée au `FluxServiceKustomizationPlanner` ainsi qu'à
+`Component` (manifests-ingress-contract) ; `ClusterToken` apparaît dans 9 fichiers. Reste
+réellement ouvert : le **pin de version du chart**. Note antérieure conservée pour le design.
