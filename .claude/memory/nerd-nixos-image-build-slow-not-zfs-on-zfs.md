@@ -59,3 +59,28 @@ renseigner `runtimeSystemPath` (laissé `null` à dessein) — mais y mettre la 
 précis tague l'image par hôte et casse la dédup fleet-wide. **Arbitrage assumé : image identique
 pour toute la flotte CONTRE couverture maximale du lower.** À rouvrir explicitement si le coût des
 switches devient gênant.
+
+**★★ INVARIANT GCROOT DU LOWER (critique — ndh `bf018465`, doc `docs/architecture/nixos-substrate/erofs-store-lower.adoc`).**
+Le lower EROFS n'était enraciné que par la **génération 1 du profil système**, c'est-à-dire
+exactement ce que `nix-collect-garbage -d` élague. Mesuré sur bioskop-nixos : sur les **659**
+chemins du lower, 554 sont aussi atteignables depuis le système courant ou les profils bringup →
+**105 deviendraient des déchets** dès la gen 1 supprimée. Nix les supprime alors *à travers
+l'overlay* → overlayfs écrit **un whiteout par chemin** dans l'upper : les chemins disparaissent
+bien que l'image les porte, les octets EROFS restent non récupérables, et **les whiteouts
+persistent** (un lower futur qui les refournirait reste masqué). Une commande d'hygiène banale
+empoisonne le store. **Fix** : une racine durable sur le toplevel bringup — la closure du lower
+EST celle de ce toplevel par construction (`closureInfo { rootPaths = [installSystemPath] }`),
+donc une seule racine suffit, posée par l'installeur avant l'export du pool :
+`ln -sfn @systemToplevel@ /mnt/zfs-root/nix/var/nix/gcroots/erofs-store-lower`.
+**Remédiation live APPLIQUÉE + VÉRIFIÉE le 2026-09-19 sur les DEUX nœuds** (les images déjà
+installées n'avaient pas la racine) : `erofs-store-lower` apparaît bien dans
+`nix-store --query --roots` d'un chemin lower-seul, **indépendamment** de `system-1-link`, et
+`nix-collect-garbage -d --dry-run` annonce 0. Les deux nœuds pointent le MÊME store path
+(`…-nixos-system-nerd-nixos-26.05`) — la dédup fleet-wide est observable, pas seulement voulue.
+**Corollaires à retenir** : (a) le lower ne se remplace PAS indépendamment — il se remplace *avec*
+une génération : déplacer la racine + rejouer `nix-store --load-db` + atterrir sur une génération
+que le nouveau lower couvre (554 chemins du lower servent le runtime courant) ; (b) `nixos-install`
+laisse un auto-gcroot périmé vers `/mnt/zfs-root/…/system-1-link` (point de montage d'install) que
+nix élague seul — inoffensif, mais il donnait l'illusion d'un lower enraciné ; (c) le lower n'est
+pas un artefact d'install : **33 %** de la closure du système courant n'existe que là, zéro
+duplication.
