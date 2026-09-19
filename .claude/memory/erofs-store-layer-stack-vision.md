@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 0b18b1f3-3eda-496a-865d-1fbc722b0d30
-  modified: 2026-09-19T13:41:00.705Z
+  modified: 2026-09-19T14:33:05.753Z
 ---
 
 Brainstorm **convergé** le 2026-09-19, whiteboard dans
@@ -58,10 +58,33 @@ SSOT `erofs-store-layers.nix`, sur le patron de `zfs-pool-disk-map.nix`. **Darwi
 à changer** : `run.sh:225/449` et `activation.sh:876` sont des boucles sur N, le manifeste
 émet `role: prebuilt` par image.
 
-**★ EXPÉRIENCE PRÊTE, NON LANCÉE — à reprendre ici.** But : éprouver les **3 branches
-jamais exécutées** (préservation des pools · re-matérialisation d'une couche quand la
-source change · préservation/remplacement du disque root). Mode d'échec de la première =
-**perte des pools**, d'où la cible.
+**★★ EXPÉRIENCE LANCÉE ET CONCLUANTE le 2026-09-19 (2 manches).** Les 3 branches qui
+n'avaient jamais tourné ont tourné, chacune correctement. Preuve finale sur
+`nikopol-nixos` : lower passé de l'UUID `…a62` à `…a63` et le nœud **boote dessus** ·
+`tank` à **7,90 GiB ONLINE avant ET après** · `system-2-link` toujours courante (aucune
+réinstallation, générations intactes) · hostname `nikopol-nixos` et non `nerd-nixos`. Le
+log nomme les trois décisions : `[WARN] root disk holds materialized content from another
+source; preserving it` · `tank1/2/3` + `recover` `ASIF data disk has live ZFS data;
+preserving` · `store prebuilt image materializing from source: …`.
+
+**Manche 1 a DÉTRUIT les pools**, et c'est ce qui a livré la vraie trouvaille : la branche
+de préservation était **structurellement inatteignable**, donc *toute* matérialisation sans
+`VM_FACTORY_RESET` détruisait les pools, sur n'importe quel hôte. D'où le « jamais
+exercé ». Deux correctifs, tous deux dans `ndh` sur `develop` :
+
+- `47943f0b` — la porte du disque root décide sur le **contenu** (marqueur `.source` + sonde
+  de partition `EFI`) et non sur la taille ; toute l'introspection d'image passe par une
+  porte unique `plutil → json` ; sondes à trois valeurs.
+- `6213a553` — `tart:vm:exists` interroge **une** VM via `tart get --format=json` et ne crée
+  que sur un `exit 2` formel ; plus une ceinture qui refuse de blanchir un disque portant du
+  ZFS ou illisible.
+
+Leçon générale et ses deux instances : [[destructive-gate-needs-three-valued-probe]].
+
+**Historique du but initial** : éprouver les **3 branches jamais exécutées** (préservation
+des pools · re-matérialisation d'une couche quand la source change · préservation/
+remplacement du disque root). Mode d'échec de la première = **perte des pools**, d'où la
+cible.
 
 - **Cible `nikopol-nixos`** ; `bioskop-nixos` reste le builder (unique builder
   aarch64-linux : le perdre bloque la réparation).
