@@ -1,0 +1,484 @@
+= Brainstorm — le rôle de la binary cache : /nix/store en pile de couches EROFS
+:toc: macro
+:toclevels: 3
+
+// Whiteboard neuf (2026-09-19). Le précédent (ClusterIntention → CAPI/CAPN) est archivé :
+// .claude/claude-preview.archive-2026-09-19-cluster-intention-capi-decomposition.adoc
+// Mode BRAINSTORM : on explore, on ne grave pas encore dans docs/.
+// Organisé PAR PRÉOCCUPATION, pas chronologiquement. Le journal du débat est en annexe.
+
+toc::[]
+
+== La vision, en une page
+
+Le `/nix/store` d'un nœud n'est pas un dataset ZFS : c'est un **overlay** dont le lower
+est une image EROFS livrée comme un disque, et l'upper un dataset ZFS. C'est *shippé*, et
+les deux nœuds tournent dessus.
+
+La vision ajoute trois choses à cet acquis :
+
+. le lower devient une **pile ordonnée** de couches EROFS, une par version du système,
+  au lieu d'une couche unique gelée au bringup ;
+. la couche de base est l'**intersection des closures runtime de la flotte** — identique
+  sur tous les nœuds, donc identity-less, donc dédupable ;
+. **`ndh` déclare la pile** et calcule sa péremption ; le nœud n'a pas voix au chapitre.
+
+Et une frontière de propriété explicite, qui est le cœur du design :
+
+[quote]
+____
+L'**instance** possède ses *données* (pools ZFS, upper). **ndh** possède le *layout du
+store*. Un reboot peut changer le layout, à condition qu'il couvre les closures des
+générations que l'instance peut booter — c'est ça, « backward compatible ».
+____
+
+== Diagramme 0 — le vocabulaire (à challenger AVANT le design)
+
+[mermaid]
+....
+flowchart TB
+  subgraph nix["Vocabulaire nix (existant)"]
+    CL["closure"]
+    SP["store path<br/>nom = hash du contenu"]
+    CI["closureInfo<br/>store-paths + registration"]
+    DB["base nix<br/>chemins valides"]
+    GEN["génération<br/>system-N-link"]
+    GCR["gcroot<br/>erofs-store-lower"]
+    CL --> SP
+    CI --> CL
+    CI --> DB
+    GEN -->|"enracine"| CL
+    GCR -->|"enracine"| CL
+  end
+
+  subgraph img["Vocabulaire image (existant, ndh)"]
+    TOP["toplevel<br/>installSystemPath"]
+    PACK["pack<br/>tar puis mkfs.erofs --tar=f"]
+    IMG["image EROFS<br/>label nix-store"]
+    ROLE["role: prebuilt<br/>manifeste"]
+    TOP --> CI
+    CI --> PACK --> IMG
+    IMG --> ROLE
+  end
+
+  subgraph ovl["Vocabulaire overlayfs (existant)"]
+    LO["lowerdir<br/>/nix/.ro-store"]
+    UP["upperdir<br/>/nix/.rw-store"]
+    ST["/nix/store<br/>overlay"]
+    WO["whiteout<br/>la seule chose destructrice"]
+    LO --> ST
+    UP --> ST
+    UP -.->|"porte"| WO
+  end
+
+  IMG ==> LO
+  DB -.->|"déclare valides les 2 couches"| ST
+
+  subgraph new["NOUVEAU"]
+    STACK["PILE de couches<br/>lowerdir = N..1"]
+    INTER["couche de base =<br/>INTERSECTION runtime de la flotte"]
+    DELTA["couche N = DELTA<br/>disjoint, NON clos seul"]
+    MERGE["COMPACTION (LSM)<br/>ndh fusionne des couches"]
+    LIVE["PÉREMPTION<br/>calculée par ndh"]
+    INTER --> STACK
+    DELTA --> STACK
+    STACK --> MERGE
+    LIVE -.-> MERGE
+  end
+
+  STACK ==> LO
+
+  classDef newc fill:#fff4e6,stroke:#c60,color:#803;
+  class new,STACK,INTER,DELTA,MERGE,LIVE newc
+....
+
+=== Deux constats de vocabulaire
+
+**Le `pack` ne change pas** — `tar | mkfs.erofs` reste identique, seule sa *source*
+change. Pas de mot nouveau pour une arête (j'avais coiffé ça de « Régénérateur » : à
+jeter).
+
+**Il n'existe pas d'opération « mettre à jour le cache »** — le lower n'est remplaçable
+qu'avec une génération. Le mot juste existe déjà : c'est un **`switch`** dont le lower
+fait partie.
+
+== C2 — Containers
+
+Les unités déployables et ce qui circule entre elles. `ndh` est l'autorité ; le
+**manifeste** est le seul contrat entre le nix et le côté darwin (aucun import croisé).
+
+[mermaid]
+....
+flowchart TB
+  subgraph ndh["ndh — AUTORITÉ DU LAYOUT (eval + dérivations)"]
+    direction TB
+    NDHc["déclare la pile · packe les couches<br/>calcule intersection + péremption<br/>enracine chaque couche"]
+  end
+
+  subgraph bundle["BUNDLE (store path) — l'artefact de livraison"]
+    direction TB
+    MAN["manifest.yaml<br/>images[] avec role"]
+    DISKS["boot.img · tank1..3 · recover<br/>store-1.img .. store-N.img"]
+    MAN --- DISKS
+  end
+
+  subgraph host["HÔTE darwin"]
+    direction TB
+    MAT["materializer<br/>place les disques dans ~/.tart/vms/&lt;vm&gt;/<br/>PRÉSERVE les pools"]
+    RUN["run wrapper<br/>attache N couches en ro"]
+  end
+
+  subgraph guest["GUEST NixOS — PROPRIÉTAIRE DES DONNÉES"]
+    direction TB
+    GST["monte la pile · overlay /nix/store<br/>pools ZFS + upper"]
+  end
+
+  NDHc -->|"produit"| bundle
+  MAN -->|"role: prebuilt / primary<br/>SEUL contrat"| MAT
+  MAT --> RUN
+  RUN -->|"tart run --disk"| GST
+  DISKS -.->|"copiés verbatim"| MAT
+
+  classDef auth fill:#e6f0ff,stroke:#06c,color:#035;
+  classDef art fill:#fffbe6,stroke:#e0c000,color:#665c00;
+  classDef own fill:#e6ffe9,stroke:#0a0,color:#050;
+  class ndh,NDHc auth
+  class bundle,MAN,DISKS art
+  class guest,GST own
+....
+
+== C3a — Composants : côté ndh (le graphe de modules)
+
+Arêtes relevées dans le code. En orange, ce que la pile ajoute ; le reste existe.
+
+[mermaid]
+....
+flowchart TB
+  LAYERS["erofs-store-layers.nix<br/>SSOT — LISTE ordonnée de couches<br/>label + mountPoint"]
+  IMAGE["erofs-store-image.nix<br/>pack : tar puis mkfs.erofs<br/>UNE instance PAR couche"]
+  MOUNT["erofs-store-mount.nix<br/>fileSystems : lowerdir = LISTE<br/>+ initrd supportedFilesystems"]
+  DISKO["zfs-disko-config.nix<br/>dataset de l'upper (rwstore)"]
+  BRINGUP["bringup-zfs-disk-image.nix<br/>closureInfo · VM imbriquée<br/>attache les couches en ro"]
+  OUTPUTS["outputs.nix<br/>prebuiltImages · attrs du manifeste"]
+  ASSEMBLY["mk-disk-image-with-manifest.sh<br/>symlinke les couches<br/>emet role: prebuilt"]
+  INSTALL["zfs.d/bringup-…-install.sh<br/>monte la pile · load-db<br/>gcroot par couche"]
+  RUNTIME["default.nix / bringup-minimal-system.nix<br/>importent le montage"]
+
+  INTER["CALCUL DE L'INTERSECTION<br/>closures runtime de la flotte"]
+  LIVENESS["CALCUL DE PÉREMPTION<br/>couche morte si aucune closure<br/>retenue ne la touche"]
+
+  LAYERS --> IMAGE
+  LAYERS --> MOUNT
+  LAYERS --> DISKO
+  LAYERS --> BRINGUP
+  LAYERS --> INSTALL
+  INTER --> LAYERS
+  LIVENESS --> LAYERS
+  IMAGE --> BRINGUP
+  BRINGUP --> OUTPUTS
+  OUTPUTS --> ASSEMBLY
+  BRINGUP -.->|"replaceVars"| INSTALL
+  MOUNT --> RUNTIME
+
+  classDef newc fill:#fff4e6,stroke:#c60,color:#803;
+  classDef ssot fill:#e6f0ff,stroke:#06c,color:#035;
+  class INTER,LIVENESS newc
+  class LAYERS ssot
+....
+
+Aujourd'hui `erofs-store-layout.nix` est un **singleton** (un label, un mountPoint). Le
+passage à la pile le transforme en liste ; ses trois consommateurs actuels
+(`bringup-zfs-disk-image`, `erofs-store-mount`, `zfs-disko-config`) deviennent des
+projections sur cette liste. Le patron existe déjà : `zfs-pool-disk-map.nix`.
+
+== C3b — Composants : côté guest (l'assemblage du store)
+
+[mermaid]
+....
+flowchart TB
+  subgraph disks["disques attachés (ro)"]
+    D1["store-1.img<br/>label nix-store-1"]
+    D2["store-2.img"]
+    DN["store-N.img"]
+  end
+
+  subgraph mounts["montages (neededForBoot)"]
+    M1["/nix/.ro-store.1<br/>erofs"]
+    M2["/nix/.ro-store.2"]
+    MN["/nix/.ro-store.N"]
+  end
+
+  UPPER["/nix/.rw-store<br/>dataset ZFS<br/>upper + work"]
+  STORE["/nix/store<br/>overlay<br/>lowerdir = N:...:1"]
+  DB["/nix/var/nix/db<br/>dataset ZFS<br/>déclare valides TOUTES les couches"]
+  ROOTS["/nix/var/nix/gcroots<br/>une racine par couche"]
+
+  D1 --> M1
+  D2 --> M2
+  DN --> MN
+  MN --> STORE
+  M2 --> STORE
+  M1 --> STORE
+  UPPER -->|"upperdir"| STORE
+  DB -.->|"validité"| STORE
+  ROOTS -.->|"protège du GC"| M1
+  ROOTS -.-> M2
+  ROOTS -.-> MN
+
+  classDef ro fill:#e6f0ff,stroke:#06c,color:#035;
+  classDef rw fill:#e6ffe9,stroke:#0a0,color:#050;
+  classDef ctl fill:#fffbe6,stroke:#e0c000,color:#665c00;
+  class disks,mounts,D1,D2,DN,M1,M2,MN ro
+  class UPPER,STORE rw
+  class DB,ROOTS ctl
+....
+
+Trois invariants se lisent sur cette figure : chaque couche est `neededForBoot` (donc son
+disque doit être là) ; la base nix est le **troisième** acteur, indépendant des couches, et
+c'est elle qui rend leurs chemins utilisables ; et un whiteout dans l'upper masque
+**toutes** les couches à la fois.
+
+== C3c — Généraliser : CHAQUE génération est une couche
+
+La question : le modèle qui construit le système *bringup* sert-il aussi le système
+*cible* ? Oui — et le code le visait déjà. `bringup-zfs-disk-image.nix` porte le
+paramètre `runtimeSystemPath`, documenté « *Production runtime system closure to include
+in the bringup image store* », consommé par `systemd/zfs-nixos-install.{nix,sh}`.
+
+Il est à `null` pour **une** raison : embarquer la closure d'UN hôte tague l'image par
+hôte et casse la dédup fleet-wide. **La pile résout précisément cette tension** — on
+sépare ce qui est commun de ce qui est propre, au lieu de tout mettre dans une image.
+
+[mermaid]
+....
+flowchart LR
+  subgraph gens["générations du système"]
+    direction TB
+    G1["gen 1 — bringup<br/>identity-less, fleet-wide"]
+    G2["gen 2 — runtime hôte<br/>1658 chemins"]
+    G3["gen 3 — runtime suivante"]
+  end
+
+  subgraph layers["couches EROFS (packées par ndh)"]
+    direction TB
+    L0["couche BASE<br/>intersection flotte<br/>1608 chemins · PARTAGÉE"]
+    L1["couche résidu gen 2<br/>~50 chemins"]
+    L2["couche résidu gen 3<br/>delta"]
+  end
+
+  UP["upper ZFS<br/>seulement l'écrit LOCAL<br/>(builds ad hoc, nix-shell)"]
+
+  G1 --> L0
+  G2 --> L0
+  G2 --> L1
+  G3 --> L0
+  G3 --> L2
+
+  L0 --> UP
+  L1 --> UP
+  L2 --> UP
+
+  classDef shared fill:#e6f0ff,stroke:#06c,color:#035;
+  classDef perhost fill:#fff4e6,stroke:#c60,color:#803;
+  classDef rw fill:#e6ffe9,stroke:#0a0,color:#050;
+  class L0 shared
+  class L1,L2 perhost
+  class UP rw
+....
+
+=== Ce que ça change — le switch cesse d'écrire le store
+
+C'est la conséquence forte, et elle étend le gain du build à **chaque mise à jour** :
+
+[cols="2,2,2"]
+|===
+| | Aujourd'hui | Chaque génération = une couche
+
+| matérialisation de la closure runtime
+| `nixos-rebuild switch` crée *165 591 fichiers* dans l'upper
+| une image séquentielle, packée sur le builder
+| coût du switch
+| la classe par-fichier qu'on a éliminée du build
+| la classe « octets »
+| contenu de l'upper
+| tout le runtime (5,3 GiB)
+| seulement l'écrit local
+| rollback
+| dépend de ce qui reste dans l'upper
+| garder la couche
+|===
+
+=== Le prix, et il est structurel
+
+. **Un switch devient un reboot.** Tart ne sait pas attacher un disque à chaud : livrer
+  une couche impose stop/start. Pour un nœud de cluster c'est plus lourd qu'une
+  activation à chaud — même si ces clusters se re-grandissent depuis git de toute façon.
+. **Le nœud ne fabrique plus de génération.** Plus de `nixos-rebuild switch` local : on
+  perd un outil d'exploitation, celui-là même qu'on a utilisé aujourd'hui.
+. **Ça FERME la question de l'ESP** — si `ndh` construit la génération et sa couche, il
+  installe aussi l'entrée bootloader. Donc `ndh` possède l'ESP, et la coïncidence de
+  tailles cesse d'arbitrer. La question ouverte n°1 se résout par ce choix, elle ne se
+  pose plus séparément.
+. **Une couche de plus par génération** ⇒ la compaction devient nécessaire plus tôt.
+
+[NOTE]
+====
+*★ TRANCHÉ (toi) : le switch devient `nixos-rebuild boot` + `systemctl reboot`.* Pas de
+contrainte de disponibilité ici, donc le prix du reboot est accepté.
+
+*Et la justification première n'est pas l'économie — c'est le DÉTERMINISME.* Aujourd'hui
+`nixos-rebuild switch` fait *matérialiser la closure par le nœud* : 165 591 créations de
+fichiers effectuées **hors de toute dérivation**, donc hors des garanties de nix, pour
+produire un résultat censé être identique à ce que le builder aurait produit. Avec une
+couche par génération, cette matérialisation rentre *dans* une dérivation :
+
+* reproductible et content-addressed,
+* substituable donc partageable,
+* vérifiable — `nix-store --realise --check`, qu'on a exercé,
+* et le nœud ne construit plus **rien** : il monte.
+
+Tout pré-calculer par nix au moment du build est meilleur *en soi*, indépendamment du
+gain de temps. Le gain de temps n'est qu'un corollaire.
+
+*Ancrage :* ce n'est pas une direction nouvelle. Le commit qui retirait le profil `work`
+(`8d6b6acb`, mai 2026) l'écrivait déjà — « bioskop is the authority and distributes
+closures to consumers (nikopol VZ, rdp host) ». Le modèle couche-par-génération en est
+l'aboutissement, pas une invention.
+====
+
+== Le seul flow nécessaire — une évolution
+
+[mermaid]
+....
+sequenceDiagram
+  actor Op as Opérateur
+  participant B as ndh
+  participant M as materializer
+  participant G as guest
+
+  Op->>B: bump / refactor
+  B->>B: pile = base + résidu + delta
+  B->>B: packe les couches manquantes
+  Op->>M: matérialiser SANS factory reset
+  M->>G: tart stop
+  M->>M: couches mises à jour · POOLS PRÉSERVÉS
+  Note over M: branche jamais exercée
+  Op->>M: relancer le script
+  M->>G: tart run (N couches en ro)
+  G->>G: initrd assemble la pile, boot
+....
+
+== Tous les chiffres, en un endroit (pour vérifier la complétude)
+
+.Le build — pourquoi l'EROFS existe
+[cols="3,2"]
+|===
+| Fait | Valeur
+
+| closure du runtime | 9,3 GiB pour *260 121 fichiers*
+| coût par fichier dans la VM imbriquée | ~11 ms, soit ~87 fichiers/s
+| travail « octets » (sha256 HW + zstd + écriture) | 1 à 3 min sur 50
+| pack sur l'hôte | *2 min 43* pour 9,2 GiB
+| build de la VM imbriquée | *~6 min* contre ~50
+| déterminisme | vérifié par `nix-store --realise --check`
+|===
+
+.Le lower aujourd'hui
+[cols="3,2"]
+|===
+| Fait | Valeur
+
+| chemins dans le lower | 659 (2,6 GiB)
+| génération 1 (bringup) | 659 chemins — *100 % dans le lower*
+| génération 2 (runtime courante) | 1658 chemins, *554 (33 %) dans le lower*
+| chemins présents dans les DEUX couches | *0* — aucune duplication
+| upper | 1104 chemins / 5,3 GiB / 165 591 fichiers
+| part du pool du nœud qui est l'upper | *98,5 %* (5,24 sur 5,32 GiB)
+|===
+
+.Le partage dans la flotte — la mesure qui fonde la couche de base
+[cols="3,2"]
+|===
+| Fait | Valeur
+
+| runtime bioskop-nixos | 1658 chemins
+| runtime nikopol-nixos | 1662 chemins
+| *intersection* | *1608 — 96 %*
+| propre à bioskop / à nikopol | 50 / 54
+|===
+
+.Les pièges mesurés
+[cols="3,2"]
+|===
+| Fait | Valeur
+
+| copy-up de la génération courante | 554 chemins, 2,2 GiB, *94 491 fichiers* — écarté
+| un delta est-il clos seul ? | *non* — 142 références sortantes sur 60 chemins
+| chemins perdus par `nix-collect-garbage -d` sans gcroot | *105* sur 659, en whiteouts permanents
+|===
+
+== Décisions prises
+
+[cols="3,1,3"]
+|===
+| Décision | Par | Fondement
+
+| `/nix/store` = overlay(EROFS packé sur l'hôte + upper ZFS) | — | build borné par les opérations ; `mkfs.erofs` sans root donc dérivation pure
+| gcroot durable sur le toplevel bringup | — | 105 chemins sinon perdus ; *shippé + appliqué sur les 2 nœuds*
+| pas de copy-up avant échange | — | 94 491 fichiers = la classe de coût qu'on vient d'éliminer
+| on **empile**, on ne remplace pas | — | préserve le rollback ; purge = supprimer un disque, pas par fichier
+| couche de base = intersection de la flotte | toi | 96 % de couverture en restant identity-less
+| `ndh` déclare la pile ; l'instance possède ses données | toi | source-vs-projection ; aucun canal de remontée nécessaire
+| le merge est un choix de rendu, différable | toi | aucun contrat avec l'instance, livrable plus tard sans toucher au nœud
+| banc d'essai = `nikopol-nixos` ; `bioskop-nixos` reste le builder | toi | bioskop est l'unique builder aarch64, le perdre bloque la réparation
+| **chaque génération = une couche EROFS** | toi | le modèle bringup se généralise ; `runtimeSystemPath` était le crochet, la pile lève la tension fleet-dedup
+| **le switch devient `boot` + `reboot`** | toi | aucune contrainte de disponibilité ; le nœud ne matérialise plus son store
+| **justification = déterminisme**, pas économie | toi | la matérialisation rentre dans une dérivation : reproductible, substituable, vérifiable
+| **`ndh` possède l'ESP** | conséquence | s'il construit la génération et sa couche, il installe l'entrée bootloader ; la coïncidence de tailles cesse d'arbitrer
+|===
+
+== Questions ouvertes
+
+(La propriété de l'ESP n'en est plus une : résolue par le choix couche-par-génération —
+`ndh` la possède.)
+
+. **Quel K ?** La profondeur de pile arbitre rollback / nombre de disques / lookup.
+. **Le couplage fleet-wide de l'intersection** — le lower devient fonction de *tous* les
+  configs d'hôte : changer un hôte change le lower de tous. Acceptable ?
+. **Mesures manquantes** : limite de disques attachables ; taux de décroissance de la
+  couverture (33 % aujourd'hui, combien en dix switches ?) ; part des *contenus de
+  fichiers* partagés entre deux closures (c'est elle qui décide de l'intérêt de git).
+. **3 branches jamais exercées** — préservation des pools ; re-matérialisation d'une
+  couche quand la source change ; préservation ou remplacement du disque root. Mode
+  d'échec de la première : perte des pools.
+
+== Prochaine étape convenue
+
+Éprouver le chemin non-destructif sur `nikopol-nixos` (bioskop reste le builder). Le test
+isole les 3 branches sans risquer de violer la compatibilité : on change l'**UUID** de
+l'image EROFS — paramètre *sémantiquement inerte*, le montage se faisant par label — donc
+nouveau bundle, marqueur en désaccord, contenu de couche identique, boot impossible à
+casser.
+
+Protocole : matérialiser sans `VM_FACTORY_RESET`, puis vérifier pools préservés ·
+`store.img` remplacé · marqueur à jour · le nœud boote. En cas d'échec : renew (~11 min,
+chemin connu).
+
+== Annexe — le journal du débat (mes erreurs, gardées pour leurs leçons)
+
+* **« sur-montage live »** — je m'étais inventé une inconnue technique. Il n'a jamais été
+  question de monter à chaud : la mise à jour passe par un reboot du guest, on relance le
+  script de lancement. Dissolue.
+* **« la surface de panne croît avec K »** — mal attribué. La panne du soir venait d'un
+  *manifeste périmé*, pas de la profondeur. La fragilité est dans la référence, pas dans
+  le nombre.
+* **« le nœud est jetable donc on peut sauter la branche risquée »** — faux sens. La
+  jetabilité est la *licence de l'exercer pour de vrai*.
+* **« le copy-up résout le bump »** — mesuré : 94 491 fichiers. Le réflexe naturel était
+  le piège.
+* **« ScenarioCellar existe donc le cellier est codé »** — non : `SeedRunLedger` n'est que
+  dans deux specs. Vérifier la substance, pas le nom.
+
+Leçon transverse : cinq fois sur cinq, c'est la **mesure ou la lecture du code** qui a
+tranché, jamais le raisonnement. Et trois fois, c'est *ta* question qui a redressé le
+cadrage.

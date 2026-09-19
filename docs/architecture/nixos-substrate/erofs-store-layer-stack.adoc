@@ -1,0 +1,485 @@
+= The EROFS layer stack — one store layer per system generation
+:toc: left
+:toclevels: 3
+
+[NOTE]
+====
+The *vision* for `/nix/store`: an ordered stack of read-only EROFS layers, one per system
+generation, declared by `ndh`. Its companion link:erofs-store-lower.adoc[the EROFS store
+lower] describes what is *shipped* — a single layer, frozen at bringup. Read that one first
+if you want the mechanism; read this one for where it is going and why.
+
+The delta against the codebase is the link:../atlas/nixos-substrate.adoc[atlas view]; the
+surrounding substrate vision is link:substrate-model.adoc[the substrate model].
+====
+
+== The vision in one page
+
+A node's `/nix/store` is not a ZFS dataset. It is an *overlay* whose lower is an EROFS image
+delivered as a disk and whose upper is a ZFS dataset. That much is shipped, and both fleet
+nodes run on it.
+
+The vision adds three things:
+
+. the lower becomes an *ordered stack* of EROFS layers, one per system version, instead of a
+  single layer frozen at bringup;
+. the base layer is the *intersection of the fleet's runtime closures* — identical on every
+  node, therefore identity-less, therefore dedupable;
+. *`ndh` declares the stack* and computes when a layer is dead. The node has no say.
+
+And one explicit ownership boundary, which is the heart of the design:
+
+[quote]
+____
+The *instance* owns its *data* (ZFS pools, the overlay upper). *`ndh`* owns the *store
+layout*. A reboot may change the layout, provided it covers the closures of the generations
+the instance can still boot — that is what "backward compatible" means here.
+____
+
+=== Why: determinism, not economy
+
+Today `nixos-rebuild boot --target-host` makes *the node* materialise the runtime closure:
+*165 591 file creations*, performed outside any derivation, to produce what the builder would
+have produced. That is the same per-file cost class the EROFS lower removed from the image
+build, reintroduced on every update.
+
+With one layer per generation that materialisation moves *inside* a derivation:
+
+* reproducible and content-addressed,
+* substitutable, therefore shareable across the fleet,
+* verifiable — `nix-store --realise --check`, which we exercise,
+* and the node builds *nothing*: it mounts.
+
+Pre-computing everything with nix at build time is better *in itself*; the time saved is a
+corollary. This is not a new direction either: the commit that retired the `work` profile
+(ndh `8d6b6acb`) already stated that "bioskop is the authority and distributes closures to
+consumers". Layer-per-generation is that statement carried to its conclusion.
+
+== C2 — Containers
+
+The deployable units and what flows between them. `ndh` is the authority; the *manifest* is
+the only contract between the nix side and the darwin side (there is no cross-import).
+
+[mermaid]
+----
+flowchart TB
+  subgraph ndh["ndh — LAYOUT AUTHORITY (eval + derivations)"]
+    direction TB
+    NDHc["declares the stack · packs the layers<br/>computes intersection + liveness<br/>roots every layer"]
+  end
+
+  subgraph bundle["BUNDLE (store path) — the delivery artifact"]
+    direction TB
+    MAN["manifest.yaml<br/>images[] with role"]
+    DISKS["boot.img · tank1..3 · recover<br/>store-1.img .. store-N.img"]
+    MAN --- DISKS
+  end
+
+  subgraph host["darwin HOST"]
+    direction TB
+    MAT["materializer<br/>places disks in ~/.tart/vms/&lt;vm&gt;/<br/>PRESERVES the pools"]
+    RUN["run wrapper<br/>attaches N layers read-only"]
+  end
+
+  subgraph guest["NixOS GUEST — DATA OWNER"]
+    direction TB
+    GST["mounts the stack · overlays /nix/store<br/>ZFS pools + upper"]
+  end
+
+  NDHc -->|"produces"| bundle
+  MAN -->|"role: prebuilt / primary<br/>THE ONLY contract"| MAT
+  MAT --> RUN
+  RUN -->|"tart run --disk"| GST
+  DISKS -.->|"copied verbatim"| MAT
+
+  classDef auth fill:#e6f0ff,stroke:#06c,color:#035;
+  classDef art fill:#fffbe6,stroke:#e0c000,color:#665c00;
+  classDef own fill:#e6ffe9,stroke:#0a0,color:#050;
+  class ndh,NDHc auth
+  class bundle,MAN,DISKS art
+  class guest,GST own
+----
+
+== C3a — Components on the `ndh` side
+
+Edges are the imports found in the code. Orange is what the stack adds; the rest exists.
+
+[mermaid]
+----
+flowchart TB
+  LAYERS["erofs-store-layers.nix<br/>SSOT — ordered LIST of layers<br/>label + mountPoint"]
+  IMAGE["erofs-store-image.nix<br/>pack: tar then mkfs.erofs<br/>ONE instance PER layer"]
+  MOUNT["erofs-store-mount.nix<br/>fileSystems: lowerdir = LIST<br/>+ initrd supportedFilesystems"]
+  DISKO["zfs-disko-config.nix<br/>the upper's dataset (rwstore)"]
+  BRINGUP["bringup-zfs-disk-image.nix<br/>closureInfo · nested VM<br/>attaches the layers read-only"]
+  OUTPUTS["outputs.nix<br/>prebuiltImages · manifest attrs"]
+  ASSEMBLY["mk-disk-image-with-manifest.sh<br/>symlinks the layers<br/>emits role: prebuilt"]
+  INSTALL["zfs.d/bringup-…-install.sh<br/>mounts the stack · load-db<br/>one gcroot per layer"]
+  RUNTIME["default.nix / bringup-minimal-system.nix<br/>import the mount"]
+
+  INTER["INTERSECTION COMPUTATION<br/>the fleet's runtime closures"]
+  LIVENESS["LIVENESS COMPUTATION<br/>a layer is dead when no retained<br/>closure touches any of its paths"]
+
+  LAYERS --> IMAGE
+  LAYERS --> MOUNT
+  LAYERS --> DISKO
+  LAYERS --> BRINGUP
+  LAYERS --> INSTALL
+  INTER --> LAYERS
+  LIVENESS --> LAYERS
+  IMAGE --> BRINGUP
+  BRINGUP --> OUTPUTS
+  OUTPUTS --> ASSEMBLY
+  BRINGUP -.->|"replaceVars"| INSTALL
+  MOUNT --> RUNTIME
+
+  classDef newc fill:#fff4e6,stroke:#c60,color:#803;
+  classDef ssot fill:#e6f0ff,stroke:#06c,color:#035;
+  class INTER,LIVENESS newc
+  class LAYERS ssot
+----
+
+Only *two* components are genuinely new: the intersection computation and the liveness
+computation. Everything else becomes a projection over one SSOT list, on the pattern
+`zfs-pool-disk-map.nix` already establishes.
+
+Today `erofs-store-layout.nix` is a *singleton* (one label, one mount point). Turning it into
+a list turns its three current consumers — `bringup-zfs-disk-image.nix`,
+`erofs-store-mount.nix`, `zfs-disko-config.nix` — into projections over that list.
+
+*The darwin side needs no change.* `run.sh` and `activation.sh` already loop over N prebuilt
+images and attach each read-only, and the manifest already emits one `role: prebuilt` entry
+per image.
+
+== C3b — Components on the guest side
+
+[mermaid]
+----
+flowchart TB
+  subgraph disks["attached disks (read-only)"]
+    D1["store-1.img<br/>label nix-store-1"]
+    D2["store-2.img"]
+    DN["store-N.img"]
+  end
+
+  subgraph mounts["mounts (neededForBoot)"]
+    M1["/nix/.ro-store.1<br/>erofs"]
+    M2["/nix/.ro-store.2"]
+    MN["/nix/.ro-store.N"]
+  end
+
+  UPPER["/nix/.rw-store<br/>ZFS dataset<br/>upper + work"]
+  STORE["/nix/store<br/>overlay<br/>lowerdir = N:...:1"]
+  DB["/nix/var/nix/db<br/>ZFS dataset<br/>declares ALL layers valid"]
+  ROOTS["/nix/var/nix/gcroots<br/>one root per layer"]
+
+  D1 --> M1
+  D2 --> M2
+  DN --> MN
+  MN --> STORE
+  M2 --> STORE
+  M1 --> STORE
+  UPPER -->|"upperdir"| STORE
+  DB -.->|"validity"| STORE
+  ROOTS -.->|"protects from GC"| M1
+  ROOTS -.-> M2
+  ROOTS -.-> MN
+
+  classDef ro fill:#e6f0ff,stroke:#06c,color:#035;
+  classDef rw fill:#e6ffe9,stroke:#0a0,color:#050;
+  classDef ctl fill:#fffbe6,stroke:#e0c000,color:#665c00;
+  class disks,mounts,D1,D2,DN,M1,M2,MN ro
+  class UPPER,STORE rw
+  class DB,ROOTS ctl
+----
+
+Three invariants read directly off this figure:
+
+* every layer is `neededForBoot`, so its disk must be attached or the guest hangs in the
+  initrd;
+* the Nix database is the *third* actor, independent of the layers, and it is what makes
+  their paths *usable* — without `nix-store --load-db` a `nix copy` would rewrite the whole
+  closure into the upper;
+* a whiteout in the upper masks *all* layers at once. Whiteouts are the only destructive
+  overlay state, which is why purging means removing a disk, never deleting files.
+
+== C3c — Generalising: every generation is a layer
+
+Does the model that builds the *bringup* system also serve the *target* system? Yes — and the
+code already aimed there. `bringup-zfs-disk-image.nix` carries a `runtimeSystemPath`
+parameter, documented "*Production runtime system closure to include in the bringup image
+store*".
+
+It is `null` for exactly one reason: embedding one host's closure tags the image per host and
+breaks fleet-wide dedup. *The stack resolves precisely that tension* — what is common is
+separated from what is specific, instead of everything landing in one image.
+
+[mermaid]
+----
+flowchart LR
+  subgraph gens["system generations"]
+    direction TB
+    G1["gen 1 — bringup<br/>identity-less, fleet-wide"]
+    G2["gen 2 — host runtime<br/>1658 paths"]
+    G3["gen 3 — next runtime"]
+  end
+
+  subgraph layers["EROFS layers (packed by ndh)"]
+    direction TB
+    L0["BASE layer<br/>fleet intersection<br/>1608 paths · SHARED"]
+    L1["gen 2 residue<br/>~50 paths"]
+    L2["gen 3 residue<br/>delta"]
+  end
+
+  UP["ZFS upper<br/>only LOCAL writes<br/>(ad-hoc builds, nix-shell)"]
+
+  G1 --> L0
+  G2 --> L0
+  G2 --> L1
+  G3 --> L0
+  G3 --> L2
+
+  L0 --> UP
+  L1 --> UP
+  L2 --> UP
+
+  classDef shared fill:#e6f0ff,stroke:#06c,color:#035;
+  classDef perhost fill:#fff4e6,stroke:#c60,color:#803;
+  classDef rw fill:#e6ffe9,stroke:#0a0,color:#050;
+  class L0 shared
+  class L1,L2 perhost
+  class UP rw
+----
+
+=== What it changes — the switch stops writing the store
+
+[cols="2,2,2",options="header"]
+|===
+| | Today | One layer per generation
+
+| materialising the runtime closure
+| `nixos-rebuild` creates *165 591 files* in the upper
+| one sequential image, packed on the builder
+
+| cost class of a switch
+| the per-file class we removed from the build
+| the "bytes" class
+
+| contents of the upper
+| the whole runtime (5.3 GiB)
+| local writes only
+
+| rollback
+| depends on what is left in the upper
+| keep the layer
+|===
+
+=== The price, and it is structural
+
+. *A switch becomes a reboot.* Tart cannot hot-attach a disk, so delivering a layer means
+  stop/start. Accepted: these clusters have no availability constraint and re-grow from git
+  anyway. Note that `boot` + reboot is *already* the documented operator practice — an online
+  `switch` runs activation scripts before `systemd-tmpfiles`, so the runbook already forbids it.
+. *The node no longer builds a generation.* No local `nixos-rebuild switch`: an operational
+  tool is lost.
+. *It closes the ESP question.* If `ndh` builds the generation and its layer, it installs the
+  bootloader entry too. So `ndh` owns the ESP, and the coincidence of image sizes stops
+  arbitrating anything.
+. *One more layer per generation*, so compaction becomes necessary sooner.
+
+== The one flow worth drawing — delivering a new generation
+
+[mermaid]
+----
+sequenceDiagram
+  actor Op as Operator
+  participant B as ndh
+  participant M as materializer
+  participant G as guest
+
+  Op->>B: bump / refactor
+  B->>B: stack = base + residue + delta
+  B->>B: packs the missing layers
+  Op->>M: materialize WITHOUT factory reset
+  M->>G: tart stop
+  M->>M: layers updated · POOLS PRESERVED
+  Op->>M: re-run the launch script
+  M->>G: tart run (N layers read-only)
+  G->>G: initrd assembles the stack, boots
+----
+
+== The measurements this rests on
+
+.The build — why the EROFS lower exists
+[cols="3,2",options="header"]
+|===
+| Fact | Value
+
+| runtime closure | 9.3 GiB for *260 121 files*
+| per-file cost in the nested VM | ~11 ms, i.e. ~87 files/s
+| "bytes" work (HW sha256 + zstd + write) | 1 to 3 min out of 50
+| pack on the host | *2 min 43* for 9.2 GiB
+| nested VM build | *~6 min* against ~50
+| determinism | verified by `nix-store --realise --check`
+|===
+
+.The lower today
+[cols="3,2",options="header"]
+|===
+| Fact | Value
+
+| paths in the lower | 659 (2.6 GiB)
+| generation 1 (bringup) | 659 paths — *100 % in the lower*
+| generation 2 (current runtime) | 1658 paths, *554 (33 %) in the lower*
+| paths present in BOTH layers | *0* — no duplication
+| upper | 1104 paths / 5.3 GiB / 165 591 files
+| share of the node's pool that is the upper | *98.5 %* (5.24 of 5.32 GiB)
+|===
+
+.Fleet sharing — the measurement the base layer rests on
+[cols="3,2",options="header"]
+|===
+| Fact | Value
+
+| bioskop-nixos runtime | 1658 paths
+| nikopol-nixos runtime | 1662 paths
+| *intersection* | *1608 — 96 %*
+| specific to bioskop / to nikopol | 50 / 54
+|===
+
+.The measured traps
+[cols="3,2",options="header"]
+|===
+| Fact | Value
+
+| copy-up of the current generation | 554 paths, 2.2 GiB, *94 491 files* — rejected
+| is a delta closed on its own? | *no* — 142 outbound references over 60 sampled paths
+| paths lost to `nix-collect-garbage -d` without a gcroot | *105* of 659, as permanent whiteouts
+|===
+
+== Decisions taken
+
+[cols="3,3",options="header"]
+|===
+| Decision | Basis
+
+| `/nix/store` = overlay(EROFS packed on the host + ZFS upper)
+| the build is operation-bound; `mkfs.erofs` needs no root, so packing stays a pure derivation
+
+| a durable gcroot on the bringup toplevel
+| 105 paths lost otherwise; *shipped and applied on both nodes*
+
+| no copy-up before swapping a layer
+| 94 491 files — the cost class we just eliminated
+
+| *stack*, never replace
+| preserves rollback; purging is removing a disk, not deleting files
+
+| base layer = the fleet intersection
+| 96 % coverage while staying identity-less
+
+| `ndh` declares the stack; the instance owns its data
+| source-vs-projection; no upward channel is needed
+
+| merging is a rendering choice, deferrable
+| no contract with the instance, so it ships later without touching a node
+
+| *every generation is an EROFS layer*
+| the bringup model generalises; `runtimeSystemPath` was the hook, the stack lifts the dedup tension
+
+| *the switch becomes `boot` + `reboot`*
+| no availability constraint, and it is already the documented practice
+
+| *stack depth is not a new knob*
+| it is the number of retained generations, which the operator already controls through nix profiles
+
+| *`ndh` owns the ESP*
+| a consequence: if it builds the generation and its layer, it installs the bootloader entry
+|===
+
+== What the layer-swap experiment proved
+
+On 2026-09-19 the non-destructive materialization path was exercised end to end on
+`nikopol-nixos` (`bioskop-nixos` stays the builder — it is the only aarch64-linux builder, so
+losing it blocks repair). The test changed only the EROFS image's *UUID*: a semantically
+inert parameter, since the mount is by label, so the bundle and the on-disk marker disagree
+while the layer content is identical and the boot cannot break.
+
+Result, on the three branches that had never run:
+
+* the layer was *swapped* — the lower went from UUID `…a62` to `…a63` and the node boots on it;
+* the *pools were preserved* — `tank` at 7.90 GiB ONLINE before and after;
+* the *root disk was preserved* — generation 2 still current, no reinstall, ESP intact.
+
+So the ownership boundary above is not a wish: `ndh` can change a live instance's store
+layout without the instance losing anything it owns.
+
+=== The defect it surfaced, and the rule behind it
+
+The first attempt *destroyed the pools*, and that is what found the real defect: the
+preservation branch was *structurally unreachable*, so every materialization that was not a
+factory reset destroyed the pools, on any host. Two faults composed:
+
+* `tart:vm:exists` parsed `tart list`'s *first* column as the VM name. That column is
+  `Source`, so it compared `local` against the name and could never answer yes.
+* `tart` 2.36 fails the *whole* listing when any single VM is running — it stats every VM's
+  disk images to report sizes (measured 10/10 on the host where a VM runs permanently; 2.30
+  tolerated it).
+
+Both surfaced identically, as "this VM is not registered", and the caller answered that with
+`tart create`, which recreates the VM directory and takes the data disks with it.
+
+[IMPORTANT]
+====
+*A probe whose negative answer authorises destruction must distinguish "absent" from "I could
+not look."* Otherwise any introspection failure becomes a deletion order.
+
+Fixed in ndh `47943f0b` and `6213a553`:
+
+* `tart get --format=json <vm>` resolves *one* VM, so another running VM cannot break it, and
+  it encodes the answer in its exit code — `0` registered, `2` "does not exist", `1` running.
+  That `1` is *positive evidence of existence*: to reach the disk, tart had to resolve the VM.
+  Only a formal `2` authorises creation.
+* The root-disk gate decides on *content* — a `.source` marker recording the source store
+  path, plus an `EFI` partition probe — and no longer on a comparison of virtual sizes, which
+  matched only by coincidence (both 600 MiB) and would have silently wiped every node's ESP
+  the day the boot image changed size.
+* A prebuilt image is read-only and content-addressed, so replacing it is free. A root disk is
+  *mutable* and carries the node's generations, so replacing it stays an explicit operator act
+  (`VM_FACTORY_RESET`). Two natures, two disciplines.
+====
+
+== Troubleshooting
+
+[cols="2,3",options="header"]
+|===
+| Symptom | Cause and fix
+
+| guest hangs in the initrd on `/dev/disk/by-label/nix-store…`
+| a layer's disk is not attached. Almost always a *stale manifest*: the run wrapper resolved
+  an older bundle that does not declare the new layer. Check the candidate order in
+  `run.sh` — the materializer gcroot must outrank anything under `~/.config/nerd-tart/`.
+
+| paths from a layer disappear after `nix-collect-garbage -d`
+| the per-layer gcroot is missing. The loss is *permanent*: the deletions land as whiteouts in
+  the upper, which mask the read-only layer underneath.
+
+| `nix copy` rewrites the whole closure into the upper
+| the Nix database does not declare the layer's paths valid. The installer must replay the
+  registration of the *union* of retained closures (`nix-store --load-db`), not per layer — a
+  single layer is not closed on its own.
+
+| the same layer bytes get a different store path per host
+| something host-derived leaked into the derivation. The pack fixes `--force-uid/gid=0`, `-T 0`
+  and the UUID precisely to keep the output bit-identical; re-check with
+  `nix-store --realise --check`.
+|===
+
+== Related documentation
+
+* link:erofs-store-lower.adoc[The EROFS store lower] — what is *shipped*: the single-layer mechanism this stacks on top of, with its GC-root invariant and bump conditions.
+* link:substrate-model.adoc[The substrate model] — the surrounding vision: the closure is the config.
+* link:concern-ownership.adoc[Concern ownership] — where image-side responsibilities land.
+* link:node-bootstrap-delivery.adoc[Node-side bootstrap delivery] — the other half of what reaches a node with no `/srv/host`.
+* link:../atlas/nixos-substrate.adoc[Atlas — NixOS substrate] — the before/after delta this becomes a component of.
+* link:tailscale-fork-supply-chain.adoc[Tailscale fork supply chain] — the sibling `ndh`-as-SSOT pattern, with its own bump runbook.
