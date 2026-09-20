@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 0b18b1f3-3eda-496a-865d-1fbc722b0d30
-  modified: 2026-09-20T18:48:29.206Z
+  modified: 2026-09-20T19:00:25.537Z
 ---
 
 **Le fait, mesuré.** Ajouter deux chemins à la closure de bringup (l'unité
@@ -41,6 +41,16 @@ déjà déterministe — `--force-uid/gid=0 -T 0 -U`, vérifié par l'horodatage
 superblocs). Une couche dont le contenu ne bouge pas garderait son chemin.
 **`ca-derivations` est DÉJÀ dans `nixConfig.extra-experimental-features` du flake `ndh`** —
 rien à activer.
+
+**Débits mesurés (2026-09-20), qui chiffrent le bénéfice** : bioskop (Mac) ↔ `bioskop-nixos`
+(builder) = **396 MB/s** — lien virtuel local à l'hôte, résolu en 192.168.1.130 sur le LAN et **pas**
+par le tailnet (hypothèse de l'utilisateur, écartée par la mesure) ; donc 17 Gio y passent en ~44 s.
+Mais bioskop → laptop nikopol (`nikopol-vzhost.lan`, 192.168.1.65, **filaire** `en0`) = **66,4 MB/s**,
+soit ~4 min 20 pour 17 Gio, et `nix copy` fait moins bien que le brut (NAR + compression, souvent
+CPU-bound). C'est LÀ qu'est le goulot de la matérialisation. Conséquence : éviter de réexpédier
+L1+L2 (~10 Gio) quand seule la couche par-hôte a changé économise **~2 min 30 par
+matérialisation** — le meilleur argument pour le correctif du marqueur, qui est le moins cher des
+deux.
 
 **Ce que ça change au-delà du coût de build**, et c'est le point important : ça **corrige
 une limite que je croyais structurelle**. J'avais conclu que la couche générique de flotte
