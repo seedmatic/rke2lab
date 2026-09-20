@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 0b18b1f3-3eda-496a-865d-1fbc722b0d30
-  modified: 2026-09-19T14:48:53.115Z
+  modified: 2026-09-20T00:00:56.374Z
 ---
 
 **La vision est SHIPPÉE EN SPEC** (rke2lab `a86a5a9f4`) :
@@ -133,7 +133,54 @@ Conséquences pour le protocole :
   `VM_FACTORY_RESET`, `TART_DISK_RELEASE_TIMEOUT_SECONDS` (nouveau).
 
 **Plan de l'utilisateur après l'expérience** : si concluante → basculer le whiteboard dans
-`docs/architecture/nixos-substrate/` + atlas → puis attaquer le code.
+`docs/architecture/nixos-substrate/` + atlas → puis attaquer le code. **FAIT, et le code
+est allé jusqu'à la phase 2 — voir ci-dessous.**
+
+## 2026-09-19/20 — PHASES 0, 1 et 2 LIVRÉES ET VÉRIFIÉES SUR NIKOPOL
+
+**Phase 0** (rke2lab `a86a5a9f4`) : la spec `docs/architecture/nixos-substrate/erofs-store-layer-stack.adoc`,
+renvois bidirectionnels, atlas + `docs/README`, whiteboard archivé.
+
+**Phase 1** (ndh `5383034d`) : `erofs-store-layout.nix` → `erofs-store-layers.nix`, une
+LISTE ; les consommateurs deviennent des projections. À **contenu constant**, vérifié par
+évaluation : image EROFS et les deux toplevels gardent leurs store paths.
+
+**Phase 2** (ndh `6d25264c`, + `713826dd`) : une couche par closure + delta entre elles.
+
+**★ RÉSULTAT MESURÉ après renew de nikopol-nixos** (facteur de réussite de toute la vision) :
+
+| | avant | après |
+|---|---|---|
+| couches montées | 1 | **2**, par label, `vdf`/`vdg` |
+| overlay | 1769 | 1769 = 659 + 1109 + 1 |
+| **upper** | 1104 chemins / **5,3 GiB** | **1 chemin / 21 Ko** |
+| **pool `tank`** | **7,90 GiB** | **26,1 Mo** |
+| durée de la bascule de génération | — | **1 seconde**, upper inchangé |
+| tailles de couche | — | base 2,58 GiB + delta 7,47 GiB (1,74 GiB partagés NON dupliqués) |
+
+Le `lowerdir` observé est `…/.ro-store.002:…/.ro-store` — le plus récent à gauche, conforme
+à la doc noyau, et l'ordre des slots virtio est *inverse* de l'ordre déclaré : sans
+importance, le montage est par label. C'est ce qui justifie le label comme référence.
+
+**Détails qui ne se lisent pas dans le diff** :
+
+- `runtimeSystemPath` alimentait l'UNIQUE `closureInfo`, donc l'utiliser aplatissait la pile
+  en une seule couche de 9,2 GiB. D'où trois closures séparées : base, runtime, et l'**union**
+  pour la registration — une couche n'est pas close seule.
+- **Labels déclarés, jamais dérivés du contenu** : impossible pour la couche d'une génération
+  (point fixe — la config nommerait un label dérivé d'un contenu qui l'inclut). D'où l'index
+  paddé, et la limite dure : `mkfs.erofs` refuse 16 caractères, **15 max** (mesuré).
+- Le trampoline/logger ne va PAS dans `bringup-zfs-disk-images-install.sh` : il exige le
+  profil bootstrap NDH que ce script installe lui-même (circulaire), et son FD 2 redirigé
+  empêche QEMU de se terminer. Essayé, cassé, reverté, raison écrite en tête du fichier.
+- `replaceVars` scanne les `@nom@` **jusque dans les commentaires** — un commentaire
+  expliquant pourquoi ne pas utiliser un placeholder a suffi à casser le build.
+- `comm` exige ses entrées triées dans SA collation et ne signale un désaccord que par un
+  avertissement en produisant un résultat faux → `LC_ALL=C` explicite dans `delta.sh`.
+
+**Reste à faire** : phase 3 (couche commune à la flotte) · restructurer le manifeste
+(18 références dans 3 fichiers, cible notée dans la session) · corriger le wrapper de run qui
+échoue sur le relais série après un factory reset (répertoire `serial/` supprimé).
 
 **Questions ouvertes** (4) : quel **K** (profondeur de pile) · le **couplage fleet-wide**
 de l'intersection (changer un hôte change le lower de tous) est-il acceptable · 3 mesures
