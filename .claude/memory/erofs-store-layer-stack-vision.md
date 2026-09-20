@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 0b18b1f3-3eda-496a-865d-1fbc722b0d30
-  modified: 2026-09-20T18:25:09.387Z
+  modified: 2026-09-20T19:35:16.910Z
 ---
 
 **La vision est SHIPPÉE EN SPEC** (rke2lab `a86a5a9f4`) :
@@ -324,6 +324,23 @@ cadence : le faire **voyager avec un changement qui paie déjà ce coût**, jama
 **État vérifié après renew** (`sr0mndcq…` = current = booted) : couches **661/1098/77**, overlay
 **1837**, upper **1 chemin / 21 Ko**, `tank` **23,3 Mo**, générations 1 à 17:25:54 → 2 à 17:33:12 sans
 intervention. Identique au checkpoint précédent, ce qui était le résultat attendu.
+
+**★ QUAND A-T-ON VRAIMENT BESOIN D'UN FACTORY RESET ? Mesuré le 2026-09-20 au soir.** Réponse :
+**pour remplacer des couches, jamais pour mettre un nœud à jour.** Un reset produit un *triplet
+cohérent* (entrée ESP + profil nix du pool + contenu des couches nommant les mêmes toplevels) ; ce
+qui casse, c'est de remplacer le contenu d'une couche sous un ESP et un pool préservés. La topologie
+overlay, elle, est déjà là et serait préservée — et c'est précisément **parce que l'upper est
+inscriptible que le chemin pas cher reste ouvert**.
+
+Éprouvé sur nikopol-nixos pour passer de `8aa201c3` à `ed4e4af5` :
+`nixos-rebuild boot --flake .#nikopol-nixos --target-host root@nikopol-nixos.local` + reboot, au lieu
+d'un renew. Résultat : génération 3 = `ih26zj7w…` (vérifié identique à la sortie du drv de `develop`,
+donc aucune dérive), couches **intactes** (661/1098/77), et le prix total = **34 chemins / 9,2 Mo**
+dans l'upper (contre 1 chemin / 21 Ko), pool à 133 Mo. Contre : 17 Gio de transfert à 66 MB/s, pools
+détruits, et un fantôme tailnet de plus à purger. **Rapport ~1 pour 1800 en octets.**
+
+Et la pureté n'est pas perdue mais **mise en pause** : les couches n'ayant pas bougé, le prochain
+factory reset — quel qu'en soit le motif — ramène l'upper à ~1 chemin.
 
 **La branche de REFUS du garde reste non exercée** — `VM_FACTORY_RESET` la contourne par
 construction. Prédiction lue dans le code pour le jour où on voudra l'éprouver : marqueur
