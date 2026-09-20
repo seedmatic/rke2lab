@@ -6,7 +6,6 @@ data:
     v1|Secret|rke2lab-system|github-app-private-key
     github.as-code.io/v1|App|rke2lab-system|github-app
     github.as-code.io/v1|ClusterToken||github-token
-    github.as-code.io/v1|ClusterToken||github-token-write
 kind: ConfigMap
 metadata:
   annotations:
