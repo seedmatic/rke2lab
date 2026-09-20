@@ -4,27 +4,33 @@
 
 [NOTE]
 ====
-The *vision* for `/nix/store`: an ordered stack of read-only EROFS layers, one per system
-generation, declared by `ndh`. Its companion link:erofs-store-lower.adoc[the EROFS store
-lower] describes what is *shipped* — a single layer, frozen at bringup. Read that one first
-if you want the mechanism; read this one for where it is going and why.
+`/nix/store` as an ordered stack of read-only EROFS layers, declared by `ndh`.
+
+*Status: the three-layer stack is SHIPPED* — verified end to end on `nikopol-nixos` on
+2026-09-20, with the per-host runtime image down from 7.47 GiB to 39 MiB and the pool from
+7.90 GiB to 23.7 MB. Its companion link:erofs-store-lower.adoc[the EROFS store lower]
+describes the single-layer mechanism this generalises; read that one first for how an EROFS
+lower is packed and mounted at all.
+
+Still ahead: automatic activation at boot, layer expiry, and compaction. Each is flagged in
+place.
 
 The delta against the codebase is the link:../atlas/nixos-substrate.adoc[atlas view]; the
 surrounding substrate vision is link:substrate-model.adoc[the substrate model].
 ====
 
-== The vision in one page
+== The model in one page
 
 A node's `/nix/store` is not a ZFS dataset. It is an *overlay* whose lower is an EROFS image
 delivered as a disk and whose upper is a ZFS dataset. That much is shipped, and both fleet
 nodes run on it.
 
-The vision adds three things:
+The stack adds three things:
 
-. the lower becomes an *ordered stack* of EROFS layers, one per system version, instead of a
-  single layer frozen at bringup;
-. the base layer is the *intersection of the fleet's runtime closures* — identical on every
-  node, therefore identity-less, therefore dedupable;
+. the lower becomes an *ordered stack* of EROFS layers instead of a single layer frozen at
+  bringup;
+. the layers follow the *composition chain of the configurations*, so what the fleet has in
+  common sits in a shared layer and only the host's residue is private — 77 paths, 39 MiB;
 . *`ndh` declares the stack* and computes when a layer is dead. The node has no say.
 
 And one explicit ownership boundary, which is the heart of the design:
@@ -32,9 +38,15 @@ And one explicit ownership boundary, which is the heart of the design:
 [quote]
 ____
 The *instance* owns its *data* (ZFS pools, the overlay upper). *`ndh`* owns the *store
-layout*. A reboot may change the layout, provided it covers the closures of the generations
-the instance can still boot — that is what "backward compatible" means here.
+layout*. A reboot may change the layout, provided every generation the instance can still
+boot both *finds* its closure in the new stack and is *able to mount* it — that is what
+"backward compatible" means here.
 ____
+
+The second clause of that proviso is not decoration: a generation's initrd bakes in the list
+of layers it was built with, so it can only ever mount that many. Both halves are worked out
+under <<_the_two_invariants_that_bind_a_layer_to_a_booted_node>>, and one of them was learnt
+by breaking a node.
 
 === Why: determinism, not economy
 
@@ -102,7 +114,8 @@ flowchart TB
 
 == C3a — Components on the `ndh` side
 
-Edges are the imports found in the code. Orange is what the stack adds; the rest exists.
+Edges are the imports found in the code. Orange is what is still missing; everything else is
+shipped.
 
 [mermaid]
 ----
@@ -117,16 +130,23 @@ flowchart TB
   INSTALL["zfs.d/bringup-…-install.sh<br/>mounts the stack · load-db<br/>one gcroot per layer"]
   RUNTIME["default.nix / bringup-minimal-system.nix<br/>import the mount"]
 
-  INTER["INTERSECTION COMPUTATION<br/>the fleet's runtime closures"]
+  FLEET["outputs.nix :: mkFleetRuntimeConfig<br/>the neutral host profile in FULL mode<br/>= the fleet-generic closure"]
+  DELTA["erofs-store-image.d/delta.sh<br/>comm -13 · LC_ALL=C<br/>refuses an empty layer"]
+  PACK["erofs-store-image.d/pack.sh<br/>tar | mkfs.erofs --tar=f<br/>--force-uid/gid=0 -T 0 -U"]
+
   LIVENESS["LIVENESS COMPUTATION<br/>a layer is dead when no retained<br/>closure touches any of its paths"]
+  AUTOACT["BOOT-TIME ACTIVATION<br/>arm zfs-nixos-install.service<br/>toplevel delivered out of closure"]
 
   LAYERS --> IMAGE
   LAYERS --> MOUNT
   LAYERS --> DISKO
   LAYERS --> BRINGUP
   LAYERS --> INSTALL
-  INTER --> LAYERS
+  FLEET --> BRINGUP
+  DELTA --> BRINGUP
+  PACK --> IMAGE
   LIVENESS --> LAYERS
+  AUTOACT --> INSTALL
   IMAGE --> BRINGUP
   BRINGUP --> OUTPUTS
   OUTPUTS --> ASSEMBLY
@@ -135,17 +155,22 @@ flowchart TB
 
   classDef newc fill:#fff4e6,stroke:#c60,color:#803;
   classDef ssot fill:#e6f0ff,stroke:#06c,color:#035;
-  class INTER,LIVENESS newc
+  class LIVENESS,AUTOACT newc
   class LAYERS ssot
 ----
 
-Only *two* components are genuinely new: the intersection computation and the liveness
-computation. Everything else becomes a projection over one SSOT list, on the pattern
-`zfs-pool-disk-map.nix` already establishes.
+`erofs-store-layers.nix` is the SSOT and every consumer is a projection over it, on the
+pattern `zfs-pool-disk-map.nix` already establishes. It is also *self-validating*: it asserts
+label uniqueness and the 15-character limit at evaluation time, because both failures would
+otherwise surface as a guest that builds fine and then cannot find its store.
 
-Today `erofs-store-layout.nix` is a *singleton* (one label, one mount point). Turning it into
-a list turns its three current consumers — `bringup-zfs-disk-image.nix`,
-`erofs-store-mount.nix`, `zfs-disko-config.nix` — into projections over that list.
+`mkFleetRuntimeConfig` is what makes the shared layer possible, and it is deliberately built
+from the *literal* host definition rather than the caller's `hostProfile`: every host must
+derive the byte-identical closure, or the layer stops deduplicating. `flake.nix` reuses the
+same function for the `nerd-runtime` alias so the two cannot drift into two closures.
+
+Two components are still missing — liveness (which makes purging possible) and boot-time
+activation (which removes the last manual step).
 
 *The darwin side needs no change.* `run.sh` and `activation.sh` already loop over N prebuilt
 images and attach each read-only, and the manifest already emits one `role: prebuilt` entry
@@ -156,42 +181,48 @@ per image.
 [mermaid]
 ----
 flowchart TB
-  subgraph disks["attached disks (read-only)"]
-    D1["store-1.img<br/>label nix-store-1"]
-    D2["store-2.img"]
-    DN["store-N.img"]
+  subgraph disks["attached disks (read-only, by LABEL)"]
+    D1["store.img<br/>label nix-store<br/>2.58 GiB"]
+    D2["store-002.img<br/>label nix-store-002<br/>7.47 GiB"]
+    D3["store-003.img<br/>label nix-store-003<br/>39 MiB"]
   end
 
   subgraph mounts["mounts (neededForBoot)"]
-    M1["/nix/.ro-store.1<br/>erofs"]
-    M2["/nix/.ro-store.2"]
-    MN["/nix/.ro-store.N"]
+    M1["/nix/.ro-store<br/>erofs · 659 paths<br/>bringup closure"]
+    M2["/nix/.ro-store.002<br/>1098 paths<br/>fleet-generic runtime"]
+    M3["/nix/.ro-store.003<br/>77 paths<br/>host residue"]
   end
 
   UPPER["/nix/.rw-store<br/>ZFS dataset<br/>upper + work"]
-  STORE["/nix/store<br/>overlay<br/>lowerdir = N:...:1"]
-  DB["/nix/var/nix/db<br/>ZFS dataset<br/>declares ALL layers valid"]
-  ROOTS["/nix/var/nix/gcroots<br/>one root per layer"]
+  STORE["/nix/store<br/>overlay · 1834 paths<br/>lowerdir = 003:002:base"]
+  DB["/nix/var/nix/db<br/>ZFS dataset<br/>declares the UNION valid"]
+  ROOTS["/nix/var/nix/gcroots<br/>erofs-store-layer-001/002/003"]
 
   D1 --> M1
   D2 --> M2
-  DN --> MN
-  MN --> STORE
+  D3 --> M3
+  M3 --> STORE
   M2 --> STORE
   M1 --> STORE
   UPPER -->|"upperdir"| STORE
   DB -.->|"validity"| STORE
   ROOTS -.->|"protects from GC"| M1
   ROOTS -.-> M2
-  ROOTS -.-> MN
+  ROOTS -.-> M3
 
   classDef ro fill:#e6f0ff,stroke:#06c,color:#035;
   classDef rw fill:#e6ffe9,stroke:#0a0,color:#050;
   classDef ctl fill:#fffbe6,stroke:#e0c000,color:#665c00;
-  class disks,mounts,D1,D2,DN,M1,M2,MN ro
+  class disks,mounts,D1,D2,D3,M1,M2,M3 ro
   class UPPER,STORE rw
   class DB,ROOTS ctl
 ----
+
+The stack above is the *shipped* one, measured on `nikopol-nixos` on 2026-09-20. The
+leftmost `lowerdir` is the top layer — the kernel documents it as "the specified lower
+directories will be stacked beginning from the rightmost one and going left" — so the
+newest layer goes first and the virtio slot order is irrelevant: every layer is found by
+label.
 
 Three invariants read directly off this figure:
 
@@ -202,6 +233,58 @@ Three invariants read directly off this figure:
   closure into the upper;
 * a whiteout in the upper masks *all* layers at once. Whiteouts are the only destructive
   overlay state, which is why purging means removing a disk, never deleting files.
+
+== The two invariants that bind a layer to a booted node
+
+Both were learnt the hard way on `nikopol-nixos` on 2026-09-20, by a node that came up in an
+initrd emergency shell after a materialization in which *every individual decision was
+defensible*.
+
+=== Depth is part of the ABI: append is safe, replacement is not
+
+A generation's initrd carries its `lowerdir` list *baked in* — it is `fileSystems`, resolved
+at build time. The failed boot showed it verbatim:
+
+[source]
+----
+lowerdir=/sysroot/nix/.ro-store.002:/sysroot/nix/.ro-store
+----
+
+Two entries, on a node that had three layer disks attached. `vdg` (layer 003) was attached
+and simply never mounted, because the generation being booted had been built when the stack
+was two deep.
+
+That cuts cleanly in two:
+
+Appending a layer is safe::
+  An older generation neither references the new layer nor mounts it — and does not need to.
+  Its closure is wholly inside the layers it was built with. It keeps booting, ignoring the
+  addition.
+
+Replacing a layer's content is not::
+  An older generation's toplevel can disappear from the stack entirely. That is what
+  happened: layer 002 was re-cut from the host runtime closure to the fleet-generic one, so
+  generation 2's toplevel existed in no layer, and
+  `initrd-find-nixos-closure` failed with `Failed to resolve path …/init in prefix /sysroot`.
+
+[IMPORTANT]
+====
+This makes the decision recorded below as "we stack, we do not replace" a *condition for
+rollback*, not a preference. Rollback survives any number of appended layers and no
+replacement at all.
+====
+
+=== The ESP and the layers are one unit
+
+An ESP names a system toplevel; the stack has to carry that toplevel. They were decided
+independently by the materializer — the root disk had its own preserve/replace gate, the
+prebuilt layers had theirs — so a run could legitimately preserve the ESP *and* replace a
+layer's content, and nothing compared the two.
+
+The materializer cannot repair that state either: the preserved pools still hold the old Nix
+profile and its generations, and only the nested-VM installer ever writes a profile — into
+the bundle's own fresh pools, never the live ones. So the gate now *refuses*, naming
+`VM_FACTORY_RESET=true` as the operator's way forward (`ndh` `e3451f13`).
 
 == C3c — Generalising: every generation is a layer
 
@@ -280,33 +363,83 @@ flowchart LR
   stop/start. Accepted: these clusters have no availability constraint and re-grow from git
   anyway. Note that `boot` + reboot is *already* the documented operator practice — an online
   `switch` runs activation scripts before `systemd-tmpfiles`, so the runbook already forbids it.
-. *The node no longer builds a generation.* No local `nixos-rebuild switch`: an operational
-  tool is lost.
+. *The node no longer builds a generation.* It still *activates* one, locally and from its own
+  store — what is lost is building one on the node, not switching to one.
 . *It closes the ESP question.* If `ndh` builds the generation and its layer, it installs the
   bootloader entry too. So `ndh` owns the ESP, and the coincidence of image sizes stops
   arbitrating anything.
 . *One more layer per generation*, so compaction becomes necessary sooner.
 
-== The one flow worth drawing — delivering a new generation
+== The one flow worth drawing — bootstrapping a node on the stack
+
+This is the shipped flow, as exercised end to end on `nikopol-nixos` on 2026-09-20. The
+notable part is step 5: *activation no longer transfers anything*.
 
 [mermaid]
 ----
 sequenceDiagram
   actor Op as Operator
-  participant B as ndh
+  participant B as ndh (builder)
   participant M as materializer
   participant G as guest
 
   Op->>B: bump / refactor
-  B->>B: stack = base + residue + delta
-  B->>B: packs the missing layers
-  Op->>M: materialize WITHOUT factory reset
-  M->>G: tart stop
-  M->>M: layers updated · POOLS PRESERVED
-  Op->>M: re-run the launch script
-  M->>G: tart run (N layers read-only)
-  G->>G: initrd assembles the stack, boots
+  B->>B: three closures → two deltas → three EROFS layers
+  B->>B: nested VM installs the bringup, ESP + pools into the bundle
+  Op->>M: nix copy, then materialize
+  Note over M: re-cutting a layer requires<br/>VM_FACTORY_RESET — see the ESP invariant
+  M->>G: tart stop, await disk release
+  M->>M: ESP + pools + 3 layers, all from one bundle
+  Op->>M: launch
+  M->>G: tart run — 8 virtio disks, 3 attached read-only
+  G->>G: initrd mounts 3 layers by label, assembles the overlay
+  G->>G: boots generation 1 (bringup)
+  Op->>G: activate the target generation
+  Note over G: the closure is ALREADY mounted (layer 003)<br/>and already valid in the Nix DB —<br/>nothing is copied, nothing is built
+  G->>G: reboot into generation 2 (the host runtime)
 ----
+
+=== What step 5 used to be, and why it is no longer that
+
+The documented practice was a *remote push* from the builder:
+
+[source,bash]
+----
+TMPDIR=/tmp nixos-rebuild boot --flake .#<host>-nixos --target-host root@nerd-nixos
+ssh nerd-nixos reboot
+----
+
+That machinery existed for one reason: the runtime closure was not on the node. It now is —
+layer 003 carries it and the installer registered the *union* closure in the guest's Nix
+database, so both the host runtime and the fleet-generic toplevels read back `VALID` before
+activation ever runs. The remote push therefore evaluates the flake on the operator's
+machine, delegates the build, opens an SSH session and pushes a closure — in order to
+discover there is nothing to send.
+
+The equivalent, entirely local on the guest:
+
+[source,bash]
+----
+nix-env -p /nix/var/nix/profiles/system --set /nix/store/<host-runtime-toplevel>
+/nix/var/nix/profiles/system/bin/switch-to-configuration boot
+reboot
+----
+
+No flake evaluation, no builder, no SSH key, no transfer. The remote push keeps one role —
+deploying a configuration that is in *no* layer — but with the stack that is by definition a
+new layer, so it is a rescue path rather than the normal one.
+
+[NOTE]
+====
+The end state is that step 5 disappears: `zfs-nixos-install.service`
+(`modules/nixos/systemd/zfs-nixos-install.nix`) already exists, is `wantedBy` the bringup
+target and does exactly "install `NDH_NIXOS_INSTALL_SYSTEM_PATH`, then reboot". It is armed
+but empty — the bringup config neutralises its assertion and never sets the path, so it
+fails on every bringup boot. Arming it needs the runtime toplevel delivered *out of the
+closure* (the way cloud-init already injects hostname and hostId): setting
+`ndh.context.runtimeSystemPath` on the bringup would make its toplevel reference the runtime
+one, and the base closure would swallow the whole stack back into a single layer.
+====
 
 == The measurements this rests on
 
@@ -323,7 +456,7 @@ sequenceDiagram
 | determinism | verified by `nix-store --realise --check`
 |===
 
-.The lower today
+.The single lower, before the stack — the state this design replaced
 [cols="3,2",options="header"]
 |===
 | Fact | Value
@@ -334,6 +467,51 @@ sequenceDiagram
 | paths present in BOTH layers | *0* — no duplication
 | upper | 1104 paths / 5.3 GiB / 165 591 files
 | share of the node's pool that is the upper | *98.5 %* (5.24 of 5.32 GiB)
+|===
+
+.The shipped three-layer stack — measured on `nikopol-nixos`, 2026-09-20
+[cols="3,2,2",options="header"]
+|===
+| Layer | Paths | Image bytes
+
+| 001 `nix-store` — bringup closure
+| 659
+| 2.58 GiB
+
+| 002 `nix-store-002` — fleet-generic runtime, minus the base
+| 1098
+| *7.47 GiB, fleet-shared*
+
+| 003 `nix-store-003` — host residue, minus base and generic
+| 77
+| *39 MiB per host*
+
+| dead weight in 002 (paths no host uses)
+| 66
+| 41.5 MB
+
+| overlay total
+| 1834 (= 659 + 1098 + 77)
+| —
+
+| paths of the host closure missing from the stack
+| *0*
+| —
+|===
+
+The decisive number is the third row: the *per-host* cost of a runtime went from 7.47 GiB to
+39 MiB, a factor of ~190, while layers 001 and 002 — 10.05 GiB — became shareable across the
+whole fleet.
+
+.What the node looks like once it runs on the stack
+[cols="3,2,2",options="header"]
+|===
+| Fact | Before | After
+
+| layers mounted | 1 | *3*, by label
+| upper | 1104 paths / 5.3 GiB | *1 path / 21 KB*
+| pool `tank` allocated | *7.90 GiB* | *23.7 MB*
+| generation switch | copies 165 591 files | *1 s, writes nothing*
 |===
 
 .Fleet sharing — the measurement the base layer rests on
@@ -375,8 +553,12 @@ sequenceDiagram
 | *stack*, never replace
 | preserves rollback; purging is removing a disk, not deleting files
 
-| base layer = the fleet intersection
-| 96 % coverage while staying identity-less
+| the shared layer is derived *structurally*, not as a set intersection
+| an intersection couples every host to every other — adding or changing one rewrites the
+  shared layer, hence every node's lower. Deriving it from the neutral host profile
+  (`nerd-nixos` evaluated in `full` mode) costs 66 paths / 41.5 MB that no host uses and buys
+  full decoupling. Measured against the intersection: +40 MB of dead weight, +6 MB per host,
+  i.e. 0.5 % of the shared layer
 
 | `ndh` declares the stack; the instance owns its data
 | source-vs-projection; no upward channel is needed
@@ -395,6 +577,20 @@ sequenceDiagram
 
 | *`ndh` owns the ESP*
 | a consequence: if it builds the generation and its layer, it installs the bootloader entry
+
+| *appending a layer is routine; replacing one requires re-provisioning*
+| a generation's initrd bakes its `lowerdir` list, so it ignores appended layers but cannot
+  survive its own closure being re-cut out of the stack. The materializer refuses the
+  combination instead of producing an unbootable node
+
+| *activation is local, from the node's own store*
+| the runtime closure is already mounted and already valid in the guest's Nix DB, so a remote
+  `nixos-rebuild --target-host` transfers nothing. It stays as a rescue path for a
+  configuration that is in no layer
+
+| *one bringup bundle per host*
+| the bundle stopped being identity-less when the runtime closure entered the stack: the
+  installer bakes the union registration and a GC root on the host runtime toplevel
 |===
 
 == What the layer-swap experiment proved

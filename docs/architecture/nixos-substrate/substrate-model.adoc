@@ -153,7 +153,7 @@ link:node-bootstrap-delivery.adoc[node-bootstrap delivery].
 * link:concern-ownership.adoc[Concern ownership] — the full old→new redistribution table.
 * link:flox-containerd-runtime.adoc[The flox containerd runtime] — the baked nix-native runtime.
 * link:erofs-store-lower.adoc[The EROFS store lower] — how the closure itself ships: `/nix/store` as overlay(read-only EROFS disk + ZFS upper), packed on the build host. "The closure is the config" taken to its conclusion — the store is part of the image, not something the node materialises.
-* link:erofs-store-layer-stack.adoc[The EROFS layer stack] — the same principle extended past bringup: one store layer per *generation*, so a switch stops materialising 165 591 files on the node and becomes a mount. The ownership boundary it introduces — the instance owns its data, `ndh` owns the store layout — is what lets the image evolve under a live node.
+* link:erofs-store-layer-stack.adoc[The EROFS layer stack] — the same principle extended past bringup, and shipped: the store is a stack of layers, so a switch stops materialising 165 591 files on the node and becomes a mount. The ownership boundary it rests on — the instance owns its data, `ndh` owns the store layout — is what lets the image evolve under a live node, within the two invariants that doc states.
 * link:node-bootstrap-delivery.adoc[Node-side bootstrap delivery] — how the CNI + Flux reach a grown node.
 * link:../atlas/nixos-substrate.adoc[Atlas — NixOS substrate] — the codebase↔vision before/after delta.
 * link:../cluster-api/management-workload-topology.adoc[Management / Workload topology] — the anchor: master seeded, workload nodes greenfield by CAPN.

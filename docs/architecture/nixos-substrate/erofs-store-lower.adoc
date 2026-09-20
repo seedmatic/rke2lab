@@ -257,7 +257,7 @@ write it — and *reports the failure while exiting 0*, so `set -e` does not cat
 
 == Related documentation
 
-* link:erofs-store-layer-stack.adoc[The EROFS layer stack] — where this is going: one layer per system generation instead of a single layer frozen at bringup, with the fleet intersection as the base layer. Read this doc first for the mechanism, that one for the target shape and the ownership boundary it rests on.
+* link:erofs-store-layer-stack.adoc[The EROFS layer stack] — what this generalises into, and shipped: an ordered stack instead of a single layer frozen at bringup, with the fleet-shared part derived structurally from the neutral host profile. Read this doc first for how a lower is packed and mounted at all, that one for the stack, its ownership boundary and the invariants that bind a layer to a booted node.
 * link:substrate-model.adoc[The substrate model] — the vision this store layout serves: the closure is the config.
 * link:node-bootstrap-delivery.adoc[Node-side bootstrap delivery] — the other half of what reaches a node that no longer has `/srv/host`.
 * link:concern-ownership.adoc[Concern ownership] — where image-side responsibilities land.
