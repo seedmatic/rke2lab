@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 0b18b1f3-3eda-496a-865d-1fbc722b0d30
-  modified: 2026-09-20T19:00:25.537Z
+  modified: 2026-09-20T20:02:21.393Z
 ---
 
 **Le fait, mesuré.** Ajouter deux chemins à la closure de bringup (l'unité
@@ -51,6 +51,24 @@ CPU-bound). C'est LÀ qu'est le goulot de la matérialisation. Conséquence : é
 L1+L2 (~10 Gio) quand seule la couche par-hôte a changé économise **~2 min 30 par
 matérialisation** — le meilleur argument pour le correctif du marqueur, qui est le moins cher des
 deux.
+
+**★ Et le transfert vers le vzhost est ÉVITABLE — ne pas pousser, faire tirer.** `cachix
+watch-store` publie les couches et le materializer sur `nxmatic.cachix.org`, mais de façon
+**asynchrone** : le 2026-09-20 j'ai poussé 17 Gio par `nix copy --to ssh://` juste après le build,
+alors que les chemins n'étaient pas encore montés sur cachix — donc `-s` ne pouvait rien substituer
+et la destination a pris les octets chez nous. Une heure plus tard ils y étaient (vérifié : narinfo
+en 200 pour les deux couches et le materializer). Le laptop a **déjà** `nxmatic.cachix.org` dans ses
+substituters (`/etc/nix/nix.conf` ligne 46, `nix config show substituters` le confirme — j'avais
+d'abord conclu le contraire, mon `head -8` avait tronqué la sortie et caché la ligne). Donc la
+recette est :
+
+1. attendre la poussée — elle ne se signale pas, on l'interroge :
+   `curl -s -o /dev/null -w "%{http_code}\n" https://nxmatic.cachix.org/<hash>.narinfo` (200 = prêt) ;
+2. faire **tirer** la destination : `ssh <vzhost> 'nix-store -r /nix/store/<path>'`, sans aucun flag.
+
+⚠️ Ne pas « corriger » `extra-substituters` dans ce `nix.conf` : la clé y est déjà active, et une clé
+répétée dans `nix.conf` **écrase** au lieu de s'ajouter — ajouter une seconde ligne ferait sauter le
+miroir déjà listé.
 
 **Ce que ça change au-delà du coût de build**, et c'est le point important : ça **corrige
 une limite que je croyais structurelle**. J'avais conclu que la couche générique de flotte
