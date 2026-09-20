@@ -134,8 +134,9 @@ flowchart TB
   DELTA["erofs-store-image.d/delta.sh<br/>comm -13 · LC_ALL=C<br/>refuses an empty layer"]
   PACK["erofs-store-image.d/pack.sh<br/>tar | mkfs.erofs --tar=f<br/>--force-uid/gid=0 -T 0 -U"]
 
+  HANDOVER["systemd/bringup-target-activate.nix<br/>first-boot handover to the target<br/>reads /var/lib/ndh/bringup-target-system"]
+
   LIVENESS["LIVENESS COMPUTATION<br/>a layer is dead when no retained<br/>closure touches any of its paths"]
-  AUTOACT["BOOT-TIME ACTIVATION<br/>arm zfs-nixos-install.service<br/>toplevel delivered out of closure"]
 
   LAYERS --> IMAGE
   LAYERS --> MOUNT
@@ -146,7 +147,7 @@ flowchart TB
   DELTA --> BRINGUP
   PACK --> IMAGE
   LIVENESS --> LAYERS
-  AUTOACT --> INSTALL
+  INSTALL -.->|"writes the target as DATA"| HANDOVER
   IMAGE --> BRINGUP
   BRINGUP --> OUTPUTS
   OUTPUTS --> ASSEMBLY
@@ -155,7 +156,7 @@ flowchart TB
 
   classDef newc fill:#fff4e6,stroke:#c60,color:#803;
   classDef ssot fill:#e6f0ff,stroke:#06c,color:#035;
-  class LIVENESS,AUTOACT newc
+  class LIVENESS newc
   class LAYERS ssot
 ----
 
@@ -373,7 +374,8 @@ flowchart LR
 == The one flow worth drawing — bootstrapping a node on the stack
 
 This is the shipped flow, as exercised end to end on `nikopol-nixos` on 2026-09-20. The
-notable part is step 5: *activation no longer transfers anything*.
+notable part is the tail: reaching the target configuration *transfers nothing and needs no
+operator*.
 
 [mermaid]
 ----
@@ -394,12 +396,13 @@ sequenceDiagram
   M->>G: tart run — 8 virtio disks, 3 attached read-only
   G->>G: initrd mounts 3 layers by label, assembles the overlay
   G->>G: boots generation 1 (bringup)
-  Op->>G: activate the target generation
+  G->>G: bringup-target-activate reads the declared target
   Note over G: the closure is ALREADY mounted (layer 003)<br/>and already valid in the Nix DB —<br/>nothing is copied, nothing is built
-  G->>G: reboot into generation 2 (the host runtime)
+  G->>G: switch-to-configuration boot, then reboot
+  G->>G: generation 2 (the host runtime) — no operator step
 ----
 
-=== What step 5 used to be, and why it is no longer that
+=== What that used to be, and why it is no longer that
 
 The documented practice was a *remote push* from the builder:
 
@@ -429,16 +432,46 @@ No flake evaluation, no builder, no SSH key, no transfer. The remote push keeps 
 deploying a configuration that is in *no* layer — but with the stack that is by definition a
 new layer, so it is a rescue path rather than the normal one.
 
-[NOTE]
+=== Step 5 is automatic: the first-boot handover
+
+`io-seedmatic-ndh-bringup-target-activate.service`
+(`modules/nixos/systemd/bringup-target-activate.nix`) performs exactly the three commands
+above on the first boot of the bringup, then reboots. So a freshly materialized node reaches
+its target configuration with no operator step at all.
+
+The design constraint that shapes it is worth stating, because the obvious implementation is
+the broken one. The service must learn *which* system to activate, and it must not learn it
+from its own closure: nix records a reference for every store path it finds in an output, so a
+bringup toplevel that named the runtime toplevel would drag the entire runtime closure into
+the base layer and collapse the stack back to one layer. That is the same trap documented at
+`baseClosureInfo`, one level up.
+
+So the target arrives as *data on the target root*: the nested-VM installer writes
+`/var/lib/ndh/bringup-target-system`, and the unit reads it. The installer is not part of the
+bringup system — it is what installs it — so naming the runtime toplevel there adds no
+reference to the bringup closure. Verified: the bringup closure is 661 paths and contains no
+`nixos-system-*` other than its own.
+
+Two guards, both deliberate:
+
+`ConditionPathExists` on the declaration file::
+  No declared target means the image was not provisioned for one, and a plain bringup must
+  stay a bringup. Skipping beats a unit that fails on every boot of every such node.
+
+one attempt, ever::
+  The unit records its attempt before rebooting and refuses a second one. Coming back still
+  on the bringup means the handover did not take; retrying would reboot-loop the node, which
+  is far worse than stopping on a bringup that still answers SSH. The cost is that a
+  *deliberate* rollback to the bringup shows a failed unit — visibility was judged worth more
+  than that noise.
+
+[WARNING]
 ====
-The end state is that step 5 disappears: `zfs-nixos-install.service`
-(`modules/nixos/systemd/zfs-nixos-install.nix`) already exists, is `wantedBy` the bringup
-target and does exactly "install `NDH_NIXOS_INSTALL_SYSTEM_PATH`, then reboot". It is armed
-but empty — the bringup config neutralises its assertion and never sets the path, so it
-fails on every bringup boot. Arming it needs the runtime toplevel delivered *out of the
-closure* (the way cloud-init already injects hostname and hostId): setting
-`ndh.context.runtimeSystemPath` on the bringup would make its toplevel reference the runtime
-one, and the base closure would swallow the whole stack back into a single layer.
+`modules/nixos/systemd/zfs-nixos-install.{nix,sh}` looks like it should have been the vehicle
+for this and is not: it installs into a *separate* `--root` (the pre-EROFS topology where the
+bringup ran elsewhere and installed NixOS onto the pool), and it is imported only by a
+configuration that is both `bringupMode` and imports `modules/nixos/default.nix` — a
+combination no shipped configuration satisfies. It ships in no toplevel. Treat it as dead.
 ====
 
 == The measurements this rests on
