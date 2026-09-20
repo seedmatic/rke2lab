@@ -225,7 +225,8 @@ public final class InstanceGrow {
   /**
    * The privileged-container config the {@code node} profile carries — the CAPN default kernel set
    * MINUS the legacy iptables trio the nftables-only kernel-6.18 substrate dropped
-   * (ip_tables/ip6_tables/iptable_raw FATAL modprobe). Single source for standalone + CAPN nodes.
+   * (ip_tables/ip6_tables/iptable_raw FATAL modprobe), PLUS the xfrm_user cilium's route reconciler
+   * needs. Single source for standalone + CAPN nodes.
    */
   private Map<String, String> nodeProfileConfig() {
     final Map<String, String> config = new LinkedHashMap<>();
@@ -240,9 +241,34 @@ public final class InstanceGrow {
     config.put("security.nesting", "true");
     config.put("security.syscalls.intercept.bpf", "true");
     config.put("security.syscalls.intercept.bpf.devices", "true");
+    // xfrm_user is cilium's, and it is the whole of it — NOT the ipset modules an older comment in
+    // CiliumConfigManifestsUnit blamed.  The agent's route reconciler calls
+    // safenetlink.NewHandle(nil), and a handle with no family list opens a socket for EVERY
+    // supported family — NETLINK_ROUTE, NETLINK_XFRM, NETLINK_NETFILTER.  Without xfrm_user the
+    // XFRM socket returns EPROTONOSUPPORT, the start hook fails with "protocol not supported", the
+    // agent never runs, and the node cannot host pods.  Verified by loading it on the host: the
+    // agent went 1/1 Running with zero restarts.
+    //
+    // It belongs HERE rather than in the hypervisor's NixOS config (ndh carries an orphan
+    // modules/nixos/cilium-kernel-modules.nix that nothing imports, and whose premise was the
+    // misattribution above): a kernel need of rke2lab's nodes is rke2lab's to declare, and stated
+    // here it travels with the profile to whatever host runs the container — including a CAPN-grown
+    // node on another machine.  A container cannot modprobe for itself in any case: it has neither
+    // kernel nor module tree, so incus doing it on the host is the only mechanism there is.
     config.put(
         "linux.kernel_modules",
-        "ip_vs,ip_vs_rr,ip_vs_wrr,ip_vs_sh,netlink_diag,nf_nat,overlay,br_netfilter,xt_socket");
+        String.join(
+            ",",
+            "ip_vs",
+            "ip_vs_rr",
+            "ip_vs_wrr",
+            "ip_vs_sh",
+            "netlink_diag",
+            "nf_nat",
+            "overlay",
+            "br_netfilter",
+            "xt_socket",
+            "xfrm_user"));
     return config;
   }
 

@@ -99,6 +99,20 @@ public final class CiliumConfigManifestsUnit extends AbstractManifestsUnit {
                   verbose: datapath
                 bpf:
                   hostLegacyRouting: false
+                  # eBPF masquerading rather than the iptables path — this REMOVES the ipset
+                  # requirement instead of satisfying it.  cilium's DaemonConfig:
+                  #   NodeIpsetNeeded() = !TunnelingEnabled() && IptablesMasqueradingEnabled()
+                  #   IptablesMasqueradingEnabled() = !EnableBPFMasquerade && (v4 || v6 masq)
+                  # We run routingMode: native, so without this the agent creates
+                  # cilium_node_set_v4 at start and dies with "error while creating ipset" on a
+                  # host whose kernel carries no loaded ip_set modules — which is what our
+                  # nftables-only substrate is.  The node then stays NotReady with
+                  # "cni plugin not initialized".
+                  # Both prerequisites are already met: BPF NodePort via kubeProxyReplacement,
+                  # and eBPF host-routing via hostLegacyRouting: false above.
+                  # Caveat: upstream calls IPv4 production-ready and IPv6 masquerading beta, and
+                  # this cluster is dual-stack.
+                  masquerade: true
                 bgpControlPlane:
                   enabled: true
                 cluster:
@@ -145,13 +159,17 @@ public final class CiliumConfigManifestsUnit extends AbstractManifestsUnit {
                   refresh: true
                   refreshPeriod: 30s
                 l7Proxy: true
-                # routingMode: tunnel mode (vxlan/geneve) initially failed in LXC/Incus
-                # containers with 'protocol not supported' error in route reconciler netlink
-                # initialization. Root cause was missing ip_set kernel modules on the NixOS
-                # host (now fixed in nix-darwin-home cilium-kernel-modules.nix). Tunnel mode
-                # may work now but native routing is more appropriate: all control nodes run
-                # as containers on the same host, so native routing is more efficient and
-                # avoids encapsulation overhead. Cluster mesh works via apiserver regardless.
+                # The 'protocol not supported' failure in the route reconciler's netlink init was
+                # long attributed here to missing ip_set kernel modules; that was WRONG, and it
+                # cost an evening. The reconciler calls safenetlink.NewHandle(nil), which opens a
+                # socket for every supported netlink family — ROUTE, XFRM, NETFILTER — so the one
+                # missing module is xfrm_user, now declared in the node profile's
+                # linux.kernel_modules (InstanceGrow.nodeProfileConfig). Loading it took the agent
+                # to 1/1 Running; loading ip_set changed nothing.
+                #
+                # native routing is kept on its own merits: all control nodes run as containers on
+                # the same host, so it is more efficient and avoids encapsulation overhead. Cluster
+                # mesh works via apiserver regardless.
                 routingMode: native
                 autoDirectNodeRoutes: true
                 ipv4NativeRoutingCIDR: %s
