@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 0b18b1f3-3eda-496a-865d-1fbc722b0d30
-  modified: 2026-09-20T13:44:08.345Z
+  modified: 2026-09-20T18:25:09.387Z
 ---
 
 **La vision est SHIPPÉE EN SPEC** (rke2lab `a86a5a9f4`) :
@@ -286,8 +286,9 @@ avant que l'unité passe. Candidat d'amélioration : ordonner l'unité plus tôt
 
 **Restes**, par ordre de valeur : la piste content-addressed
 [[erofs-layer-images-input-addressed-rebuild]] · la **péremption** d'une couche (le dernier
-composant orange de la figure C3a) · supprimer l'orphelin `zfs-nixos-install` et le
-`mkForce [ ]` · ordonner l'unité de bascule plus tôt · restructurer le manifeste (18
+composant orange de la figure C3a) · ~~supprimer l'orphelin `zfs-nixos-install` et le
+`mkForce [ ]`~~ **FAIT, ndh `8aa201c3`, voir ci-dessous** · ordonner l'unité de bascule plus tôt ·
+restructurer le manifeste (18
 références, 3 fichiers) · dé-masquer `modules/.common.d` (113 occurrences de code, **20 dans
 `docs/sessions/` à NE PAS réécrire**) · `README-bootstrap.md` cite
 `.#nixosDiskImages.<host>.full`, un attribut mort (c'était l'image disque du runtime complet,
@@ -299,5 +300,44 @@ closures, qui déciderait de l'intérêt d'un backend git · faut-il baker le ru
 pour un boot unique (coûterait 0 de plus, le bundle étant déjà per-hôte, et lèverait la
 contrainte « `nerd-nixos` vivant sur un seul vzhost à la fois »).
 
+## 2026-09-20 soir — 3e checkpoint nikopol : le nettoyage de l'orphelin, mesuré inerte
+
+**ndh `8aa201c3`** supprime `zfs-nixos-install.{nix,sh}`, son import dans `systemd/default.nix`, le
+champ mort `ndh.context.runtimeSystemPath` (+ le paramètre de `mkNixosConfig`), le
+`before = [ zfsNixosInstallServiceName ]` de `zpool-init` dans `zfs.nix`, et le
+`assertions = lib.mkForce [ ]` de `bringup-minimal-system.nix`. Précédé de `4032ae37` (treefmt isolé)
+et suivi de `ed4e4af5` (authz-tools ssh partagés).
+
+**Ce que le nettoyage a révélé** : le `mkForce [ ]` neutralisait **1437 assertions** NixOS du bringup
+pour se garder d'UNE assertion inatteignable ; toutes les 1437 évaluent maintenant, **0 échoue**. Et
+le champ `ndh.context.runtimeSystemPath` était vraiment illisible par personne : le diff de
+dérivations ne montre **aucun** effet de sa suppression. Le seul delta de comportement sur toute la
+flotte était la ligne `Before=io-seedmatic-ndh-zfs-nixos-install.service` de `zpool-init.service` —
+un ordonnancement contre une unité inexistante, donc un no-op pour systemd. Vérifié ensuite **sur le
+nœud vivant** : l'unité n'a plus que ses `Before=` implicites, `active`/`success`/status 0, et zéro
+fichier d'unité correspondant à `zfs-nixos-install`.
+
+⚠️ **Inerte en comportement ≠ inerte en octets** : les trois couches changent (l'unité modifiée est
+dans les trois closures), donc ce nettoyage seul coûte un renew complet avec factory reset. Leçon de
+cadence : le faire **voyager avec un changement qui paie déjà ce coût**, jamais le déclencher seul.
+
+**État vérifié après renew** (`sr0mndcq…` = current = booted) : couches **661/1098/77**, overlay
+**1837**, upper **1 chemin / 21 Ko**, `tank` **23,3 Mo**, générations 1 à 17:25:54 → 2 à 17:33:12 sans
+intervention. Identique au checkpoint précédent, ce qui était le résultat attendu.
+
+**La branche de REFUS du garde reste non exercée** — `VM_FACTORY_RESET` la contourne par
+construction. Prédiction lue dans le code pour le jour où on voudra l'éprouver : marqueur
+`disk.img.source` présent mais en désaccord → sonde EFI positive → `preserve` → le garde trouve les
+trois couches à remplacer et **refuse**. Coût du test : un arrêt de VM (la porte stoppe avant de
+décider), aucune perte.
+
+**Deux unités rouges, ni l'une ni l'autre imputable** : `systemd-boot-random-seed` échoue
+structurellement (`/boot` monté `ro` → `Operation not permitted`) et c'est **elle seule** qui met
+`systemctl is-system-running` à `degraded` sur tous les nœuds — donc `degraded` ne signale plus rien
+d'utile tant qu'elle n'est pas réconciliée. `incus-preseed` a échoué une fois
+(`Network "bare-br" already exists`) puis a disparu des échecs au boot suivant : défaut
+d'idempotence sur ré-exécution, pas une lacune de configuration.
+
 See [[nerd-nixos-image-build-slow-not-zfs-on-zfs]] [[materializer-corp-mac-identity-gcroots]]
-[[nerd-nixos-tart-vm-renew-procedure]].
+[[nerd-nixos-tart-vm-renew-procedure]] [[common-d-is-a-directory-wide-nix-input]]
+[[unmanaged-mac-ssh-material-chain]] [[tailnet-node-identity-ephemeral-ghosts]].

@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 0b18b1f3-3eda-496a-865d-1fbc722b0d30
-  modified: 2026-09-20T13:43:26.022Z
+  modified: 2026-09-20T18:24:24.518Z
 ---
 
 **Le fait, mesuré.** Ajouter deux chemins à la closure de bringup (l'unité
@@ -37,6 +37,22 @@ ne dédupait qu'au sein d'une même révision de `ndh`, parce que les toplevels 
 `self`. C'est vrai des *toplevels* mais pas des *images* : en adressage par contenu, la
 couche générique de 7,47 GiB deviendrait un artefact de **flotte**, partagé entre révisions,
 et pas un artefact de commit. Voir [[erofs-store-layer-stack-vision]].
+
+**★ 2026-09-20 — `ca-derivations` SEULE NE SUFFIRAIT PAS, et le correctif manquant est plus simple.**
+Le marqueur que tart écrit à côté de chaque image (`<disk>.img.source`) enregistre le chemin
+**qualifié par le bundle** — constaté sur le vzhost :
+`/nix/store/n4fiymrg…-io.seedmatic.ndh-nerd-bringup-zfs-disk-images/store-002.img`. Or dans le
+bundle, `store-002.img` est un **symlink** vers un chemin de store séparé
+(`…-io.seedmatic.ndh-nix-store-erofs-002`). Donc dès que le bundle change, **les quatre marqueurs
+sont en désaccord, même si l'image de couche est identique octet pour octet** — la porte
+re-matérialise, et le garde de remplacement compte la couche comme « remplacée », ce qui impose un
+factory reset.
+
+Correctif indépendant et bien moins cher que le content-addressing : **résoudre le symlink avant
+d'écrire et de comparer le marqueur**. Une couche inchangée garderait alors son identité d'un bundle
+à l'autre, la copie serait sautée, et un changement qui ne touche que la couche par-hôte deviendrait
+matérialisable **sans factory reset** (sémantique d'ajout, pas de remplacement). Les deux correctifs
+se composent : le marqueur résolu rend l'identité comparable, le content-addressing la rend stable.
 
 ⚠️ **Réserve.** `ca-derivations` reste expérimental et ses aspérités connues portent
 justement sur les **builders distants** et les **substituters** — c'est-à-dire exactement
