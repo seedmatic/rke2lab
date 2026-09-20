@@ -31,3 +31,4 @@ One line per entry (~200 chars); detail lives in the linked file.
 - [Master provisioning state](master-provisioning-state.md) — live-probe contract FIXED+PROVEN vs real master (branch fix/systemd-live-probe-contract, not merged). PARKED. Seed = operator out-of-band intervention → drift specialist source.
 
 - [Destructive gate needs a three-valued probe](destructive-gate-needs-three-valued-probe.md) — si une réponse négative déclenche une suppression, la sonde doit distinguer « absent » de « pas pu regarder » ; sinon toute panne d'introspection devient un ordre de suppression (ndh `47943f0b`). La taille n'est pas un marqueur.
+- [EROFS layer images rebuilt for identical bytes](erofs-layer-images-input-addressed-rebuild.md) — dérivations adressées par ENTRÉE : toucher la closure de bringup a redonné de nouveaux chemins à 3 images dont 2 sont octet-identiques (~8 GiB refaits pour rien). `__contentAddressed` corrige, `ca-derivations` déjà activé.

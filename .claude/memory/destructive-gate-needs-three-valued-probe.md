@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 0b18b1f3-3eda-496a-865d-1fbc722b0d30
-  modified: 2026-09-19T14:33:24.898Z
+  modified: 2026-09-20T13:43:01.816Z
 ---
 
 Toute sonde dont la réponse **négative** déclenche une destruction doit renvoyer
@@ -67,6 +67,33 @@ Asymétrie à garder en tête pour les images de disque : une image **prebuilt**
 lecture seule et content-addressed, donc la remplacer est gratuit ; un disque **root** est
 mutable et porte l'état du nœud, donc le remplacer reste un acte explicite de l'opérateur
 (`VM_FACTORY_RESET`). Deux disciplines différentes pour deux natures différentes.
+
+## 2026-09-20 — corollaire : deux portes justes séparément peuvent être fausses ensemble
+
+L'asymétrie ci-dessus est vraie **et insuffisante**. « Remplacer une image prebuilt est
+gratuit » ne vaut que si rien d'autre ne nomme son contenu. Or l'**ESP nomme un toplevel**
+que les couches doivent porter. Les deux portes décidaient indépendamment — marqueur +
+sonde EFI pour le root, marqueur pour chaque couche — donc une matérialisation pouvait
+légitimement **préserver l'ESP et remplacer le contenu d'une couche**, et personne ne
+comparait les deux décisions.
+
+Résultat mesuré sur nikopol-nixos : la couche 002 recoupée du runtime de l'hôte vers la
+closure générique, ESP et pools préservés, et le nœud est monté en **shell d'urgence
+initrd** — `initrd-find-nixos-closure` ne trouvait plus le toplevel de la génération 2.
+Chacune des trois décisions était défendable ; **conjointement** elles étaient incohérentes.
+
+**Why :** une porte destructrice ne se valide pas seule. Sa correction dépend de ce que les
+*autres* portes de la même exécution ont décidé.
+
+**How to apply :** quand N portes décident du sort de N artefacts **couplés par une
+référence** (ici : l'ESP nomme, les couches portent), il faut une vérification jointe, et
+elle doit **refuser** plutôt que deviner — d'autant que le materializer ne *peut pas*
+réparer cet état : les pools préservés gardent l'ancien profil nix, et seul l'installateur
+de la VM imbriquée écrit un profil, dans les pools du bundle et jamais dans les vivants.
+Implémenté dans `ndh` `e3451f13` : `tart:vm:store-layers:replacement:guard`, qui distingue
+**ajout** (sûr, une génération antérieure ne monte pas la couche neuve et n'en a pas besoin)
+de **remplacement** (interdit sous ESP préservé) et nomme `VM_FACTORY_RESET=true` dans
+l'erreur.
 
 See [[erofs-store-layer-stack-vision]] [[nerd-nixos-tart-vm-renew-procedure]]
 [[materializer-corp-mac-identity-gcroots]].

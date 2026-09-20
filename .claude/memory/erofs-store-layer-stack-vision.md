@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 0b18b1f3-3eda-496a-865d-1fbc722b0d30
-  modified: 2026-09-20T00:25:24.687Z
+  modified: 2026-09-20T13:44:08.345Z
 ---
 
 **La vision est SHIPPÉE EN SPEC** (rke2lab `a86a5a9f4`) :
@@ -232,22 +232,72 @@ rien ne le consomme encore, donc il partira dans un seul commit avec le câblage
 `mkNixosConfig` est exporté et déjà dans la portée de `flake.nix` — pas besoin de toucher à
 `outputs.nix` pour ça.
 
-**Tâche du 2026-09-20** (mot de l'utilisateur) : matérialiser la nouvelle couche via la
-nouvelle version de `nerd-nixos`. Soit : 3 couches dans `erofs-store-layers.nix`, les
-bindings correspondants dans `bringup-zfs-disk-image.nix` (L1 = bringup, L2 = delta
-générique/bringup, L3 = delta hôte/générique), puis build + `nix copy` + renew.
+## ★★★ 2026-09-20 — TOUT EST LIVRÉ, JUSQU'À L'ACTIVATION AU BOOT
 
-**Autres restes** : restructurer le manifeste (18 références dans 3 fichiers, cible notée
-dans la session) · dé-masquer `modules/.common.d` (113 occurrences de code, 36 de doc, **et 20
-dans `docs/sessions/` à NE PAS réécrire** — une note de session est vraie à sa date) ·
-corriger le wrapper de run qui échoue sur le relais série après un factory reset (le
-répertoire `serial/` est supprimé avec le reste, ce qui a obligé à relancer à la main).
+**La spec porte désormais le détail** :
+`docs/architecture/nixos-substrate/erofs-store-layer-stack.adoc` (rke2lab `69370f20e` +
+`9f9444f37`) — figures C3a/C3b refaites sur le livré, flux de bootstrap, les deux invariants,
+les décisions. **Ne pas dupliquer ici ce que la spec dit** ; cette note garde les chiffres,
+les commits et ce qui reste.
 
-**Questions ouvertes** (4) : quel **K** (profondeur de pile) · le **couplage fleet-wide**
-de l'intersection (changer un hôte change le lower de tous) est-il acceptable · 3 mesures
-manquantes (limite de disques attachables · taux de décroissance de la couverture, 33 %
-aujourd'hui · part des *contenus de fichiers* partagés entre closures, qui déciderait de
-l'intérêt de git) · les 3 branches ci-dessus.
+**État final vérifié sur `nikopol-nixos`** (deux factory resets successifs) : `current` =
+`booted` = `llkgfl08…-nixos-system-nikopol-nixos` · couches **661/1098/77** · overlay 1837 ·
+**upper 1 chemin / 21 K** · `tank` **23,6 Mo** (contre 7,90 GiB avant le chantier) · couche
+par-hôte **39 Mo** (contre 7,47 GiB) · 0 chemin manquant.
+
+**Commits `ndh`** (chaîne `4c6ec85e` → `7c00be7b`) : `4c6ec85e` treefmt isolé (dette
+préexistante) · `5be06617` la couche partagée de flotte + `mkFleetRuntimeConfig` (le patch
+`flake.nix` en attente y est fondu) · `3757f8ba` PATH de tart + fuite `socat` · `e3451f13` la
+porte de remplacement · `008bb497` un bundle par hôte · `0dde86de` runbook · `7c00be7b`
+l'activation au boot. **rke2lab** : `69370f20e`, `9f9444f37`.
+
+**L'activation au boot, livrée** : `modules/nixos/systemd/bringup-target-activate.nix`. Le
+toplevel cible arrive comme **donnée** (`/var/lib/ndh/bringup-target-system`, écrit par
+l'installateur de la VM imbriquée) et **jamais** par `ndh.context.runtimeSystemPath` — sinon
+le toplevel de bringup référencerait le runtime et la closure de base avalerait la pile.
+Vérifié après coup : closure de bringup à 661 chemins, aucun `nixos-system` étranger.
+Preuve du fonctionnement : générations 1 (13:32:49) et 2 (13:39:22) créées sans intervention,
+plus le couple `bringup-target-system` / `.attempted` sur le nœud.
+
+⚠️ **Sept minutes entre les deux générations.** La bascule elle-même coûte **0,804 s**
+(mesurée à la main) ; le reste est le boot de bringup qui doit atteindre la cible contribuée
+avant que l'unité passe. Candidat d'amélioration : ordonner l'unité plus tôt.
+
+**Pièges rencontrés, à ne pas re-découvrir** :
+
+- `zfs-nixos-install.{nix,sh}` **ressemble** au véhicule de l'activation au boot et n'en est
+  pas un : il installe dans un `--root` séparé (topologie d'avant l'EROFS) et n'est importé
+  que par une config à la fois `bringupMode` **et** important `modules/nixos/default.nix` —
+  combinaison qu'aucune config livrée ne satisfait. **Il n'est dans aucun toplevel.** J'ai
+  affirmé deux fois qu'il était « armé mais vide » ; c'était faux, il est orphelin. Le
+  `assertions = lib.mkForce [ ]` de `bringup-minimal-system.nix` neutralise TOUTES les
+  assertions du bringup pour se garder d'une assertion qui ne peut pas l'atteindre — à
+  supprimer, avec le paramètre mort `runtimeSystemPath` de `mkNixosConfig`.
+- **tart appelle `diskutil` via PATH**, et le PATH de connexion du Mac corp ne porte pas
+  `/usr/sbin` (interactif comme non interactif) → `tart run` échouait. Le manifeste de run
+  portait un champ `diskutil_bin` que **personne ne lisait**.
+- **`exec` interdit tout trap** : `run.sh` remplaçait son shell par tart, donc le relais
+  `socat` survivait à chaque lancement (4 orphelins trouvés).
+- La clé ssh autorisée sur le guest est `rdp-host`, dans `~/.local/share/ndh/ssh-keys/`, et
+  le bloc `~/.ssh/config` matche `Host nerd-nixos` — **pas** `nerd-nixos.local`. Cibler le
+  `.local` contourne le bloc et fait tomber sur un prompt de mot de passe. `sudo` casse tout
+  (HOME devient `/var/root`). Il n'y a **pas** de bloc pour `nikopol-nixos`.
+- Un factory reset régénère les clés d'hôte du guest → purger `known_hosts`.
+
+**Restes**, par ordre de valeur : la piste content-addressed
+[[erofs-layer-images-input-addressed-rebuild]] · la **péremption** d'une couche (le dernier
+composant orange de la figure C3a) · supprimer l'orphelin `zfs-nixos-install` et le
+`mkForce [ ]` · ordonner l'unité de bascule plus tôt · restructurer le manifeste (18
+références, 3 fichiers) · dé-masquer `modules/.common.d` (113 occurrences de code, **20 dans
+`docs/sessions/` à NE PAS réécrire**) · `README-bootstrap.md` cite
+`.#nixosDiskImages.<host>.full`, un attribut mort (c'était l'image disque du runtime complet,
+supprimée ; origine confirmée dans `62838ec8`).
+
+**Questions encore ouvertes** : quel **K** (profondeur de pile) · limite de disques
+attachables (on est à **8** et ça passe) · part des *contenus de fichiers* partagés entre
+closures, qui déciderait de l'intérêt d'un backend git · faut-il baker le runtime dans l'ESP
+pour un boot unique (coûterait 0 de plus, le bundle étant déjà per-hôte, et lèverait la
+contrainte « `nerd-nixos` vivant sur un seul vzhost à la fois »).
 
 See [[nerd-nixos-image-build-slow-not-zfs-on-zfs]] [[materializer-corp-mac-identity-gcroots]]
 [[nerd-nixos-tart-vm-renew-procedure]].
