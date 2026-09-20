@@ -225,8 +225,9 @@ public final class InstanceGrow {
   /**
    * The privileged-container config the {@code node} profile carries — the CAPN default kernel set
    * MINUS the legacy iptables trio the nftables-only kernel-6.18 substrate dropped
-   * (ip_tables/ip6_tables/iptable_raw FATAL modprobe), PLUS the xfrm_user cilium's route reconciler
-   * needs. Single source for standalone + CAPN nodes.
+   * (ip_tables/ip6_tables/iptable_raw FATAL modprobe), PLUS what cilium needs given that choice:
+   * xfrm_user for its route reconciler, and nft_compat with the xt_* extensions so its iptables-nft
+   * rules can be installed at all. Single source for standalone + CAPN nodes.
    */
   private Map<String, String> nodeProfileConfig() {
     final Map<String, String> config = new LinkedHashMap<>();
@@ -241,20 +242,44 @@ public final class InstanceGrow {
     config.put("security.nesting", "true");
     config.put("security.syscalls.intercept.bpf", "true");
     config.put("security.syscalls.intercept.bpf.devices", "true");
-    // xfrm_user is cilium's, and it is the whole of it — NOT the ipset modules an older comment in
-    // CiliumConfigManifestsUnit blamed.  The agent's route reconciler calls
-    // safenetlink.NewHandle(nil), and a handle with no family list opens a socket for EVERY
-    // supported family — NETLINK_ROUTE, NETLINK_XFRM, NETLINK_NETFILTER.  Without xfrm_user the
-    // XFRM socket returns EPROTONOSUPPORT, the start hook fails with "protocol not supported", the
-    // agent never runs, and the node cannot host pods.  Verified by loading it on the host: the
-    // agent went 1/1 Running with zero restarts.
+    // The cilium block below is what a nftables-only substrate has to give back, and every entry
+    // was
+    // established by loading it and watching the agent, not by guessing.
     //
-    // It belongs HERE rather than in the hypervisor's NixOS config (ndh carries an orphan
-    // modules/nixos/cilium-kernel-modules.nix that nothing imports, and whose premise was the
-    // misattribution above): a kernel need of rke2lab's nodes is rke2lab's to declare, and stated
-    // here it travels with the profile to whatever host runs the container — including a CAPN-grown
-    // node on another machine.  A container cannot modprobe for itself in any case: it has neither
-    // kernel nor module tree, so incus doing it on the host is the only mechanism there is.
+    // xfrm_user: the agent's route reconciler calls safenetlink.NewHandle(nil), and a handle with
+    // no
+    // family list opens a socket for EVERY supported family — NETLINK_ROUTE, NETLINK_XFRM,
+    // NETLINK_NETFILTER.  Without it the XFRM socket returns EPROTONOSUPPORT and the start hook
+    // dies
+    // with "protocol not supported", so the agent never runs at all.
+    //
+    // nft_compat + the xt_* extensions: cilium ships iptables v1.8.8 with the nf_tables backend,
+    // and
+    // that backend realises `-m mark`, `-m comment`, `-j CT`, `-j TPROXY` through nft_compat.  With
+    // nft_compat absent every such rule fails ("Extension mark revision 0 not supported"), the
+    // agent's iptables reconciliation loop stays Degraded, and only 10 of its 34 rules land.  The
+    // consequence is subtle and total: the missing rules are the ones that stamp MARK_MAGIC_HOST on
+    // host-originated traffic, so inherit_identity_from_host() (bpf/lib/identity.h) falls to its
+    // else-branch and returns WORLD_ID — and resolve_srcid_ipv4() (bpf/bpf_host.c) then
+    // DELIBERATELY
+    // refuses to promote it back, because under ingress SNAT a world packet also carries the host's
+    // source IP.  So every host→pod packet is `world-ipv4`, and any pod carrying a policy denies
+    // the
+    // kubelet's health probes: flux's controllers sat 0/1 forever while the ipcache and the policy
+    // map both said `reserved:host` with zero packets matched.  Loading these took the rule count
+    // 10 → 34 and flux to 1/1.
+    //
+    // xt_comment/xt_conntrack are in the same rules; they happen to be live on bioskop-nixos from
+    // its own configuration, and are named here so the node does not depend on that.
+    //
+    // This belongs HERE rather than in the hypervisor's NixOS config (ndh carried an orphan
+    // modules/nixos/cilium-kernel-modules.nix that nothing imported, and that listed ip_set/xt_set
+    // —
+    // everything except what mattered): a kernel need of rke2lab's nodes is rke2lab's to declare,
+    // and stated here it travels with the profile to whatever host runs the container, including a
+    // CAPN-grown node on another machine.  A container cannot modprobe for itself in any case: it
+    // has neither kernel nor module tree, so incus doing it on the host is the only mechanism there
+    // is.
     config.put(
         "linux.kernel_modules",
         String.join(
@@ -268,7 +293,13 @@ public final class InstanceGrow {
             "overlay",
             "br_netfilter",
             "xt_socket",
-            "xfrm_user"));
+            "xfrm_user",
+            "nft_compat",
+            "xt_mark",
+            "xt_CT",
+            "xt_TPROXY",
+            "xt_comment",
+            "xt_conntrack"));
     return config;
   }
 
