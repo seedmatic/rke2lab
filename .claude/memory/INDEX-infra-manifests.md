@@ -16,6 +16,7 @@ One line per entry (~200 chars); detail lives in the linked file.
 - [Package-private sweep](package-private-sweep.md) — remove non-essential private; exemplar = DefaultManifestSynthesisService.
 - [Domain registry abstraction](domain-registry-abstraction.md) — DEFERRED; unify Manifest+Infra registry pairs at rule-of-three.
 - [seed-vcluster](seed-vcluster.md) — next chantier: bootstrap vCluster gitops-mgmt + Flux; needs vcluster operator unit + pulumi-command.
+- [cilium exige `nft_compat` sur un noyau nftables-only](cilium-needs-nft-compat-on-nftables-only-kernel.md) — sans lui, iptables-nft ne pose aucune règle, donc pas de `MARK_MAGIC_HOST`, donc tout trafic hôte→pod est `world-ipv4` et toute NetworkPolicy refuse les sondes du kubelet. Porte la liste de modules et les 8 pistes écartées.
 - [Chaîne du matériel ssh sur le Mac non managé](unmanaged-mac-ssh-material-chain.md) — `999-ndh.conf` fossile d'avril référençant 4 fichiers absents ; la vraie chaîne est sops-nix → `ssh-keys-enrichment` → openssh. Ce Mac étant destinataire sops + profil déclaré, le rendre MANAGÉ coûte moins qu'un enrôleur. Bloqué par l'identité `nxmatic`.
 - [GitOps + Cluster API transition plan (re-homed design record)](gitops-cluster-api-transition-plan.md) — **STALE (2026-06):** peer1+ provisioning via seed-peers + GitOps + CAPI + Tekton, over distrobuilder + cloud-init + `/srv/host` + `nxmatic/rke2lab` — nearly all superseded/deleted by [[nixos-node-substrate-state]]. Read as history; the live delivery model is now rendered-branch Flux.
 
