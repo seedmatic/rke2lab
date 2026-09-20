@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 0b18b1f3-3eda-496a-865d-1fbc722b0d30
-  modified: 2026-09-20T18:24:24.518Z
+  modified: 2026-09-20T18:48:29.206Z
 ---
 
 **Le fait, mesuré.** Ajouter deux chemins à la closure de bringup (l'unité
@@ -19,10 +19,21 @@ identiques** :
 | 002 | 8 025 645 056 | 8 025 645 056 | *non vérifié, taille identique* |
 | 003 | 40 902 656 | 40 902 656 | **`1f69dc37…` identique, vérifié** |
 
-**Pourquoi.** Les dérivations sont adressées par **entrée**. `baseClosureInfo` change ⇒
-`erofs-store-image.nix` change pour *chaque* couche (elles reçoivent toutes
-`unionClosureInfo`) ⇒ nouveaux chemins ⇒ ~8 GiB reconstruits sur le builder **et**
-retransférés par `nix copy` pour produire des octets qu'on avait déjà.
+**Pourquoi.** Les dérivations sont adressées par **entrée**, et les couches sont des **deltas
+chaînés** : L1 = la closure de base, L2 = le delta contre la base, L3 = le delta contre base+L2.
+Donc `baseClosureInfo` change ⇒ les trois entrées changent en **cascade** ⇒ nouveaux chemins ⇒
+~8 GiB reconstruits sur le builder **et** retransférés par `nix copy` pour produire des octets qu'on
+avait déjà.
+
+⚠️ **CORRECTION (2026-09-20 soir)** — j'avais écrit ici que les couches « reçoivent toutes
+`unionClosureInfo` ». **C'est faux**, et la mesure le tranche : à `develop` `ed4e4af5`, les
+dérivations `erofs-001` (`k8fj66nk…`) et `erofs-002` (`xx7a3win…`) sont **identiques** entre les
+bundles nikopol et bioskop, seule `erofs-003` diffère (`4711jpvi…` contre `br0br9sf…`). Si l'union
+était une entrée des images, elles différeraient toutes — les unions par hôte diffèrent. Donc
+l'union ne sert qu'à la **registration** dans la base nix du guest, pas à l'identité des images, et
+les deux couches basses sont **fleet-shared au niveau dérivation**, pas seulement au niveau
+contenu. Conséquence pratique : reconstruire un second hôte après le premier tombe sur le cache
+pour L1 et L2, et ne paie que son L3 (~39 Mo).
 
 **Le remède, à portée.** `__contentAddressed = true` sur `erofs-store-image.nix` : les
 octets d'une couche ne dépendent que de la liste de chemins qu'elle packe (le packer est

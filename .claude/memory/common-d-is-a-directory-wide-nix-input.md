@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: reference
   originSessionId: 0b18b1f3-3eda-496a-865d-1fbc722b0d30
-  modified: 2026-09-20T18:24:15.777Z
+  modified: 2026-09-20T18:48:43.753Z
 ---
 
 Les modules ndh font `ndhCommon = worktreePath.of "modules/.common.d"` puis lisent leurs scripts par
@@ -20,14 +20,21 @@ pourtant `nixosConfigurations.nikopol-nixos` passe de `rz4qd624…` à `2lgwd744
 `ExecStart` de `ssh-keys-enrichment.service`, **un consommateur que le commit ne touche pas** mais
 qui lit d'autres scripts par le même `${ndhCommon}`.
 
-⚠️ **Le dernier maillon est une inférence, pas une mesure** : je n'ai pas prouvé directement la
-granularité répertoire de `worktreePath.of` (ça coûtait deux évaluations de ~6 min). La chaîne de
-preuve s'arrête au fait que le consommateur qui bouge n'est pas celui qu'on a modifié. À confirmer
-en ajoutant un fichier vide sous `.common.d` et en comparant un drvPath avant/après.
+**★ PROUVÉ le même soir, par l'usage.** L'utilisateur rebuild la config darwin `nikopol` depuis
+bioskop et voit `nix` **recopier `erofs-001` depuis le builder**. Vérifié : le bundle à `develop`
+(`ed4e4af5`) est `agzgy7rj…` contre `8k9329c1…` construit et copié deux heures plus tôt à
+`8aa201c3`. Donc un commit qui ne change **aucun** comportement invalide les **trois** images de
+couche et tout le bundle — la chaîne `fichier ajouté sous .common.d → hash du répertoire → closures
+système → images de couche` est complète et mesurée de bout en bout.
 
 **How to apply :** un ajout sous `modules/.common.d` n'est jamais gratuit — il implique une
 reconstruction de flotte (et, depuis la pile EROFS, un renew avec factory reset, puisque les trois
-couches changent d'octets). Le grouper avec un changement qui paie déjà ce coût. L'éviter
+couches changent d'octets). Le grouper avec un changement qui paie déjà ce coût.
+
+**Nuance mesurée, qui adoucit la règle** : L1 et L2 sont **fleet-shared au niveau dérivation** (voir
+[[erofs-layer-images-input-addressed-rebuild]]), donc le coût est payé **une fois** — ~10 GiB pour
+le premier hôte reconstruit — et chaque hôte suivant ne paie que son L3 (~39 Mo). Ce n'est pas
+~10 GiB par hôte, comme je l'avais d'abord annoncé. L'éviter
 demanderait de faire lire des **fichiers individuels** aux consommateurs au lieu du répertoire :
 refactor plus large, noté en dette, non entrepris.
 
