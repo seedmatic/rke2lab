@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 0b18b1f3-3eda-496a-865d-1fbc722b0d30
-  modified: 2026-09-20T00:00:56.374Z
+  modified: 2026-09-20T00:25:24.687Z
 ---
 
 **La vision est SHIPPÉE EN SPEC** (rke2lab `a86a5a9f4`) :
@@ -178,9 +178,70 @@ importance, le montage est par label. C'est ce qui justifie le label comme réf�
 - `comm` exige ses entrées triées dans SA collation et ne signale un désaccord que par un
   avertissement en produisant un résultat faux → `LC_ALL=C` explicite dans `delta.sh`.
 
-**Reste à faire** : phase 3 (couche commune à la flotte) · restructurer le manifeste
-(18 références dans 3 fichiers, cible notée dans la session) · corriger le wrapper de run qui
-échoue sur le relais série après un factory reset (répertoire `serial/` supprimé).
+## PHASE 3 — approche STRUCTURELLE validée par mesure, câblage à faire
+
+**Tranché par l'utilisateur : approche structurelle, pas intersection ensembliste.** Motif :
+« elle nous permettra de mieux maîtriser le contenu de chaque couche », et le layout `ndh`
+essayait déjà de jouer cette logique.
+
+**Le layout encodait bien l'intention** : `hosts/host-common.nix` est la part commune
+*paramétrée* par `hostProfile`, et le spécifique d'un hôte tient en ~90 lignes —
+`hosts/<h>/nixos.nix` (37-45 l.) plus la config de `hosts/<h>/profile.nix`. Concrètement :
+`bringupObserve`, `services.sshfsMounts`, `profile.user.home`, les candidats de clés sops.
+Le `hostProfile` lui-même ne fait que **6 champs**, dont un seul est de l'identité
+(`hostName`) ; les `nixosDiskImageVm*` ne touchent même pas la closure runtime.
+
+**`nixosConfigurations.nerd-nixos` est le système bringup partagé** — `nikopol-bringup` et
+`bioskop-bringup` ont le **même toplevel** (`8yg13jjw…`), ce sont des alias. Donc pour le mode
+minimal le partage existe déjà (= couche 001) ; pour le mode `full` il n'existe pas.
+⚠️ Contrainte d'exploitation donnée par l'utilisateur : `nerd-nixos` étant le même système
+partout, il ne peut être **vivant sur le réseau que sur un vzhost à la fois** → le bringup est
+sérialisé sur la flotte.
+
+⚠️ **`hosts/nerd-nixos/` est du CODE MORT** : aucune référence nix (le
+`nixosConfigurations.nerd-nixos` exposé est un alias construit par `outputs.nix:584-588`). Son
+`profile.nix` ne fixe que `profile.host.*` et n'importe **pas** `host-common.nix` — c'est le
+squelette du *baseline bringup*, plus mince que ce que L2 demande.
+
+**★ MESURE DÉCISIVE (faite, closures construites)** — L2 = closure d'une génération `full`
+avec le `hostProfile` neutre de `hosts/nerd-nixos` + `host-common.nix` :
+
+| | chemins | taille |
+|---|---|---|
+| L1 bringup | 659 | 2,59 GiB |
+| **L2 générique full − L1** | **1098** | **7,49 GiB** — PARTAGÉE |
+| **L3 résidu nikopol** | **77** | **39,6 Mo** |
+| lest dans L2 (chemins qu'aucun hôte n'utilise) | 70 | 39,6 Mo |
+
+Couverture vérifiée : **0** chemin de la closure nikopol absent de la pile. Le lest est bien
+ce qu'on prédisait — des dérivations engendrées par la config (`unit-home-manager-…`,
+`X-Restart-Triggers-*`, `sshd.conf-final`, `nftables-save-deletions`).
+
+Contre l'intersection ensembliste (L2 1056 / ~7,45 GiB, L3 53 / ~34 Mo, lest 0) : la
+structurelle coûte **40 Mo de lest + 6 Mo par hôte**, soit 0,5 % de la couche partagée, et
+achète la **suppression du couplage fleet-wide**. Bruit contre bénéfice → structurelle.
+
+**Effet attendu** : la couche par hôte passe de **7,47 GiB à 39,6 Mo**, facteur ~190.
+
+**★ PATCH NON COMMITTÉ dans `ndh/flake.nix`** — à reprendre : il ajoute
+`nixosConfigurations.nerd-runtime` (bindings `fleetRuntimeHostProfile` /
+`fleetRuntimeProfileModule` / `fleetRuntime` insérés dans le `let` de `nixosConfigurations`,
+à côté de l'alias `nerd-nixos`). Il **évalue ET construit** :
+`0yxxi9glxgm3327nw32rggn9x2bvwjy3-nixos-system-nerd-nixos-nixos-…`. Délibérément non committé :
+rien ne le consomme encore, donc il partira dans un seul commit avec le câblage des 3 couches.
+`mkNixosConfig` est exporté et déjà dans la portée de `flake.nix` — pas besoin de toucher à
+`outputs.nix` pour ça.
+
+**Tâche du 2026-09-20** (mot de l'utilisateur) : matérialiser la nouvelle couche via la
+nouvelle version de `nerd-nixos`. Soit : 3 couches dans `erofs-store-layers.nix`, les
+bindings correspondants dans `bringup-zfs-disk-image.nix` (L1 = bringup, L2 = delta
+générique/bringup, L3 = delta hôte/générique), puis build + `nix copy` + renew.
+
+**Autres restes** : restructurer le manifeste (18 références dans 3 fichiers, cible notée
+dans la session) · dé-masquer `modules/.common.d` (113 occurrences de code, 36 de doc, **et 20
+dans `docs/sessions/` à NE PAS réécrire** — une note de session est vraie à sa date) ·
+corriger le wrapper de run qui échoue sur le relais série après un factory reset (le
+répertoire `serial/` est supprimé avec le reste, ce qui a obligé à relancer à la main).
 
 **Questions ouvertes** (4) : quel **K** (profondeur de pile) · le **couplage fleet-wide**
 de l'intersection (changer un hôte change le lower de tous) est-il acceptable · 3 mesures
