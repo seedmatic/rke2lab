@@ -111,11 +111,14 @@ public final class InstanceGrow {
         "seed-project",
         ProjectArgs.builder()
             .name(config.incusProject())
-            // Per-project network namespacing so instance NIC parent references resolve under this
-            // project, even though the actual bridges live in the default project (incus only
-            // allows
-            // OVN networks in non-default projects).
-            .config(Map.of("features.networks", "true"))
+            // No `features.networks`: it is what made incus refuse the project on a fresh daemon
+            // ("OVN is required for projects with features.networks enabled"), and it was asked for
+            // backwards. The flag gives the project its OWN network set — empty here, since
+            // ensureNetworks() declares every bridge in the DEFAULT project. Inheriting the default
+            // project's networks is what we want, and that is what the flag being absent does. It
+            // is moot for the instances either way: their NICs are `nictype=bridged` with a
+            // `parent`, which incus resolves as a host interface name without consulting its
+            // network list at all.
             .build(),
         options.build());
   }
