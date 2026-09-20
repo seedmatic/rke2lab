@@ -101,8 +101,12 @@ public final class FloxCatalogManifestsUnit extends AbstractManifestsUnit {
         JsonPatch.add(
             "/spec",
             Map.of(
+                // 10m, matching the rendered-branch source: the github Receiver lists BOTH
+                // GitRepositories in its resources (FluxReceiverManifestsUnit), so one webhook
+                // delivery reconciles this catalogue too and the interval is only the fallback.
+                // Relaxing one source and leaving this one at 5m would keep polling the same repo.
                 "interval",
-                "5m",
+                "10m",
                 "url",
                 REPO_URL,
                 "ref",

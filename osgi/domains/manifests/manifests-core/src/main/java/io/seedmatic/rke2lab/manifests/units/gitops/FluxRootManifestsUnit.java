@@ -93,8 +93,20 @@ public final class FluxRootManifestsUnit extends AbstractManifestsUnit {
         JsonPatch.add(
             "/spec",
             Map.of(
+                // The Receiver is the trigger now, not this interval — a signed GitHub push
+                // reconciles this source at once (FluxReceiverManifestsUnit), so polling every
+                // minute only hammers GitHub for latency the webhook already removed.
+                //
+                // Deliberately 10m and not 1h: BOOTSTRAP still rides this interval.  The webhook
+                // needs its flux-webhook-token replica (filled by mittwald) and a reachable
+                // receiver path, none of which exists at cold start — so the worst case here is
+                // how long an unattended bootstrap can stall before the first fetch.  10m trades
+                // the hammering away while keeping that bounded.
+                //
+                // The child Kustomizations keep their own 5m: they react to a source revision
+                // change immediately, so their interval is drift correction, not latency.
                 "interval",
-                "1m",
+                "10m",
                 "url",
                 REPO_URL,
                 "ref",

@@ -17,10 +17,14 @@ import software.constructs.Construct;
 
 /**
  * Wires a Flux {@code Receiver} so a GitHub push triggers an IMMEDIATE reconcile of the rendered
- * branch — killing the polling latency (the {@code GitRepository} otherwise fetches on its 1m
- * interval) and the manual {@code flux reconcile} force. Steady-state only (reconciled from the
- * branch, NOT the node-bootstrap lane): at bootstrap the polling auto-sync already brings every
- * Kustomization Ready, so the webhook is a pure operational accelerant.
+ * branch, removing both the polling latency and the manual {@code flux reconcile} force.
+ *
+ * <p>This is the steady-state TRIGGER, not an accelerant on top of one: the {@code GitRepository}'s
+ * interval was relaxed from 1m to 10m once this was in place (see {@link FluxRootManifestsUnit}),
+ * so a push is what reconciles and the interval is the fallback. Reconciled from the branch, NOT
+ * the node-bootstrap lane — so BOOTSTRAP still rides the interval, which is why it stayed at 10m
+ * rather than going to an hour: at cold start neither the replicated webhook token nor a reachable
+ * receiver path exists yet.
  *
  * <p>Three objects, all in {@code flux-system}:
  *
