@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 0b18b1f3-3eda-496a-865d-1fbc722b0d30
-  modified: 2026-09-20T19:35:16.910Z
+  modified: 2026-09-20T19:52:01.549Z
 ---
 
 **La vision est SHIPPÉE EN SPEC** (rke2lab `a86a5a9f4`) :
@@ -259,7 +259,12 @@ Vérifié après coup : closure de bringup à 661 chemins, aucun `nixos-system` 
 Preuve du fonctionnement : générations 1 (13:32:49) et 2 (13:39:22) créées sans intervention,
 plus le couple `bringup-target-system` / `.attempted` sur le nœud.
 
-⚠️ **Sept minutes entre les deux générations.** La bascule elle-même coûte **0,804 s**
+⚠️ **L'écart entre les deux générations dépend de la VITESSE DE L'HÔTE, ce n'est pas un coût fixe**
+(mesuré le 2026-09-20 : **7 min 18** sur nikopol contre **3 min** sur bioskop, même code —
+`system-1-link` 19:40 → `system-2-link` 19:43). Ordonner l'unité plus tôt reste le bon correctif,
+mais l'ampleur du gain varie par hôte.
+
+⚠️ **Sept minutes entre les deux générations** (sur nikopol). La bascule elle-même coûte **0,804 s**
 (mesurée à la main) ; le reste est le boot de bringup qui doit atteindre la cible contribuée
 avant que l'unité passe. Candidat d'amélioration : ordonner l'unité plus tôt.
 
