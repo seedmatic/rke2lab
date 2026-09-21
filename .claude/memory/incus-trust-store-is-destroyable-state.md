@@ -1,6 +1,6 @@
 ---
 name: incus-trust-store-is-destroyable-state
-description: "Le trust store Incus est de l'état daemon : re-minter les certificats d'un nœud efface capn-provider et CAPN répond `not authorized` en silence pendant des heures — corrigé le 2026-09-21 (rke2lab publie, ndh assère à chaque boot)"
+description: "Le trust store Incus est de l'état daemon : re-minter les certificats d'un nœud efface capn-provider et CAPN répond `not authorized` en silence pendant des heures — corrigé le 2026-09-21 par une ressource incus.Certificate déclarée au GROW (1re version via ndh, révoquée)"
 metadata: 
   node_type: memory
   type: project
@@ -89,10 +89,12 @@ retirerait le besoin du script. Non faite.
 ## Détails qui resservent
 
 - `incus config trust list --format csv` : champ **4** = empreinte **tronquée à 12 caractères**.
-- `incus config trust add-certificate <pem> --name <n> --type client` (`--type` défaut `client`).
-- L'unité est `wantedBy` d'`incus.service` **sans** `partOf`/`bindsTo` : un échec doit rester
-  visible dans `systemctl --failed` sans coucher le daemon.
-- Le script n'utilise **pas** `ndh::logger:command:run` — voir [[ndh-logger-wrapper-neutralises-errexit]].
+- `incus config trust add-certificate <pem> --name <n> --type client` (`--type` défaut `client`) —
+  la commande de dépannage manuel ; le chemin nominal est la ressource Pulumi.
+- L'empreinte du trust store = SHA-256 sur le **DER**, hex minuscule (`certificateFingerprint()`
+  dans `InstanceGrow`). C'est la clé de `getCertificate`, donc de l'adoption par `importId`.
+- `IncusImportLookup.existingCertificateId(fingerprint)` suit le patron de `existingProfileId` :
+  `existingXId(...).ifPresent(options::importId)`, celui qu'emploie déjà la ressource projet.
 
 See [[capn-cert-ownership-incoherence]] (qui *détient* le fichier — autre question, déjà réglée)
 [[destructive-gate-needs-three-valued-probe]] [[nerd-nixos-tart-vm-renew-procedure]].
