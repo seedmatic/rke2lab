@@ -334,6 +334,11 @@ public class ManifestSynthesisScenario
   private static final String RENDER_TOOL = "manifests-render";
   private static final String BRANCH_PREFIX = "manifests/";
 
+  // The cluster's FIRST control node — the one a per-target pass renders as, and the leaf of its
+  // render plot. Taken from the blueprint's canonical roster, never spelled "master" here.
+  private static final String FIRST_CONTROL_NODE =
+      ClusterNetworkBlueprint.CANONICAL_NODE_NAMES.get(0);
+
   /**
    * Prepare the rendered-branch worktree for THIS run's cluster — an orphan linked worktree at the
    * SOIL path on branch {@code manifests/<cluster>}, into which the synthesis materialises the
@@ -812,13 +817,20 @@ public class ManifestSynthesisScenario
    * produce a branch and a bundle. Present ⟹ a {@link Delivery} was resolved (both hang off the
    * same worktree seam), so each target's plan is the managing one re-subjected to its own branch.
    *
-   * <p>Each target renders into a SIBLING directory of the managing SOIL, named for its cluster:
-   * {@code <soil-parent>/<cluster>/<soil-leaf>}. That keeps the exploded tree, the consolidated
-   * {@code manifests.yaml} and the carved {@code .bootstrap/} of every pass disjoint (the artifacts
-   * sit one level above their tree — see {@link NodeBootstrapArtifact}), and leaves each render
-   * inspectable on disk beside the one an operator already knows to look at. Not closed, for the
-   * same reason the managing worktree is not: {@code prepare} is idempotent, so a re-run starts
-   * clean.
+   * <p>Each target renders at {@code <render-root>/<cluster>/<cluster>-<first-control-node>} — a
+   * directory of its OWN under the shared render root, its leaf on the same {@code
+   * <cluster>-<node>} convention the managing SOIL uses.
+   *
+   * <p>The extra level is REQUIRED, not tidiness: the consolidated {@code manifests.yaml} and the
+   * carved {@code .bootstrap/rke2lab-bootstrap.yaml} sit one level ABOVE their tree (see {@link
+   * NodeBootstrapArtifact}), so two passes sharing a parent write the SAME two files — the target's
+   * carve would overwrite the manager's bundle and {@link #fileNodeBootstrap} would seal a
+   * WORKLOAD's bundle as the managing node's. A flat sibling of the managing SOIL is exactly that
+   * case. The managing pass keeps its historical path (it is the plot the GROW mounts), so the
+   * asymmetry is forced.
+   *
+   * <p>Not closed, for the same reason the managing worktree is not — and {@code prepare} is
+   * idempotent, so a re-run starts clean while the last render stays inspectable on disk.
    */
   private List<TargetPass> prepareWorkloadPasses(
       ManifestsRunbookInput effective,
@@ -829,10 +841,8 @@ public class ManifestSynthesisScenario
         || effective.facets().workloadTargets().isEmpty()) {
       return List.of();
     }
-    final Path soil = rendered.orElseThrow().path();
-    final Path soilParent = soil.getParent();
-    final Path leaf = soil.getFileName();
-    if (soilParent == null || leaf == null) {
+    final Path renderRoot = rendered.orElseThrow().path().getParent();
+    if (renderRoot == null) {
       return List.of();
     }
     final RenderedBranch branch = renderedBranch.orElseThrow();
@@ -840,10 +850,11 @@ public class ManifestSynthesisScenario
     final List<TargetPass> passes = new ArrayList<>();
     for (final WorkloadTarget target : effective.facets().workloadTargets()) {
       final String cluster = target.clusterName();
+      final Path soil = renderRoot.resolve(cluster).resolve(cluster + "-" + FIRST_CONTROL_NODE);
       passes.add(
           new TargetPass(
               target,
-              branch.prepare(soilParent.resolve(cluster).resolve(leaf), BRANCH_PREFIX + cluster),
+              branch.prepare(soil, BRANCH_PREFIX + cluster),
               plan.forBranchOf(renderCommitMessage(cluster))));
     }
     return List.copyOf(passes);
@@ -1107,7 +1118,7 @@ public class ManifestSynthesisScenario
                 ClusterRole.WRKLD.domainPolicy(CATALOG),
                 BootstrapIdentity.builder()
                     .clusterName(cluster)
-                    .nodeName(ClusterNetworkBlueprint.CANONICAL_NODE_NAMES.get(0))
+                    .nodeName(FIRST_CONTROL_NODE)
                     .build(),
                 root,
                 facet.image(),
