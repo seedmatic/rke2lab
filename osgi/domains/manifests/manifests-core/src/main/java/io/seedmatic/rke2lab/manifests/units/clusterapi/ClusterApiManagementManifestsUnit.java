@@ -8,7 +8,6 @@ import io.seedmatic.rke2lab.manifests.contract.profiles.BootstrapIdentity;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ImageState;
 import io.seedmatic.rke2lab.manifests.contract.profiles.IncusIdentityMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ManagementClusterCaMaterial;
-import io.seedmatic.rke2lab.manifests.ingress.Component;
 import io.seedmatic.rke2lab.manifests.node.DefaultNodeEnvContext;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import io.seedmatic.rke2lab.netplan.contract.ClusterNetworkBlueprint;
@@ -37,10 +36,10 @@ import software.constructs.Construct;
  * <p>The recipe is derived, not configured: the VIP + pod/service CIDRs come from the mgmt
  * cluster's {@link ClusterNetworkBlueprint} (keyed by {@link
  * BootstrapIdentity#clusterNameOrDefault}), the image fingerprint + RKE2 version from the {@link
- * ImageState} the incus scion forwarded, the kube-vip version from {@link Component#KUBE_VIP}.
- * No-op when no {@link ImageState} is bound (a secret-blind render / bare survey): without the
- * fingerprint the recipe would pin a non-existent image, so — like {@link
- * ClusterApiWorkloadManifestsUnit} — the unit renders nothing rather than a misleading placeholder.
+ * ImageState} the incus scion forwarded. No-op when no {@link ImageState} is bound (a secret-blind
+ * render / bare survey): without the fingerprint the recipe would pin a non-existent image, so —
+ * like {@link ClusterApiWorkloadManifestsUnit} — the unit renders nothing rather than a misleading
+ * placeholder.
  *
  * <p>The BYO-CA + identity Secrets ride the branch sops-encrypted (the git sops clean filter
  * encrypts their {@code data} at commit; Flux decrypts). They are rendered only when their material
@@ -105,7 +104,6 @@ public final class ClusterApiManagementManifestsUnit extends AbstractManifestsUn
     final String identitySecret = host + "-incus-identity";
     final String rke2Version =
         image.rke2Version().startsWith("v") ? image.rke2Version() : "v" + image.rke2Version();
-    final String kubeVipVersion = synth.componentVersions().of(Component.KUBE_VIP);
 
     final ApiObject namespaceObject = renderer.namespace(scope, cluster, namespace, packageProfile);
     // The 2×2 intent for the mgmt cluster's SELF-adoption: a cluster-level ClusterIntention + a
@@ -139,7 +137,6 @@ public final class ClusterApiManagementManifestsUnit extends AbstractManifestsUn
         vip,
         APISERVER_PORT,
         rke2Version,
-        kubeVipVersion,
         image.imageFingerprint(),
         pets,
         packageProfile,

@@ -8,7 +8,6 @@ import io.seedmatic.rke2lab.manifests.contract.WorkloadTarget;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ImageState;
 import io.seedmatic.rke2lab.manifests.contract.profiles.IncusIdentityMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.WorkloadClusterCasMaterial;
-import io.seedmatic.rke2lab.manifests.ingress.Component;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import io.seedmatic.rke2lab.netplan.contract.ClusterNetworkBlueprint;
 import java.util.List;
@@ -122,8 +121,6 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
     // (e.g. `1.34.8+rke2r2`) — prefix it iff absent.
     final String rke2Version =
         image.rke2Version().startsWith("v") ? image.rke2Version() : "v" + image.rke2Version();
-    final String kubeVipVersion =
-        ManifestSynthesisContext.current().componentVersions().of(Component.KUBE_VIP);
     // The workload's Incus remote — its host's engine (bioskop-nixos / nikopol-nixos). Intent
     // value;
     // the controller/CAPN authenticate from the identity Secret (which also carries `server`).
@@ -162,7 +159,6 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
         vip,
         APISERVER_PORT,
         rke2Version,
-        kubeVipVersion,
         image.imageFingerprint(),
         pets,
         packageProfile,

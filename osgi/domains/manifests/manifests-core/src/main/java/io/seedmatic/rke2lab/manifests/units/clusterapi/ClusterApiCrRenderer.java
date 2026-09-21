@@ -237,7 +237,6 @@ public final class ClusterApiCrRenderer {
       final String vip,
       final int port,
       final String rke2Version,
-      final String kubeVipVersion,
       final String imageFingerprint,
       final List<String> petNames,
       final PackageMetadataProfile profile,
@@ -272,7 +271,6 @@ public final class ClusterApiCrRenderer {
                 "role", "control-plane",
                 "image", Map.of("fingerprint", imageFingerprint),
                 "rke2Version", rke2Version,
-                "kubeVIPVersion", kubeVipVersion,
                 "controlPlaneEndpoint", Map.of("host", vip, "port", port),
                 "nodes", nodes)));
     return poolIntention;
