@@ -89,7 +89,8 @@ func (r *PoolAdoptionReconciler) reconcileSteps(
 		return ctrl.Result{RequeueAfter: time.Hour}, nil
 	}
 
-	// Guard: the BYO-CA Secrets are delivered by seed-master (branch, sops). CAPRKE2 adopts the LIVE
+	// Guard: the material a provisioned node cannot do without. The BYO-CA Secrets come from
+	// seed-master (branch, sops); the bootstrap bundle from the render. CAPRKE2 adopts the LIVE
 	// CA from <cluster>-{ca,cca,etcd,peer-etcd}; without them it would generate a fresh CA and the
 	// adopted apiserver would reject the minted admin cert. Wait until present.
 	missing, err := r.materialMissing(ctx, spec)
@@ -99,7 +100,7 @@ func (r *PoolAdoptionReconciler) reconcileSteps(
 	}
 	if missing != "" {
 		r.mark(a, adoptionv1alpha1.PoolConditionMaterialReady, false, "MaterialMissing",
-			"waiting for seed-master Secret "+missing)
+			"waiting for Secret "+missing+" in "+spec.Namespace)
 		return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
 	}
 
@@ -121,7 +122,7 @@ func (r *PoolAdoptionReconciler) reconcileSteps(
 		return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
 	}
 	r.mark(a, adoptionv1alpha1.PoolConditionMaterialReady, true, "MaterialReady",
-		"BYO-CA Secrets + RKE2 config present")
+		"BYO-CA Secrets + bootstrap bundle + RKE2 config present")
 
 	// Resolve the roster + mode from the reflection (the reflector's git-only record) — the
 	// adopt-vs-greenfield switch, read DIRECTLY from git (immune to any Flux timing):
@@ -411,13 +412,62 @@ func (r *PoolAdoptionReconciler) mark(
 // Cluster.controlPlaneRef points at.
 func controlPlaneName(clusterName string) string { return clusterName + "-control-plane" }
 
-// materialMissing returns the name of the first required BYO-CA Secret that is absent, or "".
+// The node-side bootstrap bundle: the multi-doc rke2lab-bootstrap.yaml the exploder carves OUT of the
+// rendered branch by the NODE_BOOTSTRAP marker (cilium's HelmChartConfig, the Flux operator/instance/
+// root, the Secrets Flux needs to pull and decrypt). A host-grown node gets it over devlxd from the
+// cellar; a node CAPRKE2 provisions has no grow to pose it, so it arrives as a Secret here and rides a
+// File into RKE2's auto-deploy directory. Referenced, never inlined — contentFrom keeps the App key
+// and the cluster age identity out of a spec that is itself rendered onto the manager's branch. See
+// docs/architecture/nixos-substrate/node-bootstrap-delivery.adoc#second-poser.
+const (
+	serverManifestsSecretKey = "rke2lab-bootstrap.yaml"
+	serverManifestsPath      = "/var/lib/rancher/rke2/server/manifests/rke2lab-bootstrap.yaml"
+)
+
+func serverManifestsSecretName(clusterName string) string { return clusterName + "-server-manifests" }
+
+// bootstrapFiles is the RKE2ControlPlane's write_files set: the config.yaml.d fragments, preceded by
+// the bootstrap bundle WHEN CAPRKE2 is the poser. The SELF cluster is excluded because its node is
+// grown by the host, which poses the bundle over devlxd from the cellar — referencing a Secret that
+// by design does not exist would be a trap the day that pool scaled. The gate in materialMissing
+// carries the same condition, so the reference here is never stamped before its Secret exists.
+func (r *PoolAdoptionReconciler) bootstrapFiles(
+	spec adoptionv1alpha1.PoolAdoptionSpec, configFiles []any,
+) []any {
+	if r.SelfCluster != "" && spec.ClusterName == r.SelfCluster {
+		return configFiles
+	}
+	bundle := map[string]any{
+		"path":        serverManifestsPath,
+		"owner":       "root:root",
+		"permissions": "0600",
+		"contentFrom": map[string]any{"secret": map[string]any{
+			"name": serverManifestsSecretName(spec.ClusterName),
+			"key":  serverManifestsSecretKey,
+		}},
+	}
+	return append([]any{bundle}, configFiles...)
+}
+
+// materialMissing returns the name of the first required Secret that is absent, or "".
 func (r *PoolAdoptionReconciler) materialMissing(ctx context.Context, spec adoptionv1alpha1.PoolAdoptionSpec) (string, error) {
 	names := []string{
 		spec.ClusterName + "-ca",
 		spec.ClusterName + "-cca",
 		spec.ClusterName + "-etcd",
 		spec.ClusterName + "-peer-etcd",
+	}
+	// The bootstrap bundle is required only where CAPRKE2 is the poser. The SELF cluster's node is
+	// grown by the HOST, which poses the bundle over devlxd from the cellar — there is no Secret for
+	// it and demanding one would hang the management pool forever. Same structural split as
+	// resolveRoster's: self is the host's, a managed cluster is CAPRKE2's.
+	//
+	// For a managed cluster it IS gated, like the BYO-CA and for the same reason — better a pool that
+	// honestly waits than one that provisions a node which cannot work. Without the bundle a
+	// greenfielded node takes RKE2's default cilium chart, which dials the apiserver at the in-cluster
+	// ClusterIP before any CNI exists: it never reaches Ready, and nothing runs there, Flux included.
+	if r.SelfCluster == "" || spec.ClusterName != r.SelfCluster {
+		names = append(names, serverManifestsSecretName(spec.ClusterName))
 	}
 	for _, name := range names {
 		var s corev1.Secret
@@ -674,10 +724,11 @@ func (r *PoolAdoptionReconciler) rke2ControlPlaneObj(spec adoptionv1alpha1.PoolA
 		// first node initialises rather than registers, a second would have no VIP to register against.
 		"registrationMethod":  "address",
 		"registrationAddress": spec.ControlPlaneEndpoint.Host,
-		// The bootstrap-injected config.yaml.d fragments: CAPRKE2 write_files these before rke2 starts,
-		// so a provisioned replica boots with the same per-cluster config (dual-stack CIDRs, VIP
-		// tls-san, …) a standalone node installs from the branch.
-		"files": configFiles,
+		// Everything CAPRKE2 write_files before rke2 starts: the config.yaml.d fragments, so a
+		// provisioned replica boots with the same per-cluster config (dual-stack CIDRs, VIP tls-san, …)
+		// a standalone node installs from the branch — and, where CAPRKE2 is the poser, the node-side
+		// bootstrap bundle the host would otherwise pose over devlxd.
+		"files": r.bootstrapFiles(spec, configFiles),
 		"machineTemplate": map[string]any{
 			"spec": map[string]any{
 				"infrastructureRef": map[string]any{
