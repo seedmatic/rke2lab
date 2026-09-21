@@ -160,6 +160,134 @@ next grow re-attaches. A drifted duplicate (`<leaf>-1`) never matches the bare `
 it is always pruned — the reclaim we want. The un-persisted controlplane Connector is likewise never
 spared. Needs the ndh `manage-tailnet --keep-host` flag.
 
+[#funnel-per-cluster]
+==== A funnel's identity is PER-CLUSTER — the leaf alone is not it
+
+Everything above was written when there was one cluster, so the leaf *was* the identity. A workload
+cluster needs its own funnels (its Flux receives, its PaC acts), and the moment it does, the flat
+shape is not untidy — it *defeats the mechanism for both clusters at once*.
+
+A funnel's identity is the triple **(FQDN, tailnet device, cert)**, and the budget this whole section
+protects is per *exact FQDN*. So two clusters on one leaf name means: both proxies overwrite the same
+`/persist/<leaf>/state.yaml`, both return as new devices, both re-issue, both walk into the `429`.
+
+And worse, deterministically: the second cluster cannot even claim the bare name. The tailnet suffixes
+it (`flux-webhook-1`), and per the purge rule above a drifted duplicate *never matches the bare
+`--keep-host` name, so it is always pruned* — so the manager's purge Job would delete the workload's
+funnel device on every run, forever.
+
+The cluster dimension is therefore missing in four places that are all the same fact:
+
+*The dataset*:: `tank/rke2lab/persist/<cluster>/funnel-cert`. The `persist` tier stays ONE sibling of
+`control-nodes`, so the "the ephemeral wipe never reaches it" invariant is still expressed at a single
+level. The `<leaf>/state.yaml` subdirectories live inside it, unchanged.
+
+*The FQDN*:: `FunnelLeaf`'s hostname gains the cluster — `FluxReceiverManifestsUnit`'s
+`FUNNEL_HOSTNAME` is a bare constant today.
+
+*The leaf-derived names*:: the stable state Secret `ts-<leaf>-state` and the per-funnel `ProxyClass`.
+
+*The purge*:: `--keep-host` must name the cluster's FQDN, or one cluster's purge prunes another's
+device.
+
+So the contract change is `FunnelLeaf` — a dual-realm enum whose leaf is currently the whole
+identity — becoming **(cluster, leaf)**. That, not the PV, is the shape that moves.
+
+ONE PV per CLUSTER, not per leaf. The <<funnel-ordering,dependency graph>> already serialises the
+restore and backup Jobs so they never contend for the single RWO claim; a PV per leaf would discard
+that argument and force it to be re-made. Per cluster it is kept verbatim, and the controller has one
+volume per `ClusterIntention` to own.
+
+A happy side effect: the spec's own escape hatch is that renaming an FQDN opens a *fresh* 5-cert
+budget. Migrating to per-cluster names IS that rename, so it is also the way out if `flux-webhook`'s
+budget is already spent. It costs updating the GitHub App's webhook URL, as the WARNING below notes.
+
+NOTE: `DataplanLayout` projects the per-cluster form the other way round for the maven cache
+(`tank/rke2lab/<cluster>/persist/maven-cache`, a "foundation-3 item"). The two must not diverge —
+whichever shape lands first sets it, and the deciding argument is which level the retain/ephemeral
+boundary should be expressed at.
+
+[#funnel-node-affinity]
+==== The volume belongs to the CONTROLLER — a managed node's name is not render-time knowledge
+
+The static-adopt pattern is load-bearing: it is the only thing that survives an etcd wipe. Dynamic
+provisioning cannot replace it — a cold start wipes the PVC object, so openebs provisions a *fresh*
+`pvc-<uuid>`, the old dataset leaks and the cert is lost. That is precisely why the PV is pre-declared
+and adopts a dataset by stable name.
+
+But a pre-declared PV needs a node: `spec.nodeAffinity` (matched on the `openebs.io/nodename` label)
+and the `ZFSVolume`'s `ownerNodeID`. On a CAPI-provisioned cluster the node's name is RANDOM
+(`bioskop-wrkld-control-plane-v9fhz`), so no render-time literal can ever match — and the literal in
+`FunnelCertRestoreManifestsUnit` (`bioskop-mgmt-master`) is not a bug to parameterise so much as an
+admission that the unit was only ever meant to run on a host-grown cluster.
+
+A node LABEL does not free us either: `ownerNodeID` must equal the `ZFSNode` object's name, and
+openebs names that after the node. The label is standard for the scheduling half only.
+
+So the render declares the INTENT — the cluster's persist pool, the leaf set, the size — and names no
+node. `seed-incluster` owns the volume: it elects the node from the pool roster it already holds and
+stamps the affinity and `ownerNodeID`. This is the same nature of work the controller already exists
+for (the ownerRef UID, the adopt-vs-provision decision): an in-cluster fact GitOps cannot pre-set. And
+keeping openebs in the path is what *enforces* single access — exactly one `ZFSNode` serves the volume
+— rather than leaving `ReadWriteOnce` as a contract nobody polices.
+
+No bootstrap circle: the controller does not need the VIP to do this. A workload node answers on its
+LAN address (measured: `https://192.168.1.21:6443` replies while the VIP still times out), so the
+managing cluster can reach it before the Connector exists.
+
+IMPORTANT: this is the FOURTH place "a CAPI node's name is random" has cost something, after the
+infraRef naming divergence, the missing ZFS dataset GC, and the declared `CONTROL_NODES` list. Read it
+as an invariant rather than a series of bugs: *nothing the render produces may be keyed on a managed
+node's name.*
+
+[#pet-label]
+==== Giving a managed node its PET identity back — a Machine label CAPI propagates
+
+The invariant above says what may not be keyed on a node's name; it does not give the render anything
+to key on INSTEAD. A pet label does: the node carries `master` / `peer1` / `peer2` as a first-class
+fact, so a `nodeSelector` (the funnel pod), a PV `nodeAffinity` and a legible election ("the persist
+volume belongs to the pet `master`") stop needing the opaque `…-v9fhz`.
+
+Two routes were considered and one is a trap.
+
+*NOT by taking over Machine creation.* Pre-creating the greenfield Machines with pet names would give
+deterministic instance names and dissolve the root cause — but `RKE2ControlPlane` names its Machines
+because it OWNS their lifecycle: the init-vs-join decision, etcd membership and quorum, scale, rollouts
+on a version change, remediation. Taking the naming takes an unbounded slice of that. The adoption path
+proves CAPRKE2 counts a pre-created Machine as its replica, but explicitly *without* bootstrapping it
+(`dataSecretName` with no `configRef` — the sentinel), so it is no evidence for the greenfield case.
+
+*NOT via cloud config either, on the managed path.* Each Machine does get its own `RKE2Config`
+(measured: `Machine …-rmz8z` → `configRef: RKE2Config/…-566v4`), so a per-machine channel EXISTS — but
+CAPRKE2 authors it from the one `RKE2ControlPlane` spec, and would regenerate anything we patched in.
+`spec.files` is likewise one set for every replica, which is exactly why the RKE2 config fragments are
+node-invariant. (On the HOST-grown path the opposite holds: `InstanceGrow` writes cloud-init per
+instance, so `node-label=` would be trivial there. `NodeRestriction` is not the obstacle — it protects
+the `kubernetes.io/` and `k8s.io/` namespaces, and a third-party domain is permitted from a kubelet.)
+
+*The supported route: assign, don't name.* The controller sorts the control-plane Machines by
+`creationTimestamp` — deterministic, monotonic, CAPI-owned — and assigns `master`, `peer1`, `peer2` in
+order, skipping any Machine that already carries a pet. Sticky and idempotent by construction, and it
+creates nothing: `RKE2ControlPlane` keeps its whole lifecycle.
+
+The assignment is written as a MACHINE label whose domain CAPI propagates to the Node. Verified against
+`util/labels/helpers.go` (`GetManagedLabels`), the sync set is:
+
+* `node-role.kubernetes.io`
+* `node-restriction.kubernetes.io` and any `*.node-restriction.kubernetes.io`
+* `node.cluster.x-k8s.io` and any `*.node.cluster.x-k8s.io`
+* anything matching an operator-supplied `--additional-sync-machine-labels` regex
+
+So `rke2lab.io.node.cluster.x-k8s.io/pet: master` lands on the Node with no further wiring — set by the
+CONTROL PLANE, which is what that mechanism is for.
+
+WARNING: the pet label does NOT remove the need for the controller to resolve a node NAME.
+`ZFSVolume.ownerNodeID` must equal the `ZFSNode` object's name, which openebs names after the node
+(measured: `ZFSNode/bioskop-wrkld-control-plane-v9fhz`, with `openebs.io/nodename` and
+`openebs.io/nodeid` both valued at the node name). A label serves the scheduling half only — a PV's
+`spec.nodeAffinity` is a standard `NodeSelector`. Nor does it fix the dataset leak; that needs the
+per-cluster pools (link:../patterns/dataplan-single-source.adoc#per-cluster-pools[dataplan]).
+
 [#funnel-ordering]
 ==== The ordering is STRUCTURAL — restore before the operator, not timing
 

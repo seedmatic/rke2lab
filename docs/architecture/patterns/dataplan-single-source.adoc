@@ -225,6 +225,46 @@ final String certHandle = dataplan.persist("funnel-cert"); // tank/rke2lab/persi
   pass `catalog` through `modules/nixos/disko.nix`.
 . Update `zfs.d/zpool-init.sh` to the new root.
 
+[#per-cluster-pools]
+== The layout has no CLUSTER dimension — and the live tree already diverged
+
+The layout was declared when there was one cluster, so it is keyed by NODE NAME with the cluster
+implicit. Two clusters on one host make that wrong in three ways, one of which is *already happening*.
+
+*1. Both pools are shared across clusters, by a literal.* `OpenebsZfsManifestsUnit` names the
+ephemeral StorageClasses from `layout.controlNodePool("master")` — one hardcoded pet. `poolname` is a
+single StorageClass parameter, and every node of every cluster resolves the same host path, so all
+dynamic PVCs land in the MANAGEMENT node's dataset. Measured on 2026-09-21: the PV
+`pvc-e13b83da-59d7-4250-9288-c3cb7558af0f` bound *in the workload cluster* is listed on the host under
+`tank/rke2lab/control-nodes/master/`. The workload node's own dataset exists (created by the
+profile/containerd path) and openebs ignores it.
+
+The persist tier has the same shape and the same fault: a flat `persist/funnel-cert` for the whole
+host, which for the funnels is not merely untidy — see
+link:../cluster-api/pac-in-cluster-render-spec.adoc#funnel-per-cluster[the funnel decomposition], where
+sharing it destroys the Let's Encrypt budget of both clusters at once.
+
+*2. The declared ephemeral tree only makes sense for HOST-GROWN nodes.* `CONTROL_NODES` is a roster of
+PETS (`master`, `peer1..3`) — deterministic because the host names those instances. A CAPI-provisioned
+node has a RANDOM name, and openebs simply creates its dataset on demand, outside the declared layout:
+`control-nodes/bioskop-wrkld-control-plane-v9fhz` is in the live tree and in no declaration. So
+pre-declaring the ephemeral tree is a host-grown concern, not a universal one.
+
+*3. Hence the leak.* Because the dataset is keyed on a name that changes every greenfield cycle, each
+cycle strands one (see the ZFS-GC gap). Making the POOL per-cluster is what gives a sweep a
+well-defined root; keying it per-pet would need a StorageClass per pet plus `allowedTopologies`, which
+buys nothing here — nodes of one cluster cohabit under one parent as distinct `pvc-*` datasets.
+
+So the direction is `tank/rke2lab/{persist,control-nodes}/<cluster>/…`: the `persist` tier stays ONE
+sibling of `control-nodes` so the "the ephemeral wipe never reaches it" invariant is still expressed at
+a single level. `DataplanLayout.canonical()` takes no arguments today and must learn the host's
+clusters — and so must ndh, since it materialises the layout through `lib.dataplan`.
+
+NOTE: the javadoc already projects the per-cluster form for the maven cache, the other way round
+(`tank/rke2lab/<cluster>/persist/maven-cache`, "a foundation-3 item"). The two must not diverge;
+whichever lands first sets the shape, and the deciding argument is which level the retain/ephemeral
+boundary belongs at.
+
 == Open questions
 
 . *Producer emit mechanism*: how seed-master emits `dataplan.json` — a CLI verb
@@ -272,3 +312,8 @@ closure.
   topology] — the dataset tree this layout renders.
 * link:manifest-domain-catalog-pattern.adoc[ManifestDomainCatalog pattern] — the
   single-source-of-truth-for-identifiers discipline this applies to dataset paths.
+* link:../cluster-api/pac-in-cluster-render-spec.adoc#funnel-per-cluster[Funnel
+  identity is per-cluster] — the consumer that forces
+  <<per-cluster-pools,the cluster dimension>>, and
+  link:../cluster-api/pac-in-cluster-render-spec.adoc#pet-label[the pet label]
+  that gives a managed node the stable identity this layout's vocabulary assumes.
