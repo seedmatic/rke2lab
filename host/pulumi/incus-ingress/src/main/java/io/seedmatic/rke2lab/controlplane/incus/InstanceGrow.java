@@ -548,7 +548,15 @@ public final class InstanceGrow {
         CustomResourceOptions.builder()
             .provider(providerContext.provider())
             .deleteBeforeReplace(true)
-            .replaceOnChanges(List.of("config", "config.*"))
+            // Replace on the IMAGE BUILD CHECKSUM only — a new node-base closure means a new node.
+            // This used to watch all of `config`/`config.*`, far wider than that stated intent, and
+            // the whole cloud-init rides in `config`: the node's github token is minted fresh every
+            // run (Persistence.TRANSIENT by design), so every run saw `~config` and planned
+            // `replace` + `delete original` — with no retainOnDelete, a kill-and-recreate of the
+            // control-plane node on each up. Watching the one key that warrants it keeps the
+            // re-provision trigger and drops the collateral. The rest of `config` still DIFFS; it
+            // just no longer forces a replacement.
+            .replaceOnChanges(List.of("config[\"user.rke2lab.imageBuildChecksum\"]"))
             // Ignore drift on `image` (the fingerprint is adopted, not managed) AND `devices`:
             // incus
             // stores devices as a MAP (keyed by name, unordered), but the provider models them
