@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 
+	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -26,21 +27,28 @@ type PoolIntentionReconciler struct {
 // +kubebuilder:rbac:groups=cluster.seedmatic.io,resources=poolintentions/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=cluster.seedmatic.io,resources=pooladoptions,verbs=get;list;watch;create;update;patch
 
-// Reconcile drives one PoolIntention. It ALWAYS persists status afterwards.
+// Reconcile drives one PoolIntention. It persists status whenever the status CHANGED.
 func (r *PoolIntentionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	var intention adoptionv1alpha1.PoolIntention
 	if err := r.Get(ctx, req.NamespacedName, &intention); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	before := intention.Status.DeepCopy()
+
 	result, reconcileErr := r.reconcileSteps(ctx, &intention)
 
 	intention.Status.ObservedGeneration = intention.Generation
-	intention.Status.LastReconcileTime = metav1.Now()
-	if statusErr := r.Status().Update(ctx, &intention); statusErr != nil {
-		log.FromContext(ctx).Error(statusErr, "failed to update PoolIntention status")
-		if reconcileErr == nil {
-			reconcileErr = statusErr
+	// Stamped INSIDE the guard — see ClusterIntentionReconciler.Reconcile. PoolIntention is the
+	// `For` type of TWO controllers (this one and PoolReflectionReconciler), so an unconditional
+	// write here woke both on every pass.
+	if !equality.Semantic.DeepEqual(*before, intention.Status) {
+		intention.Status.LastReconcileTime = metav1.Now()
+		if statusErr := r.Status().Update(ctx, &intention); statusErr != nil {
+			log.FromContext(ctx).Error(statusErr, "failed to update PoolIntention status")
+			if reconcileErr == nil {
+				reconcileErr = statusErr
+			}
 		}
 	}
 	return result, reconcileErr

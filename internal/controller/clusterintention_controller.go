@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 
+	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -29,22 +30,30 @@ type ClusterIntentionReconciler struct {
 // +kubebuilder:rbac:groups=cluster.seedmatic.io,resources=clusterintentions/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=cluster.seedmatic.io,resources=clusteradoptions,verbs=get;list;watch;create;update;patch
 
-// Reconcile drives one ClusterIntention. It ALWAYS persists status afterwards, so a failure/wait is
-// visible on the CR itself.
+// Reconcile drives one ClusterIntention. It persists status whenever the status CHANGED, so a
+// failure/wait is visible on the CR itself without every pass writing.
 func (r *ClusterIntentionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	var intention adoptionv1alpha1.ClusterIntention
 	if err := r.Get(ctx, req.NamespacedName, &intention); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	before := intention.Status.DeepCopy()
+
 	result, reconcileErr := r.reconcileSteps(ctx, &intention)
 
 	intention.Status.ObservedGeneration = intention.Generation
-	intention.Status.LastReconcileTime = metav1.Now()
-	if statusErr := r.Status().Update(ctx, &intention); statusErr != nil {
-		log.FromContext(ctx).Error(statusErr, "failed to update ClusterIntention status")
-		if reconcileErr == nil {
-			reconcileErr = statusErr
+	// The timestamp is stamped INSIDE the guard on purpose. Set before the comparison it made every
+	// status differ from the stored one, so every reconcile wrote, every write re-armed the watch,
+	// and the manager span at full speed until its memory limit OOM-killed it. The field now means
+	// "when something last changed", which is the useful reading anyway.
+	if !equality.Semantic.DeepEqual(*before, intention.Status) {
+		intention.Status.LastReconcileTime = metav1.Now()
+		if statusErr := r.Status().Update(ctx, &intention); statusErr != nil {
+			log.FromContext(ctx).Error(statusErr, "failed to update ClusterIntention status")
+			if reconcileErr == nil {
+				reconcileErr = statusErr
+			}
 		}
 	}
 	return result, reconcileErr

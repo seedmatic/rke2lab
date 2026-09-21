@@ -7,6 +7,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -54,15 +55,20 @@ func (r *PoolAdoptionReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	before := adoption.Status.DeepCopy()
+
 	result, reconcileErr := r.reconcileSteps(ctx, &adoption)
 
 	adoption.Status.ObservedGeneration = adoption.Generation
-	adoption.Status.LastReconcileTime = metav1.Now()
 	adoption.Status.Phase = r.derivePhase(&adoption, reconcileErr)
-	if statusErr := r.Status().Update(ctx, &adoption); statusErr != nil {
-		log.FromContext(ctx).Error(statusErr, "failed to update PoolAdoption status")
-		if reconcileErr == nil {
-			reconcileErr = statusErr
+	// Stamped INSIDE the guard — see ClusterIntentionReconciler.Reconcile for the full why.
+	if !equality.Semantic.DeepEqual(*before, adoption.Status) {
+		adoption.Status.LastReconcileTime = metav1.Now()
+		if statusErr := r.Status().Update(ctx, &adoption); statusErr != nil {
+			log.FromContext(ctx).Error(statusErr, "failed to update PoolAdoption status")
+			if reconcileErr == nil {
+				reconcileErr = statusErr
+			}
 		}
 	}
 	return result, reconcileErr
