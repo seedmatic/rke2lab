@@ -702,14 +702,17 @@ public class ManifestSynthesisScenario
     // stageAll, so the passphrase-sealed payloads gain age protection at rest. Before delivery so
     // the THEN's stageAll picks it up. A no-op when nothing reaches in-cluster (a mgmt-only run).
     extractInClusterAsset(rendered);
+    // ONE delivery plan, read by both consumers: it carries the frontier's verdict (a token only
+    // when the gardening gate is open), so neither re-derives "did we push" from the config intent.
+    final Optional<Delivery> delivery = deliveryPlan(effective, rendered);
     then()
         .every_enabled_domain_produced_its_units()
         .and()
         .the_manifests_file_is_written()
         .and()
-        .the_rendered_branch_is_delivered(rendered, deliveryPlan(effective, rendered));
+        .the_rendered_branch_is_delivered(rendered, delivery);
     fileNodeBootstrap(rendered);
-    fileNodeGithubToken(effective, rendered);
+    fileNodeGithubToken(effective, rendered, delivery);
   }
 
   /**
@@ -732,14 +735,20 @@ public class ManifestSynthesisScenario
    * edge MUST be present too — an empty mint is a wiring defect, and a silent skip would only
    * surface as a cryptic node-boot fetch failure. So: fail LOUD.
    */
-  private void fileNodeGithubToken(ManifestsRunbookInput facet, Optional<LinkedWorktree> rendered) {
+  private void fileNodeGithubToken(
+      ManifestsRunbookInput facet, Optional<LinkedWorktree> rendered, Optional<Delivery> delivery) {
     final ClusterRole role =
         ClusterRole.of(
             facet.identity().map(ManifestsRunbookInput.Identity::clusterName).orElse(""));
     if (rendered.isEmpty()
         || cellar == null
         || parcel.isEmpty()
-        || !facet.facets().delivery().push()
+        // A push ACTUALLY happened, not merely armed in config. the_rendered_branch_is_delivered
+        // pushes on `plan.push() && plan.token().isPresent()`, and the token is present only when
+        // the gardening gate is open — so in a survey/preview the config intent stays true while
+        // nothing was pushed. Reading the intent here is what made this demand a reader token the
+        // same closed gate had withheld, and call the absence a wiring defect.
+        || delivery.filter(plan -> plan.push() && plan.token().isPresent()).isEmpty()
         || role == ClusterRole.WRKLD
         || enclosure.map(EnclosureGate::inCluster).orElse(false)) {
       return;
