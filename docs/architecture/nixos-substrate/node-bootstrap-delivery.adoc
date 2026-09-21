@@ -22,6 +22,7 @@ NOTHING that writes to the node's `server/manifests`. The consequence: with
 `services.rke2.cni = "cilium"` the node would still not converge the way the lab needs
 (no HelmChartConfig, no Flux), and nothing seeds the GitOps bootstrap. The loop was open.
 
+[[the-rule]]
 == The rule — bootstrap set vs the rendered branch
 
 The synthesis produces the whole cdk8s tree, but delivery splits by *when* a resource is
@@ -98,6 +99,127 @@ flowchart LR
   `rke2-server`) reads the key and writes `server/manifests/rke2lab-bootstrap.yaml`, so
   RKE2 auto-deploys the CNI + Flux on first boot.
 
+[[second-poser]]
+== The second poser — a node CAPI/CAPN provisions
+
+Steps 1 and 2 above are realm-internal and hold for any cluster. Steps 3 and 4 do NOT: they name
+`InstanceGrow` and a devlxd key. A control node CAPRKE2 provisions is created by CAPN from an
+`LXCMachineTemplate` — no grow touches that instance, so nobody poses the key, and the node's
+`rke2lab-server-manifests.service` (which is in the image, and works) has nothing to read.
+
+Measured on `bioskop-wrkld` the day its first node was born: the bundle never arrived, so cilium fell
+back to RKE2's bundled chart, which dials the apiserver at the in-cluster ClusterIP *before any CNI
+exists*, timed out, and left the node `NotReady: cni plugin not initialized`. Nothing ran there at
+all — so Flux could not have bootstrapped itself either. **The bootstrap set is not an optimisation;
+it is the only reason a greenfielded cluster reaches Ready.**
+
+So the seam does not get replaced, it *bifurcates*: same carve, same artifact, a second poser.
+
+[mermaid]
+----
+flowchart TB
+  ex["exploder carves — UNCHANGED<br/>one bundle per cluster"]
+
+  subgraph A["poser 1 — host (shipped)"]
+    ce1["cellar SERVER_MANIFESTS (SEALED)"]
+    gr1["InstanceGrow → devlxd key"]
+    n1["devlxd oneshot writes the file"]
+    ce1 --> gr1 --> n1
+  end
+
+  subgraph B["poser 2 — CAPI/CAPN"]
+    sec["Secret on THIS lane in rke2lab-&lt;cluster&gt;<br/>the lane that already carries the BYO-CA set<br/>and host-incus-identity — never the branch"]
+    rcp["RKE2ControlPlane.files[]<br/>contentFrom.secret{name, key}<br/>path server/manifests/rke2lab-bootstrap.yaml"]
+    n2["cloud-init write_files,<br/>before rke2 starts"]
+    sec --> rcp --> n2
+  end
+
+  f["server/manifests/rke2lab-bootstrap.yaml"]
+  rke2["rke2 auto-deploys the CNI, then Flux"]
+
+  ex --> ce1
+  ex --> sec
+  n1 --> f
+  n2 --> f
+  f --> rke2
+
+  classDef done fill:#d5f5d5,stroke:#2d7a2d,color:#112
+  classDef todo fill:#fff2cc,stroke:#b8860b,color:#112
+  classDef neutral fill:#e8e8f5,stroke:#555566,color:#112
+  class ce1,gr1,n1 done
+  class sec,rcp,n2 todo
+  class ex,f,rke2 neutral
+----
+
+Four properties make this the shape rather than a variant of it:
+
+* *The credential never enters a spec.* `RKE2ControlPlane.spec.files[].contentFrom.secret{name, key,
+  namespace}` (CAPRKE2 v1beta2) is a REFERENCE, so the bundle stays in a Secret even though the
+  workload's CR-set is itself rendered onto the MANAGER's branch (the rendered-branches model).
+* *Single ownership is preserved with no new rule.* <<the-rule>> already routes a marked resource out
+  of the branch, so Flux never sees these objects on either poser. No dual lane, no reconcile fight,
+  nothing to compare.
+* *Ordering is inherent.* `write_files` precedes `rke2`, which is exactly the guarantee the devlxd
+  oneshot gives by being ordered `Before=rke2-server`.
+* *No new type.* The artifact, the coordinate and the bundle record are the ones in <<the-types>>; only
+  the transport differs.
+
+=== When — no new trigger; the existing material gate
+
+The render is triggered by a push to the rke2lab SOURCE branch, while what needs rendering here is a
+fleet-state change (a workload target appearing). Those are different events, and the gap needs no
+third one: `PoolAdoptionReconciler` already WAITS on material before it stamps the
+`RKE2ControlPlane` — the BYO-CA Secrets, then the RKE2 config ConfigMaps — precisely because `files`
+is injected once at creation (`ensure` is create-if-absent). The bundle Secret joins that same gate.
+
+The event that introduces a target is the GROW: `workloadTargets` is grow-recorded into the root
+`manifest.yaml` and replayed from HEAD by later UPDATEs. So the first render of a target's bundle
+belongs to the grow; source pushes keep it in sync after.
+
+[WARNING]
+====
+*The bundle is a PROVISIONING-time delivery.* `files` is written by cloud-init, so it reaches a node
+CAPRKE2 *creates*. A node that was provisioned without it never receives it, and adoption does not
+change that — which is why a node already running the default cilium chart stays `NotReady` no matter
+how often the pool re-adopts it. It has to be re-provisioned.
+
+Two consequences worth keeping straight:
+
+* A cold start of the MANAGEMENT plane alone is not enough. It wipes etcd, so the
+  `RKE2ControlPlane` is re-created and its spec is then correct (`ensure` is create-if-absent, so a
+  surviving one would NOT be patched) — but the workload's instances survive in Incus, so the pool
+  re-adopts them and no node is provisioned.
+* A host CHECKPOINT (factory reset) destroys the instances with it, so everything is grown afresh:
+  mgmt through poser 1, the workload through poser 2. The workload's reflection survives in git naming
+  a pet whose instance is gone — every pet confirmed absent — which is exactly the
+  link:../cluster-api/cluster-seeding-controller.adoc#void-reflection[void-reflection] path, so the
+  stale CR-set is dropped and CAPRKE2 greenfields against the corrected `RKE2ControlPlane`.
+====
+
+=== The one piece still to design
+
+The carve runs per synthesis pass, so per rendered cluster — and a cluster being born has no pass. The
+manager's pass must therefore run the `ClusterRole.WRKLD` unit set for each of its `workloadTargets`,
+which produces the target's bundle and its `manifests/<cluster>` branch in one gesture. That is the
+open item this seam now depends on; see
+link:../cluster-api/manifests-rendered-branches.adoc[the rendered-branches model].
+
+NOTE: The bootstrap set needs no per-role review: all eight units carrying `nodeBootstrap` sit in
+domains `ClusterRole` enables for BOTH roles (`networking/cilium-config`; `gitops/flux-operator`,
+`flux-instance`, `flux-root`, `githubapp`, `sops-age`; `cicd/pac-secret`, `render-signing`). `cicd` is
+structural for both precisely because each cluster renders its own branch through its own Tekton.
+
+=== Corollary — kube-vip is not a bootstrap concern
+
+`seed-incluster` currently also injects a kube-vip RBAC `File` plus a `preRKE2Commands` recipe meant
+to generate its DaemonSet. Both are to be DELETED, not fixed: the management cluster gets kube-vip
+from Flux (`high-availability-kube-vip`), so a workload should too, from its own branch. The recipe
+could never have worked on this image anyway — it needs `ctr` (only extracted once rke2 starts, and
+this runs *pre*-rke2), `jq` (absent; the fleet convention is `yq`), and a registry pull under
+`airGapped: true`. Its RBAC half is also what collides with the rke2lab unit's own
+`system:kube-vip-role` / `-binding`, bound to a ServiceAccount in a different namespace.
+
+[[the-types]]
 == The types
 
 [cols="1,2,2",options="header"]
@@ -155,6 +277,11 @@ replicator fans each out to the target namespaces where the `replicate-from` pla
 
 == Related
 
+* link:../cluster-api/cluster-seeding-controller.adoc[The cluster seeding controller] — the second
+  poser (<<second-poser>>): it owns the intentions, gates on the material, and stamps the
+  `RKE2ControlPlane` that carries the bundle reference.
+* link:../cluster-api/manifests-rendered-branches.adoc[The rendered branches] — which branch carries
+  what, and the per-target pass this seam now depends on.
 * link:substrate-model.adoc[The substrate model] — the vision this seam serves.
 * link:erofs-store-lower.adoc[The EROFS store lower] — the other thing the image now carries whole: the store, as a read-only EROFS disk with a ZFS upper.
 * link:erofs-store-layer-stack.adoc[The EROFS layer stack] — the same question as this seam, asked of the store rather than of the manifests: what reaches a node, and who materialises it. Answer there: `ndh` packs a layer per generation, the node mounts it.
