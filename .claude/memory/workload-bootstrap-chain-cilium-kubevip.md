@@ -113,28 +113,43 @@ un Secret l'aurait bloqué pour toujours — quasi-régression rattrapée juste 
 Et la recette kube-vip est **supprimée** (seed-incluster `31d5b15fb`, rke2lab `dba8742f3`) : Flux
 l'installe depuis la branche du cluster, comme sur mgmt. `KubeVIPVersion` retiré des deux specs.
 
-## ★★ CE QU'IL RESTE POUR TERMINER LE BOOTSTRAP DE wrkld — UNE SEULE PIÈCE
+## ★★★ ABOUTI — 2026-09-21 22:53, `bioskop-wrkld` est Ready
 
-Vérifié vivant le 2026-09-21 : `PoolAdoption bioskop-wrkld-control-node` est `phase=Pending`,
-`MaterialReady=False MaterialMissing: waiting for Secret bioskop-wrkld-server-manifests in
-rke2lab-bioskop-wrkld`, et `No resources found` pour le `RKE2ControlPlane` — la porte rend avant de
-l'estampiller, donc **aucune instance, aucun nœud cassé, aucun dataset orphelin**. mgmt est
-`Adopted present=1` à côté. L'échec est devenu honnête : il nomme le Secret manquant.
+Vérifié vivant : `bioskop-wrkld-control-plane-v9fhz` **Ready** (`control-plane,etcd`,
+v1.34.10+rke2r1), cilium complet (agent, operator, envoy, hubble, clustermesh), **les 5 contrôleurs
+Flux** et cert-manager `Running`. `PoolAdoption` `Adopted present=1 READY=True`.
 
-**La pièce manquante : la passe par cible.** La passe de synthèse du manager doit jouer le jeu
-d'unités du rôle `ClusterRole.WRKLD` pour chaque `workloadTarget`, ce qui produit d'un même geste (a)
-la branche `manifests/<host>-wrkld` et (b) le bundle d'amorçage de la cible, déposé comme Secret
-`<cluster>-server-manifests` sur la lane NODE_BOOTSTRAP.
+La dernière pièce était **la passe par cible**, livrée en rke2lab `893d719a1` (chemin du plot corrigé
+par `4a75ba222`). Un run joue maintenant **N+1 passes** : une par `workloadTarget` avec le jeu d'unités
+`ClusterRole.WRKLD` sur sa propre branche, puis celle du manager. L'ordre est une **dépendance de
+données** : chaque passe de charge rend son bundle carvé via `WorkloadBootstrapBundlesMaterial` — la
+seule tranche de la requête qui ne vient PAS d'un sceau — et la passe du manager le rend en Secret.
 
-Ce qui est déjà acquis pour ça : le rendu tourne **in-cluster** (Tekton `render-manifests` dans
-`rke2lab-system`) et est **secret-full** ; `workloadTargets` est porté sur la requête ;
-`ClusterRole.of(clusterName)` dérive déjà le bon jeu de domaines ; et la lane NODE_BOOTSTRAP dépose
-**déjà** des Secrets par cible (c'est ainsi que les BYO-CA de wrkld sont arrivés). Le carve est par
-passe de synthèse, d'où le besoin d'une seconde passe. Le socle d'amorçage n'a PAS besoin de revue par
-rôle : ses 8 unités (`networking/cilium-config` ; `gitops/flux-operator`, `flux-instance`,
-`flux-root`, `githubapp`, `sops-age` ; `cicd/pac-secret`, `render-signing`) sont toutes dans des
-domaines que `ClusterRole` active pour les DEUX rôles.
+Chaîne observée de bout en bout : passe cible → `manifests/bioskop-wrkld` poussée → Secret
+`bioskop-wrkld-server-manifests` → porte matérielle ouverte → `RKE2ControlPlane` estampillé → CAPN
+provisionne → cloud-init écrit `server/manifests/rke2lab-bootstrap.yaml` (0600, 20 Ko) → rke2
+auto-deploy l'applique.
 
-Ordre ensuite, sans boucle : Flux naît dans wrkld → il pose kube-vip et le Connector tailscale → la
-VIP existe **et** devient routable → CAPI atteint le cluster. Voir
-[[kubeconfig-context-per-cluster-intention]] pour la tâche jumelle, convenue juste après.
+⚠️ **Le premier apply du bundle ÉCHOUE, et c'est normal** : `namespaces "tekton-pipelines" not found`
+— un ordre interne au multi-doc. Le contrôleur `Addon` de RKE2 réessaie 15 s plus tard et réussit
+(`AppliedManifest`). Ne pas diagnostiquer ce warning comme une panne.
+
+### Le Secret va sur la BRANCHE, pas sur la lane NODE_BOOTSTRAP
+
+La figure de `node-bootstrap-delivery.adoc` justifiait la lane par « celle qui porte déjà le jeu
+BYO-CA ». **Faux** : `ClusterApiCrRenderer.caSecrets` rend sur la branche, sops-chiffré ; seul un
+javadoc périmé disait l'inverse. Les deux corrigés. La lane aurait aussi été fausse
+opérationnellement : elle n'est appliquée qu'au **provisioning** du nœud mgmt, donc une cible
+apparaissant entre deux grows n'aurait jamais son Secret. Committer est sûr : sops chiffre vers le
+**destinataire** age, le dépôt seul ne déchiffre jamais.
+
+### Restes connus, hors bootstrap
+
+- `envoy-gateway-installer` en `CreateContainerError` dans wrkld — couche applicative, pas l'amorçage.
+- `pulumi up` reste **rouge** alors que les clusters sont sains : `sshd-keygen.service` échoue sur le
+  nœud mgmt (`/etc/ssh/ssh_host_rsa_key already exists` → `Overwrite (y/n)?` sur stdin non
+  interactif → exit 1), et la porte systemd exige `failedUnits=0`. Territoire ndh (config openssh du
+  node-base), pas rke2lab.
+- Faire croître le control plane de **mgmt** en HA est bloqué par [[rke2-peer-join-config-gap]].
+
+Voir [[kubeconfig-context-per-cluster-intention]] pour la tâche jumelle, convenue juste après.
