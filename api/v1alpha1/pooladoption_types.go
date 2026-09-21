@@ -112,6 +112,17 @@ type PoolAdoptionStatus struct {
 	// +optional
 	TotalPets int32 `json:"totalPets,omitempty"`
 
+	// VoidedPets is the reflected roster this reconciler last declared VOID — every one of its pets
+	// confirmed gone, so the reflection had nothing left to protect and its CR-set was dropped for
+	// CAPRKE2 to re-provision. It has to be REMEMBERED: once the CR-set is gone the pets read
+	// *undecided* rather than absent (no LXCMachine to carry CAPN's verdict), which is the same
+	// reading as a cold-start, and the adopt branch would faithfully re-mint the very phantoms that
+	// were just dropped. The reflector rewrites the reflection within seconds of the Machine events,
+	// so this normally holds for one or two passes; it also holds if that git push is slow, which is
+	// the case it exists for. Cleared as soon as the reflected roster differs or any pet is present.
+	// +optional
+	VoidedPets []string `json:"voidedPets,omitempty"`
+
 	// ControlPlaneUID is the observed RKE2ControlPlane UID the owned per-pet Machines' ownerRef
 	// carries (control-plane pool only) — the piece GitOps could not pre-set.
 	// +optional

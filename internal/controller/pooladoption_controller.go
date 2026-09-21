@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"time"
 
@@ -222,7 +223,30 @@ func (r *PoolAdoptionReconciler) reconcileSteps(
 		}
 		a.Status.Present, a.Status.Absent, a.Status.Pending = int32(present), int32(absent), int32(pending)
 
-		if len(roster) > 0 && absent == len(roster) {
+		// A roster already voided stays void until reality moves: the reflector rewrites the reflection
+		// (roster differs) or a pet turns up present. Both clear the memory.
+		rosterNames := make([]string, 0, len(states))
+		for _, st := range states {
+			rosterNames = append(rosterNames, st.name)
+		}
+		sort.Strings(rosterNames)
+		// len>0 guards the degenerate empty roster, where slices.Equal(nil, []) would read as "void".
+		stillVoid := len(rosterNames) > 0 && present == 0 && slices.Equal(a.Status.VoidedPets, rosterNames)
+		if !stillVoid {
+			a.Status.VoidedPets = nil
+		}
+
+		switch {
+		case stillVoid:
+			// The CR-set is already gone, so the pets now read UNDECIDED rather than absent — the same
+			// reading as a cold-start. Without this memory the adopt branch below would faithfully
+			// re-mint the phantoms we just dropped, the reflector would observe BOTH them and CAPRKE2's
+			// own Machine, and the reflected roster would grow to two pets — turning the total loss into
+			// a PARTIAL one, which the void case deliberately refuses to act on. Deadlock again, worse.
+			r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, false, "NodesAbsent",
+				fmt.Sprintf("reflection void (%d pet(s) dropped) — awaiting CAPRKE2 + the reflector's rewrite", len(rosterNames)))
+
+		case len(roster) > 0 && absent == len(roster):
 			// VOID reflection: every reflected pet's instance is gone, so there is no survivor for a
 			// greenfield to race — the guard below has nothing left to protect. Holding here instead is a
 			// DEADLOCK, and a self-sustaining one: the reflection names the pets, the adopt branch
@@ -238,9 +262,11 @@ func (r *PoolAdoptionReconciler) reconcileSteps(
 					return ctrl.Result{}, err
 				}
 			}
+			a.Status.VoidedPets = rosterNames
 			r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, false, "NodesAbsent",
 				fmt.Sprintf("reflection void: all %d reflected pet(s) gone — dropped, CAPRKE2 provisioning", absent))
-		} else {
+
+		default:
 			for _, st := range states {
 				if st.adopted {
 					// CAPRKE2 already owns this pet: its Machine exists and points at an LXCMachine it named
