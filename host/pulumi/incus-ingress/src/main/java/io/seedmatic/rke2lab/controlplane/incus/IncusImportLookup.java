@@ -4,7 +4,6 @@ import com.pulumi.deployment.Deployment;
 import com.pulumi.incus.IncusFunctions;
 import com.pulumi.incus.inputs.GetImagePlainArgs;
 import com.pulumi.incus.inputs.GetNetworkPlainArgs;
-import com.pulumi.incus.inputs.GetProfilePlainArgs;
 import com.pulumi.incus.inputs.GetProjectPlainArgs;
 import java.util.Locale;
 import java.util.Optional;
@@ -82,26 +81,6 @@ public final class IncusImportLookup {
       return normalizeImportId(project.id()).or(() -> normalizeImportId(project.name()));
     } catch (Exception ex) {
       log.accept("incus lookup getProject: failed (" + summarizeLookupFailure(ex) + ")");
-      return Optional.empty();
-    }
-  }
-
-  /** The import id to adopt an existing (project-scoped) profile, or empty when none found. */
-  public Optional<String> existingProfileId(String profileName, String incusProject) {
-    log.accept("incus lookup getProfile: start name=" + profileName + " project=" + incusProject);
-    try {
-      final var profile =
-          IncusFunctions.getProfilePlain(
-                  GetProfilePlainArgs.builder().name(profileName).project(incusProject).build(),
-                  context.invokeOptions())
-              .orTimeout(invokeTimeoutSeconds(), TimeUnit.SECONDS)
-              .join();
-      if (profile == null) {
-        return Optional.empty();
-      }
-      return normalizeImportId(profile.id()).or(() -> normalizeImportId(profile.name()));
-    } catch (Exception ex) {
-      log.accept("incus lookup getProfile: failed (" + summarizeLookupFailure(ex) + ")");
       return Optional.empty();
     }
   }

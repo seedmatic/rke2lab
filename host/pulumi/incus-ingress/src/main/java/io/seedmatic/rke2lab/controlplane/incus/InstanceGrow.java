@@ -224,34 +224,33 @@ public final class InstanceGrow {
   }
 
   private Output<String> ensureProfile(Resource projectDependency) {
-    // A profile the host pre-created is ADOPTED BY OMISSION — referenced by name, never re-declared
-    // (its devices/config are host-owned), mirroring the vmnet bridge. Importing it instead churns:
-    // incus reads a profile's project back as null, and project is ForceNew, so an imported profile
-    // is perpetually flagged for a replacement the import declaration then forbids. Only a virgin
-    // host (no such profile) gets a fresh Pulumi-managed one.
+    // DECLARED, always — never adopted by omission. Skipping the declaration when the daemon
+    // already
+    // holds the profile is what made its config write-once, and worse: Pulumi creates it once, the
+    // daemon then has it, so the NEXT run skips it and the resource leaves state entirely
+    // (`delete[retain]`, demonstrated 2026-09-21). The guard caused the very state loss it existed
+    // to work around, and a nodeProfileConfig() change reached nothing until someone deleted the
+    // profile by hand — which is how six kernel modules cilium needs on an nftables-only host sat
+    // missing from the live profile while the code had them, invisible until a host reboot.
     //
-    // RE-TESTED against provider 1.2.0 on 2026-09-21 — still churns, so do not try again without
-    // new
-    // evidence. Declaring these with .importId() (the pattern the Project resource above uses
-    // happily, and which the Certificate resource now uses too) previewed as "+-8 to replace", with
-    // `project: {<nil>} => {<nil>}` and "previously-imported resources that still specify an ID may
-    // not be replaced; please remove the `import` declaration". Certificates escape it only because
-    // they are daemon-scoped and carry no project at all.
+    // Declared and in state, it simply DIFFS, so `config` is NOT ignored: reconciling it is the
+    // point. No `.importId()` either — that is a separate defect: on a resource Pulumi already
+    // holds, the import declaration plans a replacement with no property diff ("+-8 to replace",
+    // `project: {<nil>} => {<nil>}`, "previously-imported resources that still specify an ID may
+    // not
+    // be replaced"), and provider 1.2.0 does not fix that read-back. `devices` stays ignored (the
+    // provider models it as an ordered list, which churns) and so does `project` (read back null,
+    // and ForceNew).
     //
-    // The price, paid knowingly: this profile's CONFIG is write-once. A nodeProfileConfig() change
-    // reaches nothing until the profile is deleted by hand — which is how the six kernel modules
-    // cilium needs on an nftables-only host sat missing from the live profile while the code had
-    // them, invisible until a host reboot would have taken cilium down with it.
-    if (importLookup.existingProfileId(NODE_BASE_PROFILE, config.incusProject()).isPresent()) {
-      return Output.of(NODE_BASE_PROFILE);
-    }
-
+    // The remaining cost, accepted: a profile in the daemon but NOT in state — a state loss, or one
+    // an operator made by hand — fails the create loudly with "already exists". Loud and rare beats
+    // silently unmanaged.
     final CustomResourceOptions options =
         CustomResourceOptions.builder()
             .provider(providerContext.provider())
             .retainOnDelete(true)
             .dependsOn(List.of(projectDependency))
-            .ignoreChanges(List.of("name", "project", "devices", "config", "description"))
+            .ignoreChanges(List.of("name", "project", "devices", "description"))
             .build();
 
     // The common node profile: root disk + the privileged-container config + kmsg/zfs unix-char +
@@ -393,15 +392,13 @@ public final class InstanceGrow {
   private Output<String> ensureNodeProfile(
       String cluster, GrowNetworkView.ClusterBridge bridge, Resource projectDependency) {
     final String profileName = "node-" + cluster;
-    if (importLookup.existingProfileId(profileName, config.incusProject()).isPresent()) {
-      return Output.of(profileName);
-    }
+    // Declared always, like node-base above — same reasons, same ignore set.
     final CustomResourceOptions options =
         CustomResourceOptions.builder()
             .provider(providerContext.provider())
             .retainOnDelete(true)
             .dependsOn(List.of(projectDependency))
-            .ignoreChanges(List.of("name", "project", "devices", "config", "description"))
+            .ignoreChanges(List.of("name", "project", "devices", "description"))
             .build();
 
     return new Profile(
