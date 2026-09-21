@@ -1,0 +1,60 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: mesh
+    io.seedmatic.rke2lab/package: headplane
+  name: headplane-agent-sync
+  namespace: mesh-system
+spec:
+  template:
+    metadata:
+      annotations:
+        flox.seedmatic.io/environment.sync: mesh/headplane
+        io.seedmatic.rke2lab/domain: mesh
+        io.seedmatic.rke2lab/package: headplane
+    spec:
+      containers:
+      - command:
+        - /scripts/agent-sync.sh
+        envFrom:
+        - configMapRef:
+            name: headplane-env
+        image: rke2lab/flox-carrier:0.1.0
+        name: sync
+        resources:
+          limits:
+            cpu: 200m
+            ephemeral-storage: 256Mi
+            memory: 128Mi
+          requests:
+            cpu: 50m
+            ephemeral-storage: 128Mi
+            memory: 64Mi
+        volumeMounts:
+        - mountPath: /scripts
+          name: agent-sync-script
+          readOnly: true
+        - mountPath: /etc/headplane-template/config.yaml
+          name: config-template
+          readOnly: true
+          subPath: config.yaml
+        - mountPath: /secrets/headscale
+          name: headscale-auth
+          readOnly: true
+      restartPolicy: OnFailure
+      serviceAccountName: headplane
+      volumes:
+      - configMap:
+          defaultMode: 493
+          name: headplane-agent-sync-script
+        name: agent-sync-script
+      - name: config-template
+        secret:
+          secretName: headplane-config-tmpl
+      - name: headscale-auth
+        secret:
+          optional: false
+          secretName: headscale-client-auth
+  ttlSecondsAfterFinished: 300

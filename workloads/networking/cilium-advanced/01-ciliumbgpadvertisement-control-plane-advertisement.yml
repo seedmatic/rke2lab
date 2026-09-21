@@ -1,0 +1,19 @@
+---
+apiVersion: cilium.io/v2
+kind: CiliumBGPAdvertisement
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: networking
+    io.seedmatic.rke2lab/package: cilium-advanced
+  name: control-plane-advertisement
+spec:
+  advertisements:
+  - advertisementType: Service
+    selector:
+      matchLabels:
+        io.cilium/lb-ipam-pool: cluster
+    service:
+      addresses:
+      - ExternalIP
+      - LoadBalancerIP
+  - advertisementType: PodCIDR

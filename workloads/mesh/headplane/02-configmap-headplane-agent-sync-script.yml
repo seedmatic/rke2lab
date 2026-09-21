@@ -1,0 +1,29 @@
+---
+apiVersion: v1
+data:
+  agent-sync.sh: |
+    #!/bin/sh
+    set -exuo pipefail
+
+    # Read the authkey from the mounted secret volume (k8s already decoded it).
+    AUTHKEY=$(cat /secrets/headscale/authkey)
+    kubectl create secret generic headplane-agent-auth \
+      -n "${HEADPLANE_NAMESPACE}" \
+      --from-literal=preauthkey="${AUTHKEY}" \
+      --dry-run=client -o yaml | kubectl apply -f -
+
+    yq eval '.server.base_url = strenv(HEADPLANE_BASE_URL) |
+      .server.cookie_secure = (strenv(HEADPLANE_COOKIE_SECURE) | downcase == "true") |
+      .headscale.url = strenv(HEADSCALE_SERVICE_URL)' \
+      /etc/headplane-template/config.yaml > /tmp/config.$$.yaml
+    kubectl create secret generic headplane-config \
+      -n "${HEADPLANE_NAMESPACE}" \
+      --from-file=config.yaml=/tmp/config.$$.yaml \
+      --dry-run=client -o yaml | kubectl apply -f -
+kind: ConfigMap
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: mesh
+    io.seedmatic.rke2lab/package: headplane
+  name: headplane-agent-sync-script
+  namespace: mesh-system

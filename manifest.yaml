@@ -1,0 +1,22 @@
+source:
+  sha: 893d719a18dedfb741631c78bb17772aa4c77c7c
+  dirty: true
+facet:
+  debug:
+    mesh:
+      enabled: false
+    networking:
+      enabled: false
+    nriPlugins:
+      flox:
+        enabled: false
+  delivery:
+    push: true
+  workloadTargets: []
+image:
+  imageAlias: node-base
+  imageFingerprint: 030d237c98ac0958aee720694d3ae6eab20a94787f82227c4e7d7ef24d918113
+  imageBuildChecksum: 6ee8415136fdef6424db980f54bc4d06ccf4db3025ad35fec0db3397f4863ea6
+  incusProject: rke2lab
+  incusRemoteAddress: https://bioskop-nixos:8443
+  rke2Version: 1.34.10+rke2r1

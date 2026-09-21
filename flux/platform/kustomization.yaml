@@ -1,0 +1,11 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- platform-cert-manager-foundation.yml
+- platform-cert-manager-workloads.yml
+- platform-cluster-issuer-foundation.yml
+- platform-cluster-issuer-workloads.yml
+- platform-github-token-manager-operators.yml
+- platform-github-token-manager-workloads.yml
+- platform-replicator.yml

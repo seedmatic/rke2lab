@@ -1,0 +1,12 @@
+---
+apiVersion: v1
+data:
+  members: v1|Namespace||mesh-system
+kind: ConfigMap
+metadata:
+  annotations:
+    config.kubernetes.io/local-config: "true"
+    io.seedmatic.rke2lab/domain: mesh
+    io.seedmatic.rke2lab/manifest-group: "true"
+    io.seedmatic.rke2lab/package: system-namespace
+  name: system-namespace.group

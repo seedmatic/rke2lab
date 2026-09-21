@@ -1,0 +1,17 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: mesh
+    io.seedmatic.rke2lab/package: headscale
+  name: headscale-bootstrap
+  namespace: mesh-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: headscale-bootstrap
+subjects:
+- kind: ServiceAccount
+  name: headscale-bootstrap
+  namespace: mesh-system

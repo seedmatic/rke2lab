@@ -1,0 +1,28 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    io.cilium/lb-ipam-ips: 192.168.1.193
+    io.seedmatic.rke2lab/domain: mesh
+    io.seedmatic.rke2lab/package: headscale
+    tailscale.com/expose: "true"
+    tailscale.com/hostname: bioskop-wrkld-headscale
+  labels:
+    app: headscale
+    io.cilium/lb-ipam-pool: lan
+  name: headscale
+  namespace: mesh-system
+spec:
+  ports:
+  - name: http
+    port: 8080
+    protocol: TCP
+    targetPort: 8080
+  - name: metrics
+    port: 9090
+    protocol: TCP
+    targetPort: 9090
+  selector:
+    app: headscale
+  type: LoadBalancer

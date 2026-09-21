@@ -1,0 +1,16 @@
+---
+allowVolumeExpansion: true
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: storage
+    io.seedmatic.rke2lab/package: openebs-zfs
+    storageclass.kubernetes.io/is-default-class: "true"
+  name: openebs-zfs
+parameters:
+  fstype: zfs
+  poolname: tank/rke2lab/control-nodes/master
+provisioner: zfs.csi.openebs.io
+reclaimPolicy: Delete
+volumeBindingMode: Immediate

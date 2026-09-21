@@ -1,0 +1,17 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: mesh
+    io.seedmatic.rke2lab/package: headplane
+  name: headplane-k8s-integration
+  namespace: mesh-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: headplane-k8s-integration
+subjects:
+- kind: ServiceAccount
+  name: headplane
+  namespace: mesh-system

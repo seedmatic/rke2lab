@@ -1,0 +1,27 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    io.cilium/lb-ipam-ips: "${cluster-lan-headplane-inetaddr}"
+    io.seedmatic.rke2lab/domain: mesh
+    io.seedmatic.rke2lab/package: headplane
+    kubernetes.io/ingress.class: cilium
+    lab42.io/mdns.enabled: "true"
+    lab42.io/mdns.host: headplane
+    lab42.io/mdns.name: headplane
+  name: headplane
+  namespace: mesh-system
+spec:
+  ingressClassName: cilium
+  rules:
+  - host: headplane.local
+    http:
+      paths:
+      - backend:
+          service:
+            name: headplane
+            port:
+              number: 3000
+        path: /admin
+        pathType: Prefix

@@ -1,0 +1,42 @@
+---
+apiVersion: v1
+data:
+  acl.json: |-
+    {
+      "groups": {
+        "group:admin": []
+      },
+      "tagOwners": {
+        "tag:darwin": ["group:admin"],
+        "tag:nixos": ["group:admin"],
+        "tag:rke2": ["group:admin"]
+      },
+      "acls": [
+        {
+          "action": "accept",
+          "src": ["*"],
+          "dst": ["*:*"]
+        }
+      ],
+      "ssh": [
+        {
+          "action": "accept",
+          "src": ["group:admin", "tag:darwin", "tag:nixos"],
+          "dst": ["autogroup:tagged"],
+          "users": ["autogroup:nonroot", "root"]
+        },
+        {
+          "action": "accept",
+          "src": ["group:admin"],
+          "dst": ["autogroup:member"],
+          "users": ["autogroup:nonroot", "root"]
+        }
+      ]
+    }
+kind: ConfigMap
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: mesh
+    io.seedmatic.rke2lab/package: headscale
+  name: headscale-acl
+  namespace: mesh-system

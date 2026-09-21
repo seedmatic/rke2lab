@@ -1,0 +1,15 @@
+---
+apiVersion: v1
+data:
+  HEADPLANE_BASE_URL: http://headplane.mesh-system.svc.cluster.local:3000
+  HEADPLANE_COOKIE_SECURE: "false"
+  HEADPLANE_NAMESPACE: mesh-system
+  HEADSCALE_NAMESPACE: mesh-system
+  HEADSCALE_SERVICE_URL: http://headscale.mesh-system.svc.cluster.local:8080
+kind: ConfigMap
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: mesh
+    io.seedmatic.rke2lab/package: headplane
+  name: headplane-env
+  namespace: mesh-system

@@ -1,0 +1,13 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- runtime-flox-catalog-operators.yml
+- runtime-flox-catalog-workloads.yml
+- runtime-flox-controller-crds.yml
+- runtime-flox-controller-operators.yml
+- runtime-flox-controller-workloads.yml
+- runtime-flox-envs.yml
+- runtime-flox-webhook-operators.yml
+- runtime-flox-webhook-workloads.yml
+- runtime-rke2-config.yml

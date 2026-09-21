@@ -1,0 +1,38 @@
+---
+apiVersion: v1
+data:
+  gateway.sh: |
+    #!/usr/bin/env bash
+    set -exuo pipefail
+
+    : "[i] Enabling IP forwarding..."
+    echo 1 > /proc/sys/net/ipv4/ip_forward
+    echo 1 > /proc/sys/net/ipv6/conf/all/forwarding || true
+
+    : "[i] Starting tailscaled router..."
+    tailscaled --state=/var/lib/tailscale/tailscaled.state --socket=/var/run/tailscale/tailscaled.sock &
+    TAILSCALED_PID=$!
+
+    until [ -S /var/run/tailscale/tailscaled.sock ]; do sleep 1; done
+
+    tailscale up \
+      --login-server=$HEADSCALE_URL \
+      --authkey=file:/var/secrets/authkey \
+      --hostname=${DARWIN_HOST}-gateway \
+      --advertise-routes=${VIP_NETWORK_CIDR} \
+      --accept-dns=false \
+      --ssh \
+      --reset
+
+    tailscale set --advertise-routes=${VIP_NETWORK_CIDR}
+
+    wait $TAILSCALED_PID
+kind: ConfigMap
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: mesh
+    io.seedmatic.rke2lab/package: headscale
+  labels:
+    app: headscale-gateway
+  name: headscale-gateway-script
+  namespace: mesh-system

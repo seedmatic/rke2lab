@@ -1,0 +1,19 @@
+---
+apiVersion: cilium.io/v2alpha1
+kind: CiliumL2AnnouncementPolicy
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: mesh
+    io.seedmatic.rke2lab/package: headscale
+  name: lan-policy
+spec:
+  interfaces:
+  - ^lan0$
+  loadBalancerIPs: true
+  nodeSelector:
+    matchExpressions:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+  serviceSelector:
+    matchLabels:
+      io.cilium/lb-ipam-pool: lan

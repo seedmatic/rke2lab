@@ -1,0 +1,18 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: tailscale
+    io.seedmatic.rke2lab/layer: operators
+    io.seedmatic.rke2lab/package: funnel-state
+  name: funnel-state
+  namespace: tailscale-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: funnel-state
+subjects:
+- kind: ServiceAccount
+  name: funnel-state
+  namespace: tailscale-system

@@ -1,0 +1,113 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: cicd
+    io.seedmatic.rke2lab/package: tekton-pipelines
+  labels:
+    operator.tekton.dev/release: v0.81.1
+    version: v0.81.1
+  name: tekton-operator
+  namespace: tekton-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: tekton-operator
+  template:
+    metadata:
+      labels:
+        app: tekton-operator
+        name: tekton-operator
+    spec:
+      containers:
+      - args:
+        - -controllers
+        - "tektonconfig,tektonpipeline,tektontrigger,tektonchain,tektonresult,tektondashboard,manualapprovalgate,tektonpruner,tektonscheduler,tektonmulticlusterproxyaae,openshiftpipelinesascode"
+        - -unique-process-name
+        - tekton-operator-lifecycle
+        env:
+        - name: KUBERNETES_MIN_VERSION
+          value: v1.0.0
+        - name: SYSTEM_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: OPERATOR_NAME
+          value: tekton-operator
+        - name: IMAGE_PIPELINES_PROXY
+          value: ghcr.io/tektoncd/operator/proxy-webhook-f6167da7bc41b96a27c5529f850e63d1:v0.81.1@sha256:01c073b53f09675ae8d18076b2dc608ea88c63f3cf453757b63ac3e8e4eefc65
+        - name: IMAGE_JOB_PRUNER_TKN
+          value: ghcr.io/tektoncd/plumbing/tkn@sha256:233de6c8b8583a34c2379fa98d42dba739146c9336e8d41b66030484357481ed
+        - name: METRICS_DOMAIN
+          value: tekton.dev/operator
+        - name: VERSION
+          value: v0.81.1
+        - name: CONFIG_OBSERVABILITY_NAME
+          value: tekton-config-observability
+        - name: CONFIG_LEADERELECTION_NAME
+          value: tekton-operator-controller-config-leader-election
+        - name: AUTOINSTALL_COMPONENTS
+          valueFrom:
+            configMapKeyRef:
+              key: AUTOINSTALL_COMPONENTS
+              name: tekton-config-defaults
+        - name: DEFAULT_TARGET_NAMESPACE
+          valueFrom:
+            configMapKeyRef:
+              key: DEFAULT_TARGET_NAMESPACE
+              name: tekton-config-defaults
+        image: ghcr.io/tektoncd/operator/operator-303303c315a48490ba6517859ef65b77:v0.81.1@sha256:3ff013f3078eb7235f29d0e50f9aa40d8c7dc653a860c8f6591df2f5e9a24579
+        imagePullPolicy: IfNotPresent
+        name: tekton-operator-lifecycle
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+          seccompProfile:
+            type: RuntimeDefault
+      - args:
+        - -controllers
+        - tektoninstallerset
+        - -unique-process-name
+        - tekton-operator-cluster-operations
+        env:
+        - name: KUBERNETES_MIN_VERSION
+          value: v1.0.0
+        - name: SYSTEM_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: OPERATOR_NAME
+          value: tekton-operator
+        - name: PROFILING_PORT
+          value: "9009"
+        - name: VERSION
+          value: v0.81.1
+        - name: METRICS_DOMAIN
+          value: tekton.dev/operator
+        - name: CONFIG_LEADERELECTION_NAME
+          value: tekton-operator-controller-config-leader-election
+        image: ghcr.io/tektoncd/operator/operator-303303c315a48490ba6517859ef65b77:v0.81.1@sha256:3ff013f3078eb7235f29d0e50f9aa40d8c7dc653a860c8f6591df2f5e9a24579
+        imagePullPolicy: IfNotPresent
+        name: tekton-operator-cluster-operations
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+          seccompProfile:
+            type: RuntimeDefault
+      serviceAccountName: tekton-operator
