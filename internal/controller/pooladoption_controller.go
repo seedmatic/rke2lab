@@ -184,17 +184,29 @@ func (r *PoolAdoptionReconciler) reconcileSteps(
 		r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, false, "NodesAbsent",
 			fmt.Sprintf("greenfield: no reflection — CAPRKE2 provisioning %d control-node(s)", len(roster)))
 	} else {
-		// ADOPT, per pet in the ROSTER: pre-create the owned Machine + concrete LXCMachine(providerID)
-		// + bootstrap sentinel, so CAPRKE2 counts it as its replica (no re-bootstrap) and CAPN ADOPTS
-		// the running instance. Idempotent: a post-greenfield steady-state finds CAPRKE2's own Machines
-		// already present (no-op); a cold-start re-creates them → CAPN adopts the survivors by
-		// providerID. We never probe Incus ourselves — CAPN reports present/absent on the LXCMachine.
+		// ADOPT, per pet in the ROSTER: for a pet CAPRKE2 does NOT already own, pre-create the owned
+		// Machine + concrete LXCMachine(providerID) + bootstrap sentinel, so CAPRKE2 counts it as its
+		// replica (no re-bootstrap) and CAPN ADOPTS the running instance — that is how a cold-start
+		// re-adopts the survivors by providerID. A pet CAPRKE2 already owns is left strictly alone; we
+		// only read CAPN's verdict off the LXCMachine its Machine points at. We never probe Incus.
 		//
 		// Presence is probed BEFORE anything is ensured: a reflection whose pets are ALL gone is void
 		// (below), and ensuring its CR-set first would re-create the very Machines that keep it alive.
+		type petState struct {
+			name      string
+			infraName string
+			adopted   bool
+		}
+		states := make([]petState, 0, len(roster))
 		absent, pending := 0, 0
 		for _, pet := range roster {
-			isPresent, decided, perr := r.lxcMachinePresence(ctx, spec, pet.Name)
+			infraName, adopted, gerr := r.petInfraName(ctx, spec, pet.Name)
+			if gerr != nil {
+				r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, false, "Error", "infra ref "+pet.Name+": "+gerr.Error())
+				return ctrl.Result{}, gerr
+			}
+			states = append(states, petState{name: pet.Name, infraName: infraName, adopted: adopted})
+			isPresent, decided, perr := r.lxcMachinePresence(ctx, spec, infraName)
 			if perr != nil {
 				r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, false, "Error", "presence "+pet.Name+": "+perr.Error())
 				return ctrl.Result{}, perr
@@ -219,21 +231,28 @@ func (r *PoolAdoptionReconciler) reconcileSteps(
 			// longer believe in and let CAPRKE2 provision; the reflector then overwrites the reflection
 			// from the emergent roster. (Dropping the Machines is what un-satisfies CAPRKE2's replica
 			// count — leaving them would keep it counting phantoms and provisioning nothing.)
-			for _, pet := range roster {
-				if err := r.deletePetCRSet(ctx, spec, pet.Name, rcpUID); err != nil {
+			for _, st := range states {
+				if err := r.deletePetCRSet(ctx, spec, st.name, st.infraName, rcpUID); err != nil {
 					r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, false, "Error",
-						"voiding "+pet.Name+": "+err.Error())
+						"voiding "+st.name+": "+err.Error())
 					return ctrl.Result{}, err
 				}
 			}
 			r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, false, "NodesAbsent",
 				fmt.Sprintf("reflection void: all %d reflected pet(s) gone — dropped, CAPRKE2 provisioning", absent))
 		} else {
-			for _, pet := range roster {
+			for _, st := range states {
+				if st.adopted {
+					// CAPRKE2 already owns this pet: its Machine exists and points at an LXCMachine it named
+					// itself. Ensuring ours would mint a RIVAL LXCMachine under the pet's name that no Machine
+					// references — CAPN skips an un-owned one, so it never reports presence and the pool waits
+					// on it forever while the real node runs.
+					continue
+				}
 				for _, obj := range []*unstructured.Unstructured{
-					r.bootstrapSecretObj(spec, pet.Name),
-					r.lxcMachineObj(spec, pet.Name),
-					r.machineObj(spec, pet.Name, rcpUID),
+					r.bootstrapSecretObj(spec, st.name),
+					r.lxcMachineObj(spec, st.name),
+					r.machineObj(spec, st.name, rcpUID),
 				} {
 					if err := ensure(ctx, r.Client, obj); err != nil {
 						r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, false, "Error",
@@ -506,17 +525,44 @@ func (r *PoolAdoptionReconciler) lxcMachinePresence(
 	return false, false, nil
 }
 
-// deletePetCRSet drops the CR-set this reconciler pre-created for a pet, Machine FIRST (it is the one
-// CAPRKE2 counts as a replica, so it must go for the provisioning to be re-armed). Already-absent is
+// petInfraName resolves the pet's infrastructure object THROUGH its Machine's infrastructureRef, and
+// reports whether that Machine exists at all. The indirection is the point: only when WE mint the pair
+// do the pet, its Machine, its LXCMachine and the instance all share one name. After a greenfield CAPI
+// names the Machine and its LXCMachine independently (…-mgqbm owning …-qs5dg) and the reflector
+// reflects the MACHINE name, so the pet name does NOT name the LXCMachine that carries CAPN's verdict.
+func (r *PoolAdoptionReconciler) petInfraName(
+	ctx context.Context, spec adoptionv1alpha1.PoolAdoptionSpec, petName string,
+) (infraName string, machineExists bool, err error) {
+	m := &unstructured.Unstructured{}
+	m.SetGroupVersionKind(gvkMachine)
+	if getErr := r.Get(ctx, types.NamespacedName{Namespace: spec.Namespace, Name: petName}, m); getErr != nil {
+		if apierrors.IsNotFound(getErr) {
+			return petName, false, nil
+		}
+		return "", false, getErr
+	}
+	if name, _, _ := unstructured.NestedString(m.Object, "spec", "infrastructureRef", "name"); name != "" {
+		return name, true, nil
+	}
+	return petName, true, nil
+}
+
+// deletePetCRSet drops the CR-set behind a pet, Machine FIRST (it is the one CAPRKE2 counts as a
+// replica, so it must go for the provisioning to be re-armed). Both LXCMachine names are covered: the
+// one the Machine points at, and the pet-named one an earlier pass may have minted. Already-absent is
 // success — the set is torn down piecemeal by ownerRef GC in the ordinary case.
 func (r *PoolAdoptionReconciler) deletePetCRSet(
-	ctx context.Context, spec adoptionv1alpha1.PoolAdoptionSpec, nodeName string, rcpUID types.UID,
+	ctx context.Context, spec adoptionv1alpha1.PoolAdoptionSpec, nodeName, infraName string, rcpUID types.UID,
 ) error {
-	for _, obj := range []*unstructured.Unstructured{
+	objs := []*unstructured.Unstructured{
 		r.machineObj(spec, nodeName, rcpUID),
-		r.lxcMachineObj(spec, nodeName),
-		r.bootstrapSecretObj(spec, nodeName),
-	} {
+		r.lxcMachineObj(spec, infraName),
+	}
+	if infraName != nodeName {
+		objs = append(objs, r.lxcMachineObj(spec, nodeName))
+	}
+	objs = append(objs, r.bootstrapSecretObj(spec, nodeName))
+	for _, obj := range objs {
 		if err := r.Delete(ctx, obj); err != nil && !apierrors.IsNotFound(err) {
 			return fmt.Errorf("delete %s %s: %w", obj.GetKind(), obj.GetName(), err)
 		}
