@@ -26,15 +26,9 @@ import io.seedmatic.rke2lab.incus.ingress.GrowNetworkView;
 import io.seedmatic.rke2lab.incus.ingress.IngressConfig;
 import io.seedmatic.rke2lab.incus.ingress.InstanceGrowPlan;
 import io.seedmatic.rke2lab.incus.ingress.SplitImageFingerprint;
-import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.security.GeneralSecurityException;
-import java.security.MessageDigest;
-import java.security.cert.CertificateFactory;
-import java.security.cert.X509Certificate;
 import java.util.Base64;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -136,12 +130,6 @@ public final class InstanceGrow {
   }
 
   /**
-   * Ensure EVERY vmnet bridge the host carries — one per cluster co-located on it (vmnet is
-   * isolated per-cluster), so a workload cluster's bridge + dnsmasq reservations exist for CAPN to
-   * DHCP-provision it in-cluster even though only the management node grows standalone. The scion
-   * assembled each bridge's config OSGi-side from the netplan blueprint; the host only poses it.
-   */
-  /**
    * The capn-provider trust entry. The daemon MUST trust the certificate the IN-CLUSTER CAPN
    * provider authenticates with, or CAPN answers `not authorized` on every reconcile — a failure
    * that surfaces only as a Cluster API health-check timeout several layers up, with the real cause
@@ -149,9 +137,13 @@ public final class InstanceGrow {
    * re-minting a node's Incus certificates, or re-materialising the node, drops the entry and
    * nothing else brings it back.
    *
-   * <p>Adopted by {@code importId} when the entry is already there (an operator may have added it
-   * by hand), keyed on the content fingerprint — the trust store's own key, so no naming convention
-   * has to agree. The lookup needs provider 1.2.0, which added the certificate data source.
+   * <p>NOT adopted by {@code importId}, though it was at first — to take over the entry an operator
+   * had added by hand to unblock CAPN. That adoption happened once; leaving the import declaration
+   * on a resource Pulumi now holds in state made every run plan a replacement with NO property diff
+   * (observed 2026-09-21: {@code importing replacement} → {@code replacing[retain]}), the same
+   * defect the profile workaround above documents. So the declaration goes: from here the resource
+   * is state-managed and diffs normally, and a hand-added entry on a virgin host collides once,
+   * loudly, rather than churning forever.
    */
   private void ensureCapnTrust() {
     final String pem = config.capnProviderCertPem();
@@ -159,10 +151,11 @@ public final class InstanceGrow {
       log.accept("incus capn trust: no capn-provider certificate in the ingress config; skipping");
       return;
     }
-    final String fingerprint = certificateFingerprint(pem);
-    final CustomResourceOptions.Builder options =
-        CustomResourceOptions.builder().provider(providerContext.provider()).retainOnDelete(true);
-    importLookup.existingCertificateId(fingerprint).ifPresent(options::importId);
+    final CustomResourceOptions options =
+        CustomResourceOptions.builder()
+            .provider(providerContext.provider())
+            .retainOnDelete(true)
+            .build();
 
     new Certificate(
         "seed-capn-provider-trust",
@@ -172,27 +165,15 @@ public final class InstanceGrow {
             .certificate(pem)
             .description("rke2lab: the in-cluster CAPN provider's identity")
             .build(),
-        options.build());
+        options);
   }
 
   /**
-   * The trust store's key for a certificate: SHA-256 over its DER encoding, lowercase hex — what
-   * {@code incus config trust list} shows truncated to twelve characters.
+   * Ensure EVERY vmnet bridge the host carries — one per cluster co-located on it (vmnet is
+   * isolated per-cluster), so a workload cluster's bridge + dnsmasq reservations exist for CAPN to
+   * DHCP-provision it in-cluster even though only the management node grows standalone. The scion
+   * assembled each bridge's config OSGi-side from the netplan blueprint; the host only poses it.
    */
-  private static String certificateFingerprint(String pem) {
-    try {
-      final X509Certificate certificate =
-          (X509Certificate)
-              CertificateFactory.getInstance("X.509")
-                  .generateCertificate(
-                      new ByteArrayInputStream(pem.getBytes(StandardCharsets.UTF_8)));
-      return HexFormat.of()
-          .formatHex(MessageDigest.getInstance("SHA-256").digest(certificate.getEncoded()));
-    } catch (GeneralSecurityException ex) {
-      throw new IllegalStateException("could not fingerprint the capn-provider certificate", ex);
-    }
-  }
-
   private void ensureNetworks(Resource projectDependency, GrowNetworkView view) {
     view.clusterBridges()
         .values()
@@ -248,6 +229,19 @@ public final class InstanceGrow {
     // incus reads a profile's project back as null, and project is ForceNew, so an imported profile
     // is perpetually flagged for a replacement the import declaration then forbids. Only a virgin
     // host (no such profile) gets a fresh Pulumi-managed one.
+    //
+    // RE-TESTED against provider 1.2.0 on 2026-09-21 — still churns, so do not try again without
+    // new
+    // evidence. Declaring these with .importId() (the pattern the Project resource above uses
+    // happily, and which the Certificate resource now uses too) previewed as "+-8 to replace", with
+    // `project: {<nil>} => {<nil>}` and "previously-imported resources that still specify an ID may
+    // not be replaced; please remove the `import` declaration". Certificates escape it only because
+    // they are daemon-scoped and carry no project at all.
+    //
+    // The price, paid knowingly: this profile's CONFIG is write-once. A nodeProfileConfig() change
+    // reaches nothing until the profile is deleted by hand — which is how the six kernel modules
+    // cilium needs on an nftables-only host sat missing from the live profile while the code had
+    // them, invisible until a host reboot would have taken cilium down with it.
     if (importLookup.existingProfileId(NODE_BASE_PROFILE, config.incusProject()).isPresent()) {
       return Output.of(NODE_BASE_PROFILE);
     }
