@@ -10,6 +10,7 @@ data:
     v1|Secret|rke2lab-bioskop-wrkld|bioskop-wrkld-cca
     v1|Secret|rke2lab-bioskop-wrkld|bioskop-wrkld-etcd
     v1|Secret|rke2lab-bioskop-wrkld|bioskop-wrkld-peer-etcd
+    v1|Secret|rke2lab-bioskop-wrkld|bioskop-wrkld-server-manifests
 kind: ConfigMap
 metadata:
   annotations:
