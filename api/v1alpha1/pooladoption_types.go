@@ -35,10 +35,6 @@ type PoolAdoptionSpec struct {
 	// +kubebuilder:validation:MinLength=1
 	RKE2Version string `json:"rke2Version"`
 
-	// KubeVIPVersion pins the kube-vip image a control-plane pool's bootstrap deploys.
-	// +optional
-	KubeVIPVersion string `json:"kubeVIPVersion,omitempty"`
-
 	// ControlPlaneEndpoint is the kube-vip VIP a control-plane pool registers its replicas on.
 	ControlPlaneEndpoint APIEndpoint `json:"controlPlaneEndpoint"`
 

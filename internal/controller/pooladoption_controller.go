@@ -662,20 +662,22 @@ func (r *PoolAdoptionReconciler) rke2ControlPlaneObj(spec adoptionv1alpha1.PoolA
 		// where the RCP would initialize a random-named control plane before the owned Machine).
 		obj.SetAnnotations(map[string]string{pausedAnnotation: "true"})
 	}
-	// The kube-vip RBAC file + the bootstrap-injected config.yaml.d fragments (clusterConfigFiles):
-	// CAPRKE2 write_files these before rke2 starts, so a provisioned replica boots with the same
-	// per-cluster config (dual-stack CIDRs, VIP tls-san, …) a standalone node installs from the branch.
-	files := append([]any{kubeVIPRBACFile()}, configFiles...)
 	obj.Object["spec"] = map[string]any{
 		"replicas":     int64(replicas),
 		"version":      spec.RKE2Version,
 		"agentConfig":  map[string]any{"airGapped": true},
 		"serverConfig": map[string]any{},
-		// kube-vip fronts the control-plane endpoint: the replicas register on the VIP.
+		// kube-vip fronts the control-plane endpoint: the replicas register on the VIP. We do NOT
+		// install kube-vip from here — rke2lab's high-availability/kube-vip unit renders the DaemonSet
+		// and Flux applies it from the cluster's own branch, which is how the management cluster gets
+		// it. So a pool larger than one replica needs that branch reconciling before it scales: the
+		// first node initialises rather than registers, a second would have no VIP to register against.
 		"registrationMethod":  "address",
 		"registrationAddress": spec.ControlPlaneEndpoint.Host,
-		"preRKE2Commands":     []any{kubeVIPBootstrapCommand(spec.ControlPlaneEndpoint.Host, spec.KubeVIPVersion)},
-		"files":               files,
+		// The bootstrap-injected config.yaml.d fragments: CAPRKE2 write_files these before rke2 starts,
+		// so a provisioned replica boots with the same per-cluster config (dual-stack CIDRs, VIP
+		// tls-san, …) a standalone node installs from the branch.
+		"files": configFiles,
 		"machineTemplate": map[string]any{
 			"spec": map[string]any{
 				"infrastructureRef": map[string]any{
@@ -730,54 +732,6 @@ func lxcMachineSpec(clusterName, fingerprint string) map[string]any {
 // contract with rke2lab's InstanceGrow (which CREATES it): "node-<cluster>".
 func nodeProfileName(clusterName string) string {
 	return "node-" + clusterName
-}
-
-func kubeVIPBootstrapCommand(vip, version string) string {
-	image := "ghcr.io/kube-vip/kube-vip:" + version
-	return fmt.Sprintf(
-		"mkdir -p /var/lib/rancher/rke2/server/manifests/ && ctr images pull %s && ctr run --rm --net-host %s vip /kube-vip manifest daemonset --arp --interface $(ip -4 -j route list default | jq -r .[0].dev) --address %s --controlplane --leaderElection --taint --services --inCluster | tee /var/lib/rancher/rke2/server/manifests/kube-vip.yaml",
-		image, image, vip)
-}
-
-func kubeVIPRBACFile() map[string]any {
-	content := `apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: kube-vip
-  namespace: kube-system
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  annotations:
-    rbac.authorization.kubernetes.io/autoupdate: "true"
-  name: system:kube-vip-role
-rules:
-  - apiGroups: [""]
-    resources: ["services", "services/status", "nodes", "endpoints"]
-    verbs: ["list","get","watch", "update"]
-  - apiGroups: ["coordination.k8s.io"]
-    resources: ["leases"]
-    verbs: ["list", "get", "watch", "update", "create"]
----
-kind: ClusterRoleBinding
-apiVersion: rbac.authorization.k8s.io/v1
-metadata:
-  name: system:kube-vip-binding
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: system:kube-vip-role
-subjects:
-- kind: ServiceAccount
-  name: kube-vip
-  namespace: kube-system
-`
-	return map[string]any{
-		"path":    "/var/lib/rancher/rke2/server/manifests/kube-vip-rbac.yaml",
-		"owner":   "root:root",
-		"content": content,
-	}
 }
 
 // SetupWithManager wires the reconciler to PoolAdoption events + the owned pool CR-set's.
