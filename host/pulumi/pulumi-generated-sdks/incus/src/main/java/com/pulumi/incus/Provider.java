@@ -48,24 +48,6 @@ public class Provider extends com.pulumi.resources.ProviderResource {
   }
 
   /**
-   * The project where project-scoped resources will be created. Can be overridden in individual
-   * resources. (default = default)
-   */
-  @Export(
-      name = "project",
-      refs = {String.class},
-      tree = "[0]")
-  private Output</* @Nullable */ String> project;
-
-  /**
-   * @return The project where project-scoped resources will be created. Can be overridden in
-   *     individual resources. (default = default)
-   */
-  public Output<Optional<String>> project() {
-    return Codegen.optional(this.project);
-  }
-
-  /**
    * @param name The _unique_ name of the resulting resource.
    */
   public Provider(java.lang.String name) {

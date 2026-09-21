@@ -9,7 +9,9 @@ import com.pulumi.core.annotations.ResourceType;
 import com.pulumi.core.internal.Codegen;
 import com.pulumi.incus.inputs.InstanceState;
 import com.pulumi.incus.outputs.InstanceDevice;
+import com.pulumi.incus.outputs.InstanceExec;
 import com.pulumi.incus.outputs.InstanceFile;
+import com.pulumi.incus.outputs.InstanceInterfaces;
 import com.pulumi.incus.outputs.InstanceSourceInstance;
 import com.pulumi.incus.outputs.InstanceWaitFor;
 import java.util.List;
@@ -73,6 +75,16 @@ public class Instance extends com.pulumi.resources.CustomResource {
     return this.ephemeral;
   }
 
+  @Export(
+      name = "exec",
+      refs = {Map.class, String.class, InstanceExec.class},
+      tree = "[0,1,2]")
+  private Output</* @Nullable */ Map<String, InstanceExec>> exec;
+
+  public Output<Optional<Map<String, InstanceExec>>> exec() {
+    return Codegen.optional(this.exec);
+  }
+
   /** Upload file to instance */
   @Export(
       name = "files",
@@ -95,6 +107,20 @@ public class Instance extends com.pulumi.resources.CustomResource {
 
   public Output<Optional<String>> image() {
     return Codegen.optional(this.image);
+  }
+
+  /** Map of the instance network interfaces */
+  @Export(
+      name = "interfaces",
+      refs = {Map.class, String.class, InstanceInterfaces.class},
+      tree = "[0,1,2]")
+  private Output<Map<String, InstanceInterfaces>> interfaces;
+
+  /**
+   * @return Map of the instance network interfaces
+   */
+  public Output<Map<String, InstanceInterfaces>> interfaces() {
+    return this.interfaces;
   }
 
   @Export(

@@ -5,6 +5,7 @@ package com.pulumi.incus.inputs;
 
 import com.pulumi.core.Output;
 import com.pulumi.core.annotations.Import;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -28,6 +29,13 @@ public final class ClusterGroupState extends com.pulumi.resources.ResourceArgs {
     return Optional.ofNullable(this.description);
   }
 
+  @Import(name = "members")
+  private @Nullable Output<List<String>> members;
+
+  public Optional<Output<List<String>>> members() {
+    return Optional.ofNullable(this.members);
+  }
+
   @Import(name = "name")
   private @Nullable Output<String> name;
 
@@ -47,6 +55,7 @@ public final class ClusterGroupState extends com.pulumi.resources.ResourceArgs {
   private ClusterGroupState(ClusterGroupState $) {
     this.config = $.config;
     this.description = $.description;
+    this.members = $.members;
     this.name = $.name;
     this.remote = $.remote;
   }
@@ -86,6 +95,19 @@ public final class ClusterGroupState extends com.pulumi.resources.ResourceArgs {
 
     public Builder description(String description) {
       return description(Output.of(description));
+    }
+
+    public Builder members(@Nullable Output<List<String>> members) {
+      $.members = members;
+      return this;
+    }
+
+    public Builder members(List<String> members) {
+      return members(Output.of(members));
+    }
+
+    public Builder members(String... members) {
+      return members(List.of(members));
     }
 
     public Builder name(@Nullable Output<String> name) {

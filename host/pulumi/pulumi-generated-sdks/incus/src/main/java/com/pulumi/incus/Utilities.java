@@ -8,7 +8,6 @@ import com.pulumi.deployment.Deployment;
 import com.pulumi.deployment.InvokeOptions;
 import com.pulumi.deployment.InvokeOutputOptions;
 import java.io.BufferedReader;
-import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -91,11 +90,11 @@ public class Utilities {
       throw new IllegalStateException(
           java.lang.String.format("expected resource '%s' on Classpath, not found", resourceName));
     }
-    try (BufferedReader reader = new BufferedReader(new InputStreamReader(versionFile))) {
-      version = reader.lines().collect(Collectors.joining("\n")).trim();
-    } catch (IOException e) {
-      throw new RuntimeException("cannot load version from '" + resourceName + "'", e);
-    }
+    version =
+        new BufferedReader(new InputStreamReader(versionFile))
+            .lines()
+            .collect(Collectors.joining("\n"))
+            .trim();
   }
 
   public static CompletableFuture<java.lang.String> getPackageRef() {
@@ -112,6 +111,6 @@ public class Utilities {
             // Package version
             getVersion(),
             // Parameter
-            "eyJyZW1vdGUiOnsidXJsIjoicmVnaXN0cnkub3BlbnRvZnUub3JnL2x4Yy9pbmN1cyIsInZlcnNpb24iOiIxLjEuMSJ9fQ==");
+            "eyJyZW1vdGUiOnsidXJsIjoicmVnaXN0cnkub3BlbnRvZnUub3JnL2x4Yy9pbmN1cyIsInZlcnNpb24iOiIxLjIuMCJ9fQ==");
   }
 }

@@ -8,6 +8,7 @@ import com.pulumi.core.annotations.Export;
 import com.pulumi.core.annotations.ResourceType;
 import com.pulumi.core.internal.Codegen;
 import com.pulumi.incus.inputs.ClusterGroupState;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import javax.annotation.Nullable;
@@ -32,6 +33,16 @@ public class ClusterGroup extends com.pulumi.resources.CustomResource {
 
   public Output<String> description() {
     return this.description;
+  }
+
+  @Export(
+      name = "members",
+      refs = {List.class, String.class},
+      tree = "[0,1]")
+  private Output</* @Nullable */ List<String>> members;
+
+  public Output<Optional<List<String>>> members() {
+    return Codegen.optional(this.members);
   }
 
   @Export(

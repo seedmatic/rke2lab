@@ -33,14 +33,6 @@ public final class Config {
     return Codegen.booleanProp("generateClientCertificates").config(config).get();
   }
 
-  /**
-   * The project where project-scoped resources will be created. Can be overridden in individual
-   * resources. (default = default)
-   */
-  public Optional<String> project() {
-    return Codegen.stringProp("project").config(config).get();
-  }
-
   /** Incus Remote */
   public Optional<List<Remotes>> remotes() {
     return Codegen.objectProp(

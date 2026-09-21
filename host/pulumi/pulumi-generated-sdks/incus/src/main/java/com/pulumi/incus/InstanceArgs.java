@@ -6,6 +6,7 @@ package com.pulumi.incus;
 import com.pulumi.core.Output;
 import com.pulumi.core.annotations.Import;
 import com.pulumi.incus.inputs.InstanceDeviceArgs;
+import com.pulumi.incus.inputs.InstanceExecArgs;
 import com.pulumi.incus.inputs.InstanceFileArgs;
 import com.pulumi.incus.inputs.InstanceSourceInstanceArgs;
 import com.pulumi.incus.inputs.InstanceWaitForArgs;
@@ -56,6 +57,13 @@ public final class InstanceArgs extends com.pulumi.resources.ResourceArgs {
 
   public Optional<Output<Boolean>> ephemeral() {
     return Optional.ofNullable(this.ephemeral);
+  }
+
+  @Import(name = "exec")
+  private @Nullable Output<Map<String, InstanceExecArgs>> exec;
+
+  public Optional<Output<Map<String, InstanceExecArgs>>> exec() {
+    return Optional.ofNullable(this.exec);
   }
 
   /** Upload file to instance */
@@ -158,6 +166,7 @@ public final class InstanceArgs extends com.pulumi.resources.ResourceArgs {
     this.description = $.description;
     this.devices = $.devices;
     this.ephemeral = $.ephemeral;
+    this.exec = $.exec;
     this.files = $.files;
     this.image = $.image;
     this.name = $.name;
@@ -250,6 +259,15 @@ public final class InstanceArgs extends com.pulumi.resources.ResourceArgs {
 
     public Builder ephemeral(Boolean ephemeral) {
       return ephemeral(Output.of(ephemeral));
+    }
+
+    public Builder exec(@Nullable Output<Map<String, InstanceExecArgs>> exec) {
+      $.exec = exec;
+      return this;
+    }
+
+    public Builder exec(Map<String, InstanceExecArgs> exec) {
+      return exec(Output.of(exec));
     }
 
     /**

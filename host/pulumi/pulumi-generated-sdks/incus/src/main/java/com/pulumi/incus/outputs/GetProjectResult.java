@@ -16,10 +16,9 @@ public final class GetProjectResult {
   private String description;
 
   /**
-   * @return The provider-assigned unique ID for this managed resource, if provided by the provider
-   *     payload.
+   * @return The provider-assigned unique ID for this managed resource.
    */
-  private @Nullable String id;
+  private String id;
 
   private String name;
   private @Nullable String remote;
@@ -35,10 +34,9 @@ public final class GetProjectResult {
   }
 
   /**
-   * @return The provider-assigned unique ID for this managed resource, if provided by the provider
-   *     payload.
+   * @return The provider-assigned unique ID for this managed resource.
    */
-  public @Nullable String id() {
+  public String id() {
     return this.id;
   }
 
@@ -62,7 +60,7 @@ public final class GetProjectResult {
   public static final class Builder {
     private Map<String, String> config;
     private String description;
-    private @Nullable String id;
+    private String id;
     private String name;
     private @Nullable String remote;
 
@@ -96,7 +94,10 @@ public final class GetProjectResult {
     }
 
     @CustomType.Setter
-    public Builder id(@Nullable String id) {
+    public Builder id(String id) {
+      if (id == null) {
+        throw new MissingRequiredPropertyException("GetProjectResult", "id");
+      }
       this.id = id;
       return this;
     }

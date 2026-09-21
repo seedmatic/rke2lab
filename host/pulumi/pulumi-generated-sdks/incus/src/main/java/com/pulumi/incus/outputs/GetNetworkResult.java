@@ -17,16 +17,11 @@ public final class GetNetworkResult {
   private String description;
 
   /**
-   * @return The provider-assigned unique ID for this managed resource, if provided by the provider
-   *     payload.
+   * @return The provider-assigned unique ID for this managed resource.
    */
-  private @Nullable String id;
+  private String id;
 
-  /**
-   * @return Provider-reported availability locations when included in the payload.
-   */
-  private @Nullable List<String> locations;
-
+  private List<String> locations;
   private Boolean managed;
   private String name;
   private @Nullable String project;
@@ -46,18 +41,14 @@ public final class GetNetworkResult {
   }
 
   /**
-   * @return The provider-assigned unique ID for this managed resource, if provided by the provider
-   *     payload.
+   * @return The provider-assigned unique ID for this managed resource.
    */
-  public @Nullable String id() {
+  public String id() {
     return this.id;
   }
 
-  /**
-   * @return Provider-reported availability locations when included in the payload.
-   */
-  public Optional<List<String>> locations() {
-    return Optional.ofNullable(this.locations);
+  public List<String> locations() {
+    return this.locations;
   }
 
   public Boolean managed() {
@@ -100,8 +91,8 @@ public final class GetNetworkResult {
   public static final class Builder {
     private Map<String, String> config;
     private String description;
-    private @Nullable String id;
-    private @Nullable List<String> locations;
+    private String id;
+    private List<String> locations;
     private Boolean managed;
     private String name;
     private @Nullable String project;
@@ -146,13 +137,19 @@ public final class GetNetworkResult {
     }
 
     @CustomType.Setter
-    public Builder id(@Nullable String id) {
+    public Builder id(String id) {
+      if (id == null) {
+        throw new MissingRequiredPropertyException("GetNetworkResult", "id");
+      }
       this.id = id;
       return this;
     }
 
     @CustomType.Setter
-    public Builder locations(@Nullable List<String> locations) {
+    public Builder locations(List<String> locations) {
+      if (locations == null) {
+        throw new MissingRequiredPropertyException("GetNetworkResult", "locations");
+      }
       this.locations = locations;
       return this;
     }

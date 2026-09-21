@@ -15,15 +15,17 @@ public final class ProviderRemoteArgs extends com.pulumi.resources.ResourceArgs 
   public static final ProviderRemoteArgs Empty = new ProviderRemoteArgs();
 
   /**
-   * The URL of the Incus host. The default will be the path to the local unix socket, or leaving it
-   * as an empty string will use the default socket path.
+   * The URL of the Incus host. Multiple addresses can be provided as a comma-separated string. The
+   * default will be the path to the local unix socket, or leaving it as an empty string will use
+   * the default socket path.
    */
   @Import(name = "address")
   private @Nullable Output<String> address;
 
   /**
-   * @return The URL of the Incus host. The default will be the path to the local unix socket, or
-   *     leaving it as an empty string will use the default socket path.
+   * @return The URL of the Incus host. Multiple addresses can be provided as a comma-separated
+   *     string. The default will be the path to the local unix socket, or leaving it as an empty
+   *     string will use the default socket path.
    */
   public Optional<Output<String>> address() {
     return Optional.ofNullable(this.address);
@@ -48,6 +50,27 @@ public final class ProviderRemoteArgs extends com.pulumi.resources.ResourceArgs 
    */
   public Optional<Output<String>> authenticationType() {
     return Optional.ofNullable(this.authenticationType);
+  }
+
+  /**
+   * Credential helper executable for OCI registry authentication. ( Only for the &lt;span
+   * pulumi-lang-nodejs=&#34;`oci`&#34; pulumi-lang-dotnet=&#34;`Oci`&#34;
+   * pulumi-lang-go=&#34;`oci`&#34; pulumi-lang-python=&#34;`oci`&#34;
+   * pulumi-lang-yaml=&#34;`oci`&#34; pulumi-lang-java=&#34;`oci`&#34;&gt;`oci`&lt;/span&gt;
+   * protocol )
+   */
+  @Import(name = "credentialsHelper")
+  private @Nullable Output<String> credentialsHelper;
+
+  /**
+   * @return Credential helper executable for OCI registry authentication. ( Only for the &lt;span
+   *     pulumi-lang-nodejs=&#34;`oci`&#34; pulumi-lang-dotnet=&#34;`Oci`&#34;
+   *     pulumi-lang-go=&#34;`oci`&#34; pulumi-lang-python=&#34;`oci`&#34;
+   *     pulumi-lang-yaml=&#34;`oci`&#34; pulumi-lang-java=&#34;`oci`&#34;&gt;`oci`&lt;/span&gt;
+   *     protocol )
+   */
+  public Optional<Output<String>> credentialsHelper() {
+    return Optional.ofNullable(this.credentialsHelper);
   }
 
   /** Name of the Incus remote. */
@@ -99,6 +122,7 @@ public final class ProviderRemoteArgs extends com.pulumi.resources.ResourceArgs 
   private ProviderRemoteArgs(ProviderRemoteArgs $) {
     this.address = $.address;
     this.authenticationType = $.authenticationType;
+    this.credentialsHelper = $.credentialsHelper;
     this.name = $.name;
     this.protocol = $.protocol;
     this.public_ = $.public_;
@@ -125,8 +149,9 @@ public final class ProviderRemoteArgs extends com.pulumi.resources.ResourceArgs 
     }
 
     /**
-     * @param address The URL of the Incus host. The default will be the path to the local unix
-     *     socket, or leaving it as an empty string will use the default socket path.
+     * @param address The URL of the Incus host. Multiple addresses can be provided as a
+     *     comma-separated string. The default will be the path to the local unix socket, or leaving
+     *     it as an empty string will use the default socket path.
      * @return builder
      */
     public Builder address(@Nullable Output<String> address) {
@@ -135,8 +160,9 @@ public final class ProviderRemoteArgs extends com.pulumi.resources.ResourceArgs 
     }
 
     /**
-     * @param address The URL of the Incus host. The default will be the path to the local unix
-     *     socket, or leaving it as an empty string will use the default socket path.
+     * @param address The URL of the Incus host. Multiple addresses can be provided as a
+     *     comma-separated string. The default will be the path to the local unix socket, or leaving
+     *     it as an empty string will use the default socket path.
      * @return builder
      */
     public Builder address(String address) {
@@ -166,6 +192,31 @@ public final class ProviderRemoteArgs extends com.pulumi.resources.ResourceArgs 
      */
     public Builder authenticationType(String authenticationType) {
       return authenticationType(Output.of(authenticationType));
+    }
+
+    /**
+     * @param credentialsHelper Credential helper executable for OCI registry authentication. ( Only
+     *     for the &lt;span pulumi-lang-nodejs=&#34;`oci`&#34; pulumi-lang-dotnet=&#34;`Oci`&#34;
+     *     pulumi-lang-go=&#34;`oci`&#34; pulumi-lang-python=&#34;`oci`&#34;
+     *     pulumi-lang-yaml=&#34;`oci`&#34; pulumi-lang-java=&#34;`oci`&#34;&gt;`oci`&lt;/span&gt;
+     *     protocol )
+     * @return builder
+     */
+    public Builder credentialsHelper(@Nullable Output<String> credentialsHelper) {
+      $.credentialsHelper = credentialsHelper;
+      return this;
+    }
+
+    /**
+     * @param credentialsHelper Credential helper executable for OCI registry authentication. ( Only
+     *     for the &lt;span pulumi-lang-nodejs=&#34;`oci`&#34; pulumi-lang-dotnet=&#34;`Oci`&#34;
+     *     pulumi-lang-go=&#34;`oci`&#34; pulumi-lang-python=&#34;`oci`&#34;
+     *     pulumi-lang-yaml=&#34;`oci`&#34; pulumi-lang-java=&#34;`oci`&#34;&gt;`oci`&lt;/span&gt;
+     *     protocol )
+     * @return builder
+     */
+    public Builder credentialsHelper(String credentialsHelper) {
+      return credentialsHelper(Output.of(credentialsHelper));
     }
 
     /**

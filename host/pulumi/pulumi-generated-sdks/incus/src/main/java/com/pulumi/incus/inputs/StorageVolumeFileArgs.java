@@ -10,9 +10,9 @@ import java.util.Objects;
 import java.util.Optional;
 import javax.annotation.Nullable;
 
-public final class InstanceFileArgs extends com.pulumi.resources.ResourceArgs {
+public final class StorageVolumeFileArgs extends com.pulumi.resources.ResourceArgs {
 
-  public static final InstanceFileArgs Empty = new InstanceFileArgs();
+  public static final StorageVolumeFileArgs Empty = new StorageVolumeFileArgs();
 
   @Import(name = "append")
   private @Nullable Output<Boolean> append;
@@ -77,9 +77,9 @@ public final class InstanceFileArgs extends com.pulumi.resources.ResourceArgs {
     return Optional.ofNullable(this.uid);
   }
 
-  private InstanceFileArgs() {}
+  private StorageVolumeFileArgs() {}
 
-  private InstanceFileArgs(InstanceFileArgs $) {
+  private StorageVolumeFileArgs(StorageVolumeFileArgs $) {
     this.append = $.append;
     this.content = $.content;
     this.createDirectories = $.createDirectories;
@@ -95,19 +95,19 @@ public final class InstanceFileArgs extends com.pulumi.resources.ResourceArgs {
     return new Builder();
   }
 
-  public static Builder builder(InstanceFileArgs defaults) {
+  public static Builder builder(StorageVolumeFileArgs defaults) {
     return new Builder(defaults);
   }
 
   public static final class Builder {
-    private InstanceFileArgs $;
+    private StorageVolumeFileArgs $;
 
     public Builder() {
-      $ = new InstanceFileArgs();
+      $ = new StorageVolumeFileArgs();
     }
 
-    public Builder(InstanceFileArgs defaults) {
-      $ = new InstanceFileArgs(Objects.requireNonNull(defaults));
+    public Builder(StorageVolumeFileArgs defaults) {
+      $ = new StorageVolumeFileArgs(Objects.requireNonNull(defaults));
     }
 
     public Builder append(@Nullable Output<Boolean> append) {
@@ -191,9 +191,9 @@ public final class InstanceFileArgs extends com.pulumi.resources.ResourceArgs {
       return uid(Output.of(uid));
     }
 
-    public InstanceFileArgs build() {
+    public StorageVolumeFileArgs build() {
       if ($.targetPath == null) {
-        throw new MissingRequiredPropertyException("InstanceFileArgs", "targetPath");
+        throw new MissingRequiredPropertyException("StorageVolumeFileArgs", "targetPath");
       }
       return $;
     }

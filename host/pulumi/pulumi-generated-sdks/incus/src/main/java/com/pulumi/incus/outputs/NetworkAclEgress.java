@@ -19,6 +19,7 @@ public final class NetworkAclEgress {
   private @Nullable String icmpType;
   private @Nullable String protocol;
   private @Nullable String source;
+  private @Nullable String sourcePort;
   private String state;
 
   private NetworkAclEgress() {}
@@ -55,6 +56,10 @@ public final class NetworkAclEgress {
     return Optional.ofNullable(this.source);
   }
 
+  public Optional<String> sourcePort() {
+    return Optional.ofNullable(this.sourcePort);
+  }
+
   public String state() {
     return this.state;
   }
@@ -77,6 +82,7 @@ public final class NetworkAclEgress {
     private @Nullable String icmpType;
     private @Nullable String protocol;
     private @Nullable String source;
+    private @Nullable String sourcePort;
     private String state;
 
     public Builder() {}
@@ -91,6 +97,7 @@ public final class NetworkAclEgress {
       this.icmpType = defaults.icmpType;
       this.protocol = defaults.protocol;
       this.source = defaults.source;
+      this.sourcePort = defaults.sourcePort;
       this.state = defaults.state;
     }
 
@@ -153,6 +160,13 @@ public final class NetworkAclEgress {
     }
 
     @CustomType.Setter
+    public Builder sourcePort(@Nullable String sourcePort) {
+
+      this.sourcePort = sourcePort;
+      return this;
+    }
+
+    @CustomType.Setter
     public Builder state(String state) {
       if (state == null) {
         throw new MissingRequiredPropertyException("NetworkAclEgress", "state");
@@ -171,6 +185,7 @@ public final class NetworkAclEgress {
       _resultValue.icmpType = icmpType;
       _resultValue.protocol = protocol;
       _resultValue.source = source;
+      _resultValue.sourcePort = sourcePort;
       _resultValue.state = state;
       return _resultValue;
     }

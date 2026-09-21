@@ -70,6 +70,13 @@ public final class NetworkAclEgressArgs extends com.pulumi.resources.ResourceArg
     return Optional.ofNullable(this.source);
   }
 
+  @Import(name = "sourcePort")
+  private @Nullable Output<String> sourcePort;
+
+  public Optional<Output<String>> sourcePort() {
+    return Optional.ofNullable(this.sourcePort);
+  }
+
   @Import(name = "state", required = true)
   private Output<String> state;
 
@@ -88,6 +95,7 @@ public final class NetworkAclEgressArgs extends com.pulumi.resources.ResourceArg
     this.icmpType = $.icmpType;
     this.protocol = $.protocol;
     this.source = $.source;
+    this.sourcePort = $.sourcePort;
     this.state = $.state;
   }
 
@@ -180,6 +188,15 @@ public final class NetworkAclEgressArgs extends com.pulumi.resources.ResourceArg
 
     public Builder source(String source) {
       return source(Output.of(source));
+    }
+
+    public Builder sourcePort(@Nullable Output<String> sourcePort) {
+      $.sourcePort = sourcePort;
+      return this;
+    }
+
+    public Builder sourcePort(String sourcePort) {
+      return sourcePort(Output.of(sourcePort));
     }
 
     public Builder state(Output<String> state) {

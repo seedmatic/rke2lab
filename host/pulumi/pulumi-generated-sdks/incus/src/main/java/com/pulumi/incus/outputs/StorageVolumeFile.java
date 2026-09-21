@@ -10,7 +10,7 @@ import java.util.Optional;
 import javax.annotation.Nullable;
 
 @CustomType
-public final class InstanceFile {
+public final class StorageVolumeFile {
   private @Nullable Boolean append;
   private @Nullable String content;
   private @Nullable Boolean createDirectories;
@@ -21,7 +21,7 @@ public final class InstanceFile {
   private String targetPath;
   private @Nullable Double uid;
 
-  private InstanceFile() {}
+  private StorageVolumeFile() {}
 
   public Optional<Boolean> append() {
     return Optional.ofNullable(this.append);
@@ -63,7 +63,7 @@ public final class InstanceFile {
     return new Builder();
   }
 
-  public static Builder builder(InstanceFile defaults) {
+  public static Builder builder(StorageVolumeFile defaults) {
     return new Builder(defaults);
   }
 
@@ -81,7 +81,7 @@ public final class InstanceFile {
 
     public Builder() {}
 
-    public Builder(InstanceFile defaults) {
+    public Builder(StorageVolumeFile defaults) {
       Objects.requireNonNull(defaults);
       this.append = defaults.append;
       this.content = defaults.content;
@@ -146,7 +146,7 @@ public final class InstanceFile {
     @CustomType.Setter
     public Builder targetPath(String targetPath) {
       if (targetPath == null) {
-        throw new MissingRequiredPropertyException("InstanceFile", "targetPath");
+        throw new MissingRequiredPropertyException("StorageVolumeFile", "targetPath");
       }
       this.targetPath = targetPath;
       return this;
@@ -159,8 +159,8 @@ public final class InstanceFile {
       return this;
     }
 
-    public InstanceFile build() {
-      final var _resultValue = new InstanceFile();
+    public StorageVolumeFile build() {
+      final var _resultValue = new StorageVolumeFile();
       _resultValue.append = append;
       _resultValue.content = content;
       _resultValue.createDirectories = createDirectories;

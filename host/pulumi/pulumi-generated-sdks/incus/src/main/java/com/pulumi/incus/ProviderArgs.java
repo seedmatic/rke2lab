@@ -59,21 +59,6 @@ public final class ProviderArgs extends com.pulumi.resources.ResourceArgs {
     return Optional.ofNullable(this.generateClientCertificates);
   }
 
-  /**
-   * The project where project-scoped resources will be created. Can be overridden in individual
-   * resources. (default = default)
-   */
-  @Import(name = "project")
-  private @Nullable Output<String> project;
-
-  /**
-   * @return The project where project-scoped resources will be created. Can be overridden in
-   *     individual resources. (default = default)
-   */
-  public Optional<Output<String>> project() {
-    return Optional.ofNullable(this.project);
-  }
-
   /** Incus Remote */
   @Import(name = "remotes", json = true)
   private @Nullable Output<List<ProviderRemoteArgs>> remotes;
@@ -92,7 +77,6 @@ public final class ProviderArgs extends com.pulumi.resources.ResourceArgs {
     this.configDir = $.configDir;
     this.defaultRemote = $.defaultRemote;
     this.generateClientCertificates = $.generateClientCertificates;
-    this.project = $.project;
     this.remotes = $.remotes;
   }
 
@@ -186,25 +170,6 @@ public final class ProviderArgs extends com.pulumi.resources.ResourceArgs {
      */
     public Builder generateClientCertificates(Boolean generateClientCertificates) {
       return generateClientCertificates(Output.of(generateClientCertificates));
-    }
-
-    /**
-     * @param project The project where project-scoped resources will be created. Can be overridden
-     *     in individual resources. (default = default)
-     * @return builder
-     */
-    public Builder project(@Nullable Output<String> project) {
-      $.project = project;
-      return this;
-    }
-
-    /**
-     * @param project The project where project-scoped resources will be created. Can be overridden
-     *     in individual resources. (default = default)
-     * @return builder
-     */
-    public Builder project(String project) {
-      return project(Output.of(project));
     }
 
     /**

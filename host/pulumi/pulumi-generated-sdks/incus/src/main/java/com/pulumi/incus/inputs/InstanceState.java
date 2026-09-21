@@ -54,6 +54,13 @@ public final class InstanceState extends com.pulumi.resources.ResourceArgs {
     return Optional.ofNullable(this.ephemeral);
   }
 
+  @Import(name = "exec")
+  private @Nullable Output<Map<String, InstanceExecArgs>> exec;
+
+  public Optional<Output<Map<String, InstanceExecArgs>>> exec() {
+    return Optional.ofNullable(this.exec);
+  }
+
   /** Upload file to instance */
   @Import(name = "files")
   private @Nullable Output<List<InstanceFileArgs>> files;
@@ -70,6 +77,17 @@ public final class InstanceState extends com.pulumi.resources.ResourceArgs {
 
   public Optional<Output<String>> image() {
     return Optional.ofNullable(this.image);
+  }
+
+  /** Map of the instance network interfaces */
+  @Import(name = "interfaces")
+  private @Nullable Output<Map<String, InstanceInterfacesArgs>> interfaces;
+
+  /**
+   * @return Map of the instance network interfaces
+   */
+  public Optional<Output<Map<String, InstanceInterfacesArgs>>> interfaces() {
+    return Optional.ofNullable(this.interfaces);
   }
 
   @Import(name = "ipv4Address")
@@ -182,8 +200,10 @@ public final class InstanceState extends com.pulumi.resources.ResourceArgs {
     this.description = $.description;
     this.devices = $.devices;
     this.ephemeral = $.ephemeral;
+    this.exec = $.exec;
     this.files = $.files;
     this.image = $.image;
+    this.interfaces = $.interfaces;
     this.ipv4Address = $.ipv4Address;
     this.ipv6Address = $.ipv6Address;
     this.macAddress = $.macAddress;
@@ -280,6 +300,15 @@ public final class InstanceState extends com.pulumi.resources.ResourceArgs {
       return ephemeral(Output.of(ephemeral));
     }
 
+    public Builder exec(@Nullable Output<Map<String, InstanceExecArgs>> exec) {
+      $.exec = exec;
+      return this;
+    }
+
+    public Builder exec(Map<String, InstanceExecArgs> exec) {
+      return exec(Output.of(exec));
+    }
+
     /**
      * @param files Upload file to instance
      * @return builder
@@ -312,6 +341,23 @@ public final class InstanceState extends com.pulumi.resources.ResourceArgs {
 
     public Builder image(String image) {
       return image(Output.of(image));
+    }
+
+    /**
+     * @param interfaces Map of the instance network interfaces
+     * @return builder
+     */
+    public Builder interfaces(@Nullable Output<Map<String, InstanceInterfacesArgs>> interfaces) {
+      $.interfaces = interfaces;
+      return this;
+    }
+
+    /**
+     * @param interfaces Map of the instance network interfaces
+     * @return builder
+     */
+    public Builder interfaces(Map<String, InstanceInterfacesArgs> interfaces) {
+      return interfaces(Output.of(interfaces));
     }
 
     public Builder ipv4Address(@Nullable Output<String> ipv4Address) {

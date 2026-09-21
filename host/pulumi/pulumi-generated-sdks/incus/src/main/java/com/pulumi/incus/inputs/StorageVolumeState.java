@@ -5,6 +5,7 @@ package com.pulumi.incus.inputs;
 
 import com.pulumi.core.Output;
 import com.pulumi.core.annotations.Import;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -33,6 +34,17 @@ public final class StorageVolumeState extends com.pulumi.resources.ResourceArgs 
 
   public Optional<Output<String>> description() {
     return Optional.ofNullable(this.description);
+  }
+
+  /** Upload file to storage volume */
+  @Import(name = "files")
+  private @Nullable Output<List<StorageVolumeFileArgs>> files;
+
+  /**
+   * @return Upload file to storage volume
+   */
+  public Optional<Output<List<StorageVolumeFileArgs>>> files() {
+    return Optional.ofNullable(this.files);
   }
 
   @Import(name = "location")
@@ -104,6 +116,7 @@ public final class StorageVolumeState extends com.pulumi.resources.ResourceArgs 
     this.config = $.config;
     this.contentType = $.contentType;
     this.description = $.description;
+    this.files = $.files;
     this.location = $.location;
     this.name = $.name;
     this.pool = $.pool;
@@ -159,6 +172,31 @@ public final class StorageVolumeState extends com.pulumi.resources.ResourceArgs 
 
     public Builder description(String description) {
       return description(Output.of(description));
+    }
+
+    /**
+     * @param files Upload file to storage volume
+     * @return builder
+     */
+    public Builder files(@Nullable Output<List<StorageVolumeFileArgs>> files) {
+      $.files = files;
+      return this;
+    }
+
+    /**
+     * @param files Upload file to storage volume
+     * @return builder
+     */
+    public Builder files(List<StorageVolumeFileArgs> files) {
+      return files(Output.of(files));
+    }
+
+    /**
+     * @param files Upload file to storage volume
+     * @return builder
+     */
+    public Builder files(StorageVolumeFileArgs... files) {
+      return files(List.of(files));
     }
 
     public Builder location(@Nullable Output<String> location) {

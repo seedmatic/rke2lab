@@ -8,6 +8,8 @@ import com.pulumi.core.TypeShape;
 import com.pulumi.deployment.Deployment;
 import com.pulumi.deployment.InvokeOptions;
 import com.pulumi.deployment.InvokeOutputOptions;
+import com.pulumi.incus.inputs.GetCertificateArgs;
+import com.pulumi.incus.inputs.GetCertificatePlainArgs;
 import com.pulumi.incus.inputs.GetClusterArgs;
 import com.pulumi.incus.inputs.GetClusterPlainArgs;
 import com.pulumi.incus.inputs.GetImageArgs;
@@ -40,6 +42,7 @@ import com.pulumi.incus.inputs.GetStoragePoolArgs;
 import com.pulumi.incus.inputs.GetStoragePoolPlainArgs;
 import com.pulumi.incus.inputs.GetStorageVolumeArgs;
 import com.pulumi.incus.inputs.GetStorageVolumePlainArgs;
+import com.pulumi.incus.outputs.GetCertificateResult;
 import com.pulumi.incus.outputs.GetClusterResult;
 import com.pulumi.incus.outputs.GetImageResult;
 import com.pulumi.incus.outputs.GetInstanceResult;
@@ -59,6 +62,48 @@ import com.pulumi.incus.outputs.GetStorageVolumeResult;
 import java.util.concurrent.CompletableFuture;
 
 public final class IncusFunctions {
+  public static Output<GetCertificateResult> getCertificate(GetCertificateArgs args) {
+    return getCertificate(args, InvokeOptions.Empty);
+  }
+
+  public static CompletableFuture<GetCertificateResult> getCertificatePlain(
+      GetCertificatePlainArgs args) {
+    return getCertificatePlain(args, InvokeOptions.Empty);
+  }
+
+  public static Output<GetCertificateResult> getCertificate(
+      GetCertificateArgs args, InvokeOptions options) {
+    return Deployment.getInstance()
+        .invoke(
+            "incus:index/getCertificate:getCertificate",
+            TypeShape.of(GetCertificateResult.class),
+            args,
+            Utilities.withVersion(options),
+            Utilities.getPackageRef());
+  }
+
+  public static Output<GetCertificateResult> getCertificate(
+      GetCertificateArgs args, InvokeOutputOptions options) {
+    return Deployment.getInstance()
+        .invoke(
+            "incus:index/getCertificate:getCertificate",
+            TypeShape.of(GetCertificateResult.class),
+            args,
+            Utilities.withVersion(options),
+            Utilities.getPackageRef());
+  }
+
+  public static CompletableFuture<GetCertificateResult> getCertificatePlain(
+      GetCertificatePlainArgs args, InvokeOptions options) {
+    return Deployment.getInstance()
+        .invokeAsync(
+            "incus:index/getCertificate:getCertificate",
+            TypeShape.of(GetCertificateResult.class),
+            args,
+            Utilities.withVersion(options),
+            Utilities.getPackageRef());
+  }
+
   public static Output<GetClusterResult> getCluster() {
     return getCluster(GetClusterArgs.Empty, InvokeOptions.Empty);
   }

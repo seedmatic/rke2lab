@@ -12,8 +12,9 @@ import javax.annotation.Nullable;
 @CustomType
 public final class Remotes {
   /**
-   * @return The URL of the Incus host. The default will be the path to the local unix socket, or
-   *     leaving it as an empty string will use the default socket path.
+   * @return The URL of the Incus host. Multiple addresses can be provided as a comma-separated
+   *     string. The default will be the path to the local unix socket, or leaving it as an empty
+   *     string will use the default socket path.
    */
   private @Nullable String address;
 
@@ -25,6 +26,15 @@ public final class Remotes {
    *     pulumi-lang-java=&#34;`incus`&#34;&gt;`incus`&lt;/span&gt; protocol )
    */
   private @Nullable String authenticationType;
+
+  /**
+   * @return Credential helper executable for OCI registry authentication. ( Only for the &lt;span
+   *     pulumi-lang-nodejs=&#34;`oci`&#34; pulumi-lang-dotnet=&#34;`Oci`&#34;
+   *     pulumi-lang-go=&#34;`oci`&#34; pulumi-lang-python=&#34;`oci`&#34;
+   *     pulumi-lang-yaml=&#34;`oci`&#34; pulumi-lang-java=&#34;`oci`&#34;&gt;`oci`&lt;/span&gt;
+   *     protocol )
+   */
+  private @Nullable String credentialsHelper;
 
   /**
    * @return Name of the Incus remote.
@@ -49,8 +59,9 @@ public final class Remotes {
   private Remotes() {}
 
   /**
-   * @return The URL of the Incus host. The default will be the path to the local unix socket, or
-   *     leaving it as an empty string will use the default socket path.
+   * @return The URL of the Incus host. Multiple addresses can be provided as a comma-separated
+   *     string. The default will be the path to the local unix socket, or leaving it as an empty
+   *     string will use the default socket path.
    */
   public Optional<String> address() {
     return Optional.ofNullable(this.address);
@@ -65,6 +76,17 @@ public final class Remotes {
    */
   public Optional<String> authenticationType() {
     return Optional.ofNullable(this.authenticationType);
+  }
+
+  /**
+   * @return Credential helper executable for OCI registry authentication. ( Only for the &lt;span
+   *     pulumi-lang-nodejs=&#34;`oci`&#34; pulumi-lang-dotnet=&#34;`Oci`&#34;
+   *     pulumi-lang-go=&#34;`oci`&#34; pulumi-lang-python=&#34;`oci`&#34;
+   *     pulumi-lang-yaml=&#34;`oci`&#34; pulumi-lang-java=&#34;`oci`&#34;&gt;`oci`&lt;/span&gt;
+   *     protocol )
+   */
+  public Optional<String> credentialsHelper() {
+    return Optional.ofNullable(this.credentialsHelper);
   }
 
   /**
@@ -106,15 +128,11 @@ public final class Remotes {
   @CustomType.Builder
   public static final class Builder {
     private @Nullable String address;
-
     private @Nullable String authenticationType;
-
+    private @Nullable String credentialsHelper;
     private String name;
-
     private @Nullable String protocol;
-
     private @Nullable Boolean public_;
-
     private @Nullable String token;
 
     public Builder() {}
@@ -123,6 +141,7 @@ public final class Remotes {
       Objects.requireNonNull(defaults);
       this.address = defaults.address;
       this.authenticationType = defaults.authenticationType;
+      this.credentialsHelper = defaults.credentialsHelper;
       this.name = defaults.name;
       this.protocol = defaults.protocol;
       this.public_ = defaults.public_;
@@ -140,6 +159,13 @@ public final class Remotes {
     public Builder authenticationType(@Nullable String authenticationType) {
 
       this.authenticationType = authenticationType;
+      return this;
+    }
+
+    @CustomType.Setter
+    public Builder credentialsHelper(@Nullable String credentialsHelper) {
+
+      this.credentialsHelper = credentialsHelper;
       return this;
     }
 
@@ -177,6 +203,7 @@ public final class Remotes {
       final var _resultValue = new Remotes();
       _resultValue.address = address;
       _resultValue.authenticationType = authenticationType;
+      _resultValue.credentialsHelper = credentialsHelper;
       _resultValue.name = name;
       _resultValue.protocol = protocol;
       _resultValue.public_ = public_;
