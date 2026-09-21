@@ -102,9 +102,6 @@ spec:
                 required:
                 - fingerprint
                 type: object
-              kubeVIPVersion:
-                description: KubeVIPVersion pins the kube-vip image a control-plane pool's bootstrap deploys.
-                type: string
               namespace:
                 description: Namespace is where the CAPI CR-set and the referenced Secrets live.
                 minLength: 1
