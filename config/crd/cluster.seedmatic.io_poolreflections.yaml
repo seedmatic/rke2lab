@@ -48,11 +48,12 @@ spec:
               PoolReflectionSpec is the OBSERVED, DURABLE roster of one node pool — the reflector's cluster→git
               record of what the pool ACTUALLY ran. It completes the role triad with the 2×2: PoolIntention
               (desired, Flux/git) · PoolAdoption (observed EPHEMERAL, controller/etcd) · PoolReflection (observed
-              DURABLE, reflector/git). The reflector watches the pool's Machines and commits this onto the
-              managing branch (manifests/<cluster>); Flux applies it back, so it survives a cold-start that wipes
-              etcd. Its PRESENCE is the adopt-vs-greenfield switch: present ⇒ the pool has lived, ADOPT the
-              observed roster (pre-create the named Machines so CAPRKE2 adopts by name); absent ⇒ first boot or a
-              deliberate reset, GREENFIELD (see docs/architecture/cluster-api/cluster-seeding-controller.adoc).
+              DURABLE, reflector/git). The reflector watches the pool's Machines and commits this as a YAML
+              document onto the managing manifests/<cluster> branch; it is git-only (never applied to etcd) and
+              survives a cold-start because git is durable. The reflector reads it back for the decision. Its
+              PRESENCE is the adopt-vs-greenfield switch: present ⇒ the pool has lived, ADOPT the observed roster
+              (pre-create the named Machines so CAPRKE2 adopts by name); absent ⇒ first boot or a deliberate
+              reset, GREENFIELD (see docs/architecture/cluster-api/cluster-seeding-controller.adoc).
             properties:
               clusterRef:
                 description: |-
@@ -96,8 +97,8 @@ spec:
             type: object
           status:
             description: |-
-              PoolReflectionStatus is a light observability record — the reflection's VALUE is its spec (the
-              roster). It is not a state machine.
+              PoolReflectionStatus is a light in-document record (when it was last reflected) — the reflection's
+              VALUE is its spec (the roster). It is not a k8s status subresource (the document is git-only).
             properties:
               conditions:
                 description: Conditions follow the standard metav1.Condition contract.
