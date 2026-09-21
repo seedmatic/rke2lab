@@ -1313,13 +1313,6 @@ USAGE
         # of networkBlueprint). Pure committed data, system-independent; seed-master's
         # DataplanLayout is the source of truth, materialised into ./dataplan.json at regen.
         dataplan = dataplanData;
-        # The PUBLIC client certificate establishing the `capn-provider` identity the in-cluster
-        # CAPN provider authenticates to Incus with (its private half stays in the identity Secret).
-        # Published as a fact because the two halves live in different worlds: rke2lab owns the
-        # identity, ndh owns the node's Incus trust store — and that store is daemon state, so a node
-        # re-materialisation drops the entry and CAPN starts answering `not authorized` on every
-        # reconcile. ndh pulls this into catalog.incus.trustedClients and re-asserts it each boot.
-        capnProviderCert = builtins.readFile ./exec/seed-master/src/main/resources/incus/capn-client.crt;
         # Raw YAML store path for inspection (the pinned, canonical build).
         networkBlueprintYamlPath = "${networkBlueprintYaml}/network-blueprint.yaml";
       };
