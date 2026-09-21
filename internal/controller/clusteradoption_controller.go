@@ -334,11 +334,13 @@ func (r *ClusterAdoptionReconciler) lxcClusterObj(spec adoptionv1alpha1.ClusterA
 		// it dialable from here. CAPN's own `kubeVIP` cannot do this job on RKE2 — it writes a static pod
 		// into the kubeadm path (/etc/kubernetes/manifests, which RKE2's kubelet never reads; it reads
 		// /var/lib/rancher/rke2/agent/pod-manifests) and mounts a kubeconfig at
-		// /etc/kubernetes/super-admin.conf, which does not exist here. Worse, its RBAC half DOES apply as
-		// an RKE2 Addon and declares system:kube-vip-role/-binding — the very names our unit renders, but
-		// bound to a ServiceAccount in kube-system rather than in the kube-vip namespace. Two owners
-		// rewriting one cluster-scoped binding with different subjects makes the DaemonSet's SA lose its
-		// rights intermittently, and the VIP flaps.
+		// /etc/kubernetes/super-admin.conf, which does not exist here. So it cannot start in either
+		// directory, and asking CAPN for it only litters the node.
+		//
+		// (The server/manifests/kube-vip-rbac.yaml on the node is OURS — kubeVIPRBACFile below — not
+		// CAPN's. It declares system:kube-vip-role/-binding bound to a ServiceAccount in kube-system,
+		// while the rke2lab unit binds the same cluster-scoped names to one in the kube-vip namespace:
+		// a collision to settle between those two, independent of this setting.)
 		"loadBalancer": map[string]any{"external": map[string]any{}},
 	}
 	return obj
