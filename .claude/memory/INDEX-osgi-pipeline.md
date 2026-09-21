@@ -110,3 +110,4 @@ Quand ce chantier rouvre, marquer ce qui est clos et déplacer ces lignes ; les 
 - `cluster-seed-execution-state` (dernier commit 2026-07-07)
 - `controlplane-to-osgi-migration-frame` (dernier commit 2026-07-07)
 - `world-gateway-lost-open-extensibility-debt` (dernier commit 2026-07-08)
+- [PoolAdoption : cycle réflexion↔Machine + infraRef](pool-reflection-cycle-and-infra-ref.md) — 2 défauts corrigés 09-21 : réflexion et Machine se justifiaient mutuellement (interblocage auto-entretenu, 9 h) ; et après greenfield le nom du pet ne nomme PAS le LXCMachine qui porte le verdict CAPN.
