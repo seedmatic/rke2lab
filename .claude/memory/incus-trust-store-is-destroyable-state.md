@@ -40,16 +40,37 @@ watch » ; ça peut être « la réconciliation meurt avant l'écriture ». Le d
 indécis → `pending`. **C'est correct** : il attend un verdict que CAPN ne peut pas rendre. Ne pas
 « corriger » seed-incluster face à ce symptôme.
 
-## Le correctif (livré)
+## Le correctif — RÉVISÉ le 2026-09-21 (la 1re version est révoquée)
 
 Le certificat client est du **PEM public** (versionné dans rke2lab depuis `68e9f7413`) ; seule sa
-moitié privée est dans le Secret d'identité. Donc il voyage comme un fait ordinaire, sur l'arête
-que ndh consomme déjà (`lib.networkBlueprint`, `lib.dataplan`) :
+moitié privée est dans le Secret d'identité.
 
-- rke2lab expose `lib.capnProviderCert` (`72290388f`).
-- ndh le lit via `catalog.incus.trustedClients` — même nature que `caches` (matériau de confiance
-  public, nommé, à l'échelle de la flotte) — et `modules/nixos/incus.d/ensure-incus-trust.sh`
-  l'assère à chaque démarrage du daemon (`78249644`).
+**Première tentative, RÉVOQUÉE** : rke2lab exposait `lib.capnProviderCert` (`72290388f`) et ndh le
+lisait via `catalog.incus.trustedClients` pour l'asserter à chaque démarrage du daemon (`78249644`).
+Reverté des deux côtés (rke2lab `5d113fc4e`, ndh `45663850`). Motif : j'avais conclu qu'il n'existait
+**aucune ressource de certificat** dans le provider Incus — conclusion tirée d'un `find sdks/incus`
+sur **un chemin qui n'existe pas** (le SDK vendoré est sous
+`host/pulumi/pulumi-generated-sdks/incus`). Le find rendait vide, j'ai lu une absence. ⚠️ **Leçon :
+un `find`/`grep` vide sur un chemin non vérifié n'est pas une absence.**
+
+**Correctif retenu** : le GROW déclare une ressource `incus.Certificate` (`name capn-provider`,
+`type client`), adoptée par `importId` quand l'entrée est déjà là — clavée sur le **fingerprint**, la
+vraie clé du trust store, donc aucune convention de nom à faire concorder. rke2lab `8f3236e97`.
+
+Ce qui a exigé le **bump du provider à 1.2.0** (rke2lab `0085a4240`) : `getCertificate` y est
+**nouveau** (absent en 1.1.1), et sans lui une entrée existante ne peut qu'être percutée, pas adoptée.
+Le bump s'est révélé bon marché — **41 fichiers** touchés dans le SDK régénéré, pas les 179 que la
+mémoire annonçait ; méthode : tag `recovery/incus-sdk-1.1.1-before-bump`, suppression du dossier,
+régénération, récupération de `pom.xml`/`README.md`/`.gitattributes` depuis le tag.
+
+Plomberie : l'hôte détient le certificat, donc seed-master lit **sa propre** ressource classpath et la
+passe sur `IngressConfig` (un 6e composant). Le lecteur qu'il avait déjà pour les credentials CAPN est
+hissé hors du stage `Given` plutôt que dupliqué.
+
+**Ce qu'on a perdu, et qu'il faut savoir** : le script ndh se réassurait à *chaque démarrage du
+daemon*, donc l'entrée se réparait sans `pulumi up`. La ressource Pulumi ne réconcilie que quand la
+stack tourne. En pratique une re-matérialisation est toujours suivie d'un grow, donc l'écart est
+étroit — mais réel, pas une équivalence.
 
 ## Pourquoi PAS le preseed, malgré `certificates:`
 
