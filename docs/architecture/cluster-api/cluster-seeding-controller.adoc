@@ -248,6 +248,15 @@ cold-start re-adoption is unaffected.
 [source,text]
 ----
 reconcile:
+  # MATERIAL GATE — everything the RKE2ControlPlane must carry is injected ONCE at its
+  # creation (ensure is create-if-absent), so the reconcile HOLDS until it is all present.
+  # This is also the answer to "when is the bootstrap bundle rendered?": no new trigger is
+  # needed, the gate waits for it. See the node-bootstrap-delivery seam.
+  if BYO-CA Secrets absent:        MaterialMissing  → requeue     # <cluster>-{ca,cca,etcd,peer-etcd}
+  if RKE2 config ConfigMaps absent: ConfigMissing   → requeue     # → files[] config.yaml.d/*
+  if bootstrap bundle Secret absent: ConfigMissing  → requeue     # → files[].contentFrom.secret
+  MaterialReady
+
   reflection = PoolReflection for this cluster            # Flux-applied from git, if any
   if reflection present:                                  # the cluster has lived
     roster = reflection.roster
@@ -264,6 +273,17 @@ reconcile:
   reachable = Cluster.RemoteConnectionProbe               # cluster-level (the CAPI Cluster)
   ClusterAdoption = aggregate(all pools adopted/observed, reachable)
 ----
+
+The *material gate* is the reason this controller needs no render trigger of its own. The render fires
+on a push to the rke2lab SOURCE branch, while what it must produce here follows a fleet-state change
+(a `workloadTarget` appearing) — two different events. Rather than reconcile them, the gate simply
+holds: nothing is stamped until every piece the `RKE2ControlPlane` has to carry exists, because `files`
+is injected once at creation and never patched afterwards. The event that INTRODUCES a target is the
+grow (`workloadTargets` is grow-recorded into the root `manifest.yaml`, then replayed from HEAD by
+later UPDATEs), so the first render of a target's material belongs to the grow and source pushes keep
+it in sync. The bundle Secret is the third entry on that gate — see
+link:../nixos-substrate/node-bootstrap-delivery.adoc#second-poser[the second poser] for what it
+carries and why an adopted node never receives it.
 
 The reconcile lives at the **pool** grain (`PoolIntention` → `PoolAdoption`); the **cluster**
 aggregates (`ClusterAdoption` Adopted ⟺ reachable AND every `PoolAdoption` settled — the

@@ -183,17 +183,24 @@ CAPRKE2 *creates*. A node that was provisioned without it never receives it, and
 change that — which is why a node already running the default cilium chart stays `NotReady` no matter
 how often the pool re-adopts it. It has to be re-provisioned.
 
-Two consequences worth keeping straight:
+The operator cold start — *delete the Incus instances, then let Pulumi reconcile the stack with
+`refresh`* — composes with this cleanly, because the two nodes belong to different actors:
 
-* A cold start of the MANAGEMENT plane alone is not enough. It wipes etcd, so the
-  `RKE2ControlPlane` is re-created and its spec is then correct (`ensure` is create-if-absent, so a
-  surviving one would NOT be patched) — but the workload's instances survive in Incus, so the pool
-  re-adopts them and no node is provisioned.
-* A host CHECKPOINT (factory reset) destroys the instances with it, so everything is grown afresh:
-  mgmt through poser 1, the workload through poser 2. The workload's reflection survives in git naming
-  a pet whose instance is gone — every pet confirmed absent — which is exactly the
-  link:../cluster-api/cluster-seeding-controller.adoc#void-reflection[void-reflection] path, so the
-  stale CR-set is dropped and CAPRKE2 greenfields against the corrected `RKE2ControlPlane`.
+* The management node IS a Pulumi resource. `refresh` is what makes the stack notice it is gone (its
+  state would otherwise still claim it exists), and the following `up` re-grows it — so mgmt gets its
+  bundle through *poser 1*, unchanged. The cellar is host-side, so the sealed bundle survives the
+  instance and can simply be re-posed.
+* The workload node is NOT a Pulumi resource — CAPN owns it. Nothing in the stack re-creates it.
+  What does is the pool: the reflection survives in git naming a pet whose instance is gone, every pet
+  reads CONFIRMED absent, and that is exactly the
+  link:../cluster-api/cluster-seeding-controller.adoc#void-reflection[void-reflection] path — the
+  stale CR-set is dropped and CAPRKE2 greenfields a node against the freshly-stamped
+  `RKE2ControlPlane`, which is where *poser 2* delivers.
+
+Note the asymmetry this exposes: an etcd wipe alone would re-stamp the `RKE2ControlPlane` correctly
+(`ensure` is create-if-absent, so a surviving one is NOT patched) but would re-adopt the surviving
+workload instances, provisioning nothing — so the correct spec would reach no node. Deleting the
+instance is what makes the delivery happen.
 ====
 
 === The one piece still to design
