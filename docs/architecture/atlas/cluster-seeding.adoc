@@ -65,8 +65,12 @@ flowchart LR
     a_green["GREENFIELD · declare RCP(replicas)<br/>CAPRKE2 provisions its OWN · we only OBSERVE"]
     a_det["determinism UNCONDITIONAL · git == reality<br/>CAPI/CAPN/CAPRKE2 own the Machine lifecycle"]
     a_int --> a_ref --> a_refl --> a_sw
+    a_void["VOID · all reflected pets CONFIRMED gone<br/>drop their CR-set, remember status.voidedPets<br/>the only controller-decided greenfield"]
     a_sw -->|"yes · lived before"| a_adopt
+    a_sw -->|"yes, but every pet gone"| a_void
     a_sw -->|"no · first boot / reset"| a_green
+    a_void -.->|"CAPRKE2 re-provisions → reflector REWRITES"| a_refl
+    a_void --> a_det
     a_green -.->|"CAPRKE2 creates → reflector NOTES"| a_refl
     a_adopt --> a_det
     a_green --> a_det
@@ -76,7 +80,7 @@ flowchart LR
   classDef gone fill:#fdd,stroke:#c33,stroke-width:2px,stroke-dasharray:4 3;
   class b_int,b_ad,b_ros,b_det,a_int built;
   class b_gap gone;
-  class a_ref,a_refl,a_sw,a_adopt,a_green,a_det new;
+  class a_ref,a_refl,a_sw,a_adopt,a_green,a_void,a_det new;
 ....
 
 == Verdict — does it hold?
@@ -89,7 +93,12 @@ flowchart LR
   Machines); absent → greenfield. The controller never drives the Machine lifecycle: in greenfield it
   declares the RCP `replicas` and CAPRKE2 provisions; it only observes and NOTES the result. What it AVOIDS is the
   reverted "flip" (the controller deleting/re-creating Machines to force a shape), which raced
-  CAPRKE2's replica controller.
+  CAPRKE2's replica controller. ONE bounded exception was added on 2026-09-21: when CAPN confirms
+  EVERY reflected pet gone, the reflection is VOID — it describes a pool that no longer exists, and
+  holding is a self-sustaining deadlock (the reflection names the pets, the adopt branch re-creates
+  their Machines, the reflector observes those Machines and re-writes the same reflection; no term is
+  anchored in the instances). It deletes WITHOUT re-creating, at a name CAPRKE2 will not re-use, and
+  remembers the decision in `status.voidedPets` — so it is not the churning shape.
 
 . *The reflector is not a new orchestrator.* It mirrors reality into git via the blessed
   `image-automation-controller` loop (`fetch → commit → push`, retry-on-conflict, never force-push,

@@ -149,8 +149,12 @@ is immune to Flux apply-ordering at bootstrap (a reflection not-yet-applied to e
 read as "absent" → a wrong greenfield, a rival cluster). Its PRESENCE on the branch is the switch:
 
 * **Reflection PRESENT** → the cluster has lived before → **ADOPT**. The reflected roster names
-  the pets; the controller pre-creates the named `Machine`s so CAPRKE2 adopts the surviving
-  instances by deterministic name.
+  the pets. For a pet CAPRKE2 does not already own, the controller pre-creates the named `Machine`
+  so CAPRKE2 adopts the surviving instance by deterministic name. For a pet it DOES own, the
+  controller touches nothing and only reads CAPN's verdict — see <<infra-ref>>.
+* **Reflection PRESENT but EVERY reflected pet confirmed absent** → the reflection describes a pool
+  that no longer exists → **VOID** → greenfield. See <<void-reflection>>: this is the one case where
+  greenfield is controller-decided, and it is bounded by "every, and confirmed".
 * **Reflection ABSENT** → never provisioned, or a deliberate greenfield reset (the operator
   dropped the instances AND the reflection document) → **GREENFIELD**. The controller
   creates the `Cluster` + `RKE2ControlPlane` (replicas = the seed roster size) and lets CAPRKE2
@@ -170,18 +174,74 @@ names are fine precisely because the reflector persists them and re-adopts them 
 [IMPORTANT]
 ====
 **We only OBSERVE; CAPI / CAPN / CAPRKE2 own the Machine lifecycle.** The controller never
-deletes or re-creates `Machine`s to force a state — that races the `RKE2ControlPlane` (which
+deletes AND re-creates a `Machine` to force a state — that races the `RKE2ControlPlane` (which
 owns the Machines and maintains its replicas) and the core Machine-deletion cascade, which
 was proven live to churn/deadlock. In GREENFIELD the controller creates NO `Machine`s at all
 (CAPRKE2 provisions them); in ADOPTION it creates the named `Machine`s ONCE (to bind the
 deterministic names) and thereafter only observes. Provisioning, scaling and deletion of
 Machines are CAPRKE2/CAPN's — the controller reads their status, it does not drive it.
+
+The ONE exception is <<void-reflection>>, and it is deliberately not the churning shape: it
+deletes **without re-creating**, then steps back. The name is not re-used — CAPRKE2 mints its own
+— so there is no delete/re-create loop at a fixed name, and `status.voidedPets` stops the pool
+re-entering the decision while the reflection still names the dropped pets. It is the only way out
+of a reflection that has outlived its instances, which is otherwise a permanent deadlock.
 ====
 
-Greenfield is therefore **operator-armed, never controller-decided**: the only way to arm a
+Greenfield is therefore **operator-armed with ONE bounded exception**: normally the only way to arm a
 fresh day-0 is the operator dropping the cluster's reflection document (on the manifests branch) — a
-deliberate, human-in-the-loop reset. The controller never abandons a cluster whose reflection
-survives.
+deliberate, human-in-the-loop reset. The controller never abandons a cluster whose reflection survives
+*and whose pets still exist*. The exception is <<void-reflection>>, where CAPN positively confirms that
+every reflected pet is gone.
+
+[[void-reflection]]
+=== A reflection whose pets are ALL gone is VOID, not a reason to hold
+
+A pet absent while its siblings live is a reflection↔reality mismatch: the controller HOLDS, because
+greenfielding beside a survivor would mint a rival control plane. That guard is right, and unchanged.
+
+But when **every** reflected pet is confirmed absent there is, by construction, no survivor to race —
+and holding is then not caution, it is a **deadlock**, and a self-sustaining one:
+
+. the reflection names the pets;
+. the adopt branch re-creates their `Machine`s on every pass (15s);
+. the reflector observes those `Machine`s — `observeRoster` excludes only Machines being deleted and
+  non-control-plane ones, NOT one whose infrastructure is gone — and re-writes the same reflection.
+
+Not one term of that cycle is anchored in the instances, so deleting either one alone is repaired by
+the other. Lived cost: `bioskop-wrkld` sat at `NodeMissing: 0/1 present, 1 absent — holding` for nine
+hours after an instance was deleted out of band, with no path out.
+
+So a total, confirmed loss voids the reflection: the controller drops the CR-set of the pets it no
+longer believes in and lets CAPRKE2 provision. Dropping the `Machine`s is the operative half — leaving
+them keeps CAPRKE2 counting phantom replicas and provisioning nothing.
+
+Two bounds make this safe:
+
+* **"Confirmed"** means CAPN's positive verdict (`InstanceProvisioned=False` / `InstanceDeleted`). A
+  missing `LXCMachine` reads *undecided*, never absent — so a cold-start, which wipes etcd while the
+  instances survive, can never be mistaken for a void reflection.
+* **The decision is remembered** (`status.voidedPets`). Once the CR-set is dropped those pets read
+  *undecided* — the same reading as a cold-start — so without the memory the adopt branch would
+  re-mint the phantoms on the very next pass. Both would then be observed, the reflected roster would
+  grow to two pets, and the total loss would become a PARTIAL one that this case deliberately refuses
+  to act on: the deadlock again, now out of reach. The memory clears the moment the reflected roster
+  differs or any pet is present, and it does not survive a cold-start — which is correct, a cold-start
+  must re-adopt.
+
+[[infra-ref]]
+=== The pet name does not name the LXCMachine after a greenfield
+
+Only when the controller mints the pair do the pet, its `Machine`, its `LXCMachine` and the Incus
+instance all share one name. After a greenfield CAPI names them **independently** — `Machine …-mgqbm`
+owning `LXCMachine …-qs5dg`, the instance following the LXCMachine — and the reflector reflects the
+**Machine** name.
+
+So presence is read through `Machine.spec.infrastructureRef`, never by assuming the pet name. Taking
+the pet name minted a rival `LXCMachine` that no `Machine` referenced; CAPN skips an un-owned
+`LXCMachine`, so it never received an `InstanceProvisioned` condition and the pool waited on it
+forever while the real node ran. When no `Machine` exists the ref IS the pet name by construction, so
+cold-start re-adoption is unaffected.
 
 === The reconcile — reflection-driven, aggregated at the cluster
 
@@ -189,9 +249,15 @@ survives.
 ----
 reconcile:
   reflection = PoolReflection for this cluster            # Flux-applied from git, if any
-  if reflection present:                                  # the cluster has lived → ADOPT
+  if reflection present:                                  # the cluster has lived
     roster = reflection.roster
-    pre-create the named Machines → CAPRKE2 adopts the surviving instances by name
+    for each pet: presence = CAPN's verdict on Machine(pet).spec.infrastructureRef
+    if roster already in status.voidedPets and none present:
+      create nothing — wait for CAPRKE2 + the reflector's rewrite
+    elif every pet CONFIRMED gone:                        # no survivor to race → VOID → greenfield
+      drop those pets' CR-set; status.voidedPets = roster
+    else:                                                 # ADOPT (a survivor remains)
+      pre-create the named Machines for pets CAPRKE2 does not own
   else:                                                   # first boot / deliberate reset → GREENFIELD
     create Cluster + RKE2ControlPlane(replicas = seed roster size)
     CAPRKE2 provisions its own control-nodes; the reflector observes → writes PoolReflection
@@ -217,10 +283,13 @@ reconcile**; the `ClusterAdoption` is the *result* of a successful adopt
 ----
 flowchart TD
   start(["reconcile"]) --> q{"PoolReflection present?"}
-  q -->|"yes — the cluster has lived"| adopt["ADOPT<br/>pre-create the named Machines from the reflected roster<br/>CAPRKE2 adopts the surviving instances by name"]:::hot
+  q -->|"yes — the cluster has lived"| pets{"how many reflected pets<br/>does CAPN confirm GONE?"}
   q -->|"no — first boot / deliberate reset"| greenfield["GREENFIELD<br/>create RCP(replicas); CAPRKE2 provisions its own<br/>reflector observes → writes the first PoolReflection"]:::work
+  pets -->|"none, or some — a survivor remains"| adopt["ADOPT<br/>pre-create the named Machines for pets CAPRKE2 does not own<br/>presence read via Machine.spec.infrastructureRef"]:::hot
+  pets -->|"ALL of them — nothing left to protect"| void["VOID the reflection<br/>drop the dropped pets' CR-set, remember it in status.voidedPets<br/>CAPRKE2 re-provisions; the reflector rewrites the roster"]:::work
   adopt --> reach{"reachable?<br/>Cluster.RemoteConnectionProbe"}
   greenfield --> reach
+  void --> reach
   reach -->|"yes"| adopted["ADOPTED<br/>ClusterAdoption + CAPI mirror settled"]:::ok
   reach -->|"no (present-sick)"| degraded["DEGRADED<br/>surface + retry — NEVER touch the Machines"]:::bad
   adopted -->|"re-reconcile / cold-start (etcd wiped)"| start
@@ -1005,8 +1074,10 @@ steady-state handoff in a single object's *existence*:
 ----
 flowchart TD
   start(["reconcile — pick the mode + roster"]) --> q{"PoolReflection present?"}
-  q -->|"yes · lived before"| refl["ADOPT · roster = OBSERVED (PoolReflection.spec)<br/>pre-create the named Machines → CAPRKE2 adopts"]:::code
+  q -->|"yes · lived before"| gone{"all reflected pets<br/>CONFIRMED gone?"}
   q -->|"no · first boot / reset"| seed["GREENFIELD · size = PoolIntention.spec.nodes (seed)<br/>RCP(replicas) → CAPRKE2 provisions → reflector NOTES"]:::src
+  gone -->|"no · a survivor remains"| refl["ADOPT · roster = OBSERVED (PoolReflection.spec)<br/>pre-create the named Machines → CAPRKE2 adopts"]:::code
+  gone -->|"yes · nothing to protect"| void["VOID · drop their CR-set, remember status.voidedPets<br/>CAPRKE2 re-provisions → reflector rewrites the roster"]:::src
   classDef code fill:#dae8fc,stroke:#6c8ebf
   classDef src fill:#e1d5e7,stroke:#9673a6
 ----

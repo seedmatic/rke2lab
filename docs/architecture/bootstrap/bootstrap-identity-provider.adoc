@@ -22,7 +22,7 @@ activation facet (`ManifestsRunbookInput`, whose `identity()` carries the `Boots
 `synthesize(request)`. The `withIncusIdentity(...)` request method still exists but is NEVER called, so
 `incusIdentity()` is empty — the CAPN-Secret material path is defined-not-wired. Read the "host world"
 diagrams and the seed-master "synthesis entry" / setup Step 3 / troubleshooting below as the scion's job
-(and, for the operator setup, as one-time infrastructure steps), not as live host-file reads.
+(and, for the operator setup, as committed material rather than live host-file reads).
 ====
 
 == Architecture
@@ -45,7 +45,7 @@ graph TB
         InfraID[Infrastructure Identity<br/>Incus remote, per-cluster<br/>may differ from cluster name]
     end
 
-    subgraph Operator["Operator setup (one-time infrastructure, NOT read at synthesis)"]
+    subgraph Operator["Operator setup (committed material, NOT read at synthesis)"]
         Secrets[".secrets<br/><i>incus.capn.clientKey</i>"]
         IncusConfig["~/.config/incus/<br/><i>remotes, server certs</i>"]
         Resources["capn-client.crt<br/><i>Incus trust material</i>"]
@@ -72,7 +72,7 @@ graph TB
 
 * Orange: Identity data (cluster-scoped configuration)
 * Green: Context provider (thread-local, synthesis-scoped)
-* Blue: Operator setup (one-time Incus trust material — NOT read during synthesis; the CAPN-Secret material path is defined-not-wired)
+* Blue: Operator setup (the capn-provider material — NOT read during synthesis; its trust entry is declared in ndh, not typed; the CAPN-Secret material path is defined-not-wired)
 * Solid lines: Data flow during synthesis (the scion builds the request from the activation facet)
 
 **Key Separation of Concerns:**
@@ -303,23 +303,34 @@ rm capn-client.csr
 
 **Note**: The CN `capn-provider` is descriptive but not tied to a specific cluster. All clusters share this identity.
 
-=== Step 2: Add Certificate to Incus Trust
+=== Step 2: Nothing — the trust entry is asserted on every boot
 
-For each Incus remote, add the certificate to the trust store:
+[IMPORTANT]
+====
+*This used to be a manual, one-time `incus config trust add-certificate`. It is not, any more —
+do not run one.* The trust store is **daemon state on the node**, so a hand-added entry is
+collateral damage of the next certificate re-mint or node re-materialisation. That is not
+hypothetical: re-minting `bioskop-nixos`' Incus certificates on 2026-09-20 dropped this entry, and
+CAPN then answered `not authorized` on every reconcile for seven hours — visible only as a Cluster
+API health-check timeout four layers up (see
+link:../../guides/troubleshooting-workflow.adoc[troubleshooting], and
+link:../cluster-api/cluster-seeding-controller.adoc[the seeding controller] for why the symptom
+surfaces so far from the cause).
+====
 
-[source,bash]
-----
-# Add to bioskop remote
-incus config trust add-certificate capn-client.crt \
-    --name "cluster-capn" \
-    --type client
+The certificate's PUBLIC half carries no secret, so it travels as a fleet fact on the edge ndh
+already consumes from rke2lab (`lib.networkBlueprint`, `lib.dataplan`):
 
-# If you have multiple remotes, repeat for each
-incus config trust add-certificate capn-client.crt \
-    --name "cluster-capn" \
-    --type client \
-    --remote nikopol
-----
+* rke2lab publishes it as `lib.capnProviderCert` (read from
+  `exec/seed-master/src/main/resources/incus/capn-client.crt`, Step 3 below);
+* ndh reads it through `catalog.incus.trustedClients` — the same nature as `catalog.caches`, named
+  public trust material — and `modules/nixos/incus.d/ensure-incus-trust.sh` re-asserts it after every
+  `incus.service` start, probing the fingerprint first so it is idempotent.
+
+NOTE: `virtualisation.incus.preseed` does have a `certificates:` section, and it is NOT usable here:
+upstream applies it with a blind `CreateCertificate`, where its storage-pool / network / project
+sections all get-then-create-or-update. Since the preseed unit replays on every daemon start, a second
+POST of an already-trusted fingerprint would fail the unit at every boot but the first.
 
 === Step 3: Store Certificate in the host application resources
 
@@ -331,16 +342,17 @@ cp capn-client.crt \
     exec/seed-master/src/main/resources/incus/capn-client.crt
 ----
 
-The `capn-provider` identity is one-time Incus trust material for the CAPN provider. It is NOT the
-identity anything authenticates with at synthesis (that is the operator cert in `~/.config/incus/`).
+The `capn-provider` identity is the Incus trust material the in-cluster CAPN provider authenticates
+WITH. It is NOT the identity anything authenticates with at synthesis (that is the operator cert in
+`~/.config/incus/`). Its trust entry is declared, not typed once — see Step 2.
 
 [NOTE]
 ====
 *Re-baselined:* there is no longer an `IncusIdentityMaterialAssembler` (removed), and nothing reads
 `capn-client.crt` / `.secrets` / `~/.config/incus/` during synthesis. The CAPN-Secret material path
 (`withIncusIdentity(...)`) is defined-not-wired, so `IncusIdentitySecretManifestsUnit` sees an empty
-`incusIdentity()` and renders nothing. This step remains as the operator's one-time trust setup; it is
-not consumed by a live host assembler. When the material path is wired, it will be assembled in the
+`incusIdentity()` and renders nothing. The certificate is still the material ndh's trust-assertion
+reads (Step 2); it is not consumed by a live host assembler. When the material path is wired, it will be assembled in the
 in-container `ManifestSynthesisScenario` scion, not host-side.
 ====
 
@@ -557,8 +569,9 @@ the material path is re-wired it will read in the in-container scion, not host-s
 **Cause**: This was raised by the former host-side `IncusIdentityMaterialAssembler` (now removed) when
 the certificate was missing from seed-master's resources. It does not occur today.
 
-**Fix**: For the one-time trust setup, copy the certificate to
-`exec/seed-master/src/main/resources/incus/capn-client.crt`.
+**Fix**: keep the certificate committed at
+`exec/seed-master/src/main/resources/incus/capn-client.crt` — that path is what `lib.capnProviderCert`
+reads, so ndh's trust assertion (Step 2) depends on it.
 
 === "incus.capn.clientKey not found in .secrets"
 
