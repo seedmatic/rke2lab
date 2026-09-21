@@ -2,6 +2,7 @@ package io.seedmatic.rke2lab.controlplane.incus;
 
 import com.pulumi.deployment.Deployment;
 import com.pulumi.incus.IncusFunctions;
+import com.pulumi.incus.inputs.GetCertificatePlainArgs;
 import com.pulumi.incus.inputs.GetImagePlainArgs;
 import com.pulumi.incus.inputs.GetNetworkPlainArgs;
 import com.pulumi.incus.inputs.GetProfilePlainArgs;
@@ -102,6 +103,31 @@ public final class IncusImportLookup {
       return normalizeImportId(profile.id()).or(() -> normalizeImportId(profile.name()));
     } catch (Exception ex) {
       log.accept("incus lookup getProfile: failed (" + summarizeLookupFailure(ex) + ")");
+      return Optional.empty();
+    }
+  }
+
+  /**
+   * The import id to adopt an existing trust-store certificate, or empty when none found. Keyed on
+   * the content {@code fingerprint} — the trust store's own key, so the lookup is exact and needs
+   * no name convention to agree. Available only since provider 1.2.0, which added the data source.
+   */
+  public Optional<String> existingCertificateId(String fingerprint) {
+    log.accept("incus lookup getCertificate: start fingerprint=" + fingerprint);
+    try {
+      final var certificate =
+          IncusFunctions.getCertificatePlain(
+                  GetCertificatePlainArgs.builder().fingerprint(fingerprint).build(),
+                  context.invokeOptions())
+              .orTimeout(invokeTimeoutSeconds(), TimeUnit.SECONDS)
+              .join();
+      if (certificate == null) {
+        return Optional.empty();
+      }
+      return normalizeImportId(certificate.id())
+          .or(() -> normalizeImportId(certificate.fingerprint()));
+    } catch (Exception ex) {
+      log.accept("incus lookup getCertificate: failed (" + summarizeLookupFailure(ex) + ")");
       return Optional.empty();
     }
   }

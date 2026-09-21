@@ -220,6 +220,22 @@ public class ClusterSeedScenario
    * the worktree entry-gate policy). All of it is narration; opening the gardening is a
    * precondition, not a step.
    */
+  /**
+   * The PUBLIC capn-provider client certificate, read from THIS module's resources — the host owns
+   * it. Two consumers, hence hoisted out of a stage: the CAPN identity credentials handed to the
+   * in-cluster provider, and the {@link IngressConfig} the GROW turns into the daemon's trust
+   * entry.
+   */
+  private static String readCapnClientCert() {
+    try (var in = ClusterSeedScenario.class.getResourceAsStream("/incus/capn-client.crt")) {
+      return in == null
+          ? ""
+          : new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+    } catch (IOException ex) {
+      throw new UncheckedIOException("could not read the bundled capn client cert", ex);
+    }
+  }
+
   public static class Given extends Stage<Given> {
 
     @ProvidedScenarioState Gardening gardening;
@@ -487,16 +503,6 @@ public class ClusterSeedScenario
         throw new UncheckedIOException("could not read the incus server cert " + certPath, ex);
       }
     }
-
-    private String readCapnClientCert() {
-      try (var in = ClusterSeedScenario.class.getResourceAsStream("/incus/capn-client.crt")) {
-        return in == null
-            ? ""
-            : new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
-      } catch (IOException ex) {
-        throw new UncheckedIOException("could not read the bundled capn client cert", ex);
-      }
-    }
   }
 
   /**
@@ -748,7 +754,8 @@ public class ClusterSeedScenario
               config.incusDefaultRemote(),
               config.incusRemoteAddress().toString(),
               config.incusConfigFolder() == null ? "" : config.incusConfigFolder().toString(),
-              config.lanBridgeParent());
+              config.lanBridgeParent(),
+              readCapnClientCert());
       // The per-node bootstrap material the GROW lays into the guest through the UNIFORM cloud-init
       // channel (write_files; the same channel CAPN/CAPRKE2 use for a workload node). All opaque
       // here. Two sources, both dual-realm cases the transactional cellar reveals (read-your-writes

@@ -3,6 +3,8 @@ package io.seedmatic.rke2lab.controlplane.incus;
 import com.pulumi.command.local.Command;
 import com.pulumi.command.local.CommandArgs;
 import com.pulumi.core.Output;
+import com.pulumi.incus.Certificate;
+import com.pulumi.incus.CertificateArgs;
 import com.pulumi.incus.Image;
 import com.pulumi.incus.ImageArgs;
 import com.pulumi.incus.Instance;
@@ -24,9 +26,15 @@ import io.seedmatic.rke2lab.incus.ingress.GrowNetworkView;
 import io.seedmatic.rke2lab.incus.ingress.IngressConfig;
 import io.seedmatic.rke2lab.incus.ingress.InstanceGrowPlan;
 import io.seedmatic.rke2lab.incus.ingress.SplitImageFingerprint;
+import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.security.GeneralSecurityException;
+import java.security.MessageDigest;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
 import java.util.Base64;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -55,6 +63,9 @@ public final class InstanceGrow {
    * literal in seed-incluster's {@code lxcMachineSpec} for CAPN. It is NOT a per-deployment knob.
    */
   private static final String NODE_BASE_PROFILE = "node-base";
+
+  /** The trust-store entry name for the in-cluster CAPN provider's identity. */
+  private static final String CAPN_TRUST_ENTRY = "capn-provider";
 
   private final IngressConfig config;
   private final IncusProviderContext providerContext;
@@ -85,6 +96,7 @@ public final class InstanceGrow {
    */
   public void grow(InstanceGrowPlan plan, NodeBootstrapMaterial material) {
     final Project project = ensureProject();
+    ensureCapnTrust();
     ensureNetworks(project, plan.network());
     // The instance's profiles, in incus precedence order (LAST wins): the grown cluster's
     // node-<cluster> (vmnet0) then node-base (root+config+zfs+lan0). Each is an Output so the
@@ -129,6 +141,58 @@ public final class InstanceGrow {
    * DHCP-provision it in-cluster even though only the management node grows standalone. The scion
    * assembled each bridge's config OSGi-side from the netplan blueprint; the host only poses it.
    */
+  /**
+   * The capn-provider trust entry. The daemon MUST trust the certificate the IN-CLUSTER CAPN
+   * provider authenticates with, or CAPN answers `not authorized` on every reconcile — a failure
+   * that surfaces only as a Cluster API health-check timeout several layers up, with the real cause
+   * visible on no CR at all. It is declared here because the trust store is DAEMON STATE:
+   * re-minting a node's Incus certificates, or re-materialising the node, drops the entry and
+   * nothing else brings it back.
+   *
+   * <p>Adopted by {@code importId} when the entry is already there (an operator may have added it
+   * by hand), keyed on the content fingerprint — the trust store's own key, so no naming convention
+   * has to agree. The lookup needs provider 1.2.0, which added the certificate data source.
+   */
+  private void ensureCapnTrust() {
+    final String pem = config.capnProviderCertPem();
+    if (pem == null || pem.isBlank()) {
+      log.accept("incus capn trust: no capn-provider certificate in the ingress config; skipping");
+      return;
+    }
+    final String fingerprint = certificateFingerprint(pem);
+    final CustomResourceOptions.Builder options =
+        CustomResourceOptions.builder().provider(providerContext.provider()).retainOnDelete(true);
+    importLookup.existingCertificateId(fingerprint).ifPresent(options::importId);
+
+    new Certificate(
+        "seed-capn-provider-trust",
+        CertificateArgs.builder()
+            .name(CAPN_TRUST_ENTRY)
+            .type("client")
+            .certificate(pem)
+            .description("rke2lab: the in-cluster CAPN provider's identity")
+            .build(),
+        options.build());
+  }
+
+  /**
+   * The trust store's key for a certificate: SHA-256 over its DER encoding, lowercase hex — what
+   * {@code incus config trust list} shows truncated to twelve characters.
+   */
+  private static String certificateFingerprint(String pem) {
+    try {
+      final X509Certificate certificate =
+          (X509Certificate)
+              CertificateFactory.getInstance("X.509")
+                  .generateCertificate(
+                      new ByteArrayInputStream(pem.getBytes(StandardCharsets.UTF_8)));
+      return HexFormat.of()
+          .formatHex(MessageDigest.getInstance("SHA-256").digest(certificate.getEncoded()));
+    } catch (GeneralSecurityException ex) {
+      throw new IllegalStateException("could not fingerprint the capn-provider certificate", ex);
+    }
+  }
+
   private void ensureNetworks(Resource projectDependency, GrowNetworkView view) {
     view.clusterBridges()
         .values()
