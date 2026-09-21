@@ -93,25 +93,48 @@ exact que réclamait l'idée « déployer au bootstrap, retirer à la réconcili
 See [[pool-reflection-cycle-and-infra-ref]] [[workload-grow-foundations-resume]]
 [[cilium-needs-nft-compat-on-nftables-only-kernel]].
 
-## ★ PROCHAINE ÉTAPE (nommée par l'utilisateur, 2026-09-21 — pause prise ici)
+## ★ ÉTAT AU 2026-09-21 fin de soirée — la revue de modèle est FAITE, les specs sont écrites
 
-**Revoir le modèle contre les specs avant de coder**, pour vérifier qu'on est en phase : les specs
-décrivent le rôle de chaque cluster et ce qu'il doit porter comme déploiement au runtime. À
-confronter à ce qu'on vient de découvrir, en particulier —
+Le modèle était en phase ; il manquait **un poseur**, pas un concept. Tout est gravé :
 
-- `ClusterRole.enabledDomainIds` : socle des DEUX rôles = cluster, runtime, platform, gitops,
-  networking, storage, high-availability, tailscale, cicd ; role-exclusif = `cluster-api` (mgmt),
-  `mesh` (wrkld). Est-ce que ce découpage dit quoi que ce soit sur **l'ordre d'arrivée** ? Non
-  aujourd'hui — et c'est justement ce qui manque : rien dans le modèle ne distingue « doit exister
-  avant qu'un contrôleur tourne » de « arrive par GitOps ».
-- Donc la question de modèle à trancher : la voie **bootstrap** est-elle une propriété d'un
-  DOMAINE, d'une UNITÉ, ou d'une LAYER ? (`ManifestLayer` a déjà FOUNDATION/OPERATORS/WORKLOADS.)
-  Candidat naturel : une layer/marque « bootstrap » que l'unité déclare, et que la projection
-  route vers la ConfigMap annotée au lieu de la seule branche.
-- Vérifier aussi ce que les specs disent déjà du runtime d'un cluster wrkld : `mesh`
-  (Headscale/Headplane) est wrkld-only et always-live — donc le wrkld porte un service dont le mgmt
-  dépend, ce qui ajoute une contrainte d'ordre inter-clusters à regarder.
+- `docs/architecture/nixos-substrate/node-bootstrap-delivery.adoc#second-poser` (rke2lab `411043443`)
+  — la couture **bifurque** : même carve, même artefact, deux poseurs. `InstanceGrow` via devlxd pour
+  un nœud que l'hôte fait pousser ; `RKE2ControlPlane.spec.files[].contentFrom.secret` pour un nœud
+  que CAPRKE2 provisionne (mécanisme vérifié contre le CRD v1beta2 vivant).
+- `cluster-seeding-controller.adoc` (`8fa3c958a`) — la **porte de matière** est la réponse à « quand
+  le bundle est-il rendu ? » : aucun nouveau déclencheur, le contrôleur attend.
+- `manifests-rendered-branches.adoc#per-target-pass` + `atlas/nixos-substrate.adoc` (`db6c509e2`).
 
-Docs à relire pour ça : `docs/architecture/manifests/manifests-architecture.adoc` (table des
-registrars), `docs/architecture/cluster-api/management-workload-topology.adoc`,
-`docs/architecture/cluster-api/manifests-rendered-branches.adoc`.
+**Le second poseur est CODÉ et propagé** : seed-incluster `dbb9108f9` → rke2lab `d03477e6c` →
+flox-catalogue `ef695c7e0`. Le `File` `contentFrom.secret` + l'entrée sur la porte, **tous deux
+conditionnés à NE PAS être le cluster de soi** (le nœud de mgmt est posé par l'hôte via devlxd ; exiger
+un Secret l'aurait bloqué pour toujours — quasi-régression rattrapée juste avant commit).
+
+Et la recette kube-vip est **supprimée** (seed-incluster `31d5b15fb`, rke2lab `dba8742f3`) : Flux
+l'installe depuis la branche du cluster, comme sur mgmt. `KubeVIPVersion` retiré des deux specs.
+
+## ★★ CE QU'IL RESTE POUR TERMINER LE BOOTSTRAP DE wrkld — UNE SEULE PIÈCE
+
+Vérifié vivant le 2026-09-21 : `PoolAdoption bioskop-wrkld-control-node` est `phase=Pending`,
+`MaterialReady=False MaterialMissing: waiting for Secret bioskop-wrkld-server-manifests in
+rke2lab-bioskop-wrkld`, et `No resources found` pour le `RKE2ControlPlane` — la porte rend avant de
+l'estampiller, donc **aucune instance, aucun nœud cassé, aucun dataset orphelin**. mgmt est
+`Adopted present=1` à côté. L'échec est devenu honnête : il nomme le Secret manquant.
+
+**La pièce manquante : la passe par cible.** La passe de synthèse du manager doit jouer le jeu
+d'unités du rôle `ClusterRole.WRKLD` pour chaque `workloadTarget`, ce qui produit d'un même geste (a)
+la branche `manifests/<host>-wrkld` et (b) le bundle d'amorçage de la cible, déposé comme Secret
+`<cluster>-server-manifests` sur la lane NODE_BOOTSTRAP.
+
+Ce qui est déjà acquis pour ça : le rendu tourne **in-cluster** (Tekton `render-manifests` dans
+`rke2lab-system`) et est **secret-full** ; `workloadTargets` est porté sur la requête ;
+`ClusterRole.of(clusterName)` dérive déjà le bon jeu de domaines ; et la lane NODE_BOOTSTRAP dépose
+**déjà** des Secrets par cible (c'est ainsi que les BYO-CA de wrkld sont arrivés). Le carve est par
+passe de synthèse, d'où le besoin d'une seconde passe. Le socle d'amorçage n'a PAS besoin de revue par
+rôle : ses 8 unités (`networking/cilium-config` ; `gitops/flux-operator`, `flux-instance`,
+`flux-root`, `githubapp`, `sops-age` ; `cicd/pac-secret`, `render-signing`) sont toutes dans des
+domaines que `ClusterRole` active pour les DEUX rôles.
+
+Ordre ensuite, sans boucle : Flux naît dans wrkld → il pose kube-vip et le Connector tailscale → la
+VIP existe **et** devient routable → CAPI atteint le cluster. Voir
+[[kubeconfig-context-per-cluster-intention]] pour la tâche jumelle, convenue juste après.
