@@ -128,7 +128,7 @@ flowchart TB
   end
 
   subgraph B["poser 2 — CAPI/CAPN"]
-    sec["Secret on THIS lane in rke2lab-&lt;cluster&gt;<br/>the lane that already carries the BYO-CA set<br/>and host-incus-identity — never the branch"]
+    sec["Secret in rke2lab-&lt;cluster&gt; on the MANAGER's branch,<br/>sops-encrypted — beside the BYO-CA set<br/>it is gated with"]
     rcp["RKE2ControlPlane.files[]<br/>contentFrom.secret{name, key}<br/>path server/manifests/rke2lab-bootstrap.yaml"]
     n2["cloud-init write_files,<br/>before rke2 starts"]
     sec --> rcp --> n2
@@ -156,6 +156,13 @@ Four properties make this the shape rather than a variant of it:
 * *The credential never enters a spec.* `RKE2ControlPlane.spec.files[].contentFrom.secret{name, key,
   namespace}` (CAPRKE2 v1beta2) is a REFERENCE, so the bundle stays in a Secret even though the
   workload's CR-set is itself rendered onto the MANAGER's branch (the rendered-branches model).
+* *It goes where its siblings go.* The Secret is rendered onto the manager's branch, sops-encrypted,
+  in the same `rke2lab-<cluster>` namespace as the four BYO-CA Secrets the same material gate waits
+  on. NOT the `NODE_BOOTSTRAP` lane the MANAGEMENT cluster's own bundle rides: that lane is applied by
+  the manager node's rke2 auto-deploy at PROVISIONING time only, so a target appearing between two
+  grows would never receive its Secret, whereas Flux delivers this one on the next reconcile.
+  Committing it is safe because sops encrypts to the age RECIPIENT — the repository alone never
+  decrypts it, even though the bundle happens to carry the fleet age identity.
 * *Single ownership is preserved with no new rule.* <<the-rule>> already routes a marked resource out
   of the branch, so Flux never sees these objects on either poser. No dual lane, no reconcile fight,
   nothing to compare.
@@ -211,13 +218,14 @@ workload instances, provisioning nothing — so the correct spec would reach no 
 instance is what makes the delivery happen.
 ====
 
-=== The one piece still to design
+=== Where the bundle comes from
 
-The carve runs per synthesis pass, so per rendered cluster — and a cluster being born has no pass. The
-manager's pass must therefore run the `ClusterRole.WRKLD` unit set for each of its `workloadTargets`,
-which produces the target's bundle and its `manifests/<cluster>` branch in one gesture. That is the
-open item this seam now depends on; see
-link:../cluster-api/manifests-rendered-branches.adoc[the rendered-branches model].
+The carve runs per synthesis pass, so per rendered cluster — and a cluster being born has no pass. So
+the manager's run plays one: it runs the `ClusterRole.WRKLD` unit set for each of its
+`workloadTargets`, which produces that target's bundle and its `manifests/<cluster>` branch in one
+gesture, and hands the bundle up to its own pass as `WorkloadBootstrapBundlesMaterial` — the material
+the `<cluster>-server-manifests` Secret above is rendered from. See
+link:../cluster-api/manifests-rendered-branches.adoc#per-target-pass[the per-target pass].
 
 NOTE: The bootstrap set needs no per-role review: all eight units carrying `nodeBootstrap` sit in
 domains `ClusterRole` enables for BOTH roles (`networking/cilium-config`; `gitops/flux-operator`,

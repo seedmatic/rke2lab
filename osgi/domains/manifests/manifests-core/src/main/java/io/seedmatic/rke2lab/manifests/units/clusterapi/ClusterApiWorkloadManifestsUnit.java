@@ -46,12 +46,12 @@ import software.constructs.Construct;
  * recipe would pin a non-existent image, so — like {@link ImageStateConfigMapManifestsUnit} — the
  * unit renders nothing rather than a misleading placeholder.
  *
- * <p>The per-remote CAPN identity Secret {@code <host>-incus-identity} (foundation 5) and the four
- * CAPRKE2 BYO-CA Secrets are rendered HERE ON THE BRANCH via the shared {@link
- * ClusterApiCrRenderer} (the SAME collaborator {@link ClusterApiManagementManifestsUnit} uses),
- * sops-encrypted, when their material is revealed (a secret-full render). One {@code rke2lab} incus
- * project (foundation 4 dropped — instance names are globally unique via the blueprint), so the
- * Secret carries {@code project: rke2lab}.
+ * <p>The per-remote CAPN identity Secret {@code <host>-incus-identity} (foundation 5), the four
+ * CAPRKE2 BYO-CA Secrets and the target's {@code <cluster>-server-manifests} bootstrap bundle are
+ * rendered HERE ON THE BRANCH via the shared {@link ClusterApiCrRenderer} (the SAME collaborator
+ * {@link ClusterApiManagementManifestsUnit} uses), sops-encrypted, when their material is present
+ * (a secret-full render). One {@code rke2lab} incus project (foundation 4 dropped — instance names
+ * are globally unique via the blueprint), so the Secret carries {@code project: rke2lab}.
  */
 public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit {
 
@@ -198,5 +198,23 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
                 ca.etcdPeerCa(),
                 packageProfile,
                 namespaceObject));
+    // The target's own bootstrap bundle, carved by its per-target render pass earlier in THIS run
+    // (never revealed from the cellar — see WorkloadBootstrapBundlesMaterial). Absent on a pass
+    // that
+    // rendered no target branch (a survey / the standalone CLI), and then the Secret is simply not
+    // rendered: seed-incluster's material gate keeps the pool honestly waiting rather than
+    // provisioning a node whose CNI cannot come up.
+    ManifestSynthesisContext.current()
+        .workloadBootstrapBundles()
+        .flatMap(bundles -> bundles.forCluster(cluster))
+        .ifPresent(
+            bundle ->
+                renderer.serverManifestsSecret(
+                    scope,
+                    cluster,
+                    namespace,
+                    bundle.manifests(),
+                    packageProfile,
+                    namespaceObject));
   }
 }

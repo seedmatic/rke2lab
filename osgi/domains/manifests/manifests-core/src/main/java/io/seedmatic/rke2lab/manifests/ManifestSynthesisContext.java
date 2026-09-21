@@ -15,6 +15,7 @@ import io.seedmatic.rke2lab.manifests.contract.profiles.OperatorPkiMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ReplicatorSourceSecretsMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.SigningKeyMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.SopsAgeMaterial;
+import io.seedmatic.rke2lab.manifests.contract.profiles.WorkloadBootstrapBundlesMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.WorkloadClusterCasMaterial;
 import io.seedmatic.rke2lab.manifests.ingress.ComponentVersions;
 import io.seedmatic.rke2lab.manifests.node.DefaultNodeEnvContext;
@@ -169,6 +170,14 @@ public final class ManifestSynthesisContext {
 
   public Optional<ManagementClusterCaMaterial> managementCas() {
     return request.managementCas();
+  }
+
+  /**
+   * The bootstrap bundle each workload target's OWN render pass carved — the only material not
+   * revealed from a seal, produced in the same run by the manager's per-target pass.
+   */
+  public Optional<WorkloadBootstrapBundlesMaterial> workloadBootstrapBundles() {
+    return request.workloadBootstrapBundles();
   }
 
   public Optional<GithubAppMaterial> githubApp() {

@@ -262,19 +262,66 @@ bootstrap-set resource — no pod runs there at all.
 So the **manager** renders it, and this is not a new arrangement so much as one already half in place:
 the manager's pass ALREADY emits per-target content, onto its own branch — the workload CAPI CR-set,
 and the workload's RKE2 config ConfigMaps (`RuntimeRke2ConfigManifestsUnit` iterates
-`self + workloadTargets` explicitly for this reason). What it does not yet do is run the
-`ClusterRole.WRKLD` unit set for each target, which is what would yield, in one gesture:
+`self + workloadTargets` explicitly for this reason). What it now also does is run the
+`ClusterRole.WRKLD` unit set for each target, which yields, in one gesture:
 
 . the target's `manifests/<host>-wrkld` branch — the app stack its own Flux will track;
 . the target's bootstrap bundle — carved out of that branch by the `NODE_BOOTSTRAP` marker, and
   delivered to the node by
   link:../nixos-substrate/node-bootstrap-delivery.adoc#second-poser[the second poser].
 
-The render is keyed on a single `bootstrapIdentity().clusterName()` and produces one `synthOutdir` and
-one branch per run, so the change is a *pass per target*, not new facts: `workloadTargets` is already
-carried on the request, and `ClusterRole.of(clusterName)` already derives the right domain set per
-pass (base + `mesh` for a workload, base + `cluster-api` for the manager) — it was built for exactly
-this.
+Nothing new had to be invented for it: `workloadTargets` was already carried on the request, and
+`ClusterRole.of(clusterName)` already derived the right domain set per pass (base + `mesh` for a
+workload, base + `cluster-api` for the manager) — it was built for exactly this. What changed is that
+a run plays **N+1 passes** instead of one, where it used to be keyed on a single
+`bootstrapIdentity().clusterName()` producing one `synthOutdir` and one branch.
+
+=== The passes, and why the manager's goes last
+
+[mermaid]
+----
+flowchart TB
+  subgraph W["N workload passes — one per workloadTarget"]
+    direction TB
+    w1["pass: bioskop-wrkld<br/>policy = ClusterRole.WRKLD<br/>identity = the target<br/>targets = none, bundles = none"]
+    b1["branch manifests/bioskop-wrkld<br/>sealed + pushed"]
+    c1[".bootstrap/rke2lab-bootstrap.yaml<br/>carved by the NODE_BOOTSTRAP marker"]
+    w1 --> b1
+    w1 --> c1
+  end
+
+  m["pass: bioskop-mgmt — LAST<br/>policy = ClusterRole.MGMT<br/>targets = workloadTargets<br/>bundles = what the N passes carved"]
+  bm["branch manifests/bioskop-mgmt<br/>ClusterIntention + PoolIntention + BYO-CA<br/>+ &lt;cluster&gt;-server-manifests Secret"]
+
+  c1 -->|"WorkloadBootstrapBundlesMaterial"| m
+  m --> bm
+
+  classDef pass fill:#e8e8f5,stroke:#555566,color:#112
+  classDef out fill:#d5f5d5,stroke:#2d7a2d,color:#112
+  class w1,m pass
+  class b1,c1,bm out
+----
+
+The order is a data dependency, not a preference: the manager's pass renders each target's
+`<cluster>-server-manifests` Secret, and that Secret's content is what the target's OWN pass carved.
+So the workload passes run first and hand their bundles up through
+`WorkloadBootstrapBundlesMaterial` — the one material on the request that is NOT revealed from a
+seal, because it is produced fresh, in the same run, by a sibling pass.
+
+Each pass is the same machinery with a different SUBJECT: which cluster, which role's domain set,
+where it materialises, and what it may emit for OTHER clusters. A workload pass carries no targets
+and no bundles — a workload manages nothing. The materials (operator PKI, App creds, CAs, the incus
+identity) are the RUN's: revealed once, handed identically to every pass, and it is the units that
+decide what each role actually renders from them.
+
+Delivery is likewise one discipline, not two: the run resolves ONE plan — one keystore read, one bot
+identity, one minted token — and each pass re-subjects it to its own branch. A per-target token mint
+would have been N+1 GitHub round-trips for no gain.
+
+Each target materialises into a sibling directory of the managing SOIL, named for its cluster
+(`<soil-parent>/<cluster>/<soil-leaf>`), which keeps every pass's exploded tree, consolidated
+`manifests.yaml` and carved `.bootstrap/` disjoint — those last two sit one level ABOVE the tree, so
+sharing a parent would have made them collide.
 
 NOTE: This is what breaks the circle, not a permanent division of labour. `cicd` is structural for
 BOTH roles precisely because each cluster is meant to render its own branch through its own in-cluster

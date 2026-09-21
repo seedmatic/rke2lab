@@ -16,9 +16,10 @@ import java.util.Optional;
  *
  * <p>{@code ClusterApiWorkloadManifestsUnit} looks up the {@link Entry} for each workload target
  * and renders its four CAPRKE2 BYO-CA Secrets ({@code <cluster>-{ca,cca,etcd,peer-etcd}}, type
- * {@code cluster.x-k8s.io/secret}) into {@code rke2lab-<cluster>} on the NODE_BOOTSTRAP lane.
- * Absence — no workload CA sealed (a bare survey / secret-blind render) — is carried as an empty
- * {@code Optional<WorkloadClusterCasMaterial>} on the context, never a placeholder.
+ * {@code cluster.x-k8s.io/secret}) into {@code rke2lab-<cluster>} ON THE BRANCH, sops-encrypted
+ * (the git clean filter encrypts {@code tls.key} at commit; the management cluster's Flux decrypts
+ * and applies). Absence — no workload CA sealed (a bare survey / secret-blind render) — is carried
+ * as an empty {@code Optional<WorkloadClusterCasMaterial>} on the context, never a placeholder.
  */
 public record WorkloadClusterCasMaterial(List<Entry> entries) {
 

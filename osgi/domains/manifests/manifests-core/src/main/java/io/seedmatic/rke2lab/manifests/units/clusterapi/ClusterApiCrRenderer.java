@@ -113,6 +113,52 @@ public final class ClusterApiCrRenderer {
                 "tls.key", base64(pair.keyPem()))));
   }
 
+  /**
+   * The {@code <cluster>-server-manifests} Secret carrying a workload target's node-side bootstrap
+   * bundle — the multi-doc YAML that target's OWN render pass carved out of its branch. {@code
+   * seed-incluster} references it from {@code RKE2ControlPlane.spec.files[].contentFrom.secret}
+   * (key {@code rke2lab-bootstrap.yaml}), so cloud-init writes it into RKE2's auto-deploy directory
+   * before {@code rke2-server} starts and the greenfielded node brings up OUR cilium instead of
+   * RKE2's default chart. A reference, never an inlined spec value.
+   *
+   * <p>On the BRANCH, sops-encrypted, beside the four BYO-CA Secrets it is gated with (the
+   * reconciler waits on all five before it stamps the control plane). The branch — not the {@code
+   * NODE_BOOTSTRAP} lane the MANAGEMENT cluster's own bundle rides: that lane is applied by the
+   * manager node's rke2 auto-deploy at PROVISIONING time only, so a target appearing between two
+   * grows would never get its Secret, while Flux delivers this one on the next reconcile.
+   * Committing it is safe because sops encrypts to the age RECIPIENT: the repository alone never
+   * decrypts it.
+   */
+  public void serverManifestsSecret(
+      final Construct scope,
+      final String cluster,
+      final String namespace,
+      final String bundle,
+      final PackageMetadataProfile profile,
+      final ApiObject branchNamespace) {
+    final String name = cluster + "-server-manifests";
+    final ApiObject secret =
+        new ApiObject(
+            scope,
+            "secret-server-manifests-" + cluster,
+            ApiObjectProps.builder()
+                .apiVersion("v1")
+                .kind("Secret")
+                .metadata(
+                    ApiObjectMetadata.builder()
+                        .name(name)
+                        .namespace(namespace)
+                        .labels(Map.of("cluster.x-k8s.io/cluster-name", cluster))
+                        .annotations(
+                            profile.packageAnnotations(
+                                "|Secret|" + namespace + "|" + name, Map.of()))
+                        .build())
+                .build());
+    secret.addDependency(branchNamespace);
+    secret.addJsonPatch(JsonPatch.add("/type", "Opaque"));
+    secret.addJsonPatch(JsonPatch.add("/data", Map.of("rke2lab-bootstrap.yaml", base64(bundle))));
+  }
+
   public ApiObject identitySecret(
       final Construct scope,
       final String cluster,

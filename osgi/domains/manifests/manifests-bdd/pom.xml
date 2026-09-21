@@ -66,6 +66,10 @@
     </dependency>
     <dependency>
       <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>netplan-contract</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>worktree-contract</artifactId>
     </dependency>
     <dependency>

@@ -25,6 +25,7 @@ import io.seedmatic.rke2lab.manifests.contract.ManifestSynthesisService;
 import io.seedmatic.rke2lab.manifests.contract.ManifestsRunbookInput;
 import io.seedmatic.rke2lab.manifests.contract.NodeBootstrapArtifact;
 import io.seedmatic.rke2lab.manifests.contract.RenderMode;
+import io.seedmatic.rke2lab.manifests.contract.WorkloadTarget;
 import io.seedmatic.rke2lab.manifests.contract.profiles.BootstrapIdentity;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ClusterIssuerCaMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.FloxDebugPolicy;
@@ -34,12 +35,14 @@ import io.seedmatic.rke2lab.manifests.contract.profiles.IncusIdentityMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ManagementClusterCaMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.OperatorPkiMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ReplicatorSourceSecretsMaterial;
+import io.seedmatic.rke2lab.manifests.contract.profiles.WorkloadBootstrapBundlesMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.WorkloadClusterCasMaterial;
 import io.seedmatic.rke2lab.manifests.ingress.NodeGithubToken;
 import io.seedmatic.rke2lab.manifests.ingress.NodeGithubTokenCoordinate;
 import io.seedmatic.rke2lab.manifests.ingress.ServerManifestsBundle;
 import io.seedmatic.rke2lab.manifests.ingress.ServerManifestsCoordinate;
 import io.seedmatic.rke2lab.ndh.contract.NdhKeystoreReader;
+import io.seedmatic.rke2lab.netplan.contract.ClusterNetworkBlueprint;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.CellarReceiver;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.InputReceiver;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.OsgiService;
@@ -61,6 +64,8 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
@@ -84,6 +89,14 @@ import org.junit.jupiter.api.extension.RegisterExtension;
  * So the control-plane policy is reactivated INSIDE synthesis, structural to the role: the {@link
  * ManifestSynthesisRequest} carries it, and the {@link ManifestSynthesisService} materialises only
  * the layers the role publishes — invisible at the master frontier.
+ *
+ * <p>A run plays <strong>N+1 passes</strong>, not one: a {@link ClusterRole#WRKLD} pass per {@link
+ * WorkloadTarget} — each onto that target's own {@code manifests/<cluster>} branch — and then the
+ * managing pass, which consumes what those carved ({@link WorkloadBootstrapBundlesMaterial}) to
+ * render each target's {@code <cluster>-server-manifests} Secret. A cluster being born cannot
+ * render its own first branch (no Tekton, no Flux, and no pod at all until its CNI is configured —
+ * itself a bootstrap-set resource), so the manager renders it. See
+ * docs/architecture/cluster-api/manifests-rendered-branches.adoc § per-target-pass.
  *
  * <p>Its collaborator is INJECTED from its OWN bundle's registry by the {@link OsgiService} bridge:
  * the {@link ManifestSynthesisService} (the SCR-published synthesis). MODE-BLIND — it injects no
@@ -621,7 +634,69 @@ public class ManifestSynthesisScenario
       GitIdentity identity,
       String signingKey,
       boolean push,
-      Optional<String> token) {}
+      Optional<String> token) {
+
+    /**
+     * The same plan for another cluster's branch — identity, signing key and token are per-RUN (one
+     * bot, one keystore read, one minted token), only the commit subject names the cluster. So the
+     * manager's per-target passes derive their plans from the managing one instead of re-minting a
+     * token per target.
+     */
+    Delivery forBranchOf(String message) {
+      return new Delivery(message, identity, signingKey, push, token);
+    }
+
+    /**
+     * Seal {@code worktree} with this plan: stage the whole rendered tree, commit it SIGNED as the
+     * rke2lab bot, and force-push only when the operator armed the push AND the token was revealed
+     * (the gardening gate). Behaviour of the plan itself, so the managing branch's THEN and each
+     * per-target pass deliver through ONE path — a change to the push discipline has one site.
+     */
+    void seal(LinkedWorktree worktree) {
+      worktree.stageAll();
+      worktree.commit(message, identity, Optional.of(signingKey));
+      if (push) {
+        token.ifPresent(worktree::push);
+      }
+    }
+  }
+
+  /**
+   * The sealed materials ONE render pass consumes, grouped so the managing pass and every
+   * per-target pass take the identical set — revealed once per run, at the scenario, and handed
+   * down. Grouped rather than passed as seven positional Optionals (the multi-parameter
+   * discipline): the group is the unit of meaning, and adding a slice touches one record instead of
+   * every pass signature.
+   */
+  private record Materials(
+      Optional<OperatorPkiMaterial> operatorPki,
+      Optional<GithubAppMaterial> githubApp,
+      Optional<ReplicatorSourceSecretsMaterial> replicatorSources,
+      Optional<ClusterIssuerCaMaterial> clusterIssuerCa,
+      Optional<WorkloadClusterCasMaterial> workloadCas,
+      Optional<ManagementClusterCaMaterial> managementCas,
+      Optional<IncusIdentityMaterial> incusIdentity) {}
+
+  /**
+   * One synthesis pass — what makes a pass DIFFER from its siblings: whose cluster it renders,
+   * which domain set that role publishes, where it materialises, and what it may emit for OTHER
+   * clusters. A workload pass carries no targets and no bundles (a workload manages nothing); the
+   * managing pass carries both.
+   */
+  private record Pass(
+      ManifestDomainPolicy policy,
+      BootstrapIdentity identity,
+      Path root,
+      Optional<ImageState> image,
+      List<WorkloadTarget> targets,
+      Optional<WorkloadBootstrapBundlesMaterial> bundles) {}
+
+  /**
+   * A workload target's own render pass: the target, the linked worktree of its {@code
+   * manifests/<cluster>} branch, and the plan that seals it. Prepared by the scenario (which owns
+   * the delivery seam) and played by the WHEN (which owns the synthesis).
+   */
+  private record TargetPass(WorkloadTarget target, LinkedWorktree worktree, Delivery delivery) {}
 
   /**
    * The cluster-pki seal's {@code admin-credentials} cellar case, addressed by its NEUTRAL wire
@@ -683,28 +758,41 @@ public class ManifestSynthesisScenario
     // to the operator default (the mesh-drop footgun) yet the grow stays authoritative. INIT/UPDATE
     // /EDIT also guard branch existence. Absent a worktree (a survey) the seeded facet stands.
     final ManifestsRunbookInput effective = resolveFacet(facet, rendered);
+    // ONE delivery plan for the whole run: it carries the frontier's verdict (a token only when the
+    // gardening gate is open), so no consumer re-derives "did we push" from the config intent.
+    // Resolved BEFORE the passes, because each per-target pass delivers its own branch inside the
+    // WHEN and re-subjects THIS plan to it — one keystore read and one token mint per run, not one
+    // per branch. The OPERATOR token lives ~1 h, so covering the synthesis is well inside its life.
+    final Optional<Delivery> delivery = deliveryPlan(effective, rendered);
+    // The manager's PER-TARGET passes: each workload target's own branch, rendered with the WRKLD
+    // unit set, sealed, and its carved bootstrap bundle handed back — the material the managing
+    // pass
+    // renders as that target's <cluster>-server-manifests Secret. A cluster being born has no pass
+    // of its own, which is the whole reason this one exists (see the rendered-branches model,
+    // § per-target-pass).
+    final List<TargetPass> workloadPasses = prepareWorkloadPasses(effective, rendered, delivery);
     given().the_activation_facet(effective);
-    when()
-        .the_policy_is_derived_from_the_facet()
-        .and()
-        .the_manifests_are_synthesized(
+    final Materials materials =
+        new Materials(
             revealOperatorPki(),
             revealGithubApp(),
             revealReplicatorSources(),
             revealClusterIssuerCa(),
             revealWorkloadCas(),
             revealManagementCas(),
-            revealIncusIdentity(),
-            rendered);
+            revealIncusIdentity());
+    when()
+        .the_policy_is_derived_from_the_facet()
+        .and()
+        .the_workload_targets_are_rendered(workloadPasses, materials)
+        .and()
+        .the_manifests_are_synthesized(materials, rendered);
     // Extract the IN_CLUSTER-reaching sealed materials to the branch asset (§ in-cluster-cellar
     // -asset): the operator's grow captures its fresh seals, a publish re-captures the rehydrated
     // set (a fixpoint). Written plaintext into the tree; the git clean filter sops-encrypts it at
     // stageAll, so the passphrase-sealed payloads gain age protection at rest. Before delivery so
     // the THEN's stageAll picks it up. A no-op when nothing reaches in-cluster (a mgmt-only run).
     extractInClusterAsset(rendered);
-    // ONE delivery plan, read by both consumers: it carries the frontier's verdict (a token only
-    // when the gardening gate is open), so neither re-derives "did we push" from the config intent.
-    final Optional<Delivery> delivery = deliveryPlan(effective, rendered);
     then()
         .every_enabled_domain_produced_its_units()
         .and()
@@ -713,6 +801,52 @@ public class ManifestSynthesisScenario
         .the_rendered_branch_is_delivered(rendered, delivery);
     fileNodeBootstrap(rendered);
     fileNodeGithubToken(effective, rendered, delivery);
+  }
+
+  /**
+   * Prepare one render pass per workload target — a linked worktree of its {@code
+   * manifests/<cluster>} branch beside the managing render, plus the plan that seals it.
+   *
+   * <p>Empty unless the managing render itself has a worktree: a bare survey / the standalone CLI
+   * renders the one cluster into a temp dir with no branch, and a target's pass exists only to
+   * produce a branch and a bundle. Present ⟹ a {@link Delivery} was resolved (both hang off the
+   * same worktree seam), so each target's plan is the managing one re-subjected to its own branch.
+   *
+   * <p>Each target renders into a SIBLING directory of the managing SOIL, named for its cluster:
+   * {@code <soil-parent>/<cluster>/<soil-leaf>}. That keeps the exploded tree, the consolidated
+   * {@code manifests.yaml} and the carved {@code .bootstrap/} of every pass disjoint (the artifacts
+   * sit one level above their tree — see {@link NodeBootstrapArtifact}), and leaves each render
+   * inspectable on disk beside the one an operator already knows to look at. Not closed, for the
+   * same reason the managing worktree is not: {@code prepare} is idempotent, so a re-run starts
+   * clean.
+   */
+  private List<TargetPass> prepareWorkloadPasses(
+      ManifestsRunbookInput effective,
+      Optional<LinkedWorktree> rendered,
+      Optional<Delivery> delivery) {
+    if (rendered.isEmpty()
+        || delivery.isEmpty()
+        || effective.facets().workloadTargets().isEmpty()) {
+      return List.of();
+    }
+    final Path soil = rendered.orElseThrow().path();
+    final Path soilParent = soil.getParent();
+    final Path leaf = soil.getFileName();
+    if (soilParent == null || leaf == null) {
+      return List.of();
+    }
+    final RenderedBranch branch = renderedBranch.orElseThrow();
+    final Delivery plan = delivery.orElseThrow();
+    final List<TargetPass> passes = new ArrayList<>();
+    for (final WorkloadTarget target : effective.facets().workloadTargets()) {
+      final String cluster = target.clusterName();
+      passes.add(
+          new TargetPass(
+              target,
+              branch.prepare(soilParent.resolve(cluster).resolve(leaf), BRANCH_PREFIX + cluster),
+              plan.forBranchOf(renderCommitMessage(cluster))));
+    }
+    return List.copyOf(passes);
   }
 
   /**
@@ -942,91 +1076,109 @@ public class ManifestSynthesisScenario
       return self();
     }
 
+    // The bundles the per-target passes carved, handed on to the managing pass so it renders each
+    // target's <cluster>-server-manifests Secret. Empty until that step runs, and empty when it had
+    // no target to render — a field rather than a step param because ONE step produces it and the
+    // next consumes it, within the one stage instance.
+    private Optional<WorkloadBootstrapBundlesMaterial> workloadBundles = Optional.empty();
+
+    /**
+     * The manager's PER-TARGET passes: for each workload target, render the {@link
+     * ClusterRole#WRKLD} unit set into that target's own branch worktree, seal it, and harvest the
+     * node-side bootstrap bundle the exploder carved out of it.
+     *
+     * <p>This is what breaks the outer chicken-and-egg: a cluster cannot render its own first
+     * branch — it has no Tekton, no Flux, and until its CNI is configured (itself a bootstrap-set
+     * resource) no pod runs there at all. So the manager renders it, with the same unit set, the
+     * same materials, the same exploder and the same delivery discipline as any other render; only
+     * the SUBJECT differs, which is exactly what {@link Pass} carries. A target renders no targets
+     * and no bundles of its own: a workload manages nothing.
+     *
+     * <p>A no-op with no passes — a survey, the standalone CLI, or a manager with no targets.
+     */
+    public When the_workload_targets_are_rendered(
+        @Hidden List<TargetPass> passes, @Hidden Materials materials) {
+      final List<WorkloadBootstrapBundlesMaterial.Entry> carved = new ArrayList<>();
+      for (final TargetPass pass : passes) {
+        final String cluster = pass.target().clusterName();
+        final Path root = pass.worktree().path();
+        synthesize(
+            new Pass(
+                ClusterRole.WRKLD.domainPolicy(CATALOG),
+                BootstrapIdentity.builder()
+                    .clusterName(cluster)
+                    .nodeName(ClusterNetworkBlueprint.CANONICAL_NODE_NAMES.get(0))
+                    .build(),
+                root,
+                facet.image(),
+                List.of(),
+                Optional.empty()),
+            materials);
+        // The branch records the facet that produced it — MINUS the targets, since it manages none
+        // —
+        // so a later steady-state render of THIS branch replays its own policy, never the
+        // manager's.
+        recordRenderFacet(
+            root,
+            new ManifestsRunbookInput.Facets(
+                facet.facets().debug(), facet.facets().delivery(), List.of()),
+            facet.image());
+        recordSopsPolicy(root);
+        recordInstallConfigFlake(root);
+        pass.delivery().seal(pass.worktree());
+        carvedBundle(root)
+            .ifPresent(
+                yaml -> carved.add(new WorkloadBootstrapBundlesMaterial.Entry(cluster, yaml)));
+      }
+      this.workloadBundles =
+          carved.isEmpty()
+              ? Optional.empty()
+              : Optional.of(new WorkloadBootstrapBundlesMaterial(carved));
+      return self();
+    }
+
+    /**
+     * The bootstrap bundle the exploder carved out of a rendered pass, or empty when that pass
+     * marked nothing {@code NODE_BOOTSTRAP} (a secret-blind render, whose Flux/CNI secrets have no
+     * material). Empty is honest and propagates: no bundle ⟹ no Secret ⟹ {@code seed-incluster}'s
+     * material gate keeps the pool waiting instead of provisioning a node whose CNI cannot come up.
+     */
+    private Optional<String> carvedBundle(Path root) {
+      final Path bundle = NodeBootstrapArtifact.MANIFESTS.in(root);
+      if (!Files.exists(bundle)) {
+        return Optional.empty();
+      }
+      try {
+        return Optional.of(Files.readString(bundle));
+      } catch (IOException ex) {
+        throw new UncheckedIOException(
+            "cannot read the carved node-bootstrap bundle: " + bundle, ex);
+      }
+    }
+
     public When the_manifests_are_synthesized(
-        @Hidden Optional<OperatorPkiMaterial> operatorPki,
-        @Hidden Optional<GithubAppMaterial> githubApp,
-        @Hidden Optional<ReplicatorSourceSecretsMaterial> replicatorSources,
-        @Hidden Optional<ClusterIssuerCaMaterial> clusterIssuerCa,
-        @Hidden Optional<WorkloadClusterCasMaterial> workloadCas,
-        @Hidden Optional<ManagementClusterCaMaterial> managementCas,
-        @Hidden Optional<IncusIdentityMaterial> incusIdentity,
-        @Hidden Optional<LinkedWorktree> rendered) {
-      final ManifestsRunbookInput.DebugFacet debug = facet.facets().debug();
-      final FloxDebugPolicy floxDebug =
-          new FloxDebugPolicy(
-              debug.mesh().enabled(),
-              debug.networking().enabled(),
-              debug.nriPlugins().flox().enabled());
+        @Hidden Materials materials, @Hidden Optional<LinkedWorktree> rendered) {
       // Materialise INTO the rendered-branch worktree when one was prepared (a provisioning run —
       // the GROW mounts it and the THEN seals + delivers it), else a temp dir (a survey / the
       // standalone CLI). Mode-blind: whether the run is a survey is the frontier's business.
       final Path root = rendered.map(LinkedWorktree::path).orElseGet(this::freshTempDir);
-      // manifests.yaml is the INTERMEDIATE aggregate, not part of the mounted/checksummed tree — it
-      // sits a level ABOVE the synthesis root (sibling of rke2-manifests.d), so the staging replica
-      // the scion checksums holds only the manifest units, never the merged file. Falls back into
-      // the root when the SOIL is a bare temp dir with no usable parent.
-      final Path parent = root.getParent();
-      final Path manifestFile = (parent == null ? root : parent).resolve("manifests.yaml");
-      final ManifestSynthesisRequest.Builder builder =
-          ManifestSynthesisRequest.builder(root, manifestFile)
-              .manifestDomainPolicy(java.util.Optional.of(domainPolicy))
-              .floxDebugPolicy(floxDebug);
-      // The management render's workload targets (from the manifests facet): the DIFFERENT clusters
-      // whose CAPI CR set this run emits onto manifests/<host>-mgmt (model B — the CRs live where
-      // CAPI runs). Empty on a mgmt-only or survey run; the cluster-api units derive each target's
-      // blueprint from its clusterName.
-      builder.workloadTargets(facet.facets().workloadTargets());
-      // The cross-frontier identity view: reaped ONCE at this scion via the WORKTREE amendment,
-      // then
-      // handed to synthesis on the request — the synthesis root threads one NodeEnvContext derived
-      // from it to every unit. Absent (a bare survey / no worktree amended) → the request keeps its
-      // unknown identity and the synthesis renders a clearly-blank cluster.
-      facet
-          .identity()
-          .ifPresent(
-              w ->
-                  builder.bootstrapIdentity(
-                      BootstrapIdentity.builder()
-                          .clusterName(w.clusterName())
-                          .nodeName(w.nodeName())
-                          .build()));
-      // The built node-base image's identity, forwarded by the incus scion as the IMAGE_STATE
-      // amendment (empty on a survey / a render with no image built): the image-state ConfigMap and
-      // the workload CR units pin the image fingerprint and the RKE2 version from it.
-      builder.imageState(facet.image());
-      // The operator PKI revealed from the cellar (empty on a bare survey / before the seal filed):
-      // the kubeconfig unit renders the operator + CAPI kubeconfigs from it, or nothing.
-      builder.operatorPki(operatorPki);
-      // The one App credentials revealed from the cellar (empty on a bare survey / before the ghapp
-      // registration filed): the githubapp Secret unit renders Flux's App-auth Secret from them, or
-      // nothing.
-      builder.githubApp(githubApp);
-      // The replicator SOURCE secrets revealed from the cellar (empty on a bare survey / before the
-      // seal filed): ReplicatorManifestsUnit renders them onto the node-bootstrap lane, or nothing.
-      builder.replicatorSources(replicatorSources);
-      // The cluster-issuer CA revealed from the cellar (empty on a bare survey / secret-blind
-      // in-cluster render): ClusterIssuerManifestsUnit renders the ClusterIssuer + its key Secret
-      // onto the node-bootstrap lane, or (no material) just leaves the branch ClusterIssuer.
-      builder.clusterIssuerCa(clusterIssuerCa);
-      // The workload clusters' BYO-CA sets revealed from the cellar (empty on a bare survey /
-      // secret-blind in-cluster render): ClusterApiWorkloadManifestsUnit renders the four
-      // <cluster>-{ca,cca,etcd,peer-etcd} Secrets onto the node-bootstrap lane, or nothing.
-      builder.workloadCas(workloadCas);
-      // The MANAGEMENT cluster's own CA set revealed from the cellar (empty on a bare survey /
-      // secret-blind in-cluster render): ClusterApiManagementManifestsUnit renders the four
-      // <mgmt>-{ca,cca,etcd,peer-etcd} BYO-CA Secrets so CAPRKE2 adopts the running control plane
-      // with its LIVE CA, or nothing.
-      builder.managementCas(managementCas);
-      // The CAPN provider incus identity revealed from the cellar (empty on a bare survey /
-      // secret-blind in-cluster render): ClusterApiWorkloadManifestsUnit renders the
-      // <host>-incus-identity Secret onto the node-bootstrap lane, or nothing.
-      builder.incusIdentity(incusIdentity);
-      final ManifestSynthesisRequest request = builder.build();
-      try {
-        this.result = synthesis.orElseThrow().synthesize(request);
-      } catch (IOException ex) {
-        throw new UncheckedIOException("manifests synthesis failed", ex);
-      }
+      // The managing pass runs LAST, after the per-target ones, because it consumes what they
+      // carve:
+      // its workloadTargets are the DIFFERENT clusters whose CAPI CR set lands on
+      // manifests/<host>-mgmt (model B — the CRs live where CAPI runs), and workloadBundles are
+      // those
+      // same clusters' bootstrap bundles, rendered here as their <cluster>-server-manifests
+      // Secrets.
+      this.result =
+          synthesize(
+              new Pass(
+                  domainPolicy,
+                  identity(),
+                  root,
+                  facet.image(),
+                  facet.facets().workloadTargets(),
+                  workloadBundles),
+              materials);
       // Record the facet that produced this tree at the branch ROOT, so the branch is
       // self-describing and a later in-cluster render reads it back (the facet follows the grow —
       // see docs/architecture/cluster-api/pac-in-cluster-render-spec.adoc § render-config). Only
@@ -1042,6 +1194,75 @@ public class ManifestSynthesisScenario
             recordInstallConfigFlake(linkedWorktree.path());
           });
       return self();
+    }
+
+    /**
+     * The cross-frontier identity view reaped at this scion via the WORKTREE amendment — the
+     * synthesis root threads one NodeEnvContext derived from it to every unit. Absent (a bare
+     * survey / no worktree amended) ⟹ unknown, and the synthesis renders a clearly-blank cluster.
+     */
+    private BootstrapIdentity identity() {
+      return facet
+          .identity()
+          .map(
+              w ->
+                  BootstrapIdentity.builder()
+                      .clusterName(w.clusterName())
+                      .nodeName(w.nodeName())
+                      .build())
+          .orElseGet(BootstrapIdentity::unknown);
+    }
+
+    /**
+     * Play ONE synthesis pass. The {@link Pass} carries what differs between passes (subject
+     * cluster, its role's domain set, where it materialises, what it emits for OTHER clusters);
+     * {@code materials} are the run's, revealed once and identical for every pass — the units
+     * decide what each role actually renders from them.
+     *
+     * <p>{@code manifests.yaml} is the INTERMEDIATE aggregate, not part of the mounted/checksummed
+     * tree — it sits a level ABOVE the synthesis root (sibling of {@code rke2-manifests.d}), so the
+     * staging replica the scion checksums holds only the manifest units, never the merged file. It
+     * falls back into the root when the root has no usable parent (a bare temp dir).
+     */
+    private ManifestSynthesisResult synthesize(Pass pass, Materials materials) {
+      final ManifestsRunbookInput.DebugFacet debug = facet.facets().debug();
+      final FloxDebugPolicy floxDebug =
+          new FloxDebugPolicy(
+              debug.mesh().enabled(),
+              debug.networking().enabled(),
+              debug.nriPlugins().flox().enabled());
+      final Path parent = pass.root().getParent();
+      final Path manifestFile = (parent == null ? pass.root() : parent).resolve("manifests.yaml");
+      final ManifestSynthesisRequest request =
+          ManifestSynthesisRequest.builder(pass.root(), manifestFile)
+              .manifestDomainPolicy(Optional.of(pass.policy()))
+              .floxDebugPolicy(floxDebug)
+              .bootstrapIdentity(pass.identity())
+              // The built node-base image's identity, forwarded by the incus scion as the
+              // IMAGE_STATE
+              // amendment (empty on a survey / a render with no image built): the image-state
+              // ConfigMap and the workload CR units pin the image fingerprint + RKE2 version from
+              // it.
+              .imageState(pass.image())
+              .workloadTargets(pass.targets())
+              .workloadBootstrapBundles(pass.bundles())
+              // The materials revealed from the cellar, each empty on a bare survey / a
+              // secret-blind
+              // in-cluster render — and then the unit that needs one renders nothing rather than an
+              // empty placeholder Flux would prune.
+              .operatorPki(materials.operatorPki())
+              .githubApp(materials.githubApp())
+              .replicatorSources(materials.replicatorSources())
+              .clusterIssuerCa(materials.clusterIssuerCa())
+              .workloadCas(materials.workloadCas())
+              .managementCas(materials.managementCas())
+              .incusIdentity(materials.incusIdentity())
+              .build();
+      try {
+        return synthesis.orElseThrow().synthesize(request);
+      } catch (IOException ex) {
+        throw new UncheckedIOException("manifests synthesis failed", ex);
+      }
     }
 
     private Path freshTempDir() {
@@ -1271,13 +1492,7 @@ public class ManifestSynthesisScenario
       if (rendered.isEmpty() || delivery.isEmpty()) {
         return self();
       }
-      final LinkedWorktree linkedWorktree = rendered.orElseThrow();
-      final Delivery plan = delivery.orElseThrow();
-      linkedWorktree.stageAll();
-      linkedWorktree.commit(plan.message(), plan.identity(), Optional.of(plan.signingKey()));
-      if (plan.push()) {
-        plan.token().ifPresent(linkedWorktree::push);
-      }
+      delivery.orElseThrow().seal(rendered.orElseThrow());
       return self();
     }
   }
