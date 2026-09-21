@@ -19,7 +19,41 @@
     enable = true;
     # cloud-init delivers CONFIG only; networking stays owned by the NixOS/netplan substrate.
     network.enable = false;
-    settings.datasource_list = [ "NoCloud" ];
+    settings = {
+      datasource_list = [ "NoCloud" ];
+      # SSH host keys are NixOS's, not cloud-init's — one writer, not two racing.
+      #
+      # cloud-init's `ssh` module (cc_ssh) generates host keys, and so does NixOS's
+      # sshd-keygen.service. Nothing orders the two, so each boot is a coin toss: whoever loses finds
+      # the key file created under it between its own `-s` guard and ssh-keygen's write, and
+      # ssh-keygen then PROMPTS ("Overwrite (y/n)?") on a non-interactive stdin and exits 1. Measured
+      # 2026-09-21 on the two live nodes, same image, opposite outcomes: the workload node's
+      # sshd-keygen finished at 20:50:13 and cc_ssh no-op'd a second later; the management node's
+      # started at 18:49:03 and cc_ssh generated at 18:49:03.937, so sshd-keygen FAILED. A failed unit
+      # is not cosmetic here — the systemd crossing gates on failedUnits=0, so it reddens the whole
+      # `pulumi up` while both clusters are healthy.
+      #
+      # Fixed by removing the duplicate, NOT by ordering (which would couple an ssh unit to
+      # cloud-init's lifecycle) and NOT by a systemd condition (the unit ALREADY carries
+      # ConditionFileNotEmpty on both key paths — it is evaluated at start, when the keys legitimately
+      # do not exist yet, so it cannot see a write that lands 0.9s later). NixOS is the right owner:
+      # sshd-keygen.service is wired Before=sshd.service, so the keys are guaranteed present before
+      # the daemon starts, a guarantee cc_ssh's stage ordering does not give.
+      #
+      # Set HERE, in the image's cloud.cfg, rather than in the user-data: on the CAPRKE2 path the
+      # user-data is CAPRKE2's (we contribute only write_files), so a user-data knob would leave the
+      # race armed on every workload node. The `ssh` module itself stays enabled — it also installs
+      # authorized_keys.
+      #
+      # BOTH keys are load-bearing; verified against the cloud-init 25.2 in the image. `ssh_deletekeys`
+      # defaults to TRUE (`cc_ssh.py`: `if cfg.get("ssh_deletekeys", True)`), so dropping it would have
+      # cc_ssh DELETE the keys NixOS just made and then generate none — leaving the node with no host
+      # keys at all. And the empty list is honoured rather than ignored: `get_cfg_option_list` returns
+      # its default only `if key not in yobj`, so a PRESENT empty list yields `genkeys = []` and does
+      # not fall back to `GENERATE_KEY_NAMES`.
+      ssh_deletekeys = false;
+      ssh_genkeytypes = [ ];
+    };
   };
 
   systemd.services.rke2lab-cloud-init-seed = {
