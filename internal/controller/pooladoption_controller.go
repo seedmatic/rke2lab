@@ -40,10 +40,11 @@ type PoolAdoptionReconciler struct {
 
 // +kubebuilder:rbac:groups=cluster.seedmatic.io,resources=pooladoptions,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=cluster.seedmatic.io,resources=pooladoptions/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=machines,verbs=get;list;watch;create;update;patch
+// +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=machines,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=rke2controlplanes,verbs=get;list;watch;create;update;patch
-// +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=lxcmachines;lxcmachinetemplates,verbs=get;list;watch;create;update;patch
-// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create
+// +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=lxcmachines,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=lxcmachinetemplates,verbs=get;list;watch;create;update;patch
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;delete
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
 
 // Reconcile drives one PoolAdoption. Every object is created-if-absent, so a re-reconcile (and a
@@ -188,19 +189,11 @@ func (r *PoolAdoptionReconciler) reconcileSteps(
 		// the running instance. Idempotent: a post-greenfield steady-state finds CAPRKE2's own Machines
 		// already present (no-op); a cold-start re-creates them → CAPN adopts the survivors by
 		// providerID. We never probe Incus ourselves — CAPN reports present/absent on the LXCMachine.
+		//
+		// Presence is probed BEFORE anything is ensured: a reflection whose pets are ALL gone is void
+		// (below), and ensuring its CR-set first would re-create the very Machines that keep it alive.
 		absent, pending := 0, 0
 		for _, pet := range roster {
-			for _, obj := range []*unstructured.Unstructured{
-				r.bootstrapSecretObj(spec, pet.Name),
-				r.lxcMachineObj(spec, pet.Name),
-				r.machineObj(spec, pet.Name, rcpUID),
-			} {
-				if err := ensure(ctx, r.Client, obj); err != nil {
-					r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, false, "Error",
-						obj.GetKind()+" "+obj.GetName()+": "+err.Error())
-					return ctrl.Result{}, err
-				}
-			}
 			isPresent, decided, perr := r.lxcMachinePresence(ctx, spec, pet.Name)
 			if perr != nil {
 				r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, false, "Error", "presence "+pet.Name+": "+perr.Error())
@@ -217,19 +210,54 @@ func (r *PoolAdoptionReconciler) reconcileSteps(
 		}
 		a.Status.Present, a.Status.Absent, a.Status.Pending = int32(present), int32(absent), int32(pending)
 
-		allPresent = len(roster) > 0 && present == len(roster)
-		switch {
-		case allPresent:
-			r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, true, "Observed",
-				fmt.Sprintf("%d/%d present", present, len(roster)))
-		case absent > 0:
-			// A reflected pet is absent (reflection ↔ reality mismatch) — HOLD, never greenfield a
-			// rival; the mismatch is CAPI/CAPN's to reconcile. NodeMissing → derivePhase Adopting.
-			r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, false, "NodeMissing",
-				fmt.Sprintf("%d/%d present, %d absent — holding (adopt, not greenfielding)", present, len(roster), absent))
-		default:
-			r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, false, "AwaitingInstances",
-				fmt.Sprintf("%d/%d present, %d pending", present, len(roster), pending))
+		if len(roster) > 0 && absent == len(roster) {
+			// VOID reflection: every reflected pet's instance is gone, so there is no survivor for a
+			// greenfield to race — the guard below has nothing left to protect. Holding here instead is a
+			// DEADLOCK, and a self-sustaining one: the reflection names the pets, the adopt branch
+			// re-creates their Machines, and the reflector observes those Machines and re-writes the same
+			// reflection. Not one term of that cycle is anchored in the instances. So drop the pets we no
+			// longer believe in and let CAPRKE2 provision; the reflector then overwrites the reflection
+			// from the emergent roster. (Dropping the Machines is what un-satisfies CAPRKE2's replica
+			// count — leaving them would keep it counting phantoms and provisioning nothing.)
+			for _, pet := range roster {
+				if err := r.deletePetCRSet(ctx, spec, pet.Name, rcpUID); err != nil {
+					r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, false, "Error",
+						"voiding "+pet.Name+": "+err.Error())
+					return ctrl.Result{}, err
+				}
+			}
+			r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, false, "NodesAbsent",
+				fmt.Sprintf("reflection void: all %d reflected pet(s) gone — dropped, CAPRKE2 provisioning", absent))
+		} else {
+			for _, pet := range roster {
+				for _, obj := range []*unstructured.Unstructured{
+					r.bootstrapSecretObj(spec, pet.Name),
+					r.lxcMachineObj(spec, pet.Name),
+					r.machineObj(spec, pet.Name, rcpUID),
+				} {
+					if err := ensure(ctx, r.Client, obj); err != nil {
+						r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, false, "Error",
+							obj.GetKind()+" "+obj.GetName()+": "+err.Error())
+						return ctrl.Result{}, err
+					}
+				}
+			}
+
+			allPresent = len(roster) > 0 && present == len(roster)
+			switch {
+			case allPresent:
+				r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, true, "Observed",
+					fmt.Sprintf("%d/%d present", present, len(roster)))
+			case absent > 0:
+				// A PARTIAL loss (some pets absent, others present or pending) — HOLD, never greenfield
+				// beside a survivor; that mismatch is CAPI/CAPN's to reconcile. A TOTAL loss is the void
+				// case above. NodeMissing → derivePhase Adopting.
+				r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, false, "NodeMissing",
+					fmt.Sprintf("%d/%d present, %d absent — holding (adopt, not greenfielding)", present, len(roster), absent))
+			default:
+				r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, false, "AwaitingInstances",
+					fmt.Sprintf("%d/%d present, %d pending", present, len(roster), pending))
+			}
 		}
 	}
 
@@ -476,6 +504,24 @@ func (r *PoolAdoptionReconciler) lxcMachinePresence(
 		}
 	}
 	return false, false, nil
+}
+
+// deletePetCRSet drops the CR-set this reconciler pre-created for a pet, Machine FIRST (it is the one
+// CAPRKE2 counts as a replica, so it must go for the provisioning to be re-armed). Already-absent is
+// success — the set is torn down piecemeal by ownerRef GC in the ordinary case.
+func (r *PoolAdoptionReconciler) deletePetCRSet(
+	ctx context.Context, spec adoptionv1alpha1.PoolAdoptionSpec, nodeName string, rcpUID types.UID,
+) error {
+	for _, obj := range []*unstructured.Unstructured{
+		r.machineObj(spec, nodeName, rcpUID),
+		r.lxcMachineObj(spec, nodeName),
+		r.bootstrapSecretObj(spec, nodeName),
+	} {
+		if err := r.Delete(ctx, obj); err != nil && !apierrors.IsNotFound(err) {
+			return fmt.Errorf("delete %s %s: %w", obj.GetKind(), obj.GetName(), err)
+		}
+	}
+	return nil
 }
 
 func (r *PoolAdoptionReconciler) lxcMachineTemplateObj(spec adoptionv1alpha1.PoolAdoptionSpec) *unstructured.Unstructured {

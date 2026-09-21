@@ -18,6 +18,7 @@ rules:
   - secrets
   verbs:
   - create
+  - delete
   - get
   - list
   - watch
@@ -51,9 +52,20 @@ rules:
   - cluster.x-k8s.io
   resources:
   - clusters
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - cluster.x-k8s.io
+  resources:
   - machines
   verbs:
   - create
+  - delete
   - get
   - list
   - patch
@@ -74,10 +86,21 @@ rules:
   - infrastructure.cluster.x-k8s.io
   resources:
   - lxcclusters
-  - lxcmachines
   - lxcmachinetemplates
   verbs:
   - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - infrastructure.cluster.x-k8s.io
+  resources:
+  - lxcmachines
+  verbs:
+  - create
+  - delete
   - get
   - list
   - patch
