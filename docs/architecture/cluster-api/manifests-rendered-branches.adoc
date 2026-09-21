@@ -250,6 +250,36 @@ flowchart TB
 pointing at the cluster's rendered branch + a root `Kustomization` with `prune` and SOPS
 decryption) that, once seeded, lets Flux self-manage everything else from the branch.
 
+[[per-target-pass]]
+== Who renders a workload's branch — the manager's per-target pass
+
+`FluxRoot` solves the chicken-and-egg *inside* a cluster, but only once seeded, and it is seeded from
+the node-side bootstrap set (link:../nixos-substrate/node-bootstrap-delivery.adoc[the bootstrap
+seam]). That leaves a second circle, one branch outwards: a cluster cannot render its own first
+branch. It has no Tekton pipeline yet, no Flux, and — until its CNI is configured, which is itself a
+bootstrap-set resource — no pod runs there at all.
+
+So the **manager** renders it, and this is not a new arrangement so much as one already half in place:
+the manager's pass ALREADY emits per-target content, onto its own branch — the workload CAPI CR-set,
+and the workload's RKE2 config ConfigMaps (`RuntimeRke2ConfigManifestsUnit` iterates
+`self + workloadTargets` explicitly for this reason). What it does not yet do is run the
+`ClusterRole.WRKLD` unit set for each target, which is what would yield, in one gesture:
+
+. the target's `manifests/<host>-wrkld` branch — the app stack its own Flux will track;
+. the target's bootstrap bundle — carved out of that branch by the `NODE_BOOTSTRAP` marker, and
+  delivered to the node by
+  link:../nixos-substrate/node-bootstrap-delivery.adoc#second-poser[the second poser].
+
+The render is keyed on a single `bootstrapIdentity().clusterName()` and produces one `synthOutdir` and
+one branch per run, so the change is a *pass per target*, not new facts: `workloadTargets` is already
+carried on the request, and `ClusterRole.of(clusterName)` already derives the right domain set per
+pass (base + `mesh` for a workload, base + `cluster-api` for the manager) — it was built for exactly
+this.
+
+NOTE: This is what breaks the circle, not a permanent division of labour. `cicd` is structural for
+BOTH roles precisely because each cluster is meant to render its own branch through its own in-cluster
+Tekton once it can. The manager's per-target pass is what gets a cluster to the point where it can.
+
 [[layers]]
 == The branch reconciles in layers, not one atomic apply
 

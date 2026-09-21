@@ -201,6 +201,17 @@ Shipped, on the codebase today (the green blocks are not all vision):
   `server/manifests` before rke2-server (`cni="cilium"`). See
   link:../nixos-substrate/node-bootstrap-delivery.adoc[node-bootstrap delivery].
 
+*The seam has ONE poser, and that is now the live gap.* Its last two steps name `InstanceGrow` and a
+devlxd key, so they only cover a node the HOST grows. A control node CAPRKE2 provisions gets no bundle
+at all — proven on `bioskop-wrkld`'s first node (2026-09-21): cilium fell back to RKE2's bundled chart,
+dialled the apiserver at the in-cluster ClusterIP before any CNI existed, and the node stayed
+`NotReady: cni plugin not initialized`, so nothing ran there — Flux included. The second poser
+(`RKE2ControlPlane.spec.files[].contentFrom.secret`) is designed, verified against the live CRD, and
+NOT coded; and it depends on the manager's render making a
+link:../cluster-api/manifests-rendered-branches.adoc#per-target-pass[pass per workload target], since
+a cluster cannot carve its own first bundle. See
+link:../nixos-substrate/node-bootstrap-delivery.adoc#second-poser[the second poser].
+
 Still vision (the red block has not fully collapsed): CAPN growing peers/workers from the published
 images (the management cluster is not yet wired to grow the fleet), and the Go controller for
 post-join host mutation (still the DaemonSet stage). The e2e LIVE proof — grow a real node to Ready —

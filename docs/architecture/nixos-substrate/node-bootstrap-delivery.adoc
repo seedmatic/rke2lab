@@ -186,16 +186,24 @@ how often the pool re-adopts it. It has to be re-provisioned.
 The operator cold start — *delete the Incus instances, then let Pulumi reconcile the stack with
 `refresh`* — composes with this cleanly, because the two nodes belong to different actors:
 
-* The management node IS a Pulumi resource. `refresh` is what makes the stack notice it is gone (its
-  state would otherwise still claim it exists), and the following `up` re-grows it — so mgmt gets its
-  bundle through *poser 1*, unchanged. The cellar is host-side, so the sealed bundle survives the
-  instance and can simply be re-posed.
-* The workload node is NOT a Pulumi resource — CAPN owns it. Nothing in the stack re-creates it.
-  What does is the pool: the reflection survives in git naming a pet whose instance is gone, every pet
-  reads CONFIRMED absent, and that is exactly the
-  link:../cluster-api/cluster-seeding-controller.adoc#void-reflection[void-reflection] path — the
-  stale CR-set is dropped and CAPRKE2 greenfields a node against the freshly-stamped
-  `RKE2ControlPlane`, which is where *poser 2* delivers.
+* The management cluster restarts *almost* from zero and the HOST rebuilds it. Its node is a Pulumi
+  resource: `refresh` is what makes the stack notice the instance is gone (its state would otherwise
+  still claim it exists), and the following `up` re-grows it — so mgmt gets its bundle through
+  *poser 1*, unchanged. The cellar is host-side, so the sealed bundle survives the instance and is
+  simply re-posed. ("Almost": the funnel state in `persist` outlives the cluster by design, so the
+  tailnet FQDNs and their certs do not churn on every cold start.)
+* The workload cluster restarts *entirely* from zero, and nothing in the stack rebuilds it — its
+  `ClusterIntention` survives in git, Flux re-renders it, and the in-cluster controller drives the
+  rebirth. So the reflection is still there naming a pet whose instance is gone; the pets read
+  CONFIRMED absent; and the
+  link:../cluster-api/cluster-seeding-controller.adoc#void-reflection[void-reflection] path drops the
+  stale CR-set so CAPRKE2 greenfields against a freshly-stamped `RKE2ControlPlane` — which is where
+  *poser 2* delivers.
+
+IMPORTANT: That last point means the void-reflection path is not an exception handler for an
+out-of-band deletion: it is the NORMAL day-0 path of every cold start, exercised at each checkpoint. It
+takes two passes to engage — the wiped etcd has no `LXCMachine`, so the pool creates them first, CAPN
+then reports `InstanceDeleted`, and only the following pass sees every pet confirmed absent.
 
 Note the asymmetry this exposes: an etcd wipe alone would re-stamp the `RKE2ControlPlane` correctly
 (`ensure` is create-if-absent, so a surviving one is NOT patched) but would re-adopt the surviving
