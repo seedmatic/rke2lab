@@ -4,6 +4,7 @@ import (
 	"context"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -50,6 +51,24 @@ var (
 	// spec.url) — the in-cluster projection of the manifests SSOT. Read unstructured; no typed Flux dep.
 	gvkGitRepository = schema.GroupVersionKind{Group: "source.toolkit.fluxcd.io", Version: "v1", Kind: "GitRepository"}
 )
+
+// ClusterAPIPresent reports whether this cluster serves Cluster API's Machine kind.
+//
+// It gates the ONE reconciler that WATCHES a CAPI type (PoolReflection, on Machine): an informer for
+// a kind the apiserver does not serve fails the manager at startup. Every other reconciler either
+// watches only cluster.seedmatic.io kinds — present wherever our CRDs are installed — or touches CAPI
+// through Get/Create on unstructured objects, which merely errors per-reconcile and only ever runs
+// when an intent exists to reconcile.
+//
+// So one binary, one CRD set and one ClusterRole serve every cluster: this controller now runs in
+// workload clusters too (for their persist volumes, and later for their vclusters), and the
+// registration follows the cluster's actual capabilities rather than a flag someone could set wrong.
+// Presence, not configuration — the single-adopter invariant keeps resting on which intents are
+// delivered, never on an argument.
+func ClusterAPIPresent(mapper meta.RESTMapper) bool {
+	_, err := mapper.RESTMapping(gvkMachine.GroupKind(), gvkMachine.Version)
+	return err == nil
+}
 
 // newObj is a blank unstructured of the given GVK, named + namespaced.
 func newObj(gvk schema.GroupVersionKind, name, namespace string) *unstructured.Unstructured {

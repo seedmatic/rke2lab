@@ -1,9 +1,15 @@
-// Command seed-incluster runs the cluster-seeding controller: the in-cluster twin of seed-master.
+// Command seed-incluster runs the in-cluster seeding controller: the in-cluster twin of seed-master.
 // It reconciles the Flux-owned intent (ClusterIntention + PoolIntention) adopt-first and owns the
 // mirror (ClusterAdoption + PoolAdoption) that adopts running RKE2-on-Incus clusters
 // (Pulumi-bootstrapped) into Cluster API by creating the CR-set and the OWNED per-pet Machine +
 // concrete LXCMachine (providerID), so CAPRKE2/CAPN bind to the existing instances instead of
 // provisioning fresh ones. See docs/architecture/cluster-api/cluster-seeding-controller.adoc.
+//
+// It also places the cluster's persist VOLUMES (VolumeIntention): a pre-declared PV needs a node
+// name, and on a CAPI-provisioned cluster that name is random, so no render-time literal can match.
+// That reconciler needs no Cluster API, which is why ONE binary — one CRD set, one ClusterRole —
+// serves every cluster: a workload cluster runs it for its volumes today and for its vclusters later,
+// while the reconcilers that need Cluster API register only where Cluster API is served.
 package main
 
 import (
@@ -107,13 +113,34 @@ func main() {
 	// The reflector (cluster→git). Its git-write surface is enabled ONLY when REFLECTOR_REPO_URL is
 	// set (the rke2lab render wires the env); otherwise Git is nil → OBSERVE-ONLY (derives + logs the
 	// roster, writes nothing). Keeps the controller safe until the reflector is configured to write.
-	if err := (&controller.PoolReflectionReconciler{
-		Client:      mgr.GetClient(),
-		Scheme:      mgr.GetScheme(),
-		SelfCluster: os.Getenv("SELF_CLUSTER_NAME"),
-		Git:         reflectorGitFromEnv(mgr.GetClient()),
+	//
+	// Registered only where Cluster API is served: it is the one reconciler that WATCHES a CAPI kind
+	// (Machine), and an informer for an unserved kind fails the manager at startup. See
+	// controller.ClusterAPIPresent for why this is the only gate needed.
+	if controller.ClusterAPIPresent(mgr.GetRESTMapper()) {
+		if err := (&controller.PoolReflectionReconciler{
+			Client:      mgr.GetClient(),
+			Scheme:      mgr.GetScheme(),
+			SelfCluster: os.Getenv("SELF_CLUSTER_NAME"),
+			Git:         reflectorGitFromEnv(mgr.GetClient()),
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "PoolReflection")
+			os.Exit(1)
+		}
+	} else {
+		setupLog.Info("Cluster API is not served here — the reflector stays unregistered",
+			"controller", "PoolReflection")
+	}
+
+	// The persist-volume placement. Registered UNCONDITIONALLY: every cluster has persist volumes, and
+	// this reconciler touches no Cluster API kind. It is why this controller now runs in workload
+	// clusters too — the management cluster only ever appeared to work because a hardcoded node name
+	// happened to match its single node.
+	if err := (&controller.VolumeIntentionReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "PoolReflection")
+		setupLog.Error(err, "unable to create controller", "controller", "VolumeIntention")
 		os.Exit(1)
 	}
 

@@ -8,9 +8,21 @@ rules:
   - ""
   resources:
   - configmaps
+  - nodes
   verbs:
   - get
   - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - persistentvolumes
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
   - watch
 - apiGroups:
   - ""
@@ -29,6 +41,7 @@ rules:
   - clusterintentions
   - pooladoptions
   - poolintentions
+  - volumeintentions
   verbs:
   - create
   - delete
@@ -44,6 +57,7 @@ rules:
   - clusterintentions/status
   - pooladoptions/status
   - poolintentions/status
+  - volumeintentions/status
   verbs:
   - get
   - patch
@@ -113,4 +127,15 @@ rules:
   verbs:
   - get
   - list
+  - watch
+- apiGroups:
+  - zfs.openebs.io
+  resources:
+  - zfsvolumes
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
   - watch
