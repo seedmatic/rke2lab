@@ -3,6 +3,7 @@ package io.seedmatic.rke2lab.manifests.domain;
 import io.seedmatic.rke2lab.manifests.ManifestsDomain;
 import io.seedmatic.rke2lab.manifests.ManifestsDomainRegistrar;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
+import io.seedmatic.rke2lab.manifests.units.runtime.SeedInclusterManifestsUnit;
 import io.seedmatic.rke2lab.manifests.units.runtime.flox.FloxCatalogManifestsUnit;
 import io.seedmatic.rke2lab.manifests.units.runtime.flox.FloxControllerManifestsUnit;
 import io.seedmatic.rke2lab.manifests.units.runtime.flox.FloxEnvManifestsUnit;
@@ -21,6 +22,7 @@ public final class RuntimeDomainRegistrar implements ManifestsDomainRegistrar {
         List.of(ManifestDomainCatalog.CLUSTER, ManifestDomainCatalog.PLATFORM),
         List.of(
             new RuntimeRke2ConfigManifestsUnit(),
+            new SeedInclusterManifestsUnit(),
             new FloxControllerManifestsUnit(),
             new FloxCatalogManifestsUnit(),
             new FloxEnvManifestsUnit(),

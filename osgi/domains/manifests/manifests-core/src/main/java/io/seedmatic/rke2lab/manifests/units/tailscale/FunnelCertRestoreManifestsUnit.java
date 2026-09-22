@@ -12,6 +12,7 @@ import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.ManifestLayer;
 import io.seedmatic.rke2lab.manifests.ingress.FunnelLeaf;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
+import io.seedmatic.rke2lab.manifests.units.runtime.SeedInclusterManifestsUnit;
 import java.util.List;
 import java.util.Map;
 import org.cdk8s.ApiObject;
@@ -25,7 +26,7 @@ import software.constructs.Construct;
  * FunnelStatePersistenceManifestsUnit} for the backup half and {@code
  * docs/architecture/cluster-api/pac-in-cluster-render-spec.adoc} § funnel-durability / § the
  * ordering is STRUCTURAL). It declares this cluster's persist volume — a {@code VolumeIntention} on
- * {@code tank/rke2lab/persist/<role>/funnel-cert} plus the PVC that claims it — and renders the
+ * {@code tank/rke2lab/<role>/persist/funnel-cert} plus the PVC that claims it — and renders the
  * restore Job that seeds the saved tailscale funnel state (node key + cert) into the stable-named
  * state Secret. The {@code ZFSVolume} + static PV the intention resolves to are created by the
  * in-cluster volume controller, which is the only party that can know a managed node's name.
@@ -74,12 +75,17 @@ public final class FunnelCertRestoreManifestsUnit extends AbstractManifestsUnit 
 
   public FunnelCertRestoreManifestsUnit() {
     // tailscale-system must exist for the Job/PVC/SA (explicit, as TailscaleManifestsUnit declares
-    // it);
-    // the openebs edge for the ZFSVolume is DERIVED by the planner (zfs.openebs.io CR → installer).
+    // it); seed-incluster must be UP, because it is what turns this unit's VolumeIntention into the
+    // ZFSVolume + PV the PVC binds against — without that edge Flux would health-gate a PVC nobody
+    // can satisfy yet. The openebs edge is DERIVED by the planner (zfs.openebs.io CR → installer).
     // This unit MUST NOT depend on the tailscale operator — the operator dependsOn IT, so the
     // Secret
     // is seeded before any proxy is provisioned.
-    super(MANIFEST_UNIT_ID, List.of(TailscaleSystemNamespaceManifestsUnit.MANIFEST_UNIT_ID));
+    super(
+        MANIFEST_UNIT_ID,
+        List.of(
+            TailscaleSystemNamespaceManifestsUnit.MANIFEST_UNIT_ID,
+            SeedInclusterManifestsUnit.MANIFEST_UNIT_ID));
   }
 
   @Override
@@ -121,7 +127,7 @@ public final class FunnelCertRestoreManifestsUnit extends AbstractManifestsUnit 
             scope,
             "volumeintention-funnel-cert",
             ApiObjectProps.builder()
-                .apiVersion("dataplan.seedmatic.io/v1alpha1")
+                .apiVersion("cluster.seedmatic.io/v1alpha1")
                 .kind("VolumeIntention")
                 .metadata(
                     ApiObjectMetadata.builder()

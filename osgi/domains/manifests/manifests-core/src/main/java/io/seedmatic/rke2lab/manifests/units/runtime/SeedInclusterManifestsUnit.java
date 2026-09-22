@@ -1,4 +1,4 @@
-package io.seedmatic.rke2lab.manifests.units.clusterapi;
+package io.seedmatic.rke2lab.manifests.units.runtime;
 
 import io.seedmatic.rke2lab.manifests.AbstractManifestsUnit;
 import io.seedmatic.rke2lab.manifests.Cdk8sApiObjectResolver;
@@ -23,20 +23,37 @@ import org.cdk8s.JsonPatch;
 import software.constructs.Construct;
 
 /**
- * Deploys the in-cluster {@code seed-incluster} + its four {@code cluster.seedmatic.io} CRDs (the
- * 2×2 intent/mirror set). The controller reconciles the {@code ClusterIntention} + {@code
- * PoolIntention} intent {@link ClusterApiManagementManifestsUnit} / {@link
- * ClusterApiWorkloadManifestsUnit} render: it creates the CAPI CR-set and the OWNED control-plane
- * {@code Machine} + concrete {@code LXCMachine}(providerID) — the piece GitOps cannot do (the
- * ownerRef UID is assigned in-cluster) — so CAPRKE2/CAPN adopt the RUNNING Pulumi-bootstrapped
- * control plane instead of provisioning a fresh one, closing the cold-start leak.
+ * Deploys the in-cluster {@code seed-incluster} + its {@code cluster.seedmatic.io} CRDs. The
+ * controller reconciles the {@code ClusterIntention} + {@code PoolIntention} intent {@code
+ * ClusterApiManagementManifestsUnit} / {@code ClusterApiWorkloadManifestsUnit} render: it creates
+ * the CAPI CR-set and the OWNED control-plane {@code Machine} + concrete {@code
+ * LXCMachine}(providerID) — the piece GitOps cannot do (the ownerRef UID is assigned in-cluster) —
+ * so CAPRKE2/CAPN adopt the RUNNING Pulumi-bootstrapped control plane instead of provisioning a
+ * fresh one. And it places the cluster's persist volumes ({@code VolumeIntention}), which needs no
+ * CAPI at all.
+ *
+ * <p><b>Why this lives in the {@code runtime} domain, not {@code cluster-api}.</b> The volume half
+ * makes the controller a FLEET-WIDE need: a workload cluster must place its own persist volumes,
+ * and the management cluster only ever appeared not to need help because a hardcoded node name
+ * happened to match its single node. The {@code cluster-api} domain is MGMT-only by role, so a unit
+ * there can never reach a workload cluster. {@code runtime} is the one base domain (published by
+ * BOTH roles) that already depends on exactly what this unit needs — {@code cluster} for the {@code
+ * rke2lab-system} namespace, {@code platform} for the write-token Secret — and that CONTAINS the
+ * flox env delivering the binary. Putting it in {@code cluster} instead would need {@code cluster}
+ * to depend on {@code runtime} for that env, and {@code runtime} already depends on {@code
+ * cluster}: a cycle.
  *
  * <p>Layering (mirrors {@code FloxControllerManifestsUnit}): the Deployment + RBAC are on the
- * {@code operators} layer (the controller is healthy before the {@code ClusterAdoption} CR
- * reconciles); the {@code CustomResourceDefinition} is auto-routed to the {@code crds} layer by
- * kind. Its namespace ({@code rke2lab-system}) is created in the {@code foundation} layer ({@code
- * ClusterRuntimeNamespaceManifestsUnit}). dependsOn the CAPI operator unit so the CAPI/CAPN/CAPRKE2
- * CRDs the controller creates CRs against exist.
+ * {@code operators} layer (the controller is healthy before any CR reconciles); the {@code
+ * CustomResourceDefinition} is auto-routed to the {@code crds} layer by kind. Its namespace ({@code
+ * rke2lab-system}) is created in the {@code foundation} layer ({@code
+ * ClusterRuntimeNamespaceManifestsUnit}), which the domain edge already orders before this.
+ *
+ * <p>No {@code dependsOn} the CAPI operator any more: the controller no longer requires the
+ * CAPI/CAPN/CAPRKE2 CRDs to START. Only one of its reconcilers WATCHES a CAPI kind, and it
+ * registers itself only where that kind is served ({@code controller.ClusterAPIPresent}); the rest
+ * reach CAPI through unstructured calls that only ever run when an intent exists to reconcile.
+ * Keeping the edge would have re-imposed an MGMT-only prerequisite on a fleet-wide unit.
  *
  * <p>The CRDs AND the ClusterRole are single-sourced from the seed-incluster flake (its
  * controller-gen output: {@code crd} staged at {@code /crds/} by {@code nix run
@@ -53,10 +70,9 @@ import software.constructs.Construct;
  */
 public final class SeedInclusterManifestsUnit extends AbstractManifestsUnit {
 
-  public static final String MANIFEST_UNIT_ID =
-      ManifestDomainCatalog.CLUSTER_API + "/seed-incluster";
+  public static final String MANIFEST_UNIT_ID = ManifestDomainCatalog.RUNTIME + "/seed-incluster";
 
-  /** Exploded package dir (relative to the cluster-api domain); diverges from the id segment. */
+  /** Exploded package dir (relative to the runtime domain); diverges from the id segment. */
   public static final String OUTPUT_DIR = "seed-incluster";
 
   private static final String NAME = "seed-incluster";
@@ -93,10 +109,10 @@ public final class SeedInclusterManifestsUnit extends AbstractManifestsUnit {
   // Deployment + RBAC ride the operators layer; the CRD auto-routes to crds by kind.
   private final PackageMetadataProfile packageProfile =
       new PackageMetadataProfile(
-          ManifestDomainCatalog.CLUSTER_API, OUTPUT_DIR, false, ManifestLayer.OPERATORS);
+          ManifestDomainCatalog.RUNTIME, OUTPUT_DIR, false, ManifestLayer.OPERATORS);
 
   public SeedInclusterManifestsUnit() {
-    super(MANIFEST_UNIT_ID, List.of(ClusterApiOperatorManifestsUnit.MANIFEST_UNIT_ID));
+    super(MANIFEST_UNIT_ID, List.of());
   }
 
   @Override
