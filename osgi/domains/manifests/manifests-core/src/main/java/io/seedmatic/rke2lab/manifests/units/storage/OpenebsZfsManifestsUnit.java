@@ -1,7 +1,7 @@
 // @codebase
 package io.seedmatic.rke2lab.manifests.units.storage;
 
-import io.seedmatic.rke2lab.dataplan.contract.DataplanLayout;
+import io.seedmatic.rke2lab.dataplan.contract.DataplanLayout.ClusterDataplan;
 import io.seedmatic.rke2lab.manifests.AbstractManifestsUnit;
 import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
 import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
@@ -45,17 +45,25 @@ public final class OpenebsZfsManifestsUnit extends AbstractManifestsUnit {
     // otherwise wedges a Flux `wait: true` Kustomization at Ready=false. Topology-awareness (the
     // reason to defer to first consumer) is moot on a single control node — the volume can only
     // land there.
-    // The dataset pools are named from the dataplan SSOT (tank/rke2lab/*) — never a hardcoded ZFS
-    // path — the same layout ndh materialises on the host and the persist PV binds against.
-    final DataplanLayout layout = DataplanLayout.canonical();
-    final String ephemeralPool = layout.controlNodePool("master");
+    // Both pools are named from the dataplan SSOT, for THIS cluster — never a hardcoded ZFS path,
+    // and never a pet standing in for a cluster. The former literal (controlNodePool("master"))
+    // made
+    // every node of every cluster resolve one host path, so the workload cluster's dynamic PVCs
+    // landed in the MANAGEMENT node's dataset (measured 2026-09-21).
+    final ClusterDataplan dataplan =
+        ClusterDataplan.of(context.nodeEnvContext().bootstrapIdentity().clusterName());
+    final String ephemeralPool = dataplan.ephemeralPool();
     createStorageClass(scope, "openebs-zfs", true, false, ephemeralPool, "Delete");
     createStorageClass(scope, "openebs-zfs-shared", false, true, ephemeralPool, "Delete");
-    // The persist tier: a Retain, non-default class on tank/rke2lab/persist so the funnel cert PV
-    // survives a cold-start re-grow (etcd is wiped, so a stable dataset + a static PV are the only
-    // cross-grow handle). Nothing lands here unless it names the class explicitly. (The render
-    // maven-cache is EPHEMERAL today + goes per-cluster in foundation 3 — not on this tier yet.)
-    createStorageClass(scope, "openebs-zfs-persist", false, false, layout.persistPool(), "Retain");
+    // The persist tier: a Retain, non-default class on THIS cluster's persist parent so the funnel
+    // cert PV survives a cold-start re-grow (etcd is wiped, so a stable dataset + a static PV are
+    // the
+    // only cross-grow handle). Per-cluster, because two clusters sharing one funnel-cert dataset
+    // destroys the Let's Encrypt budget of both at once. Nothing lands here unless it names the
+    // class
+    // explicitly. (The render maven-cache is EPHEMERAL today — not on this tier yet.)
+    createStorageClass(
+        scope, "openebs-zfs-persist", false, false, dataplan.persistPool(), "Retain");
     createHelmChart(scope, namespace, chartVersion);
   }
 

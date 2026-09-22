@@ -68,12 +68,18 @@ in
   };
 
   # The zfs snapshotter's backing dataset — a legacy-mountpoint dataset (owned by the incus guest)
-  # whose leaf is the NODE NAME (not the hostname): tank/rke2lab/control-nodes/<node-name>/containerd.
-  # The dataset is created out-of-band by ndh from rke2lab's dataplan (the SSOT of the tank/rke2lab
-  # layout — see docs/architecture/patterns/dataplan-single-source.adoc), materialised on the host
-  # pool before the cluster. The node name is dynamic (per-node), so the mount cannot be a static
-  # systemd.mounts unit — this oneshot reads it from the identity env file and mounts before rke2.
-  # mount.zfs comes from pkgs.zfs on the unit PATH.
+  # under THIS CLUSTER's root: tank/rke2lab/<role>/ephemeral/nodes/<node-name>/containerd. Its PARENT
+  # is declared by rke2lab's dataplan (the SSOT of the tank/rke2lab layout — see
+  # docs/architecture/patterns/dataplan-single-source.adoc) and materialised by ndh on the host pool
+  # before the cluster; the per-node child is created HERE, because a managed node's name is random
+  # and so unknowable in advance. One owner per dataset.
+  #
+  # Keyed on the NODE NAME and deliberately NOT on the node's pet label: this unit is ordered
+  # before=rke2-server.service, so it runs before the node joins and before any Node object exists to
+  # carry a label — and a pet is recycled on remediation, which would hand a replacement node the
+  # previous one's snapshotter state. See the dataplan doc § "A pet label cannot place a dataset".
+  # The node name is dynamic, so the mount cannot be a static systemd.mounts unit — this oneshot
+  # derives it and mounts before rke2. mount.zfs comes from pkgs.zfs on the unit PATH.
   systemd.services.rke2lab-zfs-containerd = {
     description = "rke2lab containerd zfs snapshotter dataset mount";
     after = [ "rke2lab-identity.service" ];
@@ -99,9 +105,15 @@ in
     # so the snapshotter mount succeeds regardless of how the node was named/provisioned.
     script = ''
       set -euo pipefail
-      node="''${RKE2LAB_NODE_NAME:-$(cat /proc/sys/kernel/hostname)}"
+      hostname="''${RKE2LAB_NODE_HOSTNAME:-$(cat /proc/sys/kernel/hostname)}"
+      node="''${RKE2LAB_NODE_NAME:-$hostname}"
+      # The cluster ROLE is the second dash-separated field of <host>-<role>[-<rest>] — true of a
+      # host-grown hostname (bioskop-mgmt-master) and of a CAPI-named one
+      # (bioskop-wrkld-control-plane-v9fhz) alike. node.env carries no role scalar, and a greenfield
+      # node has no node.env at all, so the hostname is the ONE uniform source for both paths.
+      role="$(echo "$hostname" | cut -d- -f2)"
       mountpoint=/var/lib/rancher/rke2/agent/containerd/io.containerd.snapshotter.v1.zfs
-      dataset="tank/rke2lab/control-nodes/''${node}/containerd"
+      dataset="tank/rke2lab/''${role}/ephemeral/nodes/''${node}/containerd"
       install -d -m 0755 "$mountpoint"
       if ! zfs list -H -o name "$dataset" >/dev/null 2>&1; then
         zfs create -p -o mountpoint=legacy "$dataset"

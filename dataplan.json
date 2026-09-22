@@ -5,55 +5,53 @@
     "type" : "zfs_fs",
     "options" : { }
   }, {
-    "path" : "rke2lab/control-nodes",
+    "path" : "rke2lab/mgmt",
     "type" : "zfs_fs",
     "options" : { }
   }, {
-    "path" : "rke2lab/control-nodes/master",
+    "path" : "rke2lab/mgmt/ephemeral",
     "type" : "zfs_fs",
     "options" : { }
   }, {
-    "path" : "rke2lab/control-nodes/master/containerd",
+    "path" : "rke2lab/mgmt/ephemeral/nodes",
+    "type" : "zfs_fs",
+    "options" : { }
+  }, {
+    "path" : "rke2lab/mgmt/ephemeral/volumes",
+    "type" : "zfs_fs",
+    "options" : { }
+  }, {
+    "path" : "rke2lab/mgmt/persist",
+    "type" : "zfs_fs",
+    "options" : { }
+  }, {
+    "path" : "rke2lab/mgmt/persist/funnel-cert",
     "type" : "zfs_fs",
     "options" : {
       "mountpoint" : "legacy"
     }
   }, {
-    "path" : "rke2lab/control-nodes/peer1",
+    "path" : "rke2lab/wrkld",
     "type" : "zfs_fs",
     "options" : { }
   }, {
-    "path" : "rke2lab/control-nodes/peer1/containerd",
-    "type" : "zfs_fs",
-    "options" : {
-      "mountpoint" : "legacy"
-    }
-  }, {
-    "path" : "rke2lab/control-nodes/peer2",
+    "path" : "rke2lab/wrkld/ephemeral",
     "type" : "zfs_fs",
     "options" : { }
   }, {
-    "path" : "rke2lab/control-nodes/peer2/containerd",
-    "type" : "zfs_fs",
-    "options" : {
-      "mountpoint" : "legacy"
-    }
-  }, {
-    "path" : "rke2lab/control-nodes/peer3",
+    "path" : "rke2lab/wrkld/ephemeral/nodes",
     "type" : "zfs_fs",
     "options" : { }
   }, {
-    "path" : "rke2lab/control-nodes/peer3/containerd",
-    "type" : "zfs_fs",
-    "options" : {
-      "mountpoint" : "legacy"
-    }
-  }, {
-    "path" : "rke2lab/persist",
+    "path" : "rke2lab/wrkld/ephemeral/volumes",
     "type" : "zfs_fs",
     "options" : { }
   }, {
-    "path" : "rke2lab/persist/funnel-cert",
+    "path" : "rke2lab/wrkld/persist",
+    "type" : "zfs_fs",
+    "options" : { }
+  }, {
+    "path" : "rke2lab/wrkld/persist/funnel-cert",
     "type" : "zfs_fs",
     "options" : {
       "mountpoint" : "legacy"

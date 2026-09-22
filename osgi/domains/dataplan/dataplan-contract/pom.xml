@@ -23,6 +23,14 @@
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>domain-annotations</artifactId>
     </dependency>
+    <!-- ClusterRole (MGMT/WRKLD): the persist tier is keyed by ROLE, because a host carries exactly
+         one cluster per role and the checked-in projection ndh consumes is host-agnostic. The same
+         direction netplan-contract already takes for the same reason — the role vocabulary is owned
+         by manifests-contract, never re-defined (a second roster is a second owner). -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>manifests-contract</artifactId>
+    </dependency>
     <!-- The seed-broker seam: DataplanRunbookInput carries @SeedContract("runbook") + @Amendment(SOIL)
          and DataplanCoordinate holds the Amend/Shape/Runbook meta-coordinates. Like netplan-contract. -->
     <dependency>

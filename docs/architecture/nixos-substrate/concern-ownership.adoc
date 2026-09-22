@@ -81,28 +81,45 @@ Flux Kustomizations enabled/disabled on the rendered branch.
 
 == The ZFS dataset layout is a dataplan, owned by seed-master
 
-The *layout* of the cluster's ZFS datasets (`tank/rke2lab/*`: the per-node
-`control-nodes/<node>` ephemeral tree that backs containerd + the openebs-zfs
-`pvc-*` volumes, and the cross-grow `persist/*` tree) is no longer a static
-literal in ndh's `zfs-disko-config.nix`. It is a *cluster need*, so its single
-source of truth is rke2lab `seed-master`, provided to ndh as a *dataplan* — the
-storage twin of the netplan blueprint (see
-link:../patterns/dataplan-single-source.adoc[Dataplan SSOT]). ndh pulls
-`lib.dataplan` over the flake edge, merges it into `catalog.datasets`, and
-materialises it; the root is `tank/rke2lab` (owner, not the `rke2` distro).
+The *layout* of the cluster's ZFS datasets is no longer a static literal in ndh's
+`zfs-disko-config.nix`. It is a *cluster need*, so its single source of truth is
+rke2lab `seed-master`, provided to ndh as a *dataplan* — the storage twin of the
+netplan blueprint (see link:../patterns/dataplan-single-source.adoc[Dataplan
+SSOT]). ndh pulls `lib.dataplan` over the flake edge, merges it into
+`catalog.datasets`, and materialises it; the root is `tank/rke2lab` (owner, not
+the `rke2` distro), and *every cluster gets its own root under it*:
+`tank/rke2lab/<role>/{ephemeral,persist}`.
 
 The two dataset natures split their *lifecycle* owner:
 
-* *ephemeral* `control-nodes/*` — wiped by *ndh* at instance renewal (host layer,
-  right timing: a fresh instance boots before rke2, no in-cluster agent, no
+* *ephemeral* `<role>/ephemeral/*` — wiped by *ndh* at instance renewal (host
+  layer, right timing: a fresh instance boots before rke2, no in-cluster agent, no
   `nsenter` — ZFS is a `/dev/zfs` concern the host already owns);
-* *persist* `persist/*` — retained across grows, a *sibling* of `control-nodes`
-  so the wipe never reaches it; bound in-cluster by a static PV with a stable
-  handle (the funnel cert survives → no Let's Encrypt re-issuance).
+* *persist* `<role>/persist/*` — retained across grows, a *sibling* of
+  `ephemeral` inside the cluster root so the wipe never reaches it; bound
+  in-cluster by a static PV with a stable handle (the funnel cert survives → no
+  Let's Encrypt re-issuance).
 
 This diverges from the *tailnet device* prune, which stays in-cluster (a Job
 before the Tailscale operator registers) because the tailnet is SaaS-side and the
 host cannot reach it. Two prunes, two owners.
+
+=== The node owns its containerd dataset — the layout declares only parents
+
+The per-node dataset named in the table above is *created by the node*:
+`nixos/containerd.nix` does `zfs create -p` when it is absent, then mounts it.
+That is why the dataplan declares only the PARENTS (`<role>/ephemeral/nodes`,
+`<role>/ephemeral/volumes`) and no node roster — a CAPI-provisioned node's name is
+random, so a declared roster could only ever describe host-grown pets, and the
+live tree proved it: three declared pets sat empty while the real workload node
+had made its own dataset.
+
+IMPORTANT: the dataset is keyed on the NODE NAME, never on the node's
+link:../cluster-api/pac-in-cluster-render-spec.adoc#pet-label[pet label] — the
+mount is ordered `before=rke2-server.service`, so it happens before the node joins
+and before any `Node` object exists to carry a label. See
+link:../patterns/dataplan-single-source.adoc#pet-not-in-the-path[the rule]: the pet
+names what must survive, the node name names what must not.
 
 == Related documentation
 
@@ -110,3 +127,5 @@ host cannot reach it. Two prunes, two owners.
 * link:node-bootstrap-delivery.adoc[Node-side bootstrap delivery] — the CNI + Flux row, in detail.
 * link:flox-containerd-runtime.adoc[The flox containerd runtime] — the runtime-shim row, in detail.
 * link:../atlas/nixos-substrate.adoc[Atlas — NixOS substrate] — the before/after of this dissolution.
+* link:../patterns/dataplan-single-source.adoc#per-cluster-pools[Dataplan — a root per cluster] — the
+  dataset tree this section's ownership split lands in, with the declare-vs-create figure.

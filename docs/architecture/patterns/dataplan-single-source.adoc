@@ -50,24 +50,29 @@ Two independent forces make a hand-copied dataset tree a latent bug:
 | Nature | Meaning
 
 | *ephemeral*
-| Per-node, GC'd on grow: `tank/rke2lab/control-nodes/<node>` and its
-  `containerd` child. openebs-zfs provisions its dynamic `pvc-*` *under* this
-  pre-created dataset. Reclaim is `Delete`; the whole subtree is wiped by ndh at
-  instance renewal (see link:../nixos-substrate/concern-ownership.adoc[concern
-  ownership]).
+| Wiped on grow: `tank/rke2lab/<role>/ephemeral/*`. Two owners, one parent each —
+  `nodes/<node>/containerd` (created by the node) and `volumes/pvc-*` (created by
+  openebs-zfs, whose `poolname` is the `volumes` parent). Reclaim is `Delete`; the
+  whole subtree is wiped by ndh at instance renewal (see
+  link:../nixos-substrate/concern-ownership.adoc[concern ownership]).
 
 | *persist*
-| Cross-grow, retained: `tank/rke2lab/persist/*` (the funnel cert state, the
-  render Maven cache). A *sibling* of `control-nodes` — that topological
+| Cross-grow, retained: `tank/rke2lab/<role>/persist/*` (the funnel cert state
+  today). A *sibling* of `ephemeral` inside the cluster root — that topological
   placement *is* the exemption mechanism: `zfs destroy -r
-  tank/rke2lab/control-nodes` never touches it. Reclaim is `Retain`; bound in the
-  cluster by a *static* PV with a stable handle. The funnel-cert use is INDIRECT:
-  the Tailscale proxy cannot mount a PVC (its ProxyClass exposes no volume), so a
-  helper Job mirrors the proxy's state Secret to/from this dataset — persisting the
-  funnel *identity* only (NOT etcd, which would break a clean cold-start). See
+  tank/rke2lab/<role>/ephemeral` never touches it. Reclaim is `Retain`; bound in
+  the cluster by a *static* PV with a stable handle. The funnel-cert use is
+  INDIRECT: the Tailscale proxy cannot mount a PVC (its ProxyClass exposes no
+  volume), so a helper Job mirrors the proxy's state Secret to/from this dataset —
+  persisting the funnel *identity* only (NOT etcd, which would break a clean
+  cold-start). See
   link:../cluster-api/pac-in-cluster-render-spec.adoc#funnel-durability[Durable
   funnel identity].
 |===
+
+Both natures are keyed per CLUSTER, by its role — see <<per-cluster-pools,the
+layout>> for the shape and for why the discriminator is the role and not the
+cluster name.
 
 == The SSOT flow
 
@@ -79,9 +84,9 @@ flowchart TB
   LIB["lib.dataplan\n(fromJSON . readFile, anti-IFD)"]:::gen
   CAT[("ndh catalog.datasets\ncontributor-merge (checkMerge)")]:::data
   DISKO["ndh zfs-disko-config.nix\nmaterialise on tank"]:::host
-  SC["openebs-zfs StorageClass\npoolname = layout root"]:::k8s
+  SC["openebs-zfs StorageClasses\npoolname = this cluster's\nephemeral/volumes + persist"]:::k8s
   PV["static persist PV\nvolumeHandle = persist dataset"]:::k8s
-  CTD["nixos/containerd.nix\nmount control-nodes/<node>/containerd"]:::host
+  CTD["nixos/containerd.nix\nmount ephemeral/nodes/$node/containerd"]:::host
 
   SM --> DJ --> LIB
   LIB -->|"ndh pulls via flake input, unions"| CAT --> DISKO
@@ -158,7 +163,9 @@ The twin of the netplan *segment* shape. Each entry is:
 ----
 
 * `path` — dataset path relative to the pool root, e.g.
-  `rke2lab/control-nodes/master/containerd`, `rke2lab/persist/funnel-cert`.
+  `rke2lab/wrkld/ephemeral/volumes`, `rke2lab/mgmt/persist/funnel-cert`. Only
+  PARENTS appear; the datasets their owners create at runtime do not (see
+  <<per-cluster-pools,who declares, who creates>>).
 * `type` — `zfs_fs` (the disko dataset type).
 * `mountpoint` — e.g. `legacy` for the containerd child (mounted by the kubelet /
   containerd, not auto).
@@ -186,23 +193,34 @@ top-level, lock-like file outside the generating module's input path.
 
 == Usage — do / don't
 
-❌ *Don't* hardcode the layout root or a dataset path:
+❌ *Don't* hardcode a dataset path, and — the subtler one — don't name a cluster by
+a NODE that happens to be in it:
 
 [source,java]
 ----
-private static final String ZFS_POOL = "tank/rke2/control-nodes/master"; // drifts
+private static final String ZFS_POOL = "tank/rke2/control-nodes/master";   // drifts
+final String pool = layout.controlNodePool("master");  // a pet standing in for a CLUSTER
 ----
 
-✅ *Do* read the dataplan SSOT (the single accessor), so the StorageClass pool,
-the persist PV handle, the containerd mount and ndh's disko materialisation all
-agree by construction:
+That second line is the shape of the live bug: one hardcoded pet as the pool for
+every cluster on the host. A literal is usually the admission of an implicit
+owner — ask *who owns this* before parameterising it.
+
+✅ *Do* ask the dataplan for THIS cluster's view, so the StorageClass pools, the
+persist PV handle, the containerd mount and ndh's disko materialisation all agree
+by construction:
 
 [source,java]
 ----
-// pool + per-dataset paths resolved from the dataplan, never a literal
-final String pool = dataplan.ephemeralRoot();            // tank/rke2lab/control-nodes/<node>
-final String certHandle = dataplan.persist("funnel-cert"); // tank/rke2lab/persist/funnel-cert
+// one accessor per cluster; the role keying is internal to the layout
+final var dataplan = DataplanLayout.forCluster(clusterName);   // bioskop-wrkld
+dataplan.ephemeralPool();                    // tank/rke2lab/wrkld/ephemeral/volumes
+dataplan.persistPool();                      // tank/rke2lab/wrkld/persist
+dataplan.persistDataset(FUNNEL_CERT);        // tank/rke2lab/wrkld/persist/funnel-cert
 ----
+
+❌ *Don't* put a pet in a path — see <<pet-not-in-the-path,the rule>>: the pet
+names what must survive, the node name names what must not.
 
 == Implementation plan
 
@@ -226,44 +244,206 @@ final String certHandle = dataplan.persist("funnel-cert"); // tank/rke2lab/persi
 . Update `zfs.d/zpool-init.sh` to the new root.
 
 [#per-cluster-pools]
-== The layout has no CLUSTER dimension — and the live tree already diverged
+== A ROOT per cluster — the layout the one-cluster era could not have
 
-The layout was declared when there was one cluster, so it is keyed by NODE NAME with the cluster
-implicit. Two clusters on one host make that wrong in three ways, one of which is *already happening*.
+The layout was declared when there was one cluster, so it was keyed by NODE NAME with the cluster
+implicit. Two clusters on one host broke that in three ways at once, and the live tree showed all three
+on 2026-09-21:
 
-*1. Both pools are shared across clusters, by a literal.* `OpenebsZfsManifestsUnit` names the
+[source]
+----
+tank/rke2lab/control-nodes/
+├── master/                              2.00G
+│   ├── containerd
+│   ├── pvc-3698166d…  1.57G
+│   ├── pvc-b72ef9b3…   436M
+│   └── pvc-e13b83da…   128K             ← ★ bound in the WORKLOAD cluster
+├── bioskop-wrkld-control-plane-v9fhz/
+│   └── containerd                       ← the node made this; it is in no declaration
+└── peer{1,2,3}/containerd               ← declared pets that never existed: empty shells
+tank/rke2lab/persist/funnel-cert         149K   ← ONE cert dataset for the whole host
+----
+
+*1. Both pools were shared across clusters, by a literal.* `OpenebsZfsManifestsUnit` named the
 ephemeral StorageClasses from `layout.controlNodePool("master")` — one hardcoded pet. `poolname` is a
-single StorageClass parameter, and every node of every cluster resolves the same host path, so all
-dynamic PVCs land in the MANAGEMENT node's dataset. Measured on 2026-09-21: the PV
-`pvc-e13b83da-59d7-4250-9288-c3cb7558af0f` bound *in the workload cluster* is listed on the host under
-`tank/rke2lab/control-nodes/master/`. The workload node's own dataset exists (created by the
-profile/containerd path) and openebs ignores it.
+single StorageClass parameter, so every node of every cluster resolved the same host path and all
+dynamic PVCs landed in the MANAGEMENT node's dataset: `pvc-e13b83da…` above is bound *in the workload
+cluster*. The persist tier had the same fault, and there it is not untidy but destructive — see
+link:../cluster-api/pac-in-cluster-render-spec.adoc#funnel-per-cluster[the funnel decomposition],
+where sharing one dataset destroys the Let's Encrypt budget of both clusters at once.
 
-The persist tier has the same shape and the same fault: a flat `persist/funnel-cert` for the whole
-host, which for the funnels is not merely untidy — see
-link:../cluster-api/pac-in-cluster-render-spec.adoc#funnel-per-cluster[the funnel decomposition], where
-sharing it destroys the Let's Encrypt budget of both clusters at once.
+*2. The declared node roster only ever made sense for HOST-GROWN nodes.* `CONTROL_NODES` was a roster
+of PETS (`master`, `peer1..3`), deterministic because the host names those instances. A
+CAPI-provisioned node's name is random, so the real workload node appears in the tree and in no
+declaration, while three declared pets sit there empty.
 
-*2. The declared ephemeral tree only makes sense for HOST-GROWN nodes.* `CONTROL_NODES` is a roster of
-PETS (`master`, `peer1..3`) — deterministic because the host names those instances. A CAPI-provisioned
-node has a RANDOM name, and openebs simply creates its dataset on demand, outside the declared layout:
-`control-nodes/bioskop-wrkld-control-plane-v9fhz` is in the live tree and in no declaration. So
-pre-declaring the ephemeral tree is a host-grown concern, not a universal one.
+*3. Three writers shared one parent.* `control-nodes/master/` was filled by the node (`containerd`),
+by openebs (`pvc-*`) and by the declaration (the pet dataset itself) — the single-owner fault, in the
+tree's own shape.
 
-*3. Hence the leak.* Because the dataset is keyed on a name that changes every greenfield cycle, each
-cycle strands one (see the ZFS-GC gap). Making the POOL per-cluster is what gives a sweep a
-well-defined root; keying it per-pet would need a StorageClass per pet plus `allowedTopologies`, which
-buys nothing here — nodes of one cluster cohabit under one parent as distinct `pvc-*` datasets.
+=== The shape
 
-So the direction is `tank/rke2lab/{persist,control-nodes}/<cluster>/…`: the `persist` tier stays ONE
-sibling of `control-nodes` so the "the ephemeral wipe never reaches it" invariant is still expressed at
-a single level. `DataplanLayout.canonical()` takes no arguments today and must learn the host's
-clusters — and so must ndh, since it materialises the layout through `lib.dataplan`.
+[source]
+----
+tank/rke2lab/
+├── mgmt/
+│   ├── ephemeral/                  ← declared. THE WIPE ROOT: one command per cluster
+│   │   ├── nodes/                  ← declared parent only
+│   │   │   └── <node>/containerd   ← the NODE creates it (zfs create -p)
+│   │   └── volumes/                ← declared. openebs EPHEMERAL poolname
+│   │       └── pvc-<uid>           ← openebs creates it, names it
+│   └── persist/                    ← declared. openebs PERSIST poolname, Retain
+│       └── funnel-cert             ← declared. the static PV ADOPTS it
+└── wrkld/                          ← identical, disjoint
+----
 
-NOTE: the javadoc already projects the per-cluster form for the maven cache, the other way round
-(`tank/rke2lab/<cluster>/persist/maven-cache`, "a foundation-3 item"). The two must not diverge;
-whichever lands first sets the shape, and the deciding argument is which level the retain/ephemeral
-boundary belongs at.
+Three properties earn the three levels:
+
+*The cluster root* (`<role>/`) makes each cluster's storage one subtree — a well-defined root for
+inventory and accounting, and the thing the shared-`poolname` bug could not have.
+
+*The nature level* (`ephemeral` vs `persist`) is the load-bearing one, because the wipe is the
+dangerous operation. It keeps the invariant "the ephemeral wipe never reaches persist" expressed at a
+SINGLE level, per cluster: the wipe is `zfs destroy -r tank/rke2lab/<role>/ephemeral`, and no retained
+dataset can ever be under that path by construction.
+
+WARNING: for the same reason the cluster root is *not* a destroy target. `zfs destroy -r
+tank/rke2lab/<role>` would take `persist` with it. Destroying a cluster's storage means destroying its
+`ephemeral` subtree; the persist subtree outlives the cluster on purpose.
+
+*The owner level* (`nodes` vs `volumes`) gives each writer its own parent, so no two parties ever
+create siblings in one dataset. `control-nodes` also loses its role word: workers will land under the
+same parent, and the level is about nodes, not about control nodes.
+
+=== Why the role, and not the cluster name
+
+The projection ndh consumes is ONE checked-in `dataplan.json`, materialised on EVERY host — so it
+cannot name hosts. A fleet cluster roster declared here would be a second owner of a fact
+link:netplan-blueprint-single-source.adoc[the network blueprint] already derives
+(`clustersOnSameHost()`). The ROLE suffices, because a host carries exactly one cluster per
+`ClusterRole` — so `wrkld` is unambiguous on any host, and `DataplanLayout.canonical()` stays
+argument-free.
+
+IMPORTANT: the layout therefore now *depends* on "one cluster per role per host". That was already the
+fleet law, but nothing in the dataplan leaned on it before. Two workload clusters on one host would
+require the real cluster roster, and with it a way to make a host-specific projection.
+
+=== Who declares, who creates
+
+Only the PARENTS are declared, because openebs does not create its `poolname` — it must exist for the
+CSI to create volume datasets under it. Everything below a parent is created by the party that owns its
+content.
+
+[mermaid]
+....
+flowchart LR
+  subgraph dec["DECLARED — ndh/disko, before any cluster exists"]
+    N1["role/ephemeral/nodes"]:::dec
+    N2["role/ephemeral/volumes"]:::dec
+    N3["role/persist/funnel-cert"]:::dec
+  end
+
+  NODE["the NODE\nnixos/containerd.nix\nzfs create -p, then mount"]:::node
+  CSI["openebs-zfs CSI\nZFSVolume reconcile"]:::csi
+  CTL["the in-cluster volume controller\nelects a node, stamps ownerNodeID"]:::ctl
+
+  N1 --> NODE --> C1["$node/containerd\nkeyed on the NODE NAME"]:::data
+  N2 --> CSI --> C2["pvc-$uid\nnamed by openebs"]:::data
+  N3 -->|"ADOPTED, never created"| CSI
+  CTL -.->|"ZFSVolume + static PV"| CSI
+
+  classDef dec fill:#d5e8d4,stroke:#82b366,color:#000;
+  classDef node fill:#ffe6cc,stroke:#d79b00,color:#000;
+  classDef csi fill:#e1d5e7,stroke:#9673a6,color:#000;
+  classDef ctl fill:#dae8fc,stroke:#6c8ebf,color:#000;
+  classDef data fill:#fff2cc,stroke:#d6b656,color:#000;
+....
+
+[cols="1,3"]
+|===
+| Legend | Meaning
+
+| green  | declared in the dataplan, materialised by ndh before the cluster exists
+| orange | the node itself (the NixOS substrate)
+| purple | the openebs-zfs CSI
+| blue   | the in-cluster volume controller (elects + stamps; creates no dataset)
+| yellow | datasets that appear at RUNTIME, named by their creator
+|===
+
+[#pet-not-in-the-path]
+=== A pet label cannot place a dataset — the ephemeral is keyed on the NODE NAME
+
+link:../cluster-api/pac-in-cluster-render-spec.adoc#pet-label[The pet label] gives a managed node its
+role back (`master`, `peer1`), which invites an obvious idea: key the dataset on the pet, so the path is
+stable across greenfield cycles. It does not work, for two independent reasons.
+
+*It arrives far too late.* `rke2lab-zfs-containerd` is ordered `before=rke2-server.service` — the
+dataset is mounted before rke2 starts, so before the node joins, so before any `Node` object exists to
+carry a label. The pet becomes readable only after CAPI propagates it from the `Machine`.
+
+[mermaid]
+....
+sequenceDiagram
+  autonumber
+  participant M as rke2lab-zfs-containerd
+  participant R as rke2-server
+  participant A as this cluster's apiserver
+  participant C as CAPI (management cluster)
+
+  M->>M: dataset = ephemeral/nodes/$node/containerd
+  Note over M: no Node object exists yet —<br/>nothing carries a pet label
+  M->>R: mounted (before=rke2-server.service)
+  R->>A: the node registers
+  C->>A: Machine label propagates (pet=master)
+  Note over A: the pet is readable only HERE,<br/>long after the path was chosen
+....
+
+And the asymmetry would be exactly the one this decomposition removes: a HOST-grown node does know its
+pet at boot (`InstanceGrow` writes `RKE2LAB_NODE_NAME=master` into `node.env`), a managed one does not,
+because CAPRKE2's `spec.files` is one set for every replica. A pet in the path would work for the
+management cluster and not for the workload.
+
+*And a pet is RECYCLED.* Remediating `master` gives the replacement machine the same pet. A dataset at
+`nodes/master/containerd` would then hand the new node the previous node's snapshotter state —
+container state belonging to a different node identity. A node name is unique and disposable; that is
+what ephemeral state needs.
+
+****
+*The rule.* The pet names what must SURVIVE. The node name names what must NOT.
+
+So the pet is the right key for ELECTING the owner of a persist volume — and a better one than sorting
+by `creationTimestamp`, because when the role moves the label moves with it — while every ephemeral
+dataset stays keyed on the node name. No pet appears anywhere in a path.
+****
+
+NOTE: electing by label still does not free the controller from resolving a node NAME:
+`ZFSVolume.ownerNodeID` must equal the `ZFSNode` object's name. The label serves the choice and the
+scheduling half only.
+
+=== Migrating the live tree — the ephemeral cannot move
+
+[cols="1,3",options="header"]
+|===
+| Subtree | Gesture
+
+| `persist/funnel-cert`
+| *A `zfs rename` into `mgmt/persist/funnel-cert`, and it is mandatory.* This dataset holds the
+  management cluster's funnel identity and cert. Letting a fresh one be created instead re-issues, and
+  burns one of the 5 certs / FQDN / 168h budget the whole mechanism exists to protect.
+
+| `control-nodes/*/pvc-*`
+| *Cannot be moved.* openebs records the pool in the PV's `volumeAttributes.openebs.io/poolname` at
+  PROVISIONING time, so the bound PVs keep pointing at the old path; renaming would break a running
+  cluster. The old subtree survives as a graveyard until the next cold start re-creates every dynamic
+  PVC under the new pool — and THAT is when it is destroyed.
+
+| `control-nodes/<node>/containerd`
+| No gesture needed: the node re-creates it under the new path (`zfs create -p`). The cost is
+  re-pulling images once.
+
+| `control-nodes/peer{1,2,3}`
+| Destroy. They are the declared pets that never existed.
+|===
 
 == Open questions
 
@@ -271,13 +451,22 @@ boundary belongs at.
   (like the netplan `yamlExport`, which drives an in-container scion), or a
   simpler host-flat export since the layout is *declared*, not derived from a
   bundle-only contract type. To settle at implementation.
-. *openebs-zfs adoption*: confirm the node plugin *adopts* a pre-existing dataset
-  from a hand-authored `ZFSVolume` CR (vs erroring "dataset exists"), and that the
-  CR delete-finalizer does not `zfs destroy` the persist dataset on teardown
-  (cluster-destroy bypasses the CSI, so it should not).
-. *Ephemeral wipe owner*: the `control-nodes/*` wipe is ndh's (host layer, at
-  instance renewal), diverging from the tailnet prune (in-cluster). Confirm the
-  wipe hook's exact placement in ndh's instance-renewal path.
+. *openebs-zfs adoption*: the adopt path WORKS in practice — the management
+  cluster's `funnel-cert` PVC is bound against the pre-created dataset today. Still
+  to confirm from the source: that the `ZFSVolume` delete-finalizer does not `zfs
+  destroy` the persist dataset on teardown (cluster-destroy bypasses the CSI, so it
+  should not), and whether the plugin CREATES a missing dataset or requires the
+  parent only (the layout assumes the parent only, which is why parents are
+  declared and volume datasets are not).
+. *Ephemeral wipe owner*: the wipe is ndh's (host layer, at instance renewal),
+  diverging from the tailnet prune (in-cluster). Confirm the wipe hook's exact
+  placement in ndh's instance-renewal path — and that it now targets
+  `<role>/ephemeral` per cluster rather than one `control-nodes` tree.
+. *The graveyard's end condition*: the old `tank/rke2lab/control-nodes` subtree
+  cannot be migrated (bound PVs record the old pool) and is destroyed at the first
+  cold start after the cutover. Nothing enforces that today — it is an operator
+  gesture waiting for a GC that knows the difference between the old shape and the
+  new.
 
 == Contract types (the `dataplan-contract` bundle)
 
