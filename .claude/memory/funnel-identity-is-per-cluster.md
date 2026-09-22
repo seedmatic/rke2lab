@@ -1,146 +1,90 @@
 ---
 name: funnel-identity-is-per-cluster
-description: "Design convergé le 2026-09-21 : l'identité d'un funnel est (FQDN, device tailnet, cert), donc par CLUSTER — un persist plat ne serait pas négligé mais détruirait le budget Let's Encrypt des deux clusters à la fois, et le purge de mgmt supprimerait le device suffixé de wrkld à chaque passage"
-metadata: 
+description: "ABOUTI le 2026-09-22 — les funnels sont par cluster, le volume persist est posé par un contrôleur in-cluster qui élit le nœud, et le dataplan a une racine par cluster. Vérifié vivant : VolumeIntention Placed, PVC funnel-cert Bound, restores Complete"
+metadata:
   node_type: memory
   type: project
   originSessionId: 0b18b1f3-3eda-496a-865d-1fbc722b0d30
-  modified: 2026-09-21T21:32:32.765Z
+  modified: 2026-09-22T21:24:41.970Z
 ---
 
-Brainstorm du 2026-09-21, déclenché par le blocage réel de `bioskop-wrkld` : le PVC `funnel-cert`
-ne liait pas, donc `tailscale-funnel-cert-restore-operators` restait `Unknown`, et **toute** la pile
-tailscale en dépend (`tailscale-operators`, `funnel-state`, `tailnet-purge` tous
-`False dependency … is not ready`) — donc pas de Connector, donc la VIP jamais routable.
+Le blocage de départ (2026-09-21) : `FunnelCertRestoreManifestsUnit` portait
+`NODE_NAME = "bioskop-mgmt-master"` en dur, donc le PVC `funnel-cert` ne liait jamais dans le cluster
+de charge, donc toute la pile tailscale restait bloquée, donc pas de Connector et pas de VIP.
 
-Cause immédiate : `FunnelCertRestoreManifestsUnit` porte
-`private static final String NODE_NAME = "bioskop-mgmt-master"` — un littéral, utilisé pour le
-`nodeAffinity` du PV **et** l'`ownerNodeID` du `ZFSVolume`.
+## ✅ Livré le 2026-09-22, et vérifié en vivant
 
-## Pourquoi le per-cluster est FORCÉ, pas souhaitable
+```
+volumeintention/funnel-cert   NODE=bioskop-mgmt-master   PHASE=Placed   READY=True
+pvc/funnel-cert               Bound
+funnel-cert-restore-{flux,pipelines}-webhook   Complete
+tailnet-purge                                  Complete
+tank/rke2lab/mgmt/ephemeral/nodes/master/containerd   ← créé par le nœud, bonne racine
+```
 
-Toute la persistance des funnels n'existe que pour **le budget LE : 5 certs / FQDN exact / 168 h**
-(`pac-in-cluster-render-spec.adoc#funnel-durability`). L'identité protégée est le triple
-**(FQDN, device tailnet, cert)** — les trois par cluster.
+rke2lab `fc444a5a9`→`237d4be65` (11 commits), seed-incluster `279b459ce`.
 
-Donc un `persist/funnel-cert` plat partagé ne serait pas juste désordonné : les deux proxies
-écriraient le même `/persist/<leaf>/state.yaml`, les deux reviendraient comme de nouveaux devices,
-les deux brûleraient leur budget → le `429` que le design existe pour empêcher.
+**1. Le dataplan a une racine par cluster.** `tank/rke2lab/<role>/{ephemeral/{nodes,volumes},persist}`.
+Le niveau *nature* porte l'invariant (`zfs destroy -r <role>/ephemeral`, et la racine de cluster n'est
+**pas** une cible de destruction — elle emporterait persist). Le niveau *propriétaire* donne un parent
+par écrivain : `nodes/` au nœud, `volumes/` à openebs. Seuls les PARENTS sont déclarés ; openebs ne crée
+pas son `poolname`, le nœud crée son `containerd` avec `zfs create -p`. `CONTROL_NODES` supprimé.
+Clavé par **rôle** parce que la projection consommée par ndh est une liste unique matérialisée sur tous
+les hôtes — un roster de flotte y serait un second propriétaire. Le nœud dérive son rôle du 2e champ du
+hostname (uniforme host-grown et greenfield ; `node.env` n'a pas de scalaire de rôle).
 
-⚠️ **Et pire, de façon déterministe** : le second cluster ne peut pas réclamer le nom nu, le tailnet
-le suffixe (`flux-webhook-1`) — et la règle du purge dit qu'un doublon dérivé *ne matche jamais* le
-`--keep-host` nu, donc **est toujours purgé**. Le Job de purge de mgmt supprimerait le device de
-wrkld à chaque passage, en boucle.
+**2. Le volume est posé par un contrôleur, pas par le rendu.** `VolumeIntention`
+(`cluster.seedmatic.io/v1alpha1`) déclare dataset/taille/claim/rôle de nœud éligible et **aucun nœud** ;
+le réconciliateur élit, puis crée le `ZFSVolume` (`ownerNodeID`) et le PV (`nodeAffinity`). Élection
+**collante** — la donnée ne suit pas le choix. Rien n'est patché après pose : un objet existant nommant
+un autre nœud est un fait à remonter, pas une dérive.
 
-## Décisions prises (utilisateur)
+★ **Un seul binaire, un seul jeu de CRD, un seul ClusterRole** (décision utilisateur). Un second serait
+à re-fusionner dès que le cluster de charge héberge des vclusters, puisque c'est la même logique
+intention→CAPI. Ce qu'il faut n'est pas un mode mais **une** porte : `PoolReflection` est le seul
+réconciliateur qui *surveille* un type CAPI (`Machine`), et un informer sur un kind non servi tue le
+manager au démarrage — il s'enregistre donc si le RESTMapper connaît `Machine`. Les autres touchent CAPI
+en unstructured, ce qui n'échoue que par réconciliation. Présence, pas configuration. See
+[[seed-vcluster]].
 
-1. Dataset : **`tank/rke2lab/persist/<cluster>/funnel-cert`** — le palier `persist` reste UN frère de
-   `control-nodes`, donc l'invariant « l'effacement éphémère ne l'atteint jamais » s'exprime à un seul
-   niveau. Les sous-répertoires `<leaf>/state.yaml` restent dedans.
-2. **UN PV par CLUSTER, pas par leaf.** Le graphe de dépendances sérialise déjà restore et backup, donc
-   ils ne se disputent jamais l'unique claim RWO (« no shared-mount storage class needed »). Un PV par
-   leaf jetterait cet argument.
-3. **Le volume appartient au CONTRÔLEUR.** Le rendu déclare l'intention et ne nomme aucun nœud ;
-   seed-incluster élit le nœud depuis le roster qu'il détient déjà et estampille l'affinité +
-   `ownerNodeID`.
+L'unité de déploiement a quitté le domaine `clusterApi` (MGMT-only) pour **`runtime`** — le seul domaine
+de base qui dépend déjà de `cluster` (namespace) et `platform` (token) et qui *contient* l'env flox.
+`cluster` aurait été un cycle.
 
-Le changement de contrat est **`FunnelLeaf`** (enum dual-realm dont le leaf est aujourd'hui l'identité
-entière) qui devient **(cluster, leaf)**. Touche aussi le FQDN, le Secret `ts-<leaf>-state`, le
-`ProxyClass` par funnel, et le `--keep-host` du purge.
+**3. L'identité funnel est `(cluster, leaf)`.** `FunnelLeaf` garde le vocabulaire du leaf ; un record
+`Funnel` porte la paire et dérive `hostname = <cluster>-<leaf>` (cluster d'abord), `stateSecret`,
+`proxyClass`. Le sous-répertoire de persistance et les noms d'objets gardent le leaf nu (`leafName()`) :
+le dataset est déjà par cluster, un Job vit dans un namespace de cluster. `PacWebhookFunnel` cesse de
+redéclarer `"pipelines-webhook"`.
 
-Effet de bord heureux : la spec dit que renommer un FQDN ouvre un budget de 5 certs **neuf**. La
-migration EST ce renommage, donc aussi la sortie de secours si celui de `flux-webhook` est entamé.
-Coût : mettre à jour l'URL de webhook de l'App GitHub.
+## ★ Le cert tailscale ne se re-demande pas — vérifié à la source
 
-## Faits vérifiés qui ferment des fausses pistes
+`feature/acme/cert.go`, `shouldStartDomainRenewal` : la décision est **purement calendaire** (ARI, sinon
+2/3 de la durée de vie, sinon `NotAfter − now < minValidity`). **Rien ne compare l'émetteur** ; l'URL du
+directory ACME n'est que journalisée. Et aucune erreur ne remonte : GitHub refuse côté client, tailscaled
+a servi son cert.
 
-- **Le provisionnement dynamique ne remplace PAS l'adoption statique** : un cold start efface l'objet
-  PVC, donc openebs provisionne un `pvc-<uuid>` neuf, l'ancien dataset fuit et le cert est perdu. Le PV
-  pré-déclaré qui adopte un dataset au nom stable est la SEULE chose qui traverse un effacement d'etcd.
-- **Un label de nœud ne libère pas** : `ownerNodeID` doit égaler le nom de l'objet `ZFSNode`, qu'openebs
-  nomme d'après le nœud (vérifié : `ZFSNode/bioskop-wrkld-control-plane-v9fhz`, labels
-  `openebs.io/nodename` et `openebs.io/nodeid` tous deux valués au nom du nœud). Le label ne vaut que
-  pour la moitié scheduling (`spec.nodeAffinity` est un `NodeSelector` standard).
-- **Sortir openebs du chemin serait une régression** : il est là délibérément, et c'est lui qui
-  *applique* l'unicité d'accès (un seul `ZFSNode` sert le volume) au lieu de laisser `ReadWriteOnce`
-  comme un contrat que personne ne police.
-- **Pas de cercle d'amorçage** : le contrôleur n'a pas besoin de la VIP. Un nœud de charge répond sur
-  son adresse LAN — mesuré, `https://192.168.1.21:6443` répond `Unauthorized` pendant que la VIP time
-  out. Le cluster gestionnaire l'atteint avant que le Connector existe.
-- Le Connector, lui, est **déjà correct et par cluster** (`createConnector(…, clusterName())`, routes
-  depuis le blueprint du cluster ; et l'ACL tailnet auto-approuve tout le /18 vmnet pour `tag:k8s` —
-  « so any cluster's routes »). Le côté tailnet a été conçu pour N clusters ; seul le trio funnel était
-  mal attribué.
+Conséquence : un cert staging valide serait servi ~90 jours après un retour en production. D'où le
+marqueur — le backup écrit la posture dans `/persist/<leaf>/issuance`, le restore jette un cert qui ne
+correspond pas. **Deux non-correspondances, une règle** : posture différente, ou hostname différent (le
+renommage). Seules les clés `*.crt`/`*.key` partent, la clé de nœud reste → même device, une seule
+émission. Testé contre le vrai `yq` dans les deux branches.
 
-## Le label PET — rendre au nœud managé son identité stable
+`tailscale cert --min-validity <durée>` existe comme levier de re-mint mais **n'est pas une garantie** :
+son aide dit que le maximum autorisé dépend de la CA, donc un cert frais ne peut pas être forcé.
 
-Décidé avec l'utilisateur : le contrôleur joue une logique basique — trier les Machines du control
-plane par `creationTimestamp` (déterministe, monotone, possédé par CAPI) et assigner `master`,
-`peer1`, `peer2` dans l'ordre, en sautant celles qui portent déjà un pet. Collant et idempotent par
-construction.
+Le store est **clavé par domaine**, avec des clés séparées cert / identité — c'est ce qui permet de jeter
+l'un en gardant l'autre.
 
-Écrit comme **label de Machine** dans un domaine que CAPI propage au Node :
-`rke2lab.io.node.cluster.x-k8s.io/pet: master`. Règle **vérifiée à la source**
-(`util/labels/helpers.go`, `GetManagedLabels`) — la propagation Machine→Node couvre
-`node-role.kubernetes.io`, `node-restriction.kubernetes.io` (+ `*.`), **`node.cluster.x-k8s.io`
-(+ `*.`)**, plus les regex `--additional-sync-machine-labels`.
+## ⚠️ Fenêtre STAGING ouverte (2026-09-22)
 
-### Deux voies écartées, et pourquoi
+`FunnelCertIssuance.current()` = `STAGING`, propriétaire **unique** des deux moitiés : le rendu tailscale
+en projette `useLetsEncryptStagingEnvironment`, la réconciliation ghapp en projette `insecure_ssl` (qui
+était une constante `0` **ré-affirmée à chaque grow** — donc le grow défaisait la bascule manuelle de
+l'opérateur). Basculer sur `PRODUCTION` est désormais tout le geste.
 
-⚠️ **NE PAS reprendre la création des Machines.** Les pré-créer avec des noms de pets donnerait des
-noms déterministes et dissoudrait la cause racine — mais `RKE2ControlPlane` nomme parce qu'il
-**possède le cycle de vie** : init-vs-join, appartenance etcd + quorum, scale, rollouts, remédiation.
-Prendre le nommage prend une tranche non bornée de tout ça. Le chemin d'adoption prouve que CAPRKE2
-compte une Machine pré-créée comme sa réplique, mais explicitement **sans l'amorcer**
-(`dataSecretName` sans `configRef` — la sentinelle) : ce n'est donc PAS une preuve pour le greenfield.
+Le cert de mgmt a été **perdu** au passage (dataset recréé au lieu d'être renommé — ma séquence était
+fautive, la cible existait déjà). Coût quasi nul : il était lié à `flux-webhook`, un FQDN abandonné.
 
-⚠️ **NE PAS compter sur la cloud config côté managé.** Le canal par machine existe bien (mesuré :
-`Machine …-rmz8z` → `configRef: RKE2Config/…-566v4`), mais **CAPRKE2 l'écrit** depuis l'unique spec du
-`RKE2ControlPlane` et régénérerait tout patch. `spec.files` est un jeu unique pour toutes les
-répliques — c'est exactement pourquoi les 7 fragments RKE2 sont invariants par nœud. Côté **hôte**
-l'inverse est vrai : `InstanceGrow` écrit un cloud-init par instance, donc `node-label=` y serait
-trivial. `NodeRestriction` n'est pas l'obstacle : il protège `kubernetes.io/` et `k8s.io/`, un domaine
-tiers est permis depuis un kubelet.
-
-### Ce que le label ne règle PAS
-
-`ZFSVolume.ownerNodeID` exige toujours le **nom** du nœud (il doit égaler le nom de l'objet `ZFSNode`).
-Le label ne sert que la moitié scheduling. Et il ne règle pas la fuite de datasets.
-
-## ★ Le pool openebs est partagé entre clusters — BUG VIVANT
-
-`OpenebsZfsManifestsUnit` : `final String ephemeralPool = layout.controlNodePool("master")` — un pet
-**codé en dur**, et `poolname` est un paramètre unique de StorageClass. Donc tous les nœuds de tous les
-clusters résolvent le même chemin hôte.
-
-**Mesuré le 2026-09-21** : le PV `pvc-e13b83da-59d7-4250-9288-c3cb7558af0f` lié **dans le cluster de
-charge** est listé sur l'hôte sous `tank/rke2lab/control-nodes/master/`. Les données PVC de wrkld
-vivent dans le dataset du nœud de **gestion**. Le dataset propre du nœud existe pourtant
-(`control-nodes/bioskop-wrkld-control-plane-v9fhz/`, créé par le chemin profil/containerd) — openebs
-l'ignore.
-
-Correctif : **pool par cluster**, pas par pet (une StorageClass par pet + `allowedTopologies`
-n'achèterait rien — les nœuds d'un cluster cohabitent sous un parent comme des `pvc-*` distincts). Ça
-donne aussi une racine bien définie au GC. Spec :
-`docs/architecture/patterns/dataplan-single-source.adoc#per-cluster-pools`.
-
-Et `CONTROL_NODES` (`master`, `peer1..3`) n'a de sens que pour un cluster **grown par l'hôte** : pour un
-nœud CAPI openebs crée son dataset à la demande, hors layout déclaré.
-
-## ★ L'invariant à retenir
-
-**Rien de ce que le rendu produit ne peut être clavé sur le nom d'un nœud managé.** C'est la QUATRIÈME
-fois que « un nœud CAPI porte un nom aléatoire » coûte quelque chose : la divergence de nommage de
-l'infraRef, l'absence de GC des datasets ZFS, ce PV de funnel, et la liste déclarée `CONTROL_NODES`
-(plate, `master/peer1..3`, alors que le réel porte déjà
-`control-nodes/bioskop-wrkld-control-plane-v9fhz` qu'openebs s'est créé hors layout).
-
-Note de cohérence : `DataplanLayout` projette la forme inverse pour le cache maven
-(`tank/rke2lab/<cluster>/persist/maven-cache`, « a foundation-3 item »). Les deux ne doivent pas
-diverger.
-
-Spec : `docs/architecture/cluster-api/pac-in-cluster-render-spec.adoc#funnel-per-cluster` et
-`#funnel-node-affinity`.
-
-See [[workload-bootstrap-chain-cilium-kubevip]] [[zfs-dataset-gc-missing]]
-[[tailnet-node-identity-ephemeral-ghosts]] [[rke2-peer-join-config-gap]].
+See [[single-owner-rule]] [[netplan-projection-described-hosts]]
+[[kubeconfig-context-per-cluster-intention]] [[workload-bootstrap-chain-cilium-kubevip]].

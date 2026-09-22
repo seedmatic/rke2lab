@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 0b18b1f3-3eda-496a-865d-1fbc722b0d30
-  modified: 2026-09-21T22:08:24.872Z
+  modified: 2026-09-22T21:25:35.741Z
 ---
 
 Constat de l'utilisateur au terme de la soirée du 2026-09-21 : « on vient de re-découvrir la règle du
@@ -48,6 +48,30 @@ fois l'inverse, et les deux fois l'utilisateur a corrigé :
   `NODE_NAME = "bioskop-mgmt-master"` et `controlNodePool("master")` disaient tous deux « cette unité
   n'a jamais été pensée pour tourner ailleurs ». Ne pas les paramétrer par réflexe : d'abord demander
   *qui doit posséder ça*, la réponse change souvent le correctif.
+
+## Quatre de plus, le 2026-09-22 — la règle tient
+
+| Le défaut | Les deux propriétaires | Le correctif |
+|---|---|---|
+| `insecure_ssl` du webhook | une constante d'edge ré-affirmée à CHAQUE grow **et** l'opérateur à la main | une posture déclarée une fois, les deux moitiés en dérivent |
+| `leaf()` qui change de type | l'enum `FunnelLeaf` **et** le record `Funnel`, même nom d'accesseur | renommer en `leafName()` — deux noms ne se confondent pas |
+| roster de nœuds | `CANONICAL_NODE_NAMES` (six, « every cluster ») **et** le découpage LAN (un, `/29`) | `ClusterTopology.of(role)`, la liste devient un surensemble |
+| adressage exporté | l'exportateur redisait la table hôte→id et nœud→id que le netplan possède | dérivé du blueprint |
+
+⚠️ **Deux enseignements neufs, tous deux sur ce qui rend un double propriétaire INVISIBLE :**
+
+- **Un accesseur qui change de type sous le même nom.** `funnel.leaf()` rendait une String, puis l'enum.
+  `"job-" + funnel.leaf()` a continué de compiler et a rendu `job-PIPELINES_WEBHOOK`, refusé par
+  Kubernetes. La concaténation avale la différence ; seul un nom différent la rend visible.
+- **Une valeur gonflée peut masquer un débordement.** Les ids de workers erronés de l'exportateur (10, 11)
+  plaçaient les adresses assez loin pour ressembler à une tranche plus large. Avec les vrais ids, le
+  débordement sautait aux yeux. Une donnée fausse peut *camoufler* un second défaut — corriger l'une
+  révèle l'autre, ce qui est une raison de plus de ne pas corriger « en gros ».
+
+Et un corollaire de méthode confirmé trois fois aujourd'hui : **une réplique managée ne peut pas recevoir
+d'identité par nœud depuis un gabarit** — `spec.files` de CAPRKE2, le label pet, et maintenant
+`LXCMachineTemplate.devices`. Quand on cherche à donner une identité par nœud, la question n'est pas
+« quel champ », c'est « qui crée l'objet ».
 
 ## Le test à appliquer
 

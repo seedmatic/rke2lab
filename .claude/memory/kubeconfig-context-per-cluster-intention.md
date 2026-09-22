@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 0b18b1f3-3eda-496a-865d-1fbc722b0d30
-  modified: 2026-09-21T15:22:21.107Z
+  modified: 2026-09-22T21:26:04.100Z
 ---
 
 Demandé par l'utilisateur, à faire **juste après le cold start du 2026-09-21**. Motivation donnée :
@@ -66,4 +66,28 @@ commencera à fonctionner le jour où le Connector l'annonce** — voir
 [[workload-bootstrap-chain-cilium-kubevip]]. (`192.168.1.11` fonctionne aujourd'hui et est dans les
 SANs, mais c'est une adresse DHCP sur un nœud au nom aléatoire : ne pas la graver.)
 
-See [[workload-grow-foundations-resume]] [[zfs-dataset-gc-missing]].
+## ★ Mesuré le 2026-09-22 depuis le mac — l'endpoint de mgmt devrait venir du NETPLAN
+
+| endpoint | depuis bioskop (le mac) |
+|---|---|
+| `192.168.1.131:6443` — le `lanHost` que le netplan dérive pour `bioskop-mgmt/master` | **HTTP 401**, il répond |
+| `10.80.0.10:6443` — le vmnet | aucune réponse (non routable d'ici) |
+| `bioskop-mgmt-master.local` — l'actuel | résout vers des IPv6 **globales** (`2001:861:…`), pas vers le LAN |
+
+Donc pour mgmt, l'adresse LAN du netplan est meilleure que le mDNS actuel : déterministe, joignable sans
+tailnet, et elle ne dépend plus du *nom* du nœud (ni d'avahi, ni du chemin IPv6 global).
+
+Pour **wrkld** en revanche le netplan ne donne rien de dérivable : son `lan0` est `192.168.1.13`, un bail
+ordinaire du routeur hors de toute tranche carvée, et sa MAC (`10:66:6a:de:4c:6d`) est générée par CAPN —
+même OUI que le motif `10:66:6a:4c:{clusterId}:{nodeId}`, mais le reste aléatoire. Rien ne le réserve, donc
+rien ne le prédit. Sa VIP est bien `10.80.15.10` (portée sur `vmnet0`, haute dans `10.80.8.0/21`).
+
+Le partage retenu n'est donc pas un compromis mais l'invariant du jour : **mgmt → adresse LAN du netplan,
+wrkld → VIP**. Un cluster dont les nœuds sont du bétail n'a qu'une adresse stable, et c'est sa VIP.
+
+⚠️ Épingler la MAC des machines CAPN rendrait l'adresse de wrkld dérivable elle aussi — mais
+`LXCMachineSpec.devices` vit aussi sur le `LXCMachineTemplate`, **un jeu pour toutes les répliques**, donc
+impossible en greenfield. See [[netplan-projection-described-hosts]].
+
+See [[workload-grow-foundations-resume]] [[zfs-dataset-gc-missing]]
+[[netplan-projection-described-hosts]].
