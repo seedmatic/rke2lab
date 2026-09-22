@@ -137,8 +137,10 @@ Secret named after the pod (`TS_KUBE_SECRET=$(POD_NAME)`), etcd-ephemeral, lost 
 re-grows in 168h hit the per-FQDN 5-cert limit → `getCertPEM: 429` → no TLS → dead webhooks.
 Persisting etcd would make a cold-start inconsistent (it carries the old cluster forward), so the fix
 is SURGICAL — persist ONLY the funnel identity: a `ProxyClass` pins `TS_KUBE_SECRET` to a stable name;
-a static PV + `ZFSVolume` adopt the dataplan's `tank/rke2lab/persist/funnel-cert` dataset (`Retain`);
-a *restore* Job seeds the saved state into the stable Secret, and a *backup* Job mirrors it back out.
+a static PV + `ZFSVolume` adopt the dataplan's `tank/rke2lab/<role>/persist/funnel-cert` dataset
+(`Retain`) — per-cluster, and placed by the in-cluster volume controller rather than named in the
+render (<<funnel-node-affinity,why>>); a *restore* Job seeds the saved state into the stable Secret,
+and a *backup* Job mirrors it back out.
 The proxy then returns as the SAME device → Tailscale serves the existing cert → no re-issuance. The
 proxy cannot mount the PVC itself (ProxyClass exposes no volume), so the helper Jobs do. See
 link:../patterns/dataplan-single-source.adoc[Dataplan SSOT] (the persist tier).
@@ -424,12 +426,21 @@ looks valid to the proxy — so it may keep serving it instead of requesting a p
 cert from the persisted state (or the whole `state.yaml`) when flipping back, or the webhook keeps
 presenting an untrusted cert with the toggle already at `false`.
 
-IMPORTANT: the two halves have NO common owner. `useLetsEncryptStagingEnvironment` is rendered;
-`insecure_ssl` is an edge CONSTANT (`0`) in `GithubAppWebhookConfigurerEdge`, so turning verification
-off is a manual operator gesture on GitHub that the reconcile does not know about — and the next
-webhook reconcile does not restore it either, since the edge only PATCHes `url` + `secret`. That is the
-drift risk to hold in mind: nothing in the system will tell you the pair is half-flipped. Giving
-`insecure_ssl` a single owner would fix it, at the price of letting a render decide to stop verifying.
+The two halves now have ONE owner: `FunnelCertIssuance.current()`, in the dual-realm
+`manifests.ingress` face. The tailscale render projects it into `useLetsEncryptStagingEnvironment`; the
+ghapp webhook reconcile projects it into `insecure_ssl` (which used to be a hardcoded `0` in the edge).
+So the pair cannot be half-flipped, and returning to `PRODUCTION` turns verification back on by
+construction.
+
+That coupling was forced by a measured failure, not chosen for tidiness: as a constant, `insecure_ssl`
+was re-asserted on EVERY grow, so a grow silently undid an operator's manual "verification off" and
+stalled the render loop mid-validation. The objection to making it state — "a render could decide to
+stop verifying" — is answered by tying it to the posture rather than exposing it: nothing can set
+verification off except declaring staging, and declaring production sets it back on.
+
+WARNING: the REPOSITORY webhooks (the per-cluster Flux receivers) are NOT covered by this. Nothing
+reconciles them — `GithubRepoWebhookConfigurer` exists but has no caller — so their `insecure_ssl` is
+whatever an operator last set by hand, on each one.
 ====
 
 == Operator setup — extend the existing App, do not create a new one

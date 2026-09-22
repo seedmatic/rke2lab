@@ -22,8 +22,9 @@ import org.osgi.service.component.annotations.Component;
  * signing the App JWT (see {@link AppJwt}) and calling {@code PATCH /app/hook/config} with the
  * desired {@link WebhookConfig} — re-points the App's webhook {@code url} (on a funnel rename) and
  * sets its {@code secret}, the App-level settings the operator would otherwise change by hand in
- * the GitHub UI. Content type is {@code json} and {@code insecure_ssl} is {@code 0} (verified TLS)
- * — edge constants, not state. Pure JDK {@code HttpClient} + jackson + BouncyCastle; no embedded
+ * the GitHub UI. Content type is {@code json}; {@code insecure_ssl} comes from the config (it is
+ * STATE, because a staging funnel cert requires verification off and a constant here undid that) —
+ * edge constants, not state. Pure JDK {@code HttpClient} + jackson + BouncyCastle; no embedded
  * jars.
  *
  * <p>Fail-fast (the predictability invariant): a non-2xx response throws — never a silent no-op.
@@ -49,7 +50,7 @@ public final class GithubAppWebhookConfigurerEdge implements GithubAppWebhookCon
     body.put("url", config.url());
     body.put("content_type", "json");
     body.put("secret", config.secret());
-    body.put("insecure_ssl", "0");
+    body.put("insecure_ssl", config.insecureSsl() ? "1" : "0");
     final HttpResponse<String> response = patch("/app/hook/config", jwt, body);
     if (response.statusCode() / 100 != 2) {
       throw new IllegalStateException(

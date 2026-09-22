@@ -20,6 +20,15 @@
 
   <dependencies>
     <!-- GithubAppCredentials / GhAppCoordinate (the sealed case + coordinate). -->
+    <!-- FunnelCertIssuance: the ONE declared Let's Encrypt posture. The webhook's insecure_ssl must
+         match it (a staging funnel cert is untrusted), so this scenario reads the same enum the
+         tailscale render does — the pair cannot be half-flipped. The dual-realm manifests.ingress face
+         is already this domain's vocabulary: PacWebhookFunnel, which builds the very url reconciled
+         here, lives there too. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>manifests-ingress-contract</artifactId>
+    </dependency>
     <dependency>
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>ghapp-contract</artifactId>

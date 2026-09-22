@@ -13,6 +13,7 @@ import io.seedmatic.rke2lab.ghapp.contract.GithubAppCredentials;
 import io.seedmatic.rke2lab.ghapp.contract.GithubAppWebhookConfigurer;
 import io.seedmatic.rke2lab.ghapp.contract.WebhookConfig;
 import io.seedmatic.rke2lab.ghapp.contract.WebhookReconcileInput;
+import io.seedmatic.rke2lab.manifests.ingress.FunnelCertIssuance;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.CellarReceiver;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.InputReceiver;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.OsgiService;
@@ -169,7 +170,13 @@ public class GithubAppWebhookScenario
               credentials.ifPresent(
                   creds ->
                       webhookSecret.ifPresent(
-                          secret -> edge.configure(creds, new WebhookConfig(funnelUrl, secret)))));
+                          secret ->
+                              edge.configure(
+                                  creds,
+                                  new WebhookConfig(
+                                      funnelUrl,
+                                      secret,
+                                      FunnelCertIssuance.current().staging())))));
       return self();
     }
   }
