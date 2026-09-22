@@ -7,8 +7,10 @@ import com.tngtech.jgiven.annotation.ProvidedScenarioState;
 import com.tngtech.jgiven.base.ScenarioTestBase;
 import com.tngtech.jgiven.impl.Scenario;
 import inet.ipaddr.IPAddressString;
+import io.seedmatic.rke2lab.manifests.contract.ClusterRole;
 import io.seedmatic.rke2lab.netplan.contract.ClusterAsn;
 import io.seedmatic.rke2lab.netplan.contract.ClusterNetworkBlueprint;
+import io.seedmatic.rke2lab.netplan.contract.ClusterNetworkBlueprint.ClusterTopology;
 import io.seedmatic.rke2lab.netplan.contract.NetplanRunbookInput;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.InputReceiver;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.ScenarioInputSeed;
@@ -120,19 +122,38 @@ public class NetplanBlueprintScenario
     // so a plain field, not a cross-stage @ProvidedScenarioState.
     @MonotonicNonNull private NetworkBlueprintMetadata metadata;
 
-    public When the_blueprint_metadata_is_derived() {
-      // Cluster ID mappings (nikopol was renamed from alcide, keeping cluster ID 1).
-      final Map<String, Integer> clusters = new LinkedHashMap<>();
-      clusters.put("bioskop", 0);
-      clusters.put("nikopol", 1);
+    // One blueprint, for one (cluster, node). Five identical builder chains lived here; the shape
+    // is the netplan's, not this scenario's, so it is named once.
+    private static ClusterNetworkBlueprint blueprintOf(final String cluster, final String node) {
+      return ClusterNetworkBlueprint.builder()
+          .cluster(cluster)
+          .node(node)
+          .deriveRecipeModel()
+          .build();
+    }
 
+    public When the_blueprint_metadata_is_derived() {
+      // The REAL clusters, host x role — not the hosts. This projection used to iterate
+      // {bioskop, nikopol} and pass each as a cluster NAME, which ClusterRole.of() read as MGMT
+      // (its documented fallback for a dash-less name). So it described two pseudo-clusters, both
+      // management, and never mentioned a workload one: 10.80.8.0/21 — live on bioskop-wrkld's node
+      // — was absent, its gateway and DHCP range with it. The map also carried HOST ids where
+      // cluster ids belong. Both are derived from the blueprint below instead of restated here.
+      final List<String> clusterNames = new ArrayList<>();
+      for (String host : List.of("bioskop", "nikopol")) {
+        for (ClusterRole role : ClusterRole.values()) {
+          clusterNames.add(host + "-" + role.token());
+        }
+      }
+
+      // clusters / nodes were hand-maintained tables of facts the netplan already owns, and both
+      // had
+      // drifted: the node ids said worker1=10/worker2=11 where nodeId() says 4 and 5. Derived now.
+      final Map<String, Integer> clusters = new LinkedHashMap<>();
       final Map<String, Integer> nodes = new LinkedHashMap<>();
-      nodes.put("master", 0);
-      nodes.put("peer1", 1);
-      nodes.put("peer2", 2);
-      nodes.put("peer3", 3);
-      nodes.put("worker1", 10);
-      nodes.put("worker2", 11);
+      for (String node : ClusterNetworkBlueprint.CANONICAL_NODE_NAMES) {
+        nodes.put(node, blueprintOf(clusterNames.get(0), node).node().id());
+      }
 
       final Map<String, String> macPatterns = new LinkedHashMap<>();
       macPatterns.put("lan", "10:66:6a:4c:{clusterId:02x}:{nodeId:02x}");
@@ -144,15 +165,14 @@ public class NetplanBlueprintScenario
       nodeTypes.put("AGENT", 1); // worker1-2
 
       final Map<String, Map<String, NodeAddressing>> allAddressing = new LinkedHashMap<>();
-      for (String cluster : clusters.keySet()) {
+      for (String cluster : clusterNames) {
         final Map<String, NodeAddressing> clusterAddressing = new LinkedHashMap<>();
-        for (String node : nodes.keySet()) {
-          final ClusterNetworkBlueprint bp =
-              ClusterNetworkBlueprint.builder()
-                  .cluster(cluster)
-                  .node(node)
-                  .deriveRecipeModel()
-                  .build();
+        // The ROLE's roster, not the canonical superset: a management cluster is single-node, and
+        // enumerating six of them would place worker1 on its /29's broadcast address and worker2 on
+        // the neighbouring lb network.
+        for (String node : ClusterTopology.of(ClusterRole.of(cluster)).nodeNames()) {
+          final ClusterNetworkBlueprint bp = blueprintOf(cluster, node);
+          clusters.putIfAbsent(cluster, bp.cluster().id());
 
           final NodeMacs macs =
               new NodeMacs(
@@ -194,13 +214,8 @@ public class NetplanBlueprintScenario
       // their reservations) and the vmnet /21 rke2lab actually manages (gateway + DHCP + a
       // dhcp-host per node). The /18 supernet + pod/service/gateway/ULA are attribution spans.
       final List<Segment> segments = new ArrayList<>();
-      for (String cluster : clusters.keySet()) {
-        final ClusterNetworkBlueprint bp =
-            ClusterNetworkBlueprint.builder()
-                .cluster(cluster)
-                .node("master")
-                .deriveRecipeModel()
-                .build();
+      for (String cluster : clusterNames) {
+        final ClusterNetworkBlueprint bp = blueprintOf(cluster, "master");
         segments.add(
             Segment.attribution(
                 bp.lan().nodeCidr().toString(), cluster + "-cluster-lan", bp.bgpLocalAsn()));
@@ -211,13 +226,8 @@ public class NetplanBlueprintScenario
         // dhcp-host reservation per canonical node — the SAME tuples GrowNetworkResolver emits into
         // raw.dnsmasq, derived here from the same blueprint source (dns.mode=none → no DNS domain).
         final List<SegmentHost> nodeHosts = new ArrayList<>();
-        for (String node : ClusterNetworkBlueprint.CANONICAL_NODE_NAMES) {
-          final ClusterNetworkBlueprint nodeBp =
-              ClusterNetworkBlueprint.builder()
-                  .cluster(cluster)
-                  .node(node)
-                  .deriveRecipeModel()
-                  .build();
+        for (String node : ClusterTopology.of(ClusterRole.of(cluster)).nodeNames()) {
+          final ClusterNetworkBlueprint nodeBp = blueprintOf(cluster, node);
           nodeHosts.add(
               new SegmentHost(
                   cluster + "-" + node,
@@ -234,12 +244,7 @@ public class NetplanBlueprintScenario
                 Optional.empty(),
                 nodeHosts));
       }
-      final ClusterNetworkBlueprint anyNode =
-          ClusterNetworkBlueprint.builder()
-              .cluster("bioskop")
-              .node("master")
-              .deriveRecipeModel()
-              .build();
+      final ClusterNetworkBlueprint anyNode = blueprintOf(clusterNames.get(0), "master");
       // Shared/attribution spans, labelled with a representative cluster's ASN (anyNode = the mgmt
       // cluster). NOTE: pod/service are per-cluster now (10.<44+id>/10.<48+id>); this vestigial
       // netplan narration emits ONE representative span — not fully per-cluster — pending the

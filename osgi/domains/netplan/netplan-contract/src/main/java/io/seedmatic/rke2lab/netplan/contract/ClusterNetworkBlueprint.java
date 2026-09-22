@@ -25,11 +25,15 @@ public record ClusterNetworkBlueprint(
     NamePlan names) {
 
   /**
-   * The canonical node names of every cluster, in topology order (1 master + 3 peers + 2 workers).
-   * The single source of truth the netplan domain OWNS — it already derives each node's id/type and
-   * validates names against this topology, so a consumer that must enumerate the cluster's nodes
-   * (the incus grow's dnsmasq {@code dhcp-host} lines, the bbox reservation rows) reads THIS rather
-   * than duplicating the list.
+   * The ordered SUPERSET of node names, in topology order (1 master + 3 peers + 2 workers). The
+   * single source of truth the netplan domain OWNS — it derives each node's id/type and validates
+   * names against it, so nothing duplicates the list.
+   *
+   * <p>⚠️ It is a superset, NOT a roster: how many of these a cluster actually has is decided by
+   * its ROLE, and only {@link ClusterTopology#nodeNames()} answers that. A consumer that enumerates
+   * this list directly is enumerating a WORKLOAD cluster's shape, whatever cluster it is looking at
+   * — and for a management cluster (single-node) that walks straight off the end of its {@code /29}
+   * LAN slice.
    */
   public static final List<String> CANONICAL_NODE_NAMES =
       List.of("master", "peer1", "peer2", "peer3", "worker1", "worker2");
@@ -455,10 +459,40 @@ public record ClusterNetworkBlueprint(
    * control-plane.
    */
   public record ClusterTopology(int masterCount, int controlNodeCount, int workerNodeCount) {
+
+    /**
+     * The shape of a WORKLOAD cluster: 1 master + 3 peers + 2 workers, the full canonical roster.
+     */
     public static final ClusterTopology CANONICAL = new ClusterTopology(1, 3, 2);
+
+    /**
+     * The topology a cluster of this ROLE actually has. Management is SINGLE-NODE, and that is not
+     * a temporary state: the LAN carve sizes it as one ({@code /29} node slice, filled at {@code
+     * host(3)}), so a management cluster that enumerated the full roster would place {@code
+     * worker1} on the {@code /29}'s broadcast address and {@code worker2} on the neighbouring
+     * {@code lb} network. {@link #CANONICAL} described "every cluster" while the carve described
+     * one — the disagreement is what let the overflow go unseen, because a consumer that read the
+     * roster without a role got plausible-looking addresses outside its own slice.
+     */
+    public static ClusterTopology of(final ClusterRole role) {
+      return switch (role) {
+        case MGMT -> new ClusterTopology(1, 0, 0);
+        case WRKLD -> CANONICAL;
+      };
+    }
 
     public int totalNodeCount() {
       return masterCount + controlNodeCount + workerNodeCount;
+    }
+
+    /**
+     * This topology's node names, in order — the prefix of {@link #CANONICAL_NODE_NAMES} it fills.
+     * A consumer that must ENUMERATE a cluster's nodes reads this, not the canonical list: the list
+     * is the ordered superset every roster is cut from, and cutting it is exactly what the role
+     * decides.
+     */
+    public List<String> nodeNames() {
+      return CANONICAL_NODE_NAMES.subList(0, totalNodeCount());
     }
   }
 
