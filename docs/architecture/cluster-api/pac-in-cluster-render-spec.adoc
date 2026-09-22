@@ -224,16 +224,39 @@ admission that the unit was only ever meant to run on a host-grown cluster.
 A node LABEL does not free us either: `ownerNodeID` must equal the `ZFSNode` object's name, and
 openebs names that after the node. The label is standard for the scheduling half only.
 
-So the render declares the INTENT — the cluster's persist pool, the leaf set, the size — and names no
-node. `seed-incluster` owns the volume: it elects the node from the pool roster it already holds and
-stamps the affinity and `ownerNodeID`. This is the same nature of work the controller already exists
-for (the ownerRef UID, the adopt-vs-provision decision): an in-cluster fact GitOps cannot pre-set. And
-keeping openebs in the path is what *enforces* single access — exactly one `ZFSNode` serves the volume
-— rather than leaving `ReadWriteOnce` as a contract nobody polices.
+So the render declares the INTENT and names no node — a `VolumeIntention`
+(`dataplan.seedmatic.io/v1alpha1`) carrying this cluster's persist pool, the dataset, the size, the
+claim to satisfy and the KIND of node eligible to serve it. A controller owns the volume: it elects a
+node, then creates the `ZFSVolume` (stamping `ownerNodeID`) and the static PV (stamping
+`nodeAffinity`). Keeping openebs in the path is what *enforces* single access — exactly one `ZFSNode`
+serves the volume — rather than leaving `ReadWriteOnce` as a contract nobody polices.
 
-No bootstrap circle: the controller does not need the VIP to do this. A workload node answers on its
-LAN address (measured: `https://192.168.1.21:6443` replies while the VIP still times out), so the
-managing cluster can reach it before the Connector exists.
+*Which controller — NOT `seed-incluster`.* The first instinct was to give this to the existing adopter,
+but it cannot: `seed-incluster` speaks only to the MANAGEMENT cluster. It never opens a client to a
+workload cluster — it learns reachability by reading CAPI's `RemoteConnectionProbe` condition on the
+`Cluster`. The volume, meanwhile, lives *in the target cluster*. Giving `seed-incluster` a remote client
+would be a new capability (RBAC, caching, error paths) and would make every object it wrote there a
+second poser facing Flux.
+
+So the volume controller is a *separate binary running in the cluster it serves* — a second `cmd/` in
+the same Go module as `seed-incluster`, sharing its internal packages but declaring *its own CRDs and
+its own ClusterRole*. That separation is the point, not an accident of packaging: a single binary
+switched by a `--role` flag would ship one controller-gen `role.yaml` carrying CAPI rights into a
+managed cluster, and would leave
+link:cluster-seeding-controller.adoc#single-adopter[the single-adopter invariant] resting on the value of
+a flag. Its RBAC is small and local: `nodes`
+get/list/watch, `persistentvolumes` and `zfsvolumes.zfs.openebs.io` get/create/patch, and nothing under
+`cluster.x-k8s.io`.
+
+It also runs in the MANAGEMENT cluster, for the same reason: mgmt has the identical need and only
+appeared to work because the literal happened to match its one node's name. One owner for persist
+volumes, fleet-wide.
+
+NOTE: this is unrelated to the workload cluster hosting CAPI for its vclusters (which it will — the
+vcluster CAPI provider hosts vclusters only in the cluster where it runs). A vcluster has no machines,
+no pool, no pet and no etcd quorum, so `seed-incluster`'s adopt-first primitive has no referent there;
+that is why it still does not run in a workload cluster, and why the CAPI CRDs being present there makes
+the flag-switched variant *more* dangerous, not less.
 
 IMPORTANT: this is the FOURTH place "a CAPI node's name is random" has cost something, after the
 infraRef naming divergence, the missing ZFS dataset GC, and the declared `CONTROL_NODES` list. Read it
@@ -288,6 +311,27 @@ WARNING: the pet label does NOT remove the need for the controller to resolve a 
 `spec.nodeAffinity` is a standard `NodeSelector`. Nor does it fix the dataset leak; that needs the
 per-cluster pools (link:../patterns/dataplan-single-source.adoc#per-cluster-pools[dataplan]).
 
+===== What the pet may and may not name
+
+The label makes a stable role available, which invites using it wherever a random node name hurts. It
+has exactly one legitimate use here, and one tempting illegitimate one.
+
+✅ *Electing the owner of a PERSIST volume.* The pet is a better key than sorting the control-plane
+Machines by `creationTimestamp`: when the role moves — a remediated `master` — the label moves with it,
+so the controller re-stamps `ownerNodeID` and the affinity toward the node that now HOLDS the role. A
+date sort would keep designating the oldest survivor instead.
+
+❌ *Naming an EPHEMERAL dataset path.* Two independent reasons, both in
+link:../patterns/dataplan-single-source.adoc#pet-not-in-the-path[the dataplan's rule] with a sequence
+figure: the label does not exist yet when the path is needed (the containerd dataset is mounted
+`before=rke2-server.service`, so before the node joins and before any `Node` object exists), and a pet
+is RECYCLED — a replacement machine inherits it, so a pet-named dataset would hand the new node the
+previous one's snapshotter state.
+
+****
+*The rule.* The pet names what must SURVIVE. The node name names what must NOT.
+****
+
 [#funnel-ordering]
 ==== The ordering is STRUCTURAL — restore before the operator, not timing
 
@@ -298,9 +342,11 @@ operator runs*. Leaning on Flux LAYER timing (operators-before-workloads) is not
 race, and a cold-start observed the proxy issue a fresh cert while the restore Job was still starved.
 The fix makes the order a DEPENDENCY GRAPH, not timing:
 
-* *`FunnelCertRestoreManifestsUnit`* (its own service) renders the restore Job + the PV/PVC/`ZFSVolume`
-  + its RBAC — it renders NO `tailscale.com` CR, so it depends only on openebs (the derived
-  `zfs.openebs.io` CRD edge), NOT on the tailscale operator.
+* *`FunnelCertRestoreManifestsUnit`* (its own service) renders the restore Job + the `VolumeIntention`
+  + the PVC + its RBAC — it renders NO `tailscale.com` CR, so it depends only on openebs (the derived
+  `zfs.openebs.io` CRD edge), NOT on the tailscale operator. The `ZFSVolume` and the static PV are NOT
+  rendered: <<funnel-node-affinity,the volume controller>> creates them, so the PVC stays Pending until
+  a node has been elected.
 * *`TailscaleManifestsUnit`* (the operator) `dependsOn` `FunnelCertRestoreManifestsUnit` — so Flux
   applies + health-gates the restore Job to completion BEFORE the operator is up to provision any
   proxy. The operator then adopts the pre-seeded Secret (its `sts.go` `Get`+`MergeFrom`, no new

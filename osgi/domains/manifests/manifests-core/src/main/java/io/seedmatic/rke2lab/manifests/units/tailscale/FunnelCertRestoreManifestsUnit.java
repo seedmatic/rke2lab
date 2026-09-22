@@ -2,6 +2,7 @@
 package io.seedmatic.rke2lab.manifests.units.tailscale;
 
 import io.seedmatic.rke2lab.dataplan.contract.DataplanLayout;
+import io.seedmatic.rke2lab.dataplan.contract.DataplanLayout.ClusterDataplan;
 import io.seedmatic.rke2lab.manifests.AbstractManifestsUnit;
 import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
 import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
@@ -23,9 +24,11 @@ import software.constructs.Construct;
  * The funnel-cert RESTORE half — the ordering keystone of the durable-funnel fix (see {@link
  * FunnelStatePersistenceManifestsUnit} for the backup half and {@code
  * docs/architecture/cluster-api/pac-in-cluster-render-spec.adoc} § funnel-durability / § the
- * ordering is STRUCTURAL). It owns the persist volume ({@code ZFSVolume} + static PV + PVC on
- * {@code tank/rke2lab/persist/funnel-cert}) and the restore Job that seeds the saved tailscale
- * funnel state (node key + cert) into the stable-named state Secret.
+ * ordering is STRUCTURAL). It declares this cluster's persist volume — a {@code VolumeIntention} on
+ * {@code tank/rke2lab/persist/<role>/funnel-cert} plus the PVC that claims it — and renders the
+ * restore Job that seeds the saved tailscale funnel state (node key + cert) into the stable-named
+ * state Secret. The {@code ZFSVolume} + static PV the intention resolves to are created by the
+ * in-cluster volume controller, which is the only party that can know a managed node's name.
  *
  * <p><b>Why a SEPARATE unit, before the operator.</b> The invariant is that the tailscale proxy,
  * when it starts, finds the persisted cert ALREADY in its state Secret — so it reuses it (zero
@@ -48,12 +51,6 @@ public final class FunnelCertRestoreManifestsUnit extends AbstractManifestsUnit 
 
   private static final String NAMESPACE = TailscaleRefs.SYSTEM_NAMESPACE.name();
 
-  /** The stable node name the persist dataset + PV are pinned to (openebs is node-local). */
-  private static final String NODE_NAME = "bioskop-mgmt-master";
-
-  /** The openebs deployment namespace ZFSVolume CRs live in. */
-  private static final String OPENEBS_NAMESPACE = "openebs";
-
   private static final String STORAGE_CLASS = "openebs-zfs-persist";
 
   /**
@@ -75,8 +72,6 @@ public final class FunnelCertRestoreManifestsUnit extends AbstractManifestsUnit 
   private final PackageMetadataProfile packageProfile =
       new PackageMetadataProfile("tailscale", "funnel-cert-restore");
 
-  private final DataplanLayout layout = DataplanLayout.canonical();
-
   public FunnelCertRestoreManifestsUnit() {
     // tailscale-system must exist for the Job/PVC/SA (explicit, as TailscaleManifestsUnit declares
     // it);
@@ -89,8 +84,7 @@ public final class FunnelCertRestoreManifestsUnit extends AbstractManifestsUnit 
 
   @Override
   protected void doSynthesize(final Construct scope, final ManifestsUnitContext context) {
-    zfsVolume(scope);
-    persistentVolume(scope);
+    volumeIntention(scope, context);
     persistentVolumeClaim(scope);
     serviceAccount(scope);
     role(scope);
@@ -100,19 +94,39 @@ public final class FunnelCertRestoreManifestsUnit extends AbstractManifestsUnit 
     }
   }
 
-  /** The ZFSVolume CR adopting the pre-declared persist dataset (openebs namespace). */
-  private void zfsVolume(final Construct scope) {
-    final ApiObject zfsVolume =
+  /**
+   * The {@code VolumeIntention} — this cluster's INTENT for its persist volume: the dataset to
+   * adopt, the size, the claim to satisfy, and the kind of node eligible to serve it. It names NO
+   * node, because a managed node's name is not render-time knowledge: on a CAPI-provisioned cluster
+   * the name is random ({@code …-control-plane-v9fhz}), so a literal can never match. The former
+   * literal here ({@code bioskop-mgmt-master}) was not a value to parameterise but the admission
+   * that this unit had only ever been meant to run on a host-grown cluster.
+   *
+   * <p>The {@code ZFSVolume} + the static PV that were rendered here are now created by the
+   * in-cluster volume controller, which elects a node and stamps both {@code ownerNodeID} (which
+   * MUST equal the {@code ZFSNode} object's name — a node LABEL cannot serve that half) and the
+   * PV's {@code nodeAffinity}. One owner, at runtime, where the fact lives. The static-adopt shape
+   * itself is unchanged and still load-bearing: a cold start wipes the PVC object, so dynamic
+   * provisioning would mint a fresh {@code pvc-<uuid>}, leak the old dataset and lose the cert — a
+   * pre-declared volume adopting a stable dataset name is the only handle that survives an etcd
+   * wipe.
+   *
+   * <p>See {@code docs/architecture/cluster-api/pac-in-cluster-render-spec.adoc} §
+   * funnel-node-affinity.
+   */
+  private void volumeIntention(final Construct scope, final ManifestsUnitContext context) {
+    final String cluster = context.nodeEnvContext().bootstrapIdentity().clusterName();
+    final ApiObject intention =
         new ApiObject(
             scope,
-            "zfsvolume-funnel-cert",
+            "volumeintention-funnel-cert",
             ApiObjectProps.builder()
-                .apiVersion("zfs.openebs.io/v1")
-                .kind("ZFSVolume")
+                .apiVersion("dataplan.seedmatic.io/v1alpha1")
+                .kind("VolumeIntention")
                 .metadata(
                     ApiObjectMetadata.builder()
                         .name(PV_NAME)
-                        .namespace(OPENEBS_NAMESPACE)
+                        .namespace(NAMESPACE)
                         .annotations(
                             packageProfile.packageAnnotations(
                                 "",
@@ -121,83 +135,25 @@ public final class FunnelCertRestoreManifestsUnit extends AbstractManifestsUnit 
                                     ManifestLayer.OPERATORS.value())))
                         .build())
                 .build());
-    // ownerNodeID = the kubernetes node name (openebs is node-local); volumeType=DATASET for a zfs
-    // filesystem; poolName = the dataplan persist pool. The dataset is pre-created by ndh from the
-    // dataplan — this CR makes openebs adopt it.
-    zfsVolume.addJsonPatch(
+    // pool + dataset come from the dataplan SSOT, per-cluster: two clusters sharing one funnel-cert
+    // dataset would have both proxies overwrite one state file, both return as new tailnet devices
+    // and both re-issue — the 429 this whole mechanism exists to prevent.
+    intention.addJsonPatch(
         JsonPatch.add(
             "/spec",
             Map.of(
-                "ownerNodeID", NODE_NAME,
-                "poolName", layout.persistPool(),
-                "capacity", "1073741824",
-                "volumeType", "DATASET",
-                "fsType", "zfs")));
-  }
-
-  /** The static PV bound to the ZFSVolume by volumeHandle — Retain, node-pinned. */
-  private void persistentVolume(final Construct scope) {
-    final ApiObject pv =
-        new ApiObject(
-            scope,
-            "pv-funnel-cert",
-            ApiObjectProps.builder()
-                .apiVersion("v1")
-                .kind("PersistentVolume")
-                .metadata(
-                    ApiObjectMetadata.builder()
-                        .name(PV_NAME)
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "",
-                                Map.of(
-                                    ManifestAnnotation.MANIFEST_LAYER.key(),
-                                    ManifestLayer.OPERATORS.value())))
-                        .build())
-                .build());
-    pv.addJsonPatch(
-        JsonPatch.add(
-            "/spec",
-            Map.of(
+                "pool",
+                ClusterDataplan.of(cluster).persistPool(),
+                "dataset",
+                DataplanLayout.FUNNEL_CERT,
                 "capacity",
-                Map.of("storage", CAPACITY),
-                "accessModes",
-                new Object[] {"ReadWriteOnce"},
-                "persistentVolumeReclaimPolicy",
-                "Retain",
+                CAPACITY,
                 "storageClassName",
                 STORAGE_CLASS,
-                "volumeMode",
-                "Filesystem",
                 "claimRef",
-                Map.of(
-                    "namespace", NAMESPACE,
-                    "name", PV_NAME),
-                "csi",
-                Map.of(
-                    "driver",
-                    "zfs.csi.openebs.io",
-                    "fsType",
-                    "zfs",
-                    "volumeHandle",
-                    PV_NAME,
-                    "volumeAttributes",
-                    Map.of("openebs.io/poolname", layout.persistPool())),
-                "nodeAffinity",
-                Map.of(
-                    "required",
-                    Map.of(
-                        "nodeSelectorTerms",
-                        new Object[] {
-                          Map.of(
-                              "matchExpressions",
-                              new Object[] {
-                                Map.of(
-                                    "key", "openebs.io/nodename",
-                                    "operator", "In",
-                                    "values", new Object[] {NODE_NAME})
-                              })
-                        })))));
+                Map.of("namespace", NAMESPACE, "name", PV_NAME),
+                "nodeRole",
+                "control-plane")));
   }
 
   /** The stable PVC the restore Job (here) and the backup Job (funnel-state) mount. */

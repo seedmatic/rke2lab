@@ -545,6 +545,7 @@ selects the rendered branch via `spec.params.cluster`). Day-0 app-branch = paren
 `PipelineRun`; steady-state = self-driven PaC. See
 link:manifests-rendered-branches.adoc[Manifests Rendered Branches].
 
+[#single-adopter]
 == Where seed-incluster runs — the single-adopter topology invariant
 
 [IMPORTANT]
