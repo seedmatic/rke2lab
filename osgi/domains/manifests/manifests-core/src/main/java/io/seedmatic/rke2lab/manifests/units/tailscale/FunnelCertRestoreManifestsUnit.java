@@ -335,7 +335,7 @@ public final class FunnelCertRestoreManifestsUnit extends AbstractManifestsUnit 
         fi
         """
             .formatted(
-                funnel.persistSubdir(),
+                funnel.leafName(),
                 funnel.stateSecret(),
                 FunnelCertIssuance.current().name(),
                 funnel.hostname(),
@@ -346,13 +346,13 @@ public final class FunnelCertRestoreManifestsUnit extends AbstractManifestsUnit 
     final ApiObject jobObject =
         new ApiObject(
             scope,
-            "job-funnel-restore-" + funnel.persistSubdir(),
+            "job-funnel-restore-" + funnel.leafName(),
             ApiObjectProps.builder()
                 .apiVersion("batch/v1")
                 .kind("Job")
                 .metadata(
                     ApiObjectMetadata.builder()
-                        .name("funnel-cert-restore-" + funnel.persistSubdir())
+                        .name("funnel-cert-restore-" + funnel.leafName())
                         .namespace(NAMESPACE)
                         .annotations(
                             packageProfile.packageAnnotations(

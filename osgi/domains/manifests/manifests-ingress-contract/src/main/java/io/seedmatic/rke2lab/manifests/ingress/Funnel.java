@@ -21,9 +21,10 @@ import java.util.Objects;
  * ({@code bioskop-mgmt-master}, {@code <cluster>-server-manifests}): a fleet's funnels then group
  * by cluster in {@code tailscale status} instead of interleaving.
  *
- * <p>What does NOT gain the cluster is the persist SUBDIRECTORY ({@link #persistSubdir}): the
- * persist dataset is already per-cluster ({@code tank/rke2lab/<role>/persist/funnel-cert}), so
- * qualifying the path inside it would say the same thing twice.
+ * <p>What does NOT gain the cluster is anything CLUSTER-LOCAL ({@link #leafName}): the persist
+ * subdirectory, and the names of the objects that serve the funnel. The persist dataset is already
+ * per-cluster ({@code tank/rke2lab/<role>/persist/funnel-cert}) and a Job lives in one cluster's
+ * namespace, so qualifying either would say the same thing twice.
  *
  * <p>See {@code docs/architecture/cluster-api/pac-in-cluster-render-spec.adoc} §
  * funnel-per-cluster.
@@ -69,11 +70,20 @@ public record Funnel(String cluster, FunnelLeaf leaf) {
   }
 
   /**
-   * The subdirectory this funnel's state lives in on the persist volume — the BARE leaf. The volume
-   * is per-cluster already, and one PV serves every funnel of the cluster (the dependency graph
-   * serialises restore and backup, so they never contend for the single RWO claim).
+   * The bare leaf as a STRING — this funnel's short, cluster-local identifier. Two uses, one value:
+   * the subdirectory its state lives in on the persist volume, and the name of the cluster-local
+   * objects that serve it (the Jobs, the cdk8s construct ids).
+   *
+   * <p>Neither is cluster-qualified, and for the same reason: the persist volume is per-cluster
+   * ALREADY, and a Job lives in one cluster's namespace — so adding the cluster would say the same
+   * thing twice. What IS cluster-qualified is everything the TAILNET sees ({@link #hostname},
+   * {@link #stateSecret}, {@link #proxyClass}), because that namespace is fleet-wide.
+   *
+   * <p>Named to contrast with {@link #leaf()}, which returns the ENUM. They differed only by return
+   * type once, and string concatenation swallowed the difference: {@code "job-" + funnel.leaf()}
+   * compiled and rendered {@code job-PIPELINES_WEBHOOK}, which Kubernetes rejects as a name.
    */
-  public String persistSubdir() {
+  public String leafName() {
     return leaf.leaf();
   }
 }

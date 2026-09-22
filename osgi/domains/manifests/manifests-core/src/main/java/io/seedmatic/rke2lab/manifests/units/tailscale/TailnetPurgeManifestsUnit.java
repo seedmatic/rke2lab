@@ -161,7 +161,7 @@ public final class TailnetPurgeManifestsUnit extends AbstractManifestsUnit {
         pairs.append(' ');
       }
       final Funnel funnel = Funnel.of(cluster, leaf);
-      pairs.append(funnel.persistSubdir()).append(':').append(funnel.hostname());
+      pairs.append(funnel.leafName()).append(':').append(funnel.hostname());
     }
     return pairs.toString();
   }

@@ -87,7 +87,7 @@ public final class FunnelStatePersistenceManifestsUnit extends AbstractManifests
     final ApiObject proxyClass =
         new ApiObject(
             scope,
-            "proxyclass-" + funnel.leaf(),
+            "proxyclass-" + funnel.leafName(),
             ApiObjectProps.builder()
                 .apiVersion("tailscale.com/v1alpha1")
                 .kind("ProxyClass")
@@ -256,19 +256,19 @@ public final class FunnelStatePersistenceManifestsUnit extends AbstractManifests
             .formatted(
                 NAMESPACE,
                 funnel.stateSecret(),
-                funnel.persistSubdir(),
+                funnel.leafName(),
                 FunnelCertIssuance.current().name());
     final String floxImage = ManifestSynthesisContext.current().floxDebugPolicy().prodImage();
     final ApiObject jobObject =
         new ApiObject(
             scope,
-            "job-funnel-backup-" + funnel.leaf(),
+            "job-funnel-backup-" + funnel.leafName(),
             ApiObjectProps.builder()
                 .apiVersion("batch/v1")
                 .kind("Job")
                 .metadata(
                     ApiObjectMetadata.builder()
-                        .name("funnel-cert-backup-" + funnel.leaf())
+                        .name("funnel-cert-backup-" + funnel.leafName())
                         .namespace(NAMESPACE)
                         .annotations(
                             packageProfile.packageAnnotations(
