@@ -22,3 +22,4 @@ One line per entry (~200 chars); detail lives in the linked file.
 
 - [★ FEEDBACK — committer au fil de l'eau, push différé](commit-cadence-push-at-live-checkpoint.md) — commit sur branche topic = autorisation permanente ; flake input `path:` local propage sans push.
 - [★ FEEDBACK — invocation maven canonique](rke2lab-canonical-maven-invocation.md) — `./mvnw clean verify -Pall-worlds,claude -Dmaven.build.cache.skipCache=false -DskipTests=true` ; `claude` est MA voie de sortie (`target~claude`), jumelle de `nxmatic` — bâtir sans elle écrit dans `target/`, qui n'est la voie de personne.
+- [★ La règle du SINGLE OWNER](single-owner-rule.md) — 5 défauts du 2026-09-21 = un seul. Devant une course/collision : **qui possède ça, et y en a-t-il deux ?** En retirer un, ne JAMAIS ordonner les deux. Une condition systemd n'exclut pas ; un littéral est l'aveu d'un propriétaire implicite.
