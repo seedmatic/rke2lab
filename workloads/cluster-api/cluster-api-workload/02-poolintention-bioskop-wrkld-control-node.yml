@@ -13,7 +13,7 @@ spec:
     host: 10.80.15.10
     port: 6443
   image:
-    fingerprint: 030d237c98ac0958aee720694d3ae6eab20a94787f82227c4e7d7ef24d918113
+    fingerprint: a37534b42e00e38fb69b5c42da928f450e22221815009d37ad290b034257edac
   namespace: rke2lab-bioskop-wrkld
   nodes:
   - name: bioskop-wrkld-master

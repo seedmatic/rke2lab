@@ -3,7 +3,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   annotations:
-    io.seedmatic.rke2lab/domain: cluster-api
+    io.seedmatic.rke2lab/domain: runtime
     io.seedmatic.rke2lab/layer: operators
     io.seedmatic.rke2lab/package: seed-incluster
   name: seed-incluster
@@ -12,9 +12,21 @@ rules:
   - ""
   resources:
   - configmaps
+  - nodes
   verbs:
   - get
   - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - persistentvolumes
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
   - watch
 - apiGroups:
   - ""
@@ -33,6 +45,7 @@ rules:
   - clusterintentions
   - pooladoptions
   - poolintentions
+  - volumeintentions
   verbs:
   - create
   - delete
@@ -48,6 +61,7 @@ rules:
   - clusterintentions/status
   - pooladoptions/status
   - poolintentions/status
+  - volumeintentions/status
   verbs:
   - get
   - patch
@@ -117,4 +131,15 @@ rules:
   verbs:
   - get
   - list
+  - watch
+- apiGroups:
+  - zfs.openebs.io
+  resources:
+  - zfsvolumes
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
   - watch

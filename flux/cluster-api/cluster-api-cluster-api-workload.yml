@@ -13,7 +13,7 @@ spec:
   - name: cluster-api-cluster-api-operator-crds
   - name: cluster-api-cluster-api-operator-operators
   - name: cluster-api-cluster-api-operator-workloads
-  - name: cluster-api-seed-incluster-crds
+  - name: runtime-seed-incluster-crds
   force: true
   interval: 5m
   path: ./workloads/cluster-api/cluster-api-workload

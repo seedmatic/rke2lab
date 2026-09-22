@@ -4,30 +4,27 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.1
-    io.seedmatic.rke2lab/domain: cluster-api
+    io.seedmatic.rke2lab/domain: runtime
     io.seedmatic.rke2lab/layer: operators
     io.seedmatic.rke2lab/package: seed-incluster
-  name: clusterintentions.cluster.seedmatic.io
+  name: volumeintentions.cluster.seedmatic.io
 spec:
   group: cluster.seedmatic.io
   names:
-    kind: ClusterIntention
-    listKind: ClusterIntentionList
-    plural: clusterintentions
+    kind: VolumeIntention
+    listKind: VolumeIntentionList
+    plural: volumeintentions
     shortNames:
-    - capiintent
-    singular: clusterintention
+    - volint
+    singular: volumeintention
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.clusterName
-      name: Cluster
+    - jsonPath: .spec.dataset
+      name: Dataset
       type: string
-    - jsonPath: .spec.kind
-      name: Kind
-      type: string
-    - jsonPath: .spec.controlPlaneEndpoint.host
-      name: Endpoint
+    - jsonPath: .status.node
+      name: Node
       type: string
     - jsonPath: .status.phase
       name: Phase
@@ -42,9 +39,13 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          ClusterIntention is the Flux-owned cluster-level intent to bring one cluster into existence and
-          keep it described in Cluster API — reconciled adopt-first by the controller, which owns the
-          derived ClusterAdoption and aggregates the per-pool PoolAdoptions into it.
+          VolumeIntention is the Flux-owned intent for one of the cluster's persist volumes. The controller
+          elects a node and owns the resulting ZFSVolume + static PV — the half GitOps cannot pre-set,
+          because a managed node's name is not knowable until the node exists.
+
+          Unlike the {Cluster,Pool}Intention pair there is no Adoption mirror: those exist because a cluster
+          can be found ALREADY RUNNING and must be reconciled with rather than created. A volume has no such
+          duality — it is placed or it is not — so the intent carries its own status.
         properties:
           apiVersion:
             description: |-
@@ -65,97 +66,80 @@ spec:
             type: object
           spec:
             description: |-
-              ClusterIntentionSpec is the CLUSTER-LEVEL intent seed-master renders for one cluster — the
-              Flux-owned recipe for its CAPI Cluster + LXCCluster. It carries ONLY cluster-scoped facts (VIP,
-              CIDRs, remote+identity, federated kind); the per-pool roster + templates live in the N
-              PoolIntention children (ownerRef'd to this ClusterIntention). The controller reconciles it
-              adopt-first and OWNS a ClusterAdoption (the cluster mirror, re-derived from reality) — the
-              ownership split: Flux owns the intent (git-backed, survives a cold-start), the controller owns the
-              mirror. Every field is filled from the ClusterNetworkBlueprint SSOT; the controller never computes
-              addressing.
+              VolumeIntentionSpec is the Flux-owned intent for ONE persist volume of the cluster this controller
+              runs in: the dataset to adopt, its size, the claim to satisfy, and the KIND of node eligible to
+              serve it. It names NO node, and that absence is the whole point.
+
+              A pre-declared PV needs a node twice over — `spec.nodeAffinity` for scheduling and the openebs
+              `ZFSVolume.ownerNodeID` for the CSI — and on a CAPI-provisioned cluster the node's name is RANDOM
+              (…-control-plane-v9fhz), so no render-time literal can ever match. The literal that used to sit in
+              the render (`bioskop-mgmt-master`) was not a value to parameterise but the admission that the unit
+              had only ever been meant to run on a host-grown cluster. So the render declares, and the controller
+              — which is IN the cluster and can see its nodes — elects and stamps.
+
+              The static-adopt shape itself is load-bearing and unchanged: a cold start wipes etcd, so the PVC
+              object is gone and dynamic provisioning would mint a fresh pvc-<uuid>, leak the old dataset and
+              lose the content. A pre-declared volume adopting a dataset by STABLE name is the only handle that
+              survives. Keeping openebs in the path is also what ENFORCES single access — exactly one ZFSNode
+              serves the volume — rather than leaving ReadWriteOnce as a contract nobody polices.
             properties:
-              clusterName:
-                description: ClusterName is the CAPI Cluster name to bring to existence and adopt (e.g. "bioskop-wrkld").
-                minLength: 1
-                type: string
-              clusterNetwork:
-                description: ClusterNetwork carries the pod/service CIDRs + the service domain.
-                properties:
-                  podCIDRs:
-                    items:
-                      type: string
-                    minItems: 1
-                    type: array
-                  serviceCIDRs:
-                    items:
-                      type: string
-                    minItems: 1
-                    type: array
-                  serviceDomain:
-                    default: cluster.local
-                    type: string
-                required:
-                - podCIDRs
-                - serviceCIDRs
-                type: object
-              controlPlaneEndpoint:
-                description: ControlPlaneEndpoint is the kube-vip VIP fronting the apiserver.
-                properties:
-                  host:
-                    minLength: 1
-                    type: string
-                  port:
-                    format: int32
-                    minimum: 1
-                    type: integer
-                required:
-                - host
-                - port
-                type: object
-              kind:
-                default: workload
-                description: Kind is the cluster's federated role — recorded topological intent (see ClusterKind).
-                enum:
-                - workload
-                - management
-                type: string
-              namespace:
+              capacity:
                 description: |-
-                  Namespace is where the CAPI CR-set, the owned ClusterAdoption, the PoolIntention children, and
-                  the referenced Secrets live (e.g. "rke2lab-bioskop-wrkld").
+                  Capacity is the PV/PVC size (a Kubernetes quantity, e.g. "16Mi"). The ZFS dataset is not
+                  pre-sized, so this is the claim's accounting figure, not a reservation.
                 minLength: 1
                 type: string
-              remote:
-                description: Remote is the target Incus engine for THIS cluster's nodes (endpoint + identity Secret).
+              claimRef:
+                description: |-
+                  ClaimRef is the PVC this volume must satisfy — pre-bound on the PV, so no other claim can take
+                  it.
                 properties:
-                  endpoint:
-                    description: |-
-                      Endpoint is the Incus API endpoint (e.g. "https://bioskop-nixos:8443") — the local engine, or a
-                      cross-host one reached over the tailnet. Empty = the local engine, resolved from the identity
-                      Secret's `server` (the management cluster's own host).
+                  name:
+                    minLength: 1
                     type: string
-                  identitySecretName:
-                    description: |-
-                      IdentitySecretName is the per-remote CAPN identity Secret the LXCCluster.secretRef names,
-                      resolved in Namespace. Its CA-based trust is our owned Incus PKI.
+                  namespace:
                     minLength: 1
                     type: string
                 required:
-                - identitySecretName
+                - name
+                - namespace
                 type: object
+              dataset:
+                description: |-
+                  Dataset is the stable dataset name under Pool — the openebs volumeHandle, so the PV ADOPTS the
+                  pre-created dataset instead of provisioning a divergent one.
+                minLength: 1
+                type: string
+              nodeRole:
+                default: control-plane
+                description: |-
+                  NodeRole restricts the election to nodes carrying the node-role.kubernetes.io/<NodeRole> label.
+                  Defaults to control-plane: a persist volume belongs with the control plane, which is the part of
+                  a cluster that does not come and go.
+                type: string
+              pool:
+                description: |-
+                  Pool is the absolute ZFS path of this cluster's persist parent, from the dataplan SSOT
+                  (tank/rke2lab/<role>/persist). The CSI creates/adopts the volume dataset UNDER it; openebs does
+                  not create its own poolname, which is why the dataplan declares the parent.
+                minLength: 1
+                type: string
+              storageClassName:
+                description: |-
+                  StorageClassName is the Retain, non-default class the PV and PVC agree on
+                  (openebs-zfs-persist).
+                minLength: 1
+                type: string
             required:
-            - clusterName
-            - clusterNetwork
-            - controlPlaneEndpoint
-            - namespace
-            - remote
+            - capacity
+            - claimRef
+            - dataset
+            - pool
+            - storageClassName
             type: object
           status:
-            description: ClusterIntentionStatus records what the controller observed.
+            description: "VolumeIntentionStatus records WHICH node was elected, so the choice is visible and stable."
             properties:
-              adoptionRef:
-                description: AdoptionRef is the name of the ClusterAdoption this ClusterIntention owns (in Namespace).
-                type: string
               conditions:
                 description: Conditions follow the standard metav1.Condition contract.
                 items:
@@ -216,15 +200,22 @@ spec:
                 - type
                 x-kubernetes-list-type: map
               lastReconcileTime:
-                description: LastReconcileTime is when the controller last reconciled this ClusterIntention.
+                description: LastReconcileTime is when the controller last reconciled this VolumeIntention.
                 format: date-time
+                type: string
+              node:
+                description: |-
+                  Node is the elected node's NAME — the value stamped into ZFSVolume.ownerNodeID (which must
+                  equal the ZFSNode object's name) and into the PV's nodeAffinity. It is STICKY: once a node is
+                  elected and still eligible, the election does not move, because moving it would strand the
+                  dataset on the previous node.
                 type: string
               observedGeneration:
                 description: ObservedGeneration is the spec generation this status reflects.
                 format: int64
                 type: integer
               phase:
-                description: Phase mirrors the owned ClusterAdoption aggregate phase.
+                description: Phase is the coarse state.
                 type: string
             type: object
         type: object

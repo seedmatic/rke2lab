@@ -10,6 +10,9 @@ spec:
     secretRef:
       name: sops-age
   dependsOn:
+  - name: runtime-seed-incluster-crds
+  - name: runtime-seed-incluster-operators
+  - name: runtime-seed-incluster-workloads
   - name: tailscale-system-namespace-foundation
   - name: tailscale-system-namespace-workloads
   force: true

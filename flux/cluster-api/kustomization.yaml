@@ -9,6 +9,3 @@ resources:
 - cluster-api-cluster-api-workload.yml
 - cluster-api-image-state.yml
 - cluster-api-kubeconfig.yml
-- cluster-api-seed-incluster-crds.yml
-- cluster-api-seed-incluster-operators.yml
-- cluster-api-seed-incluster-workloads.yml

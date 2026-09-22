@@ -4,36 +4,33 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.1
-    io.seedmatic.rke2lab/domain: cluster-api
+    io.seedmatic.rke2lab/domain: runtime
     io.seedmatic.rke2lab/layer: operators
     io.seedmatic.rke2lab/package: seed-incluster
-  name: pooladoptions.cluster.seedmatic.io
+  name: clusterintentions.cluster.seedmatic.io
 spec:
   group: cluster.seedmatic.io
   names:
-    kind: PoolAdoption
-    listKind: PoolAdoptionList
-    plural: pooladoptions
+    kind: ClusterIntention
+    listKind: ClusterIntentionList
+    plural: clusterintentions
     shortNames:
-    - capipooladopt
-    singular: pooladoption
+    - capiintent
+    singular: clusterintention
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
     - jsonPath: .spec.clusterName
       name: Cluster
       type: string
-    - jsonPath: .spec.pool
-      name: Pool
+    - jsonPath: .spec.kind
+      name: Kind
       type: string
-    - jsonPath: .spec.role
-      name: Role
+    - jsonPath: .spec.controlPlaneEndpoint.host
+      name: Endpoint
       type: string
     - jsonPath: .status.phase
       name: Phase
-      type: string
-    - jsonPath: .status.present
-      name: Present
       type: string
     - jsonPath: ".status.conditions[?(@.type==\"Ready\")].status"
       name: Ready
@@ -45,8 +42,9 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          PoolAdoption is the pool-level mirror of one node pool of a running cluster in CAPI — it owns the
-          pool's RCP/MD + templates + per-pet Machine/LXCMachine and runs the per-pool adopt-first state machine.
+          ClusterIntention is the Flux-owned cluster-level intent to bring one cluster into existence and
+          keep it described in Cluster API — reconciled adopt-first by the controller, which owns the
+          derived ClusterAdoption and aggregates the per-pool PoolAdoptions into it.
         properties:
           apiVersion:
             description: |-
@@ -67,20 +65,41 @@ spec:
             type: object
           spec:
             description: |-
-              PoolAdoptionSpec is the POOL-LEVEL mirror the controller owns from a PoolIntention. From it the
-              controller builds the pool CR-set — the RKE2ControlPlane (control-plane pool) or MachineDeployment
-              OWNED per-pet Machine + concrete LXCMachine (providerID) so CAPRKE2/CAPN adopt the RUNNING
-              Pulumi-bootstrapped instances instead of provisioning fresh ones. It runs the per-pool adopt-first
-              state machine and reports presence; cluster reachability is aggregated at the ClusterAdoption grain, not
-              here. The BYO-CA Secrets (<cluster>-{ca,cca,etcd,peer-etcd}) — needed by a control-plane pool —
-              are delivered by seed-master into Namespace; this controller only references them.
+              ClusterIntentionSpec is the CLUSTER-LEVEL intent seed-master renders for one cluster — the
+              Flux-owned recipe for its CAPI Cluster + LXCCluster. It carries ONLY cluster-scoped facts (VIP,
+              CIDRs, remote+identity, federated kind); the per-pool roster + templates live in the N
+              PoolIntention children (ownerRef'd to this ClusterIntention). The controller reconciles it
+              adopt-first and OWNS a ClusterAdoption (the cluster mirror, re-derived from reality) — the
+              ownership split: Flux owns the intent (git-backed, survives a cold-start), the controller owns the
+              mirror. Every field is filled from the ClusterNetworkBlueprint SSOT; the controller never computes
+              addressing.
             properties:
               clusterName:
-                description: ClusterName is the CAPI Cluster this pool belongs to (the RCP/Machines reference it).
+                description: ClusterName is the CAPI Cluster name to bring to existence and adopt (e.g. "bioskop-wrkld").
                 minLength: 1
                 type: string
+              clusterNetwork:
+                description: ClusterNetwork carries the pod/service CIDRs + the service domain.
+                properties:
+                  podCIDRs:
+                    items:
+                      type: string
+                    minItems: 1
+                    type: array
+                  serviceCIDRs:
+                    items:
+                      type: string
+                    minItems: 1
+                    type: array
+                  serviceDomain:
+                    default: cluster.local
+                    type: string
+                required:
+                - podCIDRs
+                - serviceCIDRs
+                type: object
               controlPlaneEndpoint:
-                description: ControlPlaneEndpoint is the kube-vip VIP a control-plane pool registers its replicas on.
+                description: ControlPlaneEndpoint is the kube-vip VIP fronting the apiserver.
                 properties:
                   host:
                     minLength: 1
@@ -93,69 +112,52 @@ spec:
                 - host
                 - port
                 type: object
-              image:
-                description: Image pins the nix-built node-base the pool's LXCMachines boot on / adopt.
+              kind:
+                default: workload
+                description: Kind is the cluster's federated role — recorded topological intent (see ClusterKind).
+                enum:
+                - workload
+                - management
+                type: string
+              namespace:
+                description: |-
+                  Namespace is where the CAPI CR-set, the owned ClusterAdoption, the PoolIntention children, and
+                  the referenced Secrets live (e.g. "rke2lab-bioskop-wrkld").
+                minLength: 1
+                type: string
+              remote:
+                description: Remote is the target Incus engine for THIS cluster's nodes (endpoint + identity Secret).
                 properties:
-                  fingerprint:
+                  endpoint:
+                    description: |-
+                      Endpoint is the Incus API endpoint (e.g. "https://bioskop-nixos:8443") — the local engine, or a
+                      cross-host one reached over the tailnet. Empty = the local engine, resolved from the identity
+                      Secret's `server` (the management cluster's own host).
+                    type: string
+                  identitySecretName:
+                    description: |-
+                      IdentitySecretName is the per-remote CAPN identity Secret the LXCCluster.secretRef names,
+                      resolved in Namespace. Its CA-based trust is our owned Incus PKI.
                     minLength: 1
                     type: string
                 required:
-                - fingerprint
+                - identitySecretName
                 type: object
-              namespace:
-                description: Namespace is where the CAPI CR-set and the referenced Secrets live.
-                minLength: 1
-                type: string
-              nodes:
-                description: "Nodes is the pool's explicit pet roster, adopted/provisioned by providerID (lxc:///<name>)."
-                items:
-                  description: |-
-                    PetSpec is one named pet of a pool — the deterministic instance name (CANONICAL_NODE_NAMES), the
-                    providerID basis (lxc:///<name>) and the LXCMachine object name CAPN matches the running instance
-                    against. No cattle / no replica count: a named pet is the only shape that re-matches its survivor
-                    after a cold-start.
-                  properties:
-                    name:
-                      minLength: 1
-                      type: string
-                  required:
-                  - name
-                  type: object
-                minItems: 1
-                type: array
-              pool:
-                description: Pool is the pool identity (names the LXCMachineTemplate / MachineDeployment).
-                minLength: 1
-                type: string
-              rke2Version:
-                description: RKE2Version is the CAPRKE2 version for this pool.
-                minLength: 1
-                type: string
-              role:
-                description: Role is the CAPI treatment (control-plane vs worker).
-                enum:
-                - control-plane
-                - worker
-                type: string
             required:
             - clusterName
+            - clusterNetwork
             - controlPlaneEndpoint
-            - image
             - namespace
-            - nodes
-            - pool
-            - rke2Version
-            - role
+            - remote
             type: object
           status:
-            description: PoolAdoptionStatus records what the controller observed at the pool grain.
+            description: ClusterIntentionStatus records what the controller observed.
             properties:
-              absent:
-                description: Absent is how many pets CAPN reports genuinely absent (InstanceDeleted → provision).
-                format: int32
-                type: integer
+              adoptionRef:
+                description: AdoptionRef is the name of the ClusterAdoption this ClusterIntention owns (in Namespace).
+                type: string
               conditions:
-                description: Conditions follow the standard metav1.Condition contract — one per pool step.
+                description: Conditions follow the standard metav1.Condition contract.
                 items:
                   description: Condition contains details for one aspect of the current state of this API Resource.
                   properties:
@@ -213,47 +215,17 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
-              controlPlaneUID:
-                description: |-
-                  ControlPlaneUID is the observed RKE2ControlPlane UID the owned per-pet Machines' ownerRef
-                  carries (control-plane pool only) — the piece GitOps could not pre-set.
-                type: string
               lastReconcileTime:
-                description: LastReconcileTime is when the controller last reconciled this PoolAdoption.
+                description: LastReconcileTime is when the controller last reconciled this ClusterIntention.
                 format: date-time
                 type: string
               observedGeneration:
                 description: ObservedGeneration is the spec generation this status reflects.
                 format: int64
                 type: integer
-              pending:
-                description: Pending is how many pets CAPN has not yet decided presence for.
-                format: int32
-                type: integer
               phase:
-                description: Phase is the per-pool state machine stage.
+                description: Phase mirrors the owned ClusterAdoption aggregate phase.
                 type: string
-              present:
-                description: Present is how many pets CAPN confirms present by providerID.
-                format: int32
-                type: integer
-              totalPets:
-                description: TotalPets is the pool's roster size (len(spec.Nodes)).
-                format: int32
-                type: integer
-              voidedPets:
-                description: |-
-                  VoidedPets is the reflected roster this reconciler last declared VOID — every one of its pets
-                  confirmed gone, so the reflection had nothing left to protect and its CR-set was dropped for
-                  CAPRKE2 to re-provision. It has to be REMEMBERED: once the CR-set is gone the pets read
-                  *undecided* rather than absent (no LXCMachine to carry CAPN's verdict), which is the same
-                  reading as a cold-start, and the adopt branch would faithfully re-mint the very phantoms that
-                  were just dropped. The reflector rewrites the reflection within seconds of the Machine events,
-                  so this normally holds for one or two passes; it also holds if that git push is slow, which is
-                  the case it exists for. Cleared as soon as the reflected roster differs or any pet is present.
-                items:
-                  type: string
-                type: array
             type: object
         type: object
     served: true

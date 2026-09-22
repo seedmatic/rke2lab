@@ -9,7 +9,7 @@ metadata:
   name: openebs-zfs-shared
 parameters:
   fstype: zfs
-  poolname: tank/rke2lab/control-nodes/master
+  poolname: tank/rke2lab/mgmt/ephemeral/volumes
   shared: "yes"
 provisioner: zfs.csi.openebs.io
 reclaimPolicy: Delete

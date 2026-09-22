@@ -15,7 +15,9 @@ spec:
   - name: runtime-flox-controller-workloads
   - name: runtime-flox-webhook-operators
   - name: runtime-flox-webhook-workloads
-  - name: storage-openebs-zfs
+  - name: runtime-seed-incluster-crds
+  - name: runtime-seed-incluster-operators
+  - name: runtime-seed-incluster-workloads
   - name: tailscale-system-namespace-foundation
   - name: tailscale-system-namespace-workloads
   force: true

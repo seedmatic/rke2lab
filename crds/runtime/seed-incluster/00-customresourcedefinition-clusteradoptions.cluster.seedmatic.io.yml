@@ -4,7 +4,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.1
-    io.seedmatic.rke2lab/domain: cluster-api
+    io.seedmatic.rke2lab/domain: runtime
     io.seedmatic.rke2lab/layer: operators
     io.seedmatic.rke2lab/package: seed-incluster
   name: clusteradoptions.cluster.seedmatic.io

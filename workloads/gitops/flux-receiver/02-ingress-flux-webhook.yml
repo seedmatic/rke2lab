@@ -6,7 +6,7 @@ metadata:
     io.seedmatic.rke2lab/domain: gitops
     io.seedmatic.rke2lab/package: flux-receiver
     tailscale.com/funnel: "true"
-    tailscale.com/proxy-class: flux-webhook
+    tailscale.com/proxy-class: bioskop-mgmt-flux-webhook
   name: flux-webhook
   namespace: flux-system
 spec:
@@ -18,4 +18,4 @@ spec:
   ingressClassName: tailscale
   tls:
   - hosts:
-    - flux-webhook
+    - bioskop-mgmt-flux-webhook

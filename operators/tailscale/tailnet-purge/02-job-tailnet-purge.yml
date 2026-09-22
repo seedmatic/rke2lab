@@ -35,12 +35,18 @@ spec:
           # cert reused), so deleting them breaks the reuse. A funnel with no backup yet is left to the
           # prune so its stale device is reclaimed and the fresh proxy gets a clean name.
           keep=""
-          for leaf in pipelines-webhook flux-webhook; do
+          # Each entry is <persist-subdir>:<tailnet-hostname>. They diverge now that a funnel's identity
+          # is per-cluster: the state lives under the bare leaf (the volume is already per-cluster) while
+          # the DEVICE is named <cluster>-<leaf>. Sparing the bare leaf would spare nothing and let this
+          # cluster's own device be pruned.
+          for pair in pipelines-webhook:bioskop-mgmt-pipelines-webhook flux-webhook:bioskop-mgmt-flux-webhook; do
+            leaf="${pair%%:*}"
+            host="${pair##*:}"
             if [ -s "/persist/$leaf/state.yaml" ]; then
-              keep="$keep --keep-host $leaf"
-              echo "sparing $leaf — has persisted state, will re-attach"
+              keep="$keep --keep-host $host"
+              echo "sparing $host — has persisted state, will re-attach"
             else
-              echo "not sparing $leaf — no persisted state yet, its stale device will be pruned"
+              echo "not sparing $host — no persisted state yet, its stale device will be pruned"
             fi
           done
           echo "tailnet stale-device prune — stop when clean, ${guard}s guard cap"

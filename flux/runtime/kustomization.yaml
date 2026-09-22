@@ -11,3 +11,6 @@ resources:
 - runtime-flox-webhook-operators.yml
 - runtime-flox-webhook-workloads.yml
 - runtime-rke2-config.yml
+- runtime-seed-incluster-crds.yml
+- runtime-seed-incluster-operators.yml
+- runtime-seed-incluster-workloads.yml
