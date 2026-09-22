@@ -401,18 +401,35 @@ reused (0 issuance) and the treadmill stops.
 
 [NOTE]
 ====
-*Validate with LE STAGING, then flip to production — a PAIR of toggles.* While proving the
-persistence/reuse mechanism, the tailscale operator runs `useLetsEncryptStagingEnvironment: true`
-(`TailscaleManifestsUnit`) — staging has effectively unlimited rate limits, so re-issuance during
-iteration never touches the production budget. Staging certs are UNTRUSTED, so for GitHub to still
-deliver the webhook during staging, *SSL verification is disabled on the GitHub App's webhook*. These
-two go together and must be flipped back TOGETHER for production:
+*Validate with LE STAGING.* While proving the persistence/reuse mechanism, the tailscale operator runs
+`useLetsEncryptStagingEnvironment: true` (`TailscaleManifestsUnit`) — staging has effectively unlimited
+rate limits, so each re-grow in the loop costs nothing, where production would spend one of 5 certs /
+exact FQDN / 168h per attempt.
+
+A staging cert is UNTRUSTED, so GitHub's webhook TLS handshake fails while this is on — which is why
+*SSL verification is disabled on the GitHub App's webhook for the duration*. That is not merely to keep
+PaC events flowing: the in-cluster render is TRIGGERED by that webhook, so losing delivery stalls the
+whole GitOps loop for as long as the validation window lasts, not just the PaC feature.
+
+So these are a PAIR, and they must be flipped back TOGETHER:
 
 * `useLetsEncryptStagingEnvironment` → `false` (a trusted production cert), and
 * the GitHub App webhook's *SSL verification* → back ON.
 
-Do NOT ship one without the other: staging LE + SSL-verify-on ⇒ GitHub rejects the untrusted cert;
-production LE + SSL-verify-off ⇒ a working-but-unverified webhook that silently accepts a MITM.
+Do NOT leave one without the other: staging LE + verify-on ⇒ no delivery, so no render; production LE +
+verify-off ⇒ a working-but-unverified webhook that silently accepts a MITM.
+
+WARNING: flipping back is not just those two. The persisted state will hold a STAGING cert, and it still
+looks valid to the proxy — so it may keep serving it instead of requesting a production one. Purge the
+cert from the persisted state (or the whole `state.yaml`) when flipping back, or the webhook keeps
+presenting an untrusted cert with the toggle already at `false`.
+
+IMPORTANT: the two halves have NO common owner. `useLetsEncryptStagingEnvironment` is rendered;
+`insecure_ssl` is an edge CONSTANT (`0`) in `GithubAppWebhookConfigurerEdge`, so turning verification
+off is a manual operator gesture on GitHub that the reconcile does not know about — and the next
+webhook reconcile does not restore it either, since the edge only PATCHes `url` + `secret`. That is the
+drift risk to hold in mind: nothing in the system will tell you the pair is half-flipped. Giving
+`insecure_ssl` a single owner would fix it, at the price of letting a render decide to stop verifying.
 ====
 
 == Operator setup — extend the existing App, do not create a new one

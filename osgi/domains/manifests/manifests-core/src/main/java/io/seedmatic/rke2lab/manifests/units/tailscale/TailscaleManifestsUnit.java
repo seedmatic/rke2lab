@@ -111,12 +111,24 @@ public final class TailscaleManifestsUnit extends AbstractManifestsUnit {
                 """
                 operatorConfig:
                   debug: true
-                # PRODUCTION Let's Encrypt: funnel certs must be publicly trusted (staging certs make
-                # the GitHub webhook TLS handshake fail). Flip to true ONLY to iterate on funnel-cert
-                # persistence/reuse — staging has effectively unlimited rate limits, so a re-issuance
-                # during iteration does not burn the production 5-cert/FQDN/168h budget — then flip
-                # back before a real grow. See docs .../pac-in-cluster-render-spec.adoc § funnel-durability.
-                useLetsEncryptStagingEnvironment: false
+                # ⚠️ STAGING Let's Encrypt — a VALIDATION posture, not the steady state. On while we
+                # prove the funnel-cert persistence/reuse chain end to end: staging has effectively
+                # unlimited rate limits, so each re-grow in the loop costs nothing, where production
+                # would spend one of 5 certs / exact FQDN / 168h per attempt.
+                #
+                # A staging cert is UNTRUSTED, so GitHub's webhook TLS handshake fails while this is
+                # on — hence SSL verification is disabled on the App's webhook for the duration. That
+                # is not just about PaC events: the in-cluster RENDER is triggered by that webhook, so
+                # losing delivery stalls the whole GitOps loop for the length of the window.
+                #
+                # ⚠️ THREE things to undo, and nothing in the system will tell you one is missing:
+                #   1. this line back to false,
+                #   2. the App webhook's SSL verification back ON (a manual gesture on GitHub — the
+                #      webhook reconcile only PATCHes url + secret, so it neither set nor restores it),
+                #   3. the STAGING cert purged from the persisted state, because it still looks valid
+                #      to the proxy, which may keep serving it instead of requesting a production one.
+                # See docs .../pac-in-cluster-render-spec.adoc § funnel-durability.
+                useLetsEncryptStagingEnvironment: true
                 """,
                 "version",
                 version)));
