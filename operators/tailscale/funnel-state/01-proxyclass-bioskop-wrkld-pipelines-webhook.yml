@@ -6,11 +6,11 @@ metadata:
     io.seedmatic.rke2lab/domain: tailscale
     io.seedmatic.rke2lab/layer: operators
     io.seedmatic.rke2lab/package: funnel-state
-  name: pipelines-webhook
+  name: bioskop-wrkld-pipelines-webhook
 spec:
   statefulSet:
     pod:
       tailscaleContainer:
         env:
         - name: TS_KUBE_SECRET
-          value: ts-pipelines-webhook-state
+          value: ts-bioskop-wrkld-pipelines-webhook-state

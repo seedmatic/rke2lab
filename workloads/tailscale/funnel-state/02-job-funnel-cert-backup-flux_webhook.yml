@@ -6,7 +6,7 @@ metadata:
     io.seedmatic.rke2lab/domain: tailscale
     io.seedmatic.rke2lab/layer: workloads
     io.seedmatic.rke2lab/package: funnel-state
-  name: funnel-cert-backup-flux-webhook
+  name: funnel-cert-backup-FLUX_WEBHOOK
   namespace: tailscale-system
 spec:
   backoffLimit: 3
@@ -22,7 +22,7 @@ spec:
         - |
           set -euo pipefail
           ns=tailscale-system
-          secret=ts-flux-webhook-state
+          secret=ts-bioskop-wrkld-flux-webhook-state
           dir=/persist/flux-webhook
           mkdir -p "$dir"
           echo "waiting for the funnel state secret ${secret} to exist"
@@ -42,6 +42,12 @@ spec:
           kubectl wait --for="jsonpath={.data.${esc}}" -n "$ns" "secret/${secret}" --timeout=900s
           kubectl get -n "$ns" secret "$secret" -o yaml | yq 'del(.metadata.namespace) | del(.metadata.managedFields) | del(.metadata.resourceVersion) | del(.metadata.uid) | del(.metadata.creationTimestamp) | del(.metadata.ownerReferences) | del(.metadata.annotations."kubectl.kubernetes.io/last-applied-configuration") | del(.status)' > "$dir/state.yaml"
           echo "backed up funnel state (with cert) to $dir/state.yaml"
+          # Record WHICH Let's Encrypt environment issued this cert, beside the state. The restore
+          # compares it to the posture in force and discards a cert from the other one — the only way a
+          # staging<->production flip ever gets a matching cert, because tailscaled renews on DATES
+          # alone and never compares the issuer (feature/acme: shouldStartDomainRenewal is
+          # ARI-or-expiry; the ACME directory URL is merely logged).
+          printf '%s\n' 'STAGING' > "$dir/issuance"
         image: rke2lab/flox-carrier:0.1.0
         name: mirror
         volumeMounts:

@@ -10,7 +10,7 @@ metadata:
   name: openebs-zfs
 parameters:
   fstype: zfs
-  poolname: tank/rke2lab/control-nodes/master
+  poolname: tank/rke2lab/wrkld/ephemeral/volumes
 provisioner: zfs.csi.openebs.io
 reclaimPolicy: Delete
 volumeBindingMode: Immediate

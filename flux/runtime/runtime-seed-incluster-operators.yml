@@ -2,7 +2,7 @@
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: tailscale-funnel-cert-restore-workloads
+  name: runtime-seed-incluster-operators
   namespace: flux-system
 spec:
   decryption:
@@ -10,14 +10,14 @@ spec:
     secretRef:
       name: sops-age
   dependsOn:
-  - name: runtime-seed-incluster-crds
-  - name: runtime-seed-incluster-operators
-  - name: runtime-seed-incluster-workloads
-  - name: tailscale-system-namespace-foundation
-  - name: tailscale-system-namespace-workloads
+  - name: runtime-flox-controller-crds
+  - name: runtime-flox-controller-operators
+  - name: runtime-flox-controller-workloads
+  - name: runtime-flox-webhook-operators
+  - name: runtime-flox-webhook-workloads
   force: true
   interval: 5m
-  path: ./workloads/tailscale/funnel-cert-restore
+  path: ./operators/runtime/seed-incluster
   prune: true
   retryInterval: 30s
   sourceRef:

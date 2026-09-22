@@ -1,0 +1,225 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.20.1
+    io.seedmatic.rke2lab/domain: runtime
+    io.seedmatic.rke2lab/layer: operators
+    io.seedmatic.rke2lab/package: seed-incluster
+  name: volumeintentions.cluster.seedmatic.io
+spec:
+  group: cluster.seedmatic.io
+  names:
+    kind: VolumeIntention
+    listKind: VolumeIntentionList
+    plural: volumeintentions
+    shortNames:
+    - volint
+    singular: volumeintention
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.dataset
+      name: Dataset
+      type: string
+    - jsonPath: .status.node
+      name: Node
+      type: string
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: ".status.conditions[?(@.type==\"Ready\")].status"
+      name: Ready
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          VolumeIntention is the Flux-owned intent for one of the cluster's persist volumes. The controller
+          elects a node and owns the resulting ZFSVolume + static PV — the half GitOps cannot pre-set,
+          because a managed node's name is not knowable until the node exists.
+
+          Unlike the {Cluster,Pool}Intention pair there is no Adoption mirror: those exist because a cluster
+          can be found ALREADY RUNNING and must be reconciled with rather than created. A volume has no such
+          duality — it is placed or it is not — so the intent carries its own status.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              VolumeIntentionSpec is the Flux-owned intent for ONE persist volume of the cluster this controller
+              runs in: the dataset to adopt, its size, the claim to satisfy, and the KIND of node eligible to
+              serve it. It names NO node, and that absence is the whole point.
+
+              A pre-declared PV needs a node twice over — `spec.nodeAffinity` for scheduling and the openebs
+              `ZFSVolume.ownerNodeID` for the CSI — and on a CAPI-provisioned cluster the node's name is RANDOM
+              (…-control-plane-v9fhz), so no render-time literal can ever match. The literal that used to sit in
+              the render (`bioskop-mgmt-master`) was not a value to parameterise but the admission that the unit
+              had only ever been meant to run on a host-grown cluster. So the render declares, and the controller
+              — which is IN the cluster and can see its nodes — elects and stamps.
+
+              The static-adopt shape itself is load-bearing and unchanged: a cold start wipes etcd, so the PVC
+              object is gone and dynamic provisioning would mint a fresh pvc-<uuid>, leak the old dataset and
+              lose the content. A pre-declared volume adopting a dataset by STABLE name is the only handle that
+              survives. Keeping openebs in the path is also what ENFORCES single access — exactly one ZFSNode
+              serves the volume — rather than leaving ReadWriteOnce as a contract nobody polices.
+            properties:
+              capacity:
+                description: |-
+                  Capacity is the PV/PVC size (a Kubernetes quantity, e.g. "16Mi"). The ZFS dataset is not
+                  pre-sized, so this is the claim's accounting figure, not a reservation.
+                minLength: 1
+                type: string
+              claimRef:
+                description: |-
+                  ClaimRef is the PVC this volume must satisfy — pre-bound on the PV, so no other claim can take
+                  it.
+                properties:
+                  name:
+                    minLength: 1
+                    type: string
+                  namespace:
+                    minLength: 1
+                    type: string
+                required:
+                - name
+                - namespace
+                type: object
+              dataset:
+                description: |-
+                  Dataset is the stable dataset name under Pool — the openebs volumeHandle, so the PV ADOPTS the
+                  pre-created dataset instead of provisioning a divergent one.
+                minLength: 1
+                type: string
+              nodeRole:
+                default: control-plane
+                description: |-
+                  NodeRole restricts the election to nodes carrying the node-role.kubernetes.io/<NodeRole> label.
+                  Defaults to control-plane: a persist volume belongs with the control plane, which is the part of
+                  a cluster that does not come and go.
+                type: string
+              pool:
+                description: |-
+                  Pool is the absolute ZFS path of this cluster's persist parent, from the dataplan SSOT
+                  (tank/rke2lab/<role>/persist). The CSI creates/adopts the volume dataset UNDER it; openebs does
+                  not create its own poolname, which is why the dataplan declares the parent.
+                minLength: 1
+                type: string
+              storageClassName:
+                description: |-
+                  StorageClassName is the Retain, non-default class the PV and PVC agree on
+                  (openebs-zfs-persist).
+                minLength: 1
+                type: string
+            required:
+            - capacity
+            - claimRef
+            - dataset
+            - pool
+            - storageClassName
+            type: object
+          status:
+            description: "VolumeIntentionStatus records WHICH node was elected, so the choice is visible and stable."
+            properties:
+              conditions:
+                description: Conditions follow the standard metav1.Condition contract.
+                items:
+                  description: Condition contains details for one aspect of the current state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: "^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$"
+                      type: string
+                    status:
+                      description: "status of the condition, one of True, False, Unknown."
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: "^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$"
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              lastReconcileTime:
+                description: LastReconcileTime is when the controller last reconciled this VolumeIntention.
+                format: date-time
+                type: string
+              node:
+                description: |-
+                  Node is the elected node's NAME — the value stamped into ZFSVolume.ownerNodeID (which must
+                  equal the ZFSNode object's name) and into the PV's nodeAffinity. It is STICKY: once a node is
+                  elected and still eligible, the election does not move, because moving it would strand the
+                  dataset on the previous node.
+                type: string
+              observedGeneration:
+                description: ObservedGeneration is the spec generation this status reflects.
+                format: int64
+                type: integer
+              phase:
+                description: Phase is the coarse state.
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

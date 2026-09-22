@@ -21,21 +21,39 @@ spec:
         - -c
         - |
           set -euo pipefail
-          mkdir -p /persist/pipelines-webhook
-          if [ ! -e /persist/pipelines-webhook/state.yaml ] && [ -s /persist/state.yaml ]; then
-            echo "migrating legacy flat /persist/state.yaml -> /persist/pipelines-webhook/state.yaml"
-            mv /persist/state.yaml /persist/pipelines-webhook/state.yaml
-          fi
-
-          if [ -s /persist/pipelines-webhook/state.yaml ]; then
-            echo "restoring saved tailscale funnel state into ts-pipelines-webhook-state"
+          dir=/persist/pipelines-webhook
+          mkdir -p "$dir"
+          if [ -s "$dir/state.yaml" ]; then
+            echo "restoring saved tailscale funnel state into ts-bioskop-wrkld-pipelines-webhook-state"
+            # A persisted cert is worth seeding ONLY if it is ours and from the current issuer. Keeping a
+            # mismatched one is worse than keeping none: tailscaled renews on DATES alone — it never
+            # compares the issuer, and the ACME directory URL is merely logged (feature/acme:
+            # shouldStartDomainRenewal is ARI-or-expiry) — so the wrong cert would be served for the rest
+            # of its ~90 days instead of replaced. Dropped, tailscaled mints a fresh one on first serve.
+            #
+            # Two mismatches, one rule. A different Let's Encrypt posture (the staging<->production flip),
+            # or a cert for another hostname (the funnel rename, whose old <fqdn>.crt would otherwise
+            # linger forever). Only the cert keys go: the node key stays, so the proxy returns as the SAME
+            # tailnet device and the purge has nothing to reclaim — one issuance, no identity churn.
+            want=STAGING
+            have="$(cat "$dir/issuance" 2>/dev/null || echo UNKNOWN)"
+            if [ "$have" = "$want" ]; then
+              keep='.data |= with_entries(select((.key | test("[.](crt|key)$") | not) or (.key | test("^bioskop-wrkld-pipelines-webhook[.]"))))'
+            else
+              echo "the persisted cert was issued under $have but the posture is $want — dropping it"
+              keep='.data |= with_entries(select(.key | test("[.](crt|key)$") | not))'
+            fi
             # Strip the embedded metadata.namespace: a backup captured under a PRIOR namespace (the
             # persist PV is Retain, so it survives a namespace rename like ingress-system ->
-            # tailscale-system) would otherwise make `kubectl apply -n tailscale-system` fail "namespace from the
-            # provided object does not match". Namespace-agnostic — the apply -n places it correctly.
-            yq 'del(.metadata.namespace)' /persist/pipelines-webhook/state.yaml | kubectl apply -n tailscale-system -f -
+            # tailscale-system) would otherwise fail the apply with "namespace from the provided object
+            # does not match". Namespace-agnostic — the apply -n places it correctly. The NAME is
+            # rewritten too: a backup taken before the funnel identity became per-cluster carries the old
+            # bare-leaf Secret name, and applying it under that name would seed a Secret no ProxyClass
+            # pins.
+            yq "del(.metadata.namespace) | .metadata.name = \"ts-bioskop-wrkld-pipelines-webhook-state\" | $keep" "$dir/state.yaml" \
+              | kubectl apply -n tailscale-system -f -
           else
-            echo "no saved funnel state for pipelines-webhook on the persist volume — clean first grow"
+            echo "no saved funnel state for bioskop-wrkld-pipelines-webhook on the persist volume — clean first grow"
           fi
         image: rke2lab/flox-carrier:0.1.0
         name: mirror

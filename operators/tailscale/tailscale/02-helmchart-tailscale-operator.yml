@@ -16,10 +16,16 @@ spec:
   valuesContent: |
     operatorConfig:
       debug: true
-    # PRODUCTION Let's Encrypt: funnel certs must be publicly trusted (staging certs make
-    # the GitHub webhook TLS handshake fail). Flip to true ONLY to iterate on funnel-cert
-    # persistence/reuse — staging has effectively unlimited rate limits, so a re-issuance
-    # during iteration does not burn the production 5-cert/FQDN/168h budget — then flip
-    # back before a real grow. See docs .../pac-in-cluster-render-spec.adoc § funnel-durability.
-    useLetsEncryptStagingEnvironment: false
+    # Projected from FunnelCertIssuance.current() — the ONE place the posture is declared.
+    # A staging cert is untrusted, so GitHub's webhook TLS handshake fails against it, and
+    # the in-cluster RENDER is triggered by that webhook: verification must be off for
+    # exactly as long as this is on. Both halves now come from that one enum, so they
+    # cannot be half-flipped, and returning to production turns verification back on by
+    # construction.
+    #
+    # ⚠️ The one thing the enum cannot do for you: the persisted funnel state will hold a
+    # STAGING cert, which looks valid to the proxy, so it may keep serving it instead of
+    # requesting a production one. Purge it from the state when flipping back.
+    # See docs .../pac-in-cluster-render-spec.adoc § funnel-durability.
+    useLetsEncryptStagingEnvironment: true
   version: 1.102.3

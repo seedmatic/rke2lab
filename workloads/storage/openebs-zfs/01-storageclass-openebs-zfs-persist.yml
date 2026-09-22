@@ -9,7 +9,7 @@ metadata:
   name: openebs-zfs-persist
 parameters:
   fstype: zfs
-  poolname: tank/rke2lab/persist
+  poolname: tank/rke2lab/wrkld/persist
 provisioner: zfs.csi.openebs.io
 reclaimPolicy: Retain
 volumeBindingMode: Immediate
