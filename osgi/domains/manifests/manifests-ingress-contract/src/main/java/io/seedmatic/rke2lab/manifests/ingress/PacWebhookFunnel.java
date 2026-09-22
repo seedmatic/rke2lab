@@ -5,9 +5,12 @@ package io.seedmatic.rke2lab.manifests.ingress;
  * MagicDNS leaf the PaC controller is funnel-exposed under, shared by the two parties that must
  * agree on it: the manifests {@code PacWebhookManifestsUnit} (which names the Ingress + its {@code
  * tls.hosts} leaf, letting the Tailscale operator provision {@code https://<leaf>.<tailnet>}) and
- * the host ghapp webhook scion (which points the GitHub App's webhook at that same {@code url}). A
- * rename of the funnel — the way we win a fresh Let's Encrypt cert budget — is thus ONE edit here,
- * never a leaf literal duplicated across modules that could drift.
+ * the host ghapp webhook scion (which points the GitHub App's webhook at that same {@code url}).
+ *
+ * <p>The funnel is PER-CLUSTER ({@link Funnel}), so this record carries the cluster. ⚠️ A GitHub
+ * App has ONE webhook URL, and every cluster exposes its own PaC funnel — so the App can point at
+ * exactly one of them. Which cluster receives PaC events is therefore a decision, not a derivation;
+ * today it is the management cluster's funnel.
  *
  * <p>It lives in the {@code manifests.ingress} DUAL-REALM face precisely because both realms
  * consume it: OSGi-side the manifest units read {@link #LEAF}, host-side the {@code seed-master}
@@ -22,13 +25,18 @@ package io.seedmatic.rke2lab.manifests.ingress;
  * appends it at runtime; it is never on the in-container synthesis context), so the manifests side
  * uses only {@link #LEAF} and the host builds the full {@code url()}.
  */
-public record PacWebhookFunnel(String tailnet) {
+public record PacWebhookFunnel(String cluster, String tailnet) {
 
-  /** The MagicDNS leaf the PaC controller is funnel-exposed under — the funnel identity. */
-  public static final String LEAF = "pipelines-webhook";
+  /**
+   * This cluster's PaC funnel. The leaf is NOT redeclared here — it comes from {@link
+   * FunnelLeaf#PIPELINES_WEBHOOK}, which was always the same string in two places.
+   */
+  public Funnel funnel() {
+    return Funnel.of(cluster, FunnelLeaf.PIPELINES_WEBHOOK);
+  }
 
   /** The public funnel endpoint the GitHub App posts its webhook events to. */
   public String url() {
-    return "https://" + LEAF + "." + tailnet;
+    return "https://" + funnel().hostname() + "." + tailnet;
   }
 }

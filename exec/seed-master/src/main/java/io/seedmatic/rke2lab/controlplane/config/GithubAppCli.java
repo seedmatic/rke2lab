@@ -82,7 +82,9 @@ public final class GithubAppCli {
               + "&url=https://github.com/seedmatic/rke2lab"
               + "&webhook_active=true"
               + "&webhook_url="
-              + new PacWebhookFunnel(BootstrapConfig.DEFAULT_TAILNET).url()
+              + new PacWebhookFunnel(
+                      BootstrapConfig.DEFAULT_CLUSTER, BootstrapConfig.DEFAULT_TAILNET)
+                  .url()
               + "&events%5B%5D=check_run"
               + "&events%5B%5D=check_suite"
               + "&events%5B%5D=commit_comment"

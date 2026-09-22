@@ -190,8 +190,39 @@ level. The `<leaf>/state.yaml` subdirectories live inside it, unchanged.
 *The purge*:: `--keep-host` must name the cluster's FQDN, or one cluster's purge prunes another's
 device.
 
-So the contract change is `FunnelLeaf` — a dual-realm enum whose leaf is currently the whole
-identity — becoming **(cluster, leaf)**. That, not the PV, is the shape that moves.
+So the contract change is `FunnelLeaf` — a dual-realm enum whose leaf was the whole identity —
+becoming **(cluster, leaf)**. That, not the PV, is the shape that moves. The enum keeps only the leaf
+vocabulary; a `Funnel` record carries the pair and derives everything named after the funnel:
+
+[source]
+----
+hostname     = <cluster>-<leaf>        bioskop-mgmt-flux-webhook
+stateSecret  = ts-<hostname>-state    ts-bioskop-mgmt-flux-webhook-state
+proxyClass   = <hostname>
+persistSubdir= <leaf>                 the volume is already per-cluster
+----
+
+Cluster FIRST, like every other composite name here (`bioskop-mgmt-master`,
+`<cluster>-server-manifests`), so a fleet's funnels group by cluster in `tailscale status` rather than
+interleaving. The persist SUBDIRECTORY keeps the bare leaf: the dataset is per-cluster already, so
+qualifying the path inside it would say the same thing twice.
+
+This also removed a duplicate: `PacWebhookFunnel` (the host-side face that builds the GitHub App's
+webhook URL) re-declared `"pipelines-webhook"` as its own `LEAF` constant — the same string in two
+places. It now carries the cluster and derives the leaf from the enum.
+
+[WARNING]
+====
+*A GitHub App has ONE webhook URL, and every cluster now exposes its own PaC funnel.* The App can
+point at exactly one of them, so *which cluster receives PaC events is a decision, not a derivation*.
+Today it is the management cluster's funnel (`ghapp create` pre-fills that one). The workload
+cluster's PaC funnel exists and is persisted, but nothing delivers events to it until that decision is
+made — a second App, or a router in front.
+
+Note this is NOT the same question as Flux's per-cluster tokens: those are many mints from the *same
+one* App key (see <<_auth_two_distinct_secret_properties_resolved_by_the_execution_enclosure,Auth>>).
+The App is fleet-wide; only its webhook is singular.
+====
 
 ONE PV per CLUSTER, not per leaf. The <<funnel-ordering,dependency graph>> already serialises the
 restore and backup Jobs so they never contend for the single RWO claim; a PV per leaf would discard

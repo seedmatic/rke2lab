@@ -3,8 +3,8 @@ package io.seedmatic.rke2lab.manifests.units.cicd;
 import io.seedmatic.rke2lab.manifests.AbstractManifestsUnit;
 import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
+import io.seedmatic.rke2lab.manifests.ingress.Funnel;
 import io.seedmatic.rke2lab.manifests.ingress.FunnelLeaf;
-import io.seedmatic.rke2lab.manifests.ingress.PacWebhookFunnel;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import java.util.List;
 import java.util.Map;
@@ -47,6 +47,10 @@ public final class PacWebhookManifestsUnit extends AbstractManifestsUnit {
 
   @Override
   protected void doSynthesize(final Construct scope, final ManifestsUnitContext context) {
+    final Funnel funnel =
+        Funnel.of(
+            context.nodeEnvContext().bootstrapIdentity().clusterName(),
+            FunnelLeaf.PIPELINES_WEBHOOK);
     final ApiObject ingress =
         new ApiObject(
             scope,
@@ -56,7 +60,7 @@ public final class PacWebhookManifestsUnit extends AbstractManifestsUnit {
                 .kind("Ingress")
                 .metadata(
                     ApiObjectMetadata.builder()
-                        .name(PacWebhookFunnel.LEAF)
+                        .name(funnel.hostname())
                         .namespace(NAMESPACE)
                         .annotations(
                             packageProfile.packageAnnotations(
@@ -69,7 +73,7 @@ public final class PacWebhookManifestsUnit extends AbstractManifestsUnit {
                                     "tailscale.com/funnel",
                                     "true",
                                     "tailscale.com/proxy-class",
-                                    FunnelLeaf.PIPELINES_WEBHOOK.proxyClass())))
+                                    funnel.proxyClass())))
                         .build())
                 .build());
     ingress.addJsonPatch(
@@ -80,7 +84,7 @@ public final class PacWebhookManifestsUnit extends AbstractManifestsUnit {
                 "tailscale",
                 // tls.hosts[0] is the MagicDNS leaf → https://pac-webhook.<tailnet>.ts.net.
                 "tls",
-                new Object[] {Map.of("hosts", new Object[] {PacWebhookFunnel.LEAF})},
+                new Object[] {Map.of("hosts", new Object[] {funnel.hostname()})},
                 "defaultBackend",
                 Map.of(
                     "service",

@@ -8,6 +8,7 @@ import io.seedmatic.rke2lab.manifests.contract.FloxAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.ManifestAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.ManifestLayer;
+import io.seedmatic.rke2lab.manifests.ingress.Funnel;
 import io.seedmatic.rke2lab.manifests.ingress.FunnelLeaf;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import io.seedmatic.rke2lab.manifests.units.cluster.ClusterRefs;
@@ -83,7 +84,7 @@ public final class TailnetPurgeManifestsUnit extends AbstractManifestsUnit {
   protected void doSynthesize(final Construct scope, final ManifestsUnitContext context) {
     serviceAccount(scope);
     oauthSecret(scope);
-    purgeJob(scope);
+    purgeJob(scope, context.nodeEnvContext().bootstrapIdentity().clusterName());
   }
 
   private void serviceAccount(final Construct scope) {
@@ -153,15 +154,16 @@ public final class TailnetPurgeManifestsUnit extends AbstractManifestsUnit {
    * we cannot re-attach to (no restore) leaves it holding the name → the new proxy drifts to {@code
    * -N}.
    */
-  private String funnelLeaves() {
-    final StringBuilder leaves = new StringBuilder();
-    for (final FunnelLeaf funnel : FunnelLeaf.values()) {
-      if (leaves.length() > 0) {
-        leaves.append(' ');
+  private String funnelPairs(final String cluster) {
+    final StringBuilder pairs = new StringBuilder();
+    for (final FunnelLeaf leaf : FunnelLeaf.values()) {
+      if (pairs.length() > 0) {
+        pairs.append(' ');
       }
-      leaves.append(funnel.leaf());
+      final Funnel funnel = Funnel.of(cluster, leaf);
+      pairs.append(funnel.persistSubdir()).append(':').append(funnel.hostname());
     }
-    return leaves.toString();
+    return pairs.toString();
   }
 
   /**
@@ -179,7 +181,7 @@ public final class TailnetPurgeManifestsUnit extends AbstractManifestsUnit {
    * (a completed Job is not re-run by Flux). Spares the persisted funnels via {@link
    * #keepHostArgs}.
    */
-  private void purgeJob(final Construct scope) {
+  private void purgeJob(final Construct scope, final String cluster) {
     final String script =
         """
         set -uo pipefail
@@ -197,12 +199,18 @@ public final class TailnetPurgeManifestsUnit extends AbstractManifestsUnit {
         # cert reused), so deleting them breaks the reuse. A funnel with no backup yet is left to the
         # prune so its stale device is reclaimed and the fresh proxy gets a clean name.
         keep=""
-        for leaf in @LEAVES@; do
+        # Each entry is <persist-subdir>:<tailnet-hostname>. They diverge now that a funnel's identity
+        # is per-cluster: the state lives under the bare leaf (the volume is already per-cluster) while
+        # the DEVICE is named <cluster>-<leaf>. Sparing the bare leaf would spare nothing and let this
+        # cluster's own device be pruned.
+        for pair in @FUNNELS@; do
+          leaf="${pair%%:*}"
+          host="${pair##*:}"
           if [ -s "/persist/$leaf/state.yaml" ]; then
-            keep="$keep --keep-host $leaf"
-            echo "sparing $leaf — has persisted state, will re-attach"
+            keep="$keep --keep-host $host"
+            echo "sparing $host — has persisted state, will re-attach"
           else
-            echo "not sparing $leaf — no persisted state yet, its stale device will be pruned"
+            echo "not sparing $host — no persisted state yet, its stale device will be pruned"
           fi
         done
         echo "tailnet stale-device prune — stop when clean, ${guard}s guard cap"
@@ -230,7 +238,7 @@ public final class TailnetPurgeManifestsUnit extends AbstractManifestsUnit {
           sleep 5
         done
         """
-            .replace("@LEAVES@", funnelLeaves());
+            .replace("@FUNNELS@", funnelPairs(cluster));
     final String floxImage = ManifestSynthesisContext.current().floxDebugPolicy().prodImage();
     final ApiObject jobObject =
         new ApiObject(

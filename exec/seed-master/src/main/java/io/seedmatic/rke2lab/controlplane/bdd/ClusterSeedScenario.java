@@ -687,7 +687,8 @@ public class ClusterSeedScenario
       // The edge is gardening-gated (rke2lab.gardening=cultivating), so under a survey/preview this
       // crossing no-ops rather than calling GitHub.
       final JsonNode funnelUrl =
-          JsonNodeFactory.instance.textNode(new PacWebhookFunnel(config.tailnet()).url());
+          JsonNodeFactory.instance.textNode(
+              new PacWebhookFunnel(config.clusterName(), config.tailnet()).url());
       sowAndGraft
           .sowing(
               "ghapp-webhook",

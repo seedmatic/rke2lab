@@ -10,6 +10,7 @@ import io.seedmatic.rke2lab.manifests.contract.FloxAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.ManifestAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.ManifestLayer;
+import io.seedmatic.rke2lab.manifests.ingress.Funnel;
 import io.seedmatic.rke2lab.manifests.ingress.FunnelLeaf;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import io.seedmatic.rke2lab.manifests.units.runtime.SeedInclusterManifestsUnit;
@@ -90,13 +91,14 @@ public final class FunnelCertRestoreManifestsUnit extends AbstractManifestsUnit 
 
   @Override
   protected void doSynthesize(final Construct scope, final ManifestsUnitContext context) {
-    volumeIntention(scope, context);
+    final String cluster = context.nodeEnvContext().bootstrapIdentity().clusterName();
+    volumeIntention(scope, cluster);
     persistentVolumeClaim(scope);
     serviceAccount(scope);
     role(scope);
     roleBinding(scope);
-    for (final FunnelLeaf funnel : FunnelLeaf.values()) {
-      restoreJob(scope, funnel);
+    for (final FunnelLeaf leaf : FunnelLeaf.values()) {
+      restoreJob(scope, Funnel.of(cluster, leaf));
     }
   }
 
@@ -120,8 +122,7 @@ public final class FunnelCertRestoreManifestsUnit extends AbstractManifestsUnit 
    * <p>See {@code docs/architecture/cluster-api/pac-in-cluster-render-spec.adoc} §
    * funnel-node-affinity.
    */
-  private void volumeIntention(final Construct scope, final ManifestsUnitContext context) {
-    final String cluster = context.nodeEnvContext().bootstrapIdentity().clusterName();
+  private void volumeIntention(final Construct scope, final String cluster) {
     final ApiObject intention =
         new ApiObject(
             scope,
@@ -293,57 +294,46 @@ public final class FunnelCertRestoreManifestsUnit extends AbstractManifestsUnit 
    * dependsOn} this unit, so Flux waits for this Job to COMPLETE before the operator provisions any
    * proxy.
    */
-  private void restoreJob(final Construct scope, final FunnelLeaf funnel) {
-    // One-time migration for the incumbent: the pre-subdir backup wrote the flat
-    // /persist/state.yaml.
-    // Move it into this leaf's subdir so the restore below finds it (re-attach + cert reuse on the
-    // first per-leaf grow instead of re-issuing). Empty for a funnel with no legacy flat state.
-    final String migrateLegacy =
-        funnel.adoptsLegacyFlatState()
-            ? """
-            if [ ! -e /persist/%s/state.yaml ] && [ -s /persist/state.yaml ]; then
-              echo "migrating legacy flat /persist/state.yaml -> /persist/%s/state.yaml"
-              mv /persist/state.yaml /persist/%s/state.yaml
-            fi
-            """
-                .formatted(funnel.leaf(), funnel.leaf(), funnel.leaf())
-            : "";
+  private void restoreJob(final Construct scope, final Funnel funnel) {
     final String script =
         """
         set -euo pipefail
         mkdir -p /persist/%s
-        %s
         if [ -s /persist/%s/state.yaml ]; then
           echo "restoring saved tailscale funnel state into %s"
           # Strip the embedded metadata.namespace: a backup captured under a PRIOR namespace (the
           # persist PV is Retain, so it survives a namespace rename like ingress-system ->
           # tailscale-system) would otherwise make `kubectl apply -n %s` fail "namespace from the
           # provided object does not match". Namespace-agnostic — the apply -n places it correctly.
-          yq 'del(.metadata.namespace)' /persist/%s/state.yaml | kubectl apply -n %s -f -
+          # The NAME is rewritten too: a backup taken before the funnel identity became per-cluster
+          # carries the old bare-leaf Secret name, and applying it under that name would seed a Secret
+          # no ProxyClass pins.
+          yq 'del(.metadata.namespace) | .metadata.name = "%s"' /persist/%s/state.yaml \\
+            | kubectl apply -n %s -f -
         else
           echo "no saved funnel state for %s on the persist volume — clean first grow"
         fi
         """
             .formatted(
-                funnel.leaf(),
-                migrateLegacy,
-                funnel.leaf(),
+                funnel.persistSubdir(),
+                funnel.persistSubdir(),
                 funnel.stateSecret(),
                 NAMESPACE,
-                funnel.leaf(),
+                funnel.stateSecret(),
+                funnel.persistSubdir(),
                 NAMESPACE,
-                funnel.leaf());
+                funnel.hostname());
     final String floxImage = ManifestSynthesisContext.current().floxDebugPolicy().prodImage();
     final ApiObject jobObject =
         new ApiObject(
             scope,
-            "job-funnel-restore-" + funnel.leaf(),
+            "job-funnel-restore-" + funnel.persistSubdir(),
             ApiObjectProps.builder()
                 .apiVersion("batch/v1")
                 .kind("Job")
                 .metadata(
                     ApiObjectMetadata.builder()
-                        .name("funnel-cert-restore-" + funnel.leaf())
+                        .name("funnel-cert-restore-" + funnel.persistSubdir())
                         .namespace(NAMESPACE)
                         .annotations(
                             packageProfile.packageAnnotations(

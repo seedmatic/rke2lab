@@ -8,6 +8,7 @@ import io.seedmatic.rke2lab.manifests.contract.FloxAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.ManifestAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.ManifestLayer;
+import io.seedmatic.rke2lab.manifests.ingress.Funnel;
 import io.seedmatic.rke2lab.manifests.ingress.FunnelLeaf;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import java.util.List;
@@ -72,14 +73,16 @@ public final class FunnelStatePersistenceManifestsUnit extends AbstractManifests
     serviceAccount(scope);
     role(scope);
     roleBinding(scope);
-    for (final FunnelLeaf funnel : FunnelLeaf.values()) {
+    final String cluster = context.nodeEnvContext().bootstrapIdentity().clusterName();
+    for (final FunnelLeaf leaf : FunnelLeaf.values()) {
+      final Funnel funnel = Funnel.of(cluster, leaf);
       proxyClass(scope, funnel);
       backupJob(scope, funnel);
     }
   }
 
   /** Per-funnel ProxyClass pinning TS_KUBE_SECRET to that funnel's stable state Secret. */
-  private void proxyClass(final Construct scope, final FunnelLeaf funnel) {
+  private void proxyClass(final Construct scope, final Funnel funnel) {
     final ApiObject proxyClass =
         new ApiObject(
             scope,
@@ -217,7 +220,7 @@ public final class FunnelStatePersistenceManifestsUnit extends AbstractManifests
    * backup is never clobbered with a cert-less state. On a re-grow the seeded Secret already
    * carries a valid cert (the proxy reuses it, zero ACME issuance) and the wait returns at once.
    */
-  private void backupJob(final Construct scope, final FunnelLeaf funnel) {
+  private void backupJob(final Construct scope, final Funnel funnel) {
     final String script =
         """
         set -euo pipefail
@@ -243,7 +246,7 @@ public final class FunnelStatePersistenceManifestsUnit extends AbstractManifests
         kubectl get -n "$ns" secret "$secret" -o yaml | yq 'del(.metadata.namespace) | del(.metadata.managedFields) | del(.metadata.resourceVersion) | del(.metadata.uid) | del(.metadata.creationTimestamp) | del(.metadata.ownerReferences) | del(.metadata.annotations."kubectl.kubernetes.io/last-applied-configuration") | del(.status)' > "$dir/state.yaml"
         echo "backed up funnel state (with cert) to $dir/state.yaml"
         """
-            .formatted(NAMESPACE, funnel.stateSecret(), funnel.leaf());
+            .formatted(NAMESPACE, funnel.stateSecret(), funnel.persistSubdir());
     final String floxImage = ManifestSynthesisContext.current().floxDebugPolicy().prodImage();
     final ApiObject jobObject =
         new ApiObject(

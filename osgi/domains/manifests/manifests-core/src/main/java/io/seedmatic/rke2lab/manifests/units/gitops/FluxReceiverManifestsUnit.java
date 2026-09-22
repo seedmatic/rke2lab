@@ -3,6 +3,7 @@ package io.seedmatic.rke2lab.manifests.units.gitops;
 import io.seedmatic.rke2lab.manifests.AbstractManifestsUnit;
 import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
+import io.seedmatic.rke2lab.manifests.ingress.Funnel;
 import io.seedmatic.rke2lab.manifests.ingress.FunnelLeaf;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import io.seedmatic.rke2lab.manifests.units.cluster.ClusterRefs;
@@ -61,9 +62,6 @@ public final class FluxReceiverManifestsUnit extends AbstractManifestsUnit {
    */
   public static final String WEBHOOK_TOKEN_SECRET = "flux-webhook-token";
 
-  /** The Tailscale MagicDNS leaf; the funnel URL is https://<this>.<tailnet>.ts.net. */
-  private static final String FUNNEL_HOSTNAME = "flux-webhook";
-
   private final PackageMetadataProfile packageProfile =
       new PackageMetadataProfile("gitops", "flux-receiver");
 
@@ -75,7 +73,10 @@ public final class FluxReceiverManifestsUnit extends AbstractManifestsUnit {
   protected void doSynthesize(final Construct scope, final ManifestsUnitContext context) {
     createTokenReplicaStub(scope);
     createReceiver(scope);
-    createFunnelIngress(scope);
+    createFunnelIngress(
+        scope,
+        Funnel.of(
+            context.nodeEnvContext().bootstrapIdentity().clusterName(), FunnelLeaf.FLUX_WEBHOOK));
   }
 
   private void createTokenReplicaStub(final Construct scope) {
@@ -158,7 +159,7 @@ public final class FluxReceiverManifestsUnit extends AbstractManifestsUnit {
         NAMESPACE);
   }
 
-  private void createFunnelIngress(final Construct scope) {
+  private void createFunnelIngress(final Construct scope, final Funnel funnel) {
     final ApiObject ingress =
         new ApiObject(
             scope,
@@ -184,7 +185,7 @@ public final class FluxReceiverManifestsUnit extends AbstractManifestsUnit {
                                     "tailscale.com/funnel",
                                     "true",
                                     "tailscale.com/proxy-class",
-                                    FunnelLeaf.FLUX_WEBHOOK.proxyClass())))
+                                    funnel.proxyClass())))
                         .build())
                 .build());
     ingress.addJsonPatch(
@@ -195,7 +196,7 @@ public final class FluxReceiverManifestsUnit extends AbstractManifestsUnit {
                 "tailscale",
                 // tls.hosts[0] is the MagicDNS leaf → https://flux-webhook.<tailnet>.ts.net.
                 "tls",
-                new Object[] {Map.of("hosts", new Object[] {FUNNEL_HOSTNAME})},
+                new Object[] {Map.of("hosts", new Object[] {funnel.hostname()})},
                 "defaultBackend",
                 Map.of(
                     "service",

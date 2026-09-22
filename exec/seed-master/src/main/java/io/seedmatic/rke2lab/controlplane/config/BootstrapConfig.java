@@ -50,6 +50,15 @@ public record BootstrapConfig(
   // rather than the LAN mDNS <host>.local. Package-visible so the ghapp CLI pre-fills the App
   // registration form's webhook URL with the same funnel FQDN the grow reconciles to.
   static final String DEFAULT_TAILNET = "mammoth-skate.ts.net";
+
+  /**
+   * The cluster whose funnel the GitHub App's single webhook URL points at, for the standalone
+   * pre-fill (`ghapp create`) that runs BEFORE any App or config exists. Per-cluster funnels mean
+   * each cluster has its own PaC door, but an App has one webhook — so this names the management
+   * one, the same deployment-default nature as DEFAULT_TAILNET beside it.
+   */
+  static final String DEFAULT_CLUSTER = "bioskop-mgmt";
+
   private static final URI DEFAULT_API_ENDPOINT = URI.create("https://10.66.106.10:6443");
   private static final boolean DEFAULT_AUTOMOUNT = true;
   private static final int DEFAULT_SYSTEMD_ADAPTER_DBUS_PORT = 12434;
