@@ -6,9 +6,9 @@ data:
     rbac.authorization.k8s.io/v1|Role|tailscale-system|funnel-state
     rbac.authorization.k8s.io/v1|RoleBinding|tailscale-system|funnel-state
     tailscale.com/v1alpha1|ProxyClass||bioskop-wrkld-pipelines-webhook
-    batch/v1|Job|tailscale-system|funnel-cert-backup-PIPELINES_WEBHOOK
+    batch/v1|Job|tailscale-system|funnel-cert-backup-pipelines-webhook
     tailscale.com/v1alpha1|ProxyClass||bioskop-wrkld-flux-webhook
-    batch/v1|Job|tailscale-system|funnel-cert-backup-FLUX_WEBHOOK
+    batch/v1|Job|tailscale-system|funnel-cert-backup-flux-webhook
 kind: ConfigMap
 metadata:
   annotations:
