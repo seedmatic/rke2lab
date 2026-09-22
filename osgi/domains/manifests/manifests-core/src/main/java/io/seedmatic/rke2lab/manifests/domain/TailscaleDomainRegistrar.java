@@ -33,7 +33,12 @@ public final class TailscaleDomainRegistrar implements ManifestsDomainRegistrar 
   public ManifestsDomain domain() {
     return new ManifestsDomain(
         ManifestDomainCatalog.TAILSCALE,
-        List.of(),
+        // runtime: the funnel-cert unit dependsOn runtime/seed-incluster, which is what turns its
+        // VolumeIntention into the ZFSVolume + PV its PVC binds against. A unit edge may not cross
+        // a
+        // domain boundary the DOMAIN does not declare, so the domain edge states it too. No cycle —
+        // runtime depends on cluster + platform, never on tailscale.
+        List.of(ManifestDomainCatalog.RUNTIME),
         List.of(
             new TailscaleSystemNamespaceManifestsUnit(),
             new FunnelCertRestoreManifestsUnit(),
