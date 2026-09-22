@@ -11,6 +11,7 @@ import io.seedmatic.rke2lab.manifests.contract.ManifestAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.ManifestLayer;
 import io.seedmatic.rke2lab.manifests.ingress.Funnel;
+import io.seedmatic.rke2lab.manifests.ingress.FunnelCertIssuance;
 import io.seedmatic.rke2lab.manifests.ingress.FunnelLeaf;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import io.seedmatic.rke2lab.manifests.units.runtime.SeedInclusterManifestsUnit;
@@ -298,17 +299,36 @@ public final class FunnelCertRestoreManifestsUnit extends AbstractManifestsUnit 
     final String script =
         """
         set -euo pipefail
-        mkdir -p /persist/%s
-        if [ -s /persist/%s/state.yaml ]; then
+        dir=/persist/%s
+        mkdir -p "$dir"
+        if [ -s "$dir/state.yaml" ]; then
           echo "restoring saved tailscale funnel state into %s"
+          # A persisted cert is worth seeding ONLY if it is ours and from the current issuer. Keeping a
+          # mismatched one is worse than keeping none: tailscaled renews on DATES alone — it never
+          # compares the issuer, and the ACME directory URL is merely logged (feature/acme:
+          # shouldStartDomainRenewal is ARI-or-expiry) — so the wrong cert would be served for the rest
+          # of its ~90 days instead of replaced. Dropped, tailscaled mints a fresh one on first serve.
+          #
+          # Two mismatches, one rule. A different Let's Encrypt posture (the staging<->production flip),
+          # or a cert for another hostname (the funnel rename, whose old <fqdn>.crt would otherwise
+          # linger forever). Only the cert keys go: the node key stays, so the proxy returns as the SAME
+          # tailnet device and the purge has nothing to reclaim — one issuance, no identity churn.
+          want=%s
+          have="$(cat "$dir/issuance" 2>/dev/null || echo UNKNOWN)"
+          if [ "$have" = "$want" ]; then
+            keep='.data |= with_entries(select((.key | test("[.](crt|key)$") | not) or (.key | test("^%s[.]"))))'
+          else
+            echo "the persisted cert was issued under $have but the posture is $want — dropping it"
+            keep='.data |= with_entries(select(.key | test("[.](crt|key)$") | not))'
+          fi
           # Strip the embedded metadata.namespace: a backup captured under a PRIOR namespace (the
           # persist PV is Retain, so it survives a namespace rename like ingress-system ->
-          # tailscale-system) would otherwise make `kubectl apply -n %s` fail "namespace from the
-          # provided object does not match". Namespace-agnostic — the apply -n places it correctly.
-          # The NAME is rewritten too: a backup taken before the funnel identity became per-cluster
-          # carries the old bare-leaf Secret name, and applying it under that name would seed a Secret
-          # no ProxyClass pins.
-          yq 'del(.metadata.namespace) | .metadata.name = "%s"' /persist/%s/state.yaml \\
+          # tailscale-system) would otherwise fail the apply with "namespace from the provided object
+          # does not match". Namespace-agnostic — the apply -n places it correctly. The NAME is
+          # rewritten too: a backup taken before the funnel identity became per-cluster carries the old
+          # bare-leaf Secret name, and applying it under that name would seed a Secret no ProxyClass
+          # pins.
+          yq "del(.metadata.namespace) | .metadata.name = \\"%s\\" | $keep" "$dir/state.yaml" \\
             | kubectl apply -n %s -f -
         else
           echo "no saved funnel state for %s on the persist volume — clean first grow"
@@ -316,11 +336,10 @@ public final class FunnelCertRestoreManifestsUnit extends AbstractManifestsUnit 
         """
             .formatted(
                 funnel.persistSubdir(),
-                funnel.persistSubdir(),
                 funnel.stateSecret(),
-                NAMESPACE,
+                FunnelCertIssuance.current().name(),
+                funnel.hostname(),
                 funnel.stateSecret(),
-                funnel.persistSubdir(),
                 NAMESPACE,
                 funnel.hostname());
     final String floxImage = ManifestSynthesisContext.current().floxDebugPolicy().prodImage();

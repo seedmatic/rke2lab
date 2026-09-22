@@ -9,6 +9,7 @@ import io.seedmatic.rke2lab.manifests.contract.ManifestAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.ManifestLayer;
 import io.seedmatic.rke2lab.manifests.ingress.Funnel;
+import io.seedmatic.rke2lab.manifests.ingress.FunnelCertIssuance;
 import io.seedmatic.rke2lab.manifests.ingress.FunnelLeaf;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import java.util.List;
@@ -245,8 +246,18 @@ public final class FunnelStatePersistenceManifestsUnit extends AbstractManifests
         kubectl wait --for="jsonpath={.data.${esc}}" -n "$ns" "secret/${secret}" --timeout=900s
         kubectl get -n "$ns" secret "$secret" -o yaml | yq 'del(.metadata.namespace) | del(.metadata.managedFields) | del(.metadata.resourceVersion) | del(.metadata.uid) | del(.metadata.creationTimestamp) | del(.metadata.ownerReferences) | del(.metadata.annotations."kubectl.kubernetes.io/last-applied-configuration") | del(.status)' > "$dir/state.yaml"
         echo "backed up funnel state (with cert) to $dir/state.yaml"
+        # Record WHICH Let's Encrypt environment issued this cert, beside the state. The restore
+        # compares it to the posture in force and discards a cert from the other one — the only way a
+        # staging<->production flip ever gets a matching cert, because tailscaled renews on DATES
+        # alone and never compares the issuer (feature/acme: shouldStartDomainRenewal is
+        # ARI-or-expiry; the ACME directory URL is merely logged).
+        printf '%%s\\n' '%s' > "$dir/issuance"
         """
-            .formatted(NAMESPACE, funnel.stateSecret(), funnel.persistSubdir());
+            .formatted(
+                NAMESPACE,
+                funnel.stateSecret(),
+                funnel.persistSubdir(),
+                FunnelCertIssuance.current().name());
     final String floxImage = ManifestSynthesisContext.current().floxDebugPolicy().prodImage();
     final ApiObject jobObject =
         new ApiObject(

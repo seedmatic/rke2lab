@@ -19,10 +19,13 @@ package io.seedmatic.rke2lab.manifests.ingress;
  * #current} back to {@link #PRODUCTION} turns verification on by construction, rather than relying
  * on someone remembering the other half.
  *
- * <p>⚠️ What it still cannot do for you: the persisted funnel state will hold a STAGING cert, which
- * looks perfectly valid to the proxy, so it may keep serving it instead of requesting a production
- * one. Purge the cert from the persisted state when flipping back. See {@code
- * docs/architecture/cluster-api/pac-in-cluster-render-spec.adoc} § funnel-durability.
+ * <p>Flipping it is the WHOLE gesture, including the cert already on disk. tailscaled renews on
+ * dates alone and never compares the issuer, so a persisted staging cert would otherwise be served
+ * for the rest of its ~90 days with the posture already back on production. So the backup Job
+ * records this value beside the state and the restore Job drops a cert that does not match it —
+ * keeping the node key, so the proxy still returns as the same tailnet device. One issuance, no
+ * identity churn. See {@code docs/architecture/cluster-api/pac-in-cluster-render-spec.adoc} §
+ * funnel-durability.
  *
  * <p>Lives in the dual-realm {@code manifests.ingress} face (like {@link FunnelLeaf} and {@link
  * PacWebhookFunnel}) because both realms read it: the manifests units render the operator's toggle,

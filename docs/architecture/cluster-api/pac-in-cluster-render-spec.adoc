@@ -421,10 +421,17 @@ So these are a PAIR, and they must be flipped back TOGETHER:
 Do NOT leave one without the other: staging LE + verify-on ⇒ no delivery, so no render; production LE +
 verify-off ⇒ a working-but-unverified webhook that silently accepts a MITM.
 
-WARNING: flipping back is not just those two. The persisted state will hold a STAGING cert, and it still
-looks valid to the proxy — so it may keep serving it instead of requesting a production one. Purge the
-cert from the persisted state (or the whole `state.yaml`) when flipping back, or the webhook keeps
-presenting an untrusted cert with the toggle already at `false`.
+The cert already on disk is handled, and it had to be: tailscaled renews on DATES alone — ARI, else 2/3
+of the cert's lifetime — and never compares the issuer, since the ACME directory URL is only logged
+(`feature/acme`, `shouldStartDomainRenewal`). A persisted staging cert would therefore be served for the
+rest of its ~90 days with the posture already back on `PRODUCTION`. So the *backup* Job records the
+posture beside the state (`/persist/<leaf>/issuance`) and the *restore* Job drops any cert that does not
+match the posture in force.
+
+The same rule covers a funnel RENAME: a cert whose key does not start with this funnel's hostname is
+dropped too, so the old `<fqdn>.crt` cannot linger. Only the cert keys (`*.crt` / `*.key`) go — the node
+key stays, so the proxy returns as the SAME tailnet device and the purge has nothing to reclaim. The
+flip costs exactly one issuance and no identity churn.
 
 The two halves now have ONE owner: `FunnelCertIssuance.current()`, in the dual-realm
 `manifests.ingress` face. The tailscale render projects it into `useLetsEncryptStagingEnvironment`; the

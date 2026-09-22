@@ -119,9 +119,9 @@ public final class TailscaleManifestsUnit extends AbstractManifestsUnit {
                 # cannot be half-flipped, and returning to production turns verification back on by
                 # construction.
                 #
-                # ⚠️ The one thing the enum cannot do for you: the persisted funnel state will hold a
-                # STAGING cert, which looks valid to the proxy, so it may keep serving it instead of
-                # requesting a production one. Purge it from the state when flipping back.
+                # The cert already on disk is covered too: the backup records this posture beside the
+                # state and the restore drops a cert that does not match it, keeping the node key. So
+                # flipping this line IS the whole gesture.
                 # See docs .../pac-in-cluster-render-spec.adoc § funnel-durability.
                 useLetsEncryptStagingEnvironment: %s
                 """
