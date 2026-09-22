@@ -1,5 +1,5 @@
 {
-  "21:19:20.923 INFO  i.s.r.o.r.f.FrameworkLauncher - OSGi runtime booted": "45 bundle(s) installed and started",
+  "21:27:55.473 INFO  i.s.r.o.r.f.FrameworkLauncher - OSGi runtime booted": "45 bundle(s) installed and started",
   "clusters": {
     "bioskop-mgmt": 0,
     "bioskop-wrkld": 1,
@@ -456,7 +456,7 @@
   "segments": [
     {
       "cidr": "192.168.1.128/29",
-      "name": "bioskop-mgmt-cluster-lan",
+      "name": "bioskop-mgmt-lan",
       "asn": 64512,
       "hosts": []
     },
@@ -468,7 +468,7 @@
     },
     {
       "cidr": "10.80.0.0/21",
-      "name": "bioskop-mgmt-cluster-net",
+      "name": "bioskop-mgmt-net",
       "asn": 64512,
       "gateway": "10.80.0.1",
       "dhcp": "10.80.0.2-10.80.0.9,10.80.0.31-10.80.7.254",
@@ -482,7 +482,7 @@
     },
     {
       "cidr": "192.168.1.144/28",
-      "name": "bioskop-wrkld-cluster-lan",
+      "name": "bioskop-wrkld-lan",
       "asn": 64513,
       "hosts": []
     },
@@ -494,7 +494,7 @@
     },
     {
       "cidr": "10.80.8.0/21",
-      "name": "bioskop-wrkld-cluster-net",
+      "name": "bioskop-wrkld-net",
       "asn": 64513,
       "gateway": "10.80.8.1",
       "dhcp": "10.80.8.2-10.80.8.9,10.80.8.31-10.80.15.254",
@@ -533,7 +533,7 @@
     },
     {
       "cidr": "192.168.1.176/29",
-      "name": "nikopol-mgmt-cluster-lan",
+      "name": "nikopol-mgmt-lan",
       "asn": 64514,
       "hosts": []
     },
@@ -545,7 +545,7 @@
     },
     {
       "cidr": "10.80.16.0/21",
-      "name": "nikopol-mgmt-cluster-net",
+      "name": "nikopol-mgmt-net",
       "asn": 64514,
       "gateway": "10.80.16.1",
       "dhcp": "10.80.16.2-10.80.16.9,10.80.16.31-10.80.23.254",
@@ -559,7 +559,7 @@
     },
     {
       "cidr": "192.168.1.192/28",
-      "name": "nikopol-wrkld-cluster-lan",
+      "name": "nikopol-wrkld-lan",
       "asn": 64515,
       "hosts": []
     },
@@ -571,7 +571,7 @@
     },
     {
       "cidr": "10.80.24.0/21",
-      "name": "nikopol-wrkld-cluster-net",
+      "name": "nikopol-wrkld-net",
       "asn": 64515,
       "gateway": "10.80.24.1",
       "dhcp": "10.80.24.2-10.80.24.9,10.80.24.31-10.80.31.254",

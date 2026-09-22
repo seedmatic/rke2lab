@@ -218,7 +218,7 @@ public class NetplanBlueprintScenario
         final ClusterNetworkBlueprint bp = blueprintOf(cluster, "master");
         segments.add(
             Segment.attribution(
-                bp.lan().nodeCidr().toString(), cluster + "-cluster-lan", bp.bgpLocalAsn()));
+                bp.lan().nodeCidr().toString(), cluster + "-lan", bp.bgpLocalAsn()));
         segments.add(
             Segment.attribution(bp.lan().lbCidr().toString(), cluster + "-lb", bp.bgpLocalAsn()));
 
@@ -237,7 +237,7 @@ public class NetplanBlueprintScenario
         segments.add(
             new Segment(
                 bp.host().clusterCidr().toString(),
-                cluster + "-cluster-net",
+                cluster + "-net",
                 bp.bgpLocalAsn(),
                 Optional.of(bp.host().clusterGatewayInetaddr().getHostAddress()),
                 Optional.of(bp.wan().dhcpRange()),
