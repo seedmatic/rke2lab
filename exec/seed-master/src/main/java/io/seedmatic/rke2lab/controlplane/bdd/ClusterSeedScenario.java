@@ -67,6 +67,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
 import java.util.Hashtable;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -848,7 +849,10 @@ public class ClusterSeedScenario
       // the in-cluster Secret (rendered by the manifests HA layer) uses the kube-vip VIP instead.
       final String server =
           "https://" + config.clusterName() + "-" + config.nodeName() + ".local:6443";
-      final String kubeconfig = admin.kubeconfig(config.clusterName(), server);
+      final String kubeconfig =
+          admin.kubeconfig(
+              config.clusterName(),
+              List.of(new AdminCredentials.Access(config.clusterName(), server)));
       final Path ref = config.kubeconfigRef();
       try {
         Files.createDirectories(ref.toAbsolutePath().getParent());
