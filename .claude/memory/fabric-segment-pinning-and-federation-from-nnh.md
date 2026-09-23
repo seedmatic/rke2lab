@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: reference
   originSessionId: 0b18b1f3-3eda-496a-865d-1fbc722b0d30
-  modified: 2026-09-23T15:04:57.218Z
+  modified: 2026-09-23T16:01:45.121Z
 ---
 
 `nnh` (`/private/var/lib/git/seedmatic/nnh.d/main`) est le **premier locataire** du segment
@@ -59,6 +59,26 @@ locataires DHCP, ont pris de **nouvelles** adresses. Deux casses distinctes :
 ★ Le test à appliquer à rke2lab : **a-t-on un consommateur résolu-une-fois ou annoncé-par-nom ?**
 Les URLs de pairs etcd en sont — mais l'etcd est effacé à chaque cold start, donc le risque est
 plus faible que chez nnh. À trancher explicitement, pas à supposer.
+
+## ✅ FAIT le 2026-09-23 — bioskop a rejoint la fabric (ndh `7ddd6cef`)
+
+Worktree `ndh.d/feature/bioskop-fabric-address`, branche `feature/bioskop-fabric-address`,
+**non poussée**. bioskop a gagné `dynamicCidr` / `dhcpRange` / `linkCidr` / `hostAddress` et un
+`vzHostAddress` de segment (`172.16.7.253`), **aux mêmes offsets que nikopol** — les deux entrées
+partagent désormais UNE forme. Vérifié par évaluation : les 3 spans, le `/30` sur `lan-br`, la
+config `bare-br` rendue, les deux configs darwin et le toplevel de `bioskop-nixos`.
+
+★ Le module n'a **rien** eu besoin de gagner : `hasLink` signifiait déjà « un vz-host joint par un
+`/30` », seuls ses commentaires disaient « corp Mac ». Déclarer les champs active les trois effets
+d'un coup. Ce qui **ne** se généralisait pas par la donnée, c'est l'interface — voir
+[[darwin-nic-service-not-device]].
+
+⚠️ **La numérotation reste l'ancienne**, et le passage aux `/20` dérivés doit bouger les DEUX hôtes
+dans le même changement : le `netCidr` cible de bioskop (`172.16.0.0/21`) **contient** le `/25`
+vivant de nikopol, donc une demi-migration rend `172.16.6.x` on-link sur bioskop et masque la route
+tailnet vers le segment de nikopol (→ `nnh-inlet.nikopol` cassé depuis bioskop). Ce renumérotage
+atteint aussi les **cinq littéraux épinglés de nnh** et exige un redéploiement du démon de chaque
+vz-host. Consigné dans `docs/network-topology-c4.adoc#target-carve`.
 
 ## La convention de carve — ⚠️ elle entre en conflit avec le nouveau plan
 
