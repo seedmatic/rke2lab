@@ -534,13 +534,16 @@ The simplification, stated as removals — each is a red box above with no succe
 
 | the bbox as an addressing authority for cluster nodes (a static reservation per node on a residential
   router, reconciled from the blueprint)
-| `dhcp-host` lines in `bare-br`'s `raw.dnsmasq` — the mechanism rke2lab already runs on `vmnet0`
+| *nothing* — `bare-br`'s dnsmasq hands out a DYNAMIC address. The static requirement is not moved to
+  another authority, it is dropped: see <<mac-scheme-dies>>
 
 | `LAN_DOMAIN = "lan"` — the router-served zone, the only suffix an in-cluster pod could resolve
 | the `.<host>` zone `bare-br`'s dnsmasq serves; a pod's resolver *is* that dnsmasq, via its lease
 
 | `nodeMdnsFqdn` (`<cluster>-<node>.local`) and the shared-L2 adjacency it needed
-| the segment FQDN, resolved through the tailnet split-DNS (`/etc/resolver/<domain>` on macOS)
+| a CLUSTER-scoped name for the VIP, published as a `host-record` on `bare-br` — see
+  <<deterministic-vip-name>>. Not a deletion: a substitution at equal value, and a strictly better
+  one, because the name stops naming a node
 
 | the `hostId*48` term in the LAN carve — `hostId` as a coordinate *inside* one `/24`
 | `hostId` lifted into the third octet: one segment per bare-metal
@@ -555,7 +558,75 @@ The simplification, stated as removals — each is a red box above with no succe
 | an explicit two-half split: an address tells you which link it is on
 |===
 
-What *survives*, unchanged in role: `vmnet0` and the whole per-cluster `10.80.x` plane (isolated,
+[[deterministic-vip-name]]
+=== The deterministic name moves from the node to the CLUSTER
+
+Dropping the static-address requirement (above) leaves one thing unreplaced: a *name*. `nodeMdnsFqdn`
+was the only deterministic handle on the API, and it was keyed on a node — which is why it never
+described a workload cluster, whose nodes are CAPI cattle named `<cluster>-control-plane-<random>`.
+
+The substitution: *one name per cluster, resolving to that cluster's kube-vip VIP.* The VIP is already
+a pure function of `clusterId`, already the endpoint CAPI's clustercache dials, and already survives
+the node being replaced — so a name pointing at it inherits all three properties and depends on no
+node identity at all. That is strictly more than the old name gave, not less.
+
+==== Why the transport cannot be mDNS
+
+Worth stating, because "publish it over mDNS" is the obvious first answer and it is *blocked at both
+ends*:
+
+* *mDNS is link-local multicast.* Today `<cluster>-<node>.local` resolves from the operator's Mac only
+  because the node sits on the home LAN, sharing L2 with it. Once the node moves behind `bare-br` that
+  adjacency is gone — which this view already records as the thing `nodeMdnsFqdn` "needed".
+* *The hinge cannot publish an alias.* rke2lab's nodes run **avahi** (`nixos/host-access.nix`), but the
+  NixOS guest runs **systemd-resolved** and ndh disables avahi deliberately
+  (`ndh/modules/nixos/avahi.nix`, `mkForce false`, after a split-brain between the two responders).
+  resolved's mDNS responder publishes the machine's *own* hostname and addresses; it has no notion of
+  an alias for a third party. Publishing from the hinge would mean re-opening a wound ndh closed.
+
+==== The mechanism, which already exists at both ends
+
+A dnsmasq **`host-record`** on `bare-br`: a name bound to an arbitrary address, with no MAC and no
+reservation — the one form that fits an address nothing holds a lease on. `SegmentHost(name, mac?,
+ip)` models the MAC-less variant *explicitly*, for exactly this shape; §<<eval-cycle>> notes both ends
+of that contract exist and have never been joined. This is the first consumer that genuinely needs it.
+
+Two properties fall out, and both are worth more than the name itself:
+
+. *One declaration, two audiences.* `bare-br`'s dnsmasq is not only the operator's resolver via
+  split-DNS — it is **every pod's first resolver**, because the kubelet hands pods
+  `/run/systemd/resolve/resolv.conf` whose first upstream is the bridge, and CoreDNS forwards to
+  `/etc/resolv.conf`. Measured 2026-09-23 while chasing a pod that resolved `bioskop-nixos` to its own
+  loopback. So the same `host-record` serves in-cluster consumers and the operator — replacing the
+  `.lan` FQDN workaround that case needed with the normal form.
+. *Naming becomes tailnet-independent.* The resolver is the hinge, which stays on the home LAN
+  (`192.168.1.130`), so `/etc/resolver/<host>` on macOS reaches it directly. Resolution therefore works
+  when the tailnet does not — recovering half of what the LAN context gave (401 in 6.5 ms, answering
+  straight *through* a cold start, where the VIP was mute for minutes). The other half, a *route* to
+  the VIP, still needs either a static route via the hinge or the tailnet Connector.
+
+==== What it simplifies downstream
+
+`tlsSanSuperset` collapses from six mDNS FQDNs enumerated out of `CANONICAL_NODE_NAMES` to **one**
+cluster name, plus the VIP and the loopbacks. The certificate becomes a pure function of the cluster:
+no roster, no node name, so *replacing a node stops touching it at all*. `NamePlan` loses
+`nodeMdnsFqdn` and gains the cluster name.
+
+The operator kubeconfig consolidates the same way — one deterministic name per cluster, with the
+by-address VIP context kept as the fallback that needs no resolver at all.
+
+[NOTE]
+.The bootstrap path, stated rather than rediscovered
+====
+After the move, both remaining in-band paths — the VIP and the split-DNS name — depend on machinery
+that a half-born cluster may not be running yet. The out-of-band path is the hinge itself: it keeps its
+home-LAN address, so `ssh bioskop-nixos` then `incus exec` reaches a node that answers nothing else.
+That is acceptable, but it should be the *declared* recovery path, because "how do I get in when it is
+broken" is precisely the property the measurements above showed matters most.
+====
+
+What *survives* in role — though `vmnet0` loses its per-node reservations too
+(<<mac-scheme-dies>>): `vmnet0` and the whole per-cluster `10.80.x` plane (isolated,
 internal, `dns.mode=none`), the VIP, the pod/service CIDRs, and the `lib.networkBlueprint` flake edge.
 This transition does not touch the cluster-internal plane at all — it replaces only the plane that
 made a node reachable from *outside* its own fabric.
@@ -657,8 +728,72 @@ Two gates are open, both found in live state rather than in docs:
   match, so the kubelet set *no* node addresses — see `nixos/network.nix:63-73`).
 . *bioskop's catalog entry has no `dhcpRange`/`dynamicCidr`*, so its dnsmasq auto-ranges the whole
   `/25`. A `bare-br` recreate could then hand a *pinned* address to a DHCP client — the exact failure
-  that stalled the nnh pipeline (`catalog/default.nix:70-79`). rke2lab's addressing is entirely pinned,
-  so this must land **before** the first node attaches.
+  that stalled the nnh pipeline (`catalog/default.nix:70-79`).
++
+NOTE: Dropping the static-address requirement *inverts* this gate rather than closing it. It was "a
+dynamic pool may collide with our pinned addresses"; it is now "the dynamic pool **is** how a node gets
+its address", so the range is no longer a hazard to bound but a span to declare — and the cluster `/24`
+needs one carved inside it, which the table above does not yet show.
+
+One more is open in the CODE, and it must be settled before the carve is frozen:
+
+. *`roleId` is `ClusterRole.of(clusterName).ordinal()`* (`ClusterNetworkBlueprint.java:162`). Widening to
+  `ROLE_BITS = 2` reserves two role slots, but with `ordinal()` the numbers are a function of *position
+  in the enum*: inserting a role before `WRKLD` renumbers every workload cluster's vmnet `/21`, VIP, LB
+  pool, ULA `/56` and MACs. That is the very failure `hostId()` is built to prevent — §<<eval-cycle>>
+  rejects a hash because the property needed is *stability under rename*, and `ordinal()` fails the same
+  test for *edits*. `roleId` needs an explicitly declared number, exactly like `hostId()`; until it has
+  one, the "two spare roles" are a trap rather than headroom.
+
+[[mac-scheme-dies]]
+=== Settled: the MAC scheme dies entirely
+
+The vmnet plane does *not* keep its per-node reservations either, so the decision is not "which plane
+pins addresses" but "nothing does". `GrowNetworkResolver` writes one `dhcp-host=` line per node into
+`raw.dnsmasq`, keyed on the WAN MAC — that goes with the rest, and `rawDnsmasq` reduces to its
+`no-hosts` line alone (which stays: it is what stopped the bridge serving the *host's* `/etc/hosts` to
+every pod).
+
+Nothing was depending on the prediction, which is why this is a deletion and not a redesign:
+
+* the `node-<cluster>` incus profile is *already* documented as "dynamic MAC/IP" for CAPN nodes — the
+  cattle case had quietly opted out long ago;
+* `rke2lab-node-ip` reads `vmnet0`'s address **live** rather than from `node.env`, precisely so the
+  kubelet does not register `cilium_host`;
+* the ULA mirror re-encodes whatever v4 the node actually got (`fd96:…:<CC><RR>::a.b.c.d`).
+
+What dies with it, verified by grep rather than assumed:
+
+[cols="2,3",options="header"]
+|===
+| Dies | Note
+
+| the three MAC derivations — `10:66:6a:4c:<clusterId>:<nodeId>` (LAN),
+  `52:54:00:<clusterId>:<nodeType>:<nodeId>` (WAN), `02:00:00:bb:…` (bridge)
+| their only consumers were the `dhcp-host` lines and the projection
+
+| `nodeNetwork().nodeHostInetaddr()` + its v6 twin — the *predicted* vmnet address
+| its readers are the dying `dhcp-host` line, the projection's per-node entries, and
+  `NetworkTopology.nodeHostInetAddr`/`nodeHostInet6Addr`, which have **no reader at all**
+
+| the projection's `macs` and `leases` sections
+| and with them ndh's `kind = "rke2"` catalog entries, which read `macs.lan` + `ips.lanHost` — this is
+  what actually removes the reservations, since ndh *derives* them (they outlived rke2lab's own
+  enumerator being cut to 2 rows)
+
+| `BlueprintRowEnumerator`, including `RKE2_LAN_MAC_PREFIX`
+| the MAC-prefix ownership check existed to keep non-RKE2 reservations out of scope; with no
+  reservations there is no scope to defend. `DESIRED_COUNT` in the bbox in-container proof goes 2 → 0
+
+| `host(10 + nodeId)` as a vmnet coordinate
+| `nodeId` stops being an *addressing* coordinate anywhere. It survives as **identity** —
+  `RKE2LAB_NODE_{ID,NAME,KIND,HOSTNAME}`, the only node.env values any nixos unit actually reads
+|===
+
+What survives and *gains* weight: `wan().dhcpRange()`, which was the range sitting beside the
+reservations and becomes the mechanism; the VIP, the LB pools and the gateways, which are *service*
+addresses and stay declared; and `SegmentHost`'s MAC-less form, now rke2lab's only shape — and the
+carrier of the cluster VIP name in <<deterministic-vip-name>>.
 
 Ordering, safest first — steps 1 and 2 have no consumer and are reversible; the point of no return is 3:
 
@@ -667,6 +802,8 @@ Ordering, safest first — steps 1 and 2 have no consumer and are reversible; th
 . *the catalog joint*: `raw.dnsmasq` derives from the merged `segments[].hosts` instead of a
   hand-written `staticHosts`. Both ends of that contract already exist — `SegmentHost(name, mac?, ip)`
   models the MAC-less `host-record` form *explicitly* to match ndh — but they have never been joined.
+  Its client is no longer a node reservation (there are none) but the *cluster VIP name* of
+  <<deterministic-vip-name>>: one `host-record` per cluster, serving pods and the operator alike.
 . *rke2lab*: the carve, `lanBridgeParent`, and the `tls-san` + `NamePlan` change, in ONE commit. The
   certificate and the address it certifies cannot ship apart.
 . *re-grow*, management first: single-node, and on-demand by design.
