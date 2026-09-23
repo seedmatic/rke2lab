@@ -7,6 +7,7 @@ import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
 import io.seedmatic.rke2lab.manifests.contract.ManifestAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.ManifestLayer;
+import io.seedmatic.rke2lab.manifests.contract.WorkloadTarget;
 import io.seedmatic.rke2lab.manifests.ingress.Component;
 import io.seedmatic.rke2lab.manifests.ingress.FunnelCertIssuance;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
@@ -14,6 +15,7 @@ import io.seedmatic.rke2lab.manifests.units.cluster.ClusterRefs;
 import io.seedmatic.rke2lab.netplan.contract.ClusterNetworkBlueprint;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 import org.cdk8s.ApiObject;
 import org.cdk8s.ApiObjectMetadata;
 import org.cdk8s.ApiObjectProps;
@@ -167,14 +169,33 @@ public final class TailscaleManifestsUnit extends AbstractManifestsUnit {
     // clear
     // approval without a per-cluster console step (see
     // management-workload-topology.adoc#cp-endpoint-reach).
-    final ClusterNetworkBlueprint blueprint =
-        ClusterNetworkBlueprint.builder()
-            .cluster(clusterName)
-            .node("master")
-            .deriveRecipeModel()
-            .build();
-    final String vipRoute = blueprint.vip().vipHostInetaddr().getHostAddress() + "/32";
-    final String lbRoute = blueprint.loadBalancer().lbCidr().toString();
+    // …AND the same pair for every cluster this one MANAGES. A workload's own Connector cannot
+    // serve
+    // this: it only exists once that cluster is up with its tailscale operator reconciled, which is
+    // precisely when the operator does NOT need the route — the route is wanted while debugging a
+    // cluster that is half-born. The management plane is the one always standing first, and since
+    // it
+    // now reaches a sibling VIP locally over the host (the vmnet supernet route, measured 401 in
+    // 7ms
+    // node-side), it is a valid subnet router for them. The Connector runs as a POD, so this also
+    // depends on cilium masquerading pod egress on vmnet0 — see CiliumConfigManifestsUnit; before
+    // that fix a pod could not reach a sibling VIP at all.
+    //
+    // workloadTargets() is empty on a workload render, so this degrades to "advertise myself" with
+    // no
+    // role test. Duplicate advertisements (a workload later advertising its own VIP too) are
+    // benign:
+    // tailscale elects one primary subnet router per route.
+    final List<String> advertiseRoutes =
+        Stream.concat(
+                Stream.of(clusterName),
+                ManifestSynthesisContext.current().workloadTargets().stream()
+                    .map(WorkloadTarget::clusterName))
+            .distinct()
+            .map(this::blueprintOf)
+            .flatMap(cluster -> cluster.tailnetReachRoutes().stream())
+            .distinct()
+            .toList();
 
     connector.addJsonPatch(
         JsonPatch.add(
@@ -183,7 +204,16 @@ public final class TailscaleManifestsUnit extends AbstractManifestsUnit {
                 "hostname",
                 clusterName + "-controlplane",
                 "subnetRouter",
-                Map.of("advertiseRoutes", List.of(vipRoute, lbRoute)))));
+                Map.of("advertiseRoutes", advertiseRoutes))));
+  }
+
+  /** A cluster's blueprint, derived on its canonical master — the reach set is cluster-scoped. */
+  private ClusterNetworkBlueprint blueprintOf(final String cluster) {
+    return ClusterNetworkBlueprint.builder()
+        .cluster(cluster)
+        .node("master")
+        .deriveRecipeModel()
+        .build();
   }
 
   private void createSecret(final Construct scope) {
