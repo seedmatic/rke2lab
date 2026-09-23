@@ -1,6 +1,6 @@
 ---
 name: fabric-migration-state-and-queue
-description: "État de la migration fabric au 2026-09-23 soir (les deux bare-metals renumérotés et vérifiés vivants) + la file des quatre chantiers suivants, dont la circularité de bootstrap de headscale qui interdit de tout mettre dans la fabric"
+description: "Migration fabric COMPLÈTE au 2026-09-23 soir (deux bare-metals renumérotés, tailnet approuvé, vérifié vivant) + la file des quatre chantiers suivants, dont la circularité de bootstrap de headscale qui interdit de tout mettre dans la fabric"
 metadata: 
   node_type: memory
   type: project
@@ -32,15 +32,22 @@ Commits : rke2lab `966636636` (publie `hosts`, ajout **pur** au blueprint), nnh 
 host-records dnsmasq dérivés), `c34ac787` (les tranches dérivées), `ffd4ed6d` + `a9a6833d`
 (les défauts du deploy), `5ad07a8f` (`vzHostKind` dérivé de `hostProfile.form`).
 
-⚠️ **Reste à faire côté tailnet** : `nix run .#manage-tailnet -- --sync-acl` (dry-run par
-défaut, puis `--yes`). Les annonces sont à jour des deux côtés, mais la netmap du Mac ne porte
-que `172.16.0.0/20` — la `/20` de nikopol n'est pas approuvée.
+✅ **Tailnet fait aussi** (`nix run .#manage-tailnet -- --sync-acl [--yes]`). Vérifié depuis
+bioskop : route `172.16.16/20 → utun4`, `vzhost.nikopol` → `172.16.24.2`, et
+`ssh vzhost.nikopol` → `APL-g4xfl7qv06`. **La migration est complète.**
 
 ★ Les autorisations de CIDR ne sont PAS dans `catalog/tailnet/acl.hujson` (qui n'a que les
 règles par tag, à raison) : elles vivent dans `autoApprovers.routes`, **générés depuis le
 catalogue** par `modules/.common.d/manage-tailnet.d/default.nix` (`routeApprovers`, dérivé des
-`advertiseCidr`). Le fragment rendu porte déjà les deux `/20` → `tag:nixos`. Donc chercher les
-CIDR dans le hujson et conclure à une dérive est une **fausse piste** (je l'ai suivie).
+`advertiseCidr`). Donc chercher les CIDR dans le hujson et conclure à une dérive de l'ACL
+vivante est une **fausse piste** — je l'ai suivie, puis crié au loup sur un `--sync-acl` qui
+« effacerait » des autorisations. Il ne le fait pas : les sous-réseaux passent par
+`autoApprovers`, pas par `acls`.
+
+⚠️⚠️ **Le Mac corp filtre ICMP.** Un `ping 172.16.24.2` échoue à 100 % alors que la route et le
+relayage fonctionnent. Tester la joignabilité en **TCP/ssh**, jamais au ping — sinon on
+diagnostique un problème de routage qui n'existe pas (je l'ai fait, et j'ai soupçonné le gate
+ACL à tort).
 
 Sondes utiles : `tailscale status --json` → `.Peer[].AllowedIPs` (une route de sous-réseau
 approuvée y apparaît ; `PrimaryRoutes` ne dit que « ce pair est primaire », pas « approuvée »)
