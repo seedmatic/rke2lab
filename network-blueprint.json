@@ -655,5 +655,10 @@
   "asns": {
     "64512": "rke2-cluster",
     "65020": "gateway"
+  },
+  "hosts": {
+    "bioskop": 0,
+    "nikopol": 1,
+    "test": 2
   }
 }

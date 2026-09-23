@@ -2,7 +2,10 @@ package io.seedmatic.rke2lab.netplan.contract;
 
 import io.seedmatic.rke2lab.manifests.contract.ClusterRole;
 import java.net.InetAddress;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 
@@ -37,6 +40,30 @@ public record ClusterNetworkBlueprint(
    */
   public static final List<String> CANONICAL_NODE_NAMES =
       List.of("master", "peer1", "peer2", "peer3", "worker1", "worker2");
+
+  /**
+   * The bare-metal hosts and their ids — the ONE table every per-host span derives from: the
+   * cluster id, the vmnet plane, the ULA mirror, the MACs, and (published, so ndh derives it rather
+   * than re-declaring it) each bare-metal's fabric slice.
+   *
+   * <p>Ids are LOAD-BEARING and written explicitly, never derived from position in this map:
+   * nikopol kept id 1 through its rename from alcide, and a reordering that silently reassigned ids
+   * would renumber live networks. {@code test} is the reserved slice a blank/unknown cluster
+   * identity falls into (surveys, tests).
+   *
+   * <p>Ordered ({@link LinkedHashMap}) because it is serialised into {@code
+   * network-blueprint.json}, whose byte-stability is what makes a regeneration reviewable as a
+   * diff.
+   */
+  public static final Map<String, Integer> HOST_IDS = hostIds();
+
+  private static Map<String, Integer> hostIds() {
+    final Map<String, Integer> ids = new LinkedHashMap<>();
+    ids.put("bioskop", 0);
+    ids.put("nikopol", 1);
+    ids.put("test", 2);
+    return Collections.unmodifiableMap(ids);
+  }
 
   /**
    * IPv6 ULA underlay — a deterministic mirror of the IPv4 plan. The /48 global ID is the first 40
@@ -346,17 +373,17 @@ public record ClusterNetworkBlueprint(
   }
 
   private static int hostId(String host) {
-    return switch (host) {
-      case "bioskop" -> 0;
-      case "nikopol" -> 1; // renamed from alcide, keeping same host id
-      case "test" -> 2; // reserved LAN slice for the blank/unknown cluster identity (surveys/tests)
-      default ->
-          throw new IllegalArgumentException(
-              "unknown host '"
-                  + host
-                  + "' — no LAN slice allocated; add it to hostId() + the"
-                  + " addressing plan (only bioskop/nikopol/test are carved into 192.168.1.128/25)");
-    };
+    final Integer id = HOST_IDS.get(host);
+    if (id == null) {
+      throw new IllegalArgumentException(
+          "unknown host '"
+              + host
+              + "' — no slice allocated; add it to HOST_IDS and to the addressing plan (carved"
+              + " hosts: "
+              + String.join(", ", HOST_IDS.keySet())
+              + ")");
+    }
+    return id;
   }
 
   private static int nodeId(String nodeName) {

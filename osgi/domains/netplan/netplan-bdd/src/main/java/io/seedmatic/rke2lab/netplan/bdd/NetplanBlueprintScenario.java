@@ -272,9 +272,20 @@ public class NetplanBlueprintScenario
         asns.put(Integer.toString(asn.number()), asn.asName());
       }
 
+      // The bare-metal host ids, published so ndh DERIVES each bare-metal's fabric slice
+      // (172.16.<hostId*16>.0/20) instead of re-declaring a number this table already fixes. The
+      // direction matters: ndh imports this blueprint at flake-eval time, so the number could not
+      // travel the other way without closing an eval cycle.
       this.metadata =
           new NetworkBlueprintMetadata(
-              clusters, nodes, macPatterns, nodeTypes, allAddressing, segments, asns);
+              clusters,
+              nodes,
+              macPatterns,
+              nodeTypes,
+              allAddressing,
+              segments,
+              asns,
+              ClusterNetworkBlueprint.HOST_IDS);
       return self();
     }
 
@@ -350,7 +361,8 @@ public class NetplanBlueprintScenario
       Map<String, Integer> nodeTypes,
       Map<String, Map<String, NodeAddressing>> addressing,
       List<Segment> segments,
-      Map<String, String> asns) {}
+      Map<String, String> asns,
+      Map<String, Integer> hosts) {}
 
   /**
    * A network span the cluster owns — uniform with ndh's baremetal segments: the attribution triple
