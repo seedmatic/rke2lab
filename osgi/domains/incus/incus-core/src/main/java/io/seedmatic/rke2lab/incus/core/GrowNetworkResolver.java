@@ -6,6 +6,7 @@ import io.seedmatic.rke2lab.netplan.contract.NetplanSynthesisRequest;
 import io.seedmatic.rke2lab.netplan.contract.NetplanSynthesisService;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.stream.Stream;
 
 /**
  * Assembles the flat {@link GrowNetworkView} the host GROW poses on the Pulumi graph — the two NIC
@@ -100,26 +101,44 @@ public final class GrowNetworkResolver {
   }
 
   /**
-   * One dual-stack {@code dhcp-host=<wanMac>,<nodeIpv4>,[<nodeIpv6>],<cluster>-<node>} line per
-   * cluster node, newline-joined. The bracketed IPv6 is the stateful DHCPv6 reservation (see {@code
+   * {@code no-hosts}, then one dual-stack {@code
+   * dhcp-host=<wanMac>,<nodeIpv4>,[<nodeIpv6>],<cluster>-<node>} line per cluster node,
+   * newline-joined. The bracketed IPv6 is the stateful DHCPv6 reservation (see {@code
    * ipv6.dhcp.stateful} above): the node's embedded-v4 ULA, so it deterministically holds the
    * address node-ip names.
+   *
+   * <p>{@code no-hosts} stops this dnsmasq from serving the HOST's {@code /etc/hosts} — dnsmasq's
+   * default, and a leak, because this resolver faces the CLUSTER. NixOS writes {@code 127.0.0.2
+   * <hostname>} there, so the bridge answered {@code bioskop-nixos} with {@code 127.0.0.2} while
+   * the LAN router answered {@code 192.168.1.130} — the same single-label name resolving to the
+   * host or to the asker's own loopback depending on which upstream replied first (both are in a
+   * node's resolv.conf: the bridge via the vmnet DHCP, the router via lan0).
+   *
+   * <p>That race broke CAPN: the workload LXCMachine's remote is {@code
+   * https://bioskop-nixos:8443}, and on the loopback answer CAPN dialled its OWN {@code
+   * --diagnostics-address=:8443}, whose controller-runtime self-signed cert yields "certificate is
+   * valid for localhost, not bioskop-nixos". The instance LAUNCHED (that call won the race) and the
+   * following {@code GetInstanceState} failed — non-determinism that reads as a TLS
+   * misconfiguration and is not one. Nothing is lost: instance names come from {@code
+   * --dhcp-hostsfile}, never from the host's hosts file.
    */
   private String rawDnsmasq(String cluster) {
-    return ClusterNetworkBlueprint.CANONICAL_NODE_NAMES.stream()
-        .map(node -> synthesize(cluster, node))
-        .map(
-            blueprint ->
-                "dhcp-host="
-                    + blueprint.wan().hostMacaddr().value()
-                    + ","
-                    + blueprint.nodeNetwork().nodeHostInetaddr().getHostAddress()
-                    + ",["
-                    + blueprint.nodeNetwork().nodeHostInetaddr6().getHostAddress()
-                    + "],"
-                    + cluster
-                    + "-"
-                    + blueprint.node().name())
+    final Stream<String> dhcpHosts =
+        ClusterNetworkBlueprint.CANONICAL_NODE_NAMES.stream()
+            .map(node -> synthesize(cluster, node))
+            .map(
+                blueprint ->
+                    "dhcp-host="
+                        + blueprint.wan().hostMacaddr().value()
+                        + ","
+                        + blueprint.nodeNetwork().nodeHostInetaddr().getHostAddress()
+                        + ",["
+                        + blueprint.nodeNetwork().nodeHostInetaddr6().getHostAddress()
+                        + "],"
+                        + cluster
+                        + "-"
+                        + blueprint.node().name());
+    return Stream.concat(Stream.of("no-hosts"), dhcpHosts)
         .reduce((left, right) -> left + "\n" + right)
         .orElse("");
   }
