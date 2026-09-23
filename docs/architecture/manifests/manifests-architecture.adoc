@@ -656,8 +656,12 @@ cross-domain ordering.
 
 | `MeshDomainRegistrar`
 | The mesh domain — Headscale + Headplane (the self-hosted control service); owns its own
-  `mesh-system` namespace (no longer shares one with tailscale). WRKLD-only (hosted on the
-  always-live workload cluster).
+  `mesh-system` namespace (no longer shares one with tailscale). Was WRKLD-only (hosted on the
+  always-live workload cluster); *HIBERNATED* — `ClusterRole` no longer publishes it, and the
+  reason is recorded there. Self-hosting the mesh only pays if it REPLACES Tailscale SaaS, and a
+  full replacement needs two public doors (headscale's own, and a substitute for the one Funnel in
+  use — the PaC webhook — since headscale has none). The units and this registrar stay in the tree;
+  re-adding one term in `ClusterRole.enabledDomainIds` wakes it.
 
 | `RuntimeDomainRegistrar`
 | The runtime domain — the RKE2 config unit plus the flox runtime units (controller, catalog, env,

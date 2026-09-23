@@ -42,12 +42,14 @@ public enum ClusterRole {
 
   /**
    * The manifest-domain policy this role publishes — the structural domain set resolved against
-   * {@code catalog}. Only TWO domains are role-exclusive: Cluster API is MGMT-only (CAPI reconciles
-   * clusters from the management cluster) and mesh (Headscale/Headplane, the always-live control
-   * service) is WRKLD-only. Everything else — including {@code tailscale} (the per-cluster tailnet
-   * substrate: operator, subnet-router Connector, funnel public door) and {@code cicd} (each
-   * cluster renders its own branch via its own Tekton pipeline) — is a structural capability every
-   * cluster carries.
+   * {@code catalog}. One domain is role-exclusive: Cluster API is MGMT-only (CAPI reconciles
+   * clusters from the management cluster). Everything else — including {@code tailscale} (the
+   * per-cluster tailnet substrate: operator, subnet-router Connector, funnel public door) and
+   * {@code cicd} (each cluster renders its own branch via its own Tekton pipeline) — is a
+   * structural capability every cluster carries.
+   *
+   * <p>{@code mesh} (Headscale/Headplane) was WRKLD-only and is now HIBERNATED — see {@link
+   * #enabledDomainIds}.
    */
   public ManifestDomainPolicy domainPolicy(final ManifestDomainCatalog catalog) {
     return ManifestDomainPolicy.builder()
@@ -68,9 +70,25 @@ public enum ClusterRole {
             catalog.highAvailability(),
             catalog.tailscale(),
             catalog.cicd());
+    // HIBERNATED: `catalog.mesh()` (Headscale/Headplane) was WRKLD's exclusive domain and is
+    // deliberately not published. The units, their registrar and their flox envs all stay in the
+    // tree — this is a pause, not a removal, and re-adding the one term below wakes it.
+    //
+    // Why: self-hosting the mesh is only worth it if it REPLACES Tailscale SaaS, because keeping
+    // both leaves the fleet dependent on the service anyway. And a full replacement is a larger
+    // piece than it looks — headscale would become the bootstrap and external-access transport, so
+    // it needs a public door (the DDNS + Bbox forward the catalog already declares, moved onto the
+    // cluster ingress), and it has NO Funnel, so the one funnel in use — the Pipelines-as-Code
+    // webhook — needs a replacement door of its own. Until that is decided, a half-migrated mesh is
+    // the worst of the three states: two control planes, neither authoritative.
+    //
+    // What is NOT a reason to migrate: declarativeness. The tailnet's tags, ACLs, ssh rules,
+    // auto-approvers and auth keys are already reconciled from ndh's catalog by `manage-tailnet`.
+    // The one fact still typed by hand is the tailnet SPLIT-DNS, and that is a missing service in
+    // that tool, not a missing control plane — being fixed there instead.
     return switch (this) {
       case MGMT -> concat(base, catalog.clusterApi());
-      case WRKLD -> concat(base, catalog.mesh());
+      case WRKLD -> base;
     };
   }
 
