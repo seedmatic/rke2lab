@@ -243,10 +243,105 @@ global lists merged BY NAME, so a shared user name would collapse across cluster
 would point at one (wrong) user cert. The cluster + context names are already the cluster name; the
 user name follows suit.
 
-NOTE: The host-side sink for the operator kubeconfig (the dotfile → the readiness probe's kubeconfig
-path, and what the cellar stores) is not yet wired. It waits on resolving the `.local.d`-vs-cellar
-tension in this document (the durable home; § "The one idea" retires `.local.d`, yet the mDNS-endpoint
-bullet above still named it). That is a cluster-readiness integration, tracked separately.
+NOTE: The `.local.d`-vs-cellar tension in this document is not resolved. The host DOES write
+`kubeconfigRef` (`.local.d/kubeconfig.yaml`) — see the next section — while § "The one idea" retires
+`.local.d` as a durable home. The write is the live path; the durable home is the open question.
+
+[[operator-kubeconfig]]
+== The operator kubeconfig — every cluster, and every way IN to each
+
+The kubeconfig the host writes to `kubeconfigRef` is not one cluster's file. It is a *document*
+spanning every cluster this management plane opened, rendered by the `OperatorKubeconfig` record
+(cluster-pki-contract): a list of `ClusterAccess`, each pairing one cluster's `AdminCredentials` with
+the `Access` list — `(contextName, server)` — that reaches it.
+
+=== Why a document record, and not a method on `AdminCredentials`
+
+Because a multi-cluster kubeconfig cannot hang off ONE cluster's material. Each cluster has its own
+CA hierarchy — a workload cluster's is a *sibling* of the management one (§ "Sibling roots") — so it
+has its own `certificate-authority-data` AND its own admin certificate. `AdminCredentials` is
+therefore a *component* of a cluster's entry here, and stays what its name says: three PEM blocks, no
+rendering.
+
+That is also why `ADMIN_CREDENTIALS` needed a list-shaped twin. It is a single cellar coordinate — the
+seal's OWN cluster — where `WORKLOAD_CLUSTER_CAS` was already a list; the management cluster's admin
+certificate opens nothing on a workload apiserver. `WorkloadAdminCredentials` closes that asymmetry,
+exactly as `MANAGEMENT_CLUSTER_CAS` / `WORKLOAD_CLUSTER_CAS` closes it for the CA sets:
+
+* *Seal.* From each entry of the `WorkloadClusterCas` set just resolved (never from the requested
+  names — so a kept CA yields a kept credential and a fresh CA a fresh one, and the two cannot drift
+  into an admin cert signed by a CA the cluster no longer has), `ClusterSeal.sealWorkloadAdmins`
+  mints an admin leaf off that cluster's own `client-ca` and pairs it with its own `server-ca` chain.
+  ADDITIVE, so the operator's kubeconfig does not churn a fresh certificate every run — but the keep
+  is GATED on the credentials still matching the cluster: an entry is kept only while its
+  `caCertPem` is byte-identical to the cluster's current `serverCa` chain. That check *is* the
+  invariant, so no bookkeeping is needed.
+* *File.* `ClusterPkiCoordinate.WORKLOAD_ADMIN_CREDENTIALS`, SEALED (admin private keys) and
+  **OPERATOR_ONLY** — the one place this pair parts ways with the CA sets. Nothing in-cluster
+  consumes it: CAPI mints its own `<cluster>-kubeconfig` Secret for a workload cluster from the
+  BYO-CA we handed it. Carrying it onto the branch would be exposure bought for no reader.
+* *Read.* The host, and only the host — one context per entry.
+
+=== The contexts, and why each one earns its place
+
+Endpoints are added HOST-side, because which endpoint a consumer can reach is the *consumer's* fact,
+not the seal's — which is precisely why the credentials are endpoint-independent. The host reads them
+from the netplan's own materialised projection (`network-blueprint.json`), never re-deriving them: it
+does not compile against netplan (runtime scope) and must not restate its addressing law.
+
+[cols="1,1,3",options="header"]
+|===
+| context | endpoint | why it is there, and its limit
+| `<mgmt>` (**current**) | the netplan LAN address | 401 in 6.5 ms, and it kept answering straight THROUGH a cold start — when an operator most needs in. Limit: it is ONE node's address.
+| `<mgmt>-vip` | the kube-vip VIP | 401 in 39 ms over the tailnet Connector, and it survives the node being replaced. Limit: it needs the cluster healthy enough to run that Connector, so it was mute for minutes after the same cold start.
+| `<mgmt>-mdns` | `<cluster>-<node>.local` | last, never current: from the operator's Mac it resolves to the node's GLOBAL IPv6, not the LAN. But it is the only one needing no address at all — what saves it the day the LAN carve moves.
+| `<workload>-vip` | that cluster's kube-vip VIP | the ONLY way in to a cattle cluster. Its nodes take an ordinary router lease under a name the provider mints, so neither the projected LAN address nor an mDNS name describes them.
+|===
+
+The mDNS context is keyed on the node NAME — admissible HERE and nowhere else: a management node is
+an adopted *pet* with a deterministic name, not the CAPI cattle that rule is about.
+
+`vipHost` is a CLUSTER-scoped value the projection deliberately repeats on every node of a cluster,
+which is what makes the workload row answerable at all: a workload cluster's real node names are the
+provider's cattle names and appear nowhere in the projection, so no node can be named when asking for
+its VIP.
+
+Every one of these is in its apiserver's `tls-san` superset, so kubectl needs no
+`--insecure-skip-tls-verify` on any of them. Verified live on the workload cluster (2026-09-23): the
+served chain is `kube-apiserver` ← `rke2-server-ca` ← `rke2-intermediate-ca` ← `mammoth-skate-tls`,
+with the VIP among the SANs — our BYO-CA, not an rke2 self-signed one.
+
+[NOTE]
+====
+An absent projection file, a missing cluster, or a blank address each **throw**. The file is
+committed and a nix gate (`blueprint-fresh`) already fails the build when it drifts from the Java
+source, so its absence signs a broken tree — and a kubeconfig pointing somewhere plausible and wrong
+is worse than no kubeconfig at all.
+====
+
+.The two coordinates, one document
+[source,mermaid]
+----
+flowchart LR
+  subgraph seal["cluster-pki seal (in-container)"]
+    ac["ADMIN_CREDENTIALS<br/>SEALED · IN_CLUSTER<br/>the seal's OWN cluster"]
+    wac["WORKLOAD_ADMIN_CREDENTIALS<br/>SEALED · OPERATOR_ONLY<br/>one entry per workload cluster"]
+    wcc["WORKLOAD_CLUSTER_CAS"] -->|"client-ca + server-ca chain"| wac
+  end
+  subgraph host["host (ClusterSeedScenario)"]
+    np["network-blueprint.json<br/>(netplan projection)"]
+    doc["OperatorKubeconfig<br/>List&lt;ClusterAccess&gt;"]
+  end
+  ac --> doc
+  wac --> doc
+  np -->|"lanHost · vipHost"| doc
+  doc -->|"render()"| out["kubeconfigRef<br/>.local.d/kubeconfig.yaml<br/>rw-------"]
+----
+
+WARNING: `manifests-contract`'s `OperatorPkiMaterial` still duplicates a single-endpoint variant of
+this template on the other side of the manifests seam (its consumer, the in-cluster
+`<cluster>-kubeconfig` Secret, wants one context). One renderer in two realms — worth collapsing when
+a third appears, not before.
 
 == Rotating the root — breaking "stable across re-grows" on purpose
 

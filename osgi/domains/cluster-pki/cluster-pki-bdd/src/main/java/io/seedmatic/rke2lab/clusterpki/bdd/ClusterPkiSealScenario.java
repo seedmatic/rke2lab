@@ -16,6 +16,7 @@ import io.seedmatic.rke2lab.clusterpki.contract.ClusterPkiSealInput;
 import io.seedmatic.rke2lab.clusterpki.contract.ManagementClusterCa;
 import io.seedmatic.rke2lab.clusterpki.contract.SopsDecryptor;
 import io.seedmatic.rke2lab.clusterpki.contract.SopsEncryptor;
+import io.seedmatic.rke2lab.clusterpki.contract.WorkloadAdminCredentials;
 import io.seedmatic.rke2lab.clusterpki.contract.WorkloadClusterCas;
 import io.seedmatic.rke2lab.clusterpki.core.ClusterSeal;
 import io.seedmatic.rke2lab.clusterpki.core.SealedClusterPki;
@@ -167,6 +168,10 @@ public class ClusterPkiSealScenario
     @ProvidedScenarioState(resolution = Resolution.NAME)
     WorkloadClusterCas workloadCas = new WorkloadClusterCas(List.of());
 
+    /** The operator's admin credentials for each workload cluster, derived from the set above. */
+    @ProvidedScenarioState(resolution = Resolution.NAME)
+    WorkloadAdminCredentials workloadAdmins = new WorkloadAdminCredentials(List.of());
+
     @As("the cluster CA is sealed")
     public When the_cluster_ca_is_sealed(
         @Hidden Parcel parcel,
@@ -217,6 +222,17 @@ public class ClusterPkiSealScenario
       final Optional<WorkloadClusterCas> existingWorkload =
           cellar.fetch(parcel, ClusterPkiCoordinate.WORKLOAD_CLUSTER_CAS, WorkloadClusterCas.class);
       this.workloadCas = seal.sealWorkloadCas(workloadClusters, existingWorkload);
+      // And the operator's way in to each of them: an admin leaf off that cluster's OWN client-ca.
+      // Derived from the set just resolved, never from the requested names, so a kept CA yields a
+      // kept credential and a freshly minted one yields a matching fresh credential — the two can
+      // not drift apart into an admin cert signed by a CA the cluster no longer has.
+      this.workloadAdmins =
+          seal.sealWorkloadAdmins(
+              this.workloadCas,
+              cellar.fetch(
+                  parcel,
+                  ClusterPkiCoordinate.WORKLOAD_ADMIN_CREDENTIALS,
+                  WorkloadAdminCredentials.class));
       return self();
     }
   }
@@ -238,6 +254,9 @@ public class ClusterPkiSealScenario
 
     @ExpectedScenarioState(resolution = Resolution.NAME)
     WorkloadClusterCas workloadCas;
+
+    @ExpectedScenarioState(resolution = Resolution.NAME)
+    WorkloadAdminCredentials workloadAdmins;
 
     @As("the cluster PKI is filed")
     public Then the_cluster_pki_is_filed(@Hidden Parcel parcel, @Hidden Cellar cellar) {
@@ -308,6 +327,20 @@ public class ClusterPkiSealScenario
             workloadCas,
             Sensitivity.SEALED,
             Reach.IN_CLUSTER);
+      }
+      // The operator's admin credentials for those clusters — SEALED (admin private keys) but
+      // OPERATOR_ONLY, the one place this pair parts ways with the CA sets above: nothing
+      // in-cluster
+      // consumes them (CAPI mints its own <cluster>-kubeconfig Secret from the BYO-CA we handed
+      // it),
+      // so carrying them onto the branch would be exposure bought for no reader. The host is the
+      // reader — it adds one kubeconfig context per entry after the grow.
+      if (!workloadAdmins.entries().isEmpty()) {
+        cellar.store(
+            parcel,
+            ClusterPkiCoordinate.WORKLOAD_ADMIN_CREDENTIALS,
+            workloadAdmins,
+            Sensitivity.SEALED);
       }
       return self();
     }

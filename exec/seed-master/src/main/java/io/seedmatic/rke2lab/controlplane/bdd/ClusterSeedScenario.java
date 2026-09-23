@@ -21,6 +21,8 @@ import io.seedmatic.rke2lab.clusterpki.contract.AdminCredentials;
 import io.seedmatic.rke2lab.clusterpki.contract.ClusterAgeKey;
 import io.seedmatic.rke2lab.clusterpki.contract.ClusterCaBundle;
 import io.seedmatic.rke2lab.clusterpki.contract.ClusterPkiCoordinate;
+import io.seedmatic.rke2lab.clusterpki.contract.OperatorKubeconfig;
+import io.seedmatic.rke2lab.clusterpki.contract.WorkloadAdminCredentials;
 import io.seedmatic.rke2lab.controlplane.config.BootstrapConfig;
 import io.seedmatic.rke2lab.controlplane.incus.InstanceGrow;
 import io.seedmatic.rke2lab.controlplane.incus.NodeBootstrapMaterial;
@@ -67,6 +69,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Hashtable;
 import java.util.List;
 import java.util.Map;
@@ -826,15 +829,15 @@ public class ClusterSeedScenario
 
     @As("the operator kubeconfig is published")
     public When the_operator_kubeconfig_is_published() {
-      // The operator's natively-trusted admin kubeconfig, written host-side from the
-      // AdminCredentials
-      // the seal minted (SEALED — the transactional cellar reveals it on fetch). Endpoint added
-      // here:
-      // the apiserver's deterministic mDNS SAN <cluster>-<node>.local (nixos/rke2.nix's tls-san
-      // drop-in), so TLS verifies against the embedded server-ca chain rooted at mammoth-skate-tls.
-      // Written to kubeconfigRef (.local.d/kubeconfig.yaml) — the stable path the operator
-      // and the readiness probe read. Live-only: absent a deployment there is nothing to access
-      // yet.
+      // The operator's natively-trusted admin kubeconfig, written host-side from the credentials
+      // the
+      // seal minted (SEALED — the transactional cellar reveals them on fetch): the management
+      // cluster's, plus one entry per workload cluster the seal opened. The ENDPOINTS are added
+      // here, because which of them a consumer can reach is the consumer's fact, not the seal's;
+      // every one of them is in its apiserver's tls-san set, so TLS verifies against the embedded
+      // server-ca chain rooted at mammoth-skate-tls. Written to kubeconfigRef
+      // (.local.d/kubeconfig.yaml) — the stable path the operator and the readiness probe read.
+      // Live-only: absent a deployment there is nothing to access yet.
       if (!PulumiDeploymentSeed.isDeploymentPresent()) {
         return self();
       }
@@ -844,8 +847,34 @@ public class ClusterSeedScenario
       return self();
     }
 
-    private void publishOperatorKubeconfig(AdminCredentials admin) {
-      final String kubeconfig = admin.kubeconfig(config.clusterName(), operatorAccesses());
+    /**
+     * Assemble the document: the management cluster FIRST (so its preferred way in is {@code
+     * current-context}), then one entry per workload cluster the seal opened a way into.
+     *
+     * <p>Each workload cluster brings its OWN credentials — its CA hierarchy is a SIBLING of the
+     * management one, so the management admin certificate opens nothing there — and exactly ONE way
+     * in, its kube-vip VIP. Not the projected LAN address and not an mDNS name: a workload node is
+     * CAPN cattle that takes an ordinary router lease under a name the provider mints (the one
+     * measured came up on {@code 192.168.1.18}, where the projection predicts {@code .147}), so
+     * neither describes it. The VIP does, and it is in that apiserver's SAN set — verified live
+     * against the served chain, which ends at {@code mammoth-skate-tls}, so no {@code
+     * insecure-skip-tls-verify} on this context either.
+     */
+    private void publishOperatorKubeconfig(AdminCredentials managementAdmin) {
+      final List<OperatorKubeconfig.ClusterAccess> clusters = new ArrayList<>();
+      clusters.add(
+          new OperatorKubeconfig.ClusterAccess(
+              config.clusterName(), managementAdmin, managementAccesses()));
+      for (final WorkloadAdminCredentials.Entry workload : workloadAdmins().entries()) {
+        clusters.add(
+            new OperatorKubeconfig.ClusterAccess(
+                workload.clusterName(),
+                workload.credentials(),
+                List.of(
+                    new OperatorKubeconfig.Access(
+                        workload.clusterName() + "-vip", clusterVip(workload.clusterName())))));
+      }
+      final String kubeconfig = new OperatorKubeconfig(clusters).render();
       final Path ref = config.kubeconfigRef();
       try {
         Files.createDirectories(ref.toAbsolutePath().getParent());
@@ -856,6 +885,16 @@ public class ClusterSeedScenario
       }
     }
 
+    /** Empty on a management-only grow — the seal then files nothing at that coordinate. */
+    private WorkloadAdminCredentials workloadAdmins() {
+      return workingCellar
+          .fetch(
+              parcel,
+              ClusterPkiCoordinate.WORKLOAD_ADMIN_CREDENTIALS,
+              WorkloadAdminCredentials.class)
+          .orElseGet(() -> new WorkloadAdminCredentials(List.of()));
+    }
+
     /**
      * The operator's ways IN to the management cluster, read from the netplan's own materialised
      * projection ({@code network-blueprint.json}) rather than re-derived here — the host does not
@@ -863,8 +902,8 @@ public class ClusterSeedScenario
      * deliberately keeps no cellar harvest and materialises to that file instead, which ndh already
      * consumes the same way.
      *
-     * <p>TWO contexts, because they are not equivalent and neither subsumes the other (measured
-     * from the operator's Mac):
+     * <p>THREE contexts, because none of them subsumes the others (measured from the operator's
+     * Mac):
      *
      * <ul>
      *   <li>the netplan LAN address FIRST, so it is {@code current-context} — 401 in 6.5ms, and it
@@ -873,71 +912,86 @@ public class ClusterSeedScenario
      *   <li>the kube-vip VIP second — 401 in 39ms over the tailnet Connector, and it survives the
      *       node being replaced. Its limit: it needs the cluster healthy enough to run that
      *       Connector, so it was unreachable for minutes after the same cold start.
+     *   <li>the mDNS name LAST, so it is never current: it resolves to the node's GLOBAL IPv6 from
+     *       the Mac rather than to the LAN (measured), the least reliable of the three — but it is
+     *       the only one needing no address at all, which is what saves it the day the LAN carve
+     *       moves. It is keyed on the node NAME, admissible HERE and nowhere else: a management
+     *       node is an adopted PET with a deterministic name, not the CAPI cattle that rule is
+     *       about.
      * </ul>
-     *
-     * <p>And the mDNS name LAST, so it is never current: it resolves to the node's GLOBAL IPv6 from
-     * the Mac rather than to the LAN (measured), which makes it the least reliable of the three —
-     * but it is the only one needing no address at all, which is what saves it the day the LAN
-     * carve moves. It is keyed on the node NAME, admissible HERE and nowhere else: a management
-     * node is an adopted PET with a deterministic name, not the CAPI cattle that rule is about.
      *
      * <p>All three are in the apiserver cert's SANs (verified against the cluster CA), so kubectl
      * needs no {@code insecure-skip-tls-verify} on any of them.
      */
-    private List<AdminCredentials.Access> operatorAccesses() {
-      final JsonNode ips = nodeAddressing();
+    private List<OperatorKubeconfig.Access> managementAccesses() {
       final String cluster = config.clusterName();
+      final JsonNode ips = nodeIps(cluster, config.nodeName());
       return List.of(
-          new AdminCredentials.Access(cluster, apiserver(ips, "lanHost")),
-          new AdminCredentials.Access(cluster + "-vip", apiserver(ips, "vipHost")),
-          new AdminCredentials.Access(
+          new OperatorKubeconfig.Access(cluster, apiserver(ips, "lanHost", cluster)),
+          new OperatorKubeconfig.Access(cluster + "-vip", apiserver(ips, "vipHost", cluster)),
+          new OperatorKubeconfig.Access(
               cluster + "-mdns", "https://" + cluster + "-" + config.nodeName() + ".local:6443"));
     }
 
-    private String apiserver(JsonNode ips, String field) {
+    /**
+     * A cluster's kube-vip endpoint, read off ANY of its nodes: {@code vipHost} is a CLUSTER-scoped
+     * value the projection deliberately repeats on every node of a cluster. That is what makes this
+     * answerable for a workload cluster at all — its real node names are the provider's cattle
+     * names and appear nowhere in the projection, so no node can be named here.
+     */
+    private String clusterVip(final String cluster) {
+      final JsonNode nodes = addressing().path(cluster);
+      if (nodes.isEmpty()) {
+        throw new IllegalStateException(
+            "the netplan projection describes no cluster "
+                + cluster
+                + " — regenerate it with `nix run .#regen-blueprint`");
+      }
+      return apiserver(nodes.iterator().next().path("ips"), "vipHost", cluster);
+    }
+
+    private String apiserver(JsonNode ips, String field, String cluster) {
       final JsonNode address = ips.get(field);
       if (address == null || address.asText().isBlank()) {
         throw new IllegalStateException(
             "the netplan projection carries no "
                 + field
                 + " for "
-                + config.clusterName()
-                + "/"
-                + config.nodeName()
+                + cluster
                 + " — regenerate it with `nix run .#regen-blueprint`");
       }
       return "https://" + address.asText() + ":6443";
     }
 
     /**
-     * This node's {@code ips} block in the committed projection. Absent it, the tree is broken —
-     * the file is checked in and a nix check ({@code blueprint-fresh}) already fails the build when
-     * it drifts from the Java source — so this throws rather than degrading to a guessed endpoint:
-     * a kubeconfig pointing somewhere plausible and wrong is worse than none.
+     * One node's {@code ips} block in the committed projection. Absent it, the tree is broken — the
+     * file is checked in and a nix check ({@code blueprint-fresh}) already fails the build when it
+     * drifts from the Java source — so this throws rather than degrading to a guessed endpoint: a
+     * kubeconfig pointing somewhere plausible and wrong is worse than none.
      */
-    private JsonNode nodeAddressing() {
+    private JsonNode nodeIps(final String cluster, final String node) {
+      final JsonNode ips = addressing().path(cluster).path(node).path("ips");
+      if (ips.isMissingNode()) {
+        throw new IllegalStateException(
+            "the netplan projection describes no " + cluster + "/" + node);
+      }
+      return ips;
+    }
+
+    /** The committed projection's {@code addressing} tree, {@code <cluster>.<node>.ips}. */
+    private JsonNode addressing() {
       // Resolved against the process CWD, the way Main resolves `.secrets`: the host deliberately
       // carries no worktree root ("that is the worktree soil's harvest, no longer a host-carried
       // scalar"), and pulumi runs in the project directory.
       final Path projection = Path.of("network-blueprint.json").toAbsolutePath().normalize();
       try {
-        final JsonNode ips =
-            new ObjectMapper()
-                .readTree(Files.readString(projection))
-                .path("addressing")
-                .path(config.clusterName())
-                .path(config.nodeName())
-                .path("ips");
-        if (ips.isMissingNode()) {
+        final JsonNode addressing =
+            new ObjectMapper().readTree(Files.readString(projection)).path("addressing");
+        if (addressing.isMissingNode()) {
           throw new IllegalStateException(
-              "the netplan projection at "
-                  + projection
-                  + " describes no "
-                  + config.clusterName()
-                  + "/"
-                  + config.nodeName());
+              "the netplan projection at " + projection + " carries no addressing tree");
         }
-        return ips;
+        return addressing;
       } catch (IOException ex) {
         throw new UncheckedIOException("cannot read the netplan projection at " + projection, ex);
       }

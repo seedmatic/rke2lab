@@ -41,6 +41,15 @@ public enum ClusterPkiCoordinate implements SeedCoordinate {
   // NODE_BOOTSTRAP lane, so CAPRKE2 does BYO-CA instead of self-generating a random one.
   WORKLOAD_CLUSTER_CAS("workload-cluster-cas"),
 
+  // The operator's admin credentials for each WORKLOAD cluster — the list-shaped twin of
+  // ADMIN_CREDENTIALS, minted from that cluster's own client-ca (above) because a workload CA
+  // hierarchy is a SIBLING of the mgmt one, so the mgmt admin cert opens nothing there. SEALED
+  // (each
+  // carries an admin private key) and OPERATOR_ONLY: its only reader is the host, which adds one
+  // kubeconfig context per entry. No in-cluster consumer — CAPI mints its own <cluster>-kubeconfig
+  // Secret for a workload cluster from the BYO-CA set we hand it.
+  WORKLOAD_ADMIN_CREDENTIALS("workload-admin-credentials"),
+
   // The MANAGEMENT cluster's OWN CA set (the four CAs of its node bundle) exposed in render-usable
   // PEM form — the sibling of CLUSTER_CA_BUNDLE (which is the same material as a sops blob,
   // decrypted

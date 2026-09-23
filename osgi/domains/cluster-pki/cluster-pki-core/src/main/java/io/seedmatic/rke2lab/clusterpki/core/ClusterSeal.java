@@ -9,6 +9,7 @@ import io.seedmatic.rke2lab.clusterpki.contract.ClusterIssuerCa;
 import io.seedmatic.rke2lab.clusterpki.contract.ManagementClusterCa;
 import io.seedmatic.rke2lab.clusterpki.contract.SopsDecryptor;
 import io.seedmatic.rke2lab.clusterpki.contract.SopsEncryptor;
+import io.seedmatic.rke2lab.clusterpki.contract.WorkloadAdminCredentials;
 import io.seedmatic.rke2lab.clusterpki.contract.WorkloadClusterCas;
 import io.seedmatic.rke2lab.clusterpki.core.internal.ClusterCaGenerator;
 import io.seedmatic.rke2lab.clusterpki.core.internal.SopsRecipients;
@@ -153,6 +154,52 @@ public final class ClusterSeal {
               pair(bundle, "etcd-peer-ca")));
     }
     return new WorkloadClusterCas(entries);
+  }
+
+  /**
+   * Mint the operator's admin credentials for each workload cluster in {@code cas} — the same leaf
+   * {@link #seal()} mints for the mgmt cluster, but from THAT cluster's own {@code client-ca},
+   * paired with its own {@code server-ca} chain (both already in the entry). A workload CA
+   * hierarchy is a SIBLING of the mgmt one, so nothing else would verify or be accepted there.
+   *
+   * <p>ADDITIVE, so the operator's kubeconfig does not churn a fresh certificate every run — but
+   * the keep is GATED on the credentials still matching the cluster: an entry is kept only while
+   * its {@code caCertPem} is byte-identical to the cluster's current {@code serverCa} chain. That
+   * is the check rather than bookkeeping because it is the very thing that must hold — the chain
+   * and the client-ca come out of ONE generated bundle, so a differing chain means the CA was
+   * re-minted and the kept admin leaf is signed by a CA the apiserver no longer knows. Re-derive
+   * instead of carrying a credential that would fail at the first {@code kubectl}.
+   */
+  public WorkloadAdminCredentials sealWorkloadAdmins(
+      WorkloadClusterCas cas, Optional<WorkloadAdminCredentials> existing) {
+    if (cas.entries().isEmpty()) {
+      return new WorkloadAdminCredentials(List.of());
+    }
+    final Map<String, AdminCredentials> kept =
+        existing.map(WorkloadAdminCredentials::entries).orElseGet(List::of).stream()
+            .collect(
+                Collectors.toMap(
+                    WorkloadAdminCredentials.Entry::clusterName,
+                    WorkloadAdminCredentials.Entry::credentials,
+                    (a, b) -> a,
+                    LinkedHashMap::new));
+    final ClusterCaGenerator generator = new ClusterCaGenerator();
+    final List<WorkloadAdminCredentials.Entry> entries = new ArrayList<>();
+    for (final WorkloadClusterCas.Entry cluster : cas.entries()) {
+      final String serverChain = cluster.serverCa().certChainPem();
+      final AdminCredentials keptAdmin = kept.get(cluster.clusterName());
+      if (keptAdmin != null && serverChain.equals(keptAdmin.caCertPem())) {
+        entries.add(new WorkloadAdminCredentials.Entry(cluster.clusterName(), keptAdmin));
+        continue;
+      }
+      final ClusterCaGenerator.AdminLeaf admin =
+          generator.mintAdminClient(cluster.clientCa().certChainPem(), cluster.clientCa().keyPem());
+      entries.add(
+          new WorkloadAdminCredentials.Entry(
+              cluster.clusterName(),
+              new AdminCredentials(admin.certPem(), admin.keyPem(), serverChain)));
+    }
+    return new WorkloadAdminCredentials(entries);
   }
 
   private WorkloadClusterCas.Pair pair(Map<String, String> bundle, String stem) {
