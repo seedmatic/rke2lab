@@ -62,8 +62,8 @@ plus faible que chez nnh. À trancher explicitement, pas à supposer.
 
 ## ✅ FAIT le 2026-09-23 — bioskop a rejoint la fabric (ndh `e3e5c627`)
 
-Worktree `ndh.d/feature/bioskop-fabric-address`, branche `feature/bioskop-fabric-address`,
-**non poussée**. ✅ **VÉRIFIÉ VIVANT** : en9 porte `172.16.7.253/30` à côté de `192.168.1.129`,
+Worktree `ndh.d/feature/bioskop-fabric-address` (ndh est maintenant un dépôt **bare**,
+`ndh.git` — voir [[orphaned-worktree-recovery]]), **fusionné en fast-forward dans `develop`**. ✅ **VÉRIFIÉ VIVANT** : en9 porte `172.16.7.253/30` à côté de `192.168.1.129`,
 `172.16.7.0/25` route via `.254` sur en9, et `100.64/10` sort toujours par `utun4`.
 
 bioskop a gagné `dynamicCidr` / `dhcpRange` / `linkCidr` / `hostAddress` et un

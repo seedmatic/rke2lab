@@ -12,3 +12,4 @@ One line per entry (~200 chars); detail lives in the linked file.
 - [Sops worktree re-smudge](sops-worktree-smudge-noise.md) — `git worktree add` leaves sops files ENCRYPTED; FIX: `rm <files> && git checkout -- <them>`.
 - [Handoff prompt opens on Progress narration](handoff-prompt-opens-on-progress-narration.md) — **★ feedback:** every next-conversation/next-workspace handoff prompt must OPEN with the obligation to read `.claude/hub/instructions.md` § "Progress narration" and apply it all session (auto-loaded ≠ heeded). See [[external-edges-chantier-handoff]].
 
+- [Récupérer un worktree orphelin](orphaned-worktree-recovery.md) — supprimer le clone principal tue l'historique du worktree mais PAS ses fichiers : si l'arbre était propre ils sont le commit. Recette + preuve par chemin de store. ndh est passé en dépôt **bare** pour que ça ne puisse plus arriver.
