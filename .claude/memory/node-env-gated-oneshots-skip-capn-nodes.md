@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 0b18b1f3-3eda-496a-865d-1fbc722b0d30
-  modified: 2026-09-23T12:46:51.674Z
+  modified: 2026-09-23T12:58:44.296Z
 ---
 
 `nixos/rke2.nix` porte trois oneshots par nœud — `rke2lab-node-labels`,
@@ -77,6 +77,29 @@ C'est la différence qui compte et qui a été discutée : **la déclaration ré
 sur un nœud déjà joint non.** Un label de `nodeSelector` peut d'ailleurs être posé à chaud
 sans dommage — contrairement au `providerID`, qui est immuable et doit être juste dès la
 première inscription.
+
+## ★★ Et une seconde barrière, plus structurante : `ensure` est CREATE-ONLY
+
+`controller_shared.go`'s `ensure` — le primitif par lequel passe TOUT le CR-set CAPI de
+seed-incluster — crée l'objet s'il est absent et **laisse intact un objet existant** (« the
+controller does not fight drift on the CAPI objects — CAPRKE2/CAPN own their evolution »).
+
+Deux conséquences opposées, les deux importantes :
+
+- ✅ **Pas de rollout accidentel.** Ajouter un champ au `RKE2ControlPlane` rendu ne peut pas
+  déclencher un `RollingUpdate` sur un control-plane **adopté** (le pet mgmt). La crainte est
+  fermée par construction.
+- ⚠️ **Tout changement de FORME du CR-set n'atteint que les clusters NEUFS.** Un `pulumi up`
+  ne suffit jamais : le RCP existe, donc il n'est pas touché. Il faut que le CR-set soit
+  recréé — ce qui arrive quand l'etcd qui le porte disparaît.
+
+★ Corollaire de propriété (raisonnement de l'utilisateur, juste) : le CR-set du cluster de
+charge vit dans l'**etcd du mgmt**, et l'objet `Node` du nœud de charge vit dans l'**etcd du
+cluster de charge**, lequel EST son unique instance de control-plane. Donc supprimer les deux
+instances suffit, sans aucun geste manuel : plus de RCP stale (recréé avec `nodeLabels`), plus
+d'objet `Node` stale (recréé à l'inscription). ⚠️ Supprimer seulement le mgmt ne marcherait
+PAS — l'etcd du cluster de charge survivrait avec son `Node` sans label, et le chemin
+d'adoption reprendrait le nœud tel quel.
 
 See [[funnel-identity-is-per-cluster]] [[kubeconfig-context-per-cluster-intention]]
 [[hub:MEMORY]].
