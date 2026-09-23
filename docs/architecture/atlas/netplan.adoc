@@ -599,11 +599,17 @@ Two properties fall out, and both are worth more than the name itself:
   `/etc/resolv.conf`. Measured 2026-09-23 while chasing a pod that resolved `bioskop-nixos` to its own
   loopback. So the same `host-record` serves in-cluster consumers and the operator — replacing the
   `.lan` FQDN workaround that case needed with the normal form.
-. *Naming becomes tailnet-independent.* The resolver is the hinge, which stays on the home LAN
-  (`192.168.1.130`), so `/etc/resolver/<host>` on macOS reaches it directly. Resolution therefore works
-  when the tailnet does not — recovering half of what the LAN context gave (401 in 6.5 ms, answering
-  straight *through* a cold start, where the VIP was mute for minutes). The other half, a *route* to
-  the VIP, still needs either a static route via the hinge or the tailnet Connector.
+. *Naming CAN become tailnet-independent — but is not today.* `baremetal-resolvers.nix` already
+  generates `/etc/resolver/<domain>` for every baremetal entry, pointing at the segment's `netGateway`.
+  That target is a *fabric* address (`172.16.7.1`), and its own comment says reachability "rides the
+  advertised subnet route this host already accepts" — i.e. the tailnet. Absent a route the Mac hands
+  `172.16.7.1` to the bbox, which knows nothing of the fabric.
++
+The hinge does sit on the home LAN (`192.168.1.130`), so **one static route on the Mac toward each
+bare-metal's slice via its LAN address** makes resolution work when the tailnet does not — recovering
+half of what the LAN context gave (401 in 6.5 ms, answering straight *through* a cold start, where the
+VIP was mute for minutes). That route is worth declaring for the same reason, since it also carries the
+other half: reaching the VIP itself.
 
 ==== What it simplifies downstream
 
