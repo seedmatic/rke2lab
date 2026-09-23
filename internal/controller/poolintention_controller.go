@@ -102,6 +102,7 @@ func specFromPoolIntention(pi *adoptionv1alpha1.PoolIntention) adoptionv1alpha1.
 		RKE2Version:          pi.Spec.RKE2Version,
 		ControlPlaneEndpoint: pi.Spec.ControlPlaneEndpoint,
 		Nodes:                pi.Spec.Nodes,
+		NodeLabels:           pi.Spec.NodeLabels,
 	}
 }
 

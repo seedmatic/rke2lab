@@ -41,6 +41,12 @@ type PoolAdoptionSpec struct {
 	// Nodes is the pool's explicit pet roster, adopted/provisioned by providerID (lxc:///<name>).
 	// +kubebuilder:validation:MinItems=1
 	Nodes []PetSpec `json:"nodes"`
+
+	// NodeLabels are the kubelet --node-label values every node of this pool registers with, as
+	// "key=value" — projected from the PoolIntention and posed on the RKE2ControlPlane's
+	// agentConfig.nodeLabels, CAPRKE2's own field for this.
+	// +optional
+	NodeLabels []string `json:"nodeLabels,omitempty"`
 }
 
 // PoolAdoptionPhase is the per-pool adopt-first state machine — the grain it actually runs

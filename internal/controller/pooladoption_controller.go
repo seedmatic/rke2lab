@@ -712,10 +712,28 @@ func (r *PoolAdoptionReconciler) rke2ControlPlaneObj(spec adoptionv1alpha1.PoolA
 		// where the RCP would initialize a random-named control plane before the owned Machine).
 		obj.SetAnnotations(map[string]string{pausedAnnotation: "true"})
 	}
+	agentConfig := map[string]any{"airGapped": true}
+	// The pool's kubelet node labels, through CAPRKE2's OWN field for them. A CAPN-provisioned node
+	// cannot get them the way a host-grown one does: the nixos rke2lab-node-labels oneshot is gated on
+	// /var/lib/rke2lab/node.env, which only a host-grown node carries. Measured 2026-09-23 on
+	// bioskop-wrkld, where the one missing label was flox.seedmatic.io/enabled — the flox-controller
+	// DaemonSet's nodeSelector matched nothing (DESIRED 0), so no flox environment was ever GC-rooted
+	// under /nix/var/nix/gcroots/flox-runtime/env, and the NRI plugin then refused EVERY flox-carrier
+	// container on the node. headscale, kdns and seed-incluster all stalled on it, 347 restarts deep.
+	//
+	// Rendered as []any, not []string: the spec goes into an Unstructured, whose DeepCopyJSON accepts
+	// only JSON-shaped values and panics on a typed slice.
+	if len(spec.NodeLabels) > 0 {
+		labels := make([]any, 0, len(spec.NodeLabels))
+		for _, label := range spec.NodeLabels {
+			labels = append(labels, label)
+		}
+		agentConfig["nodeLabels"] = labels
+	}
 	obj.Object["spec"] = map[string]any{
 		"replicas":     int64(replicas),
 		"version":      spec.RKE2Version,
-		"agentConfig":  map[string]any{"airGapped": true},
+		"agentConfig":  agentConfig,
 		"serverConfig": map[string]any{},
 		// kube-vip fronts the control-plane endpoint: the replicas register on the VIP. We do NOT
 		// install kube-vip from here — rke2lab's high-availability/kube-vip unit renders the DaemonSet

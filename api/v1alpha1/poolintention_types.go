@@ -43,6 +43,17 @@ type PoolIntentionSpec struct {
 	// Nodes is the pool's explicit pet roster, adopted/provisioned by providerID (lxc:///<name>).
 	// +kubebuilder:validation:MinItems=1
 	Nodes []PetSpec `json:"nodes"`
+
+	// NodeLabels are the kubelet --node-label values every node of this pool registers with, as
+	// "key=value". Pool-scoped because that is the grain CAPRKE2's agentConfig has (one
+	// RKE2ControlPlane per control-plane pool, one RKE2ConfigTemplate per worker pool) — so a future
+	// pool can carry labels this one does not.
+	//
+	// The render declares them: a CAPN-provisioned node cannot get them from the nixos
+	// rke2lab-node-labels oneshot, which is gated on /var/lib/rke2lab/node.env and so runs only on a
+	// host-grown node.
+	// +optional
+	NodeLabels []string `json:"nodeLabels,omitempty"`
 }
 
 // PoolIntentionPhase mirrors the owned PoolAdoption per-pool state machine phase back onto the intent (see
