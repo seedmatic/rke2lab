@@ -22,3 +22,4 @@ One line per entry (~200 chars); detail lives in the linked file.
 
 - [Chaîne de bootstrap d'un cluster workload](workload-bootstrap-chain-cilium-kubevip.md) — bioskop-wrkld NotReady : cilium par défaut compose l'apiserver sur le ClusterIP avant tout CNI ; kube-vip jamais installé (ctr absent pré-RKE2, jq absent, airGapped). Voie bootstrap-manifest conçue, pas codée. `.skip` = passation non destructive.
 - [netplan-projection-described-hosts](netplan-projection-described-hosts.md) — la projection décrivait des hôtes, pas des clusters ; et le roster est par rôle (mgmt single-node).
+- [★★ segment fabric — nnh a défini le modèle : épinglage par `ipv4.address` sur le NIC, pas par MAC](fabric-segment-pinning-and-federation-from-nnh.md) — et chaque locataire ne publie que SA portion. ⚠️ la convention de carve nnh (haut=statique) entre en conflit avec le plan atlas (haut=autre lien). See [[netplan-per-node-projection-feeds-ndh-reservations]].
