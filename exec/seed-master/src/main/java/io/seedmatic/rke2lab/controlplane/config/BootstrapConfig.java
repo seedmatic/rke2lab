@@ -21,6 +21,7 @@ public record BootstrapConfig(
     String incusProject,
     String incusDefaultRemote,
     URI incusRemoteAddress,
+    URI incusClusterAddress,
     Path incusConfigFolder,
     String imageAlias,
     String imageBuilderHost,
@@ -90,6 +91,16 @@ public record BootstrapConfig(
     // channel; the bare tailnet name times out from the seed host).
     final String remoteIncus = config.cluster().remoteIncus().orElseGet(() -> host + "-nixos");
     final String nixosMdnsHost = remoteIncus + ".local";
+    // The SAME daemon, addressed for an IN-CLUSTER caller — a third form, because the audience
+    // decides the name and this one resolves nothing the other two do. A pod resolves through
+    // CoreDNS, which reaches neither mDNS (so not nixosMdnsHost) nor the tailnet's MagicDNS (so not
+    // the bare `remoteIncus` the operator config carries for the Go provider). Worse, the bare name
+    // there used to come back as the host's own /etc/hosts loopback via the vmnet bridge's dnsmasq,
+    // so CAPN dialled ITSELF. Plain DNS under the LAN domain is the one form every audience
+    // resolves
+    // identically — see ClusterNetworkBlueprint.LAN_DOMAIN, spelled literally here for the same
+    // reason `.local` is: this is the host world, past the OSGi seam.
+    final String nixosLanHost = remoteIncus + ".lan";
 
     // Flat kubeconfig at .local.d/kubeconfig.yaml — one single-node management cluster.
     final Path kubeconfigRef =
@@ -109,6 +120,7 @@ public record BootstrapConfig(
             .incus()
             .remoteAddress()
             .orElseGet(() -> URI.create("https://" + nixosMdnsHost + ":8443")),
+        URI.create("https://" + nixosLanHost + ":8443"),
         config.incus().configDir(),
         IMAGE_ALIAS,
         config.image().builderHost().orElseGet(() -> nixosMdnsHost),

@@ -479,11 +479,19 @@ public class ClusterSeedScenario
     // serverAddress (config), serverCert (~/.config/incus/servercerts/<host>.crt), clientCert (the
     // bundled capn-provider cert). Any missing read -> blank field, and the seal then files
     // nothing.
+    //
+    // serverAddress is the IN-CLUSTER address, not incusRemoteAddress: this field becomes the
+    // `server` key of the CAPN identity Secret, which CAPN reads from a POD (LXCCluster.secretRef).
+    // incusRemoteAddress is deliberately the bare tailnet name — the Go incus provider does not
+    // resolve .local (documented in Pulumi.dev.yaml) — and a pod resolves neither that nor mDNS.
+    // The
+    // cert lookup below stays on incusRemoteAddress: it names a file in the OPERATOR's
+    // ~/.config/incus, a host-side fact.
     private ObjectNode incusIdentityHostCreds(BootstrapConfig config) {
       final ObjectNode creds = JsonNodeFactory.instance.objectNode();
       creds.put(
           "serverAddress",
-          config.incusRemoteAddress() == null ? "" : config.incusRemoteAddress().toString());
+          config.incusClusterAddress() == null ? "" : config.incusClusterAddress().toString());
       creds.put("serverCert", readIncusServerCert(config));
       creds.put("clientCert", readCapnClientCert());
       return creds;
