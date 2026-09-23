@@ -71,6 +71,22 @@ ou seulement à la naissance ?** Si c'est à la naissance, `nix eval` ne prouve 
 vivant et il faut une sonde runtime (`tailscale debug prefs`, `incus network show`,
 `kubectl get -o yaml`).
 
+## Forme 5 — une commande qui RÉUSSIT sans rien faire
+
+Le bare de ndh avait `remote.origin.fetch = +ref/heads/*:ref/remotes/origin/*` — **`ref/` au lieu
+de `refs/`**, des deux côtés. Git accepte la refspec, elle ne correspond à rien sur le remote, le
+fetch ne ramène rien et **sort en 0**. Conséquence : `refs/remotes/origin/*` vide, donc aucun
+calcul d'avance possible — et j'ai comblé le vide par des affirmations (« 9 commits non poussés »)
+alors que tout était poussé depuis longtemps.
+
+★ La sonde : `git for-each-ref 'refs/remotes/**'` **vide** sur un dépôt qui a un remote configuré.
+Et le correctif : `git config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'` — pas la
+refspec de `--mirror` (`+refs/heads/*:refs/heads/*`), qui écraserait les branches locales, dont
+celles checked-out dans les worktrees.
+
+⚠️ Différence avec les quatre autres formes : ici l'absence de signal ne m'a pas fait *rater* une
+action, elle m'a fait **produire de fausses affirmations**. C'est la forme la plus coûteuse.
+
 ## La leçon de méthode
 
 Toutes mes vérifications par évaluation étaient vertes pendant que trois de ces défauts
@@ -78,5 +94,22 @@ Toutes mes vérifications par évaluation étaient vertes pendant que trois de c
 remarques de l'utilisateur (« en9 pas en0 », « stephane.lacoin existe pas sur nikopol »,
 « nikopol c'est le vz guest »). Une évaluation verte ne dit rien de la livraison.
 
+## ★ Et un correctif que j'ai posé À TORT, rattrapé avant commit
+
+En hibernant le domaine `mesh`, j'ai voulu empêcher le rendu des FloxEnv `mesh/headscale` et
+`mesh/headplane` devenus orphelins, en les gardant sur `policy.meshEnabled()`. **Faux** :
+`meshEnabled()` appartient à `FloxDebugPolicy` — c'est la facette *debug*, pas la politique de
+domaine. Le garde aurait supprimé les envs *prod* dès que le debug est éteint (le cas normal), et
+cassé au réveil du mesh sans debug.
+
+`FloxEnvManifestsUnit` (domaine **runtime**, donc rendu par tous les clusters) n'a accès qu'à
+`floxDebugPolicy()`. Faire suivre la politique de domaine demande de la câbler jusqu'au contexte
+de synthèse — machinerie neuve, non faite.
+
+⚠️ **Et l'ordre de nettoyage est contraint** : supprimer les entrées `environment.d/mesh/{headscale,
+headplane}` du flox-catalogue **avant** que l'unité cesse de les déclarer laisserait des CR pointant
+vers un verrou absent — la panne du matin, où un env non GC-rooté a bloqué trois domaines par les
+health checks de leurs Kustomizations. Séquence sûre : l'unité d'abord, le catalogue ensuite.
+
 See [[darwin-nic-service-not-device]] [[nix-darwin-activation-keys-are-fixed]]
-[[fabric-segment-pinning-and-federation-from-nnh]].
+[[fabric-segment-pinning-and-federation-from-nnh]] [[fabric-migration-state-and-queue]].
