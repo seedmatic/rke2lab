@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 0b18b1f3-3eda-496a-865d-1fbc722b0d30
-  modified: 2026-09-23T13:25:05.544Z
+  modified: 2026-09-23T13:36:42.363Z
 ---
 
 > « c'est au build que doivent être résolues les références pas au runtime, sauf exception si
@@ -29,10 +29,41 @@ Trois conséquences mesurées de cette résolution au runtime :
    (`--git-common-dir = rke2lab.d/main/.git`) et qu'une référence locale serait la façon
    naturelle de découpler le bump du push.
 
-**How to apply:** faire voyager le lock **committé** avec le rendu (la `FloxEnv` porte le
-`manifest.lock`, pas un ordre de relock). Si une résolution tardive est vraiment nécessaire,
-elle doit être un **pipeline Tekton** explicite qui produit un lock committé — un *build*
-auditable et rejouable — jamais un contrôleur qui résout au moment de réconcilier.
+**How to apply:** faire voyager le lock **committé** avec le rendu. ⚠️ **L'annotation
+`relock` se GARDE** — précision de l'utilisateur, je l'avais d'abord opposée au lock : c'est
+« la version commande du bump », l'échappatoire impérative. Ce qu'il faut, c'est la
+**spécialiser** pour nommer les inputs à re-locker, **tous par défaut**. Les deux coexistent :
+le lock est l'état déclaratif décidé au build, l'annotation est l'ordre ponctuel d'avancer.
+Si une résolution tardive est vraiment nécessaire, elle doit être un **pipeline Tekton**
+explicite qui produit un lock committé — un *build* auditable — jamais un contrôleur qui
+résout au moment de réconcilier.
+
+## ★★★ Ce design est DÉJÀ écrit dans l'API du flox-controller — c'est le code qui a dérivé
+
+`flox-controller` `api/v1alpha1/floxenv_types.go` le dit noir sur blanc :
+
+- « The lock is **NEVER** produced by the controller (no per-node re-locking → determinism) »
+- `status.Lock` : « Produced by a lock-producer (the operator env-bumper, or an in-cluster
+  lock-controller reacting to `spec.update`) — **NEVER by the node-agent, which realises it
+  verbatim and never re-locks** »
+- `status.RelockToken` : l'annotation y est décrite comme la commande d'opérateur, « to force a
+  re-lock without editing spec or restarting ».
+
+⚠️ **Le coupable est `propagateRelock`** (`internal/controller/floxcatalog_controller.go`
+~101-135) : il estampille la **révision résolue du catalogue** comme token de relock sur
+**chaque** `FloxEnv` que ce catalogue sert. Donc tout changement de révision du catalogue force
+un relock COMPLET de tous les envs, et l'échappatoire devient le chemin normal — d'où la
+résolution au runtime, la course d'ordre, et le fetch github sur le nœud.
+
+Donc on ne conçoit rien : **on restaure une intention déjà écrite.** Forme visée :
+
+1. `spec.lock` — le `manifest.lock` committé, rendu depuis git ; le nœud le réalise verbatim.
+   (Aujourd'hui `Lock` est en **status**, produit à l'arrivée.)
+2. `flox.seedmatic.io/relock` — la commande, dont la valeur gagne une **portée** : les inputs à
+   re-locker, `*`/vide = tous. Garder la sémantique de token (valeur ≠ `status.relockToken`
+   ⇒ agir une fois) : un impératif dans un objet déclaratif a besoin d'une clé d'idempotence.
+3. `propagateRelock` cesse d'estampiller en bloc — c'est LA régression par rapport à l'intention
+   documentée.
 
 ★ Le test à appliquer à toute nouvelle référence : « est-ce que quelque chose, à l'exécution,
 va devoir aller chercher dehors pour savoir quoi faire ? » Si oui, la décision manque dans git.
