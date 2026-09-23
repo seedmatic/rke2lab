@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 0b18b1f3-3eda-496a-865d-1fbc722b0d30
-  modified: 2026-09-23T13:36:42.363Z
+  modified: 2026-09-23T13:48:00.929Z
 ---
 
 > « c'est au build que doivent être résolues les références pas au runtime, sauf exception si
@@ -64,6 +64,42 @@ Donc on ne conçoit rien : **on restaure une intention déjà écrite.** Forme v
    ⇒ agir une fois) : un impératif dans un objet déclaratif a besoin d'une clé d'idempotence.
 3. `propagateRelock` cesse d'estampiller en bloc — c'est LA régression par rapport à l'intention
    documentée.
+
+## ★★ Le producteur manquant a déjà un nom dans le code : le « leader-elected cluster manager »
+
+Il n'y a **aucune élection de leader** dans flox-controller, et c'est assumé comme provisoire :
+
+- `cmd/flox-controller/main.go:132` : « the resolution is idempotent; leader election is a future
+  optimisation, not required »
+- `internal/controller/floxcatalog_controller.go:36` : « node-agent (idempotent) **until split
+  into a leader-elected cluster manager** »
+
+★ Donc le « lock producer » à extraire **est** ce cluster manager déjà promis. Les trois rôles à
+séparer : **produire** (leader, sortie = un commit git) / **livrer** (Flux → `spec.lock`) /
+**réaliser** (agent par nœud, verbatim, sans jamais résoudre).
+
+⚠️ La justification « idempotent » est ce qui cède : résoudre contre une branche qui bouge n'est
+pas idempotent *dans le temps*. Et surtout — flox-controller est un **DaemonSet**, donc chaque
+pod écrit `status.Lock` / `status.RelockToken` du MÊME objet (`floxenv_controller.go:152`) :
+N écrivains sur un champ, le dernier gagne, pendant que chaque nœud a réalisé sa propre closure
+(`alreadyRealized` teste « **this node** has realised »). Le statut ne décrit alors la réalité
+d'aucun nœud. Masqué aujourd'hui parce que chaque cluster est mono-nœud ; sortira au premier
+pool à deux nœuds — et le roster canonique prévoit master + peer1 + peer2.
+
+## Écrire dans git : oui, mais par le producteur seul
+
+Question de l'utilisateur, juste : un contrôleur qui **produit** un lock détient une décision que
+git n'a pas, et le prochain rendu la remplacera silencieusement par le lock committé plus ancien.
+Donc soit il commite, soit il ne produit pas. Précédent de premier rang : l'
+`image-automation-controller` de Flux commite les tags qu'il résout.
+
+- **Cible du commit** : la branche `flox-catalogue` (le lock vit en
+  `environment.d/<folder>/<env>/manifest.lock`). Vérifié : Flux la surveille, mais le rendu se
+  déclenche sur `feature/nixos-node-substrate` (`.tekton/render.yaml`) — donc **pas de boucle**.
+- ⚠️ **Droit d'écriture** : le nœud n'a qu'un token `contents:read`. Un producteur qui commite
+  écrit sur une branche que Flux réconcilie, donc un agent compromis se fait livrer ce qu'il
+  veut. Ça plaide pour le **pipeline Tekton** plutôt qu'un contrôleur : le droit vit dans un
+  build isolé, pas dans un agent présent sur chaque nœud.
 
 ★ Le test à appliquer à toute nouvelle référence : « est-ce que quelque chose, à l'exécution,
 va devoir aller chercher dehors pour savoir quoi faire ? » Si oui, la décision manque dans git.
