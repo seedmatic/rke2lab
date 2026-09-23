@@ -122,29 +122,6 @@ public final class IncusImportLookup {
     }
   }
 
-  /** The import id to adopt an existing network, or empty when none is found. */
-  public Optional<String> existingNetworkId(String networkName, String incusProject) {
-    final LookupResult projectScoped =
-        resolveNetworkImportId(
-            GetNetworkPlainArgs.builder().name(networkName).project(incusProject).build());
-    if (projectScoped.state() == LookupState.FOUND) {
-      return projectScoped.importId();
-    }
-    if (projectScoped.state() == LookupState.FAILED) {
-      final Optional<String> fallbackImportId = normalizeImportId(networkName);
-      log.accept(
-          "incus lookup getNetwork: deterministic fallback import id after scoped lookup failure"
-              + " (name="
-              + networkName
-              + ", fallbackImportId="
-              + fallbackImportId.orElse("")
-              + ")");
-      return fallbackImportId;
-    }
-    return resolveNetworkImportId(GetNetworkPlainArgs.builder().name(networkName).build())
-        .importId();
-  }
-
   /** Whether the Incus host reports this network as UNMANAGED — the GROW must skip it. */
   public boolean isUnmanagedNetwork(String networkName, String incusProject) {
     final LookupResult projectScoped =

@@ -182,8 +182,31 @@ public final class InstanceGrow {
 
   /**
    * Ensure one vmnet bridge from its resolved config. Skips the canonical host-provided LAN bridge
-   * and any bridge the provider reports UNMANAGED (a provider invoke, not ssh); an already-existing
-   * bridge is adopted, not re-declared (its config is host-owned).
+   * and any bridge the provider reports UNMANAGED (a provider invoke, not ssh).
+   *
+   * <p>DECLARED, always — never adopted by omission, the same correction {@link #ensureProfile}
+   * took on 2026-09-21 for the same reason. The guard this replaces ("an already-existing vmnet
+   * bridge is adopted, not re-declared, its config is host-owned") made the bridge config
+   * WRITE-ONCE: the two live bridges were absent from Pulumi state entirely, so `pulumi preview`
+   * planned no network at all and every {@code ipv4.*}/{@code ipv6.*}/{@code raw.dnsmasq} change
+   * since their creation reached nothing. It cost a full investigation: {@code raw.dnsmasq} needed
+   * {@code no-hosts} (a pod was resolving a host name to its own loopback) and the code change was
+   * inert until an operator ran {@code incus network set} by hand.
+   *
+   * <p>{@code config} is therefore NOT ignored — reconciling it is the point. The ignored keys are
+   * the ones whose diff would be SPURIOUS rather than real: the provider reads {@code project} back
+   * null (and it is ForceNew), and {@link #ensureProfile} beside this records the same class for
+   * {@code devices}, modelled as an ordered list that churns. Ignoring them suppresses a phantom
+   * replacement, never a genuine change. Recreating a bridge is NOT what that list guards against —
+   * the operator has ruled (2026-09-23) that a recreate is fine, the instances being re-growable.
+   *
+   * <p>⚠️ MIGRATION, once: a bridge in the daemon but not in state fails the create loudly with
+   * "already exists". The straight path is to DELETE the instances and then the bridges, and let
+   * the next {@code up} create both from this code — state matches the code by construction, and
+   * nothing durable rides a bridge (leases are re-derived from the {@code dhcp-host} reservations,
+   * the persist datasets are ZFS and outlive both). {@code pulumi import} is the no-downtime
+   * alternative but needs the provider passed explicitly: the CLI otherwise resolves "latest"
+   * against {@code pulumi/pulumi-incus}, which is not an org repo, and fails 404.
    */
   private void ensureNetwork(
       String networkName, Map<String, String> bridgeConfig, Resource projectDependency) {
@@ -199,17 +222,13 @@ public final class InstanceGrow {
       log.accept("incus network ensure: skipping unmanaged bridge (" + networkName + ")");
       return;
     }
-    // An already-existing vmnet bridge is adopted, not re-declared (its config is host-owned).
-    if (importLookup.existingNetworkId(networkName, networkProject).isPresent()) {
-      return;
-    }
 
     final CustomResourceOptions options =
         CustomResourceOptions.builder()
             .provider(providerContext.provider())
             .retainOnDelete(true)
             .dependsOn(List.of(projectDependency))
-            .ignoreChanges(List.of("project"))
+            .ignoreChanges(List.of("name", "project", "type", "description"))
             .build();
 
     new Network(
