@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 0b18b1f3-3eda-496a-865d-1fbc722b0d30
-  modified: 2026-09-22T21:25:17.716Z
+  modified: 2026-09-23T05:26:43.993Z
 ---
 
 `network-blueprint.json` — la projection que **ndh** consomme pour ses réservations dnsmasq LAN et son
@@ -70,12 +70,34 @@ la clé `cluster`. Il ne manquait que des entrées → un bump de flake suffit.
 ## À faire, laissé exprès pour son propre tour
 
 `Cidr.host(offset)` **incrémente sans borner** — quitter le préfixe est silencieux, c'est ce qui a rendu
-le débordement invisible. Ajouter la borne fera surgir la sur-énumération de bbox. Et la question de
-fond : épingler la MAC des machines CAPN (`LXCMachineSpec.Devices`, `"eth0,hwaddr=…"`, qui EXISTE en
-amont) rendrait les réservations réelles — mais le champ vit aussi sur le `LXCMachineTemplate`, **un jeu
-pour toutes les répliques**, donc impossible pour du greenfield. Troisième occurrence du même invariant
-après `spec.files` et le label pet : *une réplique managée ne reçoit pas d'identité par nœud depuis un
-gabarit*.
+le débordement invisible. Ajouter la borne fera surgir la sur-énumération de bbox.
+
+## ❌ Épingler la MAC des machines CAPN : porte FERMÉE (2026-09-22)
+
+Tranché par l'utilisateur : « assigner les macaddr via capi/capn n'est pas prévu. » Le champ existe bien
+(`LXCMachineSpec.Devices`, syntaxe `"eth0,hwaddr=…"`), mais ce n'est pas un usage conçu — et de toute
+façon il vit aussi sur le `LXCMachineTemplate`, **un jeu pour toutes les répliques** : la même MAC partout
+serait une collision, pas une identité. Troisième occurrence du même invariant après `spec.files` et le
+label pet : *une réplique managée ne reçoit pas d'identité par nœud depuis un gabarit* ; la question n'est
+jamais « quel champ » mais « qui crée l'objet ».
+
+Conséquence définitive : un cluster managé n'a **pas** d'adresse de nœud dérivable. Son seul endpoint
+stable est sa **VIP** — et c'est exactement ce à quoi elle sert.
+
+## ⚠️ Le prérequis CAPN sur la VIP, non satisfait
+
+`https://capn.linuxcontainers.org/reference/templates/kube-vip.html` exige « the management cluster can
+connect to the VIP address ». C'est structurel : `Cluster.spec.controlPlaneEndpoint` EST la VIP, donc
+CAPI/CAPRKE2 parlent au cluster managé par là. Or les deux `/21` sont disjoints et le nœud de mgmt
+envoyait la VIP de wrkld à `192.168.1.254` (sa route par défaut sort par le LAN, pas par la passerelle
+vmnet `10.80.0.1`). À corriger par une route pour l'autre `/21` via `10.80.0.1`, ou par le tailnet — c'est
+ce qui sépare « wrkld existe » de « CAPI le gère ». Explique pourquoi `RemoteConnectionProbe` est la
+condition qui compte.
+
+NOTE: le template CAPN lui-même ne s'applique pas tel quel — il livre kube-vip en pod statique via la
+spec **kubeadm** (`/etc/kubernetes/manifests/`), alors que nous sommes en CAPRKE2
+(`/var/lib/rancher/rke2/agent/pod-manifests/`) et que nous avons choisi l'installation par Flux depuis la
+branche (seed-incluster `31d5b15fb`).
 
 See [[funnel-identity-is-per-cluster]] [[kubeconfig-context-per-cluster-intention]]
 [[single-owner-rule]].
