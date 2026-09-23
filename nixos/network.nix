@@ -17,7 +17,7 @@
 # nothing wrote it to resolv.conf). Off → resolved owns /etc/resolv.conf and egress DNS works. mDNS
 # `.local` stays with avahi (userspace — ./host-access.nix); resolved does no mDNS (off by default),
 # so the two do not collide. networkd owns links/addresses/routes; resolved owns DNS.
-{ ... }:
+{ netplan, ... }:
 {
   systemd.network.enable = true;
   services.resolved.enable = true;
@@ -50,9 +50,10 @@
   # route to the internet; installing it as a default route black-holes public traffic whenever it
   # out-prioritises lan0 (proven live: vmnet0's default metric 200 beat lan0's, so `ping www.free.fr`
   # left via 10.80.0.1 and died — the manual `ip route del default dev vmnet0` confirmed the fix).
-  # UseGateway=false drops that default route (v4 + v6): the node keeps only the 10.80.0.0/21 link
-  # route (automatic from the address) for inter-node reach, and lan0 stays the sole default. Still
-  # required-for-online — rke2 needs the cluster link up.
+  # UseGateway=false drops that default route (v4 + v6): the node keeps the /21 link route (automatic
+  # from the address) for inter-node reach plus the explicit supernet route below for its SIBLING
+  # clusters, and lan0 stays the sole default. Still required-for-online — rke2 needs the cluster link
+  # up.
   systemd.network.networks."10-vmnet0" = {
     matchConfig.Name = "vmnet0";
     networkConfig.DHCP = "yes";
@@ -70,5 +71,30 @@
     # match, so the node gets its deterministic v6 and --node-ip validates. (v4 is unaffected:
     # dnsmasq matches the MAC from the DHCPv4 chaddr directly.)
     dhcpV6Config.DUIDType = "link-layer";
+
+    # How a cluster reaches its SIBLINGS on the same host. Each cluster owns a /21 of the vmnet
+    # supernet on its own bridge, and the two never met: a node held only its own /21 link route, so
+    # another cluster's VIP fell through to the lan0 default and out to the home router, where it
+    # died. CAPN states the requirement plainly — "the management cluster can connect to the VIP
+    # address" — because `Cluster.spec.controlPlaneEndpoint` IS that VIP, so CAPI and CAPRKE2 reach a
+    # managed cluster through it.
+    #
+    # Nothing is needed on the HOST: it already holds both bridges with their gateways
+    # (vmnet-mgmt 10.80.0.1/21, vmnet-wrkld 10.80.8.1/21) and `net.ipv4.ip_forward = 1`, so it
+    # forwards between them today. Only the node lacked the route. That also keeps this OFF the
+    # tailnet: the clusters are co-located, so the hop is local.
+    #
+    # `_dhcp4` rather than a literal gateway, because this image is FLEET-WIDE and does not know
+    # which cluster it will boot into: networkd substitutes the gateway from THIS node's own lease,
+    # which is its own vmnet gateway. It is the same gateway UseGateway=false rejects above — refused
+    # as a DEFAULT route (it reaches no internet), accepted for the supernet, which is all it serves.
+    # The /21 link route stays preferred for the node's own network (longest prefix); this catches
+    # every sibling, present and future, with no per-cluster variant of the image.
+    routes = [
+      {
+        Destination = netplan.vmnetSupernet;
+        Gateway = "_dhcp4";
+      }
+    ];
   };
 }

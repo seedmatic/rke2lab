@@ -389,6 +389,14 @@
       # system-independent `nixpkgs.lib` (pure int/string functions) so the whole
       # export is platform-agnostic.
       networkBlueprint = networkBlueprintData // {
+        # The vmnet SUPERNET — the span every cluster's /21 is carved from, so a node can name
+        # "all my sibling clusters on this host" without knowing which cluster it is. Searched
+        # once here rather than in each consumer: the segments are a list, and the node's
+        # networkd config has no business walking it.
+        vmnetSupernet =
+          (nixpkgs.lib.findFirst (segment: segment.name == "vmnet")
+            (throw "network-blueprint.json carries no 'vmnet' segment")
+            networkBlueprintData.segments).cidr;
         # Helper to derive MACs for a cluster/node pair, using the cluster/node
         # ID mappings from the Java-generated YAML.
         deriveMacs = cluster: node:
@@ -1296,6 +1304,9 @@ USAGE
         specialArgs = {
           inherit flox flox-runtime flox-controller;
           ndh = inputs.ndh;
+          # The netplan projection, so the node's networkd config names addressing facts from the
+          # SSOT instead of restating them. Today: the vmnet supernet, for the sibling-cluster route.
+          netplan = networkBlueprint;
         };
         modules = [
           "${nixpkgs}/nixos/modules/virtualisation/lxc-container.nix"
