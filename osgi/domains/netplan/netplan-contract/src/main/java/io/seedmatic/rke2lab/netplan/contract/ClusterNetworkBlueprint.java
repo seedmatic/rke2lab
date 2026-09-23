@@ -49,6 +49,19 @@ public record ClusterNetworkBlueprint(
   public static final String ULA_PREFIX = "fd96:6924:3693";
 
   /**
+   * The LAN's DNS domain — the one the site router serves, and the ONLY suffix under which a host
+   * name is resolvable from INSIDE a cluster.
+   *
+   * <p>A pod resolves through CoreDNS, which forwards to the nameservers the kubelet gave it
+   * ({@code /run/systemd/resolve/resolv.conf}). Neither mDNS nor the tailnet's MagicDNS is on that
+   * path, and a BARE host name is worse than unresolvable there: the vmnet bridge's dnsmasq — first
+   * in that list — used to answer it from the host's {@code /etc/hosts}, where NixOS writes {@code
+   * 127.0.0.2 <hostname>}, so a pod dialling {@code <host>-nixos} could reach ITSELF. Plain DNS
+   * under this domain is the one form every audience resolves identically.
+   */
+  public static final String LAN_DOMAIN = "lan";
+
+  /**
    * Pod / Service CIDRs — PER-CLUSTER, a pure function of {@code clusterId} (see the cluster
    * addressing plan). Under one cluster these were global constants (10.42/10.43); with four
    * clusters sharing each host's L2 fabric they MUST be globally disjoint or pod routes collide on
@@ -250,7 +263,8 @@ public record ClusterNetworkBlueprint(
             // The incus/nixos daemon host = <host>-nixos (the bare host, not the <host>-<role>
             // cluster). The operator-facing authority is config's rke2lab:cluster:remoteIncus; this
             // is the netplan-domain mirror derived from the same bare host.
-            hostOf(clusterName) + "-nixos"));
+            hostOf(clusterName) + "-nixos",
+            hostOf(clusterName) + "-nixos." + LAN_DOMAIN));
   }
 
   /** Stable ref/id for contract exports. */
@@ -464,8 +478,23 @@ public record ClusterNetworkBlueprint(
    * e.g. the seed's systemd probe — reaches it); {@code nixosHost} the {@code <cluster>-nixos}
    * builder/daemon host. Ports are NOT here: a port is a fixed service constant, not
    * identity-derived — each domain pairs a name from here with its own port.
+   *
+   * <p>The infra host has THREE forms because it has three audiences, and they are not
+   * interchangeable — the choice is "who resolves it", never taste:
+   *
+   * <ul>
+   *   <li>{@code nixosHost} — bare. On the host itself this means MYSELF ({@code /etc/hosts} maps
+   *       it to {@code 127.0.0.2}). Correct there, and only there.
+   *   <li>{@code <nixosHost>.local} — mDNS, resolved through a same-LAN machine's NSS: the
+   *       operator's Mac and the seed's probe (this is the form the host-side bootstrap config
+   *       carries).
+   *   <li>{@code nixosLanFqdn} — plain DNS under {@link #LAN_DOMAIN}. The form anything INSIDE a
+   *       cluster must use: a pod reaches neither mDNS nor MagicDNS, and the bare name there can
+   *       resolve to the asker's own loopback.
+   * </ul>
    */
-  public record NamePlan(String nodeHostname, String nodeMdnsFqdn, String nixosHost) {}
+  public record NamePlan(
+      String nodeHostname, String nodeMdnsFqdn, String nixosHost, String nixosLanFqdn) {}
 
   /**
    * Canonical cluster topology: 1 master, 3 control nodes (peers), 2 worker nodes.

@@ -124,7 +124,14 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
     // The workload's Incus remote — its host's engine (bioskop-nixos / nikopol-nixos). Intent
     // value;
     // the controller/CAPN authenticate from the identity Secret (which also carries `server`).
-    final String remoteEndpoint = "https://" + target.host() + "-nixos:8443";
+    //
+    // The LAN FQDN, not the bare host name: CAPN dials this from a POD, and a pod resolves through
+    // CoreDNS — where the bare name reached the vmnet bridge's dnsmasq, which answered it from the
+    // host's /etc/hosts (127.0.0.2). CAPN then dialled its own :8443 diagnostics port and reported
+    // "certificate is valid for localhost". See ClusterNetworkBlueprint.NamePlan for the three
+    // forms
+    // and their audiences.
+    final String remoteEndpoint = "https://" + blueprint.names().nixosLanFqdn() + ":8443";
 
     final ApiObject namespaceObject = renderer.namespace(scope, cluster, namespace, packageProfile);
     // The 2×2 intent: ONE cluster-level ClusterIntention + N pool-level PoolIntention (here just

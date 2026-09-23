@@ -36,6 +36,7 @@ import io.seedmatic.rke2lab.incus.ingress.GrowNetworkView;
 import io.seedmatic.rke2lab.incus.ingress.IncusGrowCoordinate;
 import io.seedmatic.rke2lab.incus.ingress.InstanceGrowPlan;
 import io.seedmatic.rke2lab.incus.ingress.SplitImageFingerprint;
+import io.seedmatic.rke2lab.netplan.contract.ClusterNetworkBlueprint;
 import io.seedmatic.rke2lab.netplan.contract.NetplanSynthesisService;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.CellarReceiver;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.ConsultationSource;
@@ -545,13 +546,24 @@ public class IncusProvisionScenario
         throw new UncheckedIOException(
             "cannot read the emitted rke2.version at " + versionFile, ex);
       }
-      final String host = facet.clusterName().split("-", 2)[0];
+      // The LAN FQDN, because this value is read from INSIDE the cluster: a pod resolves through
+      // CoreDNS, where the bare host name used to come back as the host's own /etc/hosts loopback.
+      // ClusterNetworkBlueprint.NamePlan carries the three forms and says which audience each
+      // serves.
+      final String incusRemoteHost =
+          ClusterNetworkBlueprint.builder()
+              .cluster(facet.clusterName())
+              .node("master")
+              .deriveRecipeModel()
+              .build()
+              .names()
+              .nixosLanFqdn();
       final ObjectNode node = JsonNodeFactory.instance.objectNode();
       node.put("imageAlias", view.imageAlias());
       node.put("imageFingerprint", SplitImageFingerprint.of(metadata, rootfs));
       node.put("imageBuildChecksum", view.buildChecksum());
       node.put("incusProject", facet.incusProject());
-      node.put("incusRemoteAddress", "https://" + host + "-nixos:8443");
+      node.put("incusRemoteAddress", "https://" + incusRemoteHost + ":8443");
       node.put("rke2Version", rke2Version);
       return Optional.of(node);
     }
