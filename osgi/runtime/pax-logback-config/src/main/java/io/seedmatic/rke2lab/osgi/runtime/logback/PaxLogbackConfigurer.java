@@ -85,12 +85,24 @@ public final class PaxLogbackConfigurer {
   protected static final String CONSOLE_PROPERTY = "rke2lab.log.console";
 
   /**
-   * Attach a stdout {@link ConsoleAppender} to root — the DEFAULT — so a STANDALONE CLI (manifests
-   * / plan) shows its narration live. Suppressed only when {@code -Drke2lab.log.console=false}:
-   * that is seed-master's case, where the process stdout belongs to Pulumi and a logback console
-   * write would pollute the resource stream (and the native write wedges the boot under a remote
-   * debugger). This runs POST-{@code framework.start()}, past the boot-sensitive window the
-   * FILE-only bootstrap XML guards, so the appender is safe to add here. Idempotent name so a
+   * Attach a STDERR {@link ConsoleAppender} to root — the DEFAULT — so a STANDALONE CLI (manifests
+   * / plan) shows its narration live.
+   *
+   * <p>stderr, not stdout, because several of these CLIs emit a DOCUMENT on stdout ({@code plan-cli
+   * network export} → the blueprint YAML, {@code dataset export} → dataplan JSON) and a diagnostic
+   * stream has no business in a product stream. It went unnoticed for a release because YAML is
+   * permissive enough to swallow the damage silently: {@code 21:27:55.473 INFO … FrameworkLauncher
+   * - OSGi runtime booted: 45 bundle(s) installed and started} parses as a MAPPING — everything up
+   * to the colon becoming a key — so the export stayed syntactically valid and the junk key rode
+   * all the way into the committed {@code network-blueprint.json}. The JSON export was luckier only
+   * by accident: a stray line there breaks the parse outright.
+   *
+   * <p>Suppressed entirely when {@code -Drke2lab.log.console=false}: that is seed-master's case,
+   * where a native console write wedges the boot under a remote debugger. (Stream pollution is no
+   * longer a reason to suppress — stderr already answers it.)
+   *
+   * <p>This runs POST-{@code framework.start()}, past the boot-sensitive window the FILE-only
+   * bootstrap XML guards, so the appender is safe to add here. Idempotent name so a
    * double-configure never double-attaches.
    */
   protected void attachConsoleUnlessSuppressed(LoggerContext context) {
@@ -108,7 +120,7 @@ public final class PaxLogbackConfigurer {
     final ConsoleAppender<ILoggingEvent> console = new ConsoleAppender<>();
     console.setContext(context);
     console.setName("CONSOLE");
-    console.setTarget("System.out");
+    console.setTarget("System.err");
     console.setEncoder(encoder);
     console.start();
     root.addAppender(console);
