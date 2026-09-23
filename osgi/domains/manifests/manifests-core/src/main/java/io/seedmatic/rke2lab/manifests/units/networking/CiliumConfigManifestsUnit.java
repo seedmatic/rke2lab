@@ -172,6 +172,32 @@ public final class CiliumConfigManifestsUnit extends AbstractManifestsUnit {
                 # mesh works via apiserver regardless.
                 routingMode: native
                 autoDirectNodeRoutes: true
+                # The device set must be DECLARED, because auto-detection gets it wrong here — and
+                # silently. cilium only auto-selects devices that carry a DEFAULT ROUTE, and we
+                # deliberately took vmnet0's away (`UseGateway=false` in nixos/network.nix: its
+                # incus-managed DHCP advertises a gateway that reaches no internet, and installing
+                # it black-holed public egress). So vmnet0 fell out of cilium's device set entirely,
+                # leaving `Masquerading: BPF [lan0]`.
+                #
+                # That is a POD-EGRESS bug, invisible from the node: a pod talking to a SIBLING
+                # cluster's VIP is routed out vmnet0 (the 10.80.0.0/18 supernet route), a device
+                # cilium does not masquerade on — so the packet leaves with its pod-CIDR source
+                # (10.44.x), and no sibling has a route back to another cluster's pod CIDR. It dies
+                # on the sibling's default route, out to the home router. Measured from the mgmt
+                # node, same destination and same device, source being the ONLY difference:
+                # src 10.80.0.10 → HTTP 401 in 3ms; src 10.44.0.101 → timeout at 6s. That is what
+                # kept CAPI's RemoteConnectionProbe failing (5s deadline) with the node itself
+                # reaching the VIP fine, so the cluster stayed Degraded with no nodeRef.
+                #
+                # Declaring `devices` DISABLES auto-detection, so lan0 must be listed too — it
+                # carries NodePort, the L2 announcements and the LoadBalancer ingress pool.
+                #
+                # directRoutingDevice is pinned for the same reason it was wrong before: the node IP
+                # lives on vmnet0 (10.80.<cluster>.10), so node-to-node pod routing belongs there,
+                # yet direct routing had landed on lan0. Harmless on a single-node management plane,
+                # broken for pod-to-pod the moment a cluster has more than one node.
+                devices: "%s %s"
+                directRoutingDevice: "%s"
                 ipv4NativeRoutingCIDR: %s
                 ipv6NativeRoutingCIDR: %s
                 operator:
@@ -183,6 +209,9 @@ public final class CiliumConfigManifestsUnit extends AbstractManifestsUnit {
                     .formatted(
                         identity.clusterName(),
                         blueprint.meshClusterId(),
+                        blueprint.interfaces().nodeLanInterface(),
+                        blueprint.interfaces().vipInterface(),
+                        blueprint.interfaces().vipInterface(),
                         blueprint.podCidr(),
                         blueprint.podCidrV6()))));
   }

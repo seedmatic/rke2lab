@@ -242,7 +242,7 @@ public record ClusterNetworkBlueprint(
             lanHeadscale6,
             lanTailscale6),
         new WanPlan(wanDhcpRange, wanHostMacaddr),
-        new InterfacePlan(nodeName + "-lan0", nodeName + "-vmnet0", "vmnet0"),
+        new InterfacePlan(nodeName + "-lan0", nodeName + "-vmnet0", "lan0", "vmnet0"),
         new VlanPlan(100, "rke2-vlan"),
         new NamePlan(
             clusterName + "-" + nodeName,
@@ -438,7 +438,22 @@ public record ClusterNetworkBlueprint(
 
   public record WanPlan(String dhcpRange, MacAddress hostMacaddr) {}
 
-  public record InterfacePlan(String lanInterface, String wanInterface, String vipInterface) {}
+  /**
+   * Interface names, on BOTH sides of the container boundary — the distinction is load-bearing and
+   * was long implicit here.
+   *
+   * <p>{@code lanInterface} / {@code wanInterface} are the HOST-side nics incus attaches to its two
+   * bridges, so they carry the node name ({@code <node>-lan0}, {@code <node>-vmnet0}) — the host
+   * needs them unique across every instance it runs.
+   *
+   * <p>{@code nodeLanInterface} / {@code vipInterface} are the names the node sees from INSIDE
+   * ({@code lan0}, {@code vmnet0}) — node-independent, because each container has its own
+   * namespace. They are what in-cluster workloads must be told: kube-vip announces the VIP on
+   * {@code vipInterface}, and cilium's device set is exactly this pair (see {@code
+   * CiliumConfigManifestsUnit} for why declaring it is not optional).
+   */
+  public record InterfacePlan(
+      String lanInterface, String wanInterface, String nodeLanInterface, String vipInterface) {}
 
   public record VlanPlan(int id, String name) {}
 
