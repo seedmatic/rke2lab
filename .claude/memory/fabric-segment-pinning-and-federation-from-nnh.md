@@ -63,15 +63,24 @@ plus faible que chez nnh. À trancher explicitement, pas à supposer.
 ## ✅ FAIT le 2026-09-23 — bioskop a rejoint la fabric (ndh `7ddd6cef`)
 
 Worktree `ndh.d/feature/bioskop-fabric-address`, branche `feature/bioskop-fabric-address`,
-**non poussée**. bioskop a gagné `dynamicCidr` / `dhcpRange` / `linkCidr` / `hostAddress` et un
+**non poussée**. ✅ **VÉRIFIÉ VIVANT** : en9 porte `172.16.7.253/30` à côté de `192.168.1.129`,
+`172.16.7.0/25` route via `.254` sur en9, et `100.64/10` sort toujours par `utun4`. bioskop a gagné `dynamicCidr` / `dhcpRange` / `linkCidr` / `hostAddress` et un
 `vzHostAddress` de segment (`172.16.7.253`), **aux mêmes offsets que nikopol** — les deux entrées
 partagent désormais UNE forme. Vérifié par évaluation : les 3 spans, le `/30` sur `lan-br`, la
 config `bare-br` rendue, les deux configs darwin et le toplevel de `bioskop-nixos`.
 
 ★ Le module n'a **rien** eu besoin de gagner : `hasLink` signifiait déjà « un vz-host joint par un
 `/30` », seuls ses commentaires disaient « corp Mac ». Déclarer les champs active les trois effets
-d'un coup. Ce qui **ne** se généralisait pas par la donnée, c'est l'interface — voir
-[[darwin-nic-service-not-device]].
+d'un coup. Ce qui **ne** se généralisait pas par la donnée, c'est tout ce qui supposait le
+vz-host **étranger** — trois faits redéclarés dans du code : l'interface
+([[darwin-nic-service-not-device]]), le canal de livraison (ssh alors que bioskop **est** un hôte
+nix-darwin, donc son propre `switch` doit le livrer — via `postActivation`, voir
+[[nix-darwin-activation-keys-are-fixed]]), et les routes. Cette dernière était un **vrai danger** :
+la paire codée en dur incluait `100.64.0.0/10 via <guest>`, qui existe parce que le Mac corp n'a
+pas de tailnet — sur bioskop, membre du tailnet, elle aurait détourné son propre `utun`. Le
+catalogue nomme désormais le fait une fois (`vzHostKind = foreign | nix-managed`) et **quatre**
+choses en dérivent : la liste de routes, le canal, qui possède `/etc/resolver/<domain>`, et si le
+nudge du guest est émis.
 
 ⚠️ **La numérotation reste l'ancienne**, et le passage aux `/20` dérivés doit bouger les DEUX hôtes
 dans le même changement : le `netCidr` cible de bioskop (`172.16.0.0/21`) **contient** le `/25`

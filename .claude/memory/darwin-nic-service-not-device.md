@@ -58,4 +58,4 @@ Autres endroits de ndh qui nomment encore une interface en dur et qui n'ont PAS 
 `modules/darwin/socket_vmnet.nix` (`lanInterface = "en0"`, pour toute la flotte), le défaut `en0`
 de `bird-daemon.nix`, et la liste de `network-bond.nix` (bond `enable = false` sur bioskop).
 
-See [[fabric-segment-pinning-and-federation-from-nnh]].
+See [[fabric-segment-pinning-and-federation-from-nnh]] [[nix-darwin-activation-keys-are-fixed]].
