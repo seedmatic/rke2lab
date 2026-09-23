@@ -184,6 +184,7 @@ public class NetplanBlueprintScenario
               new NodeIPs(
                   bp.lan().hostInetaddr().getHostAddress(),
                   bp.nodeNetwork().nodeHostInetaddr().getHostAddress(),
+                  bp.vip().vipHostInetaddr().getHostAddress(),
                   bp.lan().gatewayInetaddr().getHostAddress(),
                   bp.nodeNetwork().nodeGatewayInetaddr().getHostAddress(),
                   mixed(bp.lan().hostInetaddr6()),
@@ -390,9 +391,20 @@ public class NetplanBlueprintScenario
 
   record NodeMacs(String lan, String wan, String lanBridge) {}
 
+  /**
+   * A node's addresses, plus the one CLUSTER-scoped address a consumer of this projection needs
+   * beside them: {@code vipHost}, the kube-vip control-plane endpoint.
+   *
+   * <p>It repeats for every node of a cluster, which is the point — the projection is read by node
+   * ({@code addressing.<cluster>.<node>.ips}), and a reader that has a node in hand should not have
+   * to re-derive {@code 10.80.<clusterId*8+7>.10} to learn where that cluster's apiserver answers.
+   * Re-deriving it is exactly what the host would otherwise do, and the netplan is the only thing
+   * entitled to: it owns the addressing law.
+   */
   record NodeIPs(
       String lanHost,
       String nodeHost,
+      String vipHost,
       String lanGateway,
       String nodeGateway,
       String lanHost6,

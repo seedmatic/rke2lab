@@ -1,6 +1,7 @@
 package io.seedmatic.rke2lab.controlplane.bdd;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -844,15 +845,7 @@ public class ClusterSeedScenario
     }
 
     private void publishOperatorKubeconfig(AdminCredentials admin) {
-      // The operator reaches the node over its deterministic mDNS name (the lan0 IP is
-      // DHCP-churned);
-      // the in-cluster Secret (rendered by the manifests HA layer) uses the kube-vip VIP instead.
-      final String server =
-          "https://" + config.clusterName() + "-" + config.nodeName() + ".local:6443";
-      final String kubeconfig =
-          admin.kubeconfig(
-              config.clusterName(),
-              List.of(new AdminCredentials.Access(config.clusterName(), server)));
+      final String kubeconfig = admin.kubeconfig(config.clusterName(), operatorAccesses());
       final Path ref = config.kubeconfigRef();
       try {
         Files.createDirectories(ref.toAbsolutePath().getParent());
@@ -860,6 +853,93 @@ public class ClusterSeedScenario
         Files.setPosixFilePermissions(ref, PosixFilePermissions.fromString("rw-------"));
       } catch (IOException ex) {
         throw new UncheckedIOException("failed to publish the operator kubeconfig to " + ref, ex);
+      }
+    }
+
+    /**
+     * The operator's ways IN to the management cluster, read from the netplan's own materialised
+     * projection ({@code network-blueprint.json}) rather than re-derived here — the host does not
+     * compile against netplan (runtime scope) and must not restate its addressing law. The netplan
+     * deliberately keeps no cellar harvest and materialises to that file instead, which ndh already
+     * consumes the same way.
+     *
+     * <p>TWO contexts, because they are not equivalent and neither subsumes the other (measured
+     * from the operator's Mac):
+     *
+     * <ul>
+     *   <li>the netplan LAN address FIRST, so it is {@code current-context} — 401 in 6.5ms, and it
+     *       kept answering straight THROUGH a cold start, which is when an operator most needs in.
+     *       Its limit: it is ONE node's address.
+     *   <li>the kube-vip VIP second — 401 in 39ms over the tailnet Connector, and it survives the
+     *       node being replaced. Its limit: it needs the cluster healthy enough to run that
+     *       Connector, so it was unreachable for minutes after the same cold start.
+     * </ul>
+     *
+     * <p>And the mDNS name LAST, so it is never current: it resolves to the node's GLOBAL IPv6 from
+     * the Mac rather than to the LAN (measured), which makes it the least reliable of the three —
+     * but it is the only one needing no address at all, which is what saves it the day the LAN
+     * carve moves. It is keyed on the node NAME, admissible HERE and nowhere else: a management
+     * node is an adopted PET with a deterministic name, not the CAPI cattle that rule is about.
+     *
+     * <p>All three are in the apiserver cert's SANs (verified against the cluster CA), so kubectl
+     * needs no {@code insecure-skip-tls-verify} on any of them.
+     */
+    private List<AdminCredentials.Access> operatorAccesses() {
+      final JsonNode ips = nodeAddressing();
+      final String cluster = config.clusterName();
+      return List.of(
+          new AdminCredentials.Access(cluster, apiserver(ips, "lanHost")),
+          new AdminCredentials.Access(cluster + "-vip", apiserver(ips, "vipHost")),
+          new AdminCredentials.Access(
+              cluster + "-mdns", "https://" + cluster + "-" + config.nodeName() + ".local:6443"));
+    }
+
+    private String apiserver(JsonNode ips, String field) {
+      final JsonNode address = ips.get(field);
+      if (address == null || address.asText().isBlank()) {
+        throw new IllegalStateException(
+            "the netplan projection carries no "
+                + field
+                + " for "
+                + config.clusterName()
+                + "/"
+                + config.nodeName()
+                + " — regenerate it with `nix run .#regen-blueprint`");
+      }
+      return "https://" + address.asText() + ":6443";
+    }
+
+    /**
+     * This node's {@code ips} block in the committed projection. Absent it, the tree is broken —
+     * the file is checked in and a nix check ({@code blueprint-fresh}) already fails the build when
+     * it drifts from the Java source — so this throws rather than degrading to a guessed endpoint:
+     * a kubeconfig pointing somewhere plausible and wrong is worse than none.
+     */
+    private JsonNode nodeAddressing() {
+      // Resolved against the process CWD, the way Main resolves `.secrets`: the host deliberately
+      // carries no worktree root ("that is the worktree soil's harvest, no longer a host-carried
+      // scalar"), and pulumi runs in the project directory.
+      final Path projection = Path.of("network-blueprint.json").toAbsolutePath().normalize();
+      try {
+        final JsonNode ips =
+            new ObjectMapper()
+                .readTree(Files.readString(projection))
+                .path("addressing")
+                .path(config.clusterName())
+                .path(config.nodeName())
+                .path("ips");
+        if (ips.isMissingNode()) {
+          throw new IllegalStateException(
+              "the netplan projection at "
+                  + projection
+                  + " describes no "
+                  + config.clusterName()
+                  + "/"
+                  + config.nodeName());
+        }
+        return ips;
+      } catch (IOException ex) {
+        throw new UncheckedIOException("cannot read the netplan projection at " + projection, ex);
       }
     }
 

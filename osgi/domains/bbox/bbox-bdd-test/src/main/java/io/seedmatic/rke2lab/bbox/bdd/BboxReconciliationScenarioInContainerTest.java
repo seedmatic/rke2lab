@@ -65,8 +65,17 @@ public class BboxReconciliationScenarioInContainerTest {
 
   private static final SeedCodec CODEC = new SeedCodec();
 
-  /** The canonical run enumerates 2 clusters × 6 nodes = 12 desired reservations. */
-  private static final int DESIRED_COUNT = 12;
+  /**
+   * The canonical run enumerates one row per node of every RESERVABLE cluster — the two {@code
+   * <host>-mgmt}, each single-node: 2 rows.
+   *
+   * <p>It was 12 (2 × 6) while the enumerator crossed bare HOSTS with the canonical node SUPERSET.
+   * Both halves were wrong: a host name has no role to split, so {@code ClusterRole.of} fell back
+   * to MGMT and described pseudo-clusters, and the superset placed four non-existent nodes past the
+   * end of a management cluster's {@code /29}. And a workload row could never be claimed anyway —
+   * its nodes are CAPN cattle with random MACs, and a reservation is keyed by MAC.
+   */
+  private static final int DESIRED_COUNT = 2;
 
   /** The current parcel the host publishes at the GIVEN; the scion files its harvest under it. */
   private static final Parcel PARCEL = new Parcel("bioskop", "dev");
