@@ -1,5 +1,6 @@
 package io.seedmatic.rke2lab.manifests.units.clusterapi;
 
+import io.seedmatic.rke2lab.manifests.contract.ManifestAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.profiles.IncusIdentityMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.WorkloadClusterCasMaterial.Pair;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
@@ -318,8 +319,29 @@ public final class ClusterApiCrRenderer {
                 "image", Map.of("fingerprint", imageFingerprint),
                 "rke2Version", rke2Version,
                 "controlPlaneEndpoint", Map.of("host", vip, "port", port),
-                "nodes", nodes)));
+                "nodes", nodes,
+                "nodeLabels", poolNodeLabels())));
     return poolIntention;
+  }
+
+  /**
+   * The kubelet node labels every node of a pool registers with. seed-incluster poses them on the
+   * RKE2ControlPlane's {@code agentConfig.nodeLabels} — CAPRKE2's own field for this, which is why
+   * they are declared as pool intent rather than smuggled in as a {@code config.yaml.d} fragment.
+   *
+   * <p>It has to be declared HERE because the nixos {@code rke2lab-node-labels} oneshot that poses
+   * the same label on a host-grown node is gated on {@code /var/lib/rke2lab/node.env}, which a
+   * CAPN-provisioned node does not have. Measured 2026-09-23 on {@code bioskop-wrkld}: without the
+   * flox-runtime label the flox-controller DaemonSet's {@code nodeSelector} matched nothing there,
+   * so no flox environment was GC-rooted under {@code /nix/var/nix/gcroots/flox-runtime/env} and
+   * the NRI plugin refused every flox-carrier container — headscale, kdns and seed-incluster all
+   * stalled on that one missing label.
+   *
+   * <p>Fleet-wide today (every node runs flox), so it takes no parameter; the constant is the
+   * single source the flox DaemonSet's {@code nodeSelector} also reads.
+   */
+  private static List<Object> poolNodeLabels() {
+    return List.of(ManifestAnnotation.NODE_FLOX_RUNTIME_LABEL.key() + "=true");
   }
 
   private static String base64(final String value) {
