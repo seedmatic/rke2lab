@@ -1,6 +1,6 @@
 source:
-  sha: 26cb185a42823a2eb7042c5119367739454690ae
-  dirty: false
+  sha: 377531cdeef30a49891c570511131017bc980727
+  dirty: true
 facet:
   debug:
     mesh:
@@ -20,5 +20,5 @@ image:
   imageFingerprint: 789e98ee846eb2c00b414c96c90872a5fc4c31b5e16f37d011be387ce1c2671c
   imageBuildChecksum: 8fb884c2e7244f999336adf18961a17244f17a42180c6692d4b74cec1c8b905f
   incusProject: rke2lab
-  incusRemoteAddress: https://bioskop-nixos:8443
+  incusRemoteAddress: https://bioskop-nixos.lan:8443
   rke2Version: 1.34.10+rke2r1
