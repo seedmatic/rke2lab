@@ -86,5 +86,32 @@ l'opérateur). Basculer sur `PRODUCTION` est désormais tout le geste.
 Le cert de mgmt a été **perdu** au passage (dataset recréé au lieu d'être renommé — ma séquence était
 fautive, la cible existait déjà). Coût quasi nul : il était lié à `flux-webhook`, un FQDN abandonné.
 
+## ★ 5e occurrence — le `providerID` du Node, et sa résolution en amont (2026-09-23)
+
+Le cluster de charge était **entièrement debout** — Node `Ready`, etcd, control-plane — et CAPI refusait
+de le déclarer disponible : `RKE2ControlPlane` disait « Waiting for at least one machine to be ready »
+d'une machine qui l'était. Cause : CAPI relie Machine↔Node par le **`providerID` seul**, et le Node n'en
+portait aucun. Mesuré : Node `bioskop-wrkld-control-plane-899lr` `Ready` / `providerID <none>`, tandis que
+sa Machine `…-8dvzv` portait `lxc:///…-899lr`.
+
+Même forme que les quatre précédentes : la valeur est **par nœud**, la spec qui la porterait est **un jeu
+pour toutes les répliques**. Le chemin host-grown le résout côté nœud (`nixos/rke2.nix`, oneshot
+`rke2lab-provider-id`, conditionné à `node.env` — qu'un nœud CAPRKE2 n'a pas, donc il saute, comme son
+commentaire l'annonçait déjà).
+
+★ **Et l'amont avait déjà la réponse** : `LXCCluster.spec.cloudProviderNodePatch` — CAPN estampille
+lui-même le Node. Sa doc de CRD nomme notre cas mot pour mot (« might not be easily doable when using
+other ControlPlane and Bootstrap providers »). Posé dans seed-incluster `8716a97fe`. L'alternative des
+templates CAPN par défaut est un arg kubelet templaté par cloud-init (`provider-id: {{ v1.local_hostname }}`),
+écartée : elle suppose que jinja survit aux `write_files` de CAPRKE2, et son snippet omet le préfixe
+`lxc:///`.
+
+⚠️ Il fallait que CAPN **joigne** le cluster de charge, donc ça n'aurait pas pu marcher avant que
+`RemoteConnectionProbe` passe True le même jour. La leçon générale : quand une identité par nœud manque,
+chercher d'abord si le provider sait l'estampiller — avant d'inventer un canal.
+
+⚠️ `ensure()` laisse un objet existant intact, donc ce champ n'atteint que les **nouvelles**
+`LXCCluster` ; la vivante a pris un `kubectl patch`.
+
 See [[single-owner-rule]] [[netplan-projection-described-hosts]]
 [[kubeconfig-context-per-cluster-intention]] [[workload-bootstrap-chain-cilium-kubevip]].

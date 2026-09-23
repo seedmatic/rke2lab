@@ -1,93 +1,70 @@
 ---
 name: kubeconfig-context-per-cluster-intention
-description: "PROCHAINE TÂCHE (convenue 2026-09-21, après le checkpoint) : .local.d/kubeconfig.yaml ne porte qu'un contexte (mgmt) ; en vouloir un par cluster déclaré par une intention — toute la matière existe déjà dans le cellier"
+description: "Les TROIS contextes mgmt sont livrés (2026-09-23, rke2lab 9f392870a) ; il ne manque que bioskop-wrkld-vip, bloqué par UNE asymétrie : ADMIN_CREDENTIALS est une coordonnée de cellier unique là où WORKLOAD_CLUSTER_CAS est déjà une liste"
 metadata: 
   node_type: memory
   type: project
   originSessionId: 0b18b1f3-3eda-496a-865d-1fbc722b0d30
-  modified: 2026-09-22T21:26:04.100Z
+  modified: 2026-09-23T09:44:52.662Z
 ---
 
-Demandé par l'utilisateur, à faire **juste après le cold start du 2026-09-21**. Motivation donnée :
-pouvoir requêter chaque cluster directement depuis bioskop.
+Demandé par l'utilisateur pour requêter chaque cluster depuis bioskop. **Livré aux trois quarts le
+2026-09-23** (rke2lab `107b39069` le renderer, `9f392870a` les contextes).
 
-## L'état
+## Ce qui est livré
 
-`.local.d/kubeconfig.yaml` ne porte **qu'un** contexte :
+`.local.d/kubeconfig.yaml` porte **trois** contextes, ordonnés par fiabilité mesurée depuis le Mac :
 
-```yaml
-clusters:  [{ server: https://bioskop-mgmt-master.local:6443 }]
-contexts:  [bioskop-mgmt]
-current-context: bioskop-mgmt
-```
+| contexte | endpoint | mesure |
+|---|---|---|
+| `bioskop-mgmt` (**current**) | `192.168.1.131:6443` — l'adresse LAN du netplan | **401 en 6,5 ms**, et répond **à travers** un cold start |
+| `bioskop-mgmt-vip` | `10.80.7.10:6443` — la VIP kube-vip | 401 en 39 ms via le Connector ; survit au **remplacement** du nœud, mais muet pendant des minutes après un cold start |
+| `bioskop-mgmt-mdns` | `bioskop-mgmt-master.local:6443` | dernier, jamais current : résout vers l'IPv6 **globale** depuis le Mac, pas le LAN |
 
-Écrit host-side après le grow : `AdminCredentials` est révélé du cellier
-(`ClusterPkiCoordinate.ADMIN_CREDENTIALS`, SEALED) et `AdminCredentials.kubeconfig(endpoint, …)`
-enveloppe ses trois blocs PEM autour d'un endpoint. Le `ClusterKubeconfigManifestsUnit` rend la même
-matière deux fois : l'opérateur (endpoint mDNS) et le Secret CAPI `<cluster>-kubeconfig` (endpoint VIP).
+★ Les trois sont dans les SANs du certificat apiserver, donc **aucun** `insecure-skip-tls-verify`.
+Et le nom mDNS se clave sur le **nom du nœud** — admissible ici et nulle part ailleurs : un nœud de
+mgmt est un **pet adopté** au nom déterministe, pas le bétail CAPI que l'interdit visait.
 
-## Reformulation à retenir
+## ★ Le design qui a débloqué : l'hôte LIT la projection
 
-Les intentions sont la **source d'énumération**, pas ce qu'on interroge — elles vivent toutes dans le
-cluster de gestion, dont le contexte existe déjà. La cible est **un contexte par cluster qu'une
-intention déclare**.
+Le blocage n'était pas le rendu mais la **connaissance** des endpoints. L'hôte ne compile pas contre
+netplan (`runtime` scope) et ne doit pas ré-énoncer sa loi d'adressage ; et le domaine netplan **ne
+garde volontairement aucune coordonnée de cellier** (« SYNTHESISES-and-MATERIALISES … stores no
+harvest behind the cellar »).
 
-⚠️ Corollaire de conception : calculer la liste **host-side depuis `workloadTargets`** (gravé au grow
-dans le `manifest.yaml` racine, rejoué du HEAD par les UPDATE), PAS en lisant les `ClusterIntention`
-vivantes — sinon la kubeconfig ne se régénère que quand le cluster répond, c'est-à-dire exactement
-quand on n'en a pas besoin.
+La réponse était sous le nez : il matérialise dans `network-blueprint.json`, committé, **déjà**
+consommé tel quel par ndh. L'hôte le lit, résolu contre le CWD comme `Main` résout `.secrets` (le
+code dit « NO worktreeRoot — that is the worktree soil's harvest, no longer a host-carried scalar »).
+Il manquait **une** valeur : `vipHost`, cluster-scoped, ajoutée aux `ips` de chaque nœud.
 
-## Toute la matière existe
+⚠️ Absence de fichier ou de clé ⇒ **throw**, pas de repli : le fichier est committé et une porte nix
+(`blueprint-fresh`) échoue déjà s'il dérive, donc son absence signe un arbre cassé — et une
+kubeconfig qui pointe vers quelque chose de plausible et faux est pire qu'aucune.
 
-`WORKLOAD_CLUSTER_CAS` porte, **par cluster de charge**, quatre paires de CA avec leur
-`keyPem` — dont **`clientCa`**, précisément ce qui signe un certificat client admin — et
-`serverCa.certChainPem`, la chaîne qui vérifie l'apiserver (enracinée `mammoth-skate-tls`, donc
-nativement approuvée). Ce sont les trois blocs d'`AdminCredentials`.
+## Ce qui reste — UNE asymétrie, dans le sceau PKI
 
-## Ce qui manque
+`bioskop-wrkld-vip`. Un cluster de charge a ses **propres** CA, donc il lui faut son propre certificat
+admin, signé par son `clientCa` (présent dans `WORKLOAD_CLUSTER_CAS` avec sa clé, par cluster).
 
-. **Un `AdminCredentials` par cluster de charge.** Aujourd'hui `ADMIN_CREDENTIALS` est une coordonnée
-  de cellier **unique** (le cluster de soi) alors que `WORKLOAD_CLUSTER_CAS` est déjà une liste. C'est
-  l'asymétrie à lever — modification du sceau PKI.
-. **Une écriture qui FUSIONNE.** Le writer produit un kubeconfig complet à un contexte ; il faut
-  itérer et assembler `clusters`/`users`/`contexts` dans un seul fichier, `current-context` restant
-  `bioskop-mgmt`.
+Le blocage, nommé : **`ClusterPkiCoordinate.ADMIN_CREDENTIALS` est une coordonnée UNIQUE** (le
+cluster de soi) là où `WORKLOAD_CLUSTER_CAS` est déjà une liste. Lever ça = modifier le sceau.
 
-## L'endpoint, seule vraie subtilité
+Bonne nouvelle : `ClusterPkiSealScenario` a déjà tout sous la main — les deux coordonnées ET les
+cibles de charge, sur lesquelles il itère déjà (sa ligne ~215 : « the clusters newly appearing in
+workloadTargets »). Ce n'est pas un gros chantier, c'est juste celui où une erreur coûte l'accès aux
+clusters.
 
-mgmt marche avec `bioskop-mgmt-master.local` parce qu'il **porte l'identité semée** (il a été adopté).
-Un workload greenfieldé, non : `bioskop-wrkld-master.local` est dans les SANs du certificat mais ne
-résout rien, aucun nœud ne portant ce nom. Ce qui résout est `…-control-plane-<hash>.local`, un nom
-tiré au hasard par CAPI.
+## L'outillage prêt pour ça
 
-Donc le contexte du workload doit viser la **VIP** (`10.80.15.10`) : elle est dans les SANs, elle est
-déterministe, elle survit au re-provisionnement. Il sera donc **écrit juste dès maintenant et
-commencera à fonctionner le jour où le Connector l'annonce** — voir
-[[workload-bootstrap-chain-cilium-kubevip]]. (`192.168.1.11` fonctionne aujourd'hui et est dans les
-SANs, mais c'est une adresse DHCP sur un nœud au nom aléatoire : ne pas la graver.)
+`AdminCredentials.kubeconfig(clusterName, List<Access>)` — `Access(contextName, server)`, le premier
+étant `current-context`, **un** user pour tous (les credentials sont endpoint-indépendants, c'est
+précisément pourquoi plusieurs contextes les partagent). Quatre tests par SECTION dans
+`AdminCredentialsKubeconfigTest` : compter `- name: <cluster>` sur tout le document ne prouve rien,
+il apparaît dans `clusters` **et** dans `contexts` (mon premier jet a échoué là-dessus).
 
-## ★ Mesuré le 2026-09-22 depuis le mac — l'endpoint de mgmt devrait venir du NETPLAN
+⚠️ `manifests-contract`'s `OperatorPkiMaterial` porte les mêmes trois PEM de l'autre côté du seam
+manifests et **duplique** le gabarit pour son cas mono-endpoint. Son consommateur (le Secret
+`<cluster>-kubeconfig`) ne veut qu'un contexte, donc rien à faire — à fusionner au troisième.
 
-| endpoint | depuis bioskop (le mac) |
-|---|---|
-| `192.168.1.131:6443` — le `lanHost` que le netplan dérive pour `bioskop-mgmt/master` | **HTTP 401**, il répond |
-| `10.80.0.10:6443` — le vmnet | aucune réponse (non routable d'ici) |
-| `bioskop-mgmt-master.local` — l'actuel | résout vers des IPv6 **globales** (`2001:861:…`), pas vers le LAN |
-
-Donc pour mgmt, l'adresse LAN du netplan est meilleure que le mDNS actuel : déterministe, joignable sans
-tailnet, et elle ne dépend plus du *nom* du nœud (ni d'avahi, ni du chemin IPv6 global).
-
-Pour **wrkld** en revanche le netplan ne donne rien de dérivable : son `lan0` est `192.168.1.13`, un bail
-ordinaire du routeur hors de toute tranche carvée, et sa MAC (`10:66:6a:de:4c:6d`) est générée par CAPN —
-même OUI que le motif `10:66:6a:4c:{clusterId}:{nodeId}`, mais le reste aléatoire. Rien ne le réserve, donc
-rien ne le prédit. Sa VIP est bien `10.80.15.10` (portée sur `vmnet0`, haute dans `10.80.8.0/21`).
-
-Le partage retenu n'est donc pas un compromis mais l'invariant du jour : **mgmt → adresse LAN du netplan,
-wrkld → VIP**. Un cluster dont les nœuds sont du bétail n'a qu'une adresse stable, et c'est sa VIP.
-
-⚠️ Épingler la MAC des machines CAPN rendrait l'adresse de wrkld dérivable elle aussi — mais
-`LXCMachineSpec.devices` vit aussi sur le `LXCMachineTemplate`, **un jeu pour toutes les répliques**, donc
-impossible en greenfield. See [[netplan-projection-described-hosts]].
-
-See [[workload-grow-foundations-resume]] [[zfs-dataset-gc-missing]]
-[[netplan-projection-described-hosts]].
+See [[funnel-identity-is-per-cluster]] [[netplan-projection-described-hosts]]
+[[incus-bridge-dnsmasq-is-every-pod-first-resolver]].
