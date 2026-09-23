@@ -342,6 +342,26 @@ func (r *ClusterAdoptionReconciler) lxcClusterObj(spec adoptionv1alpha1.ClusterA
 		// while the rke2lab unit binds the same cluster-scoped names to one in the kube-vip namespace:
 		// a collision to settle between those two, independent of this setting.)
 		"loadBalancer": map[string]any{"external": map[string]any{}},
+		// Let CAPN stamp `.spec.providerID` on the workload Nodes. Without it the cluster comes up
+		// FULLY — node Ready, etcd, control-plane — and CAPI still refuses to call it available: it
+		// binds Machine↔Node on providerID alone, so an unstamped Node leaves the Machine at
+		// `Provisioned`/Ready=Unknown with no nodeRef, and RKE2ControlPlane reports "Waiting for at
+		// least one machine to be ready" about a machine that IS ready (measured 2026-09-23: Node
+		// bioskop-wrkld-control-plane-899lr Ready with providerID <none>, while its Machine …-8dvzv
+		// carried lxc:///…-899lr).
+		//
+		// This is the same shape as every other per-node fact here: the value is per node, the spec
+		// that would carry it is one set for all replicas. The host-grown path solves it node-side
+		// (nixos/rke2.nix's rke2lab-provider-id oneshot, keyed on node.env — which a CAPRKE2 node does
+		// not have, so it skips), and CAPN's own default templates solve it with a cloud-init-templated
+		// kubelet arg `provider-id: {{ v1.local_hostname }}`. We take THIS field because its CRD doc
+		// names our case exactly — "might not be easily doable when using other ControlPlane and
+		// Bootstrap providers" — and it needs no guess about whether jinja templating survives
+		// CAPRKE2's write_files, nor about the `lxc:///` prefix the doc's snippet omits.
+		//
+		// It needs CAPN to reach the workload cluster, which is why it could not have worked before
+		// RemoteConnectionProbe went True.
+		"cloudProviderNodePatch": true,
 	}
 	return obj
 }
