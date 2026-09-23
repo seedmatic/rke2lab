@@ -13,7 +13,7 @@ spec:
     host: 10.80.7.10
     port: 6443
   image:
-    fingerprint: a37534b42e00e38fb69b5c42da928f450e22221815009d37ad290b034257edac
+    fingerprint: 789e98ee846eb2c00b414c96c90872a5fc4c31b5e16f37d011be387ce1c2671c
   namespace: rke2lab-bioskop-mgmt
   nodes:
   - name: bioskop-mgmt-master
