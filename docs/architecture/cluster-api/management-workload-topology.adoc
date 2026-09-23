@@ -301,6 +301,13 @@ specified in `nix-darwin-home`'s `docs/network-topology-c4.adoc`. This does not 
 document relies on: every *node* (the bare-metal hypervisors and every cluster node) is a `mammoth-skate`
 member, so the management cluster reaches each workload node regardless of host — the off-mesh case is
 the bare-metal Mac, never a node.
+
+That property is load-bearing beyond this document: because cross-host reach already rides the node
+plane, the shared home L2 is no longer what makes clusters mutually reachable — which is precisely what
+frees every cluster node's *reachable* address plane to move off the home LAN and into that same
+per-bare-metal segment. That move is decided and figured in
+link:../atlas/netplan.adoc[the netplan address-plane atlas]; the off-mesh corp Mac stops being the
+segment's only tenant and becomes one leaf among the nodes.
 ====
 
 [[cp-endpoint-reach]]

@@ -98,6 +98,7 @@ changes a MAC/IP, the copy silently diverges. rke2lab's `flake.nix`
 `lib.networkBlueprint` / `deriveMacs` export — built to feed this link — is
 consumed by nobody (orphaned).
 
+[[non-cycle-invariant]]
 == The non-cycle invariant
 
 The two repos depend on each other in *different scopes*, so there is no
@@ -123,6 +124,43 @@ flowchart LR
 
 The blue (build) edges form an acyclic graph; the orange (runtime) edge does not
 participate in eval.
+
+=== The invariant under pressure — where a per-bare-metal fact would close the loop
+
+The invariant is not merely about flake `inputs`; it constrains *what the blueprint
+may be a function of*. Pair it with the pure-output property below (the jar reads
+no input file, which is why IFD has no chicken-and-egg) and the rule becomes:
+
+[IMPORTANT]
+====
+`ClusterNetworkBlueprint.derive()` may depend only on facts rke2lab itself
+declares. The moment it needs a value out of ndh's catalog, that catalog feeds the
+jar that *generates* that catalog — a real eval cycle, and the end of the
+pure-output property. No flake-input guard catches this: the cycle arrives through
+a *data* dependency, not an `inputs` entry.
+====
+
+This was live, not hypothetical. The decided move of the LAN plane onto each
+bare-metal's `172.16.<S>` instance segment needs `<S>` at derivation time, and `<S>`
+looked like ndh's property — it is declared in `catalog.netplan.baremetal.<host>`
+alongside nnh's DHCP pool and the vz-host `/30`. Taking it from there would have been
+exactly the prohibited shape.
+
+*Resolved by derivation, not by choosing an owner.* `<S>` is now a pure function of
+`hostId` — the table this blueprint already declares and already uses for the vmnet
+plane, the ULA mirror and the MACs. Both repos therefore compute the same value from
+a name they each already hold, and *nothing crosses the seam in either direction*.
+The arbitrary inverted pair that made this look like an ownership question
+(ndh's `nikopol = 6`/`bioskop = 7` against `hostId` 0/1) simply disappears; ndh's
+`netCidr` becomes a projection, as its `kind = "rke2"` rows already are. The full plan
+is link:../atlas/netplan.adoc#solved-plan[in the netplan atlas], including
+link:../atlas/netplan.adoc#eval-cycle[why a hash of the host name is the wrong way to
+delete the table] — `hostId()` survives renames and refuses typos, and the file
+already carries the proof (`// renamed from alcide, keeping same host id`).
+
+The general form worth remembering: a fact that looks like the *host's* is usually a
+fact about a *coordinate we already declare*. Derive it here, or take it on the
+runtime edge — never on the eval one.
 
 == Design: the flake runs the jar (IFD), exposes a flat lib
 
@@ -280,6 +318,18 @@ parsed MAC strings, not a darwin derivation.
   host), so both the darwin and the NixOS evals — both run on bioskop — build the
   jar natively. Confirm jdk25 + maven are substitutable/cached so a cold
   `nixos-rebuild`/`darwin-rebuild` isn't a full Maven cold start.
+. *The fleet ceiling.* Resolved: the segment is derived from `hostId`, so the
+  ownership question is gone (see <<non-cycle-invariant,the invariant under
+  pressure>>). What replaces it as *blocking* is how many bare-metals and roles the
+  plan admits — because three planes currently give three different answers (pod/
+  service `/16`s: 2 bare-metals; vmnet `/18`: 4; the fabric: 16), and the tightest is
+  a *live latent defect*: `podCidr` and `serviceCidr` are only 4 apart, so
+  `clusterId = 4` — reachable via the declared `test` host — yields a pod CIDR
+  identical to `bioskop-mgmt`'s service CIDR. Decide one ceiling, make `clusterId` an
+  explicit bit-field, and size every plane from it:
+  link:../atlas/netplan.adoc#fleet-ceiling[the fleet ceiling] and
+  link:../atlas/netplan.adoc#solved-plan[the solved plan]. Nothing should be coded
+  before the ceiling is picked; everything else follows from it arithmetically.
 
 == Related Documentation
 
@@ -287,3 +337,4 @@ parsed MAC strings, not a darwin derivation.
   move to store-built, flake-sourced artifacts this complements.
 * link:../../../osgi/domains/netplan/netplan-contract/src/main/java/io/seedmatic/rke2lab/netplan/contract/ClusterNetworkBlueprint.java[ClusterNetworkBlueprint.java] — the Java source of truth (a `type=contract` bundle record).
 * link:../osgi/netplan-bdd-spec.adoc[netplan-bdd-spec] — the in-container `NetplanBlueprintScenario` that derives the blueprint and the JSON→YAML crossing `netplan-cli`'s `yamlExport` performs.
+* link:../atlas/netplan.adoc[Atlas L1 — Netplan address-plane] — the before/after delta this contract is about to carry: the LAN plane leaves the home LAN for each bare-metal's own `172.16.<S>` segment. Holds the carve, the consequence chain (`tls-san` reissue, `NamePlan` collapsing to one name form), and the two acyclic resolutions to the ownership question above.
