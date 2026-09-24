@@ -453,8 +453,9 @@ public class ManifestSynthesisScenario
 
   /**
    * Overlay the sparse EDIT overrides onto a base facet: each entry is a dotted JSON path into the
-   * facet ({@code publish.mesh}, {@code debug.networking.enabled}) → boolean. Applied at the JSON
-   * level — the CLI owns the arg → path mapping, here it is generic — then decoded back to a facet.
+   * facet ({@code debug.mesh.enabled}, {@code debug.networking.enabled}) → boolean. Applied at the
+   * JSON level — the CLI owns the arg → path mapping, here it is generic — then decoded back to a
+   * facet. No {@code publish.*} path: the domain set follows the cluster ROLE, not a facet.
    */
   private ManifestsRunbookInput.Facets overlay(
       ManifestsRunbookInput.Facets base, java.util.Map<String, Boolean> overrides) {

@@ -56,6 +56,22 @@ It publishes with the `gitops` domain (see the anchor, § _Materialization conse
 `manifests.publish.gitops=true` on a workload brings the vCluster operator alongside Flux. It is
 *never* published to the management cluster.
 
+[WARNING]
+====
+This premise no longer holds and the plan needs a decision before it can be executed.
+`manifests.publish.gitops` does not exist: `PublishFacet` and the whole
+`rke2lab:manifests:publish:` block were removed in `f51ba1d10`, because which domains a cluster
+renders is a FUNCTION of its role (`ClusterRole`, parsed from `<host>-<role>`) rather than an
+operator toggle. And `gitops` is now in the base set of EVERY role, so there is no longer a
+per-cluster switch that would bring the vCluster operator to workloads only.
+
+Two ways out, and the choice is a design one, not a rename: give vCluster its **own** domain, whose
+membership the role decides (the mechanism as it stands); or introduce a unit-level filter inside
+`gitops`, the way the optional unit is described in
+link:../manifests/manifest-conditional-inclusion.adoc[manifest-conditional-inclusion]. The second
+keeps the domain set structural, which is the reason the facet was removed in the first place.
+====
+
 == Piece 2 — create the `gitops` vCluster and seed Flux in it
 
 Per workload, at its initial bring-up (the workload's RKE2 auto-deploy / `gitops` domain):
@@ -133,8 +149,9 @@ the same path pattern.
 
 == Validation
 
-* `VClusterOperatorManifestsUnit` synthesises a HelmChart; present on a workload
-  (`manifests.publish.gitops=true`), *absent* from the management cluster.
+* `VClusterOperatorManifestsUnit` synthesises a HelmChart; present on a workload, *absent* from the
+  management cluster. (How that asymmetry is expressed is the open decision in the WARNING above —
+  `manifests.publish.gitops` is gone, and `gitops` is in every role's base set.)
 * `kubectl --context <workload> get vcluster -n gitops` shows the `gitops` vCluster Ready; connecting to
   it, `flux get kustomizations` shows `workload-core` + `sandboxes` applied.
 * `parent-cluster-kubeconfig` in the `gitops` vCluster points at the *workload core* (never a management

@@ -42,7 +42,7 @@ implement the mechanism.
 graph TB
     subgraph "Operator Environment"
         OP[Operator<br/>configures stack]
-        PC[Pulumi Config<br/>cluster.name=bioskop<br/>incus.defaultRemote=bioskop-nixos<br/>manifests.publish.gitops=true]
+        PC[Pulumi Config<br/>cluster.name=bioskop<br/>incus.defaultRemote=bioskop-nixos<br/>manifests.debug.mesh.enabled=false]
         IC[~/.config/incus/config.yml<br/>remotes: bioskop-nixos]
     end
 
@@ -271,34 +271,37 @@ public String optionalUnit() {
 }
 ----
 
-**2. ManifestSynthesisScenario** (the scion derives the domain policy from its sown publish facet — see link:../../../osgi/domains/manifests/manifests-bdd/src/main/java/io/seedmatic/rke2lab/manifests/bdd/ManifestSynthesisScenario.java[ManifestSynthesisScenario]):
+**2. ClusterRole** (the domain set is a FUNCTION of the cluster's identity, not a toggle — see
+link:../../../osgi/domains/manifests/manifests-contract/src/main/java/io/seedmatic/rke2lab/manifests/contract/ClusterRole.java[ClusterRole]):
 
 [source,java]
 ----
-// ManifestSynthesisScenario ... the_policy_is_derived_from_the_facet()
-final ManifestsRunbookInput.PublishFacet publish = facet.facets().publish();
-this.domainPolicy =
-    ManifestDomainPolicy.builder()
-        .domainCatalog(CATALOG)
-        .stageADefaults()
-        .cluster(true).runtime(true).platform(true)  // base infra always on
-        .gitops(publish.gitops())                     // <-- flat boolean read straight off the facet
-        .networking(publish.networking())             // <-- the remaining domain flags follow the facet
-        .build();
+// ClusterRole — parsed from the `<host>-<role>` clusterName
+public ManifestDomainPolicy domainPolicy(final ManifestDomainCatalog catalog) {
+  return ManifestDomainPolicy.builder()
+      .domainCatalog(catalog)
+      .enableOnly(enabledDomainIds(catalog))   // membership is structural to the role
+      .build();
+}
 ----
 
-the optional unit is a UNIT *within* the gitops domain, not a domain flag of its own: its conditional
-inclusion is decided by the gitops registrar's `domain(policy)` hook (see below), not by a
-top-level publish toggle. There is no `publish.optional-unit` key.
+`ManifestSynthesisScenario` then derives the policy with `ClusterRole.of(clusterName).domainPolicy(CATALOG)`.
 
-**3. Pulumi Stack Configuration**:
+IMPORTANT: there is no `PublishFacet` and no `rke2lab:manifests:publish:` config block — both were
+removed in `f51ba1d10` ("domain set follows the cluster role, not a publish facet"). The reasoning is
+worth keeping: membership is *structural* (a management cluster runs Cluster API, a workload cluster
+does not), so it replays deterministically from the identity on every render — grow or in-cluster —
+with nothing recorded and nothing to drift. Making it configurable would give a *derived* fact a
+second owner, which is exactly what the single-source-of-truth rule forbids.
 
-[source,yaml]
-----
-config:
-  rke2lab:manifests.publish.gitops: "true"   # Enable the gitops domain layer
-  # (no publish.optional-unit key — the optional unit is a unit-level filter within gitops)
-----
+NOTE: a *pause* is not the same thing as structure, and the tree currently collapses the two: `mesh`
+(Headscale/Headplane) is hibernated by simply not being listed in `enabledDomainIds`, with the
+rationale written as a comment there. Deliberate, and re-adding the one term wakes the domain — and
+since the flox envs now follow the domain policy (`FloxEnvManifestsUnit`), its envs wake with it.
+
+**3. Unit-level filters** stay inside their domain: the optional unit is a UNIT *within* gitops, not a
+domain flag, so its inclusion is decided by the gitops registrar's `domain(policy)` hook (below).
+There never was a `publish.optional-unit` key, and there is no domain-level key at all any more.
 
 === Accessing Bootstrap Identity for Infrastructure Configuration
 
@@ -447,15 +450,24 @@ graph TB
     class SYNTH output
 ----
 
-**Example**: `manifests.publish.gitops=true`, with the (illustrative) optional unit excluded within gitops
+The two examples below use `cluster-api`, the one genuinely role-exclusive domain (CAPI reconciles
+clusters *from* the management cluster), because the domain-level filter now answers to the cluster's
+ROLE rather than to a config key — so what flips between them is the clusterName, not a toggle.
 
-* **Phase 1**: GitopsDomainRegistrar creates domain with [Flux, SOPS, FluxRoot] (the optional unit excluded)
-* **Phase 2**: gitops domain passes domain-level filter, units synthesized
+**Example**: clusterName `bioskop-mgmt` — `cluster-api` is in the role's set
 
-**Example**: `manifests.publish.gitops=false`, with the optional unit included
+* **Phase 1**: ClusterApiDomainRegistrar creates the domain with its units
+* **Phase 2**: cluster-api passes the domain-level filter, units synthesized
 
-* **Phase 1**: GitopsDomainRegistrar creates domain with [Flux, SOPS, FluxRoot, OptionalUnit]
-* **Phase 2**: gitops domain filtered out entirely, nothing synthesized
+**Example**: clusterName `bioskop-wrkld` — `cluster-api` is absent from the role's set
+
+* **Phase 1**: the registrar creates the domain identically — registration does NOT consult the policy
+* **Phase 2**: cluster-api is filtered out entirely, nothing synthesized
+
+That asymmetry between the phases is the point: a registrar always registers, and only the
+domain-level filter decides. A unit-level filter is a separate mechanism — the illustrative optional
+unit is a UNIT within gitops, included or not by the gitops registrar's `domain(policy)` hook, and it
+never had a domain-level key of its own.
 
 == Code References
 
@@ -508,9 +520,12 @@ This documentation is directly linked to the implementation. Navigate to these f
 
 [source,bash]
 ----
-# The optional unit has no top-level publish flag — it is filtered within the gitops
-# registrar's domain(policy) hook. Verify the gitops layer is enabled:
-pulumi config get rke2lab:manifests.publish.gitops
+# There is no config key for the domain set — it follows the cluster ROLE, so the
+# question "is this domain enabled?" is answered by the clusterName, not by pulumi:
+pulumi config get rke2lab:cluster.name    # <host>-<role> — the role IS the answer
+
+# The optional unit has no domain-level flag either: it is filtered within the gitops
+# registrar's domain(policy) hook.
 
 # Check synthesis logs
 grep "Applying manifest-domain policy" /tmp/rke2lab.log
@@ -534,8 +549,10 @@ grep -A 10 "domain(ManifestDomainPolicy" \
 
 [source,bash]
 ----
-# Check domain-level policy
-pulumi config get rke2lab:manifests.publish.gitops  # Must be true
+# Check domain-level policy — it follows the cluster ROLE, there is no config key.
+# The role is the second term of the clusterName, and ClusterRole.enabledDomainIds
+# lists what that role publishes.
+pulumi config get rke2lab:cluster.name    # <host>-<role>
 
 # Check the flag name matches the catalog's single source of truth
 # (real accessors return domain IDs — gitops(), mesh(), …; a per-unit flag is a placeholder)

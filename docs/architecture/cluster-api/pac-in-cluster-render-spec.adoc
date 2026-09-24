@@ -752,10 +752,11 @@ invisible to the grow; only the `manifests-cli` delivery verbs opt into followin
 The `manifests-cli` verbs map onto these: `synthesize` surveys (GROW, no branch, a temp dir — it
 does not know jgit); `init`/`update`/`edit` deliver (signed commit + ff-push). The in-cluster PaC
 step and the operator's steady-state re-render both run `update` — the faithful continuation of the
-grow. `edit` carries a SPARSE set of overrides (dotted JSON paths into the facet, e.g. `publish.mesh`
-→ `true`) that overlay HEAD and are re-recorded in ONE shot, so the branch's tree always matches its
-recorded facet. The seeded `delivery` (the push intent) is always kept — only publish/debug follow
-HEAD.
+grow. `edit` carries a SPARSE set of overrides (dotted JSON paths into the facet, e.g.
+`debug.mesh.enabled` → `true`) that overlay HEAD and are re-recorded in ONE shot, so the branch's tree
+always matches its recorded facet. The seeded `delivery` (the push intent) is always kept — only
+`debug` and `workloadTargets` follow HEAD. No path reaches the domain set: it is a function of the
+cluster role (`ClusterRole`), so it replays from the identity and is never recorded (`f51ba1d10`).
 
 *Drift is an explicit, git-native override.* Two branch-native ways to render against a DIFFERENT
 facet without a grow: run `manifests-cli edit publish.<layer>=…` (overlays the toggle on HEAD,

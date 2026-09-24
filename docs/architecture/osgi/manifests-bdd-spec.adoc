@@ -183,12 +183,17 @@ to a cluster/doctor scion the day it grows a wire-record, not to the host.
 
 *Design constraint this puts on piece 2 (the wire-record).* For the pluck to stay
 generic, the runbook-input wire-record's top-level component names MUST equal the
-yaml concern keys (`publish`, `debug`) — the schema's top-level properties ARE those
+yaml concern keys (`debug`, `delivery`) — the schema's top-level properties ARE those
 component names, and the caller plucks `manifests.<name>` for each. So the wire-record
-nests (`record …(PublishFacet publish, DebugFacet debug)`), mirroring the yaml's concern
-nesting exactly, rather than flattening into one bag.
+nests (`record Facets(DebugFacet debug, DeliveryFacet delivery, List<WorkloadTarget> workloadTargets)`),
+mirroring the yaml's concern nesting exactly, rather than flattening into one bag.
 
-*The workload-targets sub-facet.* Alongside `publish`/`debug`/`delivery`, the `Facets`
+NOTE: `PublishFacet` was a fourth concern and is gone (`f51ba1d10`). Which domains a cluster renders
+is a FUNCTION of its role (`ClusterRole`, parsed from `<host>-<role>`), so it replays deterministically
+from the identity and never needed recording. The facet reader still tolerates an unknown `publish:`
+sub-map, so a branch recorded before the removal still decodes on an in-cluster re-render.
+
+*The workload-targets sub-facet.* Alongside `debug`/`delivery`, the `Facets`
 wire-record carries a fourth concern — `workloadTargets`, a `List<WorkloadTarget>` sourced
 verbatim from `rke2lab:manifests:workloadTargets`. A `WorkloadTarget(host, role)` names a
 *different* cluster the MANAGEMENT render must create: under the management/workload separation

@@ -31,8 +31,8 @@ flowchart TD
 
     subgraph polface["Policy face — via accessor"]
         Pol["ManifestDomainPolicy.Builder.clusterApi(b)<br/>put(catalog.clusterApi(), b)"]
-        Scion["ManifestSynthesisScenario<br/>.clusterApi(publish.clusterApi())"]
-        Scion -->|drives| Pol
+        Role["ClusterRole.domainPolicy<br/>enableOnly(enabledDomainIds(catalog))"]
+        Role -->|drives| Pol
     end
 
     Const -->|referenced by| Reg
@@ -77,18 +77,22 @@ The constants (not the accessors) are used here because a manifest unit composes
 
 === ✅ Policy face: drive the typed setters
 
-The scion never touches strings either. `ManifestDomainPolicy.Builder` exposes one boolean setter per domain (`clusterApi(b)`, `gitops(b)`, …), each of which stores `put(catalog.clusterApi(), b)` internally — that is the *only* place the instance accessors are consumed. `ManifestSynthesisScenario.the_policy_is_derived_from_the_facet` wires each setter to the operator's publish facet:
+The scion never touches strings either. `ManifestDomainPolicy.Builder` exposes one boolean setter per domain (`clusterApi(b)`, `gitops(b)`, …), each of which stores `put(catalog.clusterApi(), b)` internally — that is the *only* place the instance accessors are consumed. `ClusterRole` is what drives them, from the cluster's own identity:
 
 [source,java]
 ----
+// ClusterRole.domainPolicy — the domain set is a FUNCTION of the role parsed from
+// the `<host>-<role>` clusterName, not an operator toggle (see f51ba1d10: PublishFacet
+// removed, membership is structural and replays from the identity on every render).
 ManifestDomainPolicy.builder()
-    .domainCatalog(CATALOG)
-    .stageADefaults()
-    .gitops(publish.gitops())
-    .clusterApi(publish.clusterApi())
-    // … one line per publishable domain
+    .domainCatalog(catalog)
+    .enableOnly(enabledDomainIds(catalog))   // catalog accessors, never literals
     .build();
 ----
+
+The discipline is unchanged by that move, and is the whole point of this document: whichever face
+drives the policy, the domain IDs come from the catalog's accessors. `enableOnly` takes the same
+`catalog.gitops()` / `catalog.clusterApi()` values the per-domain setters would have stored.
 
 === ❌ Wrong: hardcoded strings
 

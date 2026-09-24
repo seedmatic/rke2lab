@@ -572,8 +572,9 @@ domain specialists for the *why* is the only part that waits for the doctor.
 | Each `orElse` default applied; result Optional-free.
 
 | Policy catalog-keying
-| `policy.isEnabled(CATALOG.clusterApi())` returns the value set under `manifests.publish.clusterApi`
-  - guards the kebab/camel mismatch.
+| `policy.isEnabled(CATALOG.clusterApi())` agrees with what `ClusterRole.enabledDomainIds` listed —
+  both name the domain through the catalog accessor, which is what guards the kebab/camel mismatch.
+  (No config key: the domain set follows the cluster role, `f51ba1d10`.)
 
 | Doctor remediation (D)
 | Accumulated keys route by domain to the right specialist; one `RemediationPlan`; missing

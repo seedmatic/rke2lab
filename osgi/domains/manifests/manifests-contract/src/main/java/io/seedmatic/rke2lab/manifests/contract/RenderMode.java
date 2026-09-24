@@ -23,10 +23,17 @@ import java.util.Map;
  * </ul>
  *
  * <p>{@link #overrides} carries dotted JSON paths into the recorded facet (e.g. {@code
- * publish.mesh} → {@code true}, {@code debug.networking.enabled} → {@code false}) rather than a
- * nested facet, so the contract stays jackson-free: the CLI (which owns the arg → path mapping)
+ * debug.mesh.enabled} → {@code true}, {@code debug.networking.enabled} → {@code false}) rather than
+ * a nested facet, so the contract stays jackson-free: the CLI (which owns the arg → path mapping)
  * fills it and the synthesis applies each path generically onto the HEAD facet. Empty for every
  * verb but {@code EDIT}.
+ *
+ * <p>The paths reach {@code debug}, {@code delivery} and {@code workloadTargets} — NOT the domain
+ * set. There is no {@code publish.*} path any more: which domains a cluster renders is a FUNCTION
+ * of its role ({@link ClusterRole}, parsed from {@code <host>-<role>}), so it replays
+ * deterministically from the identity and is not an operator toggle. {@code PublishFacet} was
+ * removed for that reason ({@code f51ba1d10}); the facet reader still tolerates a stale {@code
+ * publish:} sub-map so a branch recorded before that still decodes on an in-cluster re-render.
  */
 public record RenderMode(Verb verb, Map<String, Boolean> overrides) {
 
