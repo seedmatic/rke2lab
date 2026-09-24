@@ -38,6 +38,13 @@ metadata:
     # hand-wired Task env. Keyed to the clone step's container (step-clone); the render-publish pod
     # has no such container so it ignores it.
     flox.seedmatic.io/environment.step-clone: "toolchains/git-sops"
+    # The two cache phases bracketing the render (RenderPipelineManifestsUnit): they lay out the
+    # overlay (base/ + incoming/<run>/) and publish the run's delta, so they need a shell +
+    # coreutils, which the flox carrier does not carry on its own. toolchains/kube is the existing
+    # base that does (bash + coreutils + kubectl). Each container opts in BY NAME: rename a step and
+    # its annotation must follow, or it starts silently without its toolchain.
+    flox.seedmatic.io/environment.step-cache-prepare: "toolchains/kube"
+    flox.seedmatic.io/environment.step-cache-publish: "toolchains/kube"
 spec:
   # The Pipeline is a RENDERED in-cluster manifest (RenderPipelineManifestsUnit), not inline here.
   # PaC's own resolver does NOT consult the cluster for a bare pipelineRef.name (it wants inline /
