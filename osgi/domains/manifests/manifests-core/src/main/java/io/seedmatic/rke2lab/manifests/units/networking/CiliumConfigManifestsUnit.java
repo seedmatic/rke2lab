@@ -214,7 +214,7 @@ public final class CiliumConfigManifestsUnit extends AbstractManifestsUnit {
                     .formatted(
                         identity.clusterName(),
                         blueprint.meshClusterId(),
-                        blueprint.interfaces().nodeLanInterface(),
+                        blueprint.interfaces().nodeFabricInterface(),
                         blueprint.interfaces().vipInterface(),
                         blueprint.interfaces().vipInterface(),
                         blueprint.podCidr(),

@@ -762,7 +762,7 @@ public final class HeadscaleManifestsUnit extends AbstractManifestsUnit {
             "/spec",
             Map.of(
                 "interfaces",
-                List.of("^lan0$"),
+                List.of("^fabric0$"),
                 "loadBalancerIPs",
                 true,
                 "nodeSelector",

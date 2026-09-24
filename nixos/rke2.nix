@@ -242,9 +242,9 @@
   #   must share the same IP version
   #
   # Skipped here, nothing sets node-ip at all (checked: absent from config.yaml and every drop-in),
-  # so rke2 AUTO-DETECTS it from the default-route device — `lan0`. That used to be harmless because
-  # lan0 sat on the home LAN and carried a v6 alongside its v4, making the auto-detected pair
-  # dual-stack by accident. lan0 now sits on `fabric-br`, which is declared `ipv6.address = none`, so
+  # so rke2 AUTO-DETECTS it from the default-route device — `fabric0`. That used to be harmless because
+  # fabric0 sat on the home LAN and carried a v6 alongside its v4, making the auto-detected pair
+  # dual-stack by accident. fabric0 now sits on `fabric-br`, which is declared `ipv6.address = none`, so
   # the pair collapsed to v4 while cluster-cidr stayed dual — and rke2 refuses the mismatch.
   #
   # ★ The gate's cost was invisible until the bridge moved: a condition that skipped the ONE unit

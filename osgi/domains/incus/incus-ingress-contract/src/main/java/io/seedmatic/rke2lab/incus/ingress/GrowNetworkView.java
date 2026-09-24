@@ -5,8 +5,8 @@ import java.util.TreeMap;
 
 /**
  * The flat NETWORK view the GROW poses on the Pulumi graph — the grown node's two NIC hardware
- * addresses (lan0 on the canonical LAN bridge, vmnet0 on its cluster's bridge), the name of that
- * vmnet bridge, and the resolved config of EVERY vmnet bridge the host must carry.
+ * addresses (fabric0 on the canonical fabric bridge, vmnet0 on its cluster's bridge), the name of
+ * that vmnet bridge, and the resolved config of EVERY vmnet bridge the host must carry.
  *
  * <p>vmnet is isolated per-cluster (each cluster gets its own bridge + /21 + dnsmasq reservations),
  * so a host that also hosts a workload cluster needs that cluster's bridge to exist BEFORE CAPN can
@@ -24,7 +24,7 @@ import java.util.TreeMap;
  * receives the result and only poses it; it computes nothing of the network.
  */
 public record GrowNetworkView(
-    String lanHwaddr,
+    String fabricHwaddr,
     String wanHwaddr,
     String nodeBridgeName,
     Map<String, ClusterBridge> clusterBridges) {

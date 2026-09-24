@@ -45,25 +45,18 @@
     ];
   };
 
-  # mDNS advertisement — the seed-master systemd adapter (and the incus remote) reach this node by
-  # its <cluster>-<node>.local name, so the node must ANSWER that name over mDNS. avahi (userspace)
-  # does this — kept over systemd-resolved because this is an incus CONTAINER inheriting incus's
-  # /etc/resolv.conf, which resolved does not support (see ./network.nix). rke2lab-identity sets the
-  # hostname at runtime (ordered before avahi), and avahi publishes it + its LAN addresses.
-  services.avahi = {
-    enable = true;
-    ipv4 = true;
-    ipv6 = true;
-    # Advertise ONLY on lan0 (the canonical LAN bridge, same L2 as the operator's Mac). The node
-    # also carries vmnet0 (the internal per-cluster bridge, e.g. 10.80.8.0/21) whose address is NOT
-    # routable from outside the cluster; advertising there would let a resolver pick the dead IP for
-    # <cluster>-<node>.local and the systemd-adapter probe would connect to nothing. lan0 is the
-    # instance NIC name InstanceGrow assigns, stable across boots.
-    allowInterfaces = [ "lan0" ];
-    publish = {
-      enable = true;
-      addresses = true;
-      workstation = true;
-    };
-  };
+  # NO mDNS. A node used to publish `<cluster>-<node>.local` over avahi because that was the only
+  # named way to reach it: the container is not a tailnet member, so the operator and the seed's
+  # systemd-adapter probe resolved it through mDNS on the shared home L2.
+  #
+  # Both halves of that are gone. The node's NIC moved to the FABRIC bridge, and mDNS is link-local —
+  # `224.0.0.251` is not routed — so an advertisement there reaches only co-tenants of the same
+  # bare-metal, never the operator, who now arrives over the tailnet. And the name itself moved: the
+  # bare-metal's dnsmasq registers `<cluster>-<node>.<host>` from the node's own DHCP hostname
+  # (`dns.mode=dynamic`), served to the tailnet by split-DNS. Every consumer was repointed —
+  # the apiserver SANs, the operator kubeconfig's first-contact context, and the systemd probe
+  # (SystemdAdapterScenario now reads `names().nodeFabricFqdn()`).
+  #
+  # So this is a removal, not a regression: address AND name are now served by ONE authority instead
+  # of the bbox for DHCP plus avahi for names — which is the split that made an mDNS name necessary.
 }

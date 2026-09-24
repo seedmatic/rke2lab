@@ -4,19 +4,20 @@
 # WHY: with dhcpcd the ONLY gate on network-online.target is dhcpcd.service (Type=forking, no wait
 # flag), which backgrounds before acquiring ANY lease — so network-online is reached with no
 # address/route, and every `After=network-online.target` unit (rke2-server, the rke2lab-rke2-config
-# github fetch) runs against a dead network (proven live: target at boot+4s, lan0 lease + default
+# github fetch) runs against a dead network (proven live: target at boot+4s, fabric0 lease + default
 # route at boot+6s). systemd-networkd gates network-online on the links marked RequiredForOnline, so
 # the target becomes truthful. (External WAN egress can still settle a few seconds past the lease, so
 # the boot-time fetch keeps its own reachability retry — see ./rke2.nix rke2lab-rke2-config.)
 #
 # DNS: systemd-resolved manages it — the standard networkd companion. networkd hands resolved the
-# per-link DNS from the lan0 DHCP lease and resolved serves it via its stub resolver (127.0.0.53).
+# per-link DNS from the fabric0 DHCP lease and resolved serves it via its stub resolver (127.0.0.53).
 # `networking.useHostResolvConf` MUST be OFF: the incus container default is ON, and that combination
 # both asserts against resolved AND — once networkd took over the links — left /etc/resolv.conf with
 # NO nameserver (DNS silently broke: `ping: Name or service not known`, networkd got the lease DNS but
 # nothing wrote it to resolv.conf). Off → resolved owns /etc/resolv.conf and egress DNS works. mDNS
-# `.local` stays with avahi (userspace — ./host-access.nix); resolved does no mDNS (off by default),
-# so the two do not collide. networkd owns links/addresses/routes; resolved owns DNS.
+# There is no mDNS at all any more (see ./host-access.nix — the node's name is served by its
+# bare-metal's dnsmasq, not advertised link-locally), and resolved does none either (off by default).
+# networkd owns links/addresses/routes; resolved owns DNS.
 { netplan, ... }:
 {
   systemd.network.enable = true;
@@ -34,11 +35,19 @@
     timeout = 60;
   };
 
-  # lan0 — the canonical LAN bridge (same L2 as the operator's Mac): the node's EXTERNAL egress and,
-  # since vmnet0 takes no gateway (below), the SOLE default route. Low metric kept as an explicit
-  # preference in case another egress link is ever added.
-  systemd.network.networks."10-lan0" = {
-    matchConfig.Name = "lan0";
+  # fabric0 — the canonical FABRIC bridge, ndh's per-bare-metal segment. NOT the home LAN and NOT the
+  # operator's L2 any more, which is what the old name claimed: the node is reached across it through
+  # the tailnet route its Incus host advertises, and its public egress is masqueraded by that host
+  # (ndh's baremetal-nat, scoped to the whole /20 slice). It is still the node's SOLE default route,
+  # since vmnet0 takes no gateway (below) — the gateway is the bridge, served by the segment's
+  # dnsmasq, which also hands out the per-link DNS. Low metric kept as an explicit preference in case
+  # another egress link is ever added.
+  #
+  # ⚠️ The segment is declared `ipv6.address = none`, so this link is v4-ONLY — unlike the home LAN it
+  # replaced, which carried a v6 beside its v4. Anything needing a dual-stack address must take it
+  # from vmnet0 (see rke2lab-node-ip in ./rke2.nix, where exactly that assumption broke).
+  systemd.network.networks."10-fabric0" = {
+    matchConfig.Name = "fabric0";
     networkConfig.DHCP = "yes";
     dhcpV4Config.RouteMetric = 100;
     ipv6AcceptRAConfig.RouteMetric = 100;
@@ -48,11 +57,11 @@
   # vmnet0 — the per-cluster INTERNAL bridge: inter-node / pod-cluster comms ONLY, never an egress
   # path. Its incus-managed DHCP advertises 10.80.0.1 as a default gateway, but that gateway does NOT
   # route to the internet; installing it as a default route black-holes public traffic whenever it
-  # out-prioritises lan0 (proven live: vmnet0's default metric 200 beat lan0's, so `ping www.free.fr`
+  # out-prioritises fabric0 (proven live: vmnet0's default metric 200 beat fabric0's, so `ping www.free.fr`
   # left via 10.80.0.1 and died — the manual `ip route del default dev vmnet0` confirmed the fix).
   # UseGateway=false drops that default route (v4 + v6): the node keeps the /21 link route (automatic
   # from the address) for inter-node reach plus the explicit supernet route below for its SIBLING
-  # clusters, and lan0 stays the sole default. Still required-for-online — rke2 needs the cluster link
+  # clusters, and fabric0 stays the sole default. Still required-for-online — rke2 needs the cluster link
   # up.
   systemd.network.networks."10-vmnet0" = {
     matchConfig.Name = "vmnet0";
@@ -74,7 +83,7 @@
 
     # How a cluster reaches its SIBLINGS on the same host. Each cluster owns a /21 of the vmnet
     # supernet on its own bridge, and the two never met: a node held only its own /21 link route, so
-    # another cluster's VIP fell through to the lan0 default and out to the home router, where it
+    # another cluster's VIP fell through to the fabric0 default and out to the home router, where it
     # died. CAPN states the requirement plainly — "the management cluster can connect to the VIP
     # address" — because `Cluster.spec.controlPlaneEndpoint` IS that VIP, so CAPI and CAPRKE2 reach a
     # managed cluster through it.

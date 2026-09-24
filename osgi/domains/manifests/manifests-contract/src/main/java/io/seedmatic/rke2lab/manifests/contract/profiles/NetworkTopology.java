@@ -24,14 +24,14 @@ public record NetworkTopology(
     String nodeNetworkGatewayAddr,
     String clusterLoadBalancerCidr,
     String clusterLoadBalancerGatewayAddr,
-    String lanInterface,
+    String fabricInterface,
     String fabricLoadBalancerCidr,
     String wanInterface,
     String vipInterface,
     String vipCidr,
     String vipGatewayInetAddr,
     String vipHostInetAddr,
-    String lanHostMacAddr,
+    String fabricHostMacAddr,
     String wanHostMacAddr) {
 
   private static final NetworkTopology DEFAULT = builder().build();
@@ -46,14 +46,14 @@ public record NetworkTopology(
     nodeNetworkGatewayAddr = nullToBlank(nodeNetworkGatewayAddr);
     clusterLoadBalancerCidr = nullToBlank(clusterLoadBalancerCidr);
     clusterLoadBalancerGatewayAddr = nullToBlank(clusterLoadBalancerGatewayAddr);
-    lanInterface = nullToBlank(lanInterface);
+    fabricInterface = nullToBlank(fabricInterface);
     fabricLoadBalancerCidr = nullToBlank(fabricLoadBalancerCidr);
     wanInterface = nullToBlank(wanInterface);
     vipInterface = nullToBlank(vipInterface);
     vipCidr = nullToBlank(vipCidr);
     vipGatewayInetAddr = nullToBlank(vipGatewayInetAddr);
     vipHostInetAddr = nullToBlank(vipHostInetAddr);
-    lanHostMacAddr = nullToBlank(lanHostMacAddr);
+    fabricHostMacAddr = nullToBlank(fabricHostMacAddr);
     wanHostMacAddr = nullToBlank(wanHostMacAddr);
   }
 
@@ -84,14 +84,14 @@ public record NetworkTopology(
     private String nodeNetworkGatewayAddr = "";
     private String clusterLoadBalancerCidr = "";
     private String clusterLoadBalancerGatewayAddr = "";
-    private String lanInterface = "";
+    private String fabricInterface = "";
     private String fabricLoadBalancerCidr = "";
     private String wanInterface = "";
     private String vipInterface = "";
     private String vipCidr = "";
     private String vipGatewayInetAddr = "";
     private String vipHostInetAddr = "";
-    private String lanHostMacAddr = "";
+    private String fabricHostMacAddr = "";
     private String wanHostMacAddr = "";
 
     private Builder() {}
@@ -141,8 +141,8 @@ public record NetworkTopology(
       return this;
     }
 
-    public Builder lanInterface(final String v) {
-      this.lanInterface = v;
+    public Builder fabricInterface(final String v) {
+      this.fabricInterface = v;
       return this;
     }
 
@@ -176,8 +176,8 @@ public record NetworkTopology(
       return this;
     }
 
-    public Builder lanHostMacAddr(final String v) {
-      this.lanHostMacAddr = v;
+    public Builder fabricHostMacAddr(final String v) {
+      this.fabricHostMacAddr = v;
       return this;
     }
 
@@ -197,14 +197,14 @@ public record NetworkTopology(
           nodeNetworkGatewayAddr,
           clusterLoadBalancerCidr,
           clusterLoadBalancerGatewayAddr,
-          lanInterface,
+          fabricInterface,
           fabricLoadBalancerCidr,
           wanInterface,
           vipInterface,
           vipCidr,
           vipGatewayInetAddr,
           vipHostInetAddr,
-          lanHostMacAddr,
+          fabricHostMacAddr,
           wanHostMacAddr);
     }
   }

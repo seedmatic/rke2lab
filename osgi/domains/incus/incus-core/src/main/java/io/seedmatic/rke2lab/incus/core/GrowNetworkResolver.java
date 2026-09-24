@@ -112,7 +112,7 @@ public final class GrowNetworkResolver {
    * <hostname>} there, so the bridge answered {@code bioskop-nixos} with {@code 127.0.0.2} while
    * the LAN router answered {@code 192.168.1.130} — the same single-label name resolving to the
    * host or to the asker's own loopback depending on which upstream replied first (both are in a
-   * node's resolv.conf: the bridge via the vmnet DHCP, the router via lan0).
+   * node's resolv.conf: the bridge via the vmnet DHCP, the router via fabric0).
    *
    * <p>That race broke CAPN: the workload LXCMachine's remote is {@code
    * https://bioskop-nixos:8443}, and on the loopback answer CAPN dialled its OWN {@code

@@ -14,9 +14,9 @@
     "worker2": 5
   },
   "macPatterns": {
-    "lan": "10:66:6a:4c:{clusterId:02x}:{nodeId:02x}",
+    "fabric": "10:66:6a:4c:{clusterId:02x}:{nodeId:02x}",
     "wan": "52:54:00:{clusterId:02x}:{nodeType:02x}:{nodeId:02x}",
-    "lanBridge": "02:00:00:bb:{clusterId:02x}:{nodeId:02x}"
+    "fabricBridge": "02:00:00:bb:{clusterId:02x}:{nodeId:02x}"
   },
   "nodeTypes": {
     "SERVER": 0,
@@ -26,9 +26,9 @@
     "bioskop-mgmt": {
       "master": {
         "macs": {
-          "lan": "10:66:6a:4c:00:00",
+          "fabric": "10:66:6a:4c:00:00",
           "wan": "52:54:00:00:00:00",
-          "lanBridge": "02:00:00:bb:00:00"
+          "fabricBridge": "02:00:00:bb:00:00"
         },
         "ips": {
           "fabricHost": "172.16.1.3",
@@ -55,9 +55,9 @@
     "bioskop-wrkld": {
       "master": {
         "macs": {
-          "lan": "10:66:6a:4c:01:00",
+          "fabric": "10:66:6a:4c:01:00",
           "wan": "52:54:00:01:00:00",
-          "lanBridge": "02:00:00:bb:01:00"
+          "fabricBridge": "02:00:00:bb:01:00"
         },
         "ips": {
           "nodeHost": "10.80.8.10",
@@ -80,9 +80,9 @@
       },
       "peer1": {
         "macs": {
-          "lan": "10:66:6a:4c:01:01",
+          "fabric": "10:66:6a:4c:01:01",
           "wan": "52:54:00:01:00:01",
-          "lanBridge": "02:00:00:bb:01:01"
+          "fabricBridge": "02:00:00:bb:01:01"
         },
         "ips": {
           "nodeHost": "10.80.8.11",
@@ -105,9 +105,9 @@
       },
       "peer2": {
         "macs": {
-          "lan": "10:66:6a:4c:01:02",
+          "fabric": "10:66:6a:4c:01:02",
           "wan": "52:54:00:01:00:02",
-          "lanBridge": "02:00:00:bb:01:02"
+          "fabricBridge": "02:00:00:bb:01:02"
         },
         "ips": {
           "nodeHost": "10.80.8.12",
@@ -130,9 +130,9 @@
       },
       "peer3": {
         "macs": {
-          "lan": "10:66:6a:4c:01:03",
+          "fabric": "10:66:6a:4c:01:03",
           "wan": "52:54:00:01:00:03",
-          "lanBridge": "02:00:00:bb:01:03"
+          "fabricBridge": "02:00:00:bb:01:03"
         },
         "ips": {
           "nodeHost": "10.80.8.13",
@@ -155,9 +155,9 @@
       },
       "worker1": {
         "macs": {
-          "lan": "10:66:6a:4c:01:04",
+          "fabric": "10:66:6a:4c:01:04",
           "wan": "52:54:00:01:01:04",
-          "lanBridge": "02:00:00:bb:01:04"
+          "fabricBridge": "02:00:00:bb:01:04"
         },
         "ips": {
           "nodeHost": "10.80.8.14",
@@ -180,9 +180,9 @@
       },
       "worker2": {
         "macs": {
-          "lan": "10:66:6a:4c:01:05",
+          "fabric": "10:66:6a:4c:01:05",
           "wan": "52:54:00:01:01:05",
-          "lanBridge": "02:00:00:bb:01:05"
+          "fabricBridge": "02:00:00:bb:01:05"
         },
         "ips": {
           "nodeHost": "10.80.8.15",
@@ -207,9 +207,9 @@
     "nikopol-mgmt": {
       "master": {
         "macs": {
-          "lan": "10:66:6a:4c:02:00",
+          "fabric": "10:66:6a:4c:02:00",
           "wan": "52:54:00:02:00:00",
-          "lanBridge": "02:00:00:bb:02:00"
+          "fabricBridge": "02:00:00:bb:02:00"
         },
         "ips": {
           "fabricHost": "172.16.17.3",
@@ -236,9 +236,9 @@
     "nikopol-wrkld": {
       "master": {
         "macs": {
-          "lan": "10:66:6a:4c:03:00",
+          "fabric": "10:66:6a:4c:03:00",
           "wan": "52:54:00:03:00:00",
-          "lanBridge": "02:00:00:bb:03:00"
+          "fabricBridge": "02:00:00:bb:03:00"
         },
         "ips": {
           "nodeHost": "10.80.24.10",
@@ -261,9 +261,9 @@
       },
       "peer1": {
         "macs": {
-          "lan": "10:66:6a:4c:03:01",
+          "fabric": "10:66:6a:4c:03:01",
           "wan": "52:54:00:03:00:01",
-          "lanBridge": "02:00:00:bb:03:01"
+          "fabricBridge": "02:00:00:bb:03:01"
         },
         "ips": {
           "nodeHost": "10.80.24.11",
@@ -286,9 +286,9 @@
       },
       "peer2": {
         "macs": {
-          "lan": "10:66:6a:4c:03:02",
+          "fabric": "10:66:6a:4c:03:02",
           "wan": "52:54:00:03:00:02",
-          "lanBridge": "02:00:00:bb:03:02"
+          "fabricBridge": "02:00:00:bb:03:02"
         },
         "ips": {
           "nodeHost": "10.80.24.12",
@@ -311,9 +311,9 @@
       },
       "peer3": {
         "macs": {
-          "lan": "10:66:6a:4c:03:03",
+          "fabric": "10:66:6a:4c:03:03",
           "wan": "52:54:00:03:00:03",
-          "lanBridge": "02:00:00:bb:03:03"
+          "fabricBridge": "02:00:00:bb:03:03"
         },
         "ips": {
           "nodeHost": "10.80.24.13",
@@ -336,9 +336,9 @@
       },
       "worker1": {
         "macs": {
-          "lan": "10:66:6a:4c:03:04",
+          "fabric": "10:66:6a:4c:03:04",
           "wan": "52:54:00:03:01:04",
-          "lanBridge": "02:00:00:bb:03:04"
+          "fabricBridge": "02:00:00:bb:03:04"
         },
         "ips": {
           "nodeHost": "10.80.24.14",
@@ -361,9 +361,9 @@
       },
       "worker2": {
         "macs": {
-          "lan": "10:66:6a:4c:03:05",
+          "fabric": "10:66:6a:4c:03:05",
           "wan": "52:54:00:03:01:05",
-          "lanBridge": "02:00:00:bb:03:05"
+          "fabricBridge": "02:00:00:bb:03:05"
         },
         "ips": {
           "nodeHost": "10.80.24.15",

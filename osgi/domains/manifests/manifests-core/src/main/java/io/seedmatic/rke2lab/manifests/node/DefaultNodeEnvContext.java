@@ -75,14 +75,14 @@ public final class DefaultNodeEnvContext implements NodeEnvContext {
         .nodeNetworkGatewayAddr(blueprint.nodeNetwork().nodeGatewayInetaddr().getHostAddress())
         .clusterLoadBalancerCidr(blueprint.loadBalancer().lbCidr().toString())
         .clusterLoadBalancerGatewayAddr(blueprint.fabric().headscaleInetaddr().getHostAddress())
-        .lanInterface(blueprint.interfaces().lanInterface())
+        .fabricInterface(blueprint.interfaces().fabricInterface())
         .fabricLoadBalancerCidr(blueprint.fabric().lbCidr().toString())
         .wanInterface(blueprint.interfaces().wanInterface())
         .vipInterface(blueprint.interfaces().vipInterface())
         .vipCidr(blueprint.vip().vipCidr().toString())
         .vipGatewayInetAddr(blueprint.vip().vipGatewayInetaddr().getHostAddress())
         .vipHostInetAddr(blueprint.vip().vipHostInetaddr().getHostAddress())
-        .lanHostMacAddr(blueprint.fabric().hostMacaddr().value())
+        .fabricHostMacAddr(blueprint.fabric().hostMacaddr().value())
         .wanHostMacAddr(blueprint.wan().hostMacaddr().value())
         .build();
   }

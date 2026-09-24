@@ -17,8 +17,6 @@
     before = [
       "rke2-server.service"
       "rke2lab-zfs-containerd.service"
-      # avahi publishes <cluster>-<node>.local over mDNS (./host-access.nix) — set the hostname first.
-      "avahi-daemon.service"
     ];
     unitConfig.ConditionPathExists = "/var/lib/rke2lab/node.env";
     serviceConfig = {
@@ -28,8 +26,10 @@
     };
     script = ''
       set -euo pipefail
-      # node.env is the cloud-init-written source of truth; avahi and rke2 (ordered after) read the
-      # hostname via gethostname().
+      # node.env is the cloud-init-written source of truth; rke2 (ordered after) reads the hostname
+      # via gethostname() — and so does the DHCP client, which is how the segment's dnsmasq comes to
+      # register <cluster>-<node>.<host> for this node (dns.mode=dynamic). That makes the hostname the
+      # node's NAME on the fabric, not merely a label.
       echo "$RKE2LAB_NODE_HOSTNAME" > /proc/sys/kernel/hostname
     '';
   };

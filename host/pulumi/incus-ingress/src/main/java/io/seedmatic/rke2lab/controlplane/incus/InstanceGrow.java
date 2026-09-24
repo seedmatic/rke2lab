@@ -93,7 +93,7 @@ public final class InstanceGrow {
     ensureCapnTrust();
     ensureNetworks(project, plan.network());
     // The instance's profiles, in incus precedence order (LAST wins): the grown cluster's
-    // node-<cluster> (vmnet0) then node-base (root+config+zfs+lan0). Each is an Output so the
+    // node-<cluster> (vmnet0) then node-base (root+config+zfs+fabric0). Each is an Output so the
     // instance dependsOn BOTH profiles — ordered profile-before-instance.
     final Output<String> nodeClusterProfile = ensureNodeProfiles(project, plan.network());
     final Output<String> nodeBaseProfile = ensureProfile(project);
@@ -273,12 +273,13 @@ public final class InstanceGrow {
             .build();
 
     // The common node profile: root disk + the privileged-container config + kmsg/zfs unix-char +
-    // lan0 (the NIC on the canonical, cluster-INVARIANT fabric bridge — ndh's per-bare-metal
+    // fabric0 (the NIC on the canonical, cluster-INVARIANT fabric bridge — ndh's per-bare-metal
     // segment, shared by every cluster on that machine, so it belongs here ONCE, not duplicated
-    // per node-<cluster>). The device keeps the name `lan0` on both sides of the container
-    // boundary; what changed is the TIER it attaches to, not the interface. The only per-cluster
+    // per node-<cluster>). The device is named for the TIER it attaches to, on both sides of the
+    // container boundary — it was `lan0` while it sat on the home LAN. The only per-cluster
     // NIC is
-    // vmnet0, which rides the node-<cluster> profile. lan0 is dynamic (no hwaddr) — the standalone
+    // vmnet0, which rides the node-<cluster> profile. fabric0 is dynamic (no hwaddr) — the
+    // standalone
     // instance overrides it with a deterministic hwaddr via its own inline device. Both standalone
     // and CAPN reference this profile, so the node config is single-sourced here.
     final Profile profile =
@@ -293,7 +294,7 @@ public final class InstanceGrow {
                         profileDevice("root", "disk", Map.of("path", "/", "pool", "default")),
                         profileUnixChar("kmsg.dev", "/dev/kmsg", "/dev/kmsg"),
                         profileUnixChar("zfs.dev", "/dev/zfs", "/dev/zfs"),
-                        profileNic("lan0", "lan0", "bridged", config.fabricBridgeParent())))
+                        profileNic("fabric0", "fabric0", "bridged", config.fabricBridgeParent())))
                 .build(),
             options);
 
@@ -384,10 +385,10 @@ public final class InstanceGrow {
   /**
    * Ensure the per-cluster {@code node-<cluster>} profile for EVERY cluster co-located on the host
    * — the NIC-bearing profile CAPN references ({@code profiles: [node, node-<cluster>]}) so a
-   * greenfield node gets its two interfaces: {@code lan0} on the canonical LAN bridge and {@code
-   * vmnet0} on the cluster's vmnet bridge. Both NICs are DYNAMIC (no hwaddr): incus generates a
-   * per-instance MAC and the vmnet bridge's {@code ipv4.dhcp.ranges} hands out an IP — no
-   * reservation (avahi/mDNS is IP-agnostic). The standalone node does NOT use this profile: it
+   * greenfield node gets its two interfaces: {@code fabric0} on the canonical fabric bridge and
+   * {@code vmnet0} on the cluster's vmnet bridge. Both NICs are DYNAMIC (no hwaddr): incus
+   * generates a per-instance MAC and the vmnet bridge's {@code ipv4.dhcp.ranges} hands out an IP —
+   * no reservation (avahi/mDNS is IP-agnostic). The standalone node does NOT use this profile: it
    * attaches its own per-instance NICs with the blueprint's deterministic hwaddrs. An
    * already-existing profile is adopted by omission (its config is host-owned), mirroring {@link
    * #ensureProfile}.
@@ -560,7 +561,7 @@ public final class InstanceGrow {
             // [node-<cluster>, node-base] — same set + order as the CAPN lxcMachineSpec (node-base
             // LAST = precedence). Output.all threads BOTH profiles' create-dependencies. The
             // instance's own inline NICs (deterministic hwaddr, below) override the profiles'
-            // dynamic lan0/vmnet0, so the standalone keeps its reservation.
+            // dynamic fabric0/vmnet0, so the standalone keeps its reservation.
             .profiles(Output.all(profileNames))
             .config(configWithFingerprint)
             .running(true)
@@ -759,7 +760,7 @@ public final class InstanceGrow {
 
   /**
    * The standalone node's 2 NICs, each with the blueprint's DETERMINISTIC hwaddr (so its reserved
-   * dnsmasq lease resolves) — {@code lan0} on the canonical LAN bridge, {@code vmnet0} on its
+   * dnsmasq lease resolves) — {@code fabric0} on the canonical fabric bridge, {@code vmnet0} on its
    * cluster's bridge. The kmsg/zfs unix-char devices + root disk ride the {@code node} profile now
    * (shared with CAPN); the NixOS {@code node-base} substrate bakes the node's config, so there are
    * no host disk mounts. CAPN nodes instead get DYNAMIC NICs from the {@code node-<cluster>}
@@ -768,7 +769,7 @@ public final class InstanceGrow {
   private List<InstanceDeviceArgs> seedInstanceDevices(InstanceGrowPlan plan) {
     final GrowNetworkView network = plan.network();
     return List.of(
-        nic("lan0", network.lanHwaddr(), "lan0", "bridged", config.fabricBridgeParent()),
+        nic("fabric0", network.fabricHwaddr(), "fabric0", "bridged", config.fabricBridgeParent()),
         nic("vmnet0", network.wanHwaddr(), "vmnet0", "bridged", network.nodeBridgeName()));
   }
 

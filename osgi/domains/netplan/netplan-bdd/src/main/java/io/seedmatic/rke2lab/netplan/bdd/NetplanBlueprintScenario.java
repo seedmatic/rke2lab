@@ -156,9 +156,9 @@ public class NetplanBlueprintScenario
       }
 
       final Map<String, String> macPatterns = new LinkedHashMap<>();
-      macPatterns.put("lan", "10:66:6a:4c:{clusterId:02x}:{nodeId:02x}");
+      macPatterns.put("fabric", "10:66:6a:4c:{clusterId:02x}:{nodeId:02x}");
       macPatterns.put("wan", "52:54:00:{clusterId:02x}:{nodeType:02x}:{nodeId:02x}");
-      macPatterns.put("lanBridge", "02:00:00:bb:{clusterId:02x}:{nodeId:02x}");
+      macPatterns.put("fabricBridge", "02:00:00:bb:{clusterId:02x}:{nodeId:02x}");
 
       final Map<String, Integer> nodeTypes = new LinkedHashMap<>();
       nodeTypes.put("SERVER", 0); // master, peer1-3
@@ -439,7 +439,7 @@ public class NetplanBlueprintScenario
    */
   record NodeAddressing(NodeMacs macs, NodeIPs ips, NodeLeases leases, String fabricFqdn) {}
 
-  record NodeMacs(String lan, String wan, String lanBridge) {}
+  record NodeMacs(String fabric, String wan, String fabricBridge) {}
 
   /**
    * A node's addresses, plus the one CLUSTER-scoped address a consumer of this projection needs

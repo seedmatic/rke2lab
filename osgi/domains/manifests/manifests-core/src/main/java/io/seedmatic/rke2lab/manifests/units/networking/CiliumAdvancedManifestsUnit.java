@@ -188,7 +188,7 @@ public final class CiliumAdvancedManifestsUnit extends AbstractManifestsUnit {
             "/spec",
             Map.of(
                 "interfaces",
-                List.of("eth0", "lan0"),
+                List.of("eth0", "fabric0"),
                 "loadBalancerIPs",
                 true,
                 "nodeSelector",
