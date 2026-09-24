@@ -458,8 +458,14 @@ public final class RenderPipelineManifestsUnit extends AbstractManifestsUnit {
         set -euxo pipefail
         mkdir -p "@MAVEN_CACHE@/base/repository" "@MAVEN_CACHE@/base/build-cache"
         mkdir -p "@MAVEN_CACHE@/incoming/$(context.taskRun.name)"
-        : "Drop inboxes older than a day — the residue of renders that failed before publishing."
-        find "@MAVEN_CACHE@/incoming" -mindepth 1 -maxdepth 1 -type d -mtime +1 -exec rm -rf {} +
+        : "Drop inboxes older than a day — the residue of renders that failed before publishing. No find(1): toolchains/kube carries coreutils, and find lives in findutils; a bash glob plus stat is the same job without widening a shared toolchain for one caller."
+        now="$(date +%s)"
+        for inbox in "@MAVEN_CACHE@"/incoming/*/; do
+          [ -d "$inbox" ] || continue
+          if [ "$(( now - $(stat -c %Y "$inbox") ))" -gt 86400 ]; then
+            rm -rf "$inbox"
+          fi
+        done
         """
             .replace("@MAVEN_CACHE@", MAVEN_CACHE_PATH));
   }
