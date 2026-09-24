@@ -173,12 +173,17 @@
       # time — they resolve ONLY when the eval is IMPURE. rke2lab as the top-level flake
       # has `nixConfig.pure-eval = false`, but when nix-darwin-home consumes it as an
       # input (building planJar via lib.networkBlueprint) that config is ignored and
-      # the eval is PURE → getEnv returns "" → hostM2Repo becomes "/.m2/repository" and
-      # hostGHToken "". So that path MUST be evaluated impurely: `darwin-rebuild … --impure`
-      # (or the equivalent on the consuming flake). Without it the seed below copies
-      # nothing and the build dies resolving staging-extension from central.
+      # the eval is PURE → getEnv returns "" → hostM2Repo becomes "/.m2/repository". So that path
+      # MUST be evaluated impurely: `darwin-rebuild … --impure` (or the equivalent on the consuming
+      # flake). Without it the seed below copies nothing and the build dies resolving
+      # staging-extension from central.
+      #
+      # M2_REPO is the ONLY host value read here now. GH_TOKEN used to be read the same way and
+      # interpolated into two build phases, which put it in their derivation hashes — and since PaC
+      # mints a fresh token per PipelineRun, every render asked nix for derivations it had never
+      # seen. It is still needed by the SHELL (flake-input fetches, the ff-push), just never by a
+      # derivation.
       hostM2Repo = "${builtins.getEnv "M2_REPO"}";
-      hostGHToken = "${builtins.getEnv "GH_TOKEN"}";
 
       # Optional PERSISTENT maven primary repo + build-cache. When set — a dev cache dir (must
       # be writable by the nix BUILD user, i.e. nixbld on a multi-user daemon: use /tmp/…, NOT
@@ -212,7 +217,7 @@
       # Shared Maven-in-nix plumbing for both reactor derivations: a buildPhase prelude
       # that sets up a writable $M2_REPO, SEEDS the staging-extension closure into it
       # (mechanism 1 below), and defines `mvnHost` — an `mvn` wrapper pinning that primary
-      # + the host ~/.m2 as a READ-ONLY tail (mechanism 2), with GH_TOKEN. Each derivation
+      # + the host ~/.m2 as a READ-ONLY tail (mechanism 2). Each derivation
       # opens its buildPhase with `${mavenHostPrelude}`, then calls `mvnHost <goals>`.
       #
       # (1) The CORE extension resolves at bootstrap from the seeded primary (the tail is
@@ -260,8 +265,23 @@
           exit 1
         fi
 
+        # NO GH_TOKEN here either, for the same CACHING reason as the staging closure: interpolating
+        # it puts it in the derivation hash, and PaC mints a fresh token per PipelineRun — so both
+        # reactor derivations were rebuilt on every render even when no source had changed, which is
+        # the largest single waste in the render (the whole 40-module reactor).
+        #
+        # Measured 2026-09-24 before removing it: manifests-cli builds with GH_TOKEN=dummyTOKEN, an
+        # EMPTY tail (M2_REPO to a fresh dir) and HOME redirected — so every dependency resolved from
+        # a public source, with nothing borrowed from a warm host repo. The private java-systemd the
+        # comment above warns about did not block it.
+        #
+        # ⚠️ The GitHub Packages repos in .mvn/settings.xml are still declared; anonymous requests to
+        # them fail and maven falls through to the next repository. If an artifact ever becomes truly
+        # private, the build fails LOUDLY on resolution — the moment to supply the token by a stable
+        # PATH whose CONTENT is not hashed (the pattern nixos/rke2.nix uses with
+        # /run/rke2lab/nix-github.conf), rather than by interpolating its value here again.
         mvnHost() {
-          env GH_TOKEN="${hostGHToken}" mvn \
+          mvn \
             -Dmaven.repo.local="$M2_REPO" \
             -Dmaven.repo.local.tail="${hostM2Repo}" \
             -Dmaven.repo.local.tail.ignoreAvailability=true \
@@ -275,8 +295,24 @@
       # WITHOUT itself (rm .mvn/extensions.xml) and installed into $out, a maven-repo store path.
       # Every downstream reactor build (`mavenHostPrelude`) then SEEDS the closure from this ONE
       # store path — so the operator standalone (seed-master's build) and the in-cluster render
-      # replay the identical bootstrap, zero per-mode duplication. Impure (host GH_TOKEN for any
-      # GitHub Packages dep of the parent chain), like the other reactor builds.
+      # replay the identical bootstrap, zero per-mode duplication.
+      #
+      # NO GH_TOKEN, deliberately, and this is a CACHING property rather than a tidiness one. The
+      # token used to be interpolated into the buildPhase below "for any GitHub Packages dep of the
+      # parent chain" — at the conditional. Interpolating it puts it in the DERIVATION HASH, and PaC
+      # mints a fresh App token per PipelineRun, so every in-cluster render saw a different
+      # derivation and re-downloaded this whole closure from scratch, however warm the nix store was.
+      # (It also deposited a live token in the world-readable store.)
+      #
+      # Measured 2026-09-24: the closure builds with a DUMMY token, so nothing here is private —
+      # bom, build-parent, staging-extension and bnd-read are all rke2lab, a public repo. The
+      # `impureEnvVars` route (pass the token without hashing it) was the first choice and is not
+      # available: it requires a fixed-output derivation, and two builds of this closure produce
+      # DIFFERENT content hashes even after dropping maven's resolver bookkeeping — the jars built
+      # here embed their build time. Removing the token reaches the same end without that fight.
+      #
+      # ⚠️ If a private dependency ever enters this chain, the build fails LOUDLY on a 401 rather
+      # than silently — which is the right failure, and the moment to revisit the FOD route.
       stagingExtensionRepoFor = pkgs: pkgs.stdenv.mkDerivation {
         name = "rke2lab-staging-extension-repo";
         src = ./.;
@@ -285,9 +321,9 @@
           export HOME="$TMPDIR"
           mkdir -p $out
           rm .mvn/extensions.xml
-          env GH_TOKEN="${hostGHToken}" mvn -f bom/pom.xml install -Dmaven.repo.local="$out"
-          env GH_TOKEN="${hostGHToken}" mvn -f build-parent/pom.xml install -Dmaven.repo.local="$out"
-          env GH_TOKEN="${hostGHToken}" mvn -f maven-embed-staging-ext/pom.xml -pl :staging-extension -am \
+          mvn -f bom/pom.xml install -Dmaven.repo.local="$out"
+          mvn -f build-parent/pom.xml install -Dmaven.repo.local="$out"
+          mvn -f maven-embed-staging-ext/pom.xml -pl :staging-extension -am \
             clean install -Dmaven.repo.local="$out"
         '';
         installPhase = "true";
@@ -819,9 +855,10 @@ USAGE
             read -r -a extraNixFlags <<< "''${NIX_FLAGS:-}"
             nixFlags+=( "''${extraNixFlags[@]}" )
 
-            # GH_TOKEN for the inner maven build: mint from the one org-owned GitHub App
-            # (.secrets github.app), never a personal `gh auth token`. The inner `nix build`
-            # reads GH_TOKEN impurely (hostGHToken), so export it here first.
+            # GH_TOKEN for the flake-input fetches and the ff-push — NOT for the inner maven
+            # build any more, which resolves everything from public sources and no longer bakes the
+            # token into its derivation hash. Mint from the one org-owned GitHub App
+            # (.secrets github.app), never a personal `gh auth token`.
             # Mint ONLY when no token is already provided. In-cluster the Tekton step already set
             # GH_TOKEN from PaC's App git_auth (the App-provided k8s Secret) AND .secrets is present
             # but sops-ENCRYPTED at rest (no git smudge filter) — so keying off `[ -f .secrets ]`
@@ -908,9 +945,9 @@ USAGE
             # Build the manifests-cli exe from the store — the shared reactor derivation
             # stages the CRDs, resolves deps + gates spotless, so the fat jar is
             # self-contained (no runtime maven cache, bootstrap or CRD staging). Mirrors
-            # `grow`'s `nix build .#seed-master`. The build is IMPURE (mvnHost reads
-            # M2_REPO + GH_TOKEN) — the caller sets them (in-cluster: the maven-cache PVC +
-            # the PaC App token). The inner build is a SEPARATE child nix process, so it always
+            # `grow`'s `nix build .#seed-master`. The build is IMPURE (mvnHost reads M2_REPO) —
+            # the caller sets it (in-cluster: the maven-cache PVC). GH_TOKEN is no longer read by
+            # the build, only by the fetches and the push around it. The inner build is a SEPARATE child nix process, so it always
             # gets `-L` (surface the build log) plus the shared NIX_FLAGS env (e.g.
             # `NIX_FLAGS='--rebuild -Lvv'`); OUTER `nix run` flags build THIS wrapper, not the child.
             nixFlags=( -L )
@@ -1102,6 +1139,10 @@ USAGE
           inherit planJar networkBlueprintYaml networkBlueprintJson dataplanJson seedMasterJar;
           seed-master = seedMasterJar;
           manifests-cli = manifestsCliJar;
+          # Exposed so the bootstrap closure can be BUILT and INSPECTED on its own — it is otherwise
+          # only interpolated into two other build phases, which makes it impossible to measure
+          # (determinism, size, what it actually downloaded) without building something else first.
+          staging-extension-repo = stagingExtensionRepoFor pkgs;
           incus-client = incusClient;
           grow = growApp;
           mint-gh-app-token = mintGhAppTokenApp;
@@ -1137,8 +1178,9 @@ USAGE
           meta.description = "Render manifests/<cluster> + signed ff-push (build manifests-cli against $MAVEN_BUILD_CACHE, then publish)";
         };
 
-        # Standalone: `GH_TOKEN=$(nix run .#mint-gh-app-token) nix build .#seed-master` — mint a
-        # packages:read GitHub App token from .secrets for a direct (non-grow) maven build.
+        # Standalone: `GH_TOKEN=$(nix run .#mint-gh-app-token) …` — mint a packages:read GitHub
+        # App token from .secrets. No longer needed by `nix build .#seed-master` itself (the reactor
+        # resolves from public sources); it is for the flake-input fetches and the push.
         apps.mint-gh-app-token = {
           type = "app";
           program = "${mintGhAppTokenApp}/bin/mint-gh-app-token";

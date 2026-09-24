@@ -94,6 +94,26 @@
                     </excludeProperties>
                 </effectivePom>
             </plugin>
+            <!-- The SAME leak again, one plugin later, and it was missed: exec-maven-plugin carries
+                 <workingDirectory>${maven.multiModuleProjectDirectory}</workingDirectory>
+                 (manifests-core/pom.xml). Measured 2026-09-24 on two in-cluster renders of the
+                 IDENTICAL commit: of manifests-core's 158 tracked inputs, exactly ONE differed —
+                 type="pom" — and of the effective pom's 683 lines, exactly one:
+                   <workingDirectory>/nix/var/nix/builds/nix-101-2445719201/…-source
+                   <workingDirectory>/nix/var/nix/builds/nix-98-4018479680/…-source
+                 So manifests-core never hit, and manifests-bdd + manifests-cli missed purely by
+                 cascade — their only differing input was the dependency hash of manifests-core's
+                 jar. Three modules rebuilt out of forty, every render, forever.
+                 The working directory is the reactor root either way; it selects WHERE the exec
+                 runs, not WHAT it produces, so excluding the volatile path from the hash is safe —
+                 the same argument as the two exclusions above. -->
+            <plugin artifactId="exec-maven-plugin">
+                <effectivePom>
+                    <excludeProperties>
+                        <excludeProperty>workingDirectory</excludeProperty>
+                    </excludeProperties>
+                </effectivePom>
+            </plugin>
             <!-- Exclude Jandex plugin fileSets identity noise (object hash varies each run) -->
             <plugin artifactId="jandex-maven-plugin">
                 <effectivePom>
