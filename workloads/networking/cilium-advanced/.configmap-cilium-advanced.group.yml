@@ -3,7 +3,7 @@ apiVersion: v1
 data:
   members: |-
     cilium.io/v2alpha1|CiliumLoadBalancerIPPool||cluster
-    cilium.io/v2alpha1|CiliumLoadBalancerIPPool||lan
+    cilium.io/v2alpha1|CiliumLoadBalancerIPPool||fabric
     cilium.io/v2alpha1|CiliumLoadBalancerIPPool||vip
     cilium.io/v2|CiliumBGPAdvertisement||control-plane-advertisement
     cilium.io/v2alpha1|CiliumL2AnnouncementPolicy||host

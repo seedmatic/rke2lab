@@ -9,7 +9,7 @@ metadata:
 spec:
   interfaces:
   - eth0
-  - lan0
+  - fabric0
   loadBalancerIPs: true
   nodeSelector:
     matchExpressions:
