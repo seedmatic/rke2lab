@@ -229,20 +229,38 @@
   # reservations), so the kubelet auto-detects and registers cilium_host (a pod-cidr IP absent from
   # the serving cert) → x509 mismatch breaking `kubectl logs`/`exec` + metrics. Forcing --node-ip via
   # kubelet-arg (the documented escape hatch) pins InternalIP to node-ip, which IS in the cert.
-  # Gated on node.env (mgmt-only, like provider-id): a CAPRKE2 workload node takes its node-ip from
-  # CAPN's CloudProviderNodePatch / its RKE2Config instead. Runs AFTER rke2lab-rke2-config (which
-  # wipes+reinstalls config.yaml.d) so this drop-in survives, and after network-online so vmnet0 holds
-  # its reserved address.
+  # RUNS ON EVERY NODE — deliberately NOT gated on node.env, unlike its two siblings above.
+  #
+  # It was, by analogy with them, and the analogy was false: node-labels and provider-id genuinely
+  # READ the node's identity out of node.env (its name, its labels), so a CAPN node that has no
+  # node.env legitimately takes those from CAPN instead. This one reads nothing but `ip addr show
+  # dev vmnet0`, so the gate bought nothing and cost the workload cluster its control plane.
+  #
+  # Measured 2026-09-24, restart counter 102 on bioskop-wrkld-control-plane-d4977:
+  #
+  #   fatal: cluster-cidr: [10.45.0.0/16 fd00:45::/56] and node-ip: [172.16.0.9],
+  #   must share the same IP version
+  #
+  # Skipped here, nothing sets node-ip at all (checked: absent from config.yaml and every drop-in),
+  # so rke2 AUTO-DETECTS it from the default-route device — `lan0`. That used to be harmless because
+  # lan0 sat on the home LAN and carried a v6 alongside its v4, making the auto-detected pair
+  # dual-stack by accident. lan0 now sits on `fabric-br`, which is declared `ipv6.address = none`, so
+  # the pair collapsed to v4 while cluster-cidr stayed dual — and rke2 refuses the mismatch.
+  #
+  # ★ The gate's cost was invisible until the bridge moved: a condition that skipped the ONE unit
+  # able to state the answer, on nodes that could not state it any other way.
+  #
+  # `requires` on rke2lab-identity is dropped with the gate for the same reason — identity IS
+  # node.env-gated, legitimately, so requiring it would re-import the condition through the back
+  # door. The ordering stays: when identity does run, this must follow it.
   systemd.services.rke2lab-node-ip = {
     description = "rke2lab kubelet node-ip drop-in (the node's own dual-stack vmnet0 address)";
-    unitConfig.ConditionPathExists = "/var/lib/rke2lab/node.env";
     after = [
       "rke2lab-identity.service"
       "rke2lab-rke2-config.service"
       "network-online.target"
     ];
     wants = [ "network-online.target" ];
-    requires = [ "rke2lab-identity.service" ];
     before = [ "rke2-server.service" ];
     requiredBy = [ "rke2-server.service" ];
     path = [ pkgs.iproute2 pkgs.gawk pkgs.coreutils ];
