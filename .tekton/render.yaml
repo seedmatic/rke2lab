@@ -79,11 +79,16 @@ spec:
           resources:
             requests:
               storage: 2Gi
-    # The persistent ~/.m2 + build-cache PVC (RenderPipelineManifestsUnit); serialised, RWO.
-    - name: maven-cache
-      persistentVolumeClaim:
-        claimName: manifests-maven-cache
-    # The persistent /nix store overlay upper/work PVC (RenderPipelineManifestsUnit); serialised, RWO.
+    # No maven-cache workspace: the cache is a CACHE (carried across runs), not a workspace (scratch
+    # for one run), and the render Task mounts it as a raw volume of its own. Bound here it was
+    # co-mounted by the affinity assistant, which is what forced the shared bind-mount class and, with
+    # it, the ephemeral tier — where a dynamic pvc-<uuid> leaked a dataset per cold start and a
+    # node-pinned PV stranded the cache on the first control-plane roll.
+    #
+    # ⚠️ nix-store is bound here but DECLARED by no Pipeline workspace — a vestige of the pre-NRI
+    # wiring (the store is the NODE's /nix overlay now, wired by the flox NRI plugin, its envs
+    # provisioned in the node namespace via nsenter). Left alone deliberately: removing it is a
+    # separate change, and it is not what this one is about.
     - name: nix-store
       persistentVolumeClaim:
         claimName: manifests-nix-store

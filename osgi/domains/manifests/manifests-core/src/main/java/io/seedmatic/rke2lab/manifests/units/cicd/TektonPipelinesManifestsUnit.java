@@ -91,12 +91,16 @@ public final class TektonPipelinesManifestsUnit extends AbstractManifestsUnit {
                 "tekton-pipelines",
                 // coschedule=pipelineruns (default is `workspaces`): the affinity assistant pins a
                 // whole PipelineRun's pods to one node instead of one-assistant-per-PVC-workspace.
-                // The default caps a TaskRun at ONE PVC workspace ("more than one
-                // PersistentVolumeClaim is bound"); our render pipeline's build task needs TWO (the
-                // shared `source` PVC passed fetch->render + the persistent `maven-cache` PVC). On
+                //
+                // ⚠️ The reason this was set is GONE. The default caps a TaskRun at ONE PVC
+                // workspace ("more than one PersistentVolumeClaim is bound") and the render task
+                // used to need TWO — `source` plus the maven-cache. The cache is no longer a
+                // workspace at all (RenderPipelineManifestsUnit mounts it as a raw volume, because
                 // a
-                // single-node cluster this changes nothing scheduling-wise; the operator merges its
-                // other pipeline defaults.
+                // cache is not scratch), so `source` is the only one left and the default would now
+                // suffice. Kept rather than reverted: on a single-node cluster the two settings are
+                // indistinguishable, and flipping Tekton's global scheduling has no way to be
+                // exercised here. A candidate for reverting the day a second node exists.
                 "pipeline",
                 Map.of("coschedule", "pipelineruns"),
                 // The TektonConfig CRD requires result.{disabled,is_external_db,options} and

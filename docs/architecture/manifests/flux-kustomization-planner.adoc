@@ -65,9 +65,16 @@ or a boundary. Good: per-service progress in `flux get ks`, local failure, indep
   until the operator caught up. Self-healed via Flux retry, but noisy + slow.
 . *A `WaitForFirstConsumer` PVC + `wait: true` deadlocks the Kustomization.* The default storageClass
   (`openebs-zfs`) binds only when a pod consumes the PVC; the `manifests-maven-cache` PVC therefore
-  stays `Pending` until the first PipelineRun mounts it, but Flux `wait: true` health-gates it → the
-  `cicd-render-pipeline` Kustomization can never reach `Ready` (a false negative; the Tasks/Pipeline
+  stayed `Pending` until the first PipelineRun mounted it, but Flux `wait: true` health-gates it → the
+  `cicd-render-pipeline` Kustomization could never reach `Ready` (a false negative; the Tasks/Pipeline
   it also applies ARE usable).
++
+That PVC is now *statically* provisioned: it pins `volumeName` to the `maven-cache` dataset a
+`VolumeIntention` adopts on the persist tier, so binding no longer waits on a consumer. The wait it
+does have is a REAL dependency rather than an artefact — the static PV exists only once
+`seed-incluster` is up to place it — and it is expressed as such, an edge from
+`cicd/render-pipeline` to `runtime/seed-incluster`, which is exactly the shape this section argues
+for: a named dependency instead of a coarse layer barrier.
 
 Both point at the same root: the *global layer barrier* is a coarse proxy for real dependencies, and
 `wait: true` health-checks every applied object indiscriminately.

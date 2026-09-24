@@ -235,10 +235,16 @@ A happy side effect: the spec's own escape hatch is that renaming an FQDN opens 
 budget. Migrating to per-cluster names IS that rename, so it is also the way out if `flux-webhook`'s
 budget is already spent. It costs updating the GitHub App's webhook URL, as the WARNING below notes.
 
-NOTE: `DataplanLayout` projects the per-cluster form the other way round for the maven cache
-(`tank/rke2lab/<cluster>/persist/maven-cache`, a "foundation-3 item"). The two must not diverge —
-whichever shape lands first sets it, and the deciding argument is which level the retain/ephemeral
-boundary should be expressed at.
+NOTE: the maven cache has LANDED on that same tier, and the shape is settled:
+`tank/rke2lab/<role>/persist/maven-cache` — keyed by `ClusterRole`, not by cluster name, for the
+reason `DataplanLayout` gives (the projection ndh consumes is one checked-in list materialised on
+every host, so it cannot name hosts). It is adopted by a `VolumeIntention` the render pipeline
+renders, exactly as the funnel cert is, so the dataset is no longer the unadopted orphan that made
+declaring it litter. What forced the move was not tidiness: as a Tekton *workspace* the cache was
+co-mounted by the affinity assistant, which required the `shared: yes` bind-mount class, which lives
+on the ephemeral tier — where a dynamic `pvc-<uuid>` leaked one dataset per cold start (measured
+2026-09-24: eight datasets for one live claim) and a node-pinned PV stranded the cache on the first
+control-plane roll. See `RenderPipelineManifestsUnit` § workspaces-vs-caches.
 
 [#funnel-node-affinity]
 ==== The volume belongs to the CONTROLLER — a managed node's name is not render-time knowledge

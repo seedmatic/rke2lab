@@ -95,13 +95,24 @@ public final class RepositoryManifestsUnit extends AbstractManifestsUnit {
                   Map.of("name", "cluster", "value", identity.clusterName()),
                   Map.of("name", "node", "value", identity.nodeName())
                 },
-                // Serialise the render: PaC queues PipelineRuns and runs ONE at a time. The render
-                // shares a single RWO maven-cache PVC (local repo + maven-build-cache) and the /nix
-                // store overlay across runs — none of which is multi-writer safe, and RWO is
-                // node-scoped so on this single-node cluster two concurrent runs WOULD co-mount and
-                // race the cache into corruption. concurrency_limit=1 is what actually enforces the
-                // "one render at a time" the pipeline assumes (previously only claimed in
-                // comments).
+                // Serialise the render: PaC queues PipelineRuns and runs ONE at a time. It is not a
+                // precaution but the OTHER HALF of choosing a shared mutable cache — the render
+                // shares one RWO maven-cache PVC (local repo + maven-build-cache) and the node's
+                // /nix store across runs, none of it multi-writer safe, and RWO is node-scoped, so
+                // two concurrent runs on a single-node cluster WOULD co-mount and race the cache
+                // into corruption. concurrency_limit=1 is what actually enforces the "one render at
+                // a time" the pipeline assumes (previously only claimed in comments).
+                //
+                // ⚠️ It is also a THROUGHPUT CEILING, and the render is per-cluster: at N clusters
+                // the renders queue behind each other. The way out is not a bigger limit but the
+                // readers-many/writer-serialised shape — a read-only shared base plus a per-run
+                // writable head, merged at the end (the union is sound because a released Maven
+                // coordinate is immutable, so two runs adding one artifact write identical bytes).
+                // Maven 3.9 expresses the local-repository half natively with a chained local repo
+                // (maven.repo.local.tail), and the build-cache half wants the extension's REMOTE
+                // cache with its opt-in save rather than a directory on a shared volume at all —
+                // which is the same workspace/cache confusion as the one fixed in
+                // RenderPipelineManifestsUnit, one level down.
                 "concurrency_limit",
                 1,
                 // Read the PipelineRun definition from the branch that was pushed (the grow branch

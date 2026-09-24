@@ -57,13 +57,24 @@ public record DataplanLayout(String pool, List<Dataset> datasets) {
   public static final String FUNNEL_CERT = "funnel-cert";
 
   /**
-   * The cross-grow persist datasets (retained; out of the wiped {@code ephemeral} tree), declared
-   * once per cluster root. Only {@code funnel-cert} today: the render maven-cache is currently
-   * EPHEMERAL (its PVC rides {@code openebs-zfs-shared} on the ephemeral pool), and its durable
-   * form belongs on this same tier (the Maven local repo is not concurrency-safe), a foundation-3
-   * item. A flat {@code persist/maven-cache} was an unadopted orphan, so it is not declared.
+   * The render pipeline's Maven cache root — the local repo plus the maven-build-cache, side by
+   * side. It is a CACHE (carried across runs), not a workspace (scratch for one run), and the
+   * difference is the whole point: as a Tekton workspace it dragged in the affinity assistant,
+   * which co-mounts every PVC-backed workspace and so forced the {@code shared: yes} bind-mount
+   * class onto the ephemeral tier — where a dynamic {@code pvc-<uuid>} leaked one dataset per cold
+   * start (measured 2026-09-24: 8 datasets for 1 live claim) and a node-pinned PV stranded it on
+   * the first control-plane roll. The render Task mounts it as a RAW VOLUME instead, exactly as the
+   * nix store already did, so it is only ever mounted by the one step that writes it.
    */
-  public static final List<String> PERSIST_DATASETS = List.of(FUNNEL_CERT);
+  public static final String MAVEN_CACHE = "maven-cache";
+
+  /**
+   * The cross-grow persist datasets (retained; out of the wiped {@code ephemeral} tree), declared
+   * once per cluster root. A flat {@code persist/maven-cache} used to sit here as an UNADOPTED
+   * orphan — declared by no intention, bound by no PV; it is now adopted by the render pipeline's
+   * {@code VolumeIntention}, which is what makes declaring it correct rather than litter.
+   */
+  public static final List<String> PERSIST_DATASETS = List.of(FUNNEL_CERT, MAVEN_CACHE);
 
   /** A single ZFS dataset request: a pool-relative path, its disko type, and its ZFS options. */
   public record Dataset(String path, String type, Map<String, String> options) {

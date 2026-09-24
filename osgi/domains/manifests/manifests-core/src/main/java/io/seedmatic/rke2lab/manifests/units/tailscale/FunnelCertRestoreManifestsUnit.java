@@ -15,6 +15,7 @@ import io.seedmatic.rke2lab.manifests.ingress.FunnelCertIssuance;
 import io.seedmatic.rke2lab.manifests.ingress.FunnelLeaf;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import io.seedmatic.rke2lab.manifests.units.runtime.SeedInclusterManifestsUnit;
+import io.seedmatic.rke2lab.manifests.units.storage.OpenebsZfsManifestsUnit;
 import java.util.List;
 import java.util.Map;
 import org.cdk8s.ApiObject;
@@ -54,7 +55,7 @@ public final class FunnelCertRestoreManifestsUnit extends AbstractManifestsUnit 
 
   private static final String NAMESPACE = TailscaleRefs.SYSTEM_NAMESPACE.name();
 
-  private static final String STORAGE_CLASS = "openebs-zfs-persist";
+  private static final String STORAGE_CLASS = OpenebsZfsManifestsUnit.PERSIST_CLASS;
 
   /**
    * The persist PVC name the restore Jobs and the backup Jobs (funnel-state) both mount — ONE

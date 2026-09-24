@@ -20,6 +20,20 @@ public final class OpenebsZfsManifestsUnit extends AbstractManifestsUnit {
 
   public static final String MANIFEST_UNIT_ID = ManifestDomainCatalog.STORAGE + "/openebs-zfs";
 
+  /** The default exclusive-mount class on this cluster's ephemeral pool — Delete. */
+  public static final String EPHEMERAL_CLASS = "openebs-zfs";
+
+  /**
+   * The {@code shared: yes} (bind-mount) variant of {@link #EPHEMERAL_CLASS}, for a volume that
+   * SEVERAL same-node pods mount at once — which today means exactly one thing: a Tekton workspace
+   * backed by a PVC, because the affinity assistant co-mounts every such workspace beside the task
+   * pod. A volume only one pod ever mounts must NOT ride this class; it wants the exclusive one.
+   */
+  public static final String SHARED_CLASS = "openebs-zfs-shared";
+
+  /** The persist tier — Retain, non-default, on this cluster's persist parent. */
+  public static final String PERSIST_CLASS = "openebs-zfs-persist";
+
   private static final String DOMAIN_NAME = "storage";
   private static final String PACKAGE_NAME = "openebs-zfs";
 
@@ -53,17 +67,16 @@ public final class OpenebsZfsManifestsUnit extends AbstractManifestsUnit {
     final ClusterDataplan dataplan =
         ClusterDataplan.of(context.nodeEnvContext().bootstrapIdentity().clusterName());
     final String ephemeralPool = dataplan.ephemeralPool();
-    createStorageClass(scope, "openebs-zfs", true, false, ephemeralPool, "Delete");
-    createStorageClass(scope, "openebs-zfs-shared", false, true, ephemeralPool, "Delete");
+    createStorageClass(scope, EPHEMERAL_CLASS, true, false, ephemeralPool, "Delete");
+    createStorageClass(scope, SHARED_CLASS, false, true, ephemeralPool, "Delete");
     // The persist tier: a Retain, non-default class on THIS cluster's persist parent so the funnel
     // cert PV survives a cold-start re-grow (etcd is wiped, so a stable dataset + a static PV are
     // the
     // only cross-grow handle). Per-cluster, because two clusters sharing one funnel-cert dataset
     // destroys the Let's Encrypt budget of both at once. Nothing lands here unless it names the
     // class
-    // explicitly. (The render maven-cache is EPHEMERAL today — not on this tier yet.)
-    createStorageClass(
-        scope, "openebs-zfs-persist", false, false, dataplan.persistPool(), "Retain");
+    // explicitly — the funnel cert and the render maven-cache do.
+    createStorageClass(scope, PERSIST_CLASS, false, false, dataplan.persistPool(), "Retain");
     createHelmChart(scope, namespace, chartVersion);
   }
 
