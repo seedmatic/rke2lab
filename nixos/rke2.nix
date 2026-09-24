@@ -295,11 +295,16 @@
         exit 1
       fi
       nodeip="$v4,$v6"
-      {
-        echo "node-ip: $nodeip"
-        echo "kubelet-arg+:"
-        echo "  - node-ip=$nodeip"
-      } >"$dropin"
+      # A heredoc, so the drop-in's SHAPE is visible here — it is YAML, where the two-space indent of
+      # the list item is load-bearing. Nix strips the common indentation of this indented-string
+      # block, leaving the body at column 0 and the list item at two, exactly as written. (Do not
+      # name the nix indented-string delimiter in this comment: two single quotes START AN ESCAPE
+      # inside it, so writing them here terminates the script itself — measured, one eval ago.)
+      cat >"$dropin" <<EOF
+      node-ip: $nodeip
+      kubelet-arg+:
+        - node-ip=$nodeip
+      EOF
     '';
   };
 }
