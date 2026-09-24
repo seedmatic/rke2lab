@@ -4,7 +4,8 @@ kind: Kustomization
 resources:
 - cicd-pac-secret.yml
 - cicd-pac-webhook.yml
-- cicd-render-pipeline.yml
+- cicd-render-pipeline-operators.yml
+- cicd-render-pipeline-workloads.yml
 - cicd-render-signing.yml
 - cicd-repository.yml
 - cicd-tekton-pipelines-crds.yml

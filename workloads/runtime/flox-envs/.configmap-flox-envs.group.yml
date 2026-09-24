@@ -5,9 +5,7 @@ data:
     flox.seedmatic.io/v1alpha1|FloxEnv|rke2lab-system|kube
     flox.seedmatic.io/v1alpha1|FloxEnv|rke2lab-system|git-sops
     flox.seedmatic.io/v1alpha1|FloxEnv|rke2lab-system|kdns
-    flox.seedmatic.io/v1alpha1|FloxEnv|rke2lab-system|headscale
     flox.seedmatic.io/v1alpha1|FloxEnv|rke2lab-system|tailscale
-    flox.seedmatic.io/v1alpha1|FloxEnv|rke2lab-system|headplane
     flox.seedmatic.io/v1alpha1|FloxEnv|rke2lab-system|tailnet
     flox.seedmatic.io/v1alpha1|FloxEnv|rke2lab-system|seed-incluster
 kind: ConfigMap
