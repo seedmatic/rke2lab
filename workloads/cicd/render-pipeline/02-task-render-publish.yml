@@ -22,7 +22,17 @@ spec:
       inbox_dir="/var/cache/rke2lab/maven/incoming/$(context.taskRun.name)"
       mkdir -p "/var/cache/rke2lab/maven/base/repository" "/var/cache/rke2lab/maven/base/build-cache"
       mkdir -p "$inbox_dir/repository" "$inbox_dir/build-cache"
-      : "Drop inboxes older than a day — the residue of renders that failed before publishing. No find(1): toolchains/kube carries coreutils, and find lives in findutils; a bash glob plus stat is the same job without widening a shared toolchain for one caller."
+      : 'Narration is SINGLE-quoted on purpose.'
+      : 'Inside DOUBLE quotes a backtick is command substitution, so the shell runs it.'
+      : 'Three of them once made bash run cp, mv and added as commands: operand errors in'
+      : 'the log, and the very words the sentence explained replaced by their empty output.'
+      : 'Single quotes forbid that outright — at the price of forbidding the apostrophe,'
+      : 'which is why these lines read the way they do. Only a line that interpolates a'
+      : 'value keeps double quotes, and it carries no backtick.'
+      :
+      : 'Drop inboxes older than a day: the residue of renders that failed before publishing.'
+      : 'No find(1) — toolchains/kube carries coreutils, and find lives in findutils; a bash'
+      : 'glob plus stat is the same job without widening a shared toolchain for one caller.'
       now="$(date +%s)"
       pruned=0
       for stale in "/var/cache/rke2lab/maven"/incoming/*/; do
@@ -32,12 +42,19 @@ spec:
           pruned=$((pruned + 1))
         fi
       done
-      : "SEED the run's build-cache from the shared one by HARD LINK. The maven-build-cache extension has no read-through tail (unlike the local repository, which gets maven.repo.local.tail), so a per-run location would start EMPTY and every render would rebuild from scratch. A byte copy is out of the question — the cache reaches 1.1G — but `cp -al` is metadata only, on the same dataset, so it costs neither space nor time. That is what lets the build-cache join the overlay at all."
+      : 'SEED the build-cache of this run from the shared one, by HARD LINK.'
+      : 'The maven-build-cache extension has no read-through tail — unlike the local repository,'
+      : 'which gets maven.repo.local.tail — so a per-run location starts EMPTY and every render'
+      : 'would rebuild from scratch. A byte copy is out of the question: the cache reaches 1.1G.'
+      : 'But cp -al is metadata only, on the same dataset, so it costs neither space nor time,'
+      : 'and that is what lets the build-cache join the overlay at all.'
       if [ -d "/var/cache/rke2lab/maven/base/build-cache" ]; then
         cp -al "/var/cache/rke2lab/maven/base/build-cache/." "$inbox_dir/build-cache/" 2>/dev/null || true
       fi
-      : "Say what this run reads through and what it cleaned, so cache-publish's numbers at the other end have a baseline to be read against."
-      echo "[cache-prepare] base repository $(du -sk "/var/cache/rke2lab/maven/base/repository" | cut -f1)K read-through | build-cache $(du -sk "$inbox_dir/build-cache" 2>/dev/null | cut -f1 || echo 0)K seeded | ${pruned} stale inbox(es) pruned"
+      : 'State what this run reads through and what it pruned, so the figures cache-publish'
+      : 'prints at the other end have a baseline. No echo: xtrace already prints a : line with'
+      : 'its arguments expanded, so this is one command less for the same log.'
+      : "[cache-prepare] base repository $(du -sk "/var/cache/rke2lab/maven/base/repository" | cut -f1)K read-through | build-cache $(du -sk "$inbox_dir/build-cache" | cut -f1)K seeded | ${pruned} stale inbox(es) pruned"
     volumeMounts:
     - mountPath: /var/cache/rke2lab/maven
       name: maven-cache
@@ -90,22 +107,43 @@ spec:
       inbox="/var/cache/rke2lab/maven/incoming/$(context.taskRun.name)"
       base="/var/cache/rke2lab/maven/base"
       if [ ! -d "$inbox" ]; then
-        echo "[cache-publish] no inbox — nothing to publish"
+        : '[cache-publish] no inbox — nothing to publish'
         exit 0
       fi
-      : "MEASURE: xtrace shows one cp line and says nothing about a step whose entire purpose is a side effect on shared state. du/ls/wc/cut only — toolchains/kube carries coreutils, not findutils."
-      : "The two halves are measured SEPARATELY and not summed, because they are not the same kind of number. repository/ is entirely new — it is never seeded, Maven reaches the shared copy through maven.repo.local.tail instead. build-cache/ is mostly the links cache-prepare seeded in, so its size is NOT this run's delta and adding the two would report 1.1G of borrowed links as work done. What the base actually gained is the only honest total, and it is measured on the base itself."
+      : 'MEASURE. xtrace shows one cp line and says nothing about a step whose entire purpose is'
+      : 'a side effect on shared state. du/ls/wc/cut only — coreutils, not findutils.'
+      :
+      : 'The two halves are measured SEPARATELY and never summed: they are not the same kind of'
+      : 'number. repository/ is entirely new, never seeded — Maven reaches the shared copy through'
+      : 'maven.repo.local.tail instead. build-cache/ is largely the links cache-prepare seeded in,'
+      : 'so its size is NOT a delta, and adding the two would report 1.1G of borrowed links as'
+      : 'work done. What the base actually gained is the only honest total, measured on the base.'
       repo_k="$(du -sk "$inbox/repository" | cut -f1)"
       repo_n="$(ls -RA1 "$inbox/repository" | wc -l)"
       bc_k="$(du -sk "$inbox/build-cache" | cut -f1)"
       before_k="$(du -sk "$base" | cut -f1)"
-      : "HARD LINKS, not a byte copy: the inbox and the base are two directories of the SAME dataset, so `cp -al` publishes by metadata alone — O(1) in bytes, whatever the delta weighs. `mv` cannot serve here: it does not MERGE into an existing tree, and merging is the whole operation."
-      : "And -f rather than -n, which is not just faster but more CORRECT. A released Maven coordinate is immutable, so overwriting it writes identical bytes; the mutable parts (maven-metadata, _remote.repositories, *.lastUpdated, a SNAPSHOT) are bookkeeping where the RUN's copy is the fresher one — with -n a stale SNAPSHOT in the base would never be refreshed again."
+      : 'HARD LINKS, not a byte copy. The inbox and the base are two directories of the SAME'
+      : 'dataset, so cp -alf publishes by metadata alone: O(1) in bytes, whatever the delta'
+      : 'weighs. mv cannot serve — it does not MERGE into an existing tree, and merging is the'
+      : 'whole operation.'
+      :
+      : 'And -f rather than -n, which is not merely faster but more CORRECT. A released Maven'
+      : 'coordinate is immutable, so overwriting writes identical bytes; the mutable parts'
+      : '(maven-metadata, _remote.repositories, *.lastUpdated, a SNAPSHOT) are bookkeeping where'
+      : 'this run holds the fresher copy — under -n a stale SNAPSHOT in the base could never be'
+      : 'refreshed again.'
       cp -alf "$inbox/." "$base/"
       after_k="$(du -sk "$base" | cut -f1)"
-      : "`added` far below the repository delta means most of what this run resolved was already in the base — i.e. the read-through tail is doing its job and the next render will download less still."
-      echo "[cache-publish] inbox: repository ${repo_k}K new (${repo_n} entries), build-cache ${bc_k}K incl. seeded links | base ${before_k}K -> ${after_k}K, added $((after_k - before_k))K"
-      : "Dropping the inbox removes only ITS links; the base keeps the files. This is also what makes the hard links safe — nothing survives to be modified in place through a shared inode."
+      : 'An added figure far below the repository delta means most of what this run resolved was'
+      : 'already in the base — the read-through tail is doing its job, and the next render will'
+      : 'download less still.'
+      :
+      : 'On the FIRST run after seeding landed, expect added to be roughly the build-cache size:'
+      : 'there was nothing to seed from, so the run produced that cache itself and it is new.'
+      : "[cache-publish] inbox: repository ${repo_k}K new (${repo_n} entries), build-cache ${bc_k}K seeded+produced | base ${before_k}K -> ${after_k}K, added $((after_k - before_k))K"
+      : 'Dropping the inbox removes only ITS links; the base keeps the files. That is also what'
+      : 'makes the hard links safe — nothing survives to be modified in place through a shared'
+      : 'inode.'
       rm -rf "$inbox"
     volumeMounts:
     - mountPath: /var/cache/rke2lab/maven
