@@ -42,6 +42,20 @@ import software.constructs.Construct;
  * meshEnabled}) is on — both coexist in debug mode because a debug-flipped prod container
  * references {@code <name>-debug} while the always-prod bootstrap/sync Jobs still reference {@code
  * <name>}. On the {@code workloads} layer (after the catalog on {@code operators}).
+ *
+ * <p><b>Two gates, and they answer different questions.</b> {@link
+ * io.seedmatic.rke2lab.manifests.contract.profiles.FloxDebugPolicy} selects a FLAVOR (which of prod
+ * / debug); {@link io.seedmatic.rke2lab.manifests.contract.ManifestDomainPolicy} — reachable as
+ * {@code context.manifestDomainPolicy()} — decides whether an env EXISTS at all, so an env follows
+ * the hibernation of the domain that consumes it. Confusing the two is a real bug and was made
+ * once: gating a PROD env on {@code meshEnabled()} drops it whenever debug is off, i.e. normally.
+ *
+ * <p>This matters because this unit is in the RUNTIME domain, which every cluster renders, while
+ * the units that annotate its envs are domain-gated. Without the domain gate an env outlives
+ * whatever used it — headscale and headplane were realised on every node for nobody, paying their
+ * closure at each cold start. The env's {@code folder} does NOT settle ownership either: {@code
+ * tailscale} and {@code tailnet} sit in the mesh folder (a node-side GC-root path) but belong to
+ * the live tailscale domain.
  */
 public final class FloxEnvManifestsUnit extends AbstractManifestsUnit {
 
@@ -119,17 +133,36 @@ public final class FloxEnvManifestsUnit extends AbstractManifestsUnit {
       createEnv(scope, resolver, "kdns-debug", FloxEnvFolder.NETWORKING, kdnsManifest(true));
     }
     final boolean mesh = policy.meshEnabled();
-    createEnv(scope, resolver, "headscale", FloxEnvFolder.MESH, headscaleManifest(false));
+    // Two gates, and confusing them is the bug that was made once: `mesh` above is the DEBUG facet
+    // (FloxDebugPolicy), which only ever selects a flavor; whether an env exists AT ALL belongs to
+    // the DOMAIN policy. Gating the prod envs on meshEnabled() would drop them whenever debug is
+    // off — i.e. normally.
+    //
+    // headscale/headplane follow their domain, which is HIBERNATED (ClusterRole). Until this gate,
+    // they did not: the envs live in the RUNTIME domain, which EVERY cluster renders, while the
+    // units that annotate them are domain-gated — so both were realised on every node for nobody,
+    // paying their closure at each cold start (measured 2026-09-24 on the management cluster, both
+    // `Realized`). Hibernating the domain now hibernates its envs with it, which is the coupling
+    // that was missing rather than a new switch.
+    //
+    // tailscale/tailnet are NOT gated with them: they sit in the mesh FOLDER (a node-side GC-root
+    // path) but belong to the tailscale domain, which is live — the folder is not the owner.
+    final boolean meshDomain = context.manifestDomainPolicy().isEnabled(ManifestDomainCatalog.MESH);
+    if (meshDomain) {
+      createEnv(scope, resolver, "headscale", FloxEnvFolder.MESH, headscaleManifest(false));
+      createEnv(scope, resolver, "headplane", FloxEnvFolder.MESH, headplaneManifest(false));
+      if (mesh) {
+        createEnv(scope, resolver, "headscale-debug", FloxEnvFolder.MESH, headscaleManifest(true));
+        createEnv(scope, resolver, "headplane-debug", FloxEnvFolder.MESH, headplaneManifest(true));
+      }
+    }
     createEnv(scope, resolver, "tailscale", FloxEnvFolder.MESH, tailscaleManifest(false));
-    createEnv(scope, resolver, "headplane", FloxEnvFolder.MESH, headplaneManifest(false));
     // The tailnet-admin env for the stale-device prune Job (mesh-tailnet-purge): manage-tailnet +
     // yq-go (the retry loop parses its --format=json JSON Lines). Always prod — an ops tool, no
     // debug flavor.
     createEnv(scope, resolver, "tailnet", FloxEnvFolder.MESH, tailnetManifest());
     if (mesh) {
-      createEnv(scope, resolver, "headscale-debug", FloxEnvFolder.MESH, headscaleManifest(true));
       createEnv(scope, resolver, "tailscale-debug", FloxEnvFolder.MESH, tailscaleManifest(true));
-      createEnv(scope, resolver, "headplane-debug", FloxEnvFolder.MESH, headplaneManifest(true));
     }
     // cluster-api/seed-incluster — the in-cluster CAPI adoption controller on the flox
     // runtime (replaces the baked node-base OCI image). A pure Go kubebuilder binary driven by
