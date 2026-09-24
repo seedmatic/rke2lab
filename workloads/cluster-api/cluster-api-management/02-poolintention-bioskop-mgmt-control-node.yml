@@ -13,7 +13,7 @@ spec:
     host: 10.80.7.10
     port: 6443
   image:
-    fingerprint: 789e98ee846eb2c00b414c96c90872a5fc4c31b5e16f37d011be387ce1c2671c
+    fingerprint: 6bc7fd0fd0c515527b862ccd771c02f73aea877288ab007352bc400de86ade6f
   namespace: rke2lab-bioskop-mgmt
   nodeLabels:
   - flox.seedmatic.io/enabled=true

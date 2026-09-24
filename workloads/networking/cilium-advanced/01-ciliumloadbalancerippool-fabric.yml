@@ -5,10 +5,10 @@ metadata:
   annotations:
     io.seedmatic.rke2lab/domain: networking
     io.seedmatic.rke2lab/package: cilium-advanced
-  name: lan
+  name: fabric
 spec:
   blocks:
   - cidr: 172.16.1.64/26
   serviceSelector:
     matchLabels:
-      io.cilium/lb-ipam-pool: lan
+      io.cilium/lb-ipam-pool: fabric
