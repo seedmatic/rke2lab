@@ -33,11 +33,8 @@ const (
 	// zfsCSIDriver is the openebs-zfs CSI driver name the static PV names.
 	zfsCSIDriver = "zfs.csi.openebs.io"
 
-	// openebsNodenameLabel is the label openebs puts on a node, valued at the node NAME — what the
-	// PV's nodeAffinity matches on.
-	openebsNodenameLabel = "openebs.io/nodename"
-
-	// nodeRoleLabelPrefix + the intention's NodeRole is the label an eligible node must carry.
+	// nodeRoleLabelPrefix + the intention's NodeRole is the label an eligible node must carry — the
+	// predicate of BOTH halves: the election lists on it, and the PV's nodeAffinity requires it.
 	nodeRoleLabelPrefix = "node-role.kubernetes.io/"
 
 	// volumeRequeueInterval is how long to wait before re-electing when no node is eligible yet — a
@@ -127,8 +124,11 @@ func (r *VolumeIntentionReconciler) reconcileSteps(
 }
 
 // electNode picks the node that will serve the volume. STICKY: an already-elected node that is still
-// eligible wins, because moving the election would strand the dataset on the previous node — the
-// data does not follow the choice.
+// eligible wins — for STABILITY, not for correctness. The old reading ("moving the election would
+// strand the dataset on the previous node") was false: the dataset sits in the host's pool, which
+// every node of the cluster shares, so adoptOwner can hand it over. Stickiness now only avoids
+// churning the owner while the current one is healthy; when it disappears, the re-election below is
+// the recovery path rather than a hazard.
 //
 // Among candidates the oldest by creationTimestamp wins: deterministic, monotonic, and owned by the
 // apiserver rather than by us. When the pet label lands (a Machine label CAPI propagates to the Node)
@@ -195,14 +195,23 @@ func (r *VolumeIntentionReconciler) ensureZFSVolume(
 	if err := ensure(ctx, r.Client, obj); err != nil {
 		return fmt.Errorf("ensuring ZFSVolume %s: %w", vi.Spec.Dataset, err)
 	}
-	return r.assertOwner(ctx, gvkZFSVolume, vi.Spec.Dataset, openebsNamespace, node)
+	return r.adoptOwner(ctx, gvkZFSVolume, vi.Spec.Dataset, openebsNamespace, node)
 }
 
-// assertOwner refuses to silently disagree with an existing ZFSVolume. `ensure` leaves an existing
-// object untouched, so a pre-existing CR naming ANOTHER node means the volume is already placed
-// elsewhere — re-stamping would not move the data, it would only make the two halves lie. Surface it
-// instead; the resolution is an operator gesture.
-func (r *VolumeIntentionReconciler) assertOwner(
+// adoptOwner hands an existing ZFSVolume to the elected node. `ensure` leaves an existing object
+// untouched, so a pre-existing CR naming ANOTHER node needs this second pass.
+//
+// It used to REFUSE, on the premise that "re-stamping would not move the data, it would only make the
+// two halves lie". The premise was false: ownerNodeID records which node MOUNTED the dataset, not
+// where the bytes are — spec.poolName, written right beside it, is host-scoped. Measured 2026-09-24
+// after rolling a control plane: the elected node listed `<pool>/funnel-cert` (160K, intact) that the
+// deleted node had created, and patching ownerNodeID alone brought the whole chain back — where the
+// refusal's own prescription ("delete the ZFSVolume and the PV") would have destroyed the cert and
+// left the funnel to be rebuilt from a backup it never needed.
+//
+// ownerNodeID stays a node NAME (it references openebs's ZFSNode object, one per node), which is why
+// this half is re-stamped rather than widened to the role the way the PV's affinity is.
+func (r *VolumeIntentionReconciler) adoptOwner(
 	ctx context.Context, gvk schema.GroupVersionKind, name, namespace, node string,
 ) error {
 	existing := newObj(gvk, name, namespace)
@@ -213,10 +222,16 @@ func (r *VolumeIntentionReconciler) assertOwner(
 	if !ok {
 		return nil
 	}
-	if owner, ok := spec["ownerNodeID"].(string); ok && owner != node {
-		return fmt.Errorf(
-			"ZFSVolume %s already names node %q but %q was elected — the dataset lives on %q; "+
-				"delete the ZFSVolume and the PV to re-place it", name, owner, node, owner)
+	owner, ok := spec["ownerNodeID"].(string)
+	if !ok || owner == node {
+		return nil
+	}
+	log.FromContext(ctx).Info("re-stamping ZFSVolume onto the elected node",
+		"zfsVolume", name, "was", owner, "now", node, "pool", spec["poolName"])
+	patch := newObj(gvk, name, namespace)
+	patch.Object["spec"] = map[string]any{"ownerNodeID": node}
+	if err := r.Patch(ctx, patch, client.Merge); err != nil {
+		return fmt.Errorf("re-stamping ZFSVolume %s from %q to %q: %w", name, owner, node, err)
 	}
 	return nil
 }
@@ -251,21 +266,13 @@ func (r *VolumeIntentionReconciler) ensurePersistentVolume(
 					VolumeAttributes: map[string]string{"openebs.io/poolname": vi.Spec.Pool},
 				},
 			},
-			NodeAffinity: &corev1.VolumeNodeAffinity{
-				Required: &corev1.NodeSelector{
-					NodeSelectorTerms: []corev1.NodeSelectorTerm{{
-						MatchExpressions: []corev1.NodeSelectorRequirement{{
-							Key:      openebsNodenameLabel,
-							Operator: corev1.NodeSelectorOpIn,
-							Values:   []string{node},
-						}},
-					}},
-				},
-			},
+			NodeAffinity: roleNodeAffinity(vi.Spec.NodeRole),
 		},
 	}
-	// Create-if-absent, never patch: a PV's nodeAffinity is immutable once set, so an existing PV is
-	// either already correct or a disagreement to surface (below) — not something to fight.
+	// Create-if-absent, never patch: a PV's nodeAffinity is immutable once set. That used to make a
+	// roll unrecoverable, because the affinity NAMED the elected node; requiring the ROLE instead
+	// makes the desired affinity identical for every node of the cluster, so there is nothing left to
+	// change and immutability costs nothing.
 	err = r.Create(ctx, pv)
 	if err != nil && !apierrors.IsAlreadyExists(err) {
 		return fmt.Errorf("creating PersistentVolume %s: %w", vi.Spec.Dataset, err)
@@ -274,28 +281,47 @@ func (r *VolumeIntentionReconciler) ensurePersistentVolume(
 	if err := r.Get(ctx, types.NamespacedName{Name: vi.Spec.Dataset}, &existing); err != nil {
 		return err
 	}
-	if placed := pvNode(&existing); placed != "" && placed != node {
+	// A PV predating the role-wide affinity still names one node, and immutability means we cannot
+	// widen it. Surface it rather than leave the cluster silently unable to survive its next roll —
+	// the PV is Retain, so deleting it keeps the dataset.
+	if !equality.Semantic.DeepEqual(existing.Spec.NodeAffinity, pv.Spec.NodeAffinity) {
 		return fmt.Errorf(
-			"PersistentVolume %s is already pinned to node %q but %q was elected — "+
-				"delete the PV and the ZFSVolume to re-place it", vi.Spec.Dataset, placed, node)
+			"PersistentVolume %s carries affinity %v but %v is required — a PV's nodeAffinity is "+
+				"immutable, so delete the PV to re-place it (Retain: the dataset survives)",
+			vi.Spec.Dataset, existing.Spec.NodeAffinity, pv.Spec.NodeAffinity)
 	}
 	return nil
 }
 
-// pvNode reads back the single node a static PV is pinned to (empty when unpinned).
-func pvNode(pv *corev1.PersistentVolume) string {
-	affinity := pv.Spec.NodeAffinity
-	if affinity == nil || affinity.Required == nil {
-		return ""
+// roleNodeAffinity requires the node ROLE rather than one node's name — the SAME predicate the
+// election lists on (client.HasLabels, i.e. Exists), so the two halves can no longer disagree.
+//
+// It is sound because every node of a cluster lives on ONE bare-metal and the dataset lives in THAT
+// HOST's pool (spec.Pool is `tank/rke2lab/<role>/persist`, host-scoped), which any of its nodes can
+// list and mount — measured 2026-09-24 from a freshly-rolled node, on a dataset created by the node
+// it replaced. `Exists`, not `In []string{"true"}`: the election tests existence, and rke2 happens to
+// value the role label "true" where kubeadm leaves it empty.
+//
+// The SUBSTRATE permits this outright: mounting one dataset from two nodes at once was measured by
+// hand on 2026-09-24 — `findmnt /mnt` inside two different nodes showed the SAME
+// `<pool>/funnel-cert`, rw, simultaneously. A cluster never spans bare-metals (a deliberate hard
+// constraint; growth is by cluster mesh), so every node of the role always sees the dataset.
+//
+// ⚠️ What stays unmeasured is narrower: whether openebs's node PLUGIN will publish a ZFSVolume whose
+// ownerNodeID names another node — the kernel allowing the mount is not the driver performing it.
+// adoptOwner below re-stamps the owner on re-election, which converges; a pod landing elsewhere first
+// would retry its mount meanwhile.
+func roleNodeAffinity(role string) *corev1.VolumeNodeAffinity {
+	return &corev1.VolumeNodeAffinity{
+		Required: &corev1.NodeSelector{
+			NodeSelectorTerms: []corev1.NodeSelectorTerm{{
+				MatchExpressions: []corev1.NodeSelectorRequirement{{
+					Key:      nodeRoleLabelPrefix + role,
+					Operator: corev1.NodeSelectorOpExists,
+				}},
+			}},
+		},
 	}
-	for _, term := range affinity.Required.NodeSelectorTerms {
-		for _, expr := range term.MatchExpressions {
-			if expr.Key == openebsNodenameLabel && len(expr.Values) > 0 {
-				return expr.Values[0]
-			}
-		}
-	}
-	return ""
 }
 
 // capacityBytes renders a Kubernetes quantity as the byte count openebs's ZFSVolume expects (a
