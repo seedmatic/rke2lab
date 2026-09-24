@@ -8,13 +8,13 @@ data:
     - "127.0.0.1"
     - "10.80.7.10"
     - "10.80.0.1"
-    - "192.168.1.131"
-    - "bioskop-mgmt-master.local"
-    - "bioskop-mgmt-peer1.local"
-    - "bioskop-mgmt-peer2.local"
-    - "bioskop-mgmt-peer3.local"
-    - "bioskop-mgmt-worker1.local"
-    - "bioskop-mgmt-worker2.local"
+    - "172.16.1.3"
+    - "bioskop-mgmt-master.bioskop"
+    - "bioskop-mgmt-peer1.bioskop"
+    - "bioskop-mgmt-peer2.bioskop"
+    - "bioskop-mgmt-peer3.bioskop"
+    - "bioskop-mgmt-worker1.bioskop"
+    - "bioskop-mgmt-worker2.bioskop"
 kind: ConfigMap
 metadata:
   annotations:
