@@ -48,8 +48,11 @@ spec:
       : 'would rebuild from scratch. A byte copy is out of the question: the cache reaches 1.1G.'
       : 'But cp -al is metadata only, on the same dataset, so it costs neither space nor time,'
       : 'and that is what lets the build-cache join the overlay at all.'
+      : 'A failed seed is TOLERATED — a cold build-cache costs time, not correctness — but its'
+      : 'reason is never hidden. Swallowing stderr here would leave the reported seeded size at 0'
+      : 'with nothing to say why, which is the one thing the figure cannot tell on its own.'
       if [ -d "/var/cache/rke2lab/maven/base/build-cache" ]; then
-        cp -al "/var/cache/rke2lab/maven/base/build-cache/." "$inbox_dir/build-cache/" 2>/dev/null || true
+        cp -al "/var/cache/rke2lab/maven/base/build-cache/." "$inbox_dir/build-cache/" || true
       fi
       : 'State what this run reads through and what it pruned, so the figures cache-publish'
       : 'prints at the other end have a baseline. No echo: xtrace already prints a : line with'
