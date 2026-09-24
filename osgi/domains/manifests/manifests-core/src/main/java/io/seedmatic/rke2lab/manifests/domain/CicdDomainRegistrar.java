@@ -19,7 +19,14 @@ public final class CicdDomainRegistrar implements ManifestsDomainRegistrar {
   public ManifestsDomain domain() {
     return new ManifestsDomain(
         ManifestDomainCatalog.CICD,
-        List.of(),
+        // runtime, because RenderPipelineManifestsUnit depends on seed-incluster: it is what turns
+        // the render's maven-cache VolumeIntention into the ZFSVolume + static PV the PVC binds
+        // against. A unit-level edge across domains is REFUSED without the matching domain-level
+        // one
+        // ("Manifest unit dependency crosses domains without a matching domain dependency"), so the
+        // two must be declared together — the same pairing TailscaleDomainRegistrar carries for its
+        // funnel-cert volume.
+        List.of(ManifestDomainCatalog.RUNTIME),
         List.of(
             new TektonPipelinesManifestsUnit(),
             new RepositoryManifestsUnit(),
