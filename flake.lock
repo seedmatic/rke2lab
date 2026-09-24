@@ -153282,11 +153282,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1790198017,
-        "narHash": "sha256-ObhuO1p4FWTgehk89K58bVFpezHZoBLuRTEnpxWlQUU=",
+        "lastModified": 1790219657,
+        "narHash": "sha256-kEHZmrS0msr4DCPo3v55PvdgJw9/5ca93sUaQvNTsSA=",
         "owner": "seedmatic",
         "repo": "ndh",
-        "rev": "5e71885ca271912c7642a345e0d7aa5560681965",
+        "rev": "ddd970c8f1eab714f0d7eb747337dfe32a753b82",
         "type": "github"
       },
       "original": {
@@ -282634,11 +282634,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1790198846,
-        "narHash": "sha256-aIKGJ/zwamdX/1r9+wOdm2RLe6WCIzi5iQQQ7H+WPzI=",
+        "lastModified": 1790219725,
+        "narHash": "sha256-XIdj6KDuZsAXc8hcqF7/p8CmGEJcBYw+neCBGO+DKWo=",
         "owner": "seedmatic",
         "repo": "rke2lab",
-        "rev": "d253bbd714cdbdb5e5731e4b41c2817d1e3f3ac6",
+        "rev": "1f4ba0eaaf1a472328ac8cca0f7599430a03812b",
         "type": "github"
       },
       "original": {
