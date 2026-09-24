@@ -69,6 +69,17 @@
     dhcpV4Config.UseGateway = false;
     ipv6AcceptRAConfig.UseGateway = false;
     linkConfig.RequiredForOnline = "routable";
+    # BOTH families, and this is what makes `network-online.target` mean what rke2 needs. "routable"
+    # alone is satisfied by the v4 lease, so the target could be reached while the stateful DHCPv6
+    # lease was still outstanding — and rke2lab-node-ip, ordered after it, then read a half address.
+    # cluster-cidr is dual-stack unconditionally, so rke2 refuses a single-family node-ip outright
+    # (measured 2026-09-24: `node-ip: [10.80.8.5]` against `[10.45.0.0/16 fd00:45::/56]`).
+    #
+    # Declaring the wait HERE rather than polling in the oneshot is the difference between a
+    # guarantee and a hope: the ordering already exists, it was only under-specified. And when the
+    # lease genuinely never arrives, the failure is networkd's own wait-online timeout naming this
+    # link — not a drop-in quietly written with whatever was available.
+    linkConfig.RequiredFamilyForOnline = "both";
     # Force a link-layer DUID (DUID-LL = the MAC, no vendor/timestamp) for the stateful DHCPv6
     # client. WHY: the vmnet bridge's dnsmasq pins each node's deterministic address by a
     # MAC-keyed reservation (`dhcp-host=52:54:00:00:00:00,10.80.0.10,[fd96:…::a50:a],…`). DHCPv6

@@ -272,15 +272,29 @@
       set -euo pipefail
       dropin=/etc/rancher/rke2/config.yaml.d/35-node-ip.yaml
       install -d -m 0755 "$(dirname "$dropin")"
+      # BOTH families, guaranteed by ORDERING rather than checked here: vmnet0 declares
+      # `RequiredFamilyForOnline = "both"` (./network.nix), so network-online.target — which this
+      # unit is ordered after — cannot be reached until the stateful DHCPv6 lease has landed.
+      #
+      # This used to degrade to v4-only when the v6 was absent, "rather than wedge the boot on a
+      # lagging v6 lease". The trade was FALSE: cluster-cidr is podCidrDualStack(), unconditionally
+      # "<v4>,<v6>", so a v4-only node-ip can NEVER be valid — rke2 refuses it outright (measured
+      # 2026-09-24: `node-ip: [10.80.8.5]` against `[10.45.0.0/16 fd00:45::/56]`). The fallback did
+      # not avoid a wedge, it turned a WAIT into a crash-loop whose message blamed the address while
+      # the cause was the lease.
+      #
+      # ★ And the wait belonged in the ORDERING, not in a poll here: the dependency already existed,
+      # it was merely under-specified ("routable" is satisfied by the v4 alone). A defensive branch
+      # with no valid case is worse than none — it converts "not yet" into "wrong", losing the reason.
       v4="$(ip -4 -o addr show dev vmnet0 scope global | awk '{print $4}' | cut -d/ -f1 | head -n1)"
       v6="$(ip -6 -o addr show dev vmnet0 scope global | awk '{print $4}' | cut -d/ -f1 | head -n1)"
-      if [ -z "$v4" ]; then
-        echo "[rke2lab-node-ip] FATAL: vmnet0 has no global IPv4 address" >&2
+      if [ -z "$v4" ] || [ -z "$v6" ]; then
+        echo "[rke2lab-node-ip] FATAL: vmnet0 is not dual-stack past network-online" \
+             "(v4='$v4' v6='$v6') — RequiredFamilyForOnline=both should have made this" \
+             "unreachable, so suspect the link match or the DHCPv6 reservation, not this unit." >&2
         exit 1
       fi
-      # Dual-stack when v6 is present (cluster-cidr + service-cidr are dual-stack, so rke2 wants a
-      # dual node-ip); v4-only otherwise, rather than wedge the boot on a lagging v6 lease.
-      if [ -n "$v6" ]; then nodeip="$v4,$v6"; else nodeip="$v4"; fi
+      nodeip="$v4,$v6"
       {
         echo "node-ip: $nodeip"
         echo "kubelet-arg+:"
