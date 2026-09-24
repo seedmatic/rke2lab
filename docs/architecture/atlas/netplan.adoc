@@ -79,7 +79,7 @@ flowchart TB
   subgraph AFTER[After — the NixOS guest is the hinge]
     a1["bare-metal Mac (vz-host)<br/>LAN addr + alias in its segment .128/30<br/>a LEAF, reached THROUGH the guest"]
     a2["NixOS vz guest = Incus host = subnet router<br/>LAN addr (egress) + bare-br gateway .1<br/>ip_forward · baremetal-nat · mss-clamp · advertise"]
-    a3["nodes on bare-br<br/>172.16.S.32-.71, dnsmasq-served"]
+    a3["nodes on bare-br<br/>one /24 per cluster at slot 1+roleId<br/>dnsmasq-served"]
     a2 --> a1
     a2 --> a3
   end

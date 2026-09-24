@@ -33,7 +33,7 @@ public enum InfraDomain {
     @Override
     InfraConfigFragment contribute(ConfigLoader loader) {
       return new Rke2labConfig.NetworkConfig(
-          loader.optional(domainId(), "lanBridgeParent"),
+          loader.optional(domainId(), "fabricBridgeParent"),
           loader.optionalBoolean(domainId(), "automount"),
           loader.optional(domainId(), "tailnet"));
     }

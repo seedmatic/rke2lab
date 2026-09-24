@@ -671,6 +671,18 @@ public final class HeadscaleManifestsUnit extends AbstractManifestsUnit {
             scope,
             "headscale-extra-records",
             "|ConfigMap|${headscale-namespace}|headscale-extra-records",
+            // ⚠️ DEAD PLACEHOLDERS. The `${cluster-lan-…}` forms below are kpt SETTERS, and kpt is
+            // gone: no substitution pass exists anywhere in the synthesis (grepped 2026-09-24 —
+            // the only kpt traces left are the `config.kubernetes.io/local-config` and
+            // `description.kpt.dev` ANNOTATIONS). So these render VERBATIM, and a DNS A record
+            // whose value is the string `${cluster-lan-headscale-inetaddr}` resolves nothing.
+            //
+            // Left as-is rather than guessed: this domain is HIBERNATED (ClusterRole no longer
+            // publishes catalog.mesh()), so nothing renders today, and picking the right value is a
+            // design question — the addresses now live on the FABRIC pool
+            // (blueprint.fabric().headscaleInetaddr()/tailscaleInetaddr()), and headplane has no
+            // derived address at all. Whoever wakes the mesh must resolve this first; the same
+            // applies to `${headscale-namespace}` in the coordinates around here.
             Map.of(
                 "extra_records.json",
                 "[\n"
@@ -760,7 +772,7 @@ public final class HeadscaleManifestsUnit extends AbstractManifestsUnit {
                         Map.of(
                             "key", "node-role.kubernetes.io/control-plane", "operator", "Exists"))),
                 "serviceSelector",
-                Map.of("matchLabels", Map.of("io.cilium/lb-ipam-pool", "lan")))));
+                Map.of("matchLabels", Map.of("io.cilium/lb-ipam-pool", "fabric")))));
     return policy;
   }
 
@@ -985,7 +997,7 @@ public final class HeadscaleManifestsUnit extends AbstractManifestsUnit {
                     ApiObjectMetadata.builder()
                         .name("headscale")
                         .namespace(HEADSCALE_NAMESPACE)
-                        .labels(Map.of("app", "headscale", "io.cilium/lb-ipam-pool", "lan"))
+                        .labels(Map.of("app", "headscale", "io.cilium/lb-ipam-pool", "fabric"))
                         .annotations(
                             packageProfile.packageAnnotations(
                                 "|Service|${headscale-namespace}|headscale",

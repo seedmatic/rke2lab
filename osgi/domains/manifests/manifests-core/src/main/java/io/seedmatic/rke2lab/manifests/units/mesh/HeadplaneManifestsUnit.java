@@ -882,6 +882,14 @@ public final class HeadplaneManifestsUnit extends AbstractManifestsUnit {
                         .annotations(
                             packageProfile.packageAnnotations(
                                 "networking.k8s.io|Ingress|${headscale-namespace}|headplane",
+                                // ⚠️ DEAD PLACEHOLDER — see the note in HeadscaleManifestsUnit's
+                                // extra-records ConfigMap. `${cluster-lan-headplane-inetaddr}` is a
+                                // kpt setter and kpt is gone, so this renders verbatim where cilium
+                                // expects a comma-separated list of IP ADDRESSES. Dormant only
+                                // because the mesh domain is hibernated. The sibling defect on the
+                                // cilium INGRESS controller was live and is fixed
+                                // (CiliumConfigManifestsUnit): there the fix was to drop the
+                                // specific-IP request entirely and let the pool allocate.
                                 Map.of(
                                     "io.cilium/lb-ipam-ips",
                                     "${cluster-lan-headplane-inetaddr}",

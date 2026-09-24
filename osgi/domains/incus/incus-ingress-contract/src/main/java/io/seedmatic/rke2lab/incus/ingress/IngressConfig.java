@@ -18,7 +18,7 @@ public record IngressConfig(
     String incusDefaultRemote,
     String incusRemoteAddress,
     String incusConfigDir,
-    String lanBridgeParent,
+    String fabricBridgeParent,
     // The PUBLIC capn-provider client cert, PEM — the identity the in-cluster CAPN provider
     // authenticates to Incus with. The daemon must trust it, and that trust is DAEMON STATE, so
     // the GROW declares it as an incus Certificate rather than have it typed once by hand.

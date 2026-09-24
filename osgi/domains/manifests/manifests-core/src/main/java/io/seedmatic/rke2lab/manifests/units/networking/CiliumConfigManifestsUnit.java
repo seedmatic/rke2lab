@@ -136,8 +136,13 @@ public final class CiliumConfigManifestsUnit extends AbstractManifestsUnit {
                   loadBalancerMode: dedicated
                   service:
                     annotations:
-                      io.cilium/lb-ipam-pool: lan
-                      io.cilium/lb-ipam-ips: lan-headplane-inetaddr
+                      # The pool, and NO specific-IP request. `lb-ipam-ips` used to ask for
+                      # `lan-headplane-inetaddr` — a NAME where cilium expects a comma-separated list
+                      # of IP addresses, so LB-IPAM could never honour it and this Service stayed
+                      # pending. It was also the wrong service's address: headplane is a mesh UI, this
+                      # is the ingress controller. Pinning an address is only needed when something
+                      # outside must know it in advance; nothing does here, so the pool allocates.
+                      io.cilium/lb-ipam-pool: fabric
                 hubble:
                   enabled: true
                   relay:

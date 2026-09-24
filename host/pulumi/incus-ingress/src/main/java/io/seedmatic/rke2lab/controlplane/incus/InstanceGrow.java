@@ -210,7 +210,7 @@ public final class InstanceGrow {
    */
   private void ensureNetwork(
       String networkName, Map<String, String> bridgeConfig, Resource projectDependency) {
-    if (networkName.equals(config.lanBridgeParent())) {
+    if (networkName.equals(config.fabricBridgeParent())) {
       log.accept(
           "incus network ensure: skipping canonical host-provided bridge (" + networkName + ")");
       return;
@@ -273,9 +273,11 @@ public final class InstanceGrow {
             .build();
 
     // The common node profile: root disk + the privileged-container config + kmsg/zfs unix-char +
-    // lan0 (the LAN NIC on the canonical, cluster-INVARIANT lan-br bridge — shared by every
-    // cluster,
-    // so it belongs here ONCE, not duplicated per node-<cluster>). The only per-cluster NIC is
+    // lan0 (the NIC on the canonical, cluster-INVARIANT fabric bridge — ndh's per-bare-metal
+    // segment, shared by every cluster on that machine, so it belongs here ONCE, not duplicated
+    // per node-<cluster>). The device keeps the name `lan0` on both sides of the container
+    // boundary; what changed is the TIER it attaches to, not the interface. The only per-cluster
+    // NIC is
     // vmnet0, which rides the node-<cluster> profile. lan0 is dynamic (no hwaddr) — the standalone
     // instance overrides it with a deterministic hwaddr via its own inline device. Both standalone
     // and CAPN reference this profile, so the node config is single-sourced here.
@@ -291,7 +293,7 @@ public final class InstanceGrow {
                         profileDevice("root", "disk", Map.of("path", "/", "pool", "default")),
                         profileUnixChar("kmsg.dev", "/dev/kmsg", "/dev/kmsg"),
                         profileUnixChar("zfs.dev", "/dev/zfs", "/dev/zfs"),
-                        profileNic("lan0", "lan0", "bridged", config.lanBridgeParent())))
+                        profileNic("lan0", "lan0", "bridged", config.fabricBridgeParent())))
                 .build(),
             options);
 
@@ -766,7 +768,7 @@ public final class InstanceGrow {
   private List<InstanceDeviceArgs> seedInstanceDevices(InstanceGrowPlan plan) {
     final GrowNetworkView network = plan.network();
     return List.of(
-        nic("lan0", network.lanHwaddr(), "lan0", "bridged", config.lanBridgeParent()),
+        nic("lan0", network.lanHwaddr(), "lan0", "bridged", config.fabricBridgeParent()),
         nic("vmnet0", network.wanHwaddr(), "vmnet0", "bridged", network.nodeBridgeName()));
   }
 

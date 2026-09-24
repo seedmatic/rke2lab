@@ -738,7 +738,7 @@ public class ClusterSeedScenario
               config.incusDefaultRemote(),
               config.incusRemoteAddress().toString(),
               config.incusConfigFolder() == null ? "" : config.incusConfigFolder().toString(),
-              config.lanBridgeParent(),
+              config.fabricBridgeParent(),
               readCapnClientCert());
       // The per-node bootstrap material the GROW lays into the guest through the UNIFORM cloud-init
       // channel (write_files; the same channel CAPN/CAPRKE2 use for a workload node). All opaque

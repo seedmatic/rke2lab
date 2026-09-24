@@ -25,7 +25,7 @@ public record BootstrapConfig(
     Path incusConfigFolder,
     String imageAlias,
     String imageBuilderHost,
-    String lanBridgeParent,
+    String fabricBridgeParent,
     String tailnet,
     URI apiEndpoint,
     Path kubeconfigRef,
@@ -45,7 +45,7 @@ public record BootstrapConfig(
   // The one seed image's incus alias — the host adopts the built image by it. Single source here;
   // the build script (build-node-base-image.sh) hardcodes the SAME literal on the import side.
   private static final String IMAGE_ALIAS = "node-base";
-  private static final String DEFAULT_LAN_BRIDGE_PARENT = "lan-br";
+  private static final String DEFAULT_FABRIC_BRIDGE_PARENT = "fabric-br";
   // The tailscale tailnet DNS suffix. Resolvable host/automount addresses use the MagicDNS FQDN
   // <host>.<tailnet> so they route over the tailscale overlay (stable across the physical LAN),
   // rather than the LAN mDNS <host>.local. Package-visible so the ghapp CLI pre-fills the App
@@ -124,7 +124,7 @@ public record BootstrapConfig(
         config.incus().configDir(),
         IMAGE_ALIAS,
         config.image().builderHost().orElseGet(() -> nixosMdnsHost),
-        config.network().lanBridgeParent().orElse(DEFAULT_LAN_BRIDGE_PARENT),
+        config.network().fabricBridgeParent().orElse(DEFAULT_FABRIC_BRIDGE_PARENT),
         config.network().tailnet().orElse(DEFAULT_TAILNET),
         config.api().endpoint().orElse(DEFAULT_API_ENDPOINT),
         kubeconfigRef,

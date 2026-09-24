@@ -80,19 +80,19 @@ public final class CiliumAdvancedManifestsUnit extends AbstractManifestsUnit {
                     List.of(
                         Map.of("key", "io.cilium/lb-ipam-pool", "operator", "DoesNotExist"))))));
 
-    ApiObject lan =
+    ApiObject fabric =
         new ApiObject(
             scope,
-            "ciliumloadbalancerippool-lan",
+            "ciliumloadbalancerippool-fabric",
             ApiObjectProps.builder()
                 .apiVersion("cilium.io/v2alpha1")
                 .kind("CiliumLoadBalancerIPPool")
                 .metadata(
                     ApiObjectMetadata.builder()
-                        .name("lan")
+                        .name("fabric")
                         .annotations(
                             packageProfile.packageAnnotations(
-                                "cilium.io|CiliumLoadBalancerIPPool|default|lan"))
+                                "cilium.io|CiliumLoadBalancerIPPool|default|fabric"))
                         .build())
                 .build());
     // The externally-reachable LB pool is this cluster's fabric lbCidr /26 (holds headscale =
@@ -101,14 +101,14 @@ public final class CiliumAdvancedManifestsUnit extends AbstractManifestsUnit {
     // rendered identically for every cluster — had all four claim the same range on a network
     // rke2lab did not own. Per-cluster slots inside this bare-metal's /20 cannot overlap by
     // construction, and unlike the home LAN the range is ours to allocate.
-    lan.addJsonPatch(
+    fabric.addJsonPatch(
         JsonPatch.add(
             "/spec",
             Map.of(
                 "blocks",
                 List.of(Map.of("cidr", blueprint.fabric().lbCidr().toString())),
                 "serviceSelector",
-                Map.of("matchLabels", Map.of("io.cilium/lb-ipam-pool", "lan")))));
+                Map.of("matchLabels", Map.of("io.cilium/lb-ipam-pool", "fabric")))));
 
     ApiObject vip =
         new ApiObject(

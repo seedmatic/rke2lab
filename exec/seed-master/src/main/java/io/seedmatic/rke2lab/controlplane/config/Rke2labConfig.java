@@ -147,7 +147,7 @@ public record Rke2labConfig(
   public record ImageConfig(Optional<String> builderHost) implements InfraConfigFragment {}
 
   public record NetworkConfig(
-      Optional<String> lanBridgeParent, Optional<Boolean> automount, Optional<String> tailnet)
+      Optional<String> fabricBridgeParent, Optional<Boolean> automount, Optional<String> tailnet)
       implements InfraConfigFragment {}
 
   public record SystemdAdapterConfig(Optional<String> dbusHost, Optional<Integer> dbusPort)

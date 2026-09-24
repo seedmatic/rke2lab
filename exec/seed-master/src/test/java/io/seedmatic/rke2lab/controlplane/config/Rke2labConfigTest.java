@@ -26,7 +26,7 @@ class Rke2labConfigTest {
   void omitted_optional_is_empty() {
     final Rke2labConfig config = OperatorConfiguration.full().asDto();
     assertTrue(config.cluster().remoteIncus().isEmpty());
-    assertTrue(config.network().lanBridgeParent().isEmpty());
+    assertTrue(config.network().fabricBridgeParent().isEmpty());
     assertTrue(config.kubeconfig().ref().isEmpty());
   }
 

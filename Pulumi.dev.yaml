@@ -25,7 +25,11 @@ config:
     alias: control-node
     sharedFolder: .local.d/images
   rke2lab:network:
-    lanBridgeParent: lan-br
+    # The bridge each node's lan0 attaches to. It is `fabric-br` — ndh's per-bare-metal
+    # segment — and NOT the home LAN: a node's address, its name and its reservation all
+    # come from that segment's dnsmasq now. See network-blueprint.json's `<cluster>-fabric`
+    # segments and docs/architecture/atlas/netplan.adoc.
+    fabricBridgeParent: fabric-br
     vmnetNetworkName: vmnet-br
   # rke2lab:api:
   #   endpoint: https://{netplan.vipHost}:6443
