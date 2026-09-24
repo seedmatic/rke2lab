@@ -183,42 +183,65 @@
   # The node's providerID for Cluster API adoption. With the rke2 cloud-controller disabled (above),
   # nothing stamps a providerID; the kubelet sets its own to `lxc:///<node>` — the SAME id the CAPN
   # LXCMachine carries (GetExpectedProviderID), so the CAPI Machine↔Node bind succeeds. It MUST be
-  # right at first registration (Node.spec.providerID is immutable). Per-node (the name is in
-  # node.env), so a runtime drop-in like rke2lab-node-labels; a CAPRKE2 workload node (no node.env)
-  # skips this and takes its providerID from CAPN's CloudProviderNodePatch instead.
+  # right at first registration (Node.spec.providerID is immutable).
+  #
+  # RUNS ON EVERY NODE, and the id comes from the node's own HOSTNAME — not from node.env. This unit
+  # was gated like its node-labels sibling and read RKE2LAB_NODE_HOSTNAME, on the belief that a CAPN
+  # node would get its providerID from CAPN's own remote patch instead. It does — but only if it is
+  # the FIRST machine of its control plane. Measured 2026-09-24 on bioskop-wrkld:
+  #
+  #   controller_normal.go:57  "ControlPlane is initialized, waiting for Machine to become Running
+  #                             before updating control plane load balancer"  phase="Provisioned"
+  #
+  # CAPN returns there every 10s and never reaches its node_patch, because it defers the patch until
+  # the Machine is Running — while CAPI promotes a Machine to Running only once it has a nodeRef,
+  # which it can only find by matching the Node's providerID. The patch waits on the state only the
+  # patch can produce, so a SECOND control-plane machine deadlocks: Node Ready, Machine parked at
+  # Provisioned, the rollout stalled with no outage and no signal. Stamping the providerID by hand
+  # released the whole sequence in one reconcile (load balancer updated, old machine drained), which
+  # is what confirms the cycle.
+  #
+  # A node can always state this itself: the incus instance name IS the container's hostname AND the
+  # kubelet's node name, so `lxc:///$(uname -n)` is correct on both node kinds — verified against
+  # what CAPN itself writes (`providerID="lxc:///bioskop-mgmt-master" nodeName="bioskop-mgmt-master"`).
+  # With every node stamping its own, CAPN's patch becomes a no-op and the deadlock never forms.
+  #
+  # ★ Third instance of one gate copied by analogy (node-ip was the second, same day): the sibling
+  # genuinely READS its identity out of node.env, this one only needs its own name. `requires` on
+  # rke2lab-identity is dropped with the gate — identity is legitimately node.env-gated, so requiring
+  # it would re-import the condition through the back door. The ordering stays: when identity does
+  # run, it sets the transient hostname, so it must run first.
   systemd.services.rke2lab-provider-id = {
     description = "rke2lab kubelet provider-id drop-in (lxc:///<node> for CAPI adoption)";
-    unitConfig.ConditionPathExists = "/var/lib/rke2lab/node.env";
     # After rke2lab-rke2-config's config.yaml.d wipe+reinstall, so this drop-in survives.
     after = [
       "rke2lab-identity.service"
       "rke2lab-rke2-config.service"
     ];
-    requires = [ "rke2lab-identity.service" ];
     before = [ "rke2-server.service" ];
     requiredBy = [ "rke2-server.service" ];
+    path = [ pkgs.coreutils ];
     serviceConfig = {
       Type = "oneshot";
       RemainAfterExit = true;
-      EnvironmentFile = "/var/lib/rke2lab/node.env";
     };
     script = ''
       set -euo pipefail
       dropin=/etc/rancher/rke2/config.yaml.d/40-provider-id.yaml
       install -d -m 0755 "$(dirname "$dropin")"
-      {
-        # `kubelet-arg+` APPENDS: rke2 config.yaml.d REPLACES a list key with the alphabetically-last
-        # file's value, and the 35-node-ip.yaml drop-in (rke2lab-node-ip, below) also sets
-        # `kubelet-arg` (for --node-ip) and sorts BEFORE this file — so a plain `kubelet-arg:` here
-        # would clobber it, the node registered with NO spec.providerID, and CAPI could never bind the
-        # Machine to it (NodeHealthy stuck "Waiting for a Node with spec.providerID lxc:///<node> to
-        # exist"). Both producers use the `+` append form so node-ip and provider-id coexist.
-        echo "kubelet-arg+:"
-        # RKE2LAB_NODE_HOSTNAME (the full <cluster>-<node>), NOT RKE2LAB_NODE_NAME (the short ref
-        # `master`): the providerID must equal the incus instance name (= the hostname), which is
-        # what CAPN/the LXCMachine carry.
-        echo "  - provider-id=lxc:///''${RKE2LAB_NODE_HOSTNAME}"
-      } >"$dropin"
+      # `uname -n`, not RKE2LAB_NODE_HOSTNAME: the full <cluster>-<node>, which is the incus instance
+      # name AND the kubelet's node name. The short ref (`master`) would not match either.
+      nodename="$(uname -n)"
+      # `kubelet-arg+` APPENDS: rke2 config.yaml.d REPLACES a list key with the alphabetically-last
+      # file's value, and the 35-node-ip.yaml drop-in (rke2lab-node-ip, below) also sets
+      # `kubelet-arg` (for --node-ip) and sorts BEFORE this file — so a plain `kubelet-arg:` here
+      # would clobber it, the node registered with NO spec.providerID, and CAPI could never bind the
+      # Machine to it (NodeHealthy stuck "Waiting for a Node with spec.providerID lxc:///<node> to
+      # exist"). Both producers use the `+` append form so node-ip and provider-id coexist.
+      cat >"$dropin" <<EOF
+      kubelet-arg+:
+        - provider-id=lxc:///$nodename
+      EOF
     '';
   };
 
