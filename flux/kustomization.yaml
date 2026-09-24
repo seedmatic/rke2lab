@@ -6,7 +6,6 @@ resources:
 - cluster.yml
 - gitops.yml
 - high-availability.yml
-- mesh.yml
 - networking.yml
 - platform.yml
 - runtime.yml
