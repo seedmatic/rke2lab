@@ -460,12 +460,16 @@ public final class RenderPipelineManifestsUnit extends AbstractManifestsUnit {
         mkdir -p "@MAVEN_CACHE@/incoming/$(context.taskRun.name)"
         : "Drop inboxes older than a day — the residue of renders that failed before publishing. No find(1): toolchains/kube carries coreutils, and find lives in findutils; a bash glob plus stat is the same job without widening a shared toolchain for one caller."
         now="$(date +%s)"
-        for inbox in "@MAVEN_CACHE@"/incoming/*/; do
-          [ -d "$inbox" ] || continue
-          if [ "$(( now - $(stat -c %Y "$inbox") ))" -gt 86400 ]; then
-            rm -rf "$inbox"
+        pruned=0
+        for stale in "@MAVEN_CACHE@"/incoming/*/; do
+          [ -d "$stale" ] || continue
+          if [ "$(( now - $(stat -c %Y "$stale") ))" -gt 86400 ]; then
+            rm -rf "$stale"
+            pruned=$((pruned + 1))
           fi
         done
+        : "Say what this run reads through and what it cleaned, so cache-publish's numbers at the other end have a baseline to be read against."
+        echo "[cache-prepare] base $(du -sk "@MAVEN_CACHE@/base/repository" | cut -f1)K read-through | ${pruned} stale inbox(es) pruned"
         """
             .replace("@MAVEN_CACHE@", MAVEN_CACHE_PATH));
   }
@@ -495,9 +499,20 @@ public final class RenderPipelineManifestsUnit extends AbstractManifestsUnit {
         #!/usr/bin/env bash
         set -euxo pipefail
         inbox="@MAVEN_CACHE@/incoming/$(context.taskRun.name)"
-        if [ -d "$inbox/repository" ]; then
-          cp -rn "$inbox/repository/." "@MAVEN_CACHE@/base/repository/"
+        base="@MAVEN_CACHE@/base/repository"
+        if [ ! -d "$inbox/repository" ]; then
+          echo "[cache-publish] no repository in the inbox — nothing resolved, nothing to publish"
+          rm -rf "$inbox"
+          exit 0
         fi
+        : "MEASURE, because xtrace shows one `cp` line and says nothing about a step whose entire purpose is a side effect on shared state. du/ls/wc/cut only — toolchains/kube carries coreutils, not findutils."
+        delta_k="$(du -sk "$inbox/repository" | cut -f1)"
+        delta_n="$(ls -RA1 "$inbox/repository" | wc -l)"
+        before_k="$(du -sk "$base" | cut -f1)"
+        cp -rn "$inbox/repository/." "$base/"
+        after_k="$(du -sk "$base" | cut -f1)"
+        : "added = what the base actually gained; overlap = the delta already present, i.e. what the read-through tail will serve next time instead of re-downloading. A shrinking overlap means the base is converging."
+        echo "[cache-publish] delta ${delta_k}K (${delta_n} entries) | base ${before_k}K -> ${after_k}K | added $((after_k - before_k))K | overlap $((delta_k - after_k + before_k))K"
         rm -rf "$inbox"
         """
             .replace("@MAVEN_CACHE@", MAVEN_CACHE_PATH));
