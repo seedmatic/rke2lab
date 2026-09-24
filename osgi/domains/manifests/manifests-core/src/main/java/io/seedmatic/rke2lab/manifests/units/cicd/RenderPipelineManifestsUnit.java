@@ -409,8 +409,7 @@ public final class RenderPipelineManifestsUnit extends AbstractManifestsUnit {
                       : "The volume is a RAW VOLUME, not a workspace, so the path is ours rather than Tekton's — hence the substitution rather than a workspaces.* reference"
                       export M2_REPO="@MAVEN_CACHE@/base/repository"
                       export MAVEN_BUILD_CACHE="@MAVEN_CACHE@/incoming/$(context.taskRun.name)"
-                      : "The build-cache stays SHARED at base/build-cache rather than following the primary into incoming/: the maven-build-cache extension has no read-through tail, so a per-run location would start EMPTY and every render would rebuild from scratch. Shared is safe only because the render is serialised (concurrency 1 on the PaC Repository); the way out for the build-cache half is the extension's own REMOTE cache with its opt-in save, not a directory on a shared volume"
-                      export MAVEN_ARGS="-Dmaven.build.cache.location=@MAVEN_CACHE@/base/build-cache"
+                      : "Nothing sets the build-cache location, deliberately: the extension defaults it to the PARENT of maven.repo.local, which is this run's inbox — exactly where cache-prepare hard-linked the shared cache in, and exactly what cache-publish links back out. Both halves of the cache therefore ride the same overlay with one knob. An earlier attempt exported MAVEN_ARGS to pin the location; it never took effect, because the mvn runs inside a nix DERIVATION whose environment is sealed — only what the flake reads with builtins.getEnv at EVAL time crosses that boundary, which is why M2_REPO and MAVEN_BUILD_CACHE do and an ambient variable does not"
                       : "Secret-full render prerequisites — fail loud with a clear message, not a downstream decode error. SOPS_AGE_KEY arrives via the git-sops env spec.inject (flox-controller webhook); the sops-yaml filter is wired by the env on-activate hook; the clone step (also on git-sops) already smudged .secrets in this shared workspace at checkout"
                       set +x
                       [ -n "${SOPS_AGE_KEY:-}" ] || { echo >&2 "render: SOPS_AGE_KEY not set (git-sops inject / replicated sops-age missing)"; exit 1; }
@@ -456,8 +455,9 @@ public final class RenderPipelineManifestsUnit extends AbstractManifestsUnit {
         """
         #!/usr/bin/env bash
         set -euxo pipefail
+        inbox_dir="@MAVEN_CACHE@/incoming/$(context.taskRun.name)"
         mkdir -p "@MAVEN_CACHE@/base/repository" "@MAVEN_CACHE@/base/build-cache"
-        mkdir -p "@MAVEN_CACHE@/incoming/$(context.taskRun.name)"
+        mkdir -p "$inbox_dir/repository" "$inbox_dir/build-cache"
         : "Drop inboxes older than a day — the residue of renders that failed before publishing. No find(1): toolchains/kube carries coreutils, and find lives in findutils; a bash glob plus stat is the same job without widening a shared toolchain for one caller."
         now="$(date +%s)"
         pruned=0
@@ -468,8 +468,12 @@ public final class RenderPipelineManifestsUnit extends AbstractManifestsUnit {
             pruned=$((pruned + 1))
           fi
         done
+        : "SEED the run's build-cache from the shared one by HARD LINK. The maven-build-cache extension has no read-through tail (unlike the local repository, which gets maven.repo.local.tail), so a per-run location would start EMPTY and every render would rebuild from scratch. A byte copy is out of the question — the cache reaches 1.1G — but `cp -al` is metadata only, on the same dataset, so it costs neither space nor time. That is what lets the build-cache join the overlay at all."
+        if [ -d "@MAVEN_CACHE@/base/build-cache" ]; then
+          cp -al "@MAVEN_CACHE@/base/build-cache/." "$inbox_dir/build-cache/" 2>/dev/null || true
+        fi
         : "Say what this run reads through and what it cleaned, so cache-publish's numbers at the other end have a baseline to be read against."
-        echo "[cache-prepare] base $(du -sk "@MAVEN_CACHE@/base/repository" | cut -f1)K read-through | ${pruned} stale inbox(es) pruned"
+        echo "[cache-prepare] base repository $(du -sk "@MAVEN_CACHE@/base/repository" | cut -f1)K read-through | build-cache $(du -sk "$inbox_dir/build-cache" 2>/dev/null | cut -f1 || echo 0)K seeded | ${pruned} stale inbox(es) pruned"
         """
             .replace("@MAVEN_CACHE@", MAVEN_CACHE_PATH));
   }
@@ -499,20 +503,24 @@ public final class RenderPipelineManifestsUnit extends AbstractManifestsUnit {
         #!/usr/bin/env bash
         set -euxo pipefail
         inbox="@MAVEN_CACHE@/incoming/$(context.taskRun.name)"
-        base="@MAVEN_CACHE@/base/repository"
-        if [ ! -d "$inbox/repository" ]; then
-          echo "[cache-publish] no repository in the inbox — nothing resolved, nothing to publish"
-          rm -rf "$inbox"
+        base="@MAVEN_CACHE@/base"
+        if [ ! -d "$inbox" ]; then
+          echo "[cache-publish] no inbox — nothing to publish"
           exit 0
         fi
-        : "MEASURE, because xtrace shows one `cp` line and says nothing about a step whose entire purpose is a side effect on shared state. du/ls/wc/cut only — toolchains/kube carries coreutils, not findutils."
-        delta_k="$(du -sk "$inbox/repository" | cut -f1)"
-        delta_n="$(ls -RA1 "$inbox/repository" | wc -l)"
+        : "MEASURE: xtrace shows one cp line and says nothing about a step whose entire purpose is a side effect on shared state. du/ls/wc/cut only — toolchains/kube carries coreutils, not findutils."
+        : "The two halves are measured SEPARATELY and not summed, because they are not the same kind of number. repository/ is entirely new — it is never seeded, Maven reaches the shared copy through maven.repo.local.tail instead. build-cache/ is mostly the links cache-prepare seeded in, so its size is NOT this run's delta and adding the two would report 1.1G of borrowed links as work done. What the base actually gained is the only honest total, and it is measured on the base itself."
+        repo_k="$(du -sk "$inbox/repository" | cut -f1)"
+        repo_n="$(ls -RA1 "$inbox/repository" | wc -l)"
+        bc_k="$(du -sk "$inbox/build-cache" | cut -f1)"
         before_k="$(du -sk "$base" | cut -f1)"
-        cp -rn "$inbox/repository/." "$base/"
+        : "HARD LINKS, not a byte copy: the inbox and the base are two directories of the SAME dataset, so `cp -al` publishes by metadata alone — O(1) in bytes, whatever the delta weighs. `mv` cannot serve here: it does not MERGE into an existing tree, and merging is the whole operation."
+        : "And -f rather than -n, which is not just faster but more CORRECT. A released Maven coordinate is immutable, so overwriting it writes identical bytes; the mutable parts (maven-metadata, _remote.repositories, *.lastUpdated, a SNAPSHOT) are bookkeeping where the RUN's copy is the fresher one — with -n a stale SNAPSHOT in the base would never be refreshed again."
+        cp -alf "$inbox/." "$base/"
         after_k="$(du -sk "$base" | cut -f1)"
-        : "added = what the base actually gained; overlap = the delta already present, i.e. what the read-through tail will serve next time instead of re-downloading. A shrinking overlap means the base is converging."
-        echo "[cache-publish] delta ${delta_k}K (${delta_n} entries) | base ${before_k}K -> ${after_k}K | added $((after_k - before_k))K | overlap $((delta_k - after_k + before_k))K"
+        : "`added` far below the repository delta means most of what this run resolved was already in the base — i.e. the read-through tail is doing its job and the next render will download less still."
+        echo "[cache-publish] inbox: repository ${repo_k}K new (${repo_n} entries), build-cache ${bc_k}K incl. seeded links | base ${before_k}K -> ${after_k}K, added $((after_k - before_k))K"
+        : "Dropping the inbox removes only ITS links; the base keeps the files. This is also what makes the hard links safe — nothing survives to be modified in place through a shared inode."
         rm -rf "$inbox"
         """
             .replace("@MAVEN_CACHE@", MAVEN_CACHE_PATH));
