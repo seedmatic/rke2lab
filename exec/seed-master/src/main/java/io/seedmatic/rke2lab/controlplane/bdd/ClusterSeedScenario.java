@@ -84,9 +84,9 @@ import org.junit.jupiter.api.extension.RegisterExtension;
  * The ClusterSeed root scenario — the host runbook, spoken in the gardening register, composed on
  * the common {@code seed-bdd} stages (link:docs/architecture/osgi/seed-bdd-module-spec.adoc). It is
  * the concrete instance of link:docs/architecture/bdd/bdd.adoc#clusterseed-scenario-map[the
- * ClusterSeed scenario map]: a GIVEN that bootstraps the open gardening, then the thirteen WHENs —
- * the {@code Cellar.fetch} bookend, the nine sow-and-graft crossings (worktree · bbox · cluster-pki
- * · ghapp · replicator-secrets · ghapp-webhook · incus-provision · systemd · cluster) and the
+ * ClusterSeed scenario map]: a GIVEN that bootstraps the open gardening, then the twelve WHENs —
+ * the {@code Cellar.fetch} bookend, the eight sow-and-graft crossings (worktree · cluster-pki ·
+ * ghapp · replicator-secrets · ghapp-webhook · incus-provision · systemd · cluster) and the
  * host-flat beats interleaved among them (the GROW, the operator kubeconfig, the readiness-budget
  * tuning) — closed by the {@code Cellar.store} THEN.
  *
@@ -190,8 +190,6 @@ public class ClusterSeedScenario
         .the_worktree_is_surveyed(hostScenario, hostTree)
         .and()
         .the_parcels_state_is_fetched()
-        .and()
-        .the_network_reservations_are_settled(hostScenario, hostTree)
         .and()
         .the_cluster_ca_is_sealed(hostScenario, hostTree)
         .and()
@@ -367,19 +365,6 @@ public class ClusterSeedScenario
       // The incus-identity seal's host-world creds — assembled from config + ~/.config/incus + the
       // bundled capn client cert, offered to the incus-identity crossing.
       this.incusIdentityHostCreds = incusIdentityHostCreds(run.config());
-      // The bbox FACET — the router contact (uri + password) the root read from .secrets:lan.bbox
-      // (joined into rke2lab:bbox by ConfigLoader's `secret:` meta), published ambient like the
-      // manifests FACET. Bbox carries no per-consult amendment, so its crossing sows an empty
-      // trigger; the open gardening still opens the amend door (a reflector serves it), where
-      // BboxAmendReflector gathers THIS contributor and binds it onto the runbook input. BETA
-      // guards the seam: this coordinate must equal the reflector's served AmendCoordinate("bbox").
-      gardening
-          .connection()
-          .context()
-          .registerService(
-              AmendmentContributor.class,
-              new FacetContributor(new AmendCoordinate("bbox"), run.facet("bbox").orElse("")),
-              new Hashtable<>());
       // The incus FACET — the stable provisioning identity (cluster/node, automount, netPrefix)
       // the scion combines with the worktree root it reads from its Worktree component. A FACET,
       // not
@@ -519,11 +504,11 @@ public class ClusterSeedScenario
   }
 
   /**
-   * The thirteen WHENs — the worktree survey (harvest + entry gate), the {@code Cellar.fetch}
-   * bookend, the nine sow-and-graft crossings (worktree · bbox · cluster-pki · ghapp ·
-   * replicator-secrets · ghapp-webhook · incus-provision · systemd · cluster), and the host-flat
-   * beats interleaved among them (the GROW, the operator kubeconfig, the readiness-budget tuning).
-   * The closing {@code Cellar.store} is the THEN, not a WHEN.
+   * The twelve WHENs — the worktree survey (harvest + entry gate), the {@code Cellar.fetch}
+   * bookend, the eight sow-and-graft crossings (worktree · cluster-pki · ghapp · replicator-secrets
+   * · ghapp-webhook · incus-provision · systemd · cluster), and the host-flat beats interleaved
+   * among them (the GROW, the operator kubeconfig, the readiness-budget tuning). The closing {@code
+   * Cellar.store} is the THEN, not a WHEN.
    */
   public static class When extends Stage<When> {
 
@@ -587,21 +572,6 @@ public class ClusterSeedScenario
     @As("the parcel's state is fetched")
     public When the_parcels_state_is_fetched() {
       cellar.conserving(cellarRealisation, parcel).the_parcels_state_is_fetched();
-      return self();
-    }
-
-    @NestedSteps
-    @As("the network reservations are settled")
-    public When the_network_reservations_are_settled(
-        @Hidden ScenarioModel hostScenario, @Hidden ReportModel hostTree) {
-      // No per-consult amendment: the router FACET (uri + password) is contributed AMBIENT at the
-      // GIVEN. The crossing sows an empty trigger; the open gardening opens the bbox amend door
-      // anyway (a reflector serves it), where BboxAmendReflector gathers the ambient FACET and
-      // binds
-      // it onto the runbook input's defaults.
-      sowAndGraft
-          .sowing("bbox", gardening, hostScenario, hostTree)
-          .the_scion_is_sown_and_grafted("the network reservations are settled");
       return self();
     }
 
@@ -906,19 +876,24 @@ public class ClusterSeedScenario
      * Mac):
      *
      * <ul>
-     *   <li>the netplan LAN address FIRST, so it is {@code current-context} — 401 in 6.5ms, and it
-     *       kept answering straight THROUGH a cold start, which is when an operator most needs in.
-     *       Its limit: it is ONE node's address.
+     *   <li>the node's FABRIC address FIRST, so it is {@code current-context} — 401 in 6.5ms when
+     *       it was the LAN one, and it kept answering straight THROUGH a cold start, which is when
+     *       an operator most needs in. Its limit: it is ONE node's address. Admissible for a
+     *       MANAGEMENT node precisely because its hwaddr is posed by the grow, so its reservation
+     *       binds — a cattle node has none, which is why this method is management-only.
      *   <li>the kube-vip VIP second — 401 in 39ms over the tailnet Connector, and it survives the
      *       node being replaced. Its limit: it needs the cluster healthy enough to run that
      *       Connector, so it was unreachable for minutes after the same cold start.
-     *   <li>the mDNS name LAST, so it is never current: it resolves to the node's GLOBAL IPv6 from
-     *       the Mac rather than to the LAN (measured), the least reliable of the three — but it is
-     *       the only one needing no address at all, which is what saves it the day the LAN carve
-     *       moves. It is keyed on the node NAME, admissible HERE and nowhere else: a management
+     *   <li>the node's FABRIC NAME last, so it is never current: the least direct of the three, but
+     *       the only one needing no address at all, which is what saves it the day the carve moves
+     *       again. It is keyed on the node NAME, admissible HERE and nowhere else: a management
      *       node is an adopted PET with a deterministic name, not the CAPI cattle that rule is
      *       about.
      * </ul>
+     *
+     * <p>The first two moved tier without changing shape — the address is a fabric one now,
+     * reserved on the bare-metal's dnsmasq instead of the bbox's. The third replaced an mDNS {@code
+     * .local} name, which only a same-L2 asker could ever have resolved.
      *
      * <p>All three are in the apiserver cert's SANs (verified against the cluster CA), so kubectl
      * needs no {@code insecure-skip-tls-verify} on any of them.
@@ -927,10 +902,29 @@ public class ClusterSeedScenario
       final String cluster = config.clusterName();
       final JsonNode ips = nodeIps(cluster, config.nodeName());
       return List.of(
-          new OperatorKubeconfig.Access(cluster, apiserver(ips, "lanHost", cluster)),
+          new OperatorKubeconfig.Access(cluster, apiserver(ips, "fabricHost", cluster)),
           new OperatorKubeconfig.Access(cluster + "-vip", apiserver(ips, "vipHost", cluster)),
           new OperatorKubeconfig.Access(
-              cluster + "-mdns", "https://" + cluster + "-" + config.nodeName() + ".local:6443"));
+              cluster + "-fabric-name",
+              "https://" + nodeFabricFqdn(cluster, config.nodeName()) + ":6443"));
+    }
+
+    /**
+     * The node's fabric FQDN, a sibling of {@code ips} in the projection rather than a member of it
+     * — it is a name, and it is published precisely because the thing it names has no address this
+     * projection could carry.
+     */
+    private String nodeFabricFqdn(final String cluster, final String node) {
+      final JsonNode fqdn = addressing().path(cluster).path(node).path("fabricFqdn");
+      if (fqdn.isMissingNode() || fqdn.asText().isBlank()) {
+        throw new IllegalStateException(
+            "the netplan projection carries no fabricFqdn for "
+                + cluster
+                + "/"
+                + node
+                + " — regenerate it with `nix run .#regen-blueprint`");
+      }
+      return fqdn.asText();
     }
 
     /**

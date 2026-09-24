@@ -23,7 +23,7 @@ import org.junit.platform.engine.support.store.NamespacedHierarchicalStore;
  *       serves()} and the reaped envelope's coordinate).
  *   <li>{@link #scenarioClass()} — the bundle-private {@code @SeedScenario} the launcher selects;
  *       its classloader is the bundle's, so the launch runs in the domain's realm.
- *   <li>{@link #seedFrom(SeedEnvelope)} — the INPUT fork. A no-input scion (bbox, cluster, systemd,
+ *   <li>{@link #seedFrom(SeedEnvelope)} — the INPUT fork. A no-input scion (cluster, systemd,
  *       incus-reconcile) leaves the default no-op; an input-bearing scion (manifests,
  *       incus-provision) overrides it to decode its typed activation input off the trigger and seed
  *       it through the scenario's {@link ScenarioInputSeed} channel.

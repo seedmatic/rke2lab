@@ -76,10 +76,9 @@ public final class Main {
         context -> {
           final RunMode runMode = RunMode.detect(true);
           // Two-document view: the Pulumi stack config joined with the worktree's smudged .secrets,
-          // so a coordinate's `secret:` meta pulls its provider subtree in (the bbox router uri +
-          // password from lan.bbox). `.secrets` sits at the worktree root, which IS the CWD `pulumi
-          // up` runs from — the worktree root is harvested OSGi-side, never derived here (see
-          // below).
+          // so a coordinate's `secret:` meta pulls its provider subtree in. `.secrets` sits at the
+          // worktree root, which IS the CWD `pulumi up` runs from — the worktree root is harvested
+          // OSGi-side, never derived here (see below).
           final ConfigLoader loader =
               ConfigLoader.of(context.config(), Path.of(".secrets").toAbsolutePath().normalize());
           final Rke2labConfig config = Rke2labConfig.from(loader);
@@ -99,12 +98,10 @@ public final class Main {
                   .toleratedWorktreePaths(config.entryGate().toleratedPaths())
                   .flakeLockRequired(config.entryGate().flakeLockRequired().orElse(false))
                   .txId(UUID.randomUUID().toString())
-                  // The FACET payloads sourced from the config DTO (the single source of truth): a
+                  // The FACET payload sourced from the config DTO (the single source of truth): a
                   // Facet re-serialises its bound schema back to the JSON the host contributes
-                  // verbatim. bbox carries the router uri + password joined from .secrets:lan.bbox;
-                  // both are contributed blind — the scion owns the decode.
+                  // verbatim, blind — the scion owns the decode.
                   .facet("manifests", config.manifests().facetJson())
-                  .facet("bbox", config.bbox().facetJson())
                   .build();
 
           // The run's VERDICT, built by the engine's closing gate

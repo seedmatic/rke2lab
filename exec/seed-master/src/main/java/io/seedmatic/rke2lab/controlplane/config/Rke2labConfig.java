@@ -2,7 +2,6 @@ package io.seedmatic.rke2lab.controlplane.config;
 
 import com.fasterxml.jackson.annotation.JsonAnyGetter;
 import com.fasterxml.jackson.annotation.JsonAnySetter;
-import com.fasterxml.jackson.annotation.JsonInclude;
 import java.net.URI;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -29,7 +28,6 @@ public record Rke2labConfig(
     ProvisioningPolicyConfig provisioning,
     ReadinessConfig readiness,
     EntryGateConfig entryGate,
-    BboxConfig bbox,
     ManifestsConfig manifests,
     LoggingConfig logging) {
 
@@ -111,7 +109,6 @@ public record Rke2labConfig(
                 loader.optionalBoolean("entryGate.cleanWorktree", "required"),
                 loader.stringList("entryGate.cleanWorktree", "tolerated"),
                 loader.optionalBoolean("entryGate.flakeLock", "required")),
-            loader.bind(BboxConfig.class, "bbox"),
             loader.bind(ManifestsConfig.class, "manifests"),
             new LoggingConfig(
                 loader.optional("logging", "level").map(Rke2labConfig::parseLogLevel)));
@@ -216,41 +213,6 @@ public record Rke2labConfig(
       Optional<Boolean> cleanWorktreeRequired,
       List<String> toleratedPaths,
       Optional<Boolean> flakeLockRequired) {}
-
-  /**
-   * The bbox coordinate — bound from {@code rke2lab:bbox} deep-merged with {@code
-   * .secrets:lan.bbox} (its {@link SecretJoin}). Its ONE typed input is {@link #reconcile} (a host
-   * policy); the router contact the host owns — {@code uri + password} from sops — lands in {@link
-   * #rest}, the {@code @JsonAnySetter} remainder the host NEVER names (the scion decodes {@code
-   * Router{uri, password}} from the facet; see {@code
-   * io.seedmatic.rke2lab.bbox.contract.BboxRunbookInput}). {@link #facetJson()} re-serialises the
-   * whole thing — {@code reconcile} rides along, the tolerant codec ignores it.
-   */
-  @SecretJoin(from = "lan.bbox")
-  public record BboxConfig(ReconcileConfig reconcile, @JsonAnySetter Map<String, Object> rest)
-      implements Facet {
-
-    public BboxConfig {
-      reconcile = reconcile == null ? new ReconcileConfig(Optional.empty()) : reconcile;
-      rest = rest == null ? Map.of() : rest;
-    }
-
-    /** The reconcile policy — a host input, not part of the router contact. */
-    @JsonInclude(JsonInclude.Include.NON_ABSENT)
-    public record ReconcileConfig(Optional<Boolean> failOnError) {}
-
-    @JsonAnyGetter
-    public Map<String, Object> rest() {
-      return rest;
-    }
-
-    @Override
-    public String facetJson() {
-      return reconcile.failOnError().isEmpty() && rest.isEmpty()
-          ? ""
-          : ConfigLoader.writeJson(this);
-    }
-  }
 
   /**
    * The manifests coordinate — the operator's {@code rke2lab:manifests:} concern ({@code {publish,

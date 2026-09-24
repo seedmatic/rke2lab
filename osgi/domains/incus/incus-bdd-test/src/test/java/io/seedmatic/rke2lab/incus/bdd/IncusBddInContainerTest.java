@@ -27,7 +27,7 @@ import org.osgi.service.log.LogLevel;
  * bundles), wired bundle-to-bundle by {@code installImportClosureOf} — the mocks the passenger
  * registers on the shared bundle loader are the same Class the scenario reads, nothing crosses to
  * the host JVM. SCR + org.slf4j are ambient (the testkit defaults). This is the in-container scion
- * pattern, the twin of {@code BboxBddInContainerTest}.
+ * pattern, the twin of {@code ClusterBddInContainerTest}.
  *
  * <p>Each in-container test comes back as an encoded {@link String} mapped to one {@link
  * DynamicTest}, so VSCode shows a node per test and a single failure fails alone.

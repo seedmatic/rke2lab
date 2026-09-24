@@ -46,7 +46,8 @@ class NestedScenarioPlayTest {
         "the INNER runbook still carries its scenario after being played nested (live object)");
 
     // The PROD path: the GenericRunbookHandler serialises the nested outcome and ScenarioGraft
-    // rebuilds it host-side. Nesting alone passes and round-trip alone passes (bbox test) — the
+    // rebuilds it host-side. Nesting alone passes and round-trip alone passes (the tag round-trip
+    // test) — the
     // live
     // "no scenario to graft" is their COMBINATION, so assert it here: serialise the NESTED inner
     // outcome and rebuild, exactly as the sow-and-graft does.

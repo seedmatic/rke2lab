@@ -9,8 +9,8 @@ import java.util.Map;
  * A host-owned ambient FACET contributor: the operator subtree the root read for ONE coordinate,
  * published as an {@link AmendmentContributor} the assembler gathers at the amend door. The
  * generalisation of the former single {@code ManifestsFacetContributor} — the root registers one
- * instance per curated coordinate (manifests from the stack config, bbox from {@code .secrets}, …),
- * each carrying that coordinate's merged FACET subtree as a serialized JSON String.
+ * instance per curated coordinate (manifests from the stack config, another from {@code .secrets},
+ * …), each carrying that coordinate's merged FACET subtree as a serialized JSON String.
  *
  * <p>The coordinate is built from a literal domain slug: the flat control-plane realm may not
  * reference a bundle-only {@code *Coordinate} type (the realm boundary). A slug divergence between

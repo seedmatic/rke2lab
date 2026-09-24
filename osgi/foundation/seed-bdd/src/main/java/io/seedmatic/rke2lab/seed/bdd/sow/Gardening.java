@@ -78,7 +78,8 @@ public record Gardening(OsgiConnection connection, SeedBroker gardener) implemen
     final AmendCoordinate amend = new AmendCoordinate(soil);
     final SeedCodec codec = new SeedCodec();
     // Open the AMEND door when the host holds per-consult amendments OR a reflector serves this
-    // soil — so a scion whose FACET is contributed AMBIENT (bbox's router, the entry gate) still
+    // soil — so a scion whose FACET is contributed AMBIENT (the manifests facet, the entry gate)
+    // still
     // gets its door: the reflector runs on the empty trigger, applies its defaults, and gathers the
     // ambient roles. A soil with NO amend grower skips the door (a sow there would throw). The
     // amont introspection ignores the cellar; the runbook sow below plays the transactional scion.

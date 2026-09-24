@@ -261,7 +261,7 @@ public record StagingClosure(
      *       developer's explicit "keep it host-flat" intent — the parallel of a {@code
      *       type=dual-realm} self-declaring its dual nature — so a directly-declared third-party
      *       bundle that also gets staged (e.g. {@code gson}: the exec declares it compile AND the
-     *       bbox client pulls it into the staging closure) is kept flat too. Either signal is
+     *       an edge's client pulls it into the staging closure) is kept flat too. Either signal is
      *       subject to the SAME boot-stack guard: a package already served in-framework by a
      *       boot-stack bundle (pax-logging-api exports {@code org.slf4j}) needs no realm-library
      *       copy — staging one would add a second in-framework exporter and break slf4j 2.x

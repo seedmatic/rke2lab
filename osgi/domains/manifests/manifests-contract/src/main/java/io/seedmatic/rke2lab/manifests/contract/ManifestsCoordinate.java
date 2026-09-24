@@ -7,17 +7,16 @@ import io.seedmatic.rke2lab.seed.broker.port.ShapeCoordinate;
 
 /**
  * The manifests domain's seed coordinates, declared and owned in ONE place — the single-source
- * discipline its siblings {@code BboxCoordinate} / {@code IncusCoordinate} hold, and, like them, an
- * {@code enum} (the {@code contract-purity} law admits only records / enums / sealed ADT /
- * interfaces from a contract module — no concrete class). But where those enumerate the VALUE-
- * coordinates their domain STORES behind the cellar ({@code BBOX_RESERVATIONS}, {@code
- * INCUS_PREP}), manifests SYNTHESISES-and-GRAFTS — it materialises into the soil and stores no
- * harvest (its conservation is delegated to the consulter's plot) — so it owns no value-coordinate.
- * This enum is therefore EMPTY: it enumerates nothing, holding instead, as static constants, the
- * shared META coordinates manifests is addressed through — {@link #AMEND} (the reflector serves it,
- * the assembler gathers on it), {@link #SHAPE} (the schema projection), {@link #RUNBOOK} (the
- * synthesis trigger) — all keyed by one {@link #DOMAIN}, so the growers never diverge as raw
- * literals.
+ * discipline its sibling {@code IncusCoordinate} holds, and, like them, an {@code enum} (the {@code
+ * contract-purity} law admits only records / enums / sealed ADT / interfaces from a contract module
+ * — no concrete class). But where those enumerate the VALUE- coordinates their domain STORES behind
+ * the cellar ({@code BBOX_RESERVATIONS}, {@code INCUS_PREP}), manifests SYNTHESISES-and-GRAFTS — it
+ * materialises into the soil and stores no harvest (its conservation is delegated to the
+ * consulter's plot) — so it owns no value-coordinate. This enum is therefore EMPTY: it enumerates
+ * nothing, holding instead, as static constants, the shared META coordinates manifests is addressed
+ * through — {@link #AMEND} (the reflector serves it, the assembler gathers on it), {@link #SHAPE}
+ * (the schema projection), {@link #RUNBOOK} (the synthesis trigger) — all keyed by one {@link
+ * #DOMAIN}, so the growers never diverge as raw literals.
  *
  * <p>These are the OSGi-side single source. A SOWER (incus consulting the amend) and the HOST FACET
  * contributor keep the {@code "manifests"} literal instead — both run where this bundle-only

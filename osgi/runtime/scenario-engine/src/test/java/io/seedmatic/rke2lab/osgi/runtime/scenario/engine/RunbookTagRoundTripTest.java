@@ -16,19 +16,19 @@ import org.junit.jupiter.api.Test;
  * The decisive isolation: does a scenario runbook survive the host-crossing round-trip ({@code
  * ScenarioJsonWriter} → {@code ScenarioJsonReader}, what {@code ScenarioGraft.rebuild} does) when
  * it carries a CELLAR-ENTRY TAG whose value is deeply-nested escaped JSON — the one factor present
- * in the live bbox model (a real {@code ScenarioCellar.store} posts it) yet absent from every green
- * test (they use a RecordingCellar / no store). If the rebuilt model loses its scenario, this is
- * the live "no scenario to graft".
+ * in a live model (a real {@code ScenarioCellar.store} posts it) yet absent from every green test
+ * (they use a RecordingCellar / no store). If the rebuilt model loses its scenario, this is the
+ * live "no scenario to graft".
  */
 class RunbookTagRoundTripTest {
 
   @Test
   void a_runbook_with_a_nested_json_cellar_tag_survives_the_graft_round_trip() throws Exception {
     final ReportModel model = new ReportModel();
-    model.setClassName("io.seedmatic.rke2lab.bbox.bdd.BboxReconciliationScenario");
+    model.setClassName("io.seedmatic.rke2lab.incus.bdd.IncusProvisionScenario");
     final ScenarioModel scenario = new ScenarioModel();
     scenario.setClassName(model.getClassName());
-    scenario.setTestMethodName("the_reservations_are_reconciled");
+    scenario.setTestMethodName("the_instance_is_provisioned");
     scenario.addCase(new ScenarioCaseModel());
     model.addScenarioModel(scenario);
 
@@ -37,7 +37,7 @@ class RunbookTagRoundTripTest {
     // quotes).
     final String nestedJsonValue =
         "{\"parcel\":{\"project\":\"rke2lab\",\"stack\":\"dev\"},"
-            + "\"envelope\":{\"domain\":\"bbox\",\"coordinate\":\"bbox-reservations\","
+            + "\"envelope\":{\"domain\":\"incus\",\"coordinate\":\"incus-provision\","
             + "\"payload\":\"{\\\"dryRun\\\":true,\\\"desiredCount\\\":12}\"}}";
     final Tag tag = new Tag("cellar-entry", nestedJsonValue);
     tag.setType("cellar-entry");

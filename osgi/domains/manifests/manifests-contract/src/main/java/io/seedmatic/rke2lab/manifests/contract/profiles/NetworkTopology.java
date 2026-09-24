@@ -25,8 +25,7 @@ public record NetworkTopology(
     String clusterLoadBalancerCidr,
     String clusterLoadBalancerGatewayAddr,
     String lanInterface,
-    String lanHostInetAddr,
-    String lanLoadBalancerCidr,
+    String fabricLoadBalancerCidr,
     String wanInterface,
     String vipInterface,
     String vipCidr,
@@ -48,8 +47,7 @@ public record NetworkTopology(
     clusterLoadBalancerCidr = nullToBlank(clusterLoadBalancerCidr);
     clusterLoadBalancerGatewayAddr = nullToBlank(clusterLoadBalancerGatewayAddr);
     lanInterface = nullToBlank(lanInterface);
-    lanHostInetAddr = nullToBlank(lanHostInetAddr);
-    lanLoadBalancerCidr = nullToBlank(lanLoadBalancerCidr);
+    fabricLoadBalancerCidr = nullToBlank(fabricLoadBalancerCidr);
     wanInterface = nullToBlank(wanInterface);
     vipInterface = nullToBlank(vipInterface);
     vipCidr = nullToBlank(vipCidr);
@@ -87,8 +85,7 @@ public record NetworkTopology(
     private String clusterLoadBalancerCidr = "";
     private String clusterLoadBalancerGatewayAddr = "";
     private String lanInterface = "";
-    private String lanHostInetAddr = "";
-    private String lanLoadBalancerCidr = "";
+    private String fabricLoadBalancerCidr = "";
     private String wanInterface = "";
     private String vipInterface = "";
     private String vipCidr = "";
@@ -149,13 +146,8 @@ public record NetworkTopology(
       return this;
     }
 
-    public Builder lanHostInetAddr(final String v) {
-      this.lanHostInetAddr = v;
-      return this;
-    }
-
-    public Builder lanLoadBalancerCidr(final String v) {
-      this.lanLoadBalancerCidr = v;
+    public Builder fabricLoadBalancerCidr(final String v) {
+      this.fabricLoadBalancerCidr = v;
       return this;
     }
 
@@ -206,8 +198,7 @@ public record NetworkTopology(
           clusterLoadBalancerCidr,
           clusterLoadBalancerGatewayAddr,
           lanInterface,
-          lanHostInetAddr,
-          lanLoadBalancerCidr,
+          fabricLoadBalancerCidr,
           wanInterface,
           vipInterface,
           vipCidr,

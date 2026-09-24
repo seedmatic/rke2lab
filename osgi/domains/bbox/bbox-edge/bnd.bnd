@@ -1,7 +1,0 @@
--include: ../../../bundle-parent/annotations.bnd
-Import-Package: ${annotation-noimports}, *
-Bundle-SymbolicName: io.seedmatic.rke2lab.bbox.edge
-# Self-declares this jar as an embeddable EDGE bundle (scanned + installed under META-INF/bundles by
-# the same io.seedmatic.rke2lab.embed capability as the other carriers). See dbus-systemd-edge.
-Provide-Capability: io.seedmatic.rke2lab.embed; type=edge; edge=bbox
-

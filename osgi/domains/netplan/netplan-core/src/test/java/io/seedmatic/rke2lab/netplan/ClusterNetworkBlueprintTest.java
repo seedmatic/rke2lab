@@ -64,12 +64,12 @@ class ClusterNetworkBlueprintTest {
         InetAddress.getByName("fd96:6924:3693:220::10.80.16.10"),
         blueprint.nodeNetwork().nodeHostInetaddr6());
     assertEquals(
-        InetAddress.getByName("fd96:6924:3693:250::192.168.1.179"),
-        blueprint.lan().hostInetaddr6());
+        InetAddress.getByName("fd96:6924:3693:250::172.16.16.1"),
+        blueprint.fabric().gatewayInetaddr6());
   }
 
   @Test
-  void deriveRecipeModel_forNikopolMgmtMaster_carvesTheMgmtLanSlice() {
+  void deriveRecipeModel_forNikopolMgmtMaster_carvesTheMgmtFabricSlot() {
     ClusterNetworkBlueprint blueprint =
         ClusterNetworkBlueprint.builder()
             .cluster("nikopol-mgmt")
@@ -77,20 +77,23 @@ class ClusterNetworkBlueprintTest {
             .deriveRecipeModel()
             .build();
 
-    // nikopol hostId 1, mgmt roleId 0 -> LAN base 128 + 1*48 + 0*16 = 176; mgmt takes node /29 + lb
-    // /29. master nodeId 0 -> host(3) = .179; headscale/tailscale VIPs from the lb /29 at .184.
-    assertEquals("192.168.1.176/29", blueprint.lan().nodeCidr().toString());
-    assertEquals("192.168.1.184/29", blueprint.lan().lbCidr().toString());
-    assertEquals("192.168.1.179", blueprint.lan().hostInetaddr().getHostAddress());
-    assertEquals("192.168.1.185", blueprint.lan().headscaleInetaddr().getHostAddress());
-    assertEquals("192.168.1.186", blueprint.lan().tailscaleInetaddr().getHostAddress());
+    // nikopol hostId 1, mgmt roleId 0 -> slot 1*16 + 1 + 0 = 17, so the cluster's /24 is
+    // 172.16.17.0:
+    // nodes draw from .0/26, the LB pool is .64/26 (headscale host(1), tailscale host(2)). The
+    // gateway is the bare-metal's bridge address in SLOT 0 — inside the /21 the bridge carries,
+    // outside this cluster's /24, which is why it reads 172.16.16.1 and not 172.16.17.1.
+    assertEquals("172.16.17.0/26", blueprint.fabric().nodeCidr().toString());
+    assertEquals("172.16.17.64/26", blueprint.fabric().lbCidr().toString());
+    assertEquals("172.16.16.1", blueprint.fabric().gatewayInetaddr().getHostAddress());
+    assertEquals("172.16.17.65", blueprint.fabric().headscaleInetaddr().getHostAddress());
+    assertEquals("172.16.17.66", blueprint.fabric().tailscaleInetaddr().getHostAddress());
   }
 
   @Test
-  void deriveRecipeModel_forTheReservedTestCluster_carvesTheDot224Slice() {
+  void deriveRecipeModel_forTheReservedTestCluster_carvesSlot33() {
     // The blank/unknown cluster identity falls back to the reserved "test-mgmt" cluster
     // (DefaultNodeEnvContext), which must derive a valid, distinct slice — NOT overflow the octet.
-    // test hostId 2, mgmt roleId 0 -> LAN base 128 + 2*48 = 224; clusterId (2<<1)|0 = 4.
+    // test hostId 2, mgmt roleId 0 -> slot 2*16 + 1 = 33; clusterId (2<<1)|0 = 4.
     ClusterNetworkBlueprint blueprint =
         ClusterNetworkBlueprint.builder()
             .cluster("test-mgmt")
@@ -99,8 +102,8 @@ class ClusterNetworkBlueprintTest {
             .build();
 
     assertEquals(4, blueprint.cluster().id());
-    assertEquals("192.168.1.224/29", blueprint.lan().nodeCidr().toString());
-    assertEquals("192.168.1.232/29", blueprint.lan().lbCidr().toString());
-    assertEquals("192.168.1.227", blueprint.lan().hostInetaddr().getHostAddress());
+    assertEquals("172.16.33.0/26", blueprint.fabric().nodeCidr().toString());
+    assertEquals("172.16.33.64/26", blueprint.fabric().lbCidr().toString());
+    assertEquals("172.16.32.1", blueprint.fabric().gatewayInetaddr().getHostAddress());
   }
 }

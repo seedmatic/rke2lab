@@ -176,34 +176,34 @@ public class NetplanBlueprintScenario
 
           final NodeMacs macs =
               new NodeMacs(
-                  bp.lan().hostMacaddr().value(),
+                  bp.fabric().hostMacaddr().value(),
                   bp.wan().hostMacaddr().value(),
-                  bp.lan().bridgeMacaddr().value());
+                  bp.fabric().bridgeMacaddr().value());
 
+          // Present only where a reservation can bind to it — a cattle node's fabric address is the
+          // pool's to give, so publishing the one its window WOULD hold is the fiction we removed.
+          final boolean reserved = bp.fabricMacIsPredictable();
           final NodeIPs ips =
               new NodeIPs(
-                  bp.lan().hostInetaddr().getHostAddress(),
+                  reserved
+                      ? Optional.of(bp.fabric().hostInetaddr().getHostAddress())
+                      : Optional.empty(),
                   bp.nodeNetwork().nodeHostInetaddr().getHostAddress(),
                   bp.vip().vipHostInetaddr().getHostAddress(),
-                  bp.lan().gatewayInetaddr().getHostAddress(),
+                  bp.fabric().gatewayInetaddr().getHostAddress(),
                   bp.nodeNetwork().nodeGatewayInetaddr().getHostAddress(),
-                  mixed(bp.lan().hostInetaddr6()),
+                  reserved ? Optional.of(mixed(bp.fabric().hostInetaddr6())) : Optional.empty(),
                   mixed(bp.nodeNetwork().nodeHostInetaddr6()),
-                  mixed(bp.lan().gatewayInetaddr6()),
+                  mixed(bp.fabric().gatewayInetaddr6()),
                   mixed(bp.nodeNetwork().nodeGatewayInetaddr6()),
-                  bp.lan().nodeCidr6().toString(),
+                  bp.fabric().nodeCidr6().toString(),
                   bp.nodeNetwork().nodeCidr6().toString());
 
-          final LanLease lanLease =
-              new LanLease(
-                  bp.lan().hostMacaddr().value(),
-                  bp.lan().hostInetaddr().getHostAddress(),
-                  bp.lan().nodeCidr().toString());
-          final WanLease wanLease =
-              new WanLease(bp.wan().hostMacaddr().value(), bp.wan().dhcpRange());
-          final NodeLeases leases = new NodeLeases(lanLease, wanLease);
+          final NodeLeases leases =
+              new NodeLeases(new WanLease(bp.wan().hostMacaddr().value(), bp.wan().dhcpRange()));
 
-          clusterAddressing.put(node, new NodeAddressing(macs, ips, leases));
+          clusterAddressing.put(
+              node, new NodeAddressing(macs, ips, leases, bp.names().nodeFabricFqdn()));
         }
         allAddressing.put(cluster, clusterAddressing);
       }
@@ -211,17 +211,50 @@ public class NetplanBlueprintScenario
       // Cluster-owned network SEGMENTS — the single source nnh/ndh derive the flow→AS labelling
       // from, now in the uniform shape ndh's baremetal segments share (see the Segment record).
       // rke2lab publishes ONLY what it owns (ClusterAsn 65010/65020); the home segments (65000)
-      // belong to ndh. Per cluster: the LAN /27 + LB /27 (bbox-served — attribution only; ndh owns
-      // their reservations) and the vmnet /21 rke2lab actually manages (gateway + DHCP + a
-      // dhcp-host per node). The /18 supernet + pod/service/gateway/ULA are attribution spans.
+      // belong to ndh. Per cluster: its two FABRIC /26s — the static-reservation window and the LB
+      // range — and the vmnet /21 rke2lab actually manages (gateway + DHCP + a dhcp-host per node).
+      // The /18 supernet + pod/service/gateway/ULA are attribution spans.
+      //
+      // A NOTE ON AUTHORITY. The fabric window carries `hosts` but no `gateway`/`dhcp`: rke2lab no
+      // longer RUNS this network's DHCP, it REQUESTS reservations on one ndh runs. That is the
+      // whole
+      // move — the reservations left the bbox, a server on a network rke2lab had no title to
+      // allocate
+      // in, for the bare-metal's own dnsmasq. Same information, an authority we control.
+      //
+      // Only MAC-PREDICTABLE nodes get a row, exactly as the bbox enumerator scoped itself to
+      // `<host>-mgmt`: a reservation binds by MAC, and a cattle node's is minted by the provider.
+      // The
+      // rule now lives in the blueprint (fabricMacIsPredictable) rather than in the consumer, so it
+      // travels with the addressing law instead of being restated per reader. A cattle node is
+      // absent
+      // here on purpose — it draws from the bare-metal's shared pool and is found by NAME.
       final List<Segment> segments = new ArrayList<>();
       for (String cluster : clusterNames) {
         final ClusterNetworkBlueprint bp = blueprintOf(cluster, "master");
+        final List<SegmentHost> fabricHosts = new ArrayList<>();
+        if (bp.fabricMacIsPredictable()) {
+          for (String node : ClusterTopology.of(ClusterRole.of(cluster)).nodeNames()) {
+            final ClusterNetworkBlueprint nodeBp = blueprintOf(cluster, node);
+            fabricHosts.add(
+                new SegmentHost(
+                    cluster + "-" + node,
+                    Optional.of(nodeBp.fabric().hostMacaddr().value()),
+                    nodeBp.fabric().hostInetaddr().getHostAddress()));
+          }
+        }
+        segments.add(
+            new Segment(
+                bp.fabric().nodeCidr().toString(),
+                cluster + "-fabric",
+                bp.bgpLocalAsn(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                List.copyOf(fabricHosts)));
         segments.add(
             Segment.attribution(
-                bp.lan().nodeCidr().toString(), cluster + "-lan", bp.bgpLocalAsn()));
-        segments.add(
-            Segment.attribution(bp.lan().lbCidr().toString(), cluster + "-lb", bp.bgpLocalAsn()));
+                bp.fabric().lbCidr().toString(), cluster + "-fabric-lb", bp.bgpLocalAsn()));
 
         // The per-cluster vmnet /21 (Incus dnsmasq): gateway .1, the WAN DHCP range, and one
         // dhcp-host reservation per canonical node — the SAME tuples GrowNetworkResolver emits into
@@ -399,7 +432,12 @@ public class NetplanBlueprintScenario
    */
   record SegmentHost(String name, Optional<String> mac, String ip) {}
 
-  record NodeAddressing(NodeMacs macs, NodeIPs ips, NodeLeases leases) {}
+  /**
+   * {@code fabricFqdn} is a NAME beside the addresses, and it is here because the thing it names
+   * has no predictable address: it is what the host-side reader dials for first contact with a
+   * node, resolved by that bare-metal's dnsmasq.
+   */
+  record NodeAddressing(NodeMacs macs, NodeIPs ips, NodeLeases leases, String fabricFqdn) {}
 
   record NodeMacs(String lan, String wan, String lanBridge) {}
 
@@ -412,23 +450,35 @@ public class NetplanBlueprintScenario
    * to re-derive {@code 10.80.<clusterId*8+7>.10} to learn where that cluster's apiserver answers.
    * Re-deriving it is exactly what the host would otherwise do, and the netplan is the only thing
    * entitled to: it owns the addressing law.
+   *
+   * <p>{@code fabricHost} is EMPTY for a cattle node, and the key is then ABSENT from the JSON
+   * (Jackson's jdk8 module omits an empty Optional). That absence is the point: a blank string
+   * reads as a value, and an address the node never holds is precisely the fiction this migration
+   * removed. It is present only where a reservation can bind — where the blueprint predicts the
+   * hwaddr, see {@code fabricMacIsPredictable()}.
+   *
+   * <p>What holds for EVERY node is {@code fabricFqdn}, this record's sibling. So a reader holding
+   * a cattle node asks for the name; one holding a management node may ask for either.
    */
   record NodeIPs(
-      String lanHost,
+      Optional<String> fabricHost,
       String nodeHost,
       String vipHost,
-      String lanGateway,
+      String fabricGateway,
       String nodeGateway,
-      String lanHost6,
+      Optional<String> fabricHost6,
       String nodeHost6,
-      String lanGateway6,
+      String fabricGateway6,
       String nodeGateway6,
-      String lanCidr6,
+      String fabricCidr6,
       String nodeCidr6) {}
 
-  record NodeLeases(LanLease lan, WanLease wan) {}
-
-  record LanLease(String mac, String ip, String cidr) {}
+  /**
+   * Only the vmnet lease remains. The LAN one was a bbox reservation keyed on a MAC that only the
+   * standalone node ever carried, so it reserved an address no CAPN node could claim; nothing
+   * replaces it, because the fabric pool is dynamic by design.
+   */
+  record NodeLeases(WanLease wan) {}
 
   record WanLease(String mac, String dhcpRange) {}
 }

@@ -28,8 +28,8 @@ import org.osgi.framework.ServiceRegistration;
  *
  * <p>The synthesis binds ONE collaborator, {@link SshToAgeConverter} — a pure external-tool seam
  * (OpenSSH→age), mandatory so the {@code @Component} activates. The passenger registers a stub for
- * it in-container (the bbox/incus edge-mocking shape, on the shared fragment loader so no seam and
- * no system-export are needed): the scenario runs with no SSH key-store, so {@code
+ * it in-container (the incus edge-mocking shape, on the shared fragment loader so no seam and no
+ * system-export are needed): the scenario runs with no SSH key-store, so {@code
  * SopsAgeMaterialResolver} fail-softs and the converter is never actually reached — the stub throws
  * if it ever is, surfacing that as the defect it would be.
  *

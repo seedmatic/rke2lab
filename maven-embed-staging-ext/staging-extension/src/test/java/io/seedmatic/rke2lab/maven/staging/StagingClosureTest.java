@@ -123,16 +123,16 @@ class StagingClosureTest {
   @Test
   void aDirectlyDeclaredThirdPartyIsARealmLibraryEvenWhenNoDomainImportsIt() {
     // gson: seed-master declares it a DIRECT compile dep (com.pulumi needs it host-flat at
-    // startup), and the bbox edge's client pulls it into the staging closure — but no domain
+    // startup), and an edge's client pulls it into the staging closure — but no domain
     // Import-Package: com.google.gson, so the import-signal alone would exclude it from flat. The
     // direct declaration IS the developer's keep-flat intent, so gson must be staged AND flat.
     final ResolvedBundle edge =
         bundle(
             "io.seedmatic.rke2lab",
-            "bbox-edge",
+            "incus-edge",
             "edge",
-            /*imports*/ "io.seedmatic.rke2lab.bbox.port",
-            /*exports*/ "io.seedmatic.rke2lab.bbox.edge");
+            /*imports*/ "io.seedmatic.rke2lab.incus.contract",
+            /*exports*/ "io.seedmatic.rke2lab.incus.edge");
     final ResolvedBundle gson =
         directThirdParty("com.google.code.gson", "gson", /*exports*/ "com.google.gson");
 

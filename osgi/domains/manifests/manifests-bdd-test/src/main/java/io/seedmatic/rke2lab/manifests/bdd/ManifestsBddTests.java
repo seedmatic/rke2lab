@@ -13,7 +13,7 @@ import org.junit.jupiter.engine.JupiterTestEngine;
  * bundle's loader — the loader the scenario resolves its collaborators against, so the mock RunGate
  * the passenger registers is the same Class the scenario reads.
  *
- * <p>The twin of {@code BboxBddTests}: invoked through the host loader, so this class's loader IS
+ * <p>The twin of {@code IncusBddTests}: invoked through the host loader, so this class's loader IS
  * the host bundle's — the {@code BundleReference} the runner enumerates the wiring from, and the
  * loader it instantiates the Jupiter engine through (which drives the jGiven scenario the passenger
  * plays through the front-door).

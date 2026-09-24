@@ -173,32 +173,6 @@
       </dependency>
       <dependency>
         <groupId>io.seedmatic.rke2lab</groupId>
-        <artifactId>bbox-bdd</artifactId>
-        <version>${rke2lab.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>io.seedmatic.rke2lab</groupId>
-        <artifactId>bbox-bdd-test</artifactId>
-        <version>${rke2lab.version}</version>
-        <scope>test</scope>
-      </dependency>
-      <dependency>
-        <groupId>io.seedmatic.rke2lab</groupId>
-        <artifactId>bbox-contract</artifactId>
-        <version>${rke2lab.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>io.seedmatic.rke2lab</groupId>
-        <artifactId>bbox-core</artifactId>
-        <version>${rke2lab.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>io.seedmatic.rke2lab</groupId>
-        <artifactId>bbox-edge</artifactId>
-        <version>${rke2lab.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>io.seedmatic.rke2lab</groupId>
         <artifactId>cluster-pki-contract</artifactId>
         <version>${rke2lab.version}</version>
       </dependency>
@@ -733,16 +707,6 @@
       </snapshots>
       <id>github-seedmatic-java-systemd</id>
       <url>https://maven.pkg.github.com/seedmatic/java-systemd</url>
-    </repository>
-    <repository>
-      <releases>
-        <enabled>true</enabled>
-      </releases>
-      <snapshots>
-        <enabled>false</enabled>
-      </snapshots>
-      <id>github-seedmatic-java-bbox-api-client</id>
-      <url>https://maven.pkg.github.com/seedmatic/java-bbox-api-client</url>
     </repository>
   </repositories>
 

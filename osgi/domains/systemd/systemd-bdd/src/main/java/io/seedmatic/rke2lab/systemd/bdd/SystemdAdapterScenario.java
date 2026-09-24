@@ -211,7 +211,7 @@ public class SystemdAdapterScenario
             .deriveRecipeModel()
             .build();
     return new SystemdProbeRequest(
-        blueprint.names().nodeMdnsFqdn(),
+        blueprint.names().nodeFabricFqdn(),
         DBUS_TCP_PORT,
         identity.nodeName(),
         blueprint.names().nixosHost());

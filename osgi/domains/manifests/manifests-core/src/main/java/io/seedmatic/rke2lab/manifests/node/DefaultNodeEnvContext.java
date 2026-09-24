@@ -59,7 +59,7 @@ public final class DefaultNodeEnvContext implements NodeEnvContext {
         .nodeKind(blueprint.node().type().kind())
         .incusRemoteName(clusterName)
         .nodeHostname(blueprint.names().nodeHostname())
-        .nodeMdnsFqdn(blueprint.names().nodeMdnsFqdn())
+        .nodeFabricFqdn(blueprint.names().nodeFabricFqdn())
         .build();
   }
 
@@ -74,16 +74,15 @@ public final class DefaultNodeEnvContext implements NodeEnvContext {
         .nodeNetworkCidr(blueprint.nodeNetwork().nodeCidr().toString())
         .nodeNetworkGatewayAddr(blueprint.nodeNetwork().nodeGatewayInetaddr().getHostAddress())
         .clusterLoadBalancerCidr(blueprint.loadBalancer().lbCidr().toString())
-        .clusterLoadBalancerGatewayAddr(blueprint.lan().headscaleInetaddr().getHostAddress())
+        .clusterLoadBalancerGatewayAddr(blueprint.fabric().headscaleInetaddr().getHostAddress())
         .lanInterface(blueprint.interfaces().lanInterface())
-        .lanHostInetAddr(blueprint.lan().hostInetaddr().getHostAddress())
-        .lanLoadBalancerCidr(blueprint.lan().lbCidr().toString())
+        .fabricLoadBalancerCidr(blueprint.fabric().lbCidr().toString())
         .wanInterface(blueprint.interfaces().wanInterface())
         .vipInterface(blueprint.interfaces().vipInterface())
         .vipCidr(blueprint.vip().vipCidr().toString())
         .vipGatewayInetAddr(blueprint.vip().vipGatewayInetaddr().getHostAddress())
         .vipHostInetAddr(blueprint.vip().vipHostInetaddr().getHostAddress())
-        .lanHostMacAddr(blueprint.lan().hostMacaddr().value())
+        .lanHostMacAddr(blueprint.fabric().hostMacaddr().value())
         .wanHostMacAddr(blueprint.wan().hostMacaddr().value())
         .build();
   }

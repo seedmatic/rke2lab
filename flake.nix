@@ -217,8 +217,8 @@
       #
       # (1) The CORE extension resolves at bootstrap from the seeded primary (the tail is
       #     invisible to that early resolver — see stagingExtensionClosure).
-      # (2) The MAIN build's released private deps (java-bbox-api-client, java-systemd
-      #     3.0.0-rc.2) come from the host ~/.m2 as a read-only tail — the build user can't
+      # (2) The MAIN build's released private dep (java-systemd 3.0.0-rc.2) comes from the
+      #     host ~/.m2 as a read-only tail — the build user can't
       #     WRITE the host repo (Maven tracking files → AccessDeniedException), so it's a
       #     tail, not the primary; public deps download into the temp primary.
       #
@@ -678,7 +678,7 @@
         # env's [vars]: local file:// backend under the repo, empty passphrase.
         # Mint a short-lived (~1h) GitHub App INSTALLATION token from the one org-owned App's
         # credentials in .secrets (github.app), so the maven build resolves private GitHub Packages
-        # (java-systemd, java-bbox-api-client) AS THE APP — never a personal `gh auth token`. There
+        # (java-systemd) AS THE APP — never a personal `gh auth token`. There
         # is no cluster/cellar at BUILD time, so this is the shell twin of the OSGi ghapp minter
         # (which is itself what the build produces — chicken-and-egg forbids reusing it here). Least
         # privilege: packages:read, the only scope maven needs. The grow / render wrappers export its

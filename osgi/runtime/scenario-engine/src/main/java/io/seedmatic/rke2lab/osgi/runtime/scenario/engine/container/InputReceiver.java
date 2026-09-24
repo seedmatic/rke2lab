@@ -11,7 +11,7 @@ package io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container;
  * <p>The in-container twin of {@code seed.bdd.SeedReceiver} (which lives in an un-exported
  * foundation package the host root uses); a scion cannot import that, so the same shape lives here
  * in the exported {@code .container} package the scions already depend on. Opt-in by implementing
- * it — a scenario that reads no input (bbox, cluster, systemd, incus-reconcile) does not.
+ * it — a scenario that reads no input (cluster, systemd, incus-reconcile) does not.
  *
  * @param <T> the activation input's type (e.g. {@code IncusRunbookInput}, {@code
  *     ManifestsRunbookInput}) — a bundle type carried in-realm (the handler and scenario share the

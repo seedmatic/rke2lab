@@ -87,7 +87,8 @@ public final class ClusterKubeconfigManifestsUnit extends AbstractManifestsUnit 
     final String clusterNamespace = "rke2lab-" + clusterName;
     final ApiObject namespace = createClusterNamespace(scope, clusterNamespace);
 
-    renderOperatorKubeconfig(scope, material, clusterName, clusterNamespace, nodeName);
+    renderOperatorKubeconfig(
+        scope, material, clusterName, clusterNamespace, synth.bootstrapIdentity().nodeFabricFqdn());
     renderCapiKubeconfigSecret(
         scope, material, clusterName, clusterNamespace, topology.vipHostInetAddr(), namespace);
   }
@@ -110,17 +111,24 @@ public final class ClusterKubeconfigManifestsUnit extends AbstractManifestsUnit 
             .build());
   }
 
-  // The operator kubeconfig over the deterministic mDNS name, host-consumed: a local-config Secret
-  // the exploder hides as a dotfile (never applied); the scion reads it host-side into
-  // kubeconfigRef.
+  // The operator kubeconfig over the node's FABRIC name, host-consumed: a local-config Secret the
+  // exploder hides as a dotfile (never applied); the scion reads it host-side into kubeconfigRef.
+  //
+  // This is the FIRST-CONTACT context — the one an operator uses before any cluster answers, which
+  // is why it targets a node rather than the VIP (the CAPI Secret above takes the VIP, and from a
+  // standing management cluster every other cluster is reached by ITS VIP and its nodes read off
+  // its
+  // own API). The name arrives already-derived rather than re-concatenated here: it is the
+  // NamePlan's
+  // single source, and it used to be an mDNS `.local` name that only a same-L2 asker could resolve.
   private void renderOperatorKubeconfig(
       final Construct scope,
       final OperatorPkiMaterial material,
       final String clusterName,
       final String namespace,
-      final String nodeName) {
+      final String nodeFabricFqdn) {
     final String name = clusterName + "-operator-kubeconfig";
-    final String server = "https://" + clusterName + "-" + nodeName + ".local:" + APISERVER_PORT;
+    final String server = "https://" + nodeFabricFqdn + ":" + APISERVER_PORT;
 
     final ApiObject secret =
         new ApiObject(

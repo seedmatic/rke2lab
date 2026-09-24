@@ -14,8 +14,8 @@ import java.lang.annotation.Target;
  * its secret source is stated in ONE place, beside the fields — change the record, the join moves
  * with it, no {@code Pulumi.dev.yaml}/record drift.
  *
- * <p>{@code from} is the dotted {@code .secrets} path (e.g. {@code "lan.bbox"}); the section itself
- * is the {@code section} argument the director passes to {@code bind}.
+ * <p>{@code from} is the dotted {@code .secrets} path (e.g. {@code "provider.credentials"}); the
+ * section itself is the {@code section} argument the director passes to {@code bind}.
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.TYPE)

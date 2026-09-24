@@ -24,15 +24,15 @@ import org.jspecify.annotations.Nullable;
  * cellar-transactional). It is not the drain discriminant (the {@code RunRole} is); it is the
  * observability thread that ties a scion's work back to the run that sowed it.
  *
- * <p>{@code facets} maps a coordinate slug ({@code "manifests"}, {@code "bbox"}) to that domain's
- * raw config subtree, serialized verbatim as a JSON {@code String} — Pulumi-config facts only the
- * envelope can read, carried so the GIVEN can publish each as its domain's {@code FACET} amendment
- * (the host names the neutral coordinate + role, never a domain type). A map rather than a field
- * per domain: a new FACET domain is one entry, and it mirrors the amendment channel's {@code
- * coordinate → value} shape. The {@code "bbox"} subtree is the JOIN of the stack config and {@code
- * .secrets:lan.bbox} (the router {@code uri} + {@code password}), reconciled by {@code
- * ConfigLoader}'s {@code secret:} meta. A coordinate absent from the map (or an empty subtree)
- * falls to the scion's defaults at the amend door.
+ * <p>{@code facets} maps a coordinate slug ({@code "manifests"}) to that domain's raw config
+ * subtree, serialized verbatim as a JSON {@code String} — Pulumi-config facts only the envelope can
+ * read, carried so the GIVEN can publish each as its domain's {@code FACET} amendment (the host
+ * names the neutral coordinate + role, never a domain type). A map rather than a field per domain:
+ * a new FACET domain is one entry, and it mirrors the amendment channel's {@code coordinate →
+ * value} shape. A subtree may be the JOIN of the stack config and a {@code .secrets} section it
+ * owns, reconciled by {@code ConfigLoader}'s {@code secret:} meta (see {@code SecretJoin}). A
+ * coordinate absent from the map (or an empty subtree) falls to the scion's defaults at the amend
+ * door.
  */
 public record SeedRun(
     RunMode runMode,

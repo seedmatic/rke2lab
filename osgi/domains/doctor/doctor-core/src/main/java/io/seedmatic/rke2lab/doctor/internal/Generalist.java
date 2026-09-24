@@ -383,9 +383,14 @@ public final class Generalist implements Clinician, ConsultingService, ClinicalR
       // (symptom seen, no treatment offered) until a cluster specialist is added.
       case KUBECONFIG_MISSING, CONTROLLER_NOT_READY -> List.of(Specialty.CLUSTER);
       case API_NOT_READY -> List.of(Specialty.CLUSTER, Specialty.NETWORK);
-      // A refused DHCP reservation is a network fault — routes to the NETWORK domain (no bbox
-      // specialist treats it yet, so the plan is empty until one is added: symptom seen, no
-      // treatment offered — the same shape as the cluster-readiness symptoms above).
+      // A refused DHCP reservation is a network fault — routes to the NETWORK domain. Currently
+      // UNEMITTED: the crossing that raised it reconciled the home router's reservations, and
+      // rke2lab
+      // no longer allocates on that network at all (its nodes moved to the fabric, whose DHCP is
+      // the
+      // bare-metal's). The symptom stays because it names a generic network fault, not that
+      // crossing — it is what a fabric-side reservation check would raise. No specialist treats it,
+      // so the plan is empty: symptom seen, no treatment offered.
       case RESERVATION_REFUSED -> List.of(Specialty.NETWORK);
       // Incus provisioning symptoms route to the INCUS domain (no incus specialist treats them yet,
       // so the plan is empty until one is added — symptom seen, no treatment offered).

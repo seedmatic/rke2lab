@@ -30,7 +30,7 @@ class ScenarioCellarTrailTest {
   private static final String SHA = "abc123";
 
   private enum Value implements SeedCoordinate {
-    BBOX_FACTS("bbox", "bbox-facts"),
+    INCUS_FACTS("incus", "incus-facts"),
     MANIFESTS_TREE("manifests", "manifests-tree");
 
     private final String domain;
@@ -97,12 +97,12 @@ class ScenarioCellarTrailTest {
     final ScenarioCellar cellar = overFreshModel();
     cellar.store(PARCEL, CellarCoordinate.RUN_PROVENANCE, new Trail(List.of(gitRoot())));
 
-    cellar.store(PARCEL, Value.BBOX_FACTS, "harvest");
+    cellar.store(PARCEL, Value.INCUS_FACTS, "harvest");
 
     assertEquals(
         Optional.of(
-            new Trail(List.of(gitRoot(), new SourceCrumb("bbox", "bbox-facts", SHA, false)))),
-        cellar.trailOf(PARCEL, Value.BBOX_FACTS),
+            new Trail(List.of(gitRoot(), new SourceCrumb("incus", "incus-facts", SHA, false)))),
+        cellar.trailOf(PARCEL, Value.INCUS_FACTS),
         "the trail is the root path pushed with this coordinate's link");
   }
 

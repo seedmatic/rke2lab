@@ -3,8 +3,8 @@ package io.seedmatic.rke2lab.controlplane.config;
 /**
  * A config coordinate that contributes a FACET payload at the amend door. The uniform contract for
  * every facet-bearing config record: the host caches ONE opaque JSON payload — the operator subtree
- * (manifests {@code {publish, debug}}), possibly joined with a secret it owns (bbox {@code {…, uri,
- * password}}) — and contributes it VERBATIM under {@link
+ * (manifests {@code {publish, debug}}), possibly joined with a secret it owns (see {@code
+ * SecretJoin}) — and contributes it VERBATIM under {@link
  * io.seedmatic.rke2lab.seed.broker.port.Amendment#FACET}, naming no domain vocabulary. The
  * payload's structure — its decode into {@code Router}, into {@code Facets} — is the consuming
  * scion's, never the host's.

@@ -35,7 +35,7 @@ public record BootstrapIdentity(
     String nodeKind,
     String incusRemoteName,
     String nodeHostname,
-    String nodeMdnsFqdn) {
+    String nodeFabricFqdn) {
 
   /** Sentinel used when seed-master hasn't supplied identity (tests, ephemeral runs). */
   public static final String UNKNOWN = "unknown";
@@ -52,7 +52,7 @@ public record BootstrapIdentity(
     nodeKind = blankToUnknown(nodeKind);
     incusRemoteName = blankToUnknown(incusRemoteName);
     nodeHostname = blankToUnknown(nodeHostname);
-    nodeMdnsFqdn = blankToUnknown(nodeMdnsFqdn);
+    nodeFabricFqdn = blankToUnknown(nodeFabricFqdn);
   }
 
   /**
@@ -115,7 +115,7 @@ public record BootstrapIdentity(
     private String nodeKind = UNKNOWN;
     private String incusRemoteName = UNKNOWN;
     private String nodeHostname = UNKNOWN;
-    private String nodeMdnsFqdn = UNKNOWN;
+    private String nodeFabricFqdn = UNKNOWN;
 
     private Builder() {}
 
@@ -169,8 +169,8 @@ public record BootstrapIdentity(
       return this;
     }
 
-    public Builder nodeMdnsFqdn(final String v) {
-      this.nodeMdnsFqdn = v;
+    public Builder nodeFabricFqdn(final String v) {
+      this.nodeFabricFqdn = v;
       return this;
     }
 
@@ -186,7 +186,7 @@ public record BootstrapIdentity(
           nodeKind,
           incusRemoteName,
           nodeHostname,
-          nodeMdnsFqdn);
+          nodeFabricFqdn);
     }
   }
 }

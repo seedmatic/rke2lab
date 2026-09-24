@@ -30,12 +30,12 @@ import org.osgi.service.log.LogLevel;
  * reaches the synthesis through its {@code ManifestSynthesisService} interface, which lives in
  * manifests-contract, so the closure wires that package to manifests-contract and never pulls the
  * impl bundle — the {@code @Component}s would then be absent and the {@code @OsgiService} would
- * find nothing. Unlike the bbox proof, this scion resolves the REAL synthesis (manifests-core's DS
- * {@code @Component}s), so {@code .withScr()} must run for them to activate. Its one non-SCR
- * collaborator is the {@link io.seedmatic.rke2lab.manifests.contract.SshToAgeConverter} edge (a
- * pure external-tool seam) — the passenger registers a stub in-container, on the shared fragment
- * loader, so nothing crosses to the host JVM and only {@code seed.broker.port} (the one true
- * host↔OSGi membrane) is system-exported.
+ * find nothing. Unlike the other scion proofs, this scion resolves the REAL synthesis
+ * (manifests-core's DS {@code @Component}s), so {@code .withScr()} must run for them to activate.
+ * Its one non-SCR collaborator is the {@link
+ * io.seedmatic.rke2lab.manifests.contract.SshToAgeConverter} edge (a pure external-tool seam) — the
+ * passenger registers a stub in-container, on the shared fragment loader, so nothing crosses to the
+ * host JVM and only {@code seed.broker.port} (the one true host↔OSGi membrane) is system-exported.
  */
 @OsgiWorld
 // Flip to LogLevel.DEBUG to troubleshoot a failed in-container resolve/activation
@@ -71,7 +71,7 @@ class ManifestsBddInContainerTest {
   // The bundle carrying the REAL synthesis @Components (DefaultManifestSynthesisService and its
   // collaborators). Its service interfaces live in manifests-contract, so the host's import closure
   // wires the contract package to manifests-contract and NEVER pulls the impl bundle — this scion
-  // must install it explicitly (unlike bbox/incus/cluster, which mock their collaborators and need
+  // must install it explicitly (unlike incus/cluster, which mock their collaborators and need
   // no impl bundle in-container).
   private static final String CORE_BSN = "io.seedmatic.rke2lab.manifests.core";
 

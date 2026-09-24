@@ -1,0 +1,208 @@
+= Brainstorm — mapping ClusterIntention → CAPI/CAPN : décomposer en ressources
+:toc: macro
+
+// Whiteboard neuf (2026-09-13). Le précédent (modèle cluster/pool/pet — CONVERGÉ) est archivé :
+// .claude/claude-preview.archive-2026-09-13-cluster-provision-model.adoc
+// Mode BRAINSTORM : on explore, on ne grave pas encore dans docs/.
+
+toc::[]
+
+== D'où on part — le modèle convergé (l'ancre, à ne pas re-débattre)
+
+* **SSOT = `ClusterNetworkBlueprint`** (netplan) ; tout l'adressage dérive du `clusterName`. Trois projections : réservations DHCP vmnet · `ClusterIntention` · config de branche.
+* **Vocabulaire** : **cluster** (`bioskop-wrkld`) / **cluster-role** (`mgmt`|`wrkld`) / **pool** (`control-node`, `gpu-node`, `storage-node`…) / **pet** (`<cluster>-master`, `-peer1`…).
+* **Branche `manifests/<cluster>`** = profils **par pool** + cluster-common. **Per-node = faits locaux** (oneshots : node-ip/node-name/provider-id). Delivery uniforme `install-rke2-config`. Couches **L1** (boot, pré-Flux) / **L2** (app stack, Flux + son token).
+* **Render day-0** = `PipelineRun` Tekton depuis le plane parent ; **steady-state** = PaC du workload.
+* **All-pets** (CP ET workers), adoptés par `providerID`. **State machine adopt-first** : `Pending → Adopting(hub) → Provisioning / Degraded / Adopted` (codée, transitions).
+
+Scope immédiat : `bioskop-wrkld`, **un pool `control-node`**, 3 pets.
+
+== La question du whiteboard
+
+CAPI/CAPN est **déjà décomposé par grain** (Cluster / pool / node en CR séparées liées par refs). Faut-il **décomposer notre couche intention** de la même façon, au lieu d'un `ClusterIntention` monolithique ?
+
+== Le mapping — notre grain ↔ CAPI/CAPN
+
+[cols="1,2,1",options="header"]
+|===
+| notre grain | CR CAPI/CAPN | grain CAPI
+
+| **cluster** | `Cluster` + `LXCCluster` | cluster
+| **pool** `control-node` | `RKE2ControlPlane` + `LXCMachineTemplate` | control-plane
+| **pool** worker | `MachineDeployment` + `RKE2ConfigTemplate` + `LXCMachineTemplate` | pool worker
+| **pet** | `Machine` + `LXCMachine` | node
+|===
+
+== Options de décomposition (couche INTENTION, Flux-owned)
+
+=== Option 0 — monolithique (actuel)
+
+Un `ClusterIntention` porte tout : cluster-level + tous les pools + tous les pets (`spec.nodes[]`).
+
+* ✅ 1 CR, state machine cluster-level, simple.
+* ❌ combat le grain CAPI ; ajouter un pool = éditer le monolithe ; pas 1:1 avec CAPI ; pools pas first-class.
+
+=== Option 1 — `ClusterIntention` + `PoolIntention`
+
+* `ClusterIntention` (1/cluster) : cluster-level (kind, remote+identity, image, versions, VIP, CIDRs) → possède `Cluster` + `LXCCluster`.
+* `PoolIntention` (N/cluster, ownerRef → CP) : par pool (nom, profil, shape template, roster pets) → `RKE2ControlPlane`/`MachineDeployment` + `LXCMachineTemplate` + les `Machine`/`LXCMachine`.
+* Le **pet** reste une **entrée du roster dans `PoolIntention`** (CAPI n'a pas de « NodeProvision » — le `Machine` EST la CR node).
+
+* ✅ 1:1 avec le grain CAPI ; pools first-class + extensibles (un pool de plus = une CR) ; render/reconcile par pool.
+* ❌ plus de CR + wiring ownerRef ; state machine s'étale (per-pool + agrégat cluster).
+
+[mermaid,brainstorm-decomp-option1,svg]
+----
+graph TB
+  subgraph intent["INTENTION (Flux-owned, manifests/<host>-mgmt)"]
+    cp["ClusterIntention<br/>cluster-level"]:::intent
+    pp["PoolIntention (control-node)<br/>profil + roster pets"]:::intent
+    cp -->|ownerRef| pp
+  end
+  subgraph capi["CAPI/CAPN (owned par seed-incluster)"]
+    cl["Cluster + LXCCluster"]:::capi
+    rcp["RKE2ControlPlane + LXCMachineTemplate"]:::capi
+    m["Machine + LXCMachine (par pet)"]:::capi
+  end
+  cp -.->|matérialise| cl
+  pp -.->|matérialise| rcp
+  pp -.->|par pet| m
+  classDef intent fill:#dae8fc,stroke:#6c8ebf
+  classDef capi fill:#d5e8d4,stroke:#82b366
+----
+
+== Le miroir (adoption) — sous-question
+
+* **(a)** `ClusterAdoption` **agrégé** (lit le statut per-pool) — moins de CR. [reco de départ]
+* **(b)** symétrie : `PoolIntention` → `PoolAdoption`, `ClusterIntention` → `ClusterAdoption` (agrégat) — miroir 1:1, double les CR.
+
+== State machine décomposée
+
+Funnel adopt-first **par pool** (adopt / provision / degraded) ; **cluster-level = agrégat** (Adopted quand tous les pools Adopted ; Provisioning si un provisionne ; Degraded si un dégrade). Un pool = l'unité naturelle de provision/adopt (comme `RKE2ControlPlane` vs `MachineDeployment` réconcilient séparément).
+
+== Questions ouvertes à explorer
+
+. **Profil vs template** — le *profil* (contenu config RKE2) vit sur la **branche** (par pool) ; le *template* (shape CAPI : `RKE2ControlPlane`/`RKE2ConfigTemplate`) vit dans **`PoolIntention`**. Frontière nette ?
+. **Qui rend quoi** — `ClusterIntention` + les `PoolIntention` rendus par Flux sur `manifests/<host>-mgmt` (le plane parent applique). Un `PoolIntention` par pool par workload.
+. **Cold-start** — re-dériver l'ensemble `CP + PoolIntention*` depuis les CR survivantes (Flux les re-rend). Le miroir se re-dérive.
+. **KIND** (`workload`/`management`) — reste **cluster-level** sur `ClusterIntention` (sélectionne la saveur de render de l'enfant).
+. **Le pet est-il jamais une CR ?** — reco : NON, entrée du roster dans `PoolIntention` ; le `Machine` CAPI est la ressource node.
+. **`ClusterIntention.spec` aujourd'hui** porte `nodes[]{name,role}` — Option 1 sort le groupement pool en `PoolIntention`. Migration du CRD existant.
+
+== Décisions (au fur et à mesure)
+
+. **Décompo = Option 1** (ClusterIntention + PoolIntention). Le monolithe combat le grain CAPI.
+. **Pools UNIFORMES** — le `control-node` est un `PoolIntention` comme les workers ; sa
+  control-plane-ness est *dérivée* (son `RKE2ControlPlane` est ce que le `Cluster` référence). On ne
+  folde PAS le control-plane dans `ClusterIntention`. Tranché par l'analogie FloxEnv (enfants uniformes).
+. **Mirror = (b)** symétrie complète → un **2×2** :
+  `intent×cluster = ClusterIntention`, `intent×pool = PoolIntention`,
+  `mirror×cluster = ClusterAdoption`, `mirror×pool = PoolAdoption`.
+. **Analogie flux-controller** : `ClusterIntention` ~ `FloxCatalog` (parent : réconcilie la source,
+  `propagateRelock` stampe les enfants, AGRÈGE leur readiness) ; `PoolIntention` ~ `FloxEnv` (N enfants
+  uniformes). Nuance : le flux-controller n'a PAS de miroir (FloxEnv porte son statut) — nous ajoutons
+  l'adoption car on fait de l'adopt-first sur l'état SURVIVANT (miroir re-dérivé au cold-start).
+
+. **Existence = fait CLUSTER-level par providerID** — `∃ ≥1 node (n'importe quel pool) présent par
+  son providerID lxc:///<cluster>-<node>` ⇒ le cluster EXISTE. Généralise la garde actuelle
+  (control-plane pet seul) à TOUS les pools. `ClusterAdoption` (agrégat) porte l'existence = OR de la
+  présence par-pet sur tous les `PoolAdoption`. C'est LA garde anti-greenfield : quoi qu'on découvre,
+  ≥1 node ⇒ adopt-first, jamais un rival.
+. **Résout cluster-init vs join** (parqué) :
+  * cluster EXISTE (≥1 node présent) → pets absents JOIN (jamais de nouvel etcd) ;
+  * 0 node nulle part (vrai day-0) → greenfield, le 1er pet `control-node` fait `cluster-init` ;
+  * état cassé (worker présent, 0 control-node) → **Degraded** (pas de greenfield d'un CP rival).
+  Le providerID est le SSOT d'existence ET de matching.
+. **Greenfield = OPÉRATEUR-armé, jamais controller-décidé** — le controller n'abandonne jamais un
+  cluster survivant. `Degraded` = HOLD (surface + retry adopt), pas d'auto-réparation par
+  re-provision. La SEULE façon d'armer un vrai day-0 : l'opérateur **drop le(s) node(s) Incus** en cas
+  d'incident irrécupérable → existence retombe à 0 → le controller `cluster-init`. Human-in-the-loop ;
+  la reprise-par-recréation est une décision délibérée, pas une réaction du controller.
+. **Topologie de branches = un render PAR SUJET, une branche par cluster** (`manifests/<host>-<role>`,
+  rien de neuf = Model B) :
+  * `manifests/<host>-mgmt` = config/app mgmt + **les INTENTIONS du workload** (`ClusterIntention` +
+    N `PoolIntention`), via `workloadTargets` — les CR vivent là où tourne CAPI (le mgmt) ;
+  * `manifests/<host>-wrkld` = **profils par pool** (L1) + app stack (L2), consommés par les nodes +
+    le Flux du workload.
+  Impact décompo : `ClusterApiWorkloadManifestsUnit` émet désormais `ClusterIntention` + N
+  `PoolIntention` (au lieu du monolithe), toujours sur la branche mgmt.
+
+. **template vs profil — DEUX projections, DEUX places** (résout « le profil est-il une intention ? ») :
+  * **template** (par pool) = la forme CAPI qui DÉFINIT+launch le node (`LXCMachineTemplate` infra +
+    NIC vmnet ; `RKE2ControlPlane`/`RKE2ConfigTemplate` : versions, replicas, kube-vip, registration,
+    BYO-CA, `airGapped`, + l'invocation `install-rke2-config`). = **INTENTION** → `PoolIntention`
+    (branche mgmt). C'est ça qu'il faut au mgmt pour définir les nodes.
+  * **profil** (par pool) = le CONTENU config RKE2 (`config.yaml.d`) → **branche workload**, fetché au
+    boot par `install-rke2-config`. Pas nécessaire pour définir le node dans CAPI.
+  * le bootstrap du template est minimal + INVOQUE `install-rke2-config` → le template RÉFÉRENCE le
+    profil, ne le contient pas. (Garde la delivery uniforme standalone/in-cluster.)
+. **reachability = CLUSTER-level, portée par le `Cluster` CAPI** (`RemoteConnectionProbe`, déjà lu par
+  `clusterAccessible`). → `ClusterAdoption`. C'est LE signal « l'intention `ClusterIntention` est
+  réalisée + reachable ». Split : **présence = par pool** (`PoolAdoption`, providerID/`LXCMachine`) ;
+  **reachability = cluster** (`ClusterAdoption`). Gate de join des workers = lit la reachability
+  cluster. Adopted ⟺ reachable ET tous les pools Adopted.
+
+. **Config = concern du MANAGEMENT — servie depuis la branche du MANAGER** (renverse « profil
+  sur la branche workload »). Règle unifiée : `install-rke2-config` tire TOUJOURS depuis
+  `manifests/<mgmt>` (le cluster qui MANAGE le node). Workload → branche du parent mgmt ; root →
+  `manifests/bioskop-mgmt` = lui-même (config via seed-master → de lui-même, cohérent car c'est un
+  mgmt). Root = fixpoint self-managed. Le **render mgmt SYNTHÉTISE la config de ses intentions** :
+  itère ses workload targets, émet par `(cluster × pool)` le profil RKE2, à côté des CR d'intention,
+  sur `manifests/<mgmt>`. `RuntimeRke2ConfigManifestsUnit` : « sujet seul » → « sujet + workloadTargets ».
+  Branche workload = **app stack SEUL**. La couche template/profil se fond dans « tout sur la branche
+  mgmt » (intentions = CR appliqués par Flux ; profils = fragments fetchés par install-rke2-config).
+. **VÉRIF (ne casse rien) + 1 adaptation MANDATOIRE** — root inchangé (fetch sa propre branche ; seul
+  le layout → `<cluster>/<pool>/`) ; Flux ignore les fragments (`LOCAL_CONFIG`) ; aucun consommateur
+  workload-branch existant. MAIS : `install-rke2-config` globe TOUT aujourd'hui (sans filtre) → avec
+  ≥2 clusters sur la branche mgmt, le node mgmt installerait aussi la config workload → contamination.
+  → **filtre `(cluster, pool)` OBLIGATOIRE** (plus un confort). Layout `<cluster>/<pool>/` + filtre
+  atterrissent ensemble au prochain re-grow.
+
+. **★ MODÈLE CONFIG — CONVERGÉ (final ; supersede les itérations config ci-dessus qui ont oscillé)** :
+  * **Stockage** : config (ConfigMaps/Secrets, par `cluster × pool`) = **resources k8s VISIBLES** dans
+    le cluster mgmt (rendues sur `manifests/<mgmt>` + **Flux-appliquées**, PLUS de `LOCAL_CONFIG`).
+    `kubectl get cm,secret` sur le mgmt = panneau unique, rien caché. Le render mgmt les synthétise
+    pour lui-même + tous ses workload targets.
+  * **Delivery (mur pré-join)** : self (mgmt/root) = **git-fetch** `install-rke2-config` depuis sa
+    branche (read-token posé par seed-master) ; managed (workload) = **bootstrap-inject** —
+    seed-incluster LIT la resource k8s visible + l'injecte dans le `RKE2Config` CAPRKE2 (cloud-init),
+    PAS de git-fetch ni read-token côté workload.
+  * **Filtre `(cluster, pool)`** obligatoire : self git-fetch installe seulement SA config ; managed
+    inject sélectionne la config du workload. Per-node = oneshots locaux ; join token = CAPRKE2.
+  * **Cleanup uniforme** : Flux-prune (config + CR d'intention) + ownerRef-GC (CR-set CAPI sous
+    PoolIntention). Retirer de la source → tout prune. Greenfield = drop node Incus (opérateur).
+  * Branche workload `manifests/<host>-wrkld` = **app stack SEUL**.
+
+== Fédération (FUTUR, hors scope bioskop-wrkld) — Incus clustering pour partage d'image ?
+
+Idée : bioskop-nixos + nikopol-nixos forment UN cluster Incus (dqlite répliqué) → images/profils/
+réseaux partagés → node-base poussé une fois sur bioskop, dispo sur nikopol. Gain = partage d'image.
+
+Tension avec l'autonomie tier B :
+
+* **Couplage** — clustering = daemons couplés (dqlite, quorum raft). Tier B veut des hôtes AUTONOMES
+  (nikopol gère son wrkld en local ; seul le hop mgmt-of-mgmt traverse). Le clustering ré-introduit
+  une dépendance cross-host permanente.
+* **dqlite sur tailnet/CGNAT** — le raft veut des liens stables ; le roaming/CGNAT est fragile. Risqué.
+* **CAPN** — supporte-t-il des MEMBRES de cluster Incus (placement `--target`) ou seulement des
+  daemons standalone ? À VÉRIFIER.
+
+Alternatives découplées pour JUSTE l'image (préservent l'autonomie) :
+
+* `incus image copy bioskop:node-base nikopol:` — push explicite remote→remote ;
+* image server partagé / registry OCI — node-base publié une fois, pullé par chaque hôte.
+
+**VERDICT (tranché) : clustering Incus REJETÉ.** Le besoin n'est PAS de distribuer les nodes sur
+plusieurs serveurs Incus — au contraire, un cluster garde ses nodes sur UN hôte (principe déjà gravé :
+« a cluster never spans two remotes ; nodes = L2/L3 peers on one host's bridge »). Le clustering sert
+à distribuer/placer cross-membres → contraire au besoin + dangereux (quorum dqlite sur tailnet). Pour
+le partage d'image (si la fédération en a besoin) : **découplé** — `incus image copy` remote→remote ou
+un image-server/registry OCI, qui partage l'image SANS distribuer les nodes ni coupler les daemons.
+
+== À explorer ensuite (mécanique, non bloquant)
+* **Ref inter-CR** : le `Cluster` (owned by `ClusterIntention`) référence le `RKE2ControlPlane` (owned
+  by le `PoolIntention` control-node) — nom déterministe `<cluster>-control-plane`, donc pas de dép
+  runtime, juste une convention de nommage. Ordering ?
+* **ownerRef vs propagation** : FloxCatalog PROPAGE (relock token) ; nous, ownerRef cascade
+  (ClusterIntention→PoolIntention→CAPI) pour le GC + requeue ? ou propagation + agrégat ?
+// (render/ownership — TRANCHÉ, voir décision ci-dessous)

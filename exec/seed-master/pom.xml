@@ -240,15 +240,6 @@
       <artifactId>incus-edge</artifactId>
       <scope>runtime</scope>
     </dependency>
-    <!-- The bbox edge: embedded INTACT under META-INF/bundles and installed by OsgiRuntime. runtime
-         scope — seed-master never compiles against the edge impl; BboxStage resolves BboxReconciler
-         from the registry. The edge imports the (bundled) bbox client + gson, staged as carriers by
-         the closure. The edge MUST be embedded or the reconcile contact never publishes. -->
-    <dependency>
-      <groupId>io.seedmatic.rke2lab</groupId>
-      <artifactId>bbox-edge</artifactId>
-      <scope>runtime</scope>
-    </dependency>
     <!-- netplan-core: the @Component DefaultNetplanSynthesisService publishing
     NetplanSynthesisService.
          The incus-provision scion's network-view beat resolves it via @OsgiService (require); without
@@ -319,8 +310,8 @@
     </dependency>
     <!-- The domain SCION bundles (*-bdd): each carries the @Component SeedHandler that GROWS its
          runbook coordinate — WorktreeRunbookHandler serves RunbookCoordinate("worktree") (the first
-         crossing), BboxRunbookHandler serves RunbookCoordinate("bbox"), and so on for incus
-         (provision + reconcile), manifests (sub-sown by incus), systemd, cluster. The broker
+         crossing), and so on for incus (provision + reconcile), manifests (sub-sown by incus),
+         systemd, cluster. The broker
          resolves a grower by coordinate from the registry when the root sows a crossing; without the
          scion bundle staged + its SCR component active, DefaultSeedBroker.sow throws "no SeedHandler
          serves coordinate". runtime scope — seed-master never compiles against a scion; it speaks
@@ -329,11 +320,6 @@
     <dependency>
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>worktree-bdd</artifactId>
-      <scope>runtime</scope>
-    </dependency>
-    <dependency>
-      <groupId>io.seedmatic.rke2lab</groupId>
-      <artifactId>bbox-bdd</artifactId>
       <scope>runtime</scope>
     </dependency>
     <dependency>
@@ -564,10 +550,6 @@
     </dependency>
 
     <!-- test module dependencies -->
-    <dependency>
-      <groupId>io.seedmatic.rke2lab</groupId>
-      <artifactId>bbox-bdd-test</artifactId>
-    </dependency>
     <dependency>
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>manifests-core-test</artifactId>

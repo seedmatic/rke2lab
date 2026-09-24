@@ -172,10 +172,20 @@ public final class RuntimeRke2ConfigManifestsUnit extends AbstractManifestsUnit 
   /**
    * The cert's SAN set, a cluster-wide SUPERSET valid for every control-plane node regardless of
    * which one this render's node is: the VIP (kube-vip binds the apiserver here; CAPI's
-   * clustercache dials it), every canonical node's mDNS {@code .local} FQDN (kubectl/operator dial
-   * {@code <cluster>-<node>.local}; rke2 auto-adds the bare hostname but NOT the FQDN), the
-   * node-network gateway + LAN host address, and the loopback set. rke2 auto-adds each node's own
-   * IP.
+   * clustercache dials it), every canonical node's fabric FQDN (rke2 auto-adds the bare hostname
+   * but NOT the FQDN), the node-network gateway, and the loopback set. rke2 auto-adds each node's
+   * own IP.
+   *
+   * <p>The VIP is what almost everything dials — the deterministic entry is the management
+   * cluster's fixed address, and from there each cluster is reached by ITS VIP and its nodes are
+   * read off its own API. The FQDN covers the one step that precedes all of that: first contact
+   * with a node before any cluster answers. It replaces an mDNS {@code .local} name, which could
+   * only ever have been resolved by an asker on the same L2 as the node — no longer true once a
+   * node lives in the fabric.
+   *
+   * <p>The node's fabric address joins them only when a reservation can bind to it ({@code
+   * fabricMacIsPredictable}). For a cattle cluster it would be a SAN for an address nothing ever
+   * answers on — which is what the previous per-node LAN address was, for every workload node.
    */
   private static List<Object> tlsSanSuperset(
       final String cluster, final ClusterNetworkBlueprint blueprint) {
@@ -186,11 +196,13 @@ public final class RuntimeRke2ConfigManifestsUnit extends AbstractManifestsUnit 
     sans.add("127.0.0.1");
     sans.add(blueprint.vip().vipHostInetaddr().getHostAddress());
     sans.add(blueprint.nodeNetwork().nodeGatewayInetaddr().getHostAddress());
-    sans.add(blueprint.lan().hostInetaddr().getHostAddress());
+    if (blueprint.fabricMacIsPredictable()) {
+      sans.add(blueprint.fabric().hostInetaddr().getHostAddress());
+    }
     for (final String node : ClusterNetworkBlueprint.CANONICAL_NODE_NAMES) {
       final ClusterNetworkBlueprint per =
           ClusterNetworkBlueprint.builder().cluster(cluster).node(node).deriveRecipeModel().build();
-      sans.add(per.names().nodeMdnsFqdn());
+      sans.add(per.names().nodeFabricFqdn());
     }
     return List.copyOf(sans);
   }

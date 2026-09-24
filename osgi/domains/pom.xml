@@ -27,7 +27,6 @@
     <module>ndh</module>
     <module>incus</module>
     <module>cluster-pki</module>
-    <module>bbox</module>
     <module>worktree</module>
     <module>auth</module>
     <module>ghapp</module>

@@ -21,7 +21,7 @@ public record ClusterNetworkBlueprint(
     NodeNetworkPlan nodeNetwork,
     VipPlan vip,
     LoadBalancerPlan loadBalancer,
-    LanPlan lan,
+    FabricPlan fabric,
     WanPlan wan,
     InterfacePlan interfaces,
     VlanPlan vlan,
@@ -140,6 +140,27 @@ public record ClusterNetworkBlueprint(
         vip().vipHostInetaddr().getHostAddress() + "/32", loadBalancer().lbCidr().toString());
   }
 
+  /**
+   * Is this node's fabric hwaddr one this blueprint PREDICTS — and therefore is {@code
+   * fabric().hostInetaddr()} an address a {@code dhcp-host} reservation can actually bind?
+   *
+   * <p>Only a HOST-GROWN node carries the {@code 10:66:6a:4c:<clusterId>:<nodeId>} hwaddr posed by
+   * the grow. A workload cluster's nodes are CAPN-provisioned cattle whose hwaddr the provider
+   * mints — its {@code LXCMachineTemplate} is attached to the control plane and so is shared by
+   * every node it makes, leaving nothing to individuate. Measured 2026-09-23: {@code
+   * bioskop-wrkld-control-plane-899lr} came up on an ordinary lease with a hwaddr sharing only the
+   * OUI. So a reservation for a cattle node describes a match that can never happen, and holding an
+   * address nothing will claim is worse than useless — it consumes the carve.
+   *
+   * <p>This is the addressing law, so it lives here rather than in the consumer that asks for the
+   * reservations. It used to live in the bbox domain's row enumerator, which is what made that
+   * domain's scope {@code <host>-mgmt} only; the move follows the reservations themselves, from the
+   * bbox's DHCP to the bare-metal's.
+   */
+  public boolean fabricMacIsPredictable() {
+    return ClusterRole.of(cluster().name()) == ClusterRole.MGMT;
+  }
+
   /** Cilium BGP {@code localASN} — {@code 64512 + clusterId}, anchored on {@link ClusterAsn}. */
   public int bgpLocalAsn() {
     return ClusterAsn.RKE2_CLUSTER.number() + cluster().id();
@@ -156,11 +177,21 @@ public record ClusterNetworkBlueprint(
    */
   public static final String GATEWAY_ADDRESS = "10.80.0.1";
 
+  /**
+   * The fabric tier's first two octets, and the width of one bare-metal's slice in third-octet
+   * slots. A slice is {@code 172.16.<hostId*16>.0/20}: slot 0 is ndh's host infra, slots 1+roleId
+   * are the clusters, slot 8 is the vz {@code /30}. One bit of the third octet therefore encodes
+   * the link — offset &lt; 8 is on the bare-metal's bridge, ≥ 8 is another link.
+   */
+  private static final String FABRIC_PREFIX = "172.16";
+
+  private static final int FABRIC_SLOTS_PER_HOST = 16;
+
   private static final int ROLE_NODE = 0x20;
   private static final int ROLE_VIP = 0x30;
   private static final int ROLE_LB = 0x40;
-  private static final int ROLE_LAN_NODE = 0x50;
-  private static final int ROLE_LAN_LB = 0x60;
+  private static final int ROLE_FABRIC_NODE = 0x50;
+  private static final int ROLE_FABRIC_LB = 0x60;
 
   private static Cidr ula64(int clusterId, int role) {
     return Cidr.parse(String.format("%s:%02x%02x::/64", ULA_PREFIX, clusterId, role));
@@ -200,19 +231,43 @@ public record ClusterNetworkBlueprint(
     final Cidr vipCidr = Cidr.parse("10.80." + vipThirdOctet + ".0/24");
     final Cidr lbCidr = Cidr.parse("10.80." + hostThirdOctet + ".64/26");
 
-    // LAN: the HIGH half of 192.168.1.0/24 (.128-.255) — the LOW half is the home network's (DHCP +
-    // devices; gateway .254). Carved asymmetrically by role from base = 128 + hostId*48 +
-    // roleId*16:
-    // single-node mgmt takes a /28 (node /29 + lb /29); multi-node wrkld a /27 (node /28 =
-    // host(3)..
-    // host(14) = 4 control + 8 workers, + lb /29). Real clusters fill .128-.223 (bioskop hostId 0,
-    // nikopol hostId 1); the reserved TEST host (hostId 2 -> base .224) gives a blank/unknown
-    // identity its own valid slice instead of overflowing. A genuinely unknown host fails fast in
-    // hostId().
-    final boolean wrkldRole = roleId == 1;
-    final int lanSliceBase = 128 + hostId * 48 + roleId * 16;
-    final Cidr lanNodeCidr = Cidr.parse("192.168.1." + lanSliceBase + (wrkldRole ? "/28" : "/29"));
-    final Cidr lanLbCidr = Cidr.parse("192.168.1." + (lanSliceBase + (wrkldRole ? 16 : 8)) + "/29");
+    // FABRIC: one /24 per cluster inside its bare-metal's /20, at slot 1+roleId — slot 0 being
+    // ndh's
+    // host infra (the bridge gateway, the dynamic pool, the vz /30 at slot 8). Third octet reads as
+    // hostId*16 + slot, so the address says which machine and which cluster it belongs to.
+    //
+    // This REPLACES a slice of the home network (the high half of 192.168.1.0/24, carved
+    // asymmetrically by role from 128 + hostId*48 + roleId*16). That carve was contorted by a
+    // constraint that no longer exists: it had to dodge the bbox's DHCP pool and the family's
+    // devices, in a /24 rke2lab did not own. The fabric /20 IS ours, so each cluster takes a whole
+    // /24 and the asymmetry goes. That rke2lab emits nothing on the home tier is the tier-purity
+    // invariant this buys — see docs/architecture/atlas/netplan.adoc.
+    //
+    // The /26s are ALLOCATIONS, not broadcast domains: one bridge per bare-metal carries the whole
+    // /21, so a node's prefix and gateway come from DHCP (the bridge's own, in slot 0). The
+    // reserved
+    // TEST host (hostId 2) gets slot 33/34, a valid slice, rather than overflowing; a genuinely
+    // unknown host fails fast in hostId().
+    //
+    // The per-node address is derived for EVERY node, but it is only HELD where a reservation can
+    // bind — see fabricMacIsPredictable(). That is not a hedge, it is the same split the bbox rows
+    // encoded: a host-grown node carries the hwaddr this blueprint poses, a CAPN node's is minted
+    // by
+    // the provider because the LXCMachineTemplate is attached to the control plane and therefore
+    // SHARED by every node it makes.
+    //
+    // What changes with the move is the AUTHORITY, not the information. The reservation leaves the
+    // bbox — a DHCP server on a network rke2lab had no title to allocate in — for the bare-metal's
+    // own dnsmasq, which we run. The same dnsmasq answers the NAME, so address and name stop being
+    // served by two different things (bbox for DHCP, avahi for mDNS), which is the split that made
+    // an mDNS name necessary in the first place.
+    //
+    // A cattle node is found by NAME: dns.mode=dynamic registers `<cluster>-<node>.<host>` from its
+    // own DHCP hostname, which is what serves the BOOTSTRAP direction where the cluster cannot yet
+    // be reached. Past that first contact the cluster is authoritative about its own nodes.
+    final int fabricThirdOctet = hostId * FABRIC_SLOTS_PER_HOST + 1 + roleId;
+    final Cidr fabricNodeCidr = Cidr.parse(FABRIC_PREFIX + "." + fabricThirdOctet + ".0/26");
+    final Cidr fabricLbCidr = Cidr.parse(FABRIC_PREFIX + "." + fabricThirdOctet + ".64/26");
 
     // Each host derives from the CIDR we already hold — ask the network for its host, instead of
     // rebuilding and re-parsing an address string that re-encodes the same octets.
@@ -223,12 +278,14 @@ public record ClusterNetworkBlueprint(
     final InetAddress vipGatewayInetaddr = vipCidr.gateway();
     final InetAddress vipHostInetaddr = vipCidr.host(10);
 
-    final InetAddress lanHostInetaddr = lanNodeCidr.host(3 + nodeId);
-    // The fixed LAN gateway lies outside the allocated /27 slice — a foreign address, resolved by a
-    // Cidr in whose 192.168.1.0 space it lives (address manipulation is part of the type's role).
-    final InetAddress lanGatewayInetaddr = lanNodeCidr.address("192.168.1.254");
-    final InetAddress lanHeadscaleInetaddr = lanLbCidr.host(1);
-    final InetAddress lanTailscaleInetaddr = lanLbCidr.host(2);
+    final InetAddress fabricHostInetaddr = fabricNodeCidr.host(3 + nodeId);
+    // The fabric gateway is the bare-metal's bridge address, in slot 0: inside the /21 the bridge
+    // carries, outside this cluster's /24. A foreign address resolved by a Cidr in whose space it
+    // lives (address manipulation is part of the type's role) — the same shape the bbox's .254 had.
+    final InetAddress fabricGatewayInetaddr =
+        fabricNodeCidr.address(FABRIC_PREFIX + "." + (hostId * FABRIC_SLOTS_PER_HOST) + ".1");
+    final InetAddress fabricHeadscaleInetaddr = fabricLbCidr.host(1);
+    final InetAddress fabricTailscaleInetaddr = fabricLbCidr.host(2);
 
     final String wanDhcpRange =
         "10.80."
@@ -244,9 +301,14 @@ public record ClusterNetworkBlueprint(
     final MacAddress wanHostMacaddr =
         MacAddress.parse(
             String.format("52:54:00:%02x:%02x:%02x", clusterId, nodeType.numericCode(), nodeId));
-    final MacAddress lanHostMacaddr =
+    // Honoured only on the STANDALONE node, which attaches its own inline NICs; a CAPN node's
+    // hwaddr
+    // is incus-minted because its template is shared (see the fabric derivation above). Kept
+    // because
+    // the standalone path is real, not as a promise about CAPN nodes.
+    final MacAddress fabricHostMacaddr =
         MacAddress.parse(String.format("10:66:6a:4c:%02x:%02x", clusterId, nodeId));
-    final MacAddress lanBridgeMacaddr =
+    final MacAddress fabricBridgeMacaddr =
         MacAddress.parse(String.format("02:00:00:bb:%02x:%02x", clusterId, nodeId));
 
     // IPv6 ULA mirror (see ULA_PREFIX): /48 super ⊃ /56 cluster ⊃ /64 per role, each host
@@ -256,17 +318,17 @@ public record ClusterNetworkBlueprint(
     final Cidr nodeCidr6 = ula64(clusterId, ROLE_NODE);
     final Cidr vipCidr6 = ula64(clusterId, ROLE_VIP);
     final Cidr lbCidr6 = ula64(clusterId, ROLE_LB);
-    final Cidr lanNodeCidr6 = ula64(clusterId, ROLE_LAN_NODE);
-    final Cidr lanLbCidr6 = ula64(clusterId, ROLE_LAN_LB);
+    final Cidr fabricNodeCidr6 = ula64(clusterId, ROLE_FABRIC_NODE);
+    final Cidr fabricLbCidr6 = ula64(clusterId, ROLE_FABRIC_LB);
 
     final InetAddress nodeGateway6 = ula6(clusterId, ROLE_NODE, nodeGatewayInetaddr);
     final InetAddress nodeHost6 = ula6(clusterId, ROLE_NODE, nodeHostInetaddr);
     final InetAddress vipGateway6 = ula6(clusterId, ROLE_VIP, vipGatewayInetaddr);
     final InetAddress vipHost6 = ula6(clusterId, ROLE_VIP, vipHostInetaddr);
-    final InetAddress lanHost6 = ula6(clusterId, ROLE_LAN_NODE, lanHostInetaddr);
-    final InetAddress lanGateway6 = ula6(clusterId, ROLE_LAN_NODE, lanGatewayInetaddr);
-    final InetAddress lanHeadscale6 = ula6(clusterId, ROLE_LAN_LB, lanHeadscaleInetaddr);
-    final InetAddress lanTailscale6 = ula6(clusterId, ROLE_LAN_LB, lanTailscaleInetaddr);
+    final InetAddress fabricHost6 = ula6(clusterId, ROLE_FABRIC_NODE, fabricHostInetaddr);
+    final InetAddress fabricGateway6 = ula6(clusterId, ROLE_FABRIC_NODE, fabricGatewayInetaddr);
+    final InetAddress fabricHeadscale6 = ula6(clusterId, ROLE_FABRIC_LB, fabricHeadscaleInetaddr);
+    final InetAddress fabricTailscale6 = ula6(clusterId, ROLE_FABRIC_LB, fabricTailscaleInetaddr);
 
     return new ClusterNetworkBlueprint(
         new ClusterRef(clusterName, clusterId),
@@ -282,27 +344,27 @@ public record ClusterNetworkBlueprint(
             nodeCidr, nodeGatewayInetaddr, nodeHostInetaddr, nodeCidr6, nodeGateway6, nodeHost6),
         new VipPlan(vipCidr, vipGatewayInetaddr, vipHostInetaddr, vipCidr6, vipGateway6, vipHost6),
         new LoadBalancerPlan(lbCidr, lbCidr6),
-        new LanPlan(
-            lanNodeCidr,
-            lanLbCidr,
-            lanHostInetaddr,
-            lanGatewayInetaddr,
-            lanHeadscaleInetaddr,
-            lanTailscaleInetaddr,
-            lanHostMacaddr,
-            lanBridgeMacaddr,
-            lanNodeCidr6,
-            lanLbCidr6,
-            lanHost6,
-            lanGateway6,
-            lanHeadscale6,
-            lanTailscale6),
+        new FabricPlan(
+            fabricNodeCidr,
+            fabricLbCidr,
+            fabricHostInetaddr,
+            fabricGatewayInetaddr,
+            fabricHeadscaleInetaddr,
+            fabricTailscaleInetaddr,
+            fabricHostMacaddr,
+            fabricBridgeMacaddr,
+            fabricNodeCidr6,
+            fabricLbCidr6,
+            fabricHost6,
+            fabricGateway6,
+            fabricHeadscale6,
+            fabricTailscale6),
         new WanPlan(wanDhcpRange, wanHostMacaddr),
         new InterfacePlan(nodeName + "-lan0", nodeName + "-vmnet0", "lan0", "vmnet0"),
         new VlanPlan(100, "rke2-vlan"),
         new NamePlan(
             clusterName + "-" + nodeName,
-            clusterName + "-" + nodeName + ".local",
+            clusterName + "-" + nodeName + "." + hostOf(clusterName),
             // The incus/nixos daemon host = <host>-nixos (the bare host, not the <host>-<role>
             // cluster). The operator-facing authority is config's rke2lab:cluster:remoteIncus; this
             // is the netplan-domain mirror derived from the same bare host.
@@ -332,10 +394,10 @@ public record ClusterNetworkBlueprint(
         + vip.vipCidr()
         + ",lb:"
         + loadBalancer.lbCidr()
-        + ",lan-node:"
-        + lan.nodeCidr()
-        + ",lan-lb:"
-        + lan.lbCidr();
+        + ",fabric-node:"
+        + fabric.nodeCidr()
+        + ",fabric-lb:"
+        + fabric.lbCidr();
   }
 
   /** The bare host token — the {@code <host>} of {@code <host>-<role>} (up to the first dash). */
@@ -477,7 +539,23 @@ public record ClusterNetworkBlueprint(
 
   public record LoadBalancerPlan(Cidr lbCidr, Cidr lbCidr6) {}
 
-  public record LanPlan(
+  /**
+   * The cluster's plane in the FABRIC tier — what is reachable across bare-metals, and the tier a
+   * node now lives on instead of the home network.
+   *
+   * <p>{@code nodeCidr} is an ALLOCATION, not an interface prefix: one bridge per bare-metal
+   * carries the whole /21, so a node's prefix and gateway come from DHCP. This /26 holds only
+   * STATIC reservations, which is why no dynamic range is carved beside them — the bare-metal's
+   * pool lives in slot 0 (ndh's {@code dynamicCidr}), one broadcast domain below, and cannot be
+   * subdivided per cluster: dnsmasq has no discriminator to bind a cattle node to its own cluster's
+   * window.
+   *
+   * <p>Whether {@code hostInetaddr} is actually HELD therefore depends on {@link
+   * ClusterNetworkBlueprint#fabricMacIsPredictable()}: a reservation binds by MAC, and only a
+   * host-grown node has one this blueprint predicts. A cattle node draws from slot 0 instead and is
+   * found by NAME, not by address.
+   */
+  public record FabricPlan(
       Cidr nodeCidr,
       Cidr lbCidr,
       InetAddress hostInetaddr,
@@ -517,10 +595,17 @@ public record ClusterNetworkBlueprint(
   /**
    * The identity-derived NAMES the cluster resolves nodes and infra hosts by — the single source
    * for hostnames domains otherwise re-concatenate. {@code nodeHostname} is the bare {@code
-   * <cluster>-<node>}; {@code nodeMdnsFqdn} its mDNS name ({@code .local}, how a same-LAN host —
-   * e.g. the seed's systemd probe — reaches it); {@code nixosHost} the {@code <cluster>-nixos}
-   * builder/daemon host. Ports are NOT here: a port is a fixed service constant, not
-   * identity-derived — each domain pairs a name from here with its own port.
+   * <cluster>-<node>}; {@code nodeFabricFqdn} the same name under its bare-metal's zone, served by
+   * that bare-metal's dnsmasq; {@code nixosHost} the {@code <cluster>-nixos} builder/daemon host.
+   * Ports are NOT here: a port is a fixed service constant, not identity-derived — each domain
+   * pairs a name from here with its own port.
+   *
+   * <p>{@code nodeFabricFqdn} REPLACES an mDNS {@code .local} name, and the swap is one of
+   * authority, not spelling. A node is no longer on the home L2, so mDNS — which is link-local and
+   * never routed — could only ever have answered a same-LAN asker. Its bare-metal's dnsmasq
+   * registers the name from the node's own DHCP hostname and is reachable over the tailnet, so it
+   * serves the asker who cannot yet reach the cluster. That is the only audience needing it: once
+   * the cluster answers, the cluster is authoritative about its own nodes.
    *
    * <p>The infra host has THREE forms because it has three audiences, and they are not
    * interchangeable — the choice is "who resolves it", never taste:
@@ -537,7 +622,7 @@ public record ClusterNetworkBlueprint(
    * </ul>
    */
   public record NamePlan(
-      String nodeHostname, String nodeMdnsFqdn, String nixosHost, String nixosLanFqdn) {}
+      String nodeHostname, String nodeFabricFqdn, String nixosHost, String nixosLanFqdn) {}
 
   /**
    * Canonical cluster topology: 1 master, 3 control nodes (peers), 2 worker nodes.

@@ -29,7 +29,7 @@ import org.osgi.service.log.LogLevel;
  * passenger registers on the shared bundle loader are the same Class the scenario reads, nothing
  * crosses to the host JVM. The one package still system-exported here is {@code seed.broker.port}
  * (RunGate + SeedEnvelope — the one true host↔OSGi membrane, published by the host in prod). This
- * is the in-container scion pattern, the twin of {@code BboxBddInContainerTest}.
+ * is the in-container scion pattern, the twin of {@code IncusBddInContainerTest}.
  *
  * <p>Each in-container test comes back as an encoded {@link String} mapped to one {@link
  * DynamicTest}, so VSCode shows a node per test and a single failure fails alone.

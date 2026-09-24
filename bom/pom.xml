@@ -45,7 +45,6 @@
     <!-- guava-bom version — see the dependencyManagement import below for the transitive-conflict
          rationale (pulumi 32.1.2 vs jGiven 33.4.8). -->
     <guava.version>33.6.0-jre</guava.version>
-    <java-bbox-api-client.version>0.2.1</java-bbox-api-client.version>
     <jackson.version>2.22.1</jackson.version>
     <asm.version>9.10.1</asm.version>
     <!-- networknt is the schema-conformance half of the broker contract (victools generates the
@@ -321,13 +320,6 @@
         <version>${guava.version}</version>
         <type>pom</type>
         <scope>import</scope>
-      </dependency>
-      <!-- The Bbox router client the bbox-edge embeds (translated home↔library, no type crosses the
-           seam). An external artifact, so its version belongs here in the third-party catalogue. -->
-      <dependency>
-        <groupId>io.seedmatic</groupId>
-        <artifactId>java-bbox-api-client</artifactId>
-        <version>${java-bbox-api-client.version}</version>
       </dependency>
       <dependency>
         <groupId>org.eclipse.jgit</groupId>

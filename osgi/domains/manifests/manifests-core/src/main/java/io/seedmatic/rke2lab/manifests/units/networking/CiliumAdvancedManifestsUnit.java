@@ -95,19 +95,18 @@ public final class CiliumAdvancedManifestsUnit extends AbstractManifestsUnit {
                                 "cilium.io|CiliumLoadBalancerIPPool|default|lan"))
                         .build())
                 .build());
-    // The LAN LB pool is this cluster's per-cluster lanLbCidr /29 (holds lanHeadscale = host(1) and
-    // lanTailscale = host(2)) — NOT a literal. The old 192.168.1.192/27 matched no cluster's /29
-    // (the four are .136/.160/.184/.208/29) and, being rendered identically for every cluster,
-    // would
-    // have every cluster claim .192-.223 on the SHARED home LAN → collision. Per-cluster /29s do
-    // not
-    // overlap.
+    // The externally-reachable LB pool is this cluster's fabric lbCidr /26 (holds headscale =
+    // host(1) and tailscale = host(2)) — NOT a literal. It was a /29 on the shared home LAN, and
+    // before that the literal 192.168.1.192/27, which matched no cluster's slice and — being
+    // rendered identically for every cluster — had all four claim the same range on a network
+    // rke2lab did not own. Per-cluster slots inside this bare-metal's /20 cannot overlap by
+    // construction, and unlike the home LAN the range is ours to allocate.
     lan.addJsonPatch(
         JsonPatch.add(
             "/spec",
             Map.of(
                 "blocks",
-                List.of(Map.of("cidr", blueprint.lan().lbCidr().toString())),
+                List.of(Map.of("cidr", blueprint.fabric().lbCidr().toString())),
                 "serviceSelector",
                 Map.of("matchLabels", Map.of("io.cilium/lb-ipam-pool", "lan")))));
 

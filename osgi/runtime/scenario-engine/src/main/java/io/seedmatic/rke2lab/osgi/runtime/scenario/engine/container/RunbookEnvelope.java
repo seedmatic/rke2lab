@@ -7,9 +7,9 @@ import java.util.List;
 /**
  * The whole product of an in-container scenario run, serialised as one JSON String across the realm
  * boundary — the flat form the {@code GenericRunbookHandler} hands back through the broker's door.
- * It replaces the five per-domain {@code *BddScenarios.RunbookEnvelope} copies (bbox, cluster,
- * systemd, incus, manifests) that were byte-for-byte identical: one record, in the engine's
- * exported {@code .container} package the domains already depend on.
+ * It replaces the per-domain {@code *BddScenarios.RunbookEnvelope} copies (cluster, systemd, incus,
+ * manifests) that were byte-for-byte identical: one record, in the engine's exported {@code
+ * .container} package the domains already depend on.
  *
  * <p>Neither half can cross the realm boundary LIVE: the jGiven {@code ReportModel} is loaded by
  * the scion bundle's loader (it would {@code ClassCastException} on the flat host loader), and a

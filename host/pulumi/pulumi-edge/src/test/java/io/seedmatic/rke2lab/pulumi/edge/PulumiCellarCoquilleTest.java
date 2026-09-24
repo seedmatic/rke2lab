@@ -25,7 +25,7 @@ import org.junit.jupiter.api.Test;
  */
 class PulumiCellarCoquilleTest {
 
-  private static final String COORDINATE = "bbox-facts";
+  private static final String COORDINATE = "incus-facts";
 
   // No backend: the coquille codec (shell/unshell) never touches the file backend — it is pure.
   private final PulumiCellar cellar = new PulumiCellar(Optional.empty(), () -> false, msg -> {});
@@ -35,19 +35,19 @@ class PulumiCellarCoquilleTest {
     return new Trail(
         List.of(
             new SourceCrumb("worktree", "run-provenance", "abc123", true),
-            new SourceCrumb("bbox", COORDINATE, "abc123", true)));
+            new SourceCrumb("incus", COORDINATE, "abc123", true)));
   }
 
   @Test
   void aClearValueRoundTripsWithItsDomainAndTrailAndTombstoneFalse() {
     final Trail trail = sampleTrail();
     final Map<String, Object> shell =
-        cellar.shell("bbox", COORDINATE, trail, false, "{\"box\":\"nikopol\"}");
+        cellar.shell("incus", COORDINATE, trail, false, "{\"box\":\"nikopol\"}");
 
     final Shelved shelved = cellar.unshell(COORDINATE, shell);
     final SeedEnvelope restored = shelved.envelope();
 
-    assertEquals("bbox", restored.domain(), "the domain survives the durable round-trip");
+    assertEquals("incus", restored.domain(), "the domain survives the durable round-trip");
     assertEquals(COORDINATE, restored.coordinate());
     assertEquals("{\"box\":\"nikopol\"}", restored.payload());
     assertEquals(trail, restored.trail(), "the fil d'Ariane survives clear, full chain preserved");
@@ -61,7 +61,7 @@ class PulumiCellarCoquilleTest {
     // passphrase.
     final String sealed = "cellar:sealed:v1:c2VhbGVkLWJsb2I=";
     final Trail trail = sampleTrail();
-    final Map<String, Object> shell = cellar.shell("bbox", COORDINATE, trail, false, sealed);
+    final Map<String, Object> shell = cellar.shell("incus", COORDINATE, trail, false, sealed);
 
     final Shelved shelved = cellar.unshell(COORDINATE, shell);
 
@@ -82,7 +82,7 @@ class PulumiCellarCoquilleTest {
 
   @Test
   void tamperingTheClearShellFailsTheMac() {
-    final Map<String, Object> shell = cellar.shell("bbox", COORDINATE, sampleTrail(), false, "{}");
+    final Map<String, Object> shell = cellar.shell("incus", COORDINATE, sampleTrail(), false, "{}");
     // Rewrite the domain UNDER the same MAC — the sops move the binding exists to catch.
     shell.put("domain", "attacker");
 
@@ -95,7 +95,7 @@ class PulumiCellarCoquilleTest {
   @Test
   void tamperingThePayloadUnderTheSameTrailFailsTheMac() {
     final Map<String, Object> shell =
-        cellar.shell("bbox", COORDINATE, sampleTrail(), false, "{\"box\":\"nikopol\"}");
+        cellar.shell("incus", COORDINATE, sampleTrail(), false, "{\"box\":\"nikopol\"}");
     // Swap the payload while leaving the trail intact — the exact "reveal notices nothing" attack.
     shell.put("payload", "{\"box\":\"attacker\"}");
 
@@ -108,11 +108,14 @@ class PulumiCellarCoquilleTest {
   @Test
   void movingACoquilleToAnotherCaseFailsTheMac() {
     // The coordinate (the output name) is part of the bound characterisation.
-    final Map<String, Object> shell = cellar.shell("bbox", COORDINATE, sampleTrail(), false, "{}");
+    final Map<String, Object> shell = cellar.shell("incus", COORDINATE, sampleTrail(), false, "{}");
 
+    // ⚠️ This name MUST differ from COORDINATE — the whole assertion is that a coquille does not
+    // survive being read under another one. A rename that collapsed the two would turn this into a
+    // tautology that passes for the wrong reason (and did, once).
     assertThrows(
         SecurityException.class,
-        () -> cellar.unshell("incus-facts", shell),
+        () -> cellar.unshell("cluster-facts", shell),
         "a coquille read under a different coordinate fails the MAC");
   }
 }

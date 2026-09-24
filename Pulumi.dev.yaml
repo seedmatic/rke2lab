@@ -80,11 +80,5 @@ config:
   rke2lab:entryGate:
     cleanWorktree:
       required: "false"
-  rke2lab:bbox:
-    # The router contact (uri + password) is joined from .secrets:lan.bbox by BboxConfig's
-    # @SecretJoin — the merge directive lives on the record, not here. This section carries only
-    # the reconcile policy; ConfigLoader deep-merges the secret subtree at bind time.
-    reconcile:
-      failOnError: "true"
   rke2lab:hostAsset:
     rotationRetentionCount: "3"

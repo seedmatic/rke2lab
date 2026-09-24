@@ -51,7 +51,7 @@ public final class GrowNetworkResolver {
               vmnetBridgeConfig(coLocated, coLocatedBlueprint)));
     }
     return new GrowNetworkView(
-        grown.lan().hostMacaddr().value(),
+        grown.fabric().hostMacaddr().value(),
         grown.wan().hostMacaddr().value(),
         grown.vmnetBridgeName(),
         clusterBridges);

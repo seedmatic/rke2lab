@@ -85,8 +85,8 @@ import org.junit.jupiter.api.extension.RegisterExtension;
  * host-cellar-realisation CORRECTION 2026-07-14; the heavy Pulumi-bound instance grow stays
  * host-side). Not a {@code -test} fragment (it is live seeding logic).
  *
- * <p>The bbox/systemd/cluster twin, MODE-BLIND: its collaborators are INJECTED from its OWN
- * bundle's registry by the {@link OsgiService} bridge — the {@link ImageBuilder}, the {@link
+ * <p>The systemd/cluster twin, MODE-BLIND: its collaborators are INJECTED from its OWN bundle's
+ * registry by the {@link OsgiService} bridge — the {@link ImageBuilder}, the {@link
  * io.seedmatic.rke2lab.seed.broker.port.SeedBroker} (to consult manifests), and, on a failure, the
  * doctor's {@link ConsultingService} (an optional snapshot). It injects NO {@code RunGate}: the
  * frontier reads the ambient gate once and hands it the cultivating or surveying {@link
@@ -648,7 +648,7 @@ public class IncusProvisionScenario
 
     /**
      * The scion harvests AND stores — the reversal made concrete (§ host-cellar-realisation,
-     * every-scion-contributes), the twin of the bbox scion's {@code the_harvest_is_stored}. It
+     * every-scion-contributes), the twin of every other scion's {@code the_harvest_is_stored}. It
      * folds the prep INTENTION into an {@link IncusHarvest} — the {@link
      * ImageBuilder#recipeDigest() recipe digest} (stable across a closed gate, the host's
      * image-cache key) and the {@code soil} the manifests tree was cultivated under — and stores it

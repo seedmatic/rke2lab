@@ -5,7 +5,7 @@ import java.util.List;
 
 /**
  * A scenario that RAISED doctor consultations the outbound channel harvests alongside its runbook —
- * the pull twin of {@link CellarReceiver} (which is pushed IN). A fork-B scenario (bbox · cluster ·
+ * the pull twin of {@link CellarReceiver} (which is pushed IN). A fork-B scenario (cluster ·
  * incus-provision · systemd) consults its own doctor on a refused/failed row and holds the returned
  * {@link SeedEnvelope}s; {@link ScenarioOutcomeExtension} PULLS them at the run boundary (it
  * already pulls the runbook from jGiven's {@code ScenarioHolder}), so no static holder crosses the
