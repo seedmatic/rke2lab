@@ -44,12 +44,9 @@ spec:
     workspaces:
     - name: source
       workspace: source
-    - name: maven-cache
-      workspace: maven-cache
     - name: basic-auth
       workspace: basic-auth
   workspaces:
   - name: source
-  - name: maven-cache
   - name: basic-auth
     optional: true

@@ -13,4 +13,5 @@ spec:
   resources:
     requests:
       storage: 4Gi
-  storageClassName: openebs-zfs-shared
+  storageClassName: openebs-zfs-persist
+  volumeName: maven-cache

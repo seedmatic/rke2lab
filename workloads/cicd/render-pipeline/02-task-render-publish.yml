@@ -14,6 +14,24 @@ spec:
   - name: node
     type: string
   steps:
+  - image: rke2lab/flox-carrier:0.1.0
+    name: cache-prepare
+    script: |
+      #!/usr/bin/env bash
+      set -euxo pipefail
+      mkdir -p "/var/cache/rke2lab/maven/base/repository" "/var/cache/rke2lab/maven/base/build-cache"
+      mkdir -p "/var/cache/rke2lab/maven/incoming/$(context.taskRun.name)"
+      : "Drop inboxes older than a day — the residue of renders that failed before publishing. No find(1): toolchains/kube carries coreutils, and find lives in findutils; a bash glob plus stat is the same job without widening a shared toolchain for one caller."
+      now="$(date +%s)"
+      for inbox in "/var/cache/rke2lab/maven"/incoming/*/; do
+        [ -d "$inbox" ] || continue
+        if [ "$(( now - $(stat -c %Y "$inbox") ))" -gt 86400 ]; then
+          rm -rf "$inbox"
+        fi
+      done
+    volumeMounts:
+    - mountPath: /var/cache/rke2lab/maven
+      name: maven-cache
   - env:
     - name: RKE2LAB_SIGNING_KEY
       valueFrom:
@@ -39,8 +57,12 @@ spec:
         export NIX_CONFIG="${NIX_CONFIG:-}"$'\n'"access-tokens = github.com=$RKE2LAB_PUSH_TOKEN"
       fi
       set -x
-      : "The maven-cache PVC is the cache ROOT: repository/ AND build-cache/ side by side. M2_REPO points at repository; the render app derives MAVEN_BUILD_CACHE from its dirname (the PVC), so the build cache persists beside the repo, making renders incremental across pushes"
-      export M2_REPO="$(workspaces.maven-cache.path)/repository"
+      : "OVERLAY over the cache: everyone READS the shared base, only the end of the run WRITES it. M2_REPO names the base because the flake bakes it as maven.repo.local.tail (a READ-THROUGH tail, ignoreAvailability=true) — Maven 3.9's chained local repository, verified present in maven-core-3.9.12. MAVEN_BUILD_CACHE names this run's own root, which the flake turns into maven.repo.local, so every write Maven makes lands in incoming/<run>/ and the base cannot be corrupted by a build — nor by one that is killed halfway. Both knobs already existed; in-cluster they pointed at the SAME directory, so the chained repo was wired to itself and bought nothing"
+      : "The volume is a RAW VOLUME, not a workspace, so the path is ours rather than Tekton's — hence the substitution rather than a workspaces.* reference"
+      export M2_REPO="/var/cache/rke2lab/maven/base/repository"
+      export MAVEN_BUILD_CACHE="/var/cache/rke2lab/maven/incoming/$(context.taskRun.name)"
+      : "The build-cache stays SHARED at base/build-cache rather than following the primary into incoming/: the maven-build-cache extension has no read-through tail, so a per-run location would start EMPTY and every render would rebuild from scratch. Shared is safe only because the render is serialised (concurrency 1 on the PaC Repository); the way out for the build-cache half is the extension's own REMOTE cache with its opt-in save, not a directory on a shared volume"
+      export MAVEN_ARGS="-Dmaven.build.cache.location=/var/cache/rke2lab/maven/base/build-cache"
       : "Secret-full render prerequisites — fail loud with a clear message, not a downstream decode error. SOPS_AGE_KEY arrives via the git-sops env spec.inject (flox-controller webhook); the sops-yaml filter is wired by the env on-activate hook; the clone step (also on git-sops) already smudged .secrets in this shared workspace at checkout"
       set +x
       [ -n "${SOPS_AGE_KEY:-}" ] || { echo >&2 "render: SOPS_AGE_KEY not set (git-sops inject / replicated sops-age missing)"; exit 1; }
@@ -48,9 +70,28 @@ spec:
       git config --get filter.sops-yaml.smudge >/dev/null 2>&1 || { echo >&2 "render: sops-yaml git filter not registered (git-sops on-activate hook did not wire it)"; exit 1; }
       : "The flox NRI plugin put nix on PATH, injected NIX_CONFIG (daemonless single-user) and hosts the /nix store overlay on the assigned persistent PVC, so there is no flox env and no flox activate. nix run .#render-manifests from the source checkout is the ONE render definition shared with dev and release: it builds manifests-cli, signs, and ff-pushes manifests/<cluster>; the exe locates its render worktree at .local.d/render/<cluster>"
       nix run .#render-manifests -- "$(params.cluster)" "$(params.node)"
+    volumeMounts:
+    - mountPath: /var/cache/rke2lab/maven
+      name: maven-cache
     workingDir: $(workspaces.source.path)
+  - image: rke2lab/flox-carrier:0.1.0
+    name: cache-publish
+    script: |
+      #!/usr/bin/env bash
+      set -euxo pipefail
+      inbox="/var/cache/rke2lab/maven/incoming/$(context.taskRun.name)"
+      if [ -d "$inbox/repository" ]; then
+        cp -rn "$inbox/repository/." "/var/cache/rke2lab/maven/base/repository/"
+      fi
+      rm -rf "$inbox"
+    volumeMounts:
+    - mountPath: /var/cache/rke2lab/maven
+      name: maven-cache
+  volumes:
+  - name: maven-cache
+    persistentVolumeClaim:
+      claimName: manifests-maven-cache
   workspaces:
   - name: source
-  - name: maven-cache
   - name: basic-auth
     optional: true

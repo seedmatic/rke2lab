@@ -2,6 +2,7 @@
 apiVersion: v1
 data:
   members: |-
+    cluster.seedmatic.io/v1alpha1|VolumeIntention|rke2lab-system|maven-cache
     v1|PersistentVolumeClaim|rke2lab-system|manifests-maven-cache
     tekton.dev/v1|Task|rke2lab-system|git-fetch
     tekton.dev/v1|Task|rke2lab-system|render-publish
