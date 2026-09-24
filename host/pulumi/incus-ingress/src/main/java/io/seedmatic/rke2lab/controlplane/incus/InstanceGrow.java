@@ -264,6 +264,29 @@ public final class InstanceGrow {
     // The remaining cost, accepted: a profile in the daemon but NOT in state — a state loss, or one
     // an operator made by hand — fails the create loudly with "already exists". Loud and rare beats
     // silently unmanaged.
+    //
+    // ⚠️⚠️ AND THE COST OF IGNORING `devices`, which bit TWICE on 2026-09-24 and is worth stating
+    // once: this resource can CREATE a profile's devices and can never CORRECT them. Any change to
+    // the device set — a NIC's parent bridge, a NIC's NAME — reaches an existing profile only if an
+    // operator DELETES it first, and the profile cannot be deleted while an instance references it.
+    // So the sequence is: delete the instance, delete the profile, `up --refresh`.
+    //
+    // First bite: `lan-br` → `fabric-br`, where a `up` silently left the old parent. Second, worse
+    // because it fails at START rather than drifting: renaming the NIC itself to `fabric0` gave the
+    // instance BOTH devices — `fabric0` inline from the standalone path, `lan0` frozen in the
+    // profile
+    // — and incus refused them on one network:
+    //
+    //   Failed start validation for device "fabric0": Instance DNS name conflict between
+    //   "fabric0" and "lan0" because both are connected to same network
+    //
+    // ★ Do NOT "fix" this by dropping `devices` from the list. It is ignored because the provider
+    // models it as an ordered list read back in a different order, so declaring it would churn on
+    // every run. The principled fix is the opposite direction — make the profile's NAME a function
+    // of its device set, so a device change is a NEW profile rather than an update a reconciler
+    // cannot perform. That costs propagating the name into the PoolIntention / LXCMachineTemplate
+    // (CAPN references `profiles: [node-base, node-<cluster>]`), which is why it is named here and
+    // not done here.
     final CustomResourceOptions options =
         CustomResourceOptions.builder()
             .provider(providerContext.provider())
