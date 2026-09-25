@@ -240,7 +240,8 @@ public class NetplanBlueprintScenario
                 new SegmentHost(
                     cluster + "-" + node,
                     Optional.of(nodeBp.fabric().hostMacaddr().value()),
-                    nodeBp.fabric().hostInetaddr().getHostAddress()));
+                    nodeBp.fabric().hostInetaddr().getHostAddress(),
+                    Optional.empty()));
           }
         }
         segments.add(
@@ -251,7 +252,9 @@ public class NetplanBlueprintScenario
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
-                List.copyOf(fabricHosts)));
+                List.copyOf(fabricHosts),
+                Optional.empty(),
+                Optional.empty()));
         segments.add(
             Segment.attribution(
                 bp.fabric().lbCidr().toString(), cluster + "-fabric-lb", bp.bgpLocalAsn()));
@@ -266,7 +269,8 @@ public class NetplanBlueprintScenario
               new SegmentHost(
                   cluster + "-" + node,
                   Optional.of(nodeBp.wan().hostMacaddr().value()),
-                  nodeBp.nodeNetwork().nodeHostInetaddr().getHostAddress()));
+                  nodeBp.nodeNetwork().nodeHostInetaddr().getHostAddress(),
+                  Optional.of(nodeBp.nodeNetwork().nodeHostInetaddr6().getHostAddress())));
         }
         segments.add(
             new Segment(
@@ -276,7 +280,15 @@ public class NetplanBlueprintScenario
                 Optional.of(bp.host().clusterGatewayInetaddr().getHostAddress()),
                 Optional.of(bp.wan().dhcpRange()),
                 Optional.empty(),
-                nodeHosts));
+                nodeHosts,
+                // The v6 half of this bridge, and why both halves are needed rather than one
+                // `addr/prefix` string: the /64 is NOT derivable from this segment's `cidr` (that
+                // is
+                // the v4 /21), and a DHCPv6 server needs the prefix and the gateway separately. The
+                // node /64 rather than the cluster /56 — dnsmasq rejects a DHCPv6 prefix shorter
+                // than /64.
+                Optional.of(bp.nodeNetwork().nodeCidr6().toString()),
+                Optional.of(bp.nodeNetwork().nodeGatewayInetaddr6().getHostAddress())));
       }
       final ClusterNetworkBlueprint anyNode = blueprintOf(clusterNames.get(0), "master");
       // Shared/attribution spans, labelled with a representative cluster's ASN (anyNode = the mgmt
@@ -415,12 +427,22 @@ public class NetplanBlueprintScenario
       Optional<String> gateway,
       Optional<String> dhcp,
       Optional<String> domain,
-      List<SegmentHost> hosts) {
+      List<SegmentHost> hosts,
+      Optional<String> cidr6,
+      Optional<String> gateway6) {
 
     /** An attribution-only span: no gateway/DHCP/domain and no static reservations. */
     static Segment attribution(String cidr, String name, int asn) {
       return new Segment(
-          cidr, name, asn, Optional.empty(), Optional.empty(), Optional.empty(), List.of());
+          cidr,
+          name,
+          asn,
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          List.of(),
+          Optional.empty(),
+          Optional.empty());
     }
   }
 
@@ -429,8 +451,14 @@ public class NetplanBlueprintScenario
    * {@code mac} present) or a {@code host-record} (a MAC-less name — {@code mac} empty). rke2lab
    * emits only dhcp-host nodes; the empty-mac form keeps the shape uniform with ndh's {@code
    * vzhost.<host>} host-record.
+   *
+   * <p>{@code ip6} is the node's DETERMINISTIC ULA, and it is exported rather than left to the
+   * consumer because it cannot be derived from anything else in this JSON: it embeds the node's v4
+   * in the low 32 bits of the per-cluster {@code /64}. A consumer running DHCPv6 needs it as a
+   * STATEFUL reservation — SLAAC would hand out an EUI-64 address instead, which {@code node-ip}
+   * cannot name.
    */
-  record SegmentHost(String name, Optional<String> mac, String ip) {}
+  record SegmentHost(String name, Optional<String> mac, String ip, Optional<String> ip6) {}
 
   /**
    * {@code fabricFqdn} is a NAME beside the addresses, and it is here because the thing it names
