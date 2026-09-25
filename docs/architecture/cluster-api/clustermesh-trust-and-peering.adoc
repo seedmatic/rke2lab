@@ -1,0 +1,403 @@
+= Clustermesh — the role-mesh as a trust domain, and declarative peering
+:toc: left
+:toclevels: 3
+
+== Overview
+
+link:cluster-addressing-plan.adoc#_clustermesh_two_role_partitioned_meshes[The addressing plan] decides
+*that* clusters federate in two role-partitioned meshes (`mgmt↔mgmt`, `wrkld↔wrkld`, never
+`mgmt↔wrkld`) and derives the two things cilium requires inside a mesh — a unique `cluster.id` and
+disjoint pod CIDRs. What it does not decide is *how a mesh is peered*: which CA signs whom, where the
+peering material comes from, and who owns it.
+
+This document decides that. Its thesis in one line: *a role-mesh is not a piece of connectivity, it is
+a **PKI trust domain**.* Once read that way, peering stops being a networking problem and becomes an
+instance of a pattern this project already runs — the seal mints deterministic CA hierarchies, the
+manifests scion renders them as sops Secrets on the `NODE_BOOTSTRAP` lane, exactly as it already does
+for CAPRKE2's BYO-CA set.
+
+Status: *decided; the name form is built, the peering is not.* The decisions below are settled. Of the
+code, only <<peer-reach,the one name form>> is done (2026-09-25: `NamePlan.nixosFabricFqdn` in rke2lab,
+the `nixos.<host>` record in ndh's catalog); the peering material, the second mesh member and the
+staged plan are not started.
+
+== Why this document exists now
+
+Two management clusters are the *first real membership of a mesh*. Until now every role-mesh had
+exactly one member, so the peering question never had to be answered — and the code quietly assumes an
+out-of-band answer:
+
+* `CiliumConfigManifestsUnit` carries **no** `clustermesh.apiserver.tls` block, so cilium's `tls.auto`
+  default applies and **each cluster self-signs a random mesh CA**. Two clusters installed that way
+  have mutually unknown CAs.
+* the `clustermesh-remote-users` ConfigMap is rendered *empty*, and its own comment states the
+  assumption: "peer entries get appended (**out-of-band**, by `cilium clustermesh users add`) once
+  federated clusters come online".
+* no `cilium-clustermesh` Secret — the carrier of peer endpoints and client credentials — is rendered
+  at all.
+
+So the mesh is *pre-armed*: `cluster.name`/`cluster.id` are derived (`blueprint.meshClusterId()`),
+`clustermesh.enabled` and `useAPIServer` are on, and the apiserver is exposed as a `LoadBalancer`
+whose cilium LB pool `/26` the tailscale Connector already advertises. Everything is in place except
+the one thing that makes a *second* member possible.
+
+CAUTION: The mesh also has *no consumer*. There is no `service.cilium.io/global` anywhere in the tree
+and nothing addresses a peer cluster. That is not a defect — unique `cluster.id`s and disjoint pod
+CIDRs are required *anyway*, because the shared per-host L2 fabric makes a host's `mgmt` and `wrkld`
+adjacent even though they are not meshed. But it means the mesh's *purpose* is a design input, and it
+scopes the work: service discovery is far cheaper than full pod-to-pod. See <<staged>>.
+
+[[trust-domain]]
+== The role-mesh IS a trust domain
+
+`WorkloadClusterCas` states an invariant, and it is deliberate:
+
+[quote]
+____
+each rooted at the ndh `mammoth-skate-tls` root, a *SIBLING* of the mgmt CA — independent keys, so a
+compromise of one cluster's CA *never reaches another*.
+____
+
+A mesh requires the opposite: its members must trust each other. So meshing *necessarily* pierces the
+sibling isolation. The question is never whether, only *how far* — and the answer is already in the
+addressing plan: **the role**.
+
+[mermaid,clustermesh-trust-domains,svg]
+----
+flowchart TB
+  ROOT["mammoth-skate-tls<br/>(ndh root)"]
+
+  subgraph TD_M["trust domain: MGMT"]
+    BM["bioskop-mgmt<br/>cluster.id 1 · pods 10.44.0.0/16"]
+    NM["nikopol-mgmt<br/>cluster.id 3 · pods 10.46.0.0/16"]
+    BM <-->|"mesh — MUTUAL trust"| NM
+  end
+
+  subgraph TD_W["trust domain: WRKLD"]
+    BW["bioskop-wrkld<br/>cluster.id 2 · pods 10.45.0.0/16"]
+    NW["nikopol-wrkld<br/>cluster.id 4 · pods 10.47.0.0/16"]
+    BW <-->|"mesh"| NW
+  end
+
+  ROOT --> TD_M
+  ROOT --> TD_W
+  TD_M x-.-x TD_W
+
+  BM -. "shares the bioskop L2 fabric — NOT meshed,<br/>but the reason pod CIDRs must still be disjoint" .- BW
+  NM -. "idem on nikopol" .- NW
+----
+
+The role partition was justified in the addressing plan on *technical* grounds. It turns out to be the
+*security* boundary too: the blast radius of shared trust is one role-mesh, never the fleet.
+`mgmt ↔ wrkld` is not merely "not meshed" — it is *not in the same trust domain*. One decision, two
+independent justifications, which is how you know it is the right cut.
+
+[[ca-topology]]
+== Decision — CA topology: sibling CAs + cross-trust bundle
+
+Two shapes were considered, and *both have a precedent in this project*, which is exactly why this had
+to be decided rather than assumed.
+
+[cols="1,3,3",options="header"]
+|===
+| | *A — one CA per role-mesh* | *B — siblings + cross-trust bundle* (CHOSEN)
+
+| shape
+| one mesh CA, a sister of the existing hierarchies. Every member chains its server cert to it; the
+  client cert may be *shared* mesh-wide.
+| every member keeps *its own* sibling CA. Each member additionally receives a *bundle* of the other
+  members' CAs.
+
+| PKI invariant
+| ❌ pierced: one private key is common to the mesh
+| ✅ preserved: *no* private key is ever shared
+
+| cost
+| 1 extra CA, N server certs, 1 client cert
+| N server certs + N client certs + an (N-1)-CA bundle per member
+
+| additivity
+| a new member = one more cert
+| a new member = one cert *and* a bundle reissue at each existing member
+
+| in-project precedent
+| the CAPN identity — "the `client-crt`/`client-key` *can be shared*, trusted by both hypervisors"
+| `WorkloadClusterCas` — minted *ADDITIVELY*, siblings with independent keys
+|===
+
+=== The security argument, and its honest limit
+
+*B is chosen*, and not on aesthetics — the argument is checkable against cilium's own model:
+
+. *B preserves the written invariant.* It is the only option that does not pierce
+  "independent keys, so a compromise of one cluster's CA never reaches another".
+. *A member compromise stays bounded to that member.* Under A the client cert may be shared mesh-wide
+  (that is its very appeal, by analogy with the CAPN identity) — so compromising *one* member yields
+  the credential that authenticates to *every* peer: lateral movement across the mesh. Under B,
+  compromising member X yields X's identity, which peers accept *as X*, revocable and reissuable for X
+  alone.
+. *B is the topology cilium's authorization model presupposes.* The `clustermesh-remote-users`
+  ConfigMap is a list of users *per remote cluster*. That mechanism only means something if each peer
+  presents a *distinct* identity. A shared client cert (option A) collapses every peer into one user
+  and **nullifies** the authorization. So B does not merely resist better — it is the shape the tool
+  expects.
+. *What B does NOT claim to fix.* The seal already holds every cluster's CA private keys
+  (`WORKLOAD_CLUSTER_CAS` is `SEALED (it carries the CA private keys)`). The seal is therefore a
+  fleet-wide compromise point under A *and* under B. B bounds a *member's* radius, not the seal's, and
+  it would be dishonest to sell it as more.
+. *The cost, quantified.* An (N-1)-CA bundle to reissue at existing members per new member. With two
+  members per role-mesh and four clusters total that is *one* reissue per mesh — and the minting is
+  already **additive** (`WorkloadClusterCas` keeps present entries and mints only new ones), so the
+  mechanism exists.
+
+[[peering-material]]
+== The peering material — what cilium wants, what we render, the target
+
+[mermaid,clustermesh-peering-material,svg]
+----
+flowchart LR
+  subgraph WANT["what cilium wants, per cluster"]
+    W1["the mesh trust material (CA / bundle)"]
+    W2["the clustermesh-apiserver SERVER cert"]
+    W3["a CLIENT cert to reach peers"]
+    W4["the peers' ENDPOINTS"]
+    W5["the authorized USERS, apiserver side"]
+  end
+
+  subgraph NOW["rendered today"]
+    N1["tls.auto default<br/>→ RANDOM self-signed CA per cluster"]
+    N2["clustermesh-remote-users rendered EMPTY"]
+    N3["no cilium-clustermesh Secret at all"]
+    N4["⇒ out-of-band CLI<br/>cilium clustermesh connect / users add"]
+  end
+
+  subgraph TARGET["target — the lane CAPRKE2's BYO-CA already rides"]
+    T1["minted by the SEAL, additively<br/>(the WorkloadClusterCas pattern)"]
+    T2["rendered as sops Secrets<br/>on the NODE_BOOTSTRAP lane"]
+    T3["endpoints DERIVED from identity<br/>(the one name form, see below)"]
+    T4["users = the role-mesh membership,<br/>derived — one user per remote cluster"]
+  end
+
+  W1 --> N1
+  W5 --> N2
+  W3 --> N3
+  N1 --> N4
+  N2 --> N4
+  N3 --> N4
+  N4 -.->|"to be replaced"| T1
+  T1 --> T2 --> T3 --> T4
+----
+
+The target move is one this project has already made once: *BYO-CA instead of self-generation*, which
+is precisely what was done for CAPRKE2 so it delivers our `mammoth-skate` CA to a workload node
+instead of minting a random one. Setting `clustermesh.apiserver.tls.auto` off and supplying the
+material is the same gesture applied to one more domain — no new pattern.
+
+NOTE: the exact Secret names the embedded chart expects
+(`clustermesh-apiserver-{ca,server,admin,remote}-cert`, `cilium-clustermesh`) must be confirmed
+against the cilium version rke2 embeds before coding. The *shape* is settled; the spelling is not yet
+verified here.
+
+[[peer-reach]]
+== Reaching a peer — two tiers, one name
+
+The name is *not* a new invention, and it must not become one:
+link:../atlas/netplan.adoc[the netplan atlas] already targets collapsing `NamePlan` to *one* form —
+"no mDNS across a routed boundary, no `.lan`" — the segment FQDN served by the host's own dnsmasq in
+its `.<host>` zone. For the infra host that form spells `nixos.<host>`, and the cross-host audience is
+simply a *second driver* for a collapse that was already planned.
+
+Why that form and not `.lan`: the answering authority is *the host that owns the network*, the same
+principle already accepted for `nodeFabricFqdn`. `.lan` is the residential router — an authority that
+knows nothing about a host that has left the home LAN. The `.<host>` zone rides the tailnet split-DNS
+and its address rides the advertised route, so resolution does not change with the transport.
+
+Measured 2026-09-25 — the zone is live and symmetric, and one record is missing on *both* hosts:
+
+[source]
+----
+domain nikopol → nameserver 172.16.16.1     # tailnet split-DNS in place
+vzhost.nikopol → 172.16.24.2                # the zone is alive
+vzhost.bioskop → 172.16.8.2                 # and symmetric
+https://172.16.16.1:8443/1.0 → 200          # nikopol-nixos incus API answers on its fabric gateway
+https://172.16.0.1:8443/1.0  → 200          # bioskop-nixos likewise
+
+nixos.nikopol → NXDOMAIN                    # ⬅ was missing
+nixos.bioskop → NXDOMAIN                    # ⬅ was missing on both, uniformly
+----
+
+*Done (2026-09-25)*: the record is declared in ndh's catalog — one entry beside the `vzhost.<host>`
+already there, in the `<domain>-baremetal-net` segment of `catalog/default.nix`, pointing at
+`bm.netGateway` (the bridge gateway, which *is* the NixOS host, and where its incus daemon already
+listens). Verified by evaluation:
+
+[source]
+----
+bioskop-baremetal-net   host-record  nixos.bioskop -> 172.16.0.1
+nikopol-baremetal-net   host-record  nixos.nikopol -> 172.16.16.1
+----
+
+It takes effect on each host's next rebuild (the segment module reconciles `fabric-br` from a
+oneshot, so no cold start). *Sequencing matters*: `nixos.<host>` already exists as an ssh ALIAS whose
+`HostName` rewrites it to the tailnet MagicDNS name — a shim that exists precisely because the name
+was not in DNS. Retire that stanza only *after* the record is live on the hosts, or operator ssh
+breaks in between. `vzhost.<host>` already went through this same retirement.
+
+CAUTION: *the name unifies; reachability does not (yet).* A pod resolves through CoreDNS → the node's
+resolver, and the nodes are *not* tailnet members — they have neither the split-DNS nor the
+`172.16.16/20` route. Hence two tiers: *same host*, the node reaches `172.16.0.1` directly on its own
+fabric, nothing to do; *cross host*, it still needs the operator egress specified in
+link:management-workload-topology.adoc#_the_workload_reach_the_capi_pod_egresses_through_the_operator[the
+workload reach] — and that egress must be owned by a controller, never rendered by Flux, because the
+tailscale operator mutates `spec.externalName`.
+
+[[staged]]
+== The staged plan, with the disconnect as the gate
+
+Full connectivity is the direction; it is reached in stages, and *disconnecting nikopol from the home
+LAN is the ordeal that authorizes the next stage*.
+
+[mermaid,clustermesh-staged-plan,svg]
+----
+stateDiagram-v2
+  [*] --> S1
+
+  S1: STAGE 1 — global services
+  S1: declarative peering (CA option B)<br/>+ `service.cilium.io/global`, local affinity<br/>reach via the EGRESS, never the LAN shortcut
+  S1 --> S2: the mesh peers itself,<br/>with no CLI gesture
+
+  S2: STAGE 2 — THE ORDEAL
+  S2: nikopol moves to a hotspot.<br/>We MEASURE; we do not assume.
+  S2 --> S1: dirty degradation →<br/>fix before widening
+  S2 --> S3: clean degradation →<br/>the design is transport-independent
+
+  S3: STAGE 3 — full pod-to-pod
+  S3: routing pod CIDRs between hosts<br/>(far more than the LB pool /26)
+  S3 --> [*]
+----
+
+.Build on the durable path even while the shortcut works
+[IMPORTANT]
+====
+Both hosts are *currently* on the same home L2 — `tailscale ping nikopol-nixos` answers
+`via 192.168.1.34 direct in 5ms`, and `nikopol-nixos.lan` still *resolves*. So the `nixosLanFqdn()`
+derivation that was in the code would have worked, looked green, and broken *silently* the day nikopol
+leaves. That is why it was removed rather than left as a same-host special case, and the same reasoning
+applies to everything built next.
+
+Therefore stage 1 must be built on the egress, not on the home-LAN shortcut. Otherwise the ordeal
+teaches nothing: it would simply break, instead of validating that the design is indifferent to the
+transport.
+====
+
+=== What the ordeal must measure
+
+Written as a protocol, not an impression — otherwise we will conclude what we hope:
+
+. *The path, before and after.* `tailscale ping` must move from `via 192.168.1.34 (direct)` to
+  `via DERP` and back to direct. If that switch never happens, nothing else is interpretable.
+. *What cilium does with an absent peer.* Expected: the remote cluster goes `unreachable`, its remote
+  endpoints are *withdrawn*, and a global service falls back to its local backend (local affinity).
+  Expected = *degradation*. Failure = an error surfacing, a growing backoff, or a global service
+  answering "no endpoints" while a local backend exists.
+. *Absent vs broken.* The three-valued-probe pattern: nikopol offline must raise *no* health alarm. If
+  the doctor or a checkpoint shouts, the posture is missing.
+. *Time to return.* How long after nikopol returns does the mesh re-peer *with no intervention*? A
+  mesh that needs a gesture on return is unusable on an itinerant host.
+. *What must NOT move.* Nikopol's own GitOps (Flux pulls from GitHub) and its local control plane must
+  be indifferent. If nikopol's cluster degrades merely because bioskop stopped seeing it, self-adoption
+  did not deliver its promise.
+
+== What is already in place
+
+[cols="3,1,3",options="header"]
+|===
+| piece | state | evidence
+
+| derived identity + addressing (`cluster.id`, disjoint pod/service CIDRs, BGP ASN)
+| ✅
+| `ClusterNetworkBlueprint.meshClusterId()`, `clusterId = (hostId << 1) \| roleId` — the addressing
+  plan marks it SHIPPED
+
+| clustermesh enabled, with its apiserver
+| ✅
+| `CiliumConfigManifestsUnit`: `clustermesh.enabled`, `useAPIServer`, `apiserver.enabled`
+
+| the mesh apiserver is exposed and advertisable
+| ✅
+| `Service type: LoadBalancer` + cilium LB pool `/26`, which the Connector already advertises
+
+| the two tailnet locks, declarative
+| ✅
+| ndh `manage-tailnet`: `autoApprovers.routes` on the `/18` for `tag:k8s` + the `accept` ACL
+
+| a PKI that mints deterministic hierarchies, ADDITIVELY
+| ✅
+| `WorkloadClusterCas` — sealed, rooted at `mammoth-skate-tls`, additive across re-grows
+
+| a lane that delivers sops Secrets onto the branch
+| ✅
+| the `NODE_BOOTSTRAP` lane (CAPRKE2's four BYO-CA Secrets already ride it)
+
+| an in-cluster egress onto the tailnet
+| ✅
+| `ProxyGroup type: egress` + `ExternalName` Service, *live-probed* 2026-09-12
+
+| a non-Flux owner for operator-mutated objects
+| ✅
+| the seeding controller already owns the VIP egress
+
+| the mesh peering material
+| ❌
+| `tls.auto` default, `clustermesh-remote-users` empty, no `cilium-clustermesh` Secret
+
+| a second mesh member
+| ❌
+| `nikopol-mgmt` does not exist yet
+
+| the one name form, `nixos.<host>`
+| ✅
+| 2026-09-25: `NamePlan.nixosFabricFqdn` (rke2lab, `.lan` derivation deleted) + the record in ndh's
+  catalog — live on each host's next rebuild
+
+| a mesh CONSUMER
+| ❌
+| no `service.cilium.io/global` anywhere; nothing addresses a peer cluster
+|===
+
+== Troubleshooting
+
+`clustermesh-apiserver` stuck `Init:0/1`::
+It waits on the `clustermesh-remote-users` ConfigMap volume (`etcd-users-config`). The ConfigMap is
+rendered — empty on purpose today — so a missing *volume* means the render did not reach the cluster,
+not that the file is empty.
+
+a peer shows `unreachable` while its cluster is healthy::
+Expect this whenever the peer's host is off the tailnet. Check the path first
+(`tailscale ping <host>-nixos`), then the route (the peer's LB pool `/26` must be advertised *by a
+Connector on the peer's own host* — a Connector cannot advertise a subnet its node cannot forward).
+
+the route is advertised but never enters the netmap::
+Two locks must *both* open — route approval (`autoApprovers.routes`) and the ACL `accept` on the
+`/18`. Both are reconciled by ndh's `manage-tailnet`; a manual console approval lapses on every
+re-grow.
+
+`certificate is valid for …` when dialling a peer or a remote incus::
+A name/SAN mismatch. Prefer the one derived name form; if a service-name indirection is unavoidable,
+the precedent is to add that FQDN to the `tlsSan`, not to disable verification.
+
+== Related documentation
+
+* link:cluster-addressing-plan.adoc[Cluster Addressing Plan] — decides *that* the meshes exist and
+  derives `cluster.id` + the disjoint CIDRs; this document decides how a mesh is *peered*
+* link:management-workload-topology.adoc[Management / Workload Topology] — the anchor: the two reaches
+  (`#cp-endpoint-reach`), the operator egress a pod uses, and the federation/self-adoption model the
+  second management cluster realises
+* link:cluster-seeding-controller.adoc[Cluster Seeding Controller] — the controller that owns
+  operator-mutated objects (the egress), the single-owner invariant this document leans on
+* link:deterministic-cluster-access.adoc[Deterministic cluster access] — the seal that mints the CA
+  hierarchies reused here
+* link:../atlas/netplan.adoc[Netplan atlas] — the planned `NamePlan` collapse to one segment-FQDN form,
+  of which `nixos.<host>` is the infra-host spelling
+* link:cilium-bgp-multi-host-topology.adoc[Cilium BGP Multi-Host Topology] — the shared fabric and the
+  BGP announcement that exposes the mesh apiserver's LB address

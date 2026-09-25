@@ -246,6 +246,30 @@ flowchart TB
   style AFTER fill:#e8f5e9,stroke:#2e7d32
 ----
 
+.The collapse has a SECOND driver: the cross-host audience
+[NOTE]
+====
+The collapse above is argued from the routed boundary — mDNS cannot cross it, and `.lan` is the
+residential router's zone. Declaring a management cluster on a *second* bare-metal adds an independent
+reason, and it is the sharper one: `.lan` answers only while both hosts sit on the home LAN. Measured
+2026-09-25 — `nikopol-nixos.lan` *resolves today* (both hosts are on the same home L2, 5 ms direct), so
+a consumer built on it would look green and break *silently* the day nikopol leaves.
+
+For the infra host the one form spells `nixos.<host>`, served by that host's own dnsmasq in its
+`.<host>` zone and carried by the tailnet split-DNS — so resolution is indifferent to the transport.
+The zone is already live and symmetric (`vzhost.bioskop` → `172.16.8.2`,
+`vzhost.nikopol` → `172.16.24.2`) and the incus API already answers on each host's fabric gateway
+(`172.16.<hostId×8>.1:8443`). The record itself was the only thing missing — `nixos.bioskop` *and*
+`nixos.nikopol` were both NXDOMAIN — and it is now declared in ndh's catalog (one entry beside
+`vzhost.<host>` in the `<domain>-baremetal-net` segment, pointing at `bm.netGateway`), taking effect on
+each host's next rebuild. The rke2lab half is done too: `NamePlan` carries `nixosFabricFqdn` and
+`LAN_DOMAIN`/`nixosLanFqdn` are gone with their call sites.
+
+Consequence worth naming: the form *unifies* the same-host and cross-host cases, so the endpoint
+derivation loses its `target.host()` discriminant entirely. See
+link:../cluster-api/clustermesh-trust-and-peering.adoc#peer-reach[Clustermesh — reaching a peer].
+====
+
 [[fleet-ceiling]]
 == The fleet ceiling — three planes, three different answers
 

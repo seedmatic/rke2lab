@@ -99,13 +99,43 @@ A cluster is named `<bare-metal-host>-<role>`, with `role ∈ { mgmt, wrkld }`:
 |The `nikopol` bare-metal host
 |===
 
-The management cluster carries the name of *its current host* because it can move between
-bare-metals (the cellar travels with it — see the cellar-secrets atlas). A node's full identity
-is `<cluster>-<node>`, e.g. `nikopol-mgmt-master`, `bioskop-wrkld-peer1`.
+A management cluster carries the name of *its host* because there is **one per bare-metal**. A node's
+full identity is `<cluster>-<node>`, e.g. `nikopol-mgmt-master`, `bioskop-wrkld-peer1`.
 
-* *Target placement*: `bioskop-mgmt` · `bioskop-wrkld` · `nikopol-wrkld` (management on `bioskop`).
-* *Current placement*: `nikopol-mgmt` · `bioskop-wrkld` · `nikopol-wrkld` (management on `nikopol`,
-  which is what `Pulumi.dev.yaml` currently seeds — `cluster=nikopol`, `node=master`).
+.Decision (2026-09-25) — management clusters FEDERATE; they do not travel
+[TIP]
+====
+This supersedes the earlier model, in which `bioskop-mgmt` and `nikopol-mgmt` were *the same*
+management cluster at two placements (one cluster that moved between bare-metals, the cellar
+travelling with it), with a target placement of "management on `bioskop`" and nikopol carrying only a
+workload.
+
+*Now*: the two coexist. `bioskop-mgmt` **births** `nikopol-mgmt` by a cross-host cluster intention
+(`workloadTargets: - host: nikopol / role: mgmt` — the target model is `(host, role)` and accepts
+`mgmt` unchanged); `nikopol-mgmt` carries its own CAPI (`ClusterRole.MGMT` ⇒ `+ clusterApi`, which is
+structural already) and then **self-adopts** along
+<<mgmt-self-hosted-hypothesis,the self-hosting direction>>. bioskop is the midwife, not the guardian.
+
+*Why it matters beyond naming.* It splits the cross-host traversal in two, by nature:
+
+* the *CAPI* traversal is **birth scaffolding** — once `nikopol-mgmt` has self-adopted, its CAPN runs
+  in-cluster and talks to the **local** incus, so nothing cross-host remains in steady state. The
+  scaffolding must stay available (every re-birth uses it) but carries no permanent regime, which takes
+  continuous absence-tolerance out of scope.
+* the *clustermesh* traversal is **permanent**, and it is the real stake: two management clusters are
+  the first real membership of the MGMT role-mesh. See
+  link:clustermesh-trust-and-peering.adoc[Clustermesh — trust domains and declarative peering].
+
+The cellar's ability to travel is unaffected — it is a property of the cellar, no longer the model of
+the management plane.
+====
+
+* *Placement*: one `-mgmt` per bare-metal (`bioskop-mgmt`, `nikopol-mgmt`), plus each host's
+  `-wrkld`. `bioskop-mgmt` is the sedentary one and the one that seeds; `nikopol-nixos` is
+  <<itinerant,itinerant>>.
+* *Cold start vs intention*: `bioskop-mgmt` is cold-started by `seed-master` (`Pulumi.dev.yaml` seeds
+  `host: bioskop` / `role: mgmt` — the identity atoms; there is no `cluster` key). Every other cluster,
+  `nikopol-mgmt` included, is born from a *declared intention* rendered by the management cluster.
 
 NOTE: `nikopol` was formerly `alcide`; `alcide` is retired (`ClusterNetworkBlueprint` keeps the
 cluster id, renamed the name). Use `nikopol`.
@@ -159,6 +189,20 @@ management cluster on one host cannot reach a workload's API or the Incus host o
 
 [[incus-tenancy]]
 == Incus tenancy — a project per cluster, engines not nested (C4 L3 — deployment)
+
+.Superseded in code (2026-09-25): ONE `rke2lab` project, not one per cluster
+[WARNING]
+====
+The per-cluster project below was *dropped during implementation*, and the code is the authority here:
+`ClusterApiWorkloadManifestsUnit` renders `project: rke2lab` for every cluster, stating the reason —
+"One `rke2lab` incus project (foundation 4 dropped — instance names are globally unique via the
+blueprint)". The blueprint already guarantees globally unique instance names, so the project added a
+tenancy dimension nothing needed.
+
+What survives from this section, and still matters: *one engine per host, never nested engines*, and
+the CAPN identity being *per-remote* (keyed by host) rather than per-cluster. Read the rest as the
+rationale for the engine decision, not as the current project layout.
+====
 
 Each host runs *one* Incus engine, and the clusters that share it are isolated by an
 *Incus project per cluster* — not by nested Incus engines. The project is a logical
@@ -340,6 +384,7 @@ reaches, solved differently — conflating them cost a debugging session.
   CAPN does not PROVIDE reachability; it REQUIRES it.
 |===
 
+[[itinerant]]
 === Why the VIP on `vmnet0` is not reachable — and the decisive constraint
 
 The VIP is a per-cluster address on the isolated `vmnet0` segment

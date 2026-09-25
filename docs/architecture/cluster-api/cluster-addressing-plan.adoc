@@ -165,6 +165,24 @@ changing hosts, and 4 ≪ 255 (the clustermesh ceiling) so there is no scarcity.
 the identity `<host>-<role>` — which also retires the hardcoded `cluster.name: sample` /
 `cluster.id: 7` placeholder in the cilium HelmChartConfig.
 
+.The role partition is also the TRUST boundary
+[NOTE]
+====
+This plan justifies the role partition on technical grounds (cilium requires intra-mesh unique
+`cluster.id`s and disjoint pod CIDRs). It carries a second, independent justification: a mesh's members
+must *trust each other*, which necessarily pierces the sibling-CA isolation `WorkloadClusterCas`
+guarantees ("independent keys, so a compromise of one cluster's CA never reaches another"). The role
+partition bounds the blast radius of that shared trust to one role-mesh, never the fleet — so
+`mgmt ↔ wrkld` is not merely "not meshed", it is *not in the same trust domain*.
+
+*This plan decides `that` the meshes exist; it does not decide how one is peered* — which CA signs
+whom, where the material comes from, who owns it. That is
+link:clustermesh-trust-and-peering.adoc[Clustermesh — trust domains and declarative peering], along
+with the finding that the peering is *out-of-band today* (`tls.auto` self-signs a random CA per
+cluster, `clustermesh-remote-users` is rendered empty) because no role-mesh has ever had a second
+member.
+====
+
 == BGP ASN — per cluster
 
 Each cluster's cilium BGP `localASN` is `64512 + clusterId` (`64512..64515`), inside the 16-bit

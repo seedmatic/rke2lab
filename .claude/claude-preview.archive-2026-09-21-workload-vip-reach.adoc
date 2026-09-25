@@ -1,0 +1,381 @@
+= Scratchpad — l'@VIP d'un cluster workload : exister, puis être joignable
+:toc: left
+:toclevels: 3
+
+État live mesuré le 2026-09-21 sur `bioskop-mgmt` / `bioskop-wrkld`, après la naissance du premier
+nœud workload. Ne rouvre RIEN : l'architecture est tranchée dans
+link:../docs/architecture/cluster-api/management-workload-topology.adoc#cp-endpoint-reach[management-workload-topology.adoc#cp-endpoint-reach].
+Ce scratchpad ne fait que montrer *où en est le code* contre cette cible.
+
+== L'idée en une phrase
+
+L'@VIP est **deux problèmes distincts** :
+
+. **Exister** — quelque chose doit *porter* `10.80.15.10` sur le nœud control-plane du workload.
+. **Être joignable** — le cluster de gestion doit pouvoir *atteindre* cette adresse.
+
+Les deux sont **déjà codés**, chacun comme une unité de manifeste. Il n'en manque qu'**une seule
+chose**, et elle produit les deux symptômes : le cluster workload n'a ni branche rendue ni Flux,
+donc il ne reçoit aucune des deux unités.
+
+== Figure 1 — la barrière, telle qu'elle est mesurée aujourd'hui
+
+[mermaid]
+----
+flowchart LR
+  subgraph HOST["bioskop — UN hôte Incus, mais DEUX /21 disjoints"]
+    subgraph MGMT["cluster bioskop-mgmt"]
+      MN["bioskop-mgmt-master<br/>vmnet0 10.80.0.10/21<br/>+ 10.80.7.10/32 OK"]
+      KV1["kube-vip-ds ns kube-vip<br/>posé par FLUX<br/>ksz high-availability-kube-vip"]
+      CO1["Connector controlplane<br/>annonce 10.80.7.10/32<br/>tag:k8s"]
+      CAPI["CAPI / CAPN / CAPRKE2<br/>seed-incluster"]
+    end
+    subgraph WRKLD["cluster bioskop-wrkld"]
+      WN["control-plane-qs5dg<br/>vmnet0 10.80.8.9/21<br/>PAS de 10.80.15.10"]
+      NOFLUX["aucun Flux<br/>aucune unité rke2lab<br/>ni kube-vip ni Connector"]
+    end
+  end
+
+  BOX["box 192.168.1.254<br/>route par DÉFAUT"]
+  DROP["TCP-FAIL"]
+  VOID["10.80.15.10<br/>n'existe nulle part"]
+
+  KV1 --> MN
+  CO1 --> MN
+  CAPI -->|"veut joindre 10.80.15.10:6443"| BOX
+  BOX -->|"ne connaît pas 10.80.x.x"| DROP
+  WN --> VOID
+
+  classDef ok fill:#d5f5d5,stroke:#2d7a2d,color:#112
+  classDef bad fill:#ffd9d9,stroke:#aa3333,color:#112
+  classDef neutral fill:#e8e8f5,stroke:#555566,color:#112
+  class MN,KV1,CO1 ok
+  class WN,NOFLUX,DROP,VOID bad
+  class CAPI,BOX neutral
+----
+
+Les faits, vérifiés :
+
+[source]
+----
+# mgmt porte SA vip — DaemonSet posé par Flux
+vmnet0  10.80.0.10/21  10.80.7.10/32
+kube-vip-ds-jvkvq 1/1 Running
+  labels: kustomize.toolkit.fluxcd.io/name=high-availability-kube-vip
+
+# mgmt n'a AUCUNE route vers le /21 du workload : ça part par la box
+$ ip route get 10.80.15.10
+10.80.15.10 via 192.168.1.254 dev lan0 src 192.168.1.131
+$ </dev/tcp/10.80.8.9/6443    -> TCP-FAIL   # même l'adresse RÉELLE du nœud
+$ </dev/tcp/10.80.15.10/6443  -> VIP-FAIL
+----
+
+IMPORTANT: `10.80.0.10/21` couvre `10.80.0.0`–`10.80.7.255` ; `10.80.8.9/21` couvre
+`10.80.8.0`–`10.80.15.255`. Même hôte, segments disjoints — la proximité physique ne donne aucune
+route. C'est voulu : `vmnet0` est isolé par cluster, et c'est pour ça que cilium peere en BGP sur
+`lan0`, jamais sur `vmnet0`.
+
+== Figure 2 — pourquoi on ne passe PAS par kube-vip de CAPN
+
+CAPN sait faire kube-vip (`LXCCluster.spec.loadBalancer.kubeVIP`). Sur RKE2 c'est mort, pour **deux**
+raisons indépendantes : déplacer le fichier n'en réglerait qu'une.
+
+[mermaid]
+----
+flowchart TB
+  CAPN["CAPN — loadBalancer.kubeVIP"]
+  F1["écrit /etc/kubernetes/manifests/kube-vip.yaml"]
+  F2["écrit server/manifests/kube-vip-rbac.yaml"]
+  K1["le kubelet RKE2 lit<br/>/var/lib/rancher/rke2/agent/pod-manifests/"]
+  K2["y trouve etcd, apiserver, controller-manager,<br/>proxy, scheduler — PAS kube-vip"]
+  D1["jamais démarré"]
+  M1["le pod monte hostPath<br/>/etc/kubernetes/super-admin.conf"]
+  M2["inexistant sur RKE2<br/>le vrai est /etc/rancher/rke2/rke2.yaml<br/>et cp_enable + leaderelection exigent l'API"]
+  D2["ne démarrerait pas<br/>même au bon endroit"]
+  A["Addon RKE2 — lui, APPLIQUÉ<br/>ClusterRole system:kube-vip-role<br/>Binding system:kube-vip-binding<br/>sujet = SA kube-vip dans kube-system"]
+  R["unité rke2lab high-availability/kube-vip<br/>MÊMES noms cluster-scoped<br/>sujet = SA kube-vip dans ns kube-vip"]
+  CLASH["2 propriétaires du même binding,<br/>sujets DIFFÉRENTS : le SA du DaemonSet<br/>perd ses droits par intermittence<br/>=> la VIP bat"]
+
+  CAPN --> F1
+  SI["seed-incluster — kubeVIPRBACFile()<br/>PAS CAPN"] --> F2
+  F1 --> K1 --> K2 --> D1
+  F1 --> M1 --> M2 --> D2
+  F2 --> A --> CLASH
+  R --> CLASH
+
+  classDef bad fill:#ffd9d9,stroke:#aa3333,color:#112
+  classDef warn fill:#fff2cc,stroke:#b8860b,color:#112
+  classDef neutral fill:#e8e8f5,stroke:#555566,color:#112
+  class D1,D2,CLASH bad
+  class A,K2,M2 warn
+  class CAPN,SI,F1,F2,K1,M1,R neutral
+----
+
+Pourquoi mgmt ne souffre pas de ça : il a été **adopté**, donc CAPN a sauté son provisionnement — le
+répertoire `/etc/kubernetes/manifests/` n'existe même pas chez lui. `bioskop-wrkld` a été
+**greenfieldé**, donc CAPN a joué sa séquence complète.
+
+CAUTION: Corrigé le 2026-09-21 après coup — `server/manifests/kube-vip-rbac.yaml` vient de
+`kubeVIPRBACFile()` dans **seed-incluster**, pas de CAPN (j'avais attribué à tort). La collision de
+noms `system:kube-vip-role` / `-binding` est réelle, mais elle est entre seed-incluster et l'unité
+rke2lab. Et seed-incluster pose AUSSI un `preRKE2Commands` censé générer le DaemonSet kube-vip : il
+échoue en silence sur cette image (`ctr` n'est extrait qu'au démarrage de rke2, `jq` est absent —
+notre convention est `yq` —, et `airGapped: true`). Voir le brainstorm en fin de fichier.
+
+Le CRD offre exactement le bon mot : `spec.loadBalancer.external` — _« External will not create a load
+balancer. It must be used alongside something like kube-vip »_. **Déjà tranché le 2026-09-13** ; le
+code dit encore `kubeVIP`. Décision non livrée, pas décision à prendre.
+
+== Figure 3 — la cible : deux couches, tout est codé
+
+[mermaid]
+----
+flowchart TB
+  subgraph GAP["LE SEUL MANQUE — commun aux deux couches"]
+    RENDER["rke2lab render (mono-cluster)"]
+    BR["branche manifests/bioskop-wrkld<br/>N'EXISTE PAS"]
+    FLX["Flux dans le workload<br/>PAS AMORCÉ"]
+  end
+
+  subgraph L1["Couche 1 — EXISTER"]
+    U1["unité high-availability/kube-vip<br/>address = networkTopology().vipHostInetAddr()<br/>CODÉ"]
+    DS["kube-vip-ds porte 10.80.15.10/32"]
+    EXT["LXCCluster.loadBalancer: external<br/>PRÉREQUIS, une ligne"]
+  end
+
+  subgraph L2["Couche 2 — ÊTRE JOIGNABLE"]
+    U2["unité tailscale/tailscale<br/>Connector controlplane, subnetRouter<br/>annonce VIP /32 + LB CIDR, tag:k8s<br/>CODÉ"]
+    LOCK1["verrou 1 — autoApprovers.routes<br/>vmnet /18 => tag:k8s<br/>ndh manage-tailnet, CODÉ"]
+    LOCK2["verrou 2 — ACL accept dst /18<br/>ndh manage-tailnet, CODÉ"]
+    TS["tailnet mammoth-skate<br/>DERP traverse le CGNAT de nikopol"]
+  end
+
+  OK["CAPI compose 10.80.15.10:6443 DIRECTEMENT<br/>controlPlaneEndpoint inchangé<br/>client-cert, TLS bout-en-bout"]
+
+  RENDER --> BR --> FLX
+  FLX --> U1 --> DS
+  FLX --> U2
+  EXT --> DS
+  DS --> U2
+  U2 --> TS
+  LOCK1 --> TS
+  LOCK2 --> TS
+  TS --> OK
+
+  classDef miss fill:#ffd9d9,stroke:#aa3333,color:#112
+  classDef done fill:#d5f5d5,stroke:#2d7a2d,color:#112
+  classDef todo fill:#fff2cc,stroke:#b8860b,color:#112
+  class BR,FLX miss
+  class U1,U2,LOCK1,LOCK2 done
+  class RENDER,EXT,DS,TS todo
+  class OK done
+----
+
+CAUTION: La prémisse de cette figure — « le manque = pas de branche + pas de Flux » — est
+SUPERSEDED par le brainstorm en fin de fichier : la cause unique est plus en amont, **le manager ne
+carve pas le bundle de bootstrap de ses cibles**. Les deux invariants ci-dessous restent vrais.
+
+Deux invariants que la figure encode :
+
+* `controlPlaneEndpoint` **reste le VIP** — c'est ce que consomment les nodes workload et kube-vip
+  lui-même. Pas de FQDN de substitution, pas de réécriture du `server` du kubeconfig : le Connector
+  rend l'adresse *réellement routable*, donc CAPI la compose telle quelle.
+* Le reach passe par le **node-plane** (`mammoth-skate`), jamais par le workload-plane
+  (Headscale, pods↔pods) — le VIP est une adresse de *node*. Sinon on couplerait le reach de gestion
+  au réseau applicatif.
+
+== Tableau d'état
+
+[cols="1,3,1",options="header"]
+|===
+| Couche | Pièce | État
+
+| 1 | unité `high-availability/kube-vip`, adresse dérivée du blueprint (`22c9d80cc`, fix `608edfa61`) | CODÉ
+| 1 | `tls-san` du workload contient déjà `10.80.15.10` | vérifié live
+| 2 | unité `tailscale/tailscale` → `Connector controlplane`, VIP `/32` + LB CIDR | CODÉ
+| 2 | `autoApprovers.routes` : segments `vmnet` → `tag:k8s` (ndh `manage-tailnet`) | CODÉ
+| 2 | ACL `accept` dst `10.80.0.0/18` | CODÉ
+| 1+2 | `catalog.highAvailability()` ET `catalog.tailscale()` structurels pour les DEUX rôles | CODÉ
+| — | branche `manifests/bioskop-wrkld` | MANQUE (rendu mono-cluster)
+| — | Flux amorcé dans le cluster workload | MANQUE
+| 1 | `loadBalancer: external` au lieu de `kubeVIP` | LIVRÉ 09-21 (`90e790a0f`)
+|===
+
+NOTE: `ensure` est create-if-absent : passer le code à `external` ne repatchera pas les `LXCCluster`
+existants — effet au prochain, ou patch manuel des deux.
+
+== Ordre d'exécution qui découle de la figure
+
+. **`external`** — FAIT le 2026-09-21 (`90e790a0f`). C'était un *prérequis* : sans elle, dès que Flux
+  arrive dans le workload, l'Addon RKE2 et Flux se disputent `system:kube-vip-role`/`-binding`
+  (figure 2). Inerte sur les deux `LXCCluster` déjà créés (`ensure` = create-if-absent).
+. **Rendu multi-cluster + branche `-wrkld` + Flux amorcé là-bas.** C'est le chantier
+  `workload-grow-foundations`. Au moment où Flux tourne dans le workload, les DEUX unités atterrissent
+  ensemble — la VIP apparaît *et* devient routable dans le même mouvement.
+. **Rien d'autre à coder** pour l'@VIP.
+
+Sonde de vérité, invariante, depuis `bioskop-mgmt-master` : `</dev/tcp/10.80.15.10/6443`.
+
+'''
+
+= Brainstorm — amorcer un cluster né de CAPI/CAPN : le poseur manquant
+
+Suite du 2026-09-21. Le nœud de `bioskop-wrkld` est né mais `NotReady`, et rien ne tourne dessus.
+Ce qui suit confronte le modèle tranché
+(link:../docs/architecture/nixos-substrate/node-bootstrap-delivery.adoc[node-bootstrap-delivery.adoc])
+à ce chemin-là.
+
+== La thèse en une ligne
+
+Le modèle **est en phase**. Il ne manque ni concept, ni règle, ni artefact : il manque **un poseur**.
+
+== Figure 4 — la règle de propriété, déjà tranchée
+
+C'est la réponse à « qui possède l'objet ? ». Le marqueur est un **routeur**, et il route AVANT git.
+
+[mermaid]
+----
+flowchart LR
+  synth["synthèse cdk8s<br/>arbre complet"]
+  mark["ManifestAnnotation.NODE_BOOTSTRAP<br/>stampé UNE fois par unité<br/>PackageMetadataProfile(nodeBootstrap = true)"]
+  branch["branche rendue<br/>tout ce que Flux réconcilie APRÈS le join"]
+  boot[".bootstrap/rke2lab-bootstrap.yaml<br/>multi-doc, UN cran AU-DESSUS de l'arbre<br/>donc jamais committé"]
+  flux["Flux<br/>propriétaire unique"]
+  addon["Addon RKE2<br/>propriétaire unique"]
+
+  synth --> mark
+  mark -->|"non marqué"| branch --> flux
+  mark -->|"marqué"| boot --> addon
+
+  classDef rule fill:#d4f4dd,stroke:#2e7d32,color:#112
+  classDef neutral fill:#e8e8f5,stroke:#555566,color:#112
+  class mark,boot rule
+  class synth,branch,flux,addon neutral
+----
+
+Conséquence, et elle clôt la question : un objet du socle d'amorçage **quitte la branche**, donc Flux
+ne le voit jamais. Pas de double propriétaire, pas de `.skip` à prévoir, pas d'octets à comparer.
+L'inquiétude que j'avais formulée (« deux voies, contenus identiques ») était un problème inventé.
+
+NOTE: Et la qualité « bootstrap » appartient à l'**unité**, pas au domaine ni à la layer — « stamped
+once per unit so no resource of a bootstrap unit can escape the lane ». La question de modèle que je
+croyais ouverte était déjà répondue.
+
+== Figure 5 — la couture spécifiée, et où le chemin CAPI tombe
+
+Quatre temps. Les deux premiers sont communs ; **les deux derniers supposent un `InstanceGrow`**.
+
+[mermaid]
+----
+flowchart TB
+  subgraph osgi["réalm OSGi (in-container) — COMMUN"]
+    ex["1. exploder carve<br/>les docs NODE_BOOTSTRAP"]
+    ce["2. le scion file dans le cellier<br/>SERVER_MANIFESTS (SEALED)"]
+    ex --> ce
+  end
+
+  subgraph hostpath["chemin HOST — fonctionne (bioskop-mgmt)"]
+    gr["3. InstanceGrow récupère (révélé)<br/>et pose user.rke2lab.server-manifests"]
+    sv["4. rke2lab-server-manifests.service<br/>oneshot devlxd, ordonné AVANT rke2-server"]
+    okf["server/manifests/rke2lab-bootstrap.yaml<br/>cilium HelmChartConfig + flux-operator<br/>+ FluxInstance + GitRepository + secrets"]
+    gr --> sv --> okf
+  end
+
+  subgraph capipath["chemin CAPI/CAPN — tombe (bioskop-wrkld)"]
+    capn["CAPN crée l'instance<br/>depuis le LXCMachineTemplate"]
+    none["3. PERSONNE ne pose la clé devlxd<br/>InstanceGrow ne touche pas cette instance"]
+    dead["4. le service existe dans l'image<br/>mais n'a RIEN à lire"]
+    cons["cilium prend le chart par DÉFAUT<br/>compose l'apiserver sur le ClusterIP<br/>avant tout CNI → timeout → NotReady<br/>donc Flux ne peut pas naître non plus"]
+    capn --> none --> dead --> cons
+  end
+
+  ce --> gr
+  ce -.->|"aucune arête"| none
+
+  classDef ok fill:#d5f5d5,stroke:#2d7a2d,color:#112
+  classDef bad fill:#ffd9d9,stroke:#aa3333,color:#112
+  classDef neutral fill:#e8e8f5,stroke:#555566,color:#112
+  class gr,sv,okf ok
+  class none,dead,cons bad
+  class ex,ce,capn neutral
+----
+
+Le point à retenir : **le côté nœud n'est pas en cause**. `rke2lab-server-manifests.service` est dans
+l'image et marche ; il n'a simplement pas de clé à lire. Le défaut est à l'étape 3, et seulement là.
+
+== Figure 6 — la solution : la couture BIFURQUE, elle ne se remplace pas
+
+Même carve, même artefact, **deux poseurs**. Le CRD `RKE2ControlPlane` (v1beta2) fournit exactement la
+pièce : `files[].contentFrom.secret{name, key, namespace}`.
+
+[mermaid]
+----
+flowchart TB
+  ex["exploder carve — INCHANGÉ<br/>un bundle par cluster"]
+
+  subgraph A["poseur 1 — HOST (existant)"]
+    ce1["cellier SERVER_MANIFESTS (SEALED)"]
+    gr1["InstanceGrow → clé devlxd"]
+    n1["oneshot devlxd écrit le fichier"]
+    ce1 --> gr1 --> n1
+  end
+
+  subgraph B["poseur 2 — CAPI/CAPN (à coder)"]
+    sec["Secret sur la lane NODE_BOOTSTRAP<br/>dans rke2lab-&lt;cluster&gt;<br/>la lane qui porte DÉJÀ les BYO-CA<br/>et host-incus-identity — jamais sur la branche"]
+    rcp["RKE2ControlPlane.files[]<br/>contentFrom.secret{name, key}<br/>path: server/manifests/rke2lab-bootstrap.yaml"]
+    n2["write_files de cloud-init<br/>AVANT le démarrage de rke2"]
+    sec --> rcp --> n2
+  end
+
+  fich["server/manifests/rke2lab-bootstrap.yaml"]
+  rke2["rke2 auto-déploie<br/>CNI puis Flux"]
+
+  ex --> ce1
+  ex --> sec
+  n1 --> fich
+  n2 --> fich
+  fich --> rke2
+
+  classDef done fill:#d5f5d5,stroke:#2d7a2d,color:#112
+  classDef todo fill:#fff2cc,stroke:#b8860b,color:#112
+  classDef neutral fill:#e8e8f5,stroke:#555566,color:#112
+  class ce1,gr1,n1 done
+  class sec,rcp,n2 todo
+  class ex,fich,rke2 neutral
+----
+
+Quatre propriétés qui font pencher pour cette forme :
+
+* **le secret n'entre jamais dans un spec** — `contentFrom` est une *référence*, ce qui la rend
+  compatible avec le modèle B (le CR-set du workload est rendu sur la branche du manager) ;
+* **le propriétaire unique est préservé sans rien ajouter** — la règle de la figure 4 s'applique telle
+  quelle ;
+* **l'ordonnancement est inhérent** — `write_files` précède rke2, la même garantie que le oneshot ;
+* **aucun concept nouveau** — pas d'annotation supplémentaire, pas de ConfigMap par objet.
+
+== Le seul point encore ouvert : QUI carve le bundle du workload
+
+Le carve se fait par **passe de synthèse**, donc par cluster rendu — et `bioskop-wrkld` n'a pas de
+passe. Deux lectures :
+
+[cols="1,2,1",options="header"]
+|===
+| Lecture | Conséquence | Verdict
+
+| le render du MANAGER carve un bundle par cible
+| exactement la forme que `RuntimeRke2ConfigManifestsUnit` a déjà (« the manager's branch, not its own » + chaque `workloadTarget`)
+| cohérent avec le modèle B
+
+| chaque cluster carve le SIEN
+| suppose qu'il tourne déjà, donc inapplicable au premier amorçage
+| circulaire
+|===
+
+Le modèle B tranche de fait : les CR CAPI du workload vivent déjà sur la branche du manager, le bundle
+de bootstrap suit la même règle.
+
+== Ce que ça reformule
+
+Le blocage n'est pas « il manque Flux dans le cluster de charge ». C'est **« le manager ne carve pas
+encore le bundle de ses cibles »** — une seule cause, dans un endroit connu, et qui explique d'un coup
+cilium, kube-vip, Flux et le Connector.
