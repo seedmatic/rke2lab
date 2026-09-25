@@ -546,10 +546,9 @@ public class IncusProvisionScenario
         throw new UncheckedIOException(
             "cannot read the emitted rke2.version at " + versionFile, ex);
       }
-      // The LAN FQDN, because this value is read from INSIDE the cluster: a pod resolves through
+      // The fabric FQDN, because this value is read from INSIDE the cluster: a pod resolves through
       // CoreDNS, where the bare host name used to come back as the host's own /etc/hosts loopback.
-      // ClusterNetworkBlueprint.NamePlan carries the three forms and says which audience each
-      // serves.
+      // ClusterNetworkBlueprint.NamePlan says why this is the ONE form with an audience.
       final String incusRemoteHost =
           ClusterNetworkBlueprint.builder()
               .cluster(facet.clusterName())
@@ -557,7 +556,7 @@ public class IncusProvisionScenario
               .deriveRecipeModel()
               .build()
               .names()
-              .nixosLanFqdn();
+              .nixosFabricFqdn();
       final ObjectNode node = JsonNodeFactory.instance.objectNode();
       node.put("imageAlias", view.imageAlias());
       node.put("imageFingerprint", SplitImageFingerprint.of(metadata, rootfs));

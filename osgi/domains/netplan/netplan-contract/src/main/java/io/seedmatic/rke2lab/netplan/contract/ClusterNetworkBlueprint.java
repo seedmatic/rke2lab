@@ -76,19 +76,6 @@ public record ClusterNetworkBlueprint(
   public static final String ULA_PREFIX = "fd96:6924:3693";
 
   /**
-   * The LAN's DNS domain — the one the site router serves, and the ONLY suffix under which a host
-   * name is resolvable from INSIDE a cluster.
-   *
-   * <p>A pod resolves through CoreDNS, which forwards to the nameservers the kubelet gave it
-   * ({@code /run/systemd/resolve/resolv.conf}). Neither mDNS nor the tailnet's MagicDNS is on that
-   * path, and a BARE host name is worse than unresolvable there: the vmnet bridge's dnsmasq — first
-   * in that list — used to answer it from the host's {@code /etc/hosts}, where NixOS writes {@code
-   * 127.0.0.2 <hostname>}, so a pod dialling {@code <host>-nixos} could reach ITSELF. Plain DNS
-   * under this domain is the one form every audience resolves identically.
-   */
-  public static final String LAN_DOMAIN = "lan";
-
-  /**
    * Pod / Service CIDRs — PER-CLUSTER, a pure function of {@code clusterId} (see the cluster
    * addressing plan). Under one cluster these were global constants (10.42/10.43); with four
    * clusters sharing each host's L2 fabric they MUST be globally disjoint or pod routes collide on
@@ -369,7 +356,9 @@ public record ClusterNetworkBlueprint(
             // cluster). The operator-facing authority is config's rke2lab:cluster:remoteIncus; this
             // is the netplan-domain mirror derived from the same bare host.
             hostOf(clusterName) + "-nixos",
-            hostOf(clusterName) + "-nixos." + LAN_DOMAIN));
+            // Same zone as nodeFabricFqdn above — the bare-metal's OWN dnsmasq serves both, so the
+            // infra host and its instances answer from one authority.
+            "nixos." + hostOf(clusterName)));
   }
 
   /** Stable ref/id for contract exports. */
@@ -610,22 +599,29 @@ public record ClusterNetworkBlueprint(
    * serves the asker who cannot yet reach the cluster. That is the only audience needing it: once
    * the cluster answers, the cluster is authoritative about its own nodes.
    *
-   * <p>The infra host has THREE forms because it has three audiences, and they are not
-   * interchangeable — the choice is "who resolves it", never taste:
+   * <p>The infra host keeps {@code nixosHost} (bare) only because the host itself means MYSELF by
+   * it — NixOS writes {@code 127.0.0.2 <hostname>} in {@code /etc/hosts}, so it is correct there
+   * and NOWHERE else. Everything with an audience uses {@link #nixosFabricFqdn}, and that is ONE
+   * form, not three.
    *
-   * <ul>
-   *   <li>{@code nixosHost} — bare. On the host itself this means MYSELF ({@code /etc/hosts} maps
-   *       it to {@code 127.0.0.2}). Correct there, and only there.
-   *   <li>{@code <nixosHost>.local} — mDNS, resolved through a same-LAN machine's NSS: the
-   *       operator's Mac and the seed's probe (this is the form the host-side bootstrap config
-   *       carries).
-   *   <li>{@code nixosLanFqdn} — plain DNS under {@link #LAN_DOMAIN}. The form anything INSIDE a
-   *       cluster must use: a pod reaches neither mDNS nor MagicDNS, and the bare name there can
-   *       resolve to the asker's own loopback.
-   * </ul>
+   * <p>Why one and not three. The two forms it replaces each had a hidden dependency the name did
+   * not show. A bare host name is worse than unresolvable from a pod: the vmnet bridge's dnsmasq —
+   * first in the resolver list a pod inherits — answered it from that {@code /etc/hosts}, so a pod
+   * dialling {@code <host>-nixos} could reach ITSELF ("certificate is valid for localhost"). And a
+   * {@code .lan} name depended on the RESIDENTIAL ROUTER, an authority that stops answering for a
+   * bare-metal the moment it leaves the home LAN — a dependency that looks green right up to the
+   * day it breaks. {@code nixosFabricFqdn} has neither: the answering authority is the bare-metal
+   * that OWNS the network, the same one already trusted for {@code nodeFabricFqdn}, and it is
+   * reachable over the tailnet split-DNS. So resolution does not change with the transport, and the
+   * same-host and cross-host cases stop being different cases — which is why no consumer needs to
+   * ask whose host a cluster is on.
+   *
+   * <p>The record beside it in ndh: a {@code host-record} for {@code nixos.<host>} on the
+   * bare-metal's own bridge, next to the {@code vzhost.<host>} already there ({@code
+   * catalog/default.nix}, the {@code <domain>-baremetal-net} segment).
    */
   public record NamePlan(
-      String nodeHostname, String nodeFabricFqdn, String nixosHost, String nixosLanFqdn) {}
+      String nodeHostname, String nodeFabricFqdn, String nixosHost, String nixosFabricFqdn) {}
 
   /**
    * Canonical cluster topology: 1 master, 3 control nodes (peers), 2 worker nodes.

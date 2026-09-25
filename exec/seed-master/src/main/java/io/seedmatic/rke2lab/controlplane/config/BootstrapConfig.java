@@ -91,16 +91,20 @@ public record BootstrapConfig(
     // channel; the bare tailnet name times out from the seed host).
     final String remoteIncus = config.cluster().remoteIncus().orElseGet(() -> host + "-nixos");
     final String nixosMdnsHost = remoteIncus + ".local";
-    // The SAME daemon, addressed for an IN-CLUSTER caller — a third form, because the audience
-    // decides the name and this one resolves nothing the other two do. A pod resolves through
-    // CoreDNS, which reaches neither mDNS (so not nixosMdnsHost) nor the tailnet's MagicDNS (so not
-    // the bare `remoteIncus` the operator config carries for the Go provider). Worse, the bare name
-    // there used to come back as the host's own /etc/hosts loopback via the vmnet bridge's dnsmasq,
-    // so CAPN dialled ITSELF. Plain DNS under the LAN domain is the one form every audience
-    // resolves
-    // identically — see ClusterNetworkBlueprint.LAN_DOMAIN, spelled literally here for the same
-    // reason `.local` is: this is the host world, past the OSGi seam.
-    final String nixosLanHost = remoteIncus + ".lan";
+    // The SAME daemon, addressed for an IN-CLUSTER caller — because the audience decides the name
+    // and this one resolves nothing the other forms do. A pod resolves through CoreDNS, which
+    // reaches neither mDNS (so not nixosMdnsHost) nor the tailnet's MagicDNS (so not the bare
+    // `remoteIncus` the operator config carries for the Go provider). Worse, the bare name there
+    // used to come back as the host's own /etc/hosts loopback via the vmnet bridge's dnsmasq, so
+    // CAPN dialled ITSELF.
+    //
+    // Derived from the `host` ATOM, not from `remoteIncus`: `host` names the incus substrate the
+    // nodes grow on, so it is the bare-metal whose dnsmasq serves the `.<host>` zone, while
+    // `remoteIncus` is only that daemon's remote LABEL. Spelled literally here for the same reason
+    // `.local` is — this is the host world, past the OSGi seam; the netplan mirror is
+    // ClusterNetworkBlueprint.NamePlan.nixosFabricFqdn, which says why this form replaced a `.lan`
+    // one.
+    final String nixosFabricHost = "nixos." + host;
 
     // Flat kubeconfig at .local.d/kubeconfig.yaml — one single-node management cluster.
     final Path kubeconfigRef =
@@ -120,7 +124,7 @@ public record BootstrapConfig(
             .incus()
             .remoteAddress()
             .orElseGet(() -> URI.create("https://" + nixosMdnsHost + ":8443")),
-        URI.create("https://" + nixosLanHost + ":8443"),
+        URI.create("https://" + nixosFabricHost + ":8443"),
         config.incus().configDir(),
         IMAGE_ALIAS,
         config.image().builderHost().orElseGet(() -> nixosMdnsHost),
