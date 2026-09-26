@@ -11,21 +11,24 @@ pulumi.pkg-path = "pulumi-bin"
 pulumictl.pkg-path = "pulumictl"
 cdk8s-cli.pkg-path = "cdk8s-cli"
 dasel.pkg-path = "dasel"
-dasel.version = "3.3.0"
 graphviz.pkg-path = "graphviz"
 ## incus client, for both the Darwin shells (where we run `incus exec master`) and the Linux
 ## NixOS VM. DEFINED IN ndh, which owns the incus daemon's NixOS modules and the operator's trust
-## to it; the flake ref below is rke2lab RE-EXPORTING it, so this entry and its lock are unchanged
-## by that move. Why a client-only build at all, and why not a flox catalog entry, is documented
-## once at ndh's `incus-client` package — do not restate it here.
+## to it; the flake ref below is rke2lab RE-EXPORTING it. Why a client-only build at all, and why
+## not a flox catalog entry, is documented once at ndh's `incus-client` package — not restated here.
 ##
 ## Reference the github repo (not `path:.`) so the lock pins to a commit
 ## SHA portable across machines. `path:.` would bake the dev-machine
 ## absolute path into manifest.lock and break flox activate on the NixOS
 ## image-builder host (which only sees the repo via NFS at a different
-## absolute path). Bumping: `flox upgrade` or `flox update` picks up
-## new commits on main.
-incus-client.flake = "github:seedmatic/rke2lab#incus-client"
+## absolute path).
+##
+## Pinned to the WORKING branch, like flux9s and manage-tailnet below: a lock taken on the default
+## branch resolves whatever that branch happens to hold, so the dev loop would not see a change until
+## it merged — the opposite of what a lock is for here. The branch must be PUSHED for this to
+## resolve. Bumping: `flox upgrade incus-client`. At merge, all three of these refs drop the branch
+## together.
+incus-client.flake = "github:seedmatic/rke2lab/feature/nixos-node-substrate#incus-client"
 
 ## Maven-build toolchain consumed from the rke2lab flake, which is the single
 ## source of truth (see `mavenToolchain` / `devShells.default` in flake.nix).
