@@ -18,6 +18,20 @@
 # There is no mDNS at all any more (see ./host-access.nix — the node's name is served by its
 # bare-metal's dnsmasq, not advertised link-locally), and resolved does none either (off by default).
 # networkd owns links/addresses/routes; resolved owns DNS.
+#
+# ⚠️ Both links below set `IPv6AcceptRA.UseDNS = false`, and that is load-bearing for the CLUSTER's
+# DNS, not just the node's. Our dnsmasq is the router on every one of our planes and answers RDNSS
+# with its LINK-LOCAL address; rke2 refuses any resolv.conf holding a loopback, multicast or
+# link-local nameserver, and silently autogenerates one with `8.8.8.8 2001:4860:4860::8888` that every
+# dnsPolicy=Default pod inherits — CoreDNS included, which forwards `.` to it. So one RDNSS entry sent
+# the whole cluster's DNS to Google and made `nixos.<host>` — served ONLY by the bare-metal's dnsmasq
+# — NXDOMAIN fleet-wide (measured 2026-09-26: CAPN could not resolve its Incus endpoint while TCP to
+# that endpoint from the same pod was OPEN). Nothing is lost by dropping it: the DHCPv6 lease hands
+# the SAME dnsmasq by its global address, beside the DHCPv4 one. Declared on BOTH links on purpose —
+# today only vmnet0 receives an RA (fabric-br has no v6 range, so it is inert on fabric0), but the
+# reason is a property of OUR dnsmasq, not of a segment's address family, so giving fabric a v6 range
+# must not silently re-arm this. It is one change with `--resolv-conf` in ./rke2.nix, which points
+# kubelet at resolved's uplink file — the file this setting makes ACCEPTABLE.
 { netplan, ... }:
 {
   systemd.network.enable = true;
@@ -51,6 +65,7 @@
     networkConfig.DHCP = "yes";
     dhcpV4Config.RouteMetric = 100;
     ipv6AcceptRAConfig.RouteMetric = 100;
+    ipv6AcceptRAConfig.UseDNS = false;
     linkConfig.RequiredForOnline = "routable";
   };
 
@@ -68,6 +83,7 @@
     networkConfig.DHCP = "yes";
     dhcpV4Config.UseGateway = false;
     ipv6AcceptRAConfig.UseGateway = false;
+    ipv6AcceptRAConfig.UseDNS = false;
     linkConfig.RequiredForOnline = "routable";
     # BOTH families, and this is what makes `network-online.target` mean what rke2 needs. "routable"
     # alone is satisfied by the v4 lease, so the target could be reached while the stateful DHCPv6

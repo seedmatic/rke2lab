@@ -36,6 +36,17 @@
       "--disable=rke2-ingress-nginx"
       "--disable=rke2-snapshot-controller"
       "--disable=rke2-snapshot-validation-webhook"
+      # Hand kubelet resolved's UPLINK resolv.conf, so a pod resolves what the NODE resolves: the
+      # bare-metal's dnsmasq, hence the `<host>` zone that names our Incus endpoint. Left to the
+      # default kubelet reads /etc/resolv.conf, which under resolved is the STUB (127.0.0.53) — a
+      # loopback nameserver, which rke2 refuses, replacing it with a `8.8.8.8` file every
+      # dnsPolicy=Default pod inherits. Measured 2026-09-26 on a cold-started bioskop-mgmt: CAPN could
+      # not build its Incus client (`lookup nixos.bioskop on 10.48.0.10:53: no such host`), so
+      # LXCCluster/LXCMachine never provisioned and the whole adoption held — while TCP to
+      # 172.16.0.1:8443 from that same pod was OPEN. The path was never the problem, only the name.
+      # ⚠️ One change with `IPv6AcceptRA.UseDNS = false` in ./network.nix, which is what makes this
+      # file acceptable to that same refusal — the full reasoning lives in its header.
+      "--resolv-conf=/run/systemd/resolve/resolv.conf"
     ];
   };
 
