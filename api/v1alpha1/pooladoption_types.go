@@ -47,6 +47,12 @@ type PoolAdoptionSpec struct {
 	// agentConfig.nodeLabels, CAPRKE2's own field for this.
 	// +optional
 	NodeLabels []string `json:"nodeLabels,omitempty"`
+
+	// Target is the Incus cluster member this pool's instances are created on — projected from the
+	// PoolIntention and posed on LXCMachineTemplate.spec.target (and the per-pet LXCMachine, which
+	// shares the same spec builder). See PoolIntentionSpec.Target for why it must be stated at all.
+	// +optional
+	Target string `json:"target,omitempty"`
 }
 
 // PoolAdoptionPhase is the per-pool adopt-first state machine — the grain it actually runs

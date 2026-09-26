@@ -649,7 +649,7 @@ func (r *PoolAdoptionReconciler) deletePetCRSet(
 func (r *PoolAdoptionReconciler) lxcMachineTemplateObj(spec adoptionv1alpha1.PoolAdoptionSpec) *unstructured.Unstructured {
 	obj := newObj(gvkLXCMachineTemplate, controlPlaneName(spec.ClusterName), spec.Namespace)
 	obj.Object["spec"] = map[string]any{
-		"template": map[string]any{"spec": lxcMachineSpec(spec.ClusterName, spec.Image.Fingerprint)},
+		"template": map[string]any{"spec": lxcMachineSpec(spec.ClusterName, spec.Image.Fingerprint, spec.Target)},
 	}
 	return obj
 }
@@ -657,7 +657,7 @@ func (r *PoolAdoptionReconciler) lxcMachineTemplateObj(spec adoptionv1alpha1.Poo
 func (r *PoolAdoptionReconciler) lxcMachineObj(spec adoptionv1alpha1.PoolAdoptionSpec, nodeName string) *unstructured.Unstructured {
 	obj := newObj(gvkLXCMachine, nodeName, spec.Namespace)
 	obj.SetLabels(map[string]string{clusterNameLabel: spec.ClusterName})
-	body := lxcMachineSpec(spec.ClusterName, spec.Image.Fingerprint)
+	body := lxcMachineSpec(spec.ClusterName, spec.Image.Fingerprint, spec.Target)
 	// providerID = lxc:///<name> → CAPN adopts the existing instance (this pet is present).
 	body["providerID"] = "lxc:///" + nodeName
 	obj.Object["spec"] = body
@@ -779,8 +779,12 @@ func (r *PoolAdoptionReconciler) rke2ControlPlaneObj(spec adoptionv1alpha1.PoolA
 // trio (ip_tables/ip6_tables/iptable_raw) that FATAL-modprobes on the nftables-only kernel-6.18
 // substrate. LXCMachine.spec.config wins over that embedded default, so we re-assert the
 // kernel-6.18-safe set (+ the privileged raw.lxc/security our node-base needs) HERE.
-func lxcMachineSpec(clusterName, fingerprint string) map[string]any {
-	return map[string]any{
+// target is the Incus cluster member to create on; empty leaves the key out, which hands placement
+// back to Incus — it then picks the member with the fewest instances and breaks ties AT RANDOM. Set
+// it. The key is omitted rather than sent empty because CAPN treats "" as "no target given", and an
+// explicit empty string in the CR would read like a decision when it is the absence of one.
+func lxcMachineSpec(clusterName, fingerprint, target string) map[string]any {
+	spec := map[string]any{
 		"instanceType": "container",
 		"profiles":     []any{nodeProfileName(clusterName), "node-base"},
 		"image":        map[string]any{"fingerprint": fingerprint},
@@ -795,6 +799,10 @@ func lxcMachineSpec(clusterName, fingerprint string) map[string]any {
 			"linux.kernel_modules": "ip_vs,ip_vs_rr,ip_vs_wrr,ip_vs_sh,netlink_diag,nf_nat,overlay,br_netfilter,xt_socket",
 		},
 	}
+	if target != "" {
+		spec["target"] = target
+	}
+	return spec
 }
 
 // nodeProfileName is the per-cluster incus profile carrying the node's NICs — the shared naming

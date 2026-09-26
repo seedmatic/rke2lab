@@ -103,6 +103,7 @@ func specFromPoolIntention(pi *adoptionv1alpha1.PoolIntention) adoptionv1alpha1.
 		ControlPlaneEndpoint: pi.Spec.ControlPlaneEndpoint,
 		Nodes:                pi.Spec.Nodes,
 		NodeLabels:           pi.Spec.NodeLabels,
+		Target:               pi.Spec.Target,
 	}
 }
 
