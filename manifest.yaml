@@ -18,7 +18,7 @@ facet:
 image:
   imageAlias: node-base
   imageFingerprint: 483198367e547bce5d56a04dbdee0423807c958f761523d42a4861df8c67a130
-  imageBuildChecksum: 6ad78a640db8622517373ae39590e119ebd500057856e538ab09846ca6badfd6
+  imageBuildChecksum: 2f8ed7264acfbaa4edff29c83f28f6223f4d88ff734c59d9a2624c0a285411fa
   incusProject: rke2lab
   incusRemoteAddress: https://nixos.bioskop:8443
   rke2Version: 1.34.10+rke2r1
