@@ -1,9 +1,19 @@
 creation_rules:
-  # Age recipients for SOPS encryption:
+  # Age recipients for SOPS encryption. Both are DERIVED from an ed25519 SSH key via `ssh-to-age`,
+  # so the SSH key is the single source of truth and no age key exists on its own.
   # - age10ey0l... : Operator key (from nix-darwin-home, used by git sops filter)
+  #                  Obtained: ssh-to-age < ~/.local/share/ndh/ssh-keys/github-signing-hyland.pub
+  #                  ★ It IS the `github-signing-hyland` key — the same ed25519 key signs commits
+  #                  and decrypts this repo, so the two lifecycles are COUPLED: rotating the GitHub
+  #                  signing key silently revokes operator decryption here and in ndh. Re-key both
+  #                  repos (`sops updatekeys`) in the same change, never the SSH key alone.
   # - age1k0tc4... : Flux/cluster key (derived from rke2-cluster SSH key via ssh-to-age)
-  #                  Obtained: ssh-to-age < ~/.local/var/run/secrets/ssh-keys/rke2-cluster.pub
+  #                  Obtained: ssh-to-age < ~/.local/share/ndh/ssh-keys/rke2-cluster.pub
   #                  Used by Flux in-cluster to decrypt gitops/ resources
+  #
+  # ndh carries two MORE recipients that this repo deliberately does not: the bioskop and nikopol
+  # SSH HOST keys, which is how sops-nix decrypts on those machines at activation. Nothing here is
+  # read at a host's activation, so adding them would widen the blast radius for nothing.
 
   # k8s is catching only secrets based
   - path_regex: '.*\.ya?ml'
