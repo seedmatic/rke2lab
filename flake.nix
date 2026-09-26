@@ -588,14 +588,15 @@
         # is the export as-is (no yq). `nix build .#dataplanJson`, then cp to ./dataplan.json.
         dataplanJson = dataplanJsonFor pkgs;
 
-        # Darwin-buildable incus client. The full `incus` daemon is Linux-only
-        # (requires lxc, libcap, cowsql, etc.), but nixpkgs ships a `client.nix`
-        # variant exposed as `pkgs.incus.passthru.client` that builds on both
-        # platforms because it only needs Go + the `cmd/incus` subpackage.
-        # Surfacing it here gives us a stable `flake = ".#incus-client"`
-        # reference for the rke2lab flox env to install on Darwin (the catalog
-        # entry only ships Linux builds).
-        incusClient = pkgs.incus.passthru.client;
+        # Darwin-buildable incus client, now OWNED BY ndh and re-exported here.  ndh owns the incus
+        # daemon (its NixOS modules) and the operator's trust to it, so the client belongs beside
+        # them; this end keeps the `.#incus-client` output name so the flox manifest's
+        # `incus-client.flake = "github:seedmatic/rke2lab#incus-client"` and its lock stay valid.
+        # Same direction as ndh's manage-tailnet below, which rke2lab also consumes.
+        #
+        # (Why a client-only variant at all: `pkgs.incus` is the full daemon and Linux-only, while
+        # `incus.passthru.client` needs just Go + cmd/incus. That reasoning now lives once, in ndh.)
+        incusClient = inputs.ndh.packages.${system}.incus-client;
 
         # Prebuilt pulumi CLI for the deploy wrapper (matches the flox env's
         # `pulumi.pkg-path = "pulumi-bin"`); the `-bin` variant avoids a Go

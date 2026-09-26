@@ -13,11 +13,11 @@ cdk8s-cli.pkg-path = "cdk8s-cli"
 dasel.pkg-path = "dasel"
 dasel.version = "3.3.0"
 graphviz.pkg-path = "graphviz"
-## incus client. Full `incus` daemon is Linux-only in nixpkgs/flox catalog,
-## but its client sub-binary builds on both platforms via the
-## `pkgs.incus.passthru.client` derivation, surfaced as `.#incus-client`
-## from the top-level flake. Single source for both Darwin shells (where
-## we run `incus exec master`) and the Linux NixOS VM.
+## incus client, for both the Darwin shells (where we run `incus exec master`) and the Linux
+## NixOS VM. DEFINED IN ndh, which owns the incus daemon's NixOS modules and the operator's trust
+## to it; the flake ref below is rke2lab RE-EXPORTING it, so this entry and its lock are unchanged
+## by that move. Why a client-only build at all, and why not a flox catalog entry, is documented
+## once at ndh's `incus-client` package — do not restate it here.
 ##
 ## Reference the github repo (not `path:.`) so the lock pins to a commit
 ## SHA portable across machines. `path:.` would bake the dev-machine
