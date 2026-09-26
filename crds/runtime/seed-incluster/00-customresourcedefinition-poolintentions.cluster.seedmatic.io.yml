@@ -152,6 +152,26 @@ spec:
                 - control-plane
                 - worker
                 type: string
+              target:
+                description: |-
+                  Target is the Incus CLUSTER MEMBER this pool's instances must be created on — the value that
+                  becomes LXCMachineTemplate.spec.target, and through it CAPN's placement.
+
+                  It has to be stated, because Incus will otherwise choose: "the automatic assignment picks the
+                  cluster member that has the lowest number of instances. If several members have the same amount
+                  of instances, one of the members is CHOSEN AT RANDOM." A cluster is addressed on ONE host's
+                  segments, so a node born on the wrong member looks for a lease on a subnet whose DHCP
+                  reservation lives elsewhere, and the addressing plan goes with it.
+
+                  Pool-scoped for the same reason NodeLabels is: that is the grain the consumer has — one
+                  LXCMachineTemplate per pool. Not cluster-scoped, even though every pool of a cluster shares a
+                  host today, because the field maps 1:1 onto the CR it fills.
+
+                  live on the management cluster, and making it required would invalidate them on their next
+                  write. Empty means "let Incus choose", which is only safe while exactly ONE member is eligible
+                  for automatic placement (ndh pins every other member to scheduler.instance=manual). Every
+                  producer should set it; tighten to required once they all do.
+                type: string
             required:
             - clusterRef
             - controlPlaneEndpoint
