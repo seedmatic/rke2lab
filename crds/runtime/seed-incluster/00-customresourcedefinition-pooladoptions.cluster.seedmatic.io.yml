@@ -145,6 +145,12 @@ spec:
                 - control-plane
                 - worker
                 type: string
+              target:
+                description: |-
+                  Target is the Incus cluster member this pool's instances are created on — projected from the
+                  PoolIntention and posed on LXCMachineTemplate.spec.target (and the per-pet LXCMachine, which
+                  shares the same spec builder). See PoolIntentionSpec.Target for why it must be stated at all.
+                type: string
             required:
             - clusterName
             - controlPlaneEndpoint
