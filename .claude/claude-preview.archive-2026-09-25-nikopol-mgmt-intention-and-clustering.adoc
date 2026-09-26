@@ -1,0 +1,1043 @@
+= Whiteboard — déclarer `nikopol-mgmt` : où est le VRAI delta
+:toc: left
+:toclevels: 3
+
+Brainstorm ouvert le 2026-09-25. État mesuré le même jour depuis `bioskop`
+(worktree `feature/nixos-node-substrate`).
+
+CAUTION: *Première leçon de ce whiteboard : le sujet est déjà largement tranché.*
+link:../docs/architecture/cluster-api/management-workload-topology.adoc[management-workload-topology.adoc]
+décide l'itinérance de `nikopol-nixos`, le transport cross-hôte, l'egress du pod CAPI, et jusqu'au
+« l'identité incus doit devenir par-remote ». Le rôle de ce tableau blanc n'est donc **pas** de
+re-concevoir, c'est de *localiser le delta* — ce qui reste ouvert, et ce que le code n'a pas rattrapé.
+
+== L'idée en une phrase
+
+`nikopol-mgmt` n'ouvre presque aucune question d'architecture : la spec a déjà tout posé pour un
+substrat itinérant. Il ouvrait **une** question de modèle — le cluster de gestion *voyage-t-il* (un
+seul, qui change d'hôte) ou *se fédère-t-il* (deux, qui coexistent) ? — tranchée le 2026-09-25 en
+faveur du second, **avec auto-adoption** (Figure 2). Et cette réponse-là replie la moitié du
+problème : la traversée du plan CAPI devient un **échafaudage de naissance**, pas un régime permanent.
+
+Ce qui reste, et qui est le vrai enjeu : *deux clusters de gestion, c'est le premier cas d'usage réel
+du **clustermesh MGMT*** que `cluster-addressing-plan.adoc` prévoit depuis le début — pré-armé dans
+le code, jamais exercé faute d'un second membre. Cette traversée-là, elle, est **permanente**
+(<<mgmt-clustermesh,Figure 7>>).
+
+== Figure 1 — l'état mesuré, le 2026-09-25
+
+[mermaid]
+----
+flowchart TB
+  subgraph TN["tailnet mammoth-skate.ts.net — le SEUL transport commun aux deux hôtes"]
+    direction LR
+    TSB["bioskop 100.76.71.8 — l'opérateur"]
+    TSN["nikopol 100.81.135.106 — Mac corp, JAMF"]
+  end
+
+  subgraph BIO["bioskop-nixos 100.89.98.37 — SÉDENTAIRE (LAN domestique)"]
+    INCB["incus :8443 — remote APPROUVÉ<br/>projet rke2lab · image node-base"]
+    subgraph MGMT["bioskop-mgmt — clusterId 0"]
+      CAPI["CAPI · CAPN · CAPRKE2 · seed-incluster"]
+      ADOPT["rke2-adoption-controller<br/>possède l'egress + le patch kubeconfig"]
+      CONN0["Connector bioskop-mgmt-controlplane<br/>100.70.37.95 · tag:k8s"]
+    end
+    subgraph WRK["bioskop-wrkld — clusterId 1 · VIVANT"]
+      W["control-plane Ready<br/>né PAR INTENTION"]
+    end
+  end
+
+  subgraph NIK["nikopol-nixos 100.73.122.6 — ITINÉRANT (hotspot, CGNAT)"]
+    INCN["incus :8443 — RÉPOND, auth UNTRUSTED<br/>projet rke2lab ?  image node-base ?"]
+    GHOST["nikopol-mgmt — clusterId 2<br/>N'EXISTE PAS<br/>ni branche, ni CR, ni nœud"]
+  end
+
+  CAPI -->|"intention → CR-set"| WRK
+  CAPI -.->|"CE QUI MANQUE"| GHOST
+  TSB -.->|"ping 49 ms · API 200"| INCN
+
+  classDef live fill:#d5f5d5,stroke:#2d7a2d,color:#000
+  classDef gap fill:#ffd9d9,stroke:#a33,color:#000
+  classDef roam fill:#fff3cd,stroke:#b8860b,color:#000
+  class INCB,CAPI,ADOPT,CONN0,W,TSB live
+  class GHOST gap
+  class INCN,TSN,NIK roam
+----
+
+*Déjà acquis, sans travail* : le blueprint connaît `nikopol-mgmt` (clusterId 2, ses trois segments,
+la MAC de `nikopol-mgmt-master`) ; `ClusterTopology.of(MGMT)` sait qu'un mgmt est mono-nœud ; ndh
+déclare `hosts/nikopol/nixos.nix` par le module partagé `baremetal-segment.nix`, donc les
+réservations dnsmasq arrivent par `networkBlueprint.segments` ; `WorkloadTarget(host, role)` accepte
+`mgmt` tel quel ; `WorkloadClusterCas` frappe la CA de toute cible nouvelle.
+
+== L'antériorité — ce que la spec décide déjà
+
+[cols="2,2,3",options="header"]
+|===
+| question | tranché où | verdict
+
+| `nikopol-nixos` est-il joignable de façon fiable ?
+| `#cp-endpoint-reach` › *the decisive constraint*
+| *Non, et c'est assumé* : hôte ROAMING, hotspot, souvent CGNAT. Le tailnet est le **seul** transport
+  commun — jamais de L2 partagé ni d'uplink routable cross-hôte. DERP traverse le CGNAT, puis
+  Tailscale passe en direct.
+
+| Comment un pod de gestion atteint-il un autre cluster ?
+| § *The workload reach — the CAPI pod egresses through the operator*
+| *Par l'opérateur tailscale, en egress L4.* Les nœuds ne sont **pas** clients tailscale — un pod
+  n'hérite d'aucune route de son nœud. `ProxyGroup type: egress` + Service `ExternalName` annotée
+  `tailnet-target-ip`. Live-probé le 2026-09-12 (opérateur `v1.102.3`).
+
+| Qui possède cette Service ?
+| même §, *Four pieces*
+| *Le `rke2-adoption-controller`, PAS Flux.* L'opérateur mute `spec.externalName` ; un force-apply SSA
+  de Flux se battrait avec lui et ferait battre la Service. Un seul propriétaire, pas de course.
+
+| Le TLS survit-il au détour ?
+| même §
+| *Oui, bout-en-bout* : egress L4 en pass-through, pas de proxy terminant TLS (contrairement à
+  `apiServerProxy`, incompatible avec la kubeconfig à cert client de CAPRKE2). Le prix : le
+  `tlsSan` doit **contenir le FQDN d'egress**.
+
+| L'identité incus doit-elle être par-remote ?
+| § *Materialization consequences* › item *CAPN — two incus remotes*
+| *Oui, et c'est déjà écrit* : « `server`/`server-crt` per remote ; the `client-crt`/`client-key` CAPN
+  identity **can be shared**, trusted by both hypervisors ». Et : « it must become per-workload /
+  per-remote ». Ma propre analyse du code converge — ce n'est donc pas une décision, c'est une dette.
+
+| Le VIP d'un cluster est-il joignable cross-hôte ?
+| § *The mechanism — the Connector, two locks*
+| *Oui* : le Connector annonce le VIP en `/32` + le pool LB `/26`, et DEUX verrous s'ouvrent
+  déclarativement par `manage-tailnet` de ndh — approbation de route (`autoApprovers` sur le `/18`
+  pour `tag:k8s`) **et** `accept` ACL sur le `/18`. Validé vivant le 2026-09-12.
+
+| `vzhost.nikopol` (le Mac corp) peut-il être membre du tailnet ?
+| § *The mesh* › note *Deferred*
+| *Non — JAMF.* Il vit sur le segment d'instances de `nikopol-nixos` (`172.16.6.0/24`), que
+  `nikopol-nixos` annonce dans le tailnet avec une zone split-DNS `.nikopol`.
+|===
+
+→ *Conséquence pour nous* : sur les six questions que j'avais listées comme « à trancher »,
+**cinq sont déjà tranchées**. Reste celle de la Figure 2.
+
+== Figure 2 — LA question ouverte : un mgmt qui VOYAGE, ou deux qui COEXISTENT ?
+
+La spec est explicite (§ *Naming convention*) :
+
+[quote]
+____
+The management cluster carries the name of *its current host* because it can move between
+bare-metals (the cellar travels with it). […] *Target placement*: `bioskop-mgmt` · `bioskop-wrkld` ·
+`nikopol-wrkld` (management on `bioskop`).
+____
+
+Donc dans le modèle écrit, `bioskop-mgmt` et `nikopol-mgmt` sont **le même cluster à deux
+emplacements** — pas deux clusters. Et le placement cible ne prévoit sur nikopol qu'un `nikopol-wrkld`.
+Or la demande est de déclarer `nikopol-mgmt` *comme une intention émise par `bioskop-mgmt`* — ce qui
+les fait **coexister**. C'est un modèle que la spec ne décrit pas.
+
+[mermaid]
+----
+flowchart TB
+  subgraph A["Modèle A — le mgmt VOYAGE (ce que la spec écrit)"]
+    direction TB
+    A1["UN seul cluster de gestion"]
+    A2["change d'hôte ; le CELLIER voyage avec lui<br/>(cellar-secrets : additivité prouvée)"]
+    A3["nikopol-mgmt = bioskop-mgmt déplacé<br/>→ bioskop-mgmt CESSE d'exister"]
+    A4["l'itinérance devient SANS OBJET :<br/>le plan de gestion est toujours LOCAL à son substrat"]
+    A1 --> A2 --> A3 --> A4
+  end
+
+  subgraph B["Modèle B — les mgmt SE FÉDÈRENT (la demande)"]
+    direction TB
+    B1["DEUX clusters de gestion vivants"]
+    B2["bioskop-mgmt ENFANTE nikopol-mgmt<br/>par intention, cross-hôte"]
+    B3["chacun porte son propre CAPI<br/>(ClusterRole.MGMT ⇒ + clusterApi)"]
+    B4["l'itinérance doit être TRAVERSÉE :<br/>egress, absence tolérée, routeur distant"]
+    B1 --> B2 --> B3 --> B4
+  end
+
+  Q{{"qui adopte nikopol-mgmt<br/>à terme ?"}}
+  A4 --> Q
+  B4 --> Q
+  Q --> R["piste : naissance par B,<br/>puis AUTO-ADOPTION<br/>(§ mgmt-self-hosted-hypothesis)"]
+
+  classDef spec fill:#d9e8ff,stroke:#2a5d9f,color:#000
+  classDef ask fill:#fff3cd,stroke:#b8860b,color:#000
+  class A1,A2,A3,A4 spec
+  class B1,B2,B3,B4 ask
+----
+
+*Ce que le modèle B coûte, et qui n'est pas dans la spec* : deux plans de gestion vivants posent la
+question du propriétaire unique (le `single-owner-rule` déjà appris ailleurs), de la kubeconfig à
+trois-puis-quatre contextes, et de qui adopte qui. *Ce qu'il gagne* : nikopol devient autonome — son
+GitOps tire depuis GitHub, donc il survit à l'absence de bioskop, ce qu'un mgmt voyageur ne donne pas.
+
+NOTE: la spec a déjà une porte pour ça — `#mgmt-self-hosted-hypothesis` (« self-hosting via adoption
+— the direction »). La piste *naître par intention, puis s'auto-adopter* y est cohérente : bioskop
+n'est que la sage-femme, pas le tuteur permanent.
+
+.Décision (2026-09-25) — modèle B, avec auto-adoption
+[TIP]
+====
+*Retenu* : `bioskop-mgmt` **enfante** `nikopol-mgmt` par intention cross-hôte ; `nikopol-mgmt` porte
+son propre CAPI (`ClusterRole.MGMT` ⇒ `+ clusterApi`, structurel, déjà le cas) et **s'auto-adopte** —
+après quoi bioskop n'est plus qu'un témoin. La sage-femme, pas le tuteur.
+
+*Écarté* : le modèle A (un mgmt qui voyage, ce que la spec écrit aujourd'hui) et la fédération
+durable sans auto-adoption (qui exigerait de tolérer l'absence en régime permanent).
+
+⚠ *Cette décision met la spec en retard sur deux points* — son § *Naming convention* (« Target
+placement: management on `bioskop` », et nikopol ne portant qu'un `wrkld`) et son modèle d'un mgmt
+unique et voyageur. À reporter dans
+link:../docs/architecture/cluster-api/management-workload-topology.adoc[management-workload-topology.adoc]
+quand la forme sera stabilisée — pas avant, c'est encore le tableau blanc.
+====
+
+=== Ce que l'auto-adoption change : la traversée est un ÉCHAFAUDAGE
+
+C'est la conséquence la plus utile de la décision, et elle réduit le travail. Le besoin cross-hôte
+n'existe que pendant la **fenêtre de naissance** : dès que `nikopol-mgmt` s'est auto-adopté, son CAPN
+tourne *sur nikopol* et parle à l'incus **local** — donc la forme `nikosos-nixos.lan`, celle que le
+code écrit déjà, redevient la bonne. Rien à traverser en régime établi.
+
+[mermaid]
+----
+stateDiagram-v2
+  [*] --> Echafaudage
+
+  state Echafaudage {
+    [*] --> Naissance
+    Naissance: bioskop-mgmt émet l'intention<br/>CAPN de BIOSKOP pilote l'incus de NIKOPOL
+    Naissance --> Traversee
+    Traversee: BESOIN cross-hôte —<br/>egress :8443 + identité par-remote<br/>+ endpoint par FQDN d'egress
+    Traversee --> Vivant: le nœud nikopol-mgmt-master est Ready
+  }
+
+  Vivant --> AutoAdoption: nikopol-mgmt tire sa branche depuis GitHub<br/>(Flux — ne traverse JAMAIS bioskop)
+  AutoAdoption: son propre CAPI s'empare de lui-même<br/>§ mgmt-self-hosted-hypothesis
+
+  AutoAdoption --> RegimeEtabli
+  RegimeEtabli: CAPN in-cluster → incus LOCAL<br/>→ nikopol-nixos.lan REDEVIENT juste<br/>→ plus d'egress, plus d'absence à tolérer
+  RegimeEtabli --> [*]
+
+  Echafaudage --> Echafaudage: re-naissance (cold start)<br/>l'échafaudage doit RESTER disponible
+----
+
+Deux conséquences pratiques :
+
+* *L'échafaudage doit rester, mais il n'a pas à être élégant.* Il sert à chaque re-naissance (cold
+  start, re-grow) — donc on le garde ; mais il n'a pas à porter un régime permanent, ce qui **retire
+  du périmètre** la tolérance à l'absence en continu. Une sonde à trois valeurs reste utile *pendant
+  la fenêtre* (nikopol absent ⇒ « attends », pas « c'est cassé »), pas au-delà.
+* *Le GitOps ne traverse jamais bioskop.* `manifests/nikopol-mgmt` est poussée par bioskop mais
+  **tirée depuis GitHub** par le Flux de nikopol. Ce chemin-là est déjà tolérant à l'itinérance, par
+  construction. Seul le plan CAPI ne l'est pas — et l'auto-adoption le supprime.
+
+CAUTION: *Cette conclusion ne vaut que pour le plan CAPI.* Il existe une SECONDE traversée
+cross-hôte, elle est **permanente**, et elle est la vraie raison d'être de ce chantier — voir
+<<mgmt-clustermesh,Figure 7>>.
+
+== Figure 3 — l'egress : le mécanisme existe, il suffit de l'étendre à `:8443`
+
+C'est la bonne nouvelle du jour. La machinerie d'egress est **déjà déployée et éprouvée** pour la
+traversée du VIP ; l'API incus est *la même forme*, un port plus loin.
+
+[mermaid]
+----
+flowchart LR
+  subgraph M["bioskop-mgmt"]
+    CAPN["CAPN pod"]
+    PG["ProxyGroup type: egress<br/>DÉJÀ LÀ (opérateur v1.102.3)"]
+    S1["Service ExternalName<br/>&lt;w&gt;-apiserver<br/>tailnet-target-ip: VIP<br/>✅ EXISTE"]
+    S2["Service ExternalName<br/>nikopol-incus<br/>tailnet-target-ip: 100.73.122.6<br/>➕ À AJOUTER"]
+    OWN["rke2-adoption-controller<br/>PROPRIÉTAIRE (pas Flux)"]
+  end
+  subgraph N["nikopol-nixos (itinérant)"]
+    INC["incus :8443"]
+  end
+
+  CAPN -->|"ClusterIP / DNS"| S2
+  S2 --> PG
+  PG -->|"L4 pass-through · DERP puis direct"| INC
+  OWN -.->|"réconcilie idempotemment"| S1
+  OWN -.->|"doit aussi posséder celle-ci"| S2
+
+  classDef have fill:#d5f5d5,stroke:#2d7a2d,color:#000
+  classDef add fill:#fff3cd,stroke:#b8860b,color:#000
+  class PG,S1,OWN,CAPN have
+  class S2 add
+----
+
+Trois conséquences à ne pas rater :
+
+. *Ne PAS rendre cette Service par Flux.* L'opérateur mute `spec.externalName` ; Flux la ferait
+  battre. Le précédent est explicite et déjà payé — donc c'est un contrôleur qui la possède. Reste à
+  décider **lequel** : `rke2-adoption-controller` (qui possède déjà l'egress du VIP) ou un
+  réconciliateur de substrat distinct. *[à trancher — mais le principe « reach is a facet of
+  adoption » plaide pour le premier]*
+. *Le TLS.* Le précédent du VIP ajoute le FQDN d'egress au `tlsSan`. Pour incus, l'équivalent serait
+  un SAN sur le cert serveur de `nikopol-nixos` — **sauf si** le client incus épingle le cert serveur
+  (le Secret porte `serverCert`), ce qui rendrait la vérification de nom sans objet. *[à vérifier —
+  ça décide s'il faut toucher au cert serveur de nikopol]*
+. *`tailnet-target-ip` vs `-fqdn`.* Le VIP est une IP de sous-réseau annoncée ; `nikopol-nixos` est un
+  membre du tailnet, donc son IP `100.73.122.6` est stable et suffit — c'est exactement l'« adresse
+  stable sur le tailnet » que la spec réclame pour le remote cross-hôte.
+
+== Figure 4 — les serveurs incus en cluster : REJET RETIRÉ (2026-09-25)
+
+CAUTION: *J'avais écarté cette piste sur un raisonnement en partie FAUX.* Vérification faite contre
+https://linuxcontainers.org/incus/docs/main/explanation/clustering/[la doc de clustering d'incus],
+deux de mes trois objections tombent, et la piste redevient non seulement viable mais probablement
+**meilleure** que l'egress. Le diagramme ci-dessous décrit le cas où nikopol serait *votant* — ce
+qui est précisément ce qu'on ne ferait pas. Gardé pour mémoire du raisonnement, pas comme conclusion.
+
+.Ce que la doc dit, et qui démonte mes objections
+[TIP]
+====
+*Objection 1 — « nikopol absent fait perdre le quorum à bioskop ». FAUSSE, car évitable.* Il existe
+un rôle **`database-client`**, non automatique, qui « prevents the affected cluster member from being
+elected as a voter or stand-by ». Épinglé dessus, nikopol n'entre jamais dans le raft : son absence
+ne peut pas toucher le quorum. Mon calcul « à deux membres, les deux votent » n'était vrai que *par
+défaut* (`cluster.max_voters` = 3, `cluster.max_standby` = 2), pas par nécessité.
+
+*Objection 3 — « le stockage ne se met pas en cluster ici ». TROP FORTE.* La doc prévoit exactement
+notre cas : les membres partagent une config identique « with a critical exception: some configuration
+options related to storage and networks, which are member-specific » — nommément « the source device
+and size for a storage pool » et « the name for a ZFS zpool ». Un pool ZFS local par membre sous un
+nom commun est le motif *normal* en cluster, pas un contournement.
+
+*Objection 2 — le battement. CONFIRMÉE mais réduite.* `cluster.offline_threshold` vaut bien 20 s par
+défaut (minimum 10). Un membre franchi devient `offline`, et alors « no operations are possible on this
+member, and neither are operations that require a state change across all members ». C'est le coût
+réel, et il est plus étroit que je ne le disais : les opérations sur les instances *de bioskop*
+continuent ; ce qui bloque, ce sont les changements d'état **cluster-wide** (créer un réseau, un pool)
+pendant l'absence de nikopol.
+
+*Et deux dettes disparaîtraient par-dessus le marché.* Les images sont répliquées par le cluster
+(« Incus replicates images on as many cluster members as there are database members »,
+`cluster.images_minimal_replica = -1` pour tous) — donc le point « l'image doit exister côté nikopol »
+s'évapore. Et un seul remote signifie un seul couple (adresse, cert serveur) — donc la dette de
+l'identité incus **par-remote** s'évapore aussi.
+
+*La question qui décide — VÉRIFIÉE, et la réponse est oui.* La doc « Manage instances in a cluster »
+est explicite : « *You can operate each instance from any cluster member, so you do not need to log on
+to the cluster member on which the instance is located.* » Donc un pod de bioskop-mgmt parle à
+`nixos.bioskop`, **local, sur sa propre fabric**, et pilote des instances sur nikopol : la traversée
+cross-hôte de l'API incus **disparaît entièrement** — plus d'egress ni de tailnet sur ce chemin.
+
+*Et CAPN le sait déjà.* Le CRD que nous faisons tourner (`lxcmachinetemplates`, v1alpha2, installé le
+2026-09-24) porte un champ `spec.template.spec.target` dont la description dit : « *Target where the
+machine should be provisioned, **when infrastructure is a production cluster**. Can be one of `name`
+(a cluster member) or `@name` (a cluster group). Target is ignored when infrastructure is single-node
+(e.g. **for development purposes**).* » Le provider considère donc l'incus **en cluster** comme la
+topologie de PRODUCTION, et notre paire de daemons autonomes comme la forme de développement. Et
+`LXCCluster.spec` n'a qu'un `secretRef` : un cluster, une identité.
+
+*Bilan* : le clustering annule **trois** dettes d'un coup (identité par-remote, présence de l'image,
+traversée de l'API incus) et nous met sur la topologie que le provider vise. Le rejet était mauvais.
+====
+
+.Un bénéfice que je n'avais pas vu : la sonde à trois valeurs vient GRATUITEMENT
+[NOTE]
+====
+Je cherchais un discriminant « absent / cassé » pour l'hôte itinérant (Figure 5). En cluster, incus le
+fournit : l'état de membre (`online`/`offline`, franchi à `cluster.offline_threshold`) EST cette
+troisième valeur, tenue par l'autorité qui sait. Une opération visant nikopol absent échoue
+explicitement « no operations are possible on this member » — un échec *sémantiquement juste* (on ne
+peut pas provisionner sur un hôte parti), pas un timeout à interpréter. Plus besoin d'inventer une
+posture `itinerant` côté rke2lab : on la lit.
+====
+
+NOTE: le clustering d'incus **ne clusterise pas Kubernetes**. Il annule la traversée n°1 (l'API du
+substrat) et laisse entière la traversée n°2 (le `clustermesh-apiserver` du pair, Figure 7), qui reste
+entre deux clusters k8s et continue de passer par le tailnet. Les deux décisions sont indépendantes.
+
+[mermaid]
+----
+stateDiagram-v2
+  [*] --> Deux_membres
+
+  state Deux_membres {
+    [*] --> Quorum_OK
+    Quorum_OK: 2 votants raft/dqlite<br/>majorité requise = 2
+    Quorum_OK --> Quorum_PERDU: nikopol quitte le tailnet<br/>(train, VPN corp, veille)
+    Quorum_PERDU: 0 écriture possible<br/>l'API de BIOSKOP se dégrade AUSSI
+    Quorum_PERDU --> Quorum_OK: nikopol revient
+  }
+
+  Deux_membres --> Trois_membres: ajouter un 3e membre<br/>pour tolérer une panne
+  state Trois_membres {
+    [*] --> Tolere_une_panne
+    Tolere_une_panne: majorité = 2 sur 3<br/>nikopol peut partir
+    Tolere_une_panne --> Cout: exige un 3e bare-metal SÉDENTAIRE
+  }
+
+  Trois_membres --> [*]: on ne l'a pas
+----
+
+=== Ce qui RESTE à payer si on cluster (les vrais coûts, une fois le faux retiré)
+
+. *Les changements d'état cluster-wide sont bloqués pendant l'absence de nikopol.* Déclarer un réseau
+  ou un pool exige tous les membres joignables. Ça ne gêne pas l'exploitation courante de bioskop, mais
+  ça rend une *évolution de topologie* dépendante de la présence d'un hôte itinérant — une contrainte
+  d'ordonnancement, pas une panne.
+. *Le préseed de ndh devient cluster-aware.* `fabric-br` et `vmnet-br` sont aujourd'hui créés par
+  hôte, indépendamment ; en cluster ce sont des objets cluster-wide à valeurs par membre, et l'entrée
+  d'un membre passe par un flux de *join*. C'est le gros du travail, et il tombe dans **ndh**, pas dans
+  rke2lab.
+. *Joindre un cluster, c'est un seul domaine de confiance entre les deux daemons.* Exactement la même
+  nature de décision que le domaine de confiance du role-mesh (Figure 8) — à trancher consciemment.
+. *Le rejoin répété d'un membre itinérant n'est pas un flux conçu pour ça.* À vérifier : un membre
+  `database-client` absent des heures se resynchronise-t-il sans geste au retour ?
+
+=== La conséquence sur ce qui vient d'être livré
+
+Le nom unique `nixos.<host>` et la suppression de `.lan` restent justes **dans les deux scénarios** —
+ce travail n'est pas perdu. Ce qui changerait, c'est l'*entrée* de la dérivation : en cluster,
+l'endpoint d'une intention n'est plus « le nom de l'hôte de la CIBLE » mais « le point d'entrée du
+CLUSTER incus » (soit `nixos.bioskop`, local au plan de gestion). La forme reste unique ; son argument
+passe de « l'hôte qui possède le réseau » à « le point d'entrée du cluster ». Une ligne dans
+`ClusterApiWorkloadManifestsUnit`, pas une remise en cause.
+
+== Figure 5 — les noms : trois formes, une audience manquante, et la quatrième qui arrive
+
+`ClusterNetworkBlueprint.NamePlan` documente trois formes pour trois audiences. La quatrième — *un pod
+d'un cluster porté par un AUTRE hôte* — n'existe pas, et c'est le FQDN d'egress qui va la remplir.
+
+[cols="1,2,2,1",options="header"]
+|===
+| forme | qui résout | portée | notre cas
+
+| `nikopol-nixos` (nu)
+| `/etc/hosts` de l'hôte → `127.0.0.2`
+| MOI-MÊME, et rien d'autre
+| ❌
+
+| `nikopol-nixos.local`
+| mDNS / Bonjour, NSS du MÊME LAN
+| le LAN corp uniquement
+| ❌ depuis bioskop
+
+| `nikopol-nixos.lan`
+| DNS simple sous `LAN_DOMAIN` — *le routeur domestique*
+| l'intérieur d'un cluster du **même** hôte
+| ❌ dépend de la box ; NXDOMAIN dès que nikopol part
+
+| ★ `nixos.<host>` (`nixos.nikopol`)
+| le dnsmasq **de cet hôte**, dans sa zone `.<host>`, portée par le split-DNS du tailnet
+| *toute* audience — l'autorité qui possède le réseau répond
+| ✅ **la forme cible, et elle UNIFIE**
+|===
+
+=== La forme cible : `nixos.<host>`, et pourquoi elle rend le cross-hôte non-spécial
+
+Mesuré le 2026-09-25 :
+
+[source]
+----
+$ scutil --dns | grep -A2 'domain.*nikopol'
+  domain   : nikopol
+  nameserver[0] : 172.16.16.1          # le split-DNS du tailnet EST en place
+$ host vzhost.nikopol
+vzhost.nikopol has address 172.16.24.2 # la zone est VIVANTE
+$ host vzhost.bioskop
+vzhost.bioskop has address 172.16.8.2  # et SYMÉTRIQUE
+$ curl -sk https://172.16.16.1:8443/1.0   # nikopol-nixos, adresse fabric
+{"auth":"untrusted", …}                # ✅ l'API incus répond
+$ curl -sk https://172.16.0.1:8443/1.0    # bioskop-nixos, même forme
+{"auth":"untrusted", …}                # ✅ aussi
+
+$ host nixos.nikopol   → NXDOMAIN       # ⬅ LA pièce manquante
+$ host nixos.bioskop   → NXDOMAIN       # ⬅ et elle manque des DEUX côtés
+----
+
+*Pourquoi c'est meilleur que tout ce que j'avais proposé* :
+
+. *C'est l'autorité qui possède le réseau qui répond.* Exactement le principe déjà acté pour
+  `nodeFabricFqdn` : « its bare-metal's dnsmasq registers the name […] and is reachable over the
+  tailnet, so it serves the asker who cannot yet reach the cluster ». `.lan`, c'est la box — une
+  autorité qui ne sait rien de nikopol dès qu'il part.
+. *C'est transport-indépendant.* La zone est portée par le split-DNS du tailnet et l'adresse par la
+  route annoncée (`172.16.16/20`), donc la résolution ne change pas selon que nikopol est à la maison
+  ou sur un hotspot. `.lan` change. C'est la propriété qui désarme le piège de la Figure 10.
+. ★ *Elle UNIFIE le même-hôte et le cross-hôte.* `nixos.bioskop` et `nixos.nikopol` sont la même
+  dérivation. Donc **le discriminant `target.host()` disparaît** : plus de « endpoint spécial pour une
+  cible d'un autre hôte ». Un item de moins dans le delta de code, remplacé par une dérivation
+  uniforme.
+. *L'adresse existe déjà et sert déjà.* `172.16.<hostId×8>.1` est la passerelle `fabric-br`, donc
+  nikopol-nixos lui-même, et l'API incus y répond **des deux côtés**. Rien à ouvrir.
+
+*Ce qui manque, et c'est petit* : un `host-record` pour la VM NixOS dans sa propre zone, à côté du
+`vzhost.<host>` qui y est déjà — donc **une ligne dans `segmentHostRecords`** de
+`modules/nixos/baremetal-segment.nix` (ndh), uniformément pour les deux hôtes.
+
+CAUTION: *le nom est unifié, la JOIGNABILITÉ ne l'est pas encore.* Un pod résout par CoreDNS → le
+resolver du nœud, et les nœuds **ne sont pas** membres du tailnet : ils n'ont ni le split-DNS ni la
+route `172.16.16/20`. Donc — même-hôte : le nœud atteint `172.16.0.1` directement sur sa fabric, rien
+à faire. Cross-hôte : il faut encore l'egress de la Figure 3, avec `tailnet-target-ip: 172.16.16.1`
+(l'IP est sûre : elle est joignable par la route annoncée ; qu'une annotation accepte un nom de
+split-DNS reste *à vérifier*). Le nom devient uniforme, la traversée reste à deux étages.
+
+C'est exactement la valeur que `ClusterApiWorkloadManifestsUnit` écrit aujourd'hui dans
+`ClusterIntention` : `https://{blueprint.names().nixosLanFqdn()}:8443` — juste pour une cible du même
+hôte, faux dès qu'on traverse.
+
+== Figure 6 — la traversée du VIP, et le piège du Connector
+
+La spec pose le critère, et le code l'a débordé.
+
+[quote]
+____
+It advertises only what its OWN node can forward — its per-cluster addresses — NOT the whole `/18`.
+____
+
+Or `TailscaleManifestsUnit` annonce le reach-set de `clusterName` **plus celui de chaque
+`workloadTarget`**, en se justifiant par « la route vmnet supernet, côté hôte ». Vrai *sur un hôte* —
+c'est même ce qui a débloqué `bioskop-wrkld`. Faux entre deux.
+
+[mermaid]
+----
+flowchart LR
+  CONN["Connector bioskop-mgmt<br/>annonce clusterName + CHAQUE workloadTarget"]
+  OK["VIP bioskop-wrkld 10.80.15.10/32<br/>même hôte → la route vmnet supernet EXISTE"]
+  BAD["VIP nikopol-mgmt 10.80.&lt;n&gt;.10/32<br/>autre hôte → AUCUNE route"]
+  ELECT{{"tailscale élit UN routeur primaire par route"}}
+  HOLE["si bioskop gagne l'élection :<br/>TROU NOIR pour tout le tailnet"]
+  FIX["nikopol-nixos annonce lui-même<br/>le /21 de nikopol — tag:nixos<br/>(il annonce DÉJÀ 172.16.6.0/24<br/>+ la zone split-DNS .nikopol)"]
+
+  CONN --> OK
+  CONN --> BAD --> ELECT --> HOLE
+  FIX -.->|"le bon annonceur"| BAD
+
+  classDef ok fill:#d5f5d5,stroke:#2d7a2d,color:#000
+  classDef bad fill:#ffd9d9,stroke:#a33,color:#000
+  classDef fix fill:#d9e8ff,stroke:#2a5d9f,color:#000
+  class OK ok
+  class BAD,HOLE,ELECT bad
+  class FIX fix
+----
+
+Deux correctifs jumeaux : *borner* l'annonce du Connector aux cibles du **même hôte** (le critère est
+déjà écrit dans la spec, il suffit de le faire respecter au code), et faire annoncer le `/21` de
+nikopol par `nikopol-nixos` lui-même — ce qui tombe pile dans la répartition de tags existante
+(`tag:nixos` = *the baremetal host subnet routers*, `tag:k8s` = les Connectors de l'opérateur) et
+survit à l'absence de bioskop plutôt que l'inverse.
+
+[[mgmt-clustermesh]]
+== Figure 7 — le clustermesh MGMT : la traversée PERMANENTE, et le vrai enjeu
+
+C'est l'angle que le brainstorm avait manqué, et il replace tout le reste : *`bioskop-mgmt` +
+`nikopol-mgmt`, c'est le premier cas d'usage réel d'un clustermesh.*
+link:../docs/architecture/cluster-api/cluster-addressing-plan.adoc#_clustermesh_two_role_partitioned_meshes[cluster-addressing-plan.adoc]
+le prévoit nommément :
+
+[quote]
+____
+*Clusters federate in two role-partitioned meshes.* Meshing is *by role*: the management clusters
+mesh with each other, the workloads mesh with each other (`bioskop-wrkld` ↔ `nikopol-wrkld`) — never
+mgmt↔wrkld.
+____
+
+Le mesh MGMT, c'est donc exactement `bioskop-mgmt` (`cluster.id=1`, pods `10.44.0.0/16`) ↔
+`nikopol-mgmt` (`cluster.id=3`, pods `10.46.0.0/16`) — identifiants uniques et CIDR disjoints **par
+dérivation**, les deux prérequis de cilium, déjà satisfaits sans rien faire.
+
+[mermaid]
+----
+flowchart TB
+  subgraph B["bioskop-mgmt — cluster.id 1 · pods 10.44.0.0/16"]
+    CMB["clustermesh-apiserver<br/>Service type LoadBalancer<br/>IP du pool cilium 10.80.0.64/26"]
+    AGB["agents cilium — hostNetwork"]
+    CNB["Connector — annonce VIP /32 + pool LB /26"]
+  end
+  subgraph N["nikopol-mgmt — cluster.id 3 · pods 10.46.0.0/16"]
+    CMN["clustermesh-apiserver<br/>LoadBalancer<br/>IP du pool 10.80.16.64/26"]
+    AGN["agents cilium — hostNetwork"]
+    CNN["Connector — annonce SON pool /26<br/>(existe : on est en régime établi)"]
+  end
+  TN["tailnet — routes approuvées par le /18<br/>+ accept ACL (manage-tailnet)"]
+
+  CNB -->|"annonce"| TN
+  CNN -->|"annonce"| TN
+  AGB -->|"doit joindre le /26 DISTANT"| TN
+  AGN -->|"réciproquement"| TN
+  TN --> CMN
+  TN --> CMB
+
+  classDef have fill:#d5f5d5,stroke:#2d7a2d,color:#000
+  classDef check fill:#fff3cd,stroke:#b8860b,color:#000
+  class CMB,CMN,CNB,CNN,TN have
+  class AGB,AGN check
+----
+
+*Déjà rendu, et jamais exercé* : `CiliumConfigManifestsUnit` pose `cluster.name`/`cluster.id` dérivés
+(`blueprint.meshClusterId()` — le placeholder `id: 7` de la spec a disparu du code),
+`clustermesh.enabled: true`, `useAPIServer: true`, l'apiserver en `Service type: LoadBalancer`
+annoncé par BGP dans le pool `/26`, et un ConfigMap `clustermesh-remote-users` dont le commentaire
+dit déjà « *once federated clusters come online* ». **Le mesh est pré-armé depuis le début et n'a
+jamais eu de second membre.**
+
+Trois conséquences, dont une qui change le périmètre :
+
+. *Cette traversée-là ne s'évapore pas.* Contrairement au plan CAPI (échafaudage, dissous par
+  l'auto-adoption), un clustermesh est un régime **permanent** entre un cluster sédentaire et un
+  cluster itinérant. La question de l'absence revient donc — mais sous une forme douce : un mesh dont
+  le pair est injoignable perd ses endpoints distants et *se dégrade*, il n'échoue pas. Tolérant par
+  nature, mais battant.
+. *La joignabilité est déjà presque là.* L'apiserver du mesh prend une IP du pool LB, et le Connector
+  annonce **déjà** ce pool `/26`. Et ici il n'y a pas de poule-et-œuf : quand le mesh se forme,
+  `nikopol-mgmt` est debout, donc son propre Connector annonce son `/26`. Le correctif de la Figure 6
+  (borner le Connector aux cibles du même hôte) **suffit** — pas besoin d'un annonceur de plus.
+. *Le vrai chantier : l'appariement du mesh n'est PAS déclaratif aujourd'hui.* Le ConfigMap
+  `clustermesh-remote-users` est rendu **vide**, et son commentaire l'assume : « peer entries get
+  appended (**out-of-band**, by `cilium clustermesh users add`) once federated clusters come online ».
+  Et aucun Secret `cilium-clustermesh` — le porteur des endpoints des pairs — n'est rendu du tout. Donc
+  le code prévoit un geste CLI manuel, dans un projet dont l'éthos est le rendu déclaratif à
+  propriétaire unique. *C'est ça, le travail que le cas d'usage du mesh révèle*, bien plus que la
+  joignabilité.
++
+Bonne nouvelle sur la joignabilité, en revanche : l'endpoint d'un pair est un **champ texte** de ce
+Secret, pas une IP imposée. Donc le nom de service d'egress de la Figure 3 est utilisable tel quel, et
+un pod `hostNetwork` (les agents cilium) atteint bien une ClusterIP. *[à vérifier sur pièce, mais le
+mécanisme de la Figure 3 servirait deux fois.]*
+
+[[target-clustering]]
+== Figure 8 — le modèle cible de clustering : un role-mesh EST un domaine de confiance
+
+Le basculement de cadrage : arrêter de voir le clustermesh comme « de la connectivité à câbler » et
+le voir comme **un domaine de confiance PKI**. Tout le reste en découle, parce que notre PKI sait déjà
+frapper des hiérarchies déterministes.
+
+Et il y a une tension à nommer, parce qu'elle est le cœur du modèle. `WorkloadClusterCas` pose un
+invariant explicite :
+
+[quote]
+____
+each rooted at the ndh `mammoth-skate-tls` root, a **SIBLING** of the mgmt CA — independent keys, so a
+compromise of one cluster's CA **never reaches another**.
+____
+
+Or un mesh exige l'inverse : ses membres doivent **se faire confiance mutuellement**. Donc mailler,
+c'est *délibérément* percer l'isolation entre frères. La question n'est pas s'il faut la percer — c'est
+*jusqu'où*, et la réponse est déjà dans le plan d'adressage : **le rôle**.
+
+[mermaid]
+----
+flowchart TB
+  ROOT["mammoth-skate-tls<br/>(racine ndh)"]
+
+  subgraph TD_M["domaine de confiance MGMT"]
+    BM["bioskop-mgmt<br/>cluster.id 1 · pods 10.44/16"]
+    NM["nikopol-mgmt<br/>cluster.id 3 · pods 10.46/16"]
+    BM <-->|"mesh — confiance MUTUELLE"| NM
+  end
+
+  subgraph TD_W["domaine de confiance WRKLD"]
+    BW["bioskop-wrkld<br/>cluster.id 2 · pods 10.45/16"]
+    NW["nikopol-wrkld<br/>cluster.id 4 · pods 10.47/16"]
+    BW <-->|"mesh"| NW
+  end
+
+  ROOT --> TD_M
+  ROOT --> TD_W
+  TD_M x-.-x TD_W
+
+  BM -. "fabric L2 partagée — PAS de mesh,<br/>mais c'est pourquoi les CIDR pods<br/>doivent rester disjoints" .- BW
+  NM -. "idem" .- NW
+
+  classDef dom fill:#d9e8ff,stroke:#2a5d9f,color:#000
+  classDef root fill:#e8e8e8,stroke:#555,color:#000
+  class BM,NM,BW,NW dom
+  class ROOT root
+----
+
+*L'insight* : la partition par rôle du plan d'adressage était justifiée là-bas par des raisons
+**techniques** (cilium veut des `cluster.id` uniques et des CIDR pods disjoints *dans* un mesh). Elle
+se révèle être aussi la **frontière de sécurité** : le rayon de souffle d'une confiance partagée est
+le role-mesh, jamais la flotte. `mgmt ↔ wrkld` n'est pas seulement « pas maillé », c'est *pas dans le
+même domaine de confiance*. Une seule décision, deux justifications indépendantes — c'est le signe
+qu'elle est juste.
+
+=== Le fork du modèle cible : CA partagée, ou frères en confiance croisée ?
+
+[cols="1,3,3",options="header"]
+|===
+| | *A — une CA par role-mesh* | *B — frères + bundle de confiance croisée*
+
+| forme
+| UNE CA de mesh (sœur des hiérarchies existantes, enracinée `mammoth-skate-tls`). Chaque membre y
+  chaîne son cert serveur ; le cert client peut être **partagé** sur tout le mesh.
+| Chaque membre garde SA CA frère. Chacun reçoit un **bundle** des CA des autres membres du mesh.
+
+| invariant PKI
+| ❌ percé : une clé privée est commune au mesh
+| ✅ préservé : *aucune* clé privée partagée, jamais
+
+| coût
+| 1 CA de plus, N certs serveur, 1 cert client
+| N certs serveur + N certs client + un bundle de N-1 CA par membre
+
+| additivité
+| un nouveau membre = un cert de plus
+| un nouveau membre = un cert **et** un bundle à ré-émettre chez chaque membre existant
+
+| précédent maison
+| l'identité CAPN — « the `client-crt`/`client-key` **can be shared**, trusted by both hypervisors »
+| `WorkloadClusterCas` — frappé **ADDITIVEMENT**, frères à clés indépendantes
+|===
+
+Les deux ont un précédent *dans ce projet*, ce qui est précisément pourquoi ça se tranche et ne se
+devine pas. B respecte l'invariant écrit ; A a l'additivité la plus simple (et le mesh ne grandit que
+d'un membre par hôte nouveau, donc le coût de ré-émission de B reste petit — 4 clusters, 2 par mesh).
+
+=== Figure 9 — la matière d'appariement : ce que cilium veut, ce qu'on rend, ce qui manque
+
+[mermaid]
+----
+flowchart LR
+  subgraph WANT["ce que cilium veut, par cluster"]
+    W1["CA du mesh (confiance)"]
+    W2["cert SERVEUR du clustermesh-apiserver"]
+    W3["cert CLIENT pour joindre les pairs"]
+    W4["les ENDPOINTS des pairs"]
+    W5["les USERS autorisés côté apiserver"]
+  end
+
+  subgraph NOW["rendu aujourd'hui"]
+    N1["tls.auto par défaut<br/>→ CA ALÉATOIRE auto-signée<br/>par cluster"]
+    N2["clustermesh-remote-users<br/>rendu VIDE"]
+    N3["aucun Secret cilium-clustermesh"]
+    N4["→ geste CLI hors-bande<br/>cilium clustermesh connect"]
+  end
+
+  subgraph TARGET["cible — même lane que les BYO-CA de CAPRKE2"]
+    T1["frappé par le SCEAU, additivement<br/>(le motif WorkloadClusterCas)"]
+    T2["rendu en Secrets sops<br/>sur la lane NODE_BOOTSTRAP"]
+    T3["endpoints = le nom de service<br/>d'EGRESS (Figure 3), pas une IP"]
+    T4["users = les membres du role-mesh,<br/>DÉRIVÉS de l'identité"]
+  end
+
+  W1 --> N1
+  W5 --> N2
+  W3 --> N3
+  N1 --> N4
+  N2 --> N4
+  N3 --> N4
+  N4 -.->|"à remplacer"| T1
+  T1 --> T2 --> T3 --> T4
+
+  classDef bad fill:#ffd9d9,stroke:#a33,color:#000
+  classDef good fill:#d5f5d5,stroke:#2d7a2d,color:#000
+  class N1,N2,N3,N4 bad
+  class T1,T2,T3,T4 good
+----
+
+*Le diagnostic précis du blocage actuel* : la config helm de `CiliumConfigManifestsUnit` ne porte
+**aucun** bloc `clustermesh.apiserver.tls`, donc `tls.auto` s'applique par défaut et **chaque cluster
+s'auto-signe une CA de mesh aléatoire**. Deux clusters ainsi installés ont des CA incompatibles — d'où
+le `cilium clustermesh connect` hors-bande que le commentaire du code assume. Passer `tls.auto` à off
+et fournir la matière, c'est exactement le geste **déjà fait pour CAPRKE2** (BYO-CA au lieu de
+l'auto-génération). Le modèle cible n'invente donc rien : il applique un motif maison à un domaine de
+plus.
+
+NOTE: les noms de Secrets exacts attendus par le chart (`clustermesh-apiserver-{ca,server,admin,remote}-cert`,
+`cilium-clustermesh`) sont *à confirmer contre la version du chart embarquée par rke2* avant de coder
+— la forme est sûre, l'orthographe pas encore vérifiée ici.
+
+[[inventaire]]
+== L'inventaire — et LA pièce que personne n'a posée
+
+Vérifié pièce par pièce le 2026-09-25, sur le code, pas de mémoire.
+
+[cols="3,1,3",options="header"]
+|===
+| pièce | état | preuve
+
+| Identité + adressage dérivés (`cluster.id`, CIDR pods/services disjoints, ASN BGP)
+| ✅
+| `ClusterNetworkBlueprint.meshClusterId()`, `clusterId = (hostId << 1) \| roleId` — le plan
+  d'adressage le marque *SHIPPED*
+
+| clustermesh activé, avec son apiserver
+| ✅
+| `CiliumConfigManifestsUnit` : `clustermesh.enabled: true`, `useAPIServer: true`,
+  `apiserver.enabled: true`
+
+| L'apiserver du mesh est exposé et annonçable
+| ✅
+| `Service type: LoadBalancer` + pool cilium `/26`, et le Connector annonce **déjà** ce pool
+
+| Les deux verrous tailnet, déclaratifs
+| ✅
+| `manage-tailnet` de ndh : `autoApprovers.routes` sur le `/18` pour `tag:k8s` + `accept` ACL
+
+| Une PKI qui frappe des hiérarchies déterministes, ADDITIVEMENT
+| ✅
+| `WorkloadClusterCas` — sceau, enraciné `mammoth-skate-tls`, ré-grow additif
+
+| Une lane pour livrer des Secrets sops sur la branche
+| ✅
+| lane `NODE_BOOTSTRAP` (les quatre BYO-CA de CAPRKE2 la prennent déjà)
+
+| Un mécanisme d'egress in-cluster vers le tailnet
+| ✅
+| `ProxyGroup type: egress` + Service `ExternalName`, **live-probé** le 2026-09-12
+
+| Un propriétaire non-Flux pour les objets que l'opérateur mute
+| ✅
+| `rke2-adoption-controller` possède déjà l'egress du VIP
+
+| Le modèle BYO-CA plutôt que l'auto-génération
+| ✅
+| déjà fait pour CAPRKE2 — le geste à répliquer pour le mesh
+
+| La matière d'appariement du mesh
+| ❌
+| `tls.auto` par défaut (CA aléatoire), `clustermesh-remote-users` **vide**, aucun Secret
+  `cilium-clustermesh` → geste CLI hors-bande
+
+| Le second membre du mesh
+| ❌
+| `nikopol-mgmt` n'existe pas (ni branche, ni CR, ni nœud)
+
+| Identité incus par-remote · réplicas par rôle · Connector borné
+| ❌
+| les trois dettes du delta de code ci-dessous
+
+| ★ *Un CONSOMMATEUR du mesh*
+| ❌
+| **zéro** : aucun `service.cilium.io/global` dans tout l'arbre, et rien qui adresse un cluster pair
+  (`remoteCluster`/`peerCluster`/… : aucune occurrence)
+|===
+
+*La conclusion, et elle n'est pas confortable* : toute l'infrastructure du mesh est en place et
+pré-armée depuis le début — mais **le mesh n'a aucun usage déclaré**. Pas un service global, pas un
+appel vers un pair. On a construit le réseau routier avant de savoir qui roule dessus.
+
+Ce n'est pas un reproche au code : le plan d'adressage a *raison* d'avoir rendu les identifiants et
+les CIDR disjoints, parce que ça, il le faut **de toute façon** (la fabric L2 partagée l'impose entre
+`mgmt` et `wrkld` d'un même hôte, qui ne sont pourtant pas maillés). Mais ça veut dire qu'une pièce du
+modèle cible est une pièce de *conception*, pas de code — et qu'elle se pose avant l'appariement
+déclaratif, parce qu'elle en décide la portée :
+
+* un mesh pour la **découverte de services** seulement (services globaux, `affinity: local`) est bien
+  moins exigeant qu'un mesh pour du **pod-à-pod** plein ;
+* et si l'auto-adoption rend chaque mgmt autosuffisant (Figure 2), qu'est-ce que le mesh MGMT
+  apporte *en plus* ? Candidats plausibles, à confirmer par toi : une identité de flotte unique
+  (un seul point d'entrée opérateur), du basculement du plan de gestion, ou la porte PaC / le funnel
+  mutualisés.
+
+[[meme-lan]]
+== Figure 10 — le fait du jour : les deux hôtes sont sur le MÊME LAN, et c'est un PIÈGE
+
+Mesuré le 2026-09-25, et ça corrige ma Figure 1 :
+
+[source]
+----
+$ tailscale ping nikopol-nixos
+pong from nikopol-nixos (100.73.122.6) via 192.168.1.34:41641 in 5ms   # DIRECT, LAN domestique
+$ host nikopol-nixos.lan
+nikopol-nixos.lan has address 192.168.1.34                             # ÇA RÉSOUT
+----
+
+Mon premier `ping` à 49 ms était le paquet froid, avant perçage du chemin direct. `nikopol-nixos` est
+aujourd'hui sur le **même L2 domestique** que bioskop, à 5 ms, et **`nikopol-nixos.lan` résout**.
+L'itinérance est donc une condition *future et intermittente*, pas l'état du jour.
+
+[mermaid]
+----
+flowchart TB
+  subgraph NOW["AUJOURD'HUI — nikopol à la maison"]
+    P1["pod de bioskop-mgmt"]
+    R1["nikopol-nixos.lan → 192.168.1.34"]
+    P1 -->|"5 ms, LAN direct, ZÉRO egress"| R1
+    V1["✅ le code actuel MARCHE<br/>nixosLanFqdn() tombe juste"]
+    R1 --> V1
+  end
+
+  subgraph LATER["LE JOUR OÙ NIKOPOL PART"]
+    P2["pod de bioskop-mgmt"]
+    R2["nikopol-nixos.lan → NXDOMAIN"]
+    P2 -->|"le nom n'existe plus"| R2
+    V2["❌ casse SILENCIEUSEMENT<br/>rien n'avait signalé la dépendance"]
+    R2 --> V2
+  end
+
+  NOW ==>|"le piège : le chemin facile<br/>MASQUE le défaut de conception"| LATER
+
+  classDef ok fill:#d5f5d5,stroke:#2d7a2d,color:#000
+  classDef bad fill:#ffd9d9,stroke:#a33,color:#000
+  class V1 ok
+  class V2,R2 bad
+----
+
+*La leçon, et elle décide la méthode* : tant que les deux hôtes sont à la maison, la dérivation
+actuelle `nikopol-nixos.lan` fonctionne — donc on pourrait tout construire dessus, tout voir vert, et
+découvrir le défaut le jour du départ. **Il faut donc construire sur le chemin DURABLE (l'egress)
+même quand le raccourci LAN marche**, sinon l'expérience de débranchement n'apprend rien : elle
+casserait, au lieu de valider.
+
+NOTE: le même LAN ne suffit pourtant PAS pour le pod-à-pod. Les CIDR pods vivent sur `vmnet`, isolé
+**par hôte** : `10.80.16.x` (nikopol) n'est pas joignable depuis un nœud de bioskop même à 5 ms, sauf
+à router explicitement via `192.168.1.34`. Et la table de routage de bioskop le confirme — elle porte
+`10.80.0.64/26`, `10.80.7.10/32`, `10.80.8.64/26`, `10.80.15.10/32` via `utun4` (les routes que les
+Connectors annoncent, consommées par le Mac) et **rien** en `10.80.16.x`. Les nœuds, eux, ne sont pas
+clients tailscale : ils n'ont *aucune* de ces routes.
+
+== Le plan par étapes, avec le débranchement comme juge
+
+*[tranché 2026-09-25]* On va vers la connectivité complète, **par étapes**, et le débranchement de
+nikopol du LAN domestique est l'**épreuve** qui autorise le passage à l'étape suivante.
+
+[mermaid]
+----
+stateDiagram-v2
+  [*] --> E1
+
+  E1: ÉTAPE 1 — services globaux
+  E1: appariement déclaratif du mesh (CA option B)<br/>+ services `service.cilium.io/global`, affinity local<br/>reach par l'EGRESS, pas par le raccourci LAN
+  E1 --> E2: le mesh s'apparie tout seul,<br/>sans geste CLI
+
+  E2: ÉTAPE 2 — L'ÉPREUVE du débranchement
+  E2: nikopol passe sur hotspot.<br/>On MESURE, on ne suppose pas.
+  E2 --> E1: dégradation SALE →<br/>on corrige avant d'élargir
+  E2 --> E3: dégradation PROPRE →<br/>la conception est transport-indépendante
+
+  E3: ÉTAPE 3 — pod-à-pod plein
+  E3: routage des CIDR pods entre hôtes<br/>(bien plus que le /26 du pool LB)
+  E3 --> [*]
+----
+
+=== Ce que l'épreuve doit mesurer (et ce qui compte comme réussite)
+
+À écrire comme un protocole, pas comme une impression — sinon on conclura ce qu'on espère :
+
+. *Le chemin, avant/après.* `tailscale ping` doit passer de `via 192.168.1.34 (direct)` à
+  `via DERP` puis re-direct. Si la bascule ne se fait pas du tout, rien d'autre n'est interprétable.
+. *Ce que cilium fait du pair absent.* Attendu : le cluster distant passe `unreachable`, ses endpoints
+  distants sont **retirés**, et le service global bascule sur son backend local (affinité locale).
+  Attendu = *dégradation*. Échec = une erreur qui remonte, un backoff qui grossit, ou un service
+  global qui répond `no endpoints` alors qu'un backend local existe.
+. *La distinction absent / cassé.* C'est le motif de la sonde à trois valeurs : nikopol hors-ligne ne
+  doit produire **aucune** alarme de santé. Si le doctor ou un checkpoint crie, la posture manque.
+. *Le temps de retour.* Combien de temps après le retour de nikopol le mesh se re-apparie-t-il **sans
+  intervention** ? Un mesh qui exige un geste au retour n'est pas utilisable sur un hôte itinérant.
+. *Ce qui NE doit pas bouger.* Le GitOps de nikopol (Flux tire depuis GitHub) et son plan de contrôle
+  local doivent être indifférents. Si le cluster de nikopol se dégrade quand bioskop ne le voit plus,
+  c'est que l'auto-adoption n'a pas tenu sa promesse.
+
+=== Décision — topologie des CA : option B, et l'argument qui la rend démontrable
+
+*[tranché 2026-09-25]* **Option B — CA frères + bundle de confiance croisée.** Aucune clé privée
+partagée, jamais. Et l'argument n'est pas esthétique, il est vérifiable sur le modèle de cilium
+lui-même :
+
+. *B préserve l'invariant écrit.* `WorkloadClusterCas` dit « independent keys, so a compromise of one
+  cluster's CA never reaches another ». B est la seule option qui ne le perce pas.
+. *Le rayon de souffle d'une compromission de MEMBRE est borné à ce membre.* En A, le cert client
+  peut être partagé sur tout le mesh (c'est même son attrait, par analogie avec l'identité CAPN) —
+  donc compromettre **un** membre livre le credential qui s'authentifie auprès de **tous** les pairs :
+  mouvement latéral sur tout le mesh. En B, compromettre le membre X livre l'identité de X, que ses
+  pairs acceptent *comme X* — révocable et ré-émissible pour X seul.
+. ★ *B est la topologie que le modèle d'autorisation de cilium ATTEND.* Le ConfigMap
+  `clustermesh-remote-users` est une liste d'utilisateurs **par cluster distant**. Ce mécanisme n'a de
+  sens que si chaque pair présente une identité **distincte**. Un cert client partagé (option A)
+  effondre tous les pairs en un seul utilisateur et **annule** cette autorisation. Donc B ne fait pas
+  que mieux résister : elle est la forme que l'outil présuppose.
+. *Ce que B ne prétend PAS régler.* Le sceau détient **déjà** les clés privées de CA de chaque
+  cluster (`WORKLOAD_CLUSTER_CAS` est `SEALED (it carries the CA private keys)`). Le sceau est donc
+  un point de compromission de flotte, en A comme en B — B ne change rien là-dessus et il serait
+  malhonnête de le vendre comme tel. B borne le rayon d'un membre, pas celui du sceau.
+. *Le coût, chiffré.* Un bundle de N-1 CA à ré-émettre chez les membres existants à chaque nouveau
+  membre. Avec 2 membres par role-mesh et 4 clusters au total, c'est *une* ré-émission par mesh — et
+  la frappe est déjà **additive** (`WorkloadClusterCas` garde les entrées présentes et ne frappe que
+  les nouvelles), donc le mécanisme existe.
+
+== Le delta de code
+
+Aucun de ces points n'est une décision d'architecture — la spec les réclame déjà. Ce sont des dettes.
+
+. *L'identité incus, par-remote.*
+link:../osgi/domains/manifests/manifests-contract/src/main/java/io/seedmatic/rke2lab/manifests/contract/profiles/IncusIdentityMaterial.java[`IncusIdentityMaterial`]
+est un singleton `(serverAddress, serverCert, clientCert, clientKey)`, assemblé dans
+`ClusterSeedScenario` depuis `~/.config/incus/servercerts/<host>.crt` du **seul** remote de
+l'opérateur. Le Secret, lui, est déjà nommé par hôte (`nikopol-incus-identity`) : en l'état il
+porterait l'adresse et le cert serveur de *bioskop*. La moitié **client** est une ressource
+empaquetée partagée — la spec confirme qu'elle *peut* l'être. Donc : démultiplier la moitié serveur,
+keyée par hôte. *[à trancher : sur la facette manifests, ou une entrée de sceau par hôte ?]*
+. *Le compte de réplicas doit suivre le RÔLE.* `WORKLOAD_CONTROL_PLANE_REPLICAS = 3` est une
+constante et les pets sortent de `CANONICAL_NODE_NAMES.limit(3)` — une cible **mgmt** recevrait
+`master + peer1 + peer2` là où son blueprint n'en déclare qu'un, et les deux peers tomberaient hors
+du `/29`, exactement le débordement que `ClusterTopology.of(role)` documente.
++
+⚠ `ClusterTopology.CANONICAL` dit 4 serveurs pour un wrkld, le renderer en écrit 3 délibérément
+(3 membres etcd, quorum impair). `bioskop-wrkld` est VIVANT sur 3 → le correctif doit laisser wrkld
+**identique au bit** : compte par rôle, pas `topology().nodeNames()` nu.
+. *L'endpoint devient UNIFORME : `nixos.<host>`.* `nixosLanFqdn()` (`<host>-nixos.lan`) est remplacé
+par `nixos.<host>` dans `NamePlan` — même dérivation pour une cible du même hôte et d'un autre, donc
+**aucun discriminant sur `target.host()`** (Figure 5). Et côté **ndh**, une ligne à ajouter dans
+`segmentHostRecords` (`modules/nixos/baremetal-segment.nix`) : le `host-record` de la VM NixOS dans sa
+propre zone, à côté du `vzhost.<host>` déjà présent — uniformément pour les deux hôtes, puisque
+`nixos.bioskop` manque autant que `nixos.nikopol`.
++
+⚠ Suppression, pas ajout : `LAN_DOMAIN` / `nixosLanFqdn` disparaissent du `NamePlan` avec tous leurs
+appelants, la dérivation `.lan` n'ayant plus d'audience. (Pas de shim de compatibilité — c'est la
+règle du projet.)
+. *Borner l'annonce du Connector* aux cibles du même hôte (Figure 6).
+. *La Service d'egress pour `:8443`*, possédée par un contrôleur — jamais rendue par Flux (Figure 3).
+. *L'image et le projet côté nikopol.* `ImageState` est singulier. Le fingerprint étant
+`sha256(incus.tar.xz ++ rootfs.squashfs)`, contenu identique ⇒ hash identique : pas de divergence
+d'identité, mais l'image doit **exister** dans le store de `nikopol-nixos` et le projet `rke2lab` y
+être créé.
+
+=== Gestes opérateur (le vivant — pas moi)
+
+[source,bash]
+----
+# sur bioskop : récupérer le cert serveur de nikopol dans ~/.config/incus/servercerts/
+incus remote add nikopol-nixos https://nikopol-nixos:8443
+
+# sur nikopol-nixos : approuver le cert client capn-provider (le MÊME que bioskop approuve)
+incus config trust add-certificate /path/to/capn-client.crt
+----
+
+== Deltas spec ↔ code relevés au passage
+
+* *Le projet incus par cluster est ABANDONNÉ dans le code.* La spec a une section entière
+(`#incus-tenancy`, « a project per cluster ») et `ClusterApiWorkloadManifestsUnit` dit l'inverse :
+« One `rke2lab` incus project (foundation 4 dropped — instance names are globally unique via the
+blueprint) ». Le code a raison (c'est une simplification acquise), la spec est en retard.
+* *« Current placement » est périmé.* La spec dit « management on `nikopol`, which is what
+`Pulumi.dev.yaml` currently seeds — `cluster=nikopol`, `node=master` ». `Pulumi.dev.yaml` sème
+aujourd'hui `host: bioskop` / `role: mgmt`, et la clé `cluster` n'existe plus (atomes `host`+`role`).
+* *Le dataplan ne prévoit que `nikopol-wrkld` sur nikopol* (§ *Materialization consequences*, item
+Disko). Il est depuis passé par-**rôle** avec parents seuls déclarés, donc probablement déjà
+générique — *à vérifier* si un mgmt sur nikopol exige une branche.
+
+== Questions ouvertes (après élagage par l'antériorité)
+
+. *[tranché 2026-09-25]* Modèle B — deux mgmt qui coexistent, puis auto-adoption. Figure 2.
+. *[LA question restante]* Les agents cilium sont en `hostNetwork` : comment atteignent-ils le
+`clustermesh-apiserver` du pair distant ? L'egress de la Figure 3 sert-il deux fois, ou le mesh
+demande-t-il son propre mécanisme ? <<mgmt-clustermesh,Figure 7>>, point 3.
+. *[à trancher]* La Service d'egress `:8443` est-elle possédée par `rke2-adoption-controller`
+ou par un réconciliateur de substrat à part ?
+. *[à trancher]* La moitié serveur par hôte voyage sur la facette manifests, ou en entrée de sceau
+par hôte ?
+. *[à trancher]* `itinerant` : propriété de la **cible** (`WorkloadTarget`) ou **posture de substrat**
+partagée par tous les clusters d'un hôte ? (le second sent plus juste — c'est l'hôte qui voyage)
+. *[à vérifier]* L'épinglage du cert serveur par le client incus rend-il la vérification de SAN sans
+objet ? (décide s'il faut toucher au cert serveur de nikopol)
+. *[à vérifier]* `cluster.offline_threshold` par défaut sur incus (cité ~20 s en Figure 4).
+. *[à vérifier]* Le projet `rke2lab` et l'image `node-base` existent-ils sur `nikopol-nixos` ?
+(demande le remote approuvé pour être su)
+
+== Documentation liée
+
+* link:../docs/architecture/cluster-api/management-workload-topology.adoc[management-workload-topology.adoc] — *la référence de ce whiteboard*. `#cp-endpoint-reach` (les deux traversées, les deux verrous), § *The workload reach* (l'egress par l'opérateur), `#mesh` (le plan nœud vs le plan workload), `#mgmt-self-hosted-hypothesis` (l'auto-adoption), § *Materialization consequences* (les deux remotes incus)
+* link:../docs/architecture/bootstrap/bootstrap-identity-provider.adoc[bootstrap-identity-provider.adoc] — modélise déjà `bioskop`/`nikopol` en clusters séparés partageant UNE identité CAPN
+* link:../docs/architecture/cluster-api/cluster-seeding-controller.adoc[cluster-seeding-controller.adoc] — le 2×2 `ClusterIntention`/`PoolIntention` et la machine à états adopt-first
+* link:../docs/architecture/cluster-api/cluster-addressing-plan.adoc[cluster-addressing-plan.adoc] — le carve par clusterId, d'où sortent les adresses de nikopol-mgmt
+* link:../docs/architecture/atlas/cellar-secrets.adoc[atlas/cellar-secrets.adoc] — le cellier voyageur, qui EST le modèle A
+* link:claude-preview.archive-2026-09-21-workload-vip-reach.adoc[archive 2026-09-21] — la traversée du VIP résolue *sur un seul hôte*, précédent direct de la Figure 6

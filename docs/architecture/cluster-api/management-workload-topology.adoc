@@ -122,6 +122,12 @@ structural already) and then **self-adopts** along
   in-cluster and talks to the **local** incus, so nothing cross-host remains in steady state. The
   scaffolding must stay available (every re-birth uses it) but carries no permanent regime, which takes
   continuous absence-tolerance out of scope.
++
+Since 2026-09-26 it is dissolved EARLIER and by a different mechanism: with the two Incus daemons
+clustered, the birthing CAPN already dials its LOCAL member and provisions on the other one, so there
+is no cross-host infrastructure traversal to scaffold at all — no egress proxy on that path. See
+link:../nixos-substrate/incus-clustering.adoc[Incus clustering]. Self-adoption then remains what it
+was for, which is ownership rather than reach.
 * the *clustermesh* traversal is **permanent**, and it is the real stake: two management clusters are
   the first real membership of the MGMT role-mesh. See
   link:clustermesh-trust-and-peering.adoc[Clustermesh — trust domains and declarative peering].

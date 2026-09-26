@@ -388,6 +388,10 @@ the precedent is to add that FQDN to the `tlsSan`, not to disable verification.
 
 == Related documentation
 
+* link:../nixos-substrate/incus-clustering.adoc[Incus clustering] — the OTHER layer, and the
+  distinction matters: clustering the Incus daemons removes the *infrastructure* API traversal (a pod
+  dials its local member) but leaves THIS one entirely, since it does not cluster Kubernetes. The
+  operator egress is therefore still needed — for the mesh apiserver, no longer for incus
 * link:cluster-addressing-plan.adoc[Cluster Addressing Plan] — decides *that* the meshes exist and
   derives `cluster.id` + the disjoint CIDRs; this document decides how a mesh is *peered*
 * link:management-workload-topology.adoc[Management / Workload Topology] — the anchor: the two reaches

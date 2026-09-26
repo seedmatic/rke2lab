@@ -1,0 +1,222 @@
+= Incus clustering — one cluster across the bare-metals, with an itinerant member
+:toc: left
+:toclevels: 3
+
+== Overview
+
+The two `<host>-nixos` daemons are joined into *one* Incus cluster. What that buys is the cross-host
+reach problem disappearing for the infrastructure API: "you can operate each instance from any
+cluster member, so you do not need to log on to the cluster member on which the instance is
+located". A pod on the sedentary host dials its LOCAL member and provisions on the itinerant one,
+with no egress proxy and no tailnet on that path. Placement is CAPN's
+`LXCMachineTemplate.spec.target`, whose own CRD description calls a clustered Incus "a production
+cluster" and the single-node case "development purposes" — so this is the topology the provider
+aims at, and the pair of standalone daemons was its development shape.
+
+CAUTION: This is the SUBSTRATE layer. Clustering Incus does *not* cluster Kubernetes. The
+`clustermesh-apiserver` traversal between two k8s clusters is a separate, permanent concern — see
+link:../cluster-api/clustermesh-trust-and-peering.adoc[Clustermesh — trust domains and declarative
+peering]. The two decisions are independent; this one removes the *infrastructure* API traversal
+only.
+
+Status: *decided, and half built.* The prerequisite (bridges off Incus) is shipped and live on both
+hosts; the bootstrap + role reconciliation are written; the join app is not.
+
+It dissolves three debts at once: the per-remote incus identity becomes one `secretRef`, the
+"image must exist on the other host" gap becomes cluster replication, and the cross-host API reach
+becomes a local dial.
+
+[[topology]]
+== The topology, and the one setting it rests on
+
+[mermaid,incus-clustering-topology,svg]
+----
+flowchart TB
+  subgraph SED["bioskop-nixos — SEDENTARY"]
+    B["bootstrap member<br/>roles: database (voter), database-leader<br/>cluster.https_address = its tailnet address"]
+  end
+  subgraph ITIN["nikopol-nixos — ITINERANT"]
+    N["joined member<br/>role: database-client<br/>(client OF the database, hosts no replica)"]
+  end
+
+  B <-->|"cluster traffic over the tailnet<br/>(the only transport common to both hosts)"| N
+
+  Q{{"quorum = majority of VOTERS<br/>1 of 1 → held while bioskop is up"}}
+  B --> Q
+  N -. "cannot affect it — not a voter" .-> Q
+
+  classDef sed fill:#d5f5d5,stroke:#2d7a2d,color:#000
+  classDef itin fill:#fff3cd,stroke:#b8860b,color:#000
+  class B sed
+  class N itin
+----
+
+★ *The load-bearing setting is `database-client` on the itinerant member.* `cluster.max_voters` must
+be an odd number >= 3, so it cannot be lowered to keep a two-member cluster single-voter; the only
+lever is that role, which "prevents the affected cluster member from being elected as a voter or
+stand-by". Without it BOTH members vote, the majority is 2, and the itinerant host leaving takes the
+SEDENTARY host's database down with it — the host that carries every live cluster. That would trade a
+missing capability for a regression, so the role is not best-effort: `incus-cluster-roles` reconciles
+it *and* refuses to report success while any other member still carries the `database` role. A role
+that silently failed to apply would otherwise surface only as an outage, the next time that host
+left.
+
+The name says what the role is: `database-client` is a *client* of the database, not a member
+excluded from it. It hosts no replica; it reads and writes cluster state through the voters, and is
+fully operable — targetable, able to run instances. That is exactly what one wants of a roaming host:
+present in the cluster, absent from the raft.
+
+=== The honest limit
+
+Availability with a single voter is an *inference*, not a documented guarantee. The rule is "the
+database remains available as long as a majority of voters is online" (majority of 1 = 1), and a
+standalone Incus already runs a one-voter dqlite — so this is no regression on today. But the docs
+recommend >= 3 members and never bless a single voter.
+
+The failure mode is bounded and visible: it would show up the first time the itinerant member leaves,
+and the exit is `incus cluster remove <member> --force`, back to standalone.
+
+*The dimensioned fallback*, if that inference ever disappoints: a third member on the SEDENTARY host
+— which has a free vz slot. Three voters, majority 2, two of them sedentary, so the itinerant one may
+leave freely. It must be on the sedentary host: a third member on the roaming one would depart *with*
+it, taking 2 of 3 and making things worse than now. Last night's work makes that witness cheap —
+since Incus manages no networks, a member that hosts no instance has nothing to replicate but a
+storage pool. It is not HA (two voters on one physical host is a correlated failure), it is a quorum
+witness, which is all that is wanted since that host carries everything anyway.
+
+[[image-replication]]
+== Image replication is COUPLED to that role
+
+`cluster.images_minimal_replica: -1` — "copy to all members" — is not an optimisation. The default
+replicates an image on "as many cluster members as there are database members", and the itinerant
+member deliberately is not one, so under the default it could receive no copy at all and have nothing
+to provision from. The two design choices would have quietly contradicted each other: the setting
+that makes the cluster safe for a roaming host is the one that would have starved it.
+
+`-1` stops counting database members and enumerates members instead.
+
+The price is accepted knowingly: every image travels to every member, including over the itinerant
+one's link — for the node-base that is gibibytes, possibly over a relay. Correct but slow, and slow
+at the worst moment. Watch what Incus does when a member is offline as an image lands; it should
+defer, but that is a behaviour to observe rather than to trust.
+
+[[bridges]]
+== What had to move first: every per-host-addressed bridge leaves Incus
+
+[mermaid,incus-clustering-ownership,svg]
+----
+flowchart LR
+  subgraph HOST["owned by the HOST (NixOS)"]
+    FB["fabric-br — the bare-metal's /21 + its .&lt;domain&gt; zone"]
+    V1["vmnet-mgmt — that cluster's /21 + ULA /64"]
+    V2["vmnet-wrkld — idem"]
+    DNS["one dnsmasq per host, serving all of them"]
+  end
+  subgraph INCUS["owned by INCUS (cluster-wide)"]
+    I["instances · images · profiles · storage pool"]
+    NONE["networks: NONE"]
+  end
+  HOST -->|"attached by `parent`, nictype=bridged"| INCUS
+
+  classDef host fill:#d5f5d5,stroke:#2d7a2d,color:#000
+  classDef incus fill:#d9e8ff,stroke:#2a5d9f,color:#000
+  class FB,V1,V2,DNS host
+  class I,NONE incus
+----
+
+A clustered Incus requires that "all members of a cluster must have identical networks defined":
+only `bridge.external_interfaces`, `parent`, `bgp.ipv4.nexthop` and `bgp.ipv6.nexthop` may differ per
+member — `ipv4.address` may NOT. Our subnets differ per host and per cluster BY DESIGN.
+
+★ And the second reason is worse than unrepresentability: a cluster-wide managed network is
+materialised on *every* member. So the sedentary host would hold a local bridge carrying the other
+bare-metal's `/21`, install a local route for it, and send the cross-host cluster reach into a dead
+interface. Not wasteful — a black hole, on exactly the path the clustermesh needs.
+
+★ *The naming problem evaporates rather than being solved.* The collision exists only because an
+Incus object must be unique cluster-wide; a host interface name may repeat across machines.
+`fabric-br` carries `172.16.0.1/21` on one host and `172.16.16.1/21` on the other. Qualifying by
+cluster was impossible anyway — `vmnet-<host>-<role>` is 18 characters against a limit of 15 that is
+Incus's *and* `IFNAMSIZ`'s.
+
+*Therefore*: put each difference in the layer that tolerates it. Per-host subnets live in NixOS,
+which allows them; what stays in Incus — instances, images, profiles — is what we *want* uniform on
+both sides. See `modules/nixos/baremetal-segment.nix` (the bare-metal's own segment) and
+`modules/nixos/cluster-vmnet.nix` (the per-cluster planes) in ndh; they are deliberately separate
+modules, same host but different authority.
+
+NOTE: No loss of flexibility. The cluster set is CLOSED and derivable (`HOST_IDS` × two roles), so
+declaring the bridges statically forecloses nothing, and a bridge whose cluster does not exist yet
+simply sits memberless — which `fabric-br` proves harmless, having sat DOWN with its address while
+dnsmasq bound to it. That last part needs `ConfigureWithoutCarrier = true`: networkd withholds
+addresses from a carrier-less link, and a memberless bridge has no carrier.
+
+[[join]]
+== The join is an operator act, not host state
+
+A join token is single-use and expires in 3h (`cluster.join_token_expiry`), with no documented
+alternative for a non-interactive join. That rules out baking one into an image: it would start
+ageing before the VM boots, and make that image good for exactly one join inside one window —
+persisting a single-use credential in the wrong lifecycle.
+
+So the token is minted and consumed in the same breath, by an operator-run app on the operator's
+machine, over access the operator already has.
+
+The alternative — a unit on the joining member fetching its own token over a capability bounded to
+"mint MY token", which ndh's per-key `authorized_keys_options` would support — is rejected because it
+answers a question that need not be asked. A join happens ONCE per member, and that member is
+materialised by an operator command anyway, so autonomy buys nothing while costing a distributed
+keypair and a standing right to invite members. Who joins a cluster is the operator's authority.
+
+What stays declarative is what is genuinely idempotent host state: enabling clustering on the
+sedentary member, and reconciling the roles.
+
+NOTE: the member address is a runtime fact too, for the same family of reason. `core.https_address`
+is the `[::]:8443` wildcard for ordinary clients and cannot serve as a member identity;
+`cluster.https_address` is Local scope and carries it, and ours is the tailnet address — assigned by
+the control plane, so not a build-time fact. The enrolment reads it off `tailscale0` rather than
+restating it, and retries: on an itinerant fleet "no address yet" is a normal state, not a fault.
+
+== State of verification
+
+Shipped and live on both hosts: no Incus-managed networks at all (`incus network list` reports every
+bridge `managed: false`); `fabric-br` and the two `vmnet-*` owned by systemd-networkd with one
+dnsmasq serving all three; `nixos.<host>` resolving on both sides.
+
+Written, not yet run: the bootstrap enrolment and the role assertion.
+
+*Not exercised, and no evaluation can substitute* — the first veth (does a bridge come UP keeping its
+address), the first DHCP lease v4 *and* v6 from the new dnsmasq, image replication reaching a
+non-voter, and CAPN's `target` placing on the right member. One grow exercises all four, and they are
+distinguishable by symptom: no address → dnsmasq; no image → replication; wrong host → `target`.
+
+== Troubleshooting
+
+an operation fails with "no operations are possible on this member"::
+Expected when that member is offline — `cluster.offline_threshold` defaults to 20s (minimum 10). It
+is semantically correct: one genuinely cannot provision on an absent host. Cluster-wide state changes
+(creating a network or a pool) also wait for every member, so evolve topology while both are present.
+
+the itinerant member shows as a VOTER::
+The regression this design exists to prevent. `incus-cluster-roles` should be failing loudly; if it
+is not, check it ran at all. Repair with `incus cluster role add <member> database-client`.
+
+the itinerant member never receives an image::
+Check `cluster.images_minimal_replica` is `-1`. At the default it counts *database* members, and a
+`database-client` is not one.
+
+quorum lost when the itinerant member left::
+The inference in <<topology>> failed. Exit with `incus cluster remove <member> --force`, then adopt
+the dimensioned fallback — a third member on the sedentary host.
+
+== Related documentation
+
+* link:substrate-model.adoc[Substrate model] — the node model this clusters the hosts of
+* link:../cluster-api/clustermesh-trust-and-peering.adoc[Clustermesh — trust domains and peering] —
+  the OTHER layer: two k8s clusters federating, whose traversal this does not remove
+* link:../cluster-api/management-workload-topology.adoc[Management / Workload Topology] — the
+  federation model, and the two cross-host traversals distinguished by nature
+* link:../cluster-api/cluster-addressing-plan.adoc[Cluster Addressing Plan] — the per-cluster carve
+  whose per-host differences forced the bridges out of Incus
+* link:../atlas/netplan.adoc[Netplan atlas] — the `NamePlan` collapse to one segment-FQDN form, of
+  which `nixos.<host>` is the infra-host spelling
