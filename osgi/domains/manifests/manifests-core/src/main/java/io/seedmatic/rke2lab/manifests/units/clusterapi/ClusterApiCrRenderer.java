@@ -286,6 +286,7 @@ public final class ClusterApiCrRenderer {
       final String rke2Version,
       final String imageFingerprint,
       final List<String> petNames,
+      final String incusMember,
       final PackageMetadataProfile profile,
       final ApiObject clusterIntention) {
     final String poolName = cluster + "-" + CONTROL_NODE_POOL;
@@ -320,7 +321,16 @@ public final class ClusterApiCrRenderer {
                 "rke2Version", rke2Version,
                 "controlPlaneEndpoint", Map.of("host", vip, "port", port),
                 "nodes", nodes,
-                "nodeLabels", poolNodeLabels())));
+                "nodeLabels", poolNodeLabels(),
+                // WHERE this pool's instances are created — seed-incluster poses it on
+                // LXCMachineTemplate.spec.target, and through it CAPN's placement. It must be
+                // stated:
+                // Incus otherwise picks the member with the fewest instances and breaks ties AT
+                // RANDOM, so a node can be born on a bare-metal whose dnsmasq holds no reservation
+                // for it and whose subnet does not address this cluster. Harmless while exactly one
+                // member is eligible — which is what ndh arranges today, and exactly what stops
+                // being true for a cluster on the second bare-metal.
+                "target", incusMember)));
     return poolIntention;
   }
 

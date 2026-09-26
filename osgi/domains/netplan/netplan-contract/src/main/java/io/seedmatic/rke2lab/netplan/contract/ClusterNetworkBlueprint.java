@@ -599,10 +599,17 @@ public record ClusterNetworkBlueprint(
    * serves the asker who cannot yet reach the cluster. That is the only audience needing it: once
    * the cluster answers, the cluster is authoritative about its own nodes.
    *
-   * <p>The infra host keeps {@code nixosHost} (bare) only because the host itself means MYSELF by
-   * it — NixOS writes {@code 127.0.0.2 <hostname>} in {@code /etc/hosts}, so it is correct there
-   * and NOWHERE else. Everything with an audience uses {@link #nixosFabricFqdn}, and that is ONE
-   * form, not three.
+   * <p>The infra host keeps {@code nixosHost} (bare) for two uses, and the distinction between them
+   * is the whole point. As a NAME TO RESOLVE it is correct only on the host itself, which means
+   * MYSELF by it — NixOS writes {@code 127.0.0.2 <hostname>} in {@code /etc/hosts}. Everything with
+   * an audience resolves {@link #nixosFabricFqdn} instead, and that is ONE form, not three.
+   *
+   * <p>As an IDENTITY it is the Incus CLUSTER MEMBER name, and the warning above does not apply
+   * because nothing resolves it: it is a key in Incus's own member table, used to place an instance
+   * ({@code LXCMachineTemplate.spec.target}, {@code incus cluster add}). ndh derives the same
+   * string independently ({@code memberNameOf entry = "${entry.domain}-nixos"} in {@code
+   * modules/nixos/incus-cluster.nix}), which is the contract the two repos share — one is an
+   * address, the other an identity, and conflating them is how a pod came to dial itself.
    *
    * <p>Why one and not three. The two forms it replaces each had a hidden dependency the name did
    * not show. A bare host name is worse than unresolvable from a pod: the vmnet bridge's dnsmasq —

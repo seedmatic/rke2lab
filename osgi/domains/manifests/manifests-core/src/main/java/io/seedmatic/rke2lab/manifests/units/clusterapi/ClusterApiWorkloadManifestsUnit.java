@@ -168,6 +168,7 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
         rke2Version,
         image.imageFingerprint(),
         pets,
+        blueprint.names().nixosHost(),
         packageProfile,
         clusterIntention);
 
