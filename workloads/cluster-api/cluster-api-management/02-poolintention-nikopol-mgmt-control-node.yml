@@ -1,0 +1,25 @@
+---
+apiVersion: cluster.seedmatic.io/v1alpha1
+kind: PoolIntention
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: cluster-api
+    io.seedmatic.rke2lab/package: cluster-api-management
+  name: nikopol-mgmt-control-node
+  namespace: rke2lab-nikopol-mgmt
+spec:
+  clusterRef: nikopol-mgmt
+  controlPlaneEndpoint:
+    host: 10.80.23.10
+    port: 6443
+  image:
+    fingerprint: 5bb750573c2d2be55ad1753a49c65e2e5cdd3c9436ae8ec9f16b506bae0852e8
+  namespace: rke2lab-nikopol-mgmt
+  nodeLabels:
+  - flox.seedmatic.io/enabled=true
+  nodes:
+  - name: nikopol-mgmt-master
+  pool: control-node
+  rke2Version: v1.34.10+rke2r1
+  role: control-plane
+  target: nikopol-nixos

@@ -6,7 +6,7 @@ kind: ConfigMap
 metadata:
   annotations:
     config.kubernetes.io/local-config: "true"
-    io.seedmatic.rke2lab/domain: cicd
+    io.seedmatic.rke2lab/domain: cluster-api
     io.seedmatic.rke2lab/manifest-group: "true"
-    io.seedmatic.rke2lab/package: render-signing
-  name: render-signing.group
+    io.seedmatic.rke2lab/package: cluster-api-workload
+  name: cluster-api-workload.group

@@ -1,0 +1,25 @@
+---
+apiVersion: cluster.seedmatic.io/v1alpha1
+kind: ClusterIntention
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: cluster-api
+    io.seedmatic.rke2lab/package: cluster-api-management
+  name: nikopol-mgmt
+  namespace: rke2lab-nikopol-mgmt
+spec:
+  clusterName: nikopol-mgmt
+  clusterNetwork:
+    podCIDRs:
+    - 10.46.0.0/16
+    serviceCIDRs:
+    - 10.50.0.0/16
+    serviceDomain: cluster.local
+  controlPlaneEndpoint:
+    host: 10.80.23.10
+    port: 6443
+  kind: management
+  namespace: rke2lab-nikopol-mgmt
+  remote:
+    endpoint: ""
+    identitySecretName: nikopol-incus-identity

@@ -1,0 +1,14 @@
+---
+apiVersion: operator.cluster.x-k8s.io/v1alpha2
+kind: InfrastructureProvider
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: cluster-api
+    io.seedmatic.rke2lab/layer: operators
+    io.seedmatic.rke2lab/package: cluster-api-operator
+  name: incus
+  namespace: capn-system
+spec:
+  fetchConfig:
+    url: https://github.com/lxc/cluster-api-provider-incus/releases/v0.9.0/infrastructure-components.yaml
+  version: v0.9.0

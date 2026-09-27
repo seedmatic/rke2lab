@@ -1,0 +1,20 @@
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: cluster-api
+    io.seedmatic.rke2lab/layer: operators
+    io.seedmatic.rke2lab/package: cluster-api-operator
+  labels:
+    clusterctl.cluster.x-k8s.io/core: capi-operator
+  name: capi-operator-serving-cert
+  namespace: capi-operator-system
+spec:
+  dnsNames:
+  - capi-operator-webhook-service.capi-operator-system.svc
+  - capi-operator-webhook-service.capi-operator-system.svc.cluster.local
+  issuerRef:
+    kind: ClusterIssuer
+    name: rke2lab-ca
+  secretName: capi-operator-webhook-service-cert
