@@ -883,9 +883,19 @@ public class ManifestSynthesisScenario
    */
   private void fileNodeGithubToken(
       ManifestsRunbookInput facet, Optional<LinkedWorktree> rendered, Optional<Delivery> delivery) {
-    final ClusterRole role =
-        ClusterRole.of(
-            facet.identity().map(ManifestsRunbookInput.Identity::clusterName).orElse(""));
+    // The role is only ever asked one question below — "is this a WORKLOAD?" — so an ABSENT
+    // identity
+    // must stay absent rather than be flattened into a blank name. The previous `.orElse("")`
+    // handed
+    // that blank to `ClusterRole.of`, which answered MGMT through a catch-all: a meaningless value
+    // fabricated to satisfy a parser, and the same shape that let the netplan projection read hosts
+    // as MGMT clusters and lose half of them in silence. `of` is loud now, so say it here instead.
+    final Optional<ClusterRole> role =
+        facet
+            .identity()
+            .map(ManifestsRunbookInput.Identity::clusterName)
+            .filter(name -> !name.isBlank())
+            .map(ClusterRole::of);
     if (rendered.isEmpty()
         || cellar == null
         || parcel.isEmpty()
@@ -895,7 +905,7 @@ public class ManifestSynthesisScenario
         // nothing was pushed. Reading the intent here is what made this demand a reader token the
         // same closed gate had withheld, and call the absence a wiring defect.
         || delivery.filter(plan -> plan.push() && plan.token().isPresent()).isEmpty()
-        || role == ClusterRole.WRKLD
+        || role.filter(r -> r == ClusterRole.WRKLD).isPresent()
         || enclosure.map(EnclosureGate::inCluster).orElse(false)) {
       return;
     }

@@ -27,9 +27,40 @@ public enum ClusterRole {
   }
 
   /**
+   * The role for a declared token ({@code mgmt} / {@code wrkld}) — the pair of {@link #token()},
+   * and the ONE place that mapping lives.
+   *
+   * <p>⚠️ Exhaustive and LOUD. This used to be a {@code default -> MGMT} catch-all, described as
+   * the posture a bare survey renders, and the catch-all is what made a real defect invisible: the
+   * netplan projection passed HOSTS where cluster names were expected ({@code bioskop}, {@code
+   * nikopol}), every one of them read as MGMT, and half the clusters silently vanished from the
+   * blueprint. A caller that genuinely has no cluster must say so by naming a role, not by handing
+   * over a string this method cannot read.
+   */
+  public static ClusterRole ofToken(final String role) {
+    return switch (role) {
+      case "mgmt" -> MGMT;
+      case "wrkld" -> WRKLD;
+      default ->
+          throw new IllegalArgumentException(
+              "unknown cluster role '" + role + "' — expected one of mgmt, wrkld");
+    };
+  }
+
+  /**
    * Parse the role from a {@code <host>-<role>} clusterName — the suffix after the first dash. A
    * blank / dashless / unknown name falls back to {@link #MGMT}, the base control posture a bare
    * survey renders.
+   *
+   * <p>⚠️ That fallback is a KNOWN hazard, deliberately left in place for now. It is what let the
+   * netplan projection pass hosts ({@code bioskop}, {@code nikopol}) where cluster names were
+   * expected — each read as MGMT, half the clusters gone from the blueprint without a word. Making
+   * it loud was attempted on 2026-09-27 and reverted: the synthesis scion has more than one caller
+   * that legitimately holds no cluster name, so hardening this needs those audited one by one, not
+   * a switch flipped underneath them.
+   *
+   * <p>★ A caller that KNOWS its role must use {@link #ofToken} instead, which is exhaustive and
+   * fails on anything it cannot read. Prefer it: it is the path that cannot hide a mistake.
    */
   public static ClusterRole of(final String clusterName) {
     final int dash = clusterName.indexOf('-');

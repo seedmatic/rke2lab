@@ -3,6 +3,7 @@ package io.seedmatic.rke2lab.manifests.units.clusterapi;
 import io.seedmatic.rke2lab.manifests.AbstractManifestsUnit;
 import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
 import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
+import io.seedmatic.rke2lab.manifests.contract.ClusterRole;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.WorkloadTarget;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ImageState;
@@ -67,7 +68,15 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
    * A workload's HA control plane = {@code master + peer1 + peer2} = 3 etcd members. NOT the raw
    * CANONICAL server count (4: peer3 is dropped for workloads), per the completion plan.
    */
+  // The control-plane SHAPE is derived from the target's role, not fixed: a workload takes
+  // master+peer1+peer2 (peer3 dropped — a workload is NOT the full CANONICAL topology), while a
+  // MANAGEMENT cluster is ONE control node. This unit renders any CHILD cluster, and since
+  // 2026-09-27 a child can be a management cluster itself (model B: bioskop-mgmt births
+  // nikopol-mgmt, which then self-adopts). Leaving these as workload constants would have grown a
+  // three-node nikopol-mgmt announcing itself as a workload — right name, wrong shape.
   private static final int WORKLOAD_CONTROL_PLANE_REPLICAS = 3;
+
+  private static final int MANAGEMENT_CONTROL_PLANE_REPLICAS = 1;
 
   private final PackageMetadataProfile packageProfile =
       new PackageMetadataProfile(ManifestDomainCatalog.CLUSTER_API, OUTPUT_DIR);
@@ -104,6 +113,25 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
   private void renderTarget(
       final Construct scope, final WorkloadTarget target, final ImageState image) {
     final String cluster = target.clusterName();
+    // ★ The DECLARED role, read off the target rather than re-parsed from the composed name: a
+    // target carries its role as a FIELD, so `ClusterRole.of(cluster)` would be a round-trip. Both
+    // now FAIL on anything they cannot read — the catch-all that used to answer MGMT is what let
+    // the
+    // netplan projection pass hosts as cluster names and lose half the clusters in silence.
+    final ClusterRole role = ClusterRole.ofToken(target.role());
+    final int controlPlaneReplicas =
+        switch (role) {
+          case MGMT -> MANAGEMENT_CONTROL_PLANE_REPLICAS;
+          case WRKLD -> WORKLOAD_CONTROL_PLANE_REPLICAS;
+        };
+    // The federated role recorded on the ClusterIntention — the SAME vocabulary the mgmt unit uses
+    // for its self-adoption, so a birthed management cluster is indistinguishable from one that
+    // adopted itself.
+    final String federatedKind =
+        switch (role) {
+          case MGMT -> "management";
+          case WRKLD -> "workload";
+        };
     final ClusterNetworkBlueprint blueprint =
         ClusterNetworkBlueprint.builder()
             .cluster(cluster)
@@ -145,7 +173,7 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
             scope,
             cluster,
             namespace,
-            "workload",
+            federatedKind,
             vip,
             APISERVER_PORT,
             List.of(blueprint.podCidr()),
@@ -156,7 +184,7 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
             namespaceObject);
     final List<String> pets =
         ClusterNetworkBlueprint.CANONICAL_NODE_NAMES.stream()
-            .limit(WORKLOAD_CONTROL_PLANE_REPLICAS)
+            .limit(controlPlaneReplicas)
             .map(node -> cluster + "-" + node)
             .toList();
     renderer.controlNodePoolIntention(
