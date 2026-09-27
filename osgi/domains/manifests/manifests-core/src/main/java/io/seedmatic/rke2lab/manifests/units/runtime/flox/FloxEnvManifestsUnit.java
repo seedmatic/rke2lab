@@ -132,30 +132,20 @@ public final class FloxEnvManifestsUnit extends AbstractManifestsUnit {
     if (net) {
       createEnv(scope, resolver, "kdns-debug", FloxEnvFolder.NETWORKING, kdnsManifest(true));
     }
+    // `mesh` is the DEBUG facet (FloxDebugPolicy): it only ever selects a FLAVOR, never whether an
+    // env exists. It survives the mesh DOMAIN's removal because the envs below still use it — the
+    // facet is named after the FOLDER, and the folder is not the owner.
     final boolean mesh = policy.meshEnabled();
-    // Two gates, and confusing them is the bug that was made once: `mesh` above is the DEBUG facet
-    // (FloxDebugPolicy), which only ever selects a flavor; whether an env exists AT ALL belongs to
-    // the DOMAIN policy. Gating the prod envs on meshEnabled() would drop them whenever debug is
-    // off — i.e. normally.
+    // headscale/headplane used to be created here behind a domain gate. The mesh domain was
+    // REMOVED on 2026-09-27: hibernated since the fabric renumbering, it also carried dead kpt
+    // setters (no substitution pass survives, so `${cluster-lan-headscale-inetaddr}` would render
+    // verbatim as a DNS value) and its addresses had moved to the fabric pool — waking it meant
+    // redesigning it, so there was nothing to keep warm. Their four flox envs go with it; before
+    // the domain gate existed they were realised on EVERY node for nobody, paying their closure at
+    // each cold start.
     //
-    // headscale/headplane follow their domain, which is HIBERNATED (ClusterRole). Until this gate,
-    // they did not: the envs live in the RUNTIME domain, which EVERY cluster renders, while the
-    // units that annotate them are domain-gated — so both were realised on every node for nobody,
-    // paying their closure at each cold start (measured 2026-09-24 on the management cluster, both
-    // `Realized`). Hibernating the domain now hibernates its envs with it, which is the coupling
-    // that was missing rather than a new switch.
-    //
-    // tailscale/tailnet are NOT gated with them: they sit in the mesh FOLDER (a node-side GC-root
-    // path) but belong to the tailscale domain, which is live — the folder is not the owner.
-    final boolean meshDomain = context.manifestDomainPolicy().isEnabled(ManifestDomainCatalog.MESH);
-    if (meshDomain) {
-      createEnv(scope, resolver, "headscale", FloxEnvFolder.MESH, headscaleManifest(false));
-      createEnv(scope, resolver, "headplane", FloxEnvFolder.MESH, headplaneManifest(false));
-      if (mesh) {
-        createEnv(scope, resolver, "headscale-debug", FloxEnvFolder.MESH, headscaleManifest(true));
-        createEnv(scope, resolver, "headplane-debug", FloxEnvFolder.MESH, headplaneManifest(true));
-      }
-    }
+    // tailscale/tailnet stay: they sit in the mesh FOLDER (a node-side GC-root path) but belong to
+    // the tailscale domain, which is live.
     createEnv(scope, resolver, "tailscale", FloxEnvFolder.MESH, tailscaleManifest(false));
     // The tailnet-admin env for the stale-device prune Job (mesh-tailnet-purge): manage-tailnet +
     // yq-go (the retry loop parses its --format=json JSON Lines). Always prod — an ops tool, no
@@ -253,27 +243,6 @@ public final class FloxEnvManifestsUnit extends AbstractManifestsUnit {
     return manifest(install);
   }
 
-  /** Mirrors {@code environment.d/mesh/headscale[-debug]/manifest.toml}. */
-  private Map<String, Object> headscaleManifest(final boolean debug) {
-    final String flavor = debug ? "headscale-debug" : "headscale";
-    final Map<String, Object> install = new LinkedHashMap<>();
-    install.put("bash", catalogAll("bash"));
-    install.put("coreutils", catalogAll("coreutils"));
-    // The bootstrap/wait scripts drive the cluster via kubectl (both flavors carry it).
-    install.put("kubectl", catalogAll("kubectl"));
-    if (debug) {
-      install.put("delve", catalog("delve"));
-      install.put("strace", catalog("strace"));
-      install.put("curl", catalog("curl"));
-    } else {
-      // bootstrap.sh parses `headscale ... -o yaml` with yq — prod only (the bootstrap Job always
-      // activates the prod headscale env, never the delve-wrapped debug build).
-      install.put("yq-go", catalogAll("yq-go"));
-    }
-    install.put(flavor, flakeRef(flavor));
-    return manifest(install);
-  }
-
   /** Mirrors {@code environment.d/mesh/tailscale[-debug]/manifest.toml}. */
   private Map<String, Object> tailscaleManifest(final boolean debug) {
     final String flavor = debug ? "tailscale-debug" : "tailscale";
@@ -286,30 +255,6 @@ public final class FloxEnvManifestsUnit extends AbstractManifestsUnit {
       install.put("curl", catalog("curl"));
     }
     install.put(flavor, flakeRef(flavor));
-    return manifest(install);
-  }
-
-  /** Mirrors {@code environment.d/mesh/headplane[-debug]/manifest.toml}. */
-  private Map<String, Object> headplaneManifest(final boolean debug) {
-    final Map<String, Object> install = new LinkedHashMap<>();
-    install.put("bash", catalogAll("bash"));
-    install.put("coreutils", catalogAll("coreutils"));
-    // The agent-sync script drives the cluster via kubectl + parses config with yq (both flavors).
-    install.put("kubectl", catalogAll("kubectl"));
-    install.put("yq-go", catalog("yq-go"));
-    if (debug) {
-      install.put("strace", catalog("strace"));
-      install.put("curl", catalog("curl"));
-      install.put("headplane-debug", flakeRef("headplane-debug"));
-    } else {
-      install.put("headplane", flakeRef("headplane"));
-      // headplane reads the headscale config/CLI for its integration — prod env carries it.
-      install.put("headscale", flakeRef("headscale"));
-    }
-    // hp_agent (the tailnet agent) + the ssh WASM helper are separate flake outputs both flavors
-    // need — headplane symlinks /usr/libexec/headplane/agent to `command -v hp_agent`.
-    install.put("headplane-agent", flakeRef("headplane-agent"));
-    install.put("headplane-ssh-wasm", flakeRef("headplane-ssh-wasm"));
     return manifest(install);
   }
 

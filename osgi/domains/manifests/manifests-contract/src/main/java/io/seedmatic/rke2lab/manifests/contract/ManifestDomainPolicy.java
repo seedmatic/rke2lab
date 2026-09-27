@@ -78,11 +78,6 @@ public record ManifestDomainPolicy(Map<String, Boolean> enabledByDomainId) {
       return this;
     }
 
-    public Builder mesh(boolean enabled) {
-      put(domainCatalog.mesh(), enabled);
-      return this;
-    }
-
     public Builder clusterApi(boolean enabled) {
       put(domainCatalog.clusterApi(), enabled);
       return this;

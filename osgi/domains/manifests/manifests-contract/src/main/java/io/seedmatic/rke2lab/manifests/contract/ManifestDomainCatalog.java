@@ -26,7 +26,6 @@ public record ManifestDomainCatalog(List<String> all, List<String> stageALinkabl
   public static final String GITOPS = "gitops";
   public static final String RUNTIME = "runtime";
   public static final String NETWORKING = "networking";
-  public static final String MESH = "mesh";
   public static final String HIGH_AVAILABILITY = "high-availability";
   public static final String CICD = "cicd";
   public static final String CLUSTER_API = "cluster-api";
@@ -60,10 +59,6 @@ public record ManifestDomainCatalog(List<String> all, List<String> stageALinkabl
 
   public String networking() {
     return NETWORKING;
-  }
-
-  public String mesh() {
-    return MESH;
   }
 
   public String highAvailability() {
@@ -104,7 +99,6 @@ public record ManifestDomainCatalog(List<String> all, List<String> stageALinkabl
               GITOPS,
               RUNTIME,
               NETWORKING,
-              MESH,
               HIGH_AVAILABILITY,
               CICD,
               CLUSTER_API,
@@ -116,7 +110,7 @@ public record ManifestDomainCatalog(List<String> all, List<String> stageALinkabl
       // The publishable set = the operator's toggleable facet domains. Base infra (platform,
       // cluster, runtime) is always-on, never a publish knob.
       return addStageALinkableDomains(
-          List.of(GITOPS, NETWORKING, CLUSTER_API, STORAGE, MESH, HIGH_AVAILABILITY, CICD));
+          List.of(GITOPS, NETWORKING, CLUSTER_API, STORAGE, HIGH_AVAILABILITY, CICD));
     }
 
     public Builder addDomain(String domainId) {

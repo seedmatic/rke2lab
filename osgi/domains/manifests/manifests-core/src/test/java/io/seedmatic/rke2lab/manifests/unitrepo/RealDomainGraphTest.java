@@ -7,7 +7,6 @@ import io.seedmatic.rke2lab.manifests.domain.ClusterApiDomainRegistrar;
 import io.seedmatic.rke2lab.manifests.domain.ClusterDomainRegistrar;
 import io.seedmatic.rke2lab.manifests.domain.GitopsDomainRegistrar;
 import io.seedmatic.rke2lab.manifests.domain.HighAvailabilityDomainRegistrar;
-import io.seedmatic.rke2lab.manifests.domain.MeshDomainRegistrar;
 import io.seedmatic.rke2lab.manifests.domain.NetworkingDomainRegistrar;
 import io.seedmatic.rke2lab.manifests.domain.PlatformDomainRegistrar;
 import io.seedmatic.rke2lab.manifests.domain.RuntimeDomainRegistrar;
@@ -41,7 +40,6 @@ class RealDomainGraphTest {
           new ClusterDomainRegistrar(),
           new GitopsDomainRegistrar(),
           new HighAvailabilityDomainRegistrar(),
-          new MeshDomainRegistrar(),
           new NetworkingDomainRegistrar(),
           new PlatformDomainRegistrar(),
           new RuntimeDomainRegistrar(),
