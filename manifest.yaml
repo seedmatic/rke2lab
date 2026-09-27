@@ -1,5 +1,5 @@
 source:
-  sha: 12e881af5c02d8bce3889b55394ea9898b6d8f13
+  sha: 76c6718758b051b4d6b61e1f3866277e47305446
   dirty: true
 facet:
   debug:
@@ -15,6 +15,8 @@ facet:
   workloadTargets:
   - host: bioskop
     role: wrkld
+  - host: nikopol
+    role: mgmt
 image:
   imageAlias: node-base
   imageFingerprint: 5bb750573c2d2be55ad1753a49c65e2e5cdd3c9436ae8ec9f16b506bae0852e8

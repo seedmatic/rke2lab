@@ -11,6 +11,15 @@ data:
     v1|Secret|rke2lab-bioskop-wrkld|bioskop-wrkld-etcd
     v1|Secret|rke2lab-bioskop-wrkld|bioskop-wrkld-peer-etcd
     v1|Secret|rke2lab-bioskop-wrkld|bioskop-wrkld-server-manifests
+    v1|Namespace||rke2lab-nikopol-mgmt
+    cluster.seedmatic.io/v1alpha1|ClusterIntention|rke2lab-nikopol-mgmt|nikopol-mgmt
+    cluster.seedmatic.io/v1alpha1|PoolIntention|rke2lab-nikopol-mgmt|nikopol-mgmt-control-node
+    v1|Secret|rke2lab-nikopol-mgmt|nikopol-incus-identity
+    v1|Secret|rke2lab-nikopol-mgmt|nikopol-mgmt-ca
+    v1|Secret|rke2lab-nikopol-mgmt|nikopol-mgmt-cca
+    v1|Secret|rke2lab-nikopol-mgmt|nikopol-mgmt-etcd
+    v1|Secret|rke2lab-nikopol-mgmt|nikopol-mgmt-peer-etcd
+    v1|Secret|rke2lab-nikopol-mgmt|nikopol-mgmt-server-manifests
 kind: ConfigMap
 metadata:
   annotations:

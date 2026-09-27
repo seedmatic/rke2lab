@@ -16,6 +16,13 @@ data:
     v1|ConfigMap|rke2lab-bioskop-wrkld|etcd-metrics.yaml
     v1|ConfigMap|rke2lab-bioskop-wrkld|etcd.yaml
     v1|ConfigMap|rke2lab-bioskop-wrkld|tls-san.yaml
+    v1|ConfigMap|rke2lab-nikopol-mgmt|cidrs.yaml
+    v1|ConfigMap|rke2lab-nikopol-mgmt|core.yaml
+    v1|ConfigMap|rke2lab-nikopol-mgmt|debug.yaml
+    v1|ConfigMap|rke2lab-nikopol-mgmt|disable.yaml
+    v1|ConfigMap|rke2lab-nikopol-mgmt|etcd-metrics.yaml
+    v1|ConfigMap|rke2lab-nikopol-mgmt|etcd.yaml
+    v1|ConfigMap|rke2lab-nikopol-mgmt|tls-san.yaml
 kind: ConfigMap
 metadata:
   annotations:
