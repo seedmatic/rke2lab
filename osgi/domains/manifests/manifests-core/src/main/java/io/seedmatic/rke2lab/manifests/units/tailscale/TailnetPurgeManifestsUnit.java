@@ -218,7 +218,9 @@ public final class TailnetPurgeManifestsUnit extends AbstractManifestsUnit {
           # Capture output + exit code SEPARATELY (no '|| true'): an auth/API error fails the Job.
           # --keep-host spares the PERSISTED funnel devices (their identity is restored across the
           # cold-start, so they must survive to re-attach — same name, cert reused); only drifted
-          # duplicates (name-1, …) and un-persisted orphans (the controlplane Connector) are pruned.
+          # duplicates (name-1, …) are pruned. The controlplane Connector used to be the one
+          # un-persisted orphan here; the bare-metal now advertises the vmnet segments itself, so
+          # that device no longer exists and no tailnet route churns with a cold start.
           if ! out="$(manage-tailnet --prune-stale-devices --stale-after 1s --apply $keep \
               --client-secret-file /etc/tailnet/client-secret --format=json)"; then
             echo "manage-tailnet failed (auth/API error — e.g. 401) — refusing to report clean" >&2

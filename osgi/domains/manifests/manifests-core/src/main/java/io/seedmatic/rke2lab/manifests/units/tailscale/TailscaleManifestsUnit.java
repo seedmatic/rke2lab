@@ -7,15 +7,12 @@ import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
 import io.seedmatic.rke2lab.manifests.contract.ManifestAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.ManifestLayer;
-import io.seedmatic.rke2lab.manifests.contract.WorkloadTarget;
 import io.seedmatic.rke2lab.manifests.ingress.Component;
 import io.seedmatic.rke2lab.manifests.ingress.FunnelCertIssuance;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import io.seedmatic.rke2lab.manifests.units.cluster.ClusterRefs;
-import io.seedmatic.rke2lab.netplan.contract.ClusterNetworkBlueprint;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Stream;
 import org.cdk8s.ApiObject;
 import org.cdk8s.ApiObjectMetadata;
 import org.cdk8s.ApiObjectProps;
@@ -23,9 +20,27 @@ import org.cdk8s.JsonPatch;
 import software.constructs.Construct;
 
 /**
- * Tailscale operator connector + oauth secret. NOTE: renders its resources as {@code Map.of} blobs
- * across private {@code createXxx} helpers — a de-soup candidate (see
+ * Tailscale operator + its oauth secret. NOTE: renders its resources as {@code Map.of} blobs across
+ * private {@code createXxx} helpers — a de-soup candidate (see
  * docs/architecture/manifests/manifests-unit-lifecycle.adoc § Known debt).
+ *
+ * <p>There is deliberately NO {@code Connector} CR here, and re-adding one is a regression. It was
+ * this cluster's subnet router, advertising the kube-vip VIP {@code /32} + the cilium LB {@code
+ * /26} of itself and of every cluster it manages. Two things were wrong with that owner. The
+ * addresses it advertised live on a {@code vmnet} bridge owned by the BARE-METAL, while the
+ * advertiser was a pod INSIDE the cluster — so the route died with the cluster, which is exactly
+ * when the comment's own justification ("the route is wanted while debugging a cluster that is
+ * half-born") needs it. And a managed cluster on ANOTHER bare-metal would have been advertised by a
+ * Connector that cannot forward to it: the "reaches a sibling VIP locally over the host" argument
+ * only holds for bridges on the SAME host, so the next cluster ({@code nikopol-mgmt}) would have
+ * been a black hole behind an elected primary subnet router.
+ *
+ * <p>So the role moved to the host that owns the bridges: ndh's {@code cluster-vmnet.nix}
+ * advertises each {@code vmnet} segment it declares. One advertiser per prefix, no election, and
+ * the route outlives the cluster because the host does. The Connector had no other role — no exit
+ * node, no app connector — so the CR went with it, and with it two tailnet devices the purge Job
+ * had to treat as un-persisted orphans on every cold start. The funnel proxies are separate
+ * devices, unaffected.
  */
 public final class TailscaleManifestsUnit extends AbstractManifestsUnit {
 
@@ -63,8 +78,7 @@ public final class TailscaleManifestsUnit extends AbstractManifestsUnit {
     // registered id"). The HelmChart's own createNamespace=true is a runtime no-op
     // once the namespace exists.
     createSecret(scope);
-    ApiObject helmChart = createHelmChart(scope);
-    createConnector(scope, helmChart, context.nodeEnvContext().bootstrapIdentity().clusterName());
+    createHelmChart(scope);
   }
 
   private ApiObject createHelmChart(final Construct scope) {
@@ -132,88 +146,6 @@ public final class TailscaleManifestsUnit extends AbstractManifestsUnit {
                 version)));
 
     return helmChart;
-  }
-
-  private void createConnector(
-      final Construct scope, final ApiObject helmChart, final String clusterName) {
-    ApiObject connector =
-        new ApiObject(
-            scope,
-            "connector-controlplane",
-            ApiObjectProps.builder()
-                .apiVersion("tailscale.com/v1alpha1")
-                .kind("Connector")
-                .metadata(
-                    ApiObjectMetadata.builder()
-                        .name("controlplane")
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "",
-                                Map.of(
-                                    "config.kubernetes.io/depends-on",
-                                    "helm.cattle.io/namespaces/"
-                                        + TAILSCALE_NAMESPACE
-                                        + "/HelmChart/tailscale-operator")))
-                        .build())
-                .build());
-    connector.addDependency(helmChart);
-
-    // Advertise THIS cluster's reach set, derived from its blueprint (SSOT) — never a literal: the
-    // kube-vip control-plane VIP (a /32, what CAPI dials for adoption) and the cilium LB IP pool
-    // (so
-    // LoadBalancer services are reachable over the tailnet too). Both are per-cluster functions of
-    // the
-    // clusterId, so a hardcode (the old 10.80.7.10/32 + 10.80.0.64/26) only ever matched clusterId
-    // 0.
-    // ndh manage-tailnet auto-approves the whole vmnet /18 for tag:k8s, so any cluster's routes
-    // clear
-    // approval without a per-cluster console step (see
-    // management-workload-topology.adoc#cp-endpoint-reach).
-    // …AND the same pair for every cluster this one MANAGES. A workload's own Connector cannot
-    // serve
-    // this: it only exists once that cluster is up with its tailscale operator reconciled, which is
-    // precisely when the operator does NOT need the route — the route is wanted while debugging a
-    // cluster that is half-born. The management plane is the one always standing first, and since
-    // it
-    // now reaches a sibling VIP locally over the host (the vmnet supernet route, measured 401 in
-    // 7ms
-    // node-side), it is a valid subnet router for them. The Connector runs as a POD, so this also
-    // depends on cilium masquerading pod egress on vmnet0 — see CiliumConfigManifestsUnit; before
-    // that fix a pod could not reach a sibling VIP at all.
-    //
-    // workloadTargets() is empty on a workload render, so this degrades to "advertise myself" with
-    // no
-    // role test. Duplicate advertisements (a workload later advertising its own VIP too) are
-    // benign:
-    // tailscale elects one primary subnet router per route.
-    final List<String> advertiseRoutes =
-        Stream.concat(
-                Stream.of(clusterName),
-                ManifestSynthesisContext.current().workloadTargets().stream()
-                    .map(WorkloadTarget::clusterName))
-            .distinct()
-            .map(this::blueprintOf)
-            .flatMap(cluster -> cluster.tailnetReachRoutes().stream())
-            .distinct()
-            .toList();
-
-    connector.addJsonPatch(
-        JsonPatch.add(
-            "/spec",
-            Map.of(
-                "hostname",
-                clusterName + "-controlplane",
-                "subnetRouter",
-                Map.of("advertiseRoutes", advertiseRoutes))));
-  }
-
-  /** A cluster's blueprint, derived on its canonical master — the reach set is cluster-scoped. */
-  private ClusterNetworkBlueprint blueprintOf(final String cluster) {
-    return ClusterNetworkBlueprint.builder()
-        .cluster(cluster)
-        .node("master")
-        .deriveRecipeModel()
-        .build();
   }
 
   private void createSecret(final Construct scope) {

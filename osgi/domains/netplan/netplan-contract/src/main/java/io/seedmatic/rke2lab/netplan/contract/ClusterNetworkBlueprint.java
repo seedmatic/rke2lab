@@ -112,22 +112,6 @@ public record ClusterNetworkBlueprint(
   }
 
   /**
-   * The spans that make this cluster REACHABLE from outside its own fabric, as a tailscale subnet
-   * router advertises them: the kube-vip control-plane VIP as a {@code /32} (what CAPI dials, and
-   * what a kubeconfig context targets) and the cilium LoadBalancer IP pool (so its {@code Service}s
-   * answer too).
-   *
-   * <p>Both are pure functions of {@code clusterId}, so this is the thing a Connector advertises
-   * for ITSELF and equally what a MANAGEMENT plane advertises on behalf of each cluster it manages
-   * — the management plane being the one always standing, and the only one reachable while a
-   * workload is still half-born.
-   */
-  public List<String> tailnetReachRoutes() {
-    return List.of(
-        vip().vipHostInetaddr().getHostAddress() + "/32", loadBalancer().lbCidr().toString());
-  }
-
-  /**
    * Is this node's fabric hwaddr one this blueprint PREDICTS — and therefore is {@code
    * fabric().hostInetaddr()} an address a {@code dhcp-host} reservation can actually bind?
    *

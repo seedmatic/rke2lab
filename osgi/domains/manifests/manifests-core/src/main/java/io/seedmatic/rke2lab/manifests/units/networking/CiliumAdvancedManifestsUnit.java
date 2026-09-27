@@ -39,10 +39,10 @@ public final class CiliumAdvancedManifestsUnit extends AbstractManifestsUnit {
 
   private void createLoadBalancerPools(final Construct scope) {
     // The vmnet LB pool is per-cluster (10.80.<clusterId*8>.64/26) — derive it from the blueprint
-    // (SSOT), never a literal, so it MATCHES the LB route the tailscale Connector advertises for
-    // the
-    // same cluster (both are blueprint.loadBalancer().lbCidr()). A hardcode only ever matched
-    // clusterId 0, so a workload cluster would announce one range and pool another → unreachable.
+    // (SSOT), never a literal: it must sit INSIDE the vmnet segment the bare-metal advertises into
+    // the tailnet (ndh cluster-vmnet.nix advertises the whole /21 of each bridge it owns), which is
+    // what makes a LoadBalancer Service answer from off-host. A hardcode only ever matched
+    // clusterId 0, so a workload cluster would pool a range outside its own segment → unreachable.
     final ClusterNetworkBlueprint blueprint =
         ClusterNetworkBlueprint.builder()
             .cluster(
