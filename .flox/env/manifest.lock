@@ -3432,29 +3432,6 @@
       "priority": 1
     },
     {
-      "install_id": "manage-tailnet",
-      "locked-url": "github:seedmatic/rke2lab/e1ece2438c8b5ee7739bd320f7a84b3b7c334d95?narHash=sha256-rrROHEd1EriyhHp5uPVveLZ6gytS2txG7jgEbPelDj4%3D",
-      "flake-description": "RKE2 lab infrastructure and network blueprints",
-      "locked-flake-attr-path": "packages.aarch64-darwin.manage-tailnet",
-      "derivation": "/nix/store/lajzfl7r9lvzmigfncpixxn17msclj87-manage-tailnet.drv",
-      "outputs": {
-        "out": "/nix/store/f9r04g7qyfx43xp9m453hfgmnkbrdyx9-manage-tailnet"
-      },
-      "output-names": [
-        "out"
-      ],
-      "outputs-to-install": [
-        "out"
-      ],
-      "requested-outputs-to-install": [],
-      "package-system": "aarch64-darwin",
-      "system": "aarch64-darwin",
-      "name": "manage-tailnet",
-      "broken": false,
-      "unfree": false,
-      "priority": 5
-    },
-    {
       "install_id": "maven",
       "locked-url": "github:seedmatic/rke2lab/c7b520d1443f89ea8d43b95b5a2568e4472ad92c?narHash=sha256-RO/6OMaVFUhJWskhHe/rFurKsA%2BZMvQlf7KXvC%2BaX5s%3D",
       "flake-description": "RKE2 lab infrastructure and network blueprints",
@@ -3692,12 +3669,12 @@
     },
     {
       "install_id": "incus-client",
-      "locked-url": "github:seedmatic/rke2lab/e1ece2438c8b5ee7739bd320f7a84b3b7c334d95?narHash=sha256-rrROHEd1EriyhHp5uPVveLZ6gytS2txG7jgEbPelDj4%3D",
+      "locked-url": "github:seedmatic/rke2lab/f9af1297e4ddc77d3b2f1cb725ce94939e700b54?narHash=sha256-%2B6mlJa6Wu8WxmxP8OBbrNieYyzm9B6Y0k2rk%2BhOvubA%3D",
       "flake-description": "RKE2 lab infrastructure and network blueprints",
       "locked-flake-attr-path": "packages.aarch64-darwin.incus-client",
-      "derivation": "/nix/store/q6xwqdh251vkjnv2bwnvg1k5jcjla640-incus-client-7.4.0.drv",
+      "derivation": "/nix/store/7ksq3h46dyrc75r24sv41x3chmpwq8w4-incus-client-7.4.0.drv",
       "outputs": {
-        "out": "/nix/store/qw9nnvpniscj52nyhqnk1wj18a0lsgqh-incus-client-7.4.0"
+        "out": "/nix/store/sz3r5yhrym5572glmqz1smnva2bd60sz-incus-client-7.4.0"
       },
       "output-names": [
         "out"
@@ -3721,12 +3698,12 @@
     },
     {
       "install_id": "incus-client",
-      "locked-url": "github:seedmatic/rke2lab/e1ece2438c8b5ee7739bd320f7a84b3b7c334d95?narHash=sha256-rrROHEd1EriyhHp5uPVveLZ6gytS2txG7jgEbPelDj4%3D",
+      "locked-url": "github:seedmatic/rke2lab/f9af1297e4ddc77d3b2f1cb725ce94939e700b54?narHash=sha256-%2B6mlJa6Wu8WxmxP8OBbrNieYyzm9B6Y0k2rk%2BhOvubA%3D",
       "flake-description": "RKE2 lab infrastructure and network blueprints",
       "locked-flake-attr-path": "packages.aarch64-linux.incus-client",
-      "derivation": "/nix/store/bvqggvyi754il78lsx7d5j05a5z1170a-incus-client-7.4.0.drv",
+      "derivation": "/nix/store/bkxsmg2fvsmssd7kiixc8k9nz5wxk82f-incus-client-7.4.0.drv",
       "outputs": {
-        "out": "/nix/store/8fq63ajdwlgm61fjif6j6c5l63q1yss6-incus-client-7.4.0"
+        "out": "/nix/store/s4p9ypc24p94m25nfgjyja6xdari9r6h-incus-client-7.4.0"
       },
       "output-names": [
         "out"
@@ -3744,6 +3721,29 @@
       "licenses": [
         "Apache-2.0"
       ],
+      "broken": false,
+      "unfree": false,
+      "priority": 5
+    },
+    {
+      "install_id": "manage-tailnet",
+      "locked-url": "github:seedmatic/rke2lab/f9af1297e4ddc77d3b2f1cb725ce94939e700b54?narHash=sha256-%2B6mlJa6Wu8WxmxP8OBbrNieYyzm9B6Y0k2rk%2BhOvubA%3D",
+      "flake-description": "RKE2 lab infrastructure and network blueprints",
+      "locked-flake-attr-path": "packages.aarch64-darwin.manage-tailnet",
+      "derivation": "/nix/store/00w8dlpqhi24j1vjqpw6p32r10mq2dsh-manage-tailnet.drv",
+      "outputs": {
+        "out": "/nix/store/jfh573625cx5sbb9yzjzf0b6n1wbhblk-manage-tailnet"
+      },
+      "output-names": [
+        "out"
+      ],
+      "outputs-to-install": [
+        "out"
+      ],
+      "requested-outputs-to-install": [],
+      "package-system": "aarch64-darwin",
+      "system": "aarch64-darwin",
+      "name": "manage-tailnet",
       "broken": false,
       "unfree": false,
       "priority": 5
