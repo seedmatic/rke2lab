@@ -159,8 +159,13 @@ to SPARE a persisted device — but CONDITIONALLY: only for a leaf whose `/persi
 exists (there is state to re-attach to). A leaf with no backup yet is NOT spared, so its stale device
 is pruned and the fresh proxy claims a clean name; the first backup then establishes its state and the
 next grow re-attaches. A drifted duplicate (`<leaf>-1`) never matches the bare `--keep-host` name, so
-it is always pruned — the reclaim we want. The un-persisted controlplane Connector is likewise never
-spared. Needs the ndh `manage-tailnet --keep-host` flag.
+it is always pruned — the reclaim we want. Needs the ndh `manage-tailnet --keep-host` flag.
+
+Until 2026-09-27 the per-cluster `Connector` device was the one un-persisted orphan this pruning had
+to sweep on every grow. It is gone: the bare-metal advertises its own `vmnet` segments now (ndh
+`cluster-vmnet.nix`), and a host device is PERSISTED — so no tailnet route churns with a cold start
+any more, and none needs re-approving. See
+link:management-workload-topology.adoc#cp-endpoint-reach[the reach mechanism].
 
 [#funnel-per-cluster]
 ==== A funnel's identity is PER-CLUSTER — the leaf alone is not it

@@ -409,60 +409,86 @@ Two facts settle HOW to bridge it:
 . *The VIP is a NODE-level address* (it lives on `vmnet0`, a node interface), so it belongs to the
   <<mesh,node plane (`mammoth-skate`)>>, not the workload plane (Headscale, for pods↔pods).
 
-=== The mechanism — the tailscale-operator Connector, two locks
+=== The mechanism — the BARE-METAL is the subnet router, two locks
 
 The management cluster already reaches every workload NODE over `mammoth-skate` (regardless of host).
-We extend that to the VIP through the in-cluster *tailscale-operator*, which
-`TailscaleManifestsUnit` already deploys: it creates a `Connector` (`<cluster>-controlplane`,
-`tag:k8s`) in `subnetRouter` mode that advertises the cluster's own reach set, derived from its
-`ClusterNetworkBlueprint` (SSOT, never a literal): the kube-vip VIP as a `/32` (`10.80.<w>.10/32`,
-what CAPI dials) and the cilium LB IP pool (`blueprint.loadBalancer().lbCidr()`, so LoadBalancer
-services are reachable too). It advertises only what its OWN node can forward — its per-cluster
-addresses — NOT the whole `/18` (the other clusters' `/24`s live behind isolated `vmnet0`s). The `/18`
-is the APPROVAL umbrella below, not the advertised route. The controller pod then routes to the
-workload VIP through the tailnet — including when `nikopol-nixos` is roaming (DERP relays
-traverse the CGNAT; once punched, Tailscale upgrades to a direct path). CAPN consumes the
-pre-existing kube-vip endpoint via its load-balancer `external` mode (it does not orchestrate the LB;
-it uses the address).
+The VIP is reached the same way: the bare-metal that OWNS the `vmnet` bridge advertises that bridge's
+`/21` into the tailnet (ndh `modules/nixos/cluster-vmnet.nix`, derived from the `<host>-<role>-net`
+segments it already declares). The VIP `10.80.<w>.10` and the cilium LB pool `10.80.<w>.64/26` both
+live inside that `/21`, so one route per bridge covers them. The controller pod then routes to the
+workload VIP through the tailnet — including when `nikopol-nixos` is roaming (DERP relays traverse the
+CGNAT; once punched, Tailscale upgrades to a direct path). CAPN consumes the pre-existing kube-vip
+endpoint via its load-balancer `external` mode (it does not orchestrate the LB; it uses the address).
+
+.Why the HOST and not a per-cluster Connector (corrected 2026-09-27)
+[IMPORTANT]
+====
+Until `acd0e45d4` this was a `Connector` CR (`<cluster>-controlplane`, `tag:k8s`) that
+`TailscaleManifestsUnit` rendered per cluster, advertising the VIP `/32` + LB `/26` of itself *and of
+every cluster it manages*. The invariant this section already stated — *"it advertises only what its
+OWN node can forward"* — was the right one; the implementation broke it, and the owner was why.
+
+❌ *A pod inside the cluster.* Two failures. The addresses live on a bridge owned by the BARE-METAL,
+so the route died with the cluster — exactly when this document's own justification wants it ("the
+route is wanted while debugging a cluster that is half-born"). Measured 2026-09-27: `bioskop-nixos`
+offline took both Connectors with it, and with them every VIP route. And "it reaches a sibling VIP
+locally over the host" holds only for bridges on the SAME host, so a managed cluster on the other
+bare-metal would have been advertised by a Connector unable to forward to it — a black hole behind
+tailscale's elected primary subnet router. `nikopol-mgmt` was the next cluster in line.
+
+✅ *The host that owns the bridges.* It holds each gateway and forwards between them
+(`net.ipv4.ip_forward = 1`, plus an MSS clamp for the 1500→1280 step), so the invariant holds by
+construction. One advertiser per prefix means no primary-router election. The route outlives the
+cluster because the host does, and a host device is *persisted*, so the route no longer churns across
+a cold start — `TailnetPurgeManifestsUnit` lost its one un-persisted orphan. The Connector had no
+other role (no exit node, no app connector), so the CR went with it.
+
+Measured after the change: `bioskop-nixos` advertises `10.80.0.0/21 10.80.8.0/21` beside its fabric
+`172.16.0.0/20` and the home LAN; `nikopol-nixos` advertises `10.80.16.0/21 10.80.24.0/21` beside
+`172.16.16.0/20` and no LAN.
+====
 
 Advertising a route is not enough — TWO independent locks must both open, and BOTH are provisioned
 declaratively in ndh's `manage-tailnet` (`--sync-acl`), derived from the blueprint's `"vmnet"`
 segment (`10.80.0.0/18`), never hardcoded:
 
-. *Route approval* — `autoApprovers.routes` approves the `/18` for the advertiser's tag (`tag:k8s`,
-  the operator Connector — NOT `tag:nixos`, which owns the baremetal host subnet routers). One `/18`
-  umbrella auto-approves EVERY cluster's advertised subrange (the VIP `/32` + LB `/26` all fall inside
-  it), so no per-cluster console step. Without it the route sits `pending approval` (the console
-  `Subnets ⚠️`), and because
-  `TailnetPurgeManifestsUnit` wipes devices each grow, a manual approval would lapse on every
-  re-grow — the auto-approver makes it survive.
+. *Route approval* — `autoApprovers.routes` approves the `/18` for the advertiser's tag, which since
+  `acd0e45d4` is `tag:nixos` (the baremetal host subnet routers) and no longer `tag:k8s`. *The
+  approver must follow the advertiser*: left on `tag:k8s` after the move, every cluster segment would
+  have sat `pending approval` forever. One `/18` umbrella auto-approves EVERY cluster's `/21`, so no
+  per-cluster console step — and because the advertiser is now a persisted host device rather than a
+  pod the purge wipes each grow, the approval also stops being re-tested on every re-grow.
 . *ACL `accept`* — the client must be ACL-permitted to REACH `10.80.x`, or the approved route never
-  even enters its netmap. The `/18` is added to the relevant `accept` rule's `dst`.
+  even enters its netmap. A tag in `dst` covers only a node's OWN tailnet addresses, so the `/18` is
+  named as a CIDR in the `accept` rule's `dst`; that entry is generated from the same segment.
 
 [mermaid,topology-cp-endpoint-reach,svg]
 ----
 flowchart LR
   subgraph MGMT["bioskop-mgmt (fixed)"]
     CAPI["CAPI/CAPN pod"]
-    OP["tailscale-operator<br/>Connector controlplane (tag:k8s)<br/>subnetRouter: VIP /32 + LB pool /26 (per-cluster)"]
+  end
+  subgraph HOST["nikopol-nixos — the bare-metal (tag:nixos)"]
+    SR["subnet router<br/>advertises vmnet /21 per bridge it owns"]
+    VIP["kube-vip VIP<br/>10.80.&lt;w&gt;.10:6443 on vmnet0"]
   end
   subgraph TS["node plane — mammoth-skate (tailnet + DERP)"]
-    R{{"route approved (autoApprovers, tag:k8s)<br/>+ ACL accept dst 10.80.0.0/18<br/>— both from ndh manage-tailnet"}}
+    R{{"route approved (autoApprovers, tag:nixos)<br/>+ ACL accept dst 10.80.0.0/18<br/>— both from ndh manage-tailnet"}}
   end
-  subgraph WL["*-wrkld on nikopol-nixos (itinerant)"]
-    VIP["kube-vip VIP<br/>10.80.&lt;w&gt;.10:6443"]
-  end
-  OP -.->|advertises VIP /32 + LB /26| R
+  SR -.->|advertises 10.80.&lt;w&gt;.0/21| R
   CAPI -->|routes via tailnet| R
-  R -->|DERP then direct| VIP
+  R -->|DERP then direct| SR
+  SR -->|forwards on its own bridge| VIP
 ----
 
 .Decision (2026-09-12), validated live, and the alternatives rejected
 [TIP]
 ====
-*Chosen — advertise the vmnet `/18` over `mammoth-skate` (Tailscale SaaS) FIRST.* Zero new
-component: the operator's `Connector` already advertises it, the node plane already carries the
-itinerant host, and DERP handles the CGNAT. The two locks (route approval + ACL accept) are made
+*Chosen — reach the vmnet segments over `mammoth-skate` (Tailscale SaaS) FIRST.* Zero new
+component: the bare-metal is already a tailnet subnet router for its own fabric `/20`, the node plane
+already carries the itinerant host, and DERP handles the CGNAT. (As first written this rode the
+operator's per-cluster `Connector`; the owner moved to the host on 2026-09-27 — see the correction
+above — which removed a component rather than adding one.) The two locks (route approval + ACL accept) are made
 declarative in ndh's `manage-tailnet`, derived from the blueprint `"vmnet"` segment — so they cover
 every future cluster and survive purge/re-grow. *Validated live (2026-09-12):* from `bioskop`,
 `10.80.7.10:6443` (the mgmt apiserver VIP) is reachable through the tailnet — DERP first, then a
@@ -484,11 +510,13 @@ remains a possibility for a purely intra-host workload; out of scope here.
 
 === The workload reach — the CAPI pod egresses through the operator
 
-The Connector above makes the workload VIP REACHABLE on the tailnet; it does not by itself route a
-management POD to it. The cluster nodes are NOT tailscale clients (no `services.tailscale` on the
-node-base — the cluster joins the tailnet only through the operator), so a pod does not inherit a
-tailnet route from its node. The management CAPI pod therefore egresses through the
-*tailscale-operator* on the management side — the symmetric twin of the workload's ingress Connector.
+The bare-metal's subnet route above makes the workload VIP REACHABLE on the tailnet; it does not by
+itself route a management POD to it. The cluster nodes are NOT tailscale clients (no
+`services.tailscale` on the node-base), so a pod does not inherit a tailnet route from its node — and
+the node's HOST is on the tailnet, but the node is not. The management CAPI pod therefore egresses
+through the *tailscale-operator* on the management side, via a `ProxyGroup type:egress`. That egress
+proxy is the operator's own device and is UNAFFECTED by the Connector removal: what went away was the
+subnet-router CR, not the operator or its proxies.
 
 That egress is an L4 (TCP) forward, NOT a TLS-terminating proxy — contrast the operator's
 `apiServerProxy`, which terminates TLS and authenticates by tailnet identity + impersonation
@@ -504,12 +532,12 @@ flowchart LR
     EG["egress: ExternalName Service &lt;w&gt;-apiserver<br/>+ ProxyGroup type:egress<br/>(owned by rke2-adoption-controller)<br/>tailnet-target-ip: 10.80.&lt;w&gt;.10"]
   end
   subgraph W["*-wrkld"]
-    CONN["operator Connector<br/>advertises VIP 10.80.&lt;w&gt;.10/32 + LB pool /26"]
+    SR["its bare-metal (tag:nixos)<br/>advertises vmnet 10.80.&lt;w&gt;.0/21"]
     VIP["kube-vip VIP<br/>10.80.&lt;w&gt;.10:6443"]
   end
   CAPI -->|ClusterIP/DNS| EG
-  EG -->|"L4 (TLS pass-through)"| CONN
-  CONN --> VIP
+  EG -->|"L4 (TLS pass-through)"| SR
+  SR -->|forwards on its own bridge| VIP
 ----
 
 Four pieces — TWO rendered from the blueprint SSOT, TWO owned by the `rke2-adoption-controller`:
@@ -578,7 +606,8 @@ Headscale `main` / the upcoming **0.30.0** (unreleased as of 2026-09-12) ports `
 clients "reusing Tailscale's wire shapes" *specifically so the Tailscale operator and Terraform
 provider drive Headscale unchanged (PR #3334); its CI (PR #3337) runs the REAL operator in k3s
 against Headscale over plain HTTP and proves operator self-registration, the **egress Connector**
-(subnet router), ingress, and **ProxyGroup** — i.e. exactly the two primitives this reach uses. The
+(subnet router), ingress, and **ProxyGroup** — the last of which is the primitive this reach still
+uses (its subnet route now comes from the bare-metal, outside Kubernetes entirely). The
 retarget is a single knob: `OPERATOR_LOGIN_SERVER` points BOTH the `tsnet` control plane AND the
 `/api/v2` client base-URL at Headscale, and a Headscale-minted OAuth client (scopes `devices:core` +
 `auth_keys`, tagged `tag:k8s-operator` owning `tag:k8s`) replaces the SaaS one. Same operator, same

@@ -186,7 +186,8 @@ handoff:
   seedProvisioningChecksum: sha256:TODO
   seedImageBuildChecksum: sha256:TODO
   machineClassRef: lxc-control-default-v1
-  loadBalancerMode: external   # rke2lab owns the VIP (kube-vip DaemonSet + tailnet Connector)
+  loadBalancerMode: external   # rke2lab owns the VIP (kube-vip DaemonSet; the tailnet route to it
+                               # is advertised by the bare-metal that owns the vmnet bridge)
   handoffReady: false
   # Stage B targets — the separate workload clusters CAPI will greenfield-create,
   # one CAPN identity secret per incus remote (server/server-crt differ; client shared).

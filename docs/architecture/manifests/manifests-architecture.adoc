@@ -648,8 +648,10 @@ cross-domain ordering.
 
 | `TailscaleDomainRegistrar`
 | The tailscale domain — the per-cluster tailnet substrate: the `tailscale-system` namespace, the
-  Tailscale operator, the subnet-router Connector (it advertises the cluster's CIDRs to the
-  tailnet), and the funnel cert-restore / state-persistence / tailnet-purge units. Broader than
+  Tailscale operator, and the funnel cert-restore / state-persistence / tailnet-purge units. It no
+  longer renders a subnet-router `Connector`: since 2026-09-27 the BARE-METAL advertises the `vmnet`
+  segments it owns (ndh `cluster-vmnet.nix`), because the addresses live on its bridges and a route
+  owned by a pod died with the cluster. Broader than
   ingress — the funnel is one capability the operator provides; the real in-cluster ingress is
   EnvoyGateway (networking). Structural on BOTH roles (every cluster exposes its own endpoints — the
   Flux receiver, the PaC/Tekton webhook — and advertises its subnets).

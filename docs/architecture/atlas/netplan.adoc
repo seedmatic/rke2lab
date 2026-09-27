@@ -617,12 +617,22 @@ of that contract exist and have never been joined. This is the first consumer th
 
 Two properties fall out, and both are worth more than the name itself:
 
-. *One declaration, two audiences.* `bare-br`'s dnsmasq is not only the operator's resolver via
+. *One declaration, two audiences.* The bare-metal's dnsmasq is not only the operator's resolver via
   split-DNS — it is **every pod's first resolver**, because the kubelet hands pods
-  `/run/systemd/resolve/resolv.conf` whose first upstream is the bridge, and CoreDNS forwards to
-  `/etc/resolv.conf`. Measured 2026-09-23 while chasing a pod that resolved `bioskop-nixos` to its own
+  `/run/systemd/resolve/resolv.conf` whose upstreams ARE the bridges, and CoreDNS forwards `.` to the
+  file it is handed. Measured 2026-09-23 while chasing a pod that resolved `bioskop-nixos` to its own
   loopback. So the same `host-record` serves in-cluster consumers and the operator — replacing the
   `.lan` FQDN workaround that case needed with the normal form.
++
+⚠️ *This property was ASPIRATIONAL until 2026-09-26 and is easy to lose again.* The kubelet default is
+`/etc/resolv.conf`, which under systemd-resolved is the STUB (`127.0.0.53`) — and rke2 refuses a
+resolv.conf carrying a loopback, multicast or link-local nameserver, silently substituting its own with
+`8.8.8.8 2001:4860:4860::8888`. Every `dnsPolicy: Default` pod inherited that, CoreDNS included, so the
+whole cluster's DNS went to Google and no `<host>`-zone name resolved anywhere — which cost both
+clusters 90 minutes of a cold start, CAPN being unable to resolve its own Incus endpoint. It takes TWO
+settings to hold (`nixos/rke2.nix` + `nixos/network.nix`): `--resolv-conf=/run/systemd/resolve/resolv.conf`,
+AND `IPv6AcceptRA.UseDNS = false` on every link, because our dnsmasq answers RDNSS with a LINK-LOCAL
+address and one such entry re-triggers the same refusal. Both landed in rke2lab `ea1da8bd8`.
 . *Naming CAN become tailnet-independent — but is not today.* `baremetal-resolvers.nix` already
   generates `/etc/resolver/<domain>` for every baremetal entry, pointing at the segment's `netGateway`.
   That target is a *fabric* address (`172.16.7.1`), and its own comment says reachability "rides the

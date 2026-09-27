@@ -38,7 +38,9 @@ out-of-band answer:
 
 So the mesh is *pre-armed*: `cluster.name`/`cluster.id` are derived (`blueprint.meshClusterId()`),
 `clustermesh.enabled` and `useAPIServer` are on, and the apiserver is exposed as a `LoadBalancer`
-whose cilium LB pool `/26` the tailscale Connector already advertises. Everything is in place except
+whose cilium LB pool `/26` sits inside the `vmnet` segment its bare-metal already advertises into the
+tailnet (ndh `cluster-vmnet.nix`; until 2026-09-27 this was a per-cluster `Connector` pod instead).
+Everything is in place except
 the one thing that makes a *second* member possible.
 
 CAUTION: The mesh also has *no consumer*. There is no `service.cilium.io/global` anywhere in the tree
@@ -325,7 +327,8 @@ Written as a protocol, not an impression — otherwise we will conclude what we 
 
 | the mesh apiserver is exposed and advertisable
 | ✅
-| `Service type: LoadBalancer` + cilium LB pool `/26`, which the Connector already advertises
+| `Service type: LoadBalancer` + cilium LB pool `/26`, inside the `vmnet` segment its bare-metal
+  advertises
 
 | the two tailnet locks, declarative
 | ✅
@@ -374,8 +377,11 @@ not that the file is empty.
 
 a peer shows `unreachable` while its cluster is healthy::
 Expect this whenever the peer's host is off the tailnet. Check the path first
-(`tailscale ping <host>-nixos`), then the route (the peer's LB pool `/26` must be advertised *by a
-Connector on the peer's own host* — a Connector cannot advertise a subnet its node cannot forward).
+(`tailscale ping <host>-nixos`), then the route (the peer's LB pool `/26` must be advertised *by the
+peer's own bare-metal* — nothing can advertise a subnet it cannot forward). Since 2026-09-27 that
+invariant holds BY CONSTRUCTION: the advertiser is the host that owns the bridge, so it can always
+forward, whereas the per-cluster `Connector` it replaced could advertise a sibling cluster's pool on
+another bare-metal and black-hole it behind tailscale's elected primary router.
 
 the route is advertised but never enters the netmap::
 Two locks must *both* open — route approval (`autoApprovers.routes`) and the ACL `accept` on the

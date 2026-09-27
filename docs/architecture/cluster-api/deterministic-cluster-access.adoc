@@ -293,7 +293,7 @@ does not compile against netplan (runtime scope) and must not restate its addres
 |===
 | context | endpoint | why it is there, and its limit
 | `<mgmt>` (**current**) | the netplan LAN address | 401 in 6.5 ms, and it kept answering straight THROUGH a cold start — when an operator most needs in. Limit: it is ONE node's address.
-| `<mgmt>-vip` | the kube-vip VIP | 401 in 39 ms over the tailnet Connector, and it survives the node being replaced. Limit: it needs the cluster healthy enough to run that Connector, so it was mute for minutes after the same cold start.
+| `<mgmt>-vip` | the kube-vip VIP | 401 in 39 ms over the tailnet, and it survives the node being replaced. The limit it used to carry — "it needs the cluster healthy enough to run that Connector, so it was mute for minutes after the same cold start" — is GONE since 2026-09-27: the route is advertised by the bare-metal that owns the `vmnet` bridge, not by a pod inside the cluster, so it outlives the cluster it points into.
 | `<mgmt>-mdns` | `<cluster>-<node>.local` | last, never current: from the operator's Mac it resolves to the node's GLOBAL IPv6, not the LAN. But it is the only one needing no address at all — what saves it the day the LAN carve moves.
 | `<workload>-vip` | that cluster's kube-vip VIP | the ONLY way in to a cattle cluster. Its nodes take an ordinary router lease under a name the provider mints, so neither the projected LAN address nor an mDNS name describes them.
 |===
