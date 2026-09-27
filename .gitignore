@@ -1,1 +1,7 @@
 result
+
+# Transient artefacts of `flox lock` / `lock-envs`: a partial lock (`manifest.lock.tmp`) and the
+# error it left behind (`.lockerr`). They were tracked once, which is how a FAILED lock came to be
+# committed as state — the run that produced them had already been superseded by the next one.
+.lockerr
+manifest.lock.tmp
