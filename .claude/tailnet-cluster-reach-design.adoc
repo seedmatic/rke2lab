@@ -1,0 +1,315 @@
+= Cross-cluster reach — host routing vs the Tailscale operator
+:toc: left
+:toclevels: 3
+:icons: font
+:date: 2026-09-27
+:status: SCRATCHPAD — a decision is open, nothing here is implemented
+
+== The question
+
+A management cluster must reach a cluster it birthed. Concretely: CAPI's
+`RemoteConnectionProbe`, running in a pod on `bioskop-mgmt`, must reach
+`nikopol-mgmt`'s apiserver. Tonight that fails, and `ClusterIntention/nikopol-mgmt`
+reads `Degraded` with every pool `Adopted`.
+
+On 2026-09-27 we moved subnet routing *off* the per-cluster `Connector` pod and onto
+the bare-metals (rke2lab `acdb4d05`, ndh `34605639`). The stated reason: a route
+advertised by a pod dies with its cluster, precisely when it is wanted — while
+debugging a half-born cluster.
+
+⚠️ *That reason rests on a premise the operator has since rejected:* waiting for the
+VIP to become routable is not a real cost here. With that premise gone, the
+`Connector` is back in contention, and this note lays out both shapes so the choice
+is made on what each actually provides rather than on the one property that
+motivated the removal.
+
+== Where we are — host-routed reach
+
+[mermaid,reach-current-host-routed,svg]
+----
+flowchart TB
+  subgraph TAILNET["Tailscale SaaS tailnet (mammoth-skate)"]
+    direction LR
+    ACL["policy: grants + tests<br/>src/dst are TAGS<br/>(+ 172.16.24.2, one explicit IP)"]
+  end
+
+  subgraph BIO["bioskop — bare-metal"]
+    BNIX["bioskop-nixos<br/>tag:headless, tag:nixos<br/>advertises 172.16.0.0/20<br/>10.80.0.0/21, 10.80.8.0/21<br/>RouteAll=true"]
+    BBR["vmnet-mgmt 10.80.0.1/21"]
+    BNODE["bioskop-mgmt-master<br/>k8s node = incus container<br/>10.80.0.10, gw 10.80.0.1<br/>NOT a tailnet device"]
+    PROBE["CAPI controller pod<br/>RemoteConnectionProbe"]
+  end
+
+  subgraph NIK["nikopol — bare-metal"]
+    NNIX["nikopol-nixos<br/>tag:headless, tag:nixos<br/>advertises 172.16.16.0/20<br/>10.80.16.0/21, 10.80.24.0/21<br/>RouteAll=true"]
+    NBR["vmnet-mgmt 10.80.16.1/21"]
+    NNODE["nikopol-mgmt-control-plane<br/>k8s node = incus container<br/>kube-vip 10.80.23.10"]
+  end
+
+  PROBE --> BNODE
+  BNODE -->|"default gw"| BBR
+  BBR --> BNIX
+  BNIX -.->|"tailscale0 — route OK<br/>(verified tonight)"| NNIX
+  NNIX --> NBR
+  NBR --> NNODE
+  ACL -.->|"admits TAGGED sources"| NNIX
+
+  classDef host fill:#C8E6C9,stroke:#333
+  classDef node fill:#FFE0B2,stroke:#333
+  classDef net fill:#BBDEFB,stroke:#333
+  classDef broken fill:#FFCDD2,stroke:#B71C1C,stroke-width:2px
+  class BNIX,NNIX host
+  class BNODE,NNODE node
+  class BBR,NBR,ACL net
+  class PROBE broken
+----
+
+*Legend* — 🟩 bare-metal (a tailnet device) · 🟧 k8s node (an incus container, *not* a
+tailnet device) · 🟦 bridge / policy · 🟥 the failing origin.
+
+What is *verified* as working after tonight's fixes:
+
+* both hosts advertise their fabric `/20` and their vmnet `/21`s (they did not —
+  `tailscaled-autoconnect` only ever applied flags at first join);
+* both accept routes (`RouteAll=true` — it was `false` on nikopol);
+* the `headless` grant now names the segment CIDRs in `dst`, so a host *installs* a
+  peer's route — a node installs only routes it is ACL-permitted to reach;
+* host↔host across segments: `10.80.23.10:6443` answers from `bioskop-nixos`.
+
+== Why the pod still cannot reach it
+
+[mermaid,reach-pod-failure-sequence,svg]
+----
+sequenceDiagram
+  participant P as CAPI pod<br/>(bioskop-mgmt)
+  participant N as k8s node<br/>10.80.0.10
+  participant H as bioskop-nixos<br/>subnet router
+  participant F as nikopol-nixos<br/>packet filter
+  participant V as kube-vip<br/>10.80.23.10
+
+  P->>N: dial 10.80.23.10:6443
+  N->>H: via default gw 10.80.0.1 (route correct)
+  H->>F: forwarded over tailscale0<br/>src STAYS 10.80.0.10 (no NAT, by invariant)
+  F--xH: src is not a tailnet identity<br/>and no grant names it
+  Note over P,V: timeout — Accessible=False,<br/>"apiserver not reachable yet"
+----
+
+The failure is not routing — every hop has a route. It is *identity*: the fleet
+holds a "No NAT anywhere" invariant (source IPs survive end-to-end, the point of the
+netflow project), so the packet arrives at nikopol bearing `10.80.0.10`. The
+destination admits sources the policy names, and the policy names *tags*. A k8s node
+is an incus container, not a tailnet device, so it has no tag to be admitted by.
+
+★ This is the same shape as the corp Mac earlier tonight, which needed its address
+named explicitly as a grant `src` (`172.16.24.2`) before it could reach a Service.
+The analysis is measured up to the forward (`ip route get` correct from the node,
+then timeout); the filter-drop step is inferred from that precedent, not captured.
+
+== What the operator actually offers
+
+Read from the source we build (`k8s-operator/apis/v1alpha1`), not from docs:
+
+[options="header"]
+|===
+| CR | Field | What it is
+| `Connector` | `subnetRouter` | a tailnet DEVICE in the cluster advertising CIDRs *into* the tailnet — INBOUND reach
+| `Connector` | `exitNode` | that device as an exit node
+| `Connector` | `appConnector` | that device as an app connector (SaaS egress with a predictable IP)
+| `Connector` | `replicas` | several devices for HA — the property the removed pod-router lacked
+| `ProxyGroup` | `type: egress` | devices that RELAY outbound connections, carrying their own tailnet identity
+| `ProxyGroup` | `type: ingress` | devices that expose cluster workloads to the tailnet
+| `ProxyGroup` | `type: kube-apiserver` | the apiserver as a first-class tailnet entry
+|===
+
+★ The three `Connector` roles are *mutually exclusive*, and all of them are about what
+the device does with an identity it always has. Tags default to `tag:k8s`, which the
+operator's own OAuth client owns — so `autoApprovers` can approve its routes by tag
+with no console step.
+
+⚠️ *Correction to an earlier claim of mine.* I said removing the `Connector` "threw
+away the pod's identity". It did not: that `Connector` was a `subnetRouter`, i.e.
+INBOUND. Tonight's failure is OUTBOUND from a pod, a path the `Connector` never
+served. The outbound relay (`ProxyGroup` type `egress`) was simply never wired.
+
+== Three candidate shapes
+
+[mermaid,reach-candidate-shapes,svg]
+----
+flowchart LR
+  subgraph A["(A) host-routed + address in the policy"]
+    A1["add the vmnet CIDRs as grant SRC"]
+    A2["identity = an address"]
+    A1 --> A2
+  end
+  subgraph B["(B) operator, per direction"]
+    B1["Connector subnetRouter<br/>inbound, HA via replicas"]
+    B2["ProxyGroup egress<br/>outbound, identity-bearing"]
+  end
+  subgraph C["(C) apiserver as a tailnet entry"]
+    C1["ProxyGroup kube-apiserver"]
+    C2["endpoint stops being a VIP<br/>no inter-segment routing"]
+    C1 --> C2
+  end
+
+  classDef small fill:#C8E6C9,stroke:#333
+  classDef mid fill:#FFF9C4,stroke:#333
+  classDef big fill:#BBDEFB,stroke:#333
+  class A1,A2 small
+  class B1,B2 mid
+  class C1,C2 big
+----
+
+[options="header"]
+|===
+| | Cost | Buys | Against it
+| *(A)* CIDRs as grant `src`
+| one line, precedent exists (the corp Mac)
+| unblocks the probe AND anything else pod-originated
+| identity by ADDRESS, not by tag — anything in a cluster segment is admitted
+
+| *(B)* `Connector` + egress `ProxyGroup`
+| two CRs per cluster, rendered
+| identity per direction; `replicas` gives the inbound HA the removed pod-router never had
+| re-introduces a pod that owns a route — the thing removed this morning, on a premise now withdrawn
+
+| *(C)* `kube-apiserver` `ProxyGroup`
+| touches what the render writes into `controlPlaneEndpoint`
+| the control path stops depending on inter-segment routing at all
+| does nothing for the mesh dataplane; changes a contract, not just plumbing
+|===
+
+== What none of them solves: the mesh dataplane
+
+Measured: `cilium-config` has `routing-mode: native` (cluster-id 1,
+`bioskop-mgmt`). In native mode cilium does not encapsulate, so clustermesh expects
+the *underlay* to carry the remote cluster's POD CIDRs — whole ranges, not one
+endpoint. No Service and no proxy expresses that.
+
+So there is a second, independent fork:
+
+* *tunnel* — cilium encapsulates pod↔pod between NODE addresses, and the underlay
+  requirement collapses to node reachability, which (A) or (B) already provides.
+* *native* — the underlay must route pod CIDRs, which means advertising them into the
+  tailnet and solving source identity for them too.
+
+★ Choosing *tunnel* reduces the problem count from two to one. That is the argument
+for it — not throughput.
+
+== Before deciding, measure
+
+Three things, none of which should be inferred:
+
+. *Does a `ProxyGroup` egress satisfy CAPI?* The probe dials whatever the render
+  wrote into `controlPlaneEndpoint`. An egress proxy offers a *cluster-local*
+  address, so this is a change to the rendered CR, not only to infrastructure.
+. *Does `kube-apiserver` make the VIP redundant for cross-cluster reach?* If so (C)
+  is simpler than (B), and kube-vip stays a cluster-internal concern.
+. *What does leaving `native` cost?* The addressing plan derives pod/service CIDRs
+  deterministically and disjointly, which is what makes native legitimate. Leaving it
+  is a choice, not a repair, and it touches both live clusters.
+
+== Wider move: what belongs in-cluster
+
+The three failures of 2026-09-27 share one shape, and it is not about tailnet at
+all: *the host owned something a child it did not know about needed.* The CR-set's
+shape (3 nodes, kind `workload`), the `node-<cluster>` profiles (co-located only),
+and the domain policy (hardcoded `WRKLD`). Each was repaired by deriving instead of
+assuming — but the repair keeps the ownership where it was.
+
+★ *The grow does not have to DO the work. It has to PUBLISH what it knows.* At the
+initial grow, `seed-master` holds everything: the blueprint, the ImageState, the
+declared targets, the addressing. A controller can then reconcile the objects.
+
+That is already this project's idiom, three times over:
+
+* `network-blueprint.json` — the addressing plan, published so ndh derives from it
+  rather than re-declaring it;
+* the *image-state ConfigMap* (`ImageStateConfigMapManifestsUnit`) — the grow's
+  ImageState handed to the cluster for the Stage A → Stage B handoff;
+* `reflections/` — amendments the in-cluster controllers write BACK onto the branch.
+
+So the question is not "can a controller do this" but "which fact does the grow
+publish, and which controller consumes it".
+
+[mermaid,reach-in-cluster-ownership,svg]
+----
+flowchart TB
+  subgraph HOST["Host — irreducible"]
+    NIX["ndh: NixOS substrate<br/>bridges · dnsmasq · tailnet client · ZFS"]
+    INCUS["incus daemon"]
+    GROW["seed-master GROW<br/>births the FIRST mgmt node"]
+  end
+
+  subgraph SEED["Published facts (the seam)"]
+    BP["network-blueprint.json"]
+    IMG["image-state ConfigMap"]
+    FACET["manifest.yaml facet<br/>targets + ImageState"]
+  end
+
+  subgraph CLUSTER["Management cluster — owns the rest"]
+    SI["seed-incluster<br/>CR-set · adoption · PoolReflection"]
+    NEW["a controller for incus resources<br/>(profiles today, more later)"]
+    CAPN["CAPN — already creates instances"]
+    FLUX["Flux · flox-controller · Tekton render"]
+  end
+
+  GROW --> BP
+  GROW --> IMG
+  GROW --> FACET
+  BP --> SI
+  IMG --> SI
+  FACET --> SI
+  SI --> NEW
+  NEW -.->|"identity Secret"| INCUS
+  SI --> CAPN
+  CAPN -.->|"identity Secret"| INCUS
+  NIX --- INCUS
+
+  classDef host fill:#FFCDD2,stroke:#B71C1C
+  classDef seam fill:#FFF9C4,stroke:#333
+  classDef incl fill:#C8E6C9,stroke:#333
+  class NIX,INCUS,GROW host
+  class BP,IMG,FACET seam
+  class SI,NEW,CAPN,FLUX incl
+----
+
+*Legend* — 🟥 irreducibly host · 🟨 the published fact (the seam) · 🟩 in-cluster.
+
+[options="header"]
+|===
+| Concern | Today | Could move | Fact the grow would publish
+| instance creation | *in-cluster* (CAPN) | — | already published: the CR-set
+| CR-set derivation, adoption | *in-cluster* (seed-incluster) | — | the facet
+| env realisation, apply/prune, UPDATE render | *in-cluster* | — | the branch
+| `node-<cluster>` profile | HOST (`InstanceGrow`) | ★ highest value — it blocked a child birth tonight, and seed-incluster ALREADY owns its NAME (`nodeProfileName`) while the host owns the object | the blueprint (bridge name is role-derived)
+| vmnet bridge | HOST | only for a member's OWN bridges — a bridge is made on a host | —
+| tailnet control plane (`manage-tailnet`) | HOST (operator app) | plausibly — it is an API client with a secret, i.e. a controller. ⚠️ it is FLEET-wide, so "which cluster owns it" recreates a single point | the tailnet catalog
+| image mint | HOST (`hostBuilder = steady`, builds on `<host>-nixos`) | conceivable (the render pipeline already has nix in-cluster) but needs a builder + store; low gain for the cost | the ImageState (already published)
+| NixOS substrate | HOST | never | —
+| first mgmt node | HOST | never — it is the bootstrap | —
+|===
+
+=== The test for whether something should move
+
+*Does it concern a cluster the host does not know about?* If yes it is misplaced,
+however well it works today. The `node-<cluster>` profile answers yes and is the
+first thing to move; a member's own bridge answers no and should stay.
+
+=== Measure before committing to it
+
+. *Can a controller holding the PARENT's `<host>-incus-identity` create a profile
+  for a child on the OTHER member?* Profiles are cluster-wide objects, so probably —
+  but that is the load-bearing assumption of the whole move, and it is unverified.
+. *What does the write right cost?* Moving profiles in-cluster grants the cluster
+  the right to create incus resources. That is an authority boundary, the same kind
+  as letting a commit birth a cluster — and worth deciding explicitly rather than
+  inheriting.
+
+== Related
+
+* ndh `docs/network-topology-c4.adoc#authorisation` — the tailnet policy, the Services
+  mechanism, and why the home LAN is no longer routed.
+* `docs/architecture/cluster-api/management-workload-topology.adoc` — the
+  cp-endpoint-reach section this note would supersede if (C) is chosen.
+* `docs/architecture/cluster-api/clustermesh-trust-and-peering.adoc` — the MGMT
+  clustermesh (ids 1 ↔ 3), whose first second member is `nikopol-mgmt`.
