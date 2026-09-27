@@ -569,7 +569,7 @@ link:../osgi/seed-broker-spec.adoc[the seed-broker spec].
 [cols="1,2,1",options="header"]
 |===
 | scion (host step) | full G/W/T defined in | status
-| bbox (network reservations) | link:../osgi/bbox-edge-spec.adoc[bbox-edge-spec] | ships (`bbox-bdd`, `BboxReconciliationScenario`)
+| bbox (network reservations) | link:../osgi/bbox-edge-spec.adoc[bbox-edge-spec] | ⚠️ RETIRED 2026-09-24 (`e020654a1`) — no `bbox-bdd` here any more; the clusters left the home network for their bare-metal's fabric slice, so the reservation has no subject in rke2lab
 | incus PREPARE + VERIFY (instance prepared/verified) | link:../osgi/incus-edge-spec.adoc[incus-edge-spec] | partial (`incus-bdd`, `IncusProvisionScenario` = image + probe; PREPARE must gain the manifests graft + nocloud + PROMOTE; the GROW between them is pure-host, NOT a scion)
 | systemd (adapter launched) | link:../osgi/dbus-systemd-edge-spec.adoc[dbus-systemd-edge-spec] | ships (`systemd-bdd`)
 | cluster (readiness) | link:../osgi/cluster-edge-spec.adoc[cluster-edge-spec] | ships (`cluster-bdd`)

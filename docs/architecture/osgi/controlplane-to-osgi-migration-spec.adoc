@@ -80,10 +80,10 @@ existing gateway suffices; the sweep added no new machinery.
 | `ImageBuilder` (+ `IncusInstanceContact`, reachability = VISION)
 | `CultivatingNixosImageBuilder` + `SurveyingImageBuilder` (`nix build …#nixosConfigurations.rke2-node-base`; recipe owned by `BuildRecipe`)
 | link:incus-edge-spec.adoc[spec]
-| bbox
-| `BboxReconciler`
-| `CultivatingBboxReconciler` + `SurveyingBboxReconciler` (java-bbox-api-client, bundled + imported)
-| link:bbox-edge-spec.adoc[spec]
+| bbox ⚠️ RETIRED
+| `BboxReconciler` — gone with the domain (`e020654a1`)
+| was `CultivatingBboxReconciler` + `SurveyingBboxReconciler`; the excision took java-bbox-api-client with it
+| link:bbox-edge-spec.adoc[spec] (pattern only)
 | auth
 | `AuthTokenContact`
 | `CliAuthTokenContact` (`gh auth token` / `flox auth token`)

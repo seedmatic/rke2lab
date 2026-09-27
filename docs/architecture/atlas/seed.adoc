@@ -520,7 +520,8 @@ erasure the doctor atlas NEXT already carries. No box of Diagram P is erased or 
 
 == The manifests scion + the config path + shape introspection (design)
 
-The four shipped scions (bbox/incus/systemd/cluster) reach the master through
+The shipped scions (incus/systemd/cluster — bbox too, until its domain was retired
+2026-09-24 in `e020654a1`) reach the master through
 `broker.sow(RUNBOOK)`. Two things were still missing and are now designed (specs:
 link:../osgi/manifests-bdd-spec.adoc[manifests-bdd-spec],
 link:../osgi/seed-broker-spec.adoc#shape-realization[seed-broker § shape]): the

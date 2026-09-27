@@ -2,15 +2,30 @@
 :toc: left
 :toclevels: 3
 
-[NOTE]
+[IMPORTANT]
 ====
-*Status:* SHIPPED (edge extracted; the `bbox-bdd` scion — `BboxReconciliationScenario` +
-`BboxRunbookHandler` + `BboxAmendReflector` + `BboxReconciliationScenarioInContainerTest` — is in the
-codebase). The sixth external edge, second extraction of the
-control-plane→OSGi sweep (after link:incus-edge-spec.adoc[incus-edge]). Unlike incus (a bare
-`ProcessBuilder`), the bbox contact rides an external library, `java-bbox-api-client` — so this edge
-also proves the *library-backed* edge shape: the library is made an OSGi bundle and IMPORTED (not
-embedded), and no library type crosses the contract boundary.
+*Status:* ⚠️ *RETIRED 2026-09-24* (`e020654a1`). The `bbox` domain is *gone from this codebase* —
+no `bbox-contract`, no `bbox-edge`, no `bbox-bdd` scion. Nothing below describes code you can read
+here; it is kept because six sibling specs cite it as the *library-backed edge shape* they mirror,
+and that shape is still the reference.
+
+*Why it went, in the excision's own words:* it "existed to reconcile reservations on the home
+router; with no rke2lab span left on that network it has no subject, and leaving it compiled would
+imply rke2lab still plays bbox logic." The same commit moved each cluster onto a `/24` in its
+bare-metal's fabric slice, so a node's reservation is served by that bare-metal's dnsmasq — which
+answers the NAME too, ending the split where DHCP came from the bbox and mDNS from avahi. The
+excision took `java-bbox-api-client` with it (BOM, `settings.xml`, build-parent, flake) plus the
+`rke2lab:bbox` stack section, and `.secrets` dropped its `.lan` subtree. Verified then: the
+projection emits ZERO `192.168.*` segments.
+
+*Where the contact lives now:* ndh, as `bbox-reconcile` — deliberately, because "the fabric's incus
+door is Pulumi, host-side and declarative, while the edge played in-container", so the survey half
+belongs beside the write. ★ And since 2026-09-27 it no longer dials the router over a routed
+`192.168.0.0/24` at all: the bbox is a *Tailscale Service* (`svc:bbox`), reached by a virtual IP that
+needs no subnet route. See ndh `docs/network-topology-c4.adoc#authorisation`.
+
+Read on ONLY for the edge pattern. For a live example of the same shape, see
+link:incus-edge-spec.adoc[incus-edge] or link:auth-edge-spec.adoc[auth-edge].
 ====
 
 == The contact today — inlined, duplicated, library types on the host

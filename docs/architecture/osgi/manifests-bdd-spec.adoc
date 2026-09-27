@@ -11,8 +11,10 @@ cannot resolve it by type across the realm boundary, and doing so would be the
 realm-boundary anti-pattern (see
 link:../bootstrap/provisioning-slice-architecture.adoc[the incus-bootstrap constat]
 § corroboration). This spec describes **`manifests-bdd`, the manifests scion**
-(SHIPPED), played in-container through the broker like bbox/incus/systemd/
-cluster — the "graft cultivated fresh" the ClusterSeed map names.
+(SHIPPED), played in-container through the broker like incus/systemd/cluster —
+the "graft cultivated fresh" the ClusterSeed map names.  (bbox was the fourth
+such scion when this was written; its domain was retired 2026-09-24 in
+`e020654a1` — see link:bbox-edge-spec.adoc[bbox-edge-spec].)
 
 It is the fifth scion, on the exact trio pattern the four sibling shipped scions share
 (`*Scenario` + `*RunbookHandler` + `*AmendReflector`, the in-container play delegated
@@ -89,7 +91,8 @@ policy reachable through it.**
 
 === What exists today (the audit)
 
-* The four shipped scions (bbox/incus/systemd/cluster) have **no policy config path
+* The shipped scions (incus/systemd/cluster — and bbox, until its domain was retired
+  on 2026-09-24) have **no policy config path
   at all**. They resolve only the ambient `RunGate` (the whole-run live/preview
   fact) and their contacts + the doctor, all from the registry. Every `handle(trigger)`
   **ignores its trigger** — the sow trigger is empty (`"{}"`) today.
@@ -159,7 +162,7 @@ flowchart LR
   declares), reviewed in one place, not in the yaml's shape.
 . **One channel — the sow trigger.** The plucked concerns become the trigger
   `SeedEnvelope` payload (today `"{}"`). A soil whose schema names no concern gets
-  `{}` — exactly today's behavior, so the four shipped scions are unaffected until
+  `{}` — exactly today's behavior, so the shipped scions are unaffected until
   they grow a wire-record. This is a `seed-bdd` change (`Gardening.sow` /
   `SowAndGraftStage` stop sending empty), not manifests-only.
 . **One translator per domain — the scion.** Each scion reads its own facet in
