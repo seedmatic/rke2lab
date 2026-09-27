@@ -16,7 +16,6 @@ spec:
   - name: tailscale-system-namespace-workloads
   - name: tailscale-tailnet-purge-operators
   - name: tailscale-tailnet-purge-workloads
-  - name: tailscale-tailscale-operators
   force: true
   interval: 5m
   path: ./workloads/tailscale/tailscale
