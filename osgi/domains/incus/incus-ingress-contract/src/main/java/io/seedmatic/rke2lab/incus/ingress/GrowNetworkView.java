@@ -17,6 +17,20 @@ import java.util.TreeMap;
  * node-<cluster>} incus profile (the NIC-bearing profile CAPN references, created at grow); {@link
  * #nodeBridgeName} is the one the grown node attaches to.
  *
+ * <p>★ {@link #profiledClusters} is a DIFFERENT set, and separating the two is the point. A bridge
+ * is created on THIS host, so {@code clusterBridges} must stay strictly co-located. A {@code
+ * node-<cluster>} PROFILE is a cluster-wide incus object, and it is needed by every cluster this
+ * render provides for — including one whose bridge lives on ANOTHER member (model B: bioskop-mgmt
+ * births nikopol-mgmt, whose vmnet bridge is nikopol-nixos'). The two sets coincided while every
+ * child was co-located, and conflating them was measured on 2026-09-27: CAPN refused the birth with
+ * "Requested profile node-nikopol-mgmt doesn't exist", while widening {@code clusterBridges}
+ * instead would have created a bridge on the wrong host — and collided, since the bridge name is
+ * ROLE-scoped ({@code vmnet-mgmt}) so two mgmt clusters on different members want the same name.
+ *
+ * <p>The value is just the bridge NAME, which is all a profile needs (the NIC's {@code parent}) and
+ * which resolves PER MEMBER: an instance targeted at nikopol-nixos attaches to nikopol's {@code
+ * vmnet-mgmt}. That is what makes a non-co-located profile possible without any remote discovery.
+ *
  * <p>These all originate in the {@code ClusterNetworkBlueprint} ({@code netplan-contract},
  * OSGi-only), which the host cannot read TYPED. So the scion resolves {@code
  * NetplanSynthesisService} (a published {@code @Component}), assembles the bridge configs OSGi-side
@@ -27,10 +41,12 @@ public record GrowNetworkView(
     String fabricHwaddr,
     String wanHwaddr,
     String nodeBridgeName,
-    Map<String, ClusterBridge> clusterBridges) {
+    Map<String, ClusterBridge> clusterBridges,
+    Map<String, String> profiledClusters) {
 
   public GrowNetworkView {
     clusterBridges = new TreeMap<>(clusterBridges);
+    profiledClusters = new TreeMap<>(profiledClusters);
   }
 
   /** One co-located cluster's vmnet bridge: its name and the resolved incus network config. */

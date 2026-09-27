@@ -406,8 +406,13 @@ public final class InstanceGrow {
   }
 
   /**
-   * Ensure the per-cluster {@code node-<cluster>} profile for EVERY cluster co-located on the host
-   * — the NIC-bearing profile CAPN references ({@code profiles: [node, node-<cluster>]}) so a
+   * Ensure the per-cluster {@code node-<cluster>} profile for every cluster the addressing plan
+   * carves, FLEET-WIDE — not merely the ones co-located here. A profile is a cluster-wide incus
+   * object, so the one a birthed cluster needs must exist even when its bridge lives on another
+   * member: measured 2026-09-27, CAPN refused nikopol-mgmt with "Requested profile
+   * node-nikopol-mgmt doesn't exist". Bridges stay co-located ({@link #ensureNetworks}) — widening
+   * THAT set would create a bridge on the wrong host, and collide, the name being role-scoped. —
+   * the NIC-bearing profile CAPN references ({@code profiles: [node, node-<cluster>]}) so a
    * greenfield node gets its two interfaces: {@code fabric0} on the canonical fabric bridge and
    * {@code vmnet0} on the cluster's vmnet bridge. Both NICs are DYNAMIC (no hwaddr): incus
    * generates a per-instance MAC and the vmnet bridge's {@code ipv4.dhcp.ranges} hands out an IP —
@@ -418,12 +423,12 @@ public final class InstanceGrow {
    */
   private Output<String> ensureNodeProfiles(Resource projectDependency, GrowNetworkView view) {
     Output<String> grownClusterProfile = null;
-    for (final var entry : view.clusterBridges().entrySet()) {
+    for (final var entry : view.profiledClusters().entrySet()) {
       final Output<String> profile =
           ensureNodeProfile(entry.getKey(), entry.getValue(), projectDependency);
       // The grown node attaches to the cluster whose vmnet bridge == nodeBridgeName — return THAT
       // profile's name Output so the instance dependsOn it (ordered profile-before-instance).
-      if (entry.getValue().bridgeName().equals(view.nodeBridgeName())) {
+      if (entry.getValue().equals(view.nodeBridgeName())) {
         grownClusterProfile = profile;
       }
     }
@@ -435,7 +440,7 @@ public final class InstanceGrow {
   }
 
   private Output<String> ensureNodeProfile(
-      String cluster, GrowNetworkView.ClusterBridge bridge, Resource projectDependency) {
+      String cluster, String bridgeName, Resource projectDependency) {
     final String profileName = "node-" + cluster;
     // Declared always, like node-base above — same reasons, same ignore set.
     final CustomResourceOptions options =
@@ -451,7 +456,7 @@ public final class InstanceGrow {
             ProfileArgs.builder()
                 .name(profileName)
                 .project(config.incusProject())
-                .devices(List.of(profileNic("vmnet0", "vmnet0", "bridged", bridge.bridgeName())))
+                .devices(List.of(profileNic("vmnet0", "vmnet0", "bridged", bridgeName)))
                 .build(),
             options)
         .name();

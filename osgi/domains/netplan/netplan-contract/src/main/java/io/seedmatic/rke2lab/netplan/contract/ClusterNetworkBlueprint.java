@@ -42,26 +42,47 @@ public record ClusterNetworkBlueprint(
       List.of("master", "peer1", "peer2", "peer3", "worker1", "worker2");
 
   /**
-   * The bare-metal hosts and their ids — the ONE table every per-host span derives from: the
-   * cluster id, the vmnet plane, the ULA mirror, the MACs, and (published, so ndh derives it rather
-   * than re-declaring it) each bare-metal's fabric slice.
+   * One bare-metal SLOT in the addressing plan — its name, its load-bearing id, and whether the
+   * slot is REALISED. Mirrors {@link ClusterRef} / {@link NodeRef}: a reference, not a plan.
    *
-   * <p>Ids are LOAD-BEARING and written explicitly, never derived from position in this map:
-   * nikopol kept id 1 through its rename from alcide, and a reordering that silently reassigned ids
-   * would renumber live networks. {@code test} is the reserved slice a blank/unknown cluster
-   * identity falls into (surveys, tests).
+   * <p>★ A slot can be carved without existing, and the difference is not cosmetic. Every per-host
+   * span derives from the id whether or not anything runs there, while things that get CREATED —
+   * the {@code node-<cluster>} incus profile, and anything else a cluster needs before it can be
+   * birthed — belong only to slots that are real. Carrying that as an ATTRIBUTE keeps the fact
+   * where the slot is declared, instead of scattering a name test across each consumer.
+   */
+  public record HostRef(String name, int id, boolean realised) {}
+
+  /**
+   * The bare-metal slots — the ONE declaration every per-host span derives from: the cluster id,
+   * the vmnet plane, the ULA mirror, the MACs, and (published, so ndh derives it rather than
+   * re-declaring it) each bare-metal's fabric slice.
    *
-   * <p>Ordered ({@link LinkedHashMap}) because it is serialised into {@code
-   * network-blueprint.json}, whose byte-stability is what makes a regeneration reviewable as a
-   * diff.
+   * <p>Ids are LOAD-BEARING and written explicitly, never derived from position: nikopol kept id 1
+   * through its rename from alcide, and a reordering that silently reassigned ids would renumber
+   * live networks. Order is kept because {@link #HOST_IDS} is derived from this list and serialised
+   * into {@code network-blueprint.json}, whose byte-stability is what makes a regeneration
+   * reviewable as a diff.
+   *
+   * <p>{@code test} is the reserved slice a blank / unknown cluster identity falls into (surveys,
+   * tests) — carved so those identities have somewhere to land, and deliberately NOT realised.
+   */
+  public static final List<HostRef> HOST_SLOTS =
+      List.of(
+          new HostRef("bioskop", 0, true),
+          new HostRef("nikopol", 1, true),
+          new HostRef("test", 2, false));
+
+  /**
+   * The id table as published — ndh imports it at flake-eval time rather than re-declaring it, so
+   * this wire shape is fixed. DERIVED from {@link #HOST_SLOTS} so the ids have one source; declared
+   * after it because static initialisers run in declaration order.
    */
   public static final Map<String, Integer> HOST_IDS = hostIds();
 
   private static Map<String, Integer> hostIds() {
     final Map<String, Integer> ids = new LinkedHashMap<>();
-    ids.put("bioskop", 0);
-    ids.put("nikopol", 1);
-    ids.put("test", 2);
+    HOST_SLOTS.forEach(slot -> ids.put(slot.name(), slot.id()));
     return Collections.unmodifiableMap(ids);
   }
 
@@ -405,6 +426,40 @@ public record ClusterNetworkBlueprint(
   public List<String> clustersOnSameHost() {
     final String host = hostOf(cluster.name());
     return List.of(ClusterRole.values()).stream().map(role -> host + "-" + role.token()).toList();
+  }
+
+  /**
+   * EVERY cluster the addressing plan carves, fleet-wide — the cartesian product of the carved
+   * hosts and {@link ClusterRole}. Purely functional off {@code HOST_IDS} + the role enum, exactly
+   * like {@link #clustersOnSameHost} but without the host restriction.
+   *
+   * <p>★ What it is for: the {@code node-<cluster>} incus profile. A profile is a CLUSTER-WIDE
+   * incus object and a cheap one (a single NIC definition), so declaring one per carved cluster
+   * costs almost nothing and removes a whole class of failure — measured 2026-09-27, CAPN refused
+   * to birth nikopol-mgmt with "Requested profile node-nikopol-mgmt doesn't exist" because profiles
+   * were ensured only for clusters CO-LOCATED with the grow, while model B has bioskop-mgmt birth a
+   * cluster whose bridge lives on nikopol-nixos.
+   *
+   * <p>Deriving the set here rather than plumbing the render's declared targets down to the host is
+   * the point: it means declaring a new cluster never again needs a host-side act. A profile for a
+   * cluster that never exists is inert.
+   *
+   * <p>Unrealised slots are excluded on their {@link HostRef#realised} attribute, not on their
+   * name: a carved slot that nothing runs on is never birthed into, and a profile naming one would
+   * only read as an oversight.
+   *
+   * <p>⚠️ NOT to be used for bridges. A bridge is created ON a host, so it stays {@link
+   * #clustersOnSameHost} — and the bridge name is ROLE-scoped ({@code vmnet-mgmt}), so two mgmt
+   * clusters on different members want the SAME name and would collide on one host.
+   */
+  public List<String> clustersInFleet() {
+    return HOST_SLOTS.stream()
+        .filter(HostRef::realised)
+        .map(HostRef::name)
+        .sorted()
+        .flatMap(
+            host -> List.of(ClusterRole.values()).stream().map(role -> host + "-" + role.token()))
+        .toList();
   }
 
   private static int hostId(String host) {

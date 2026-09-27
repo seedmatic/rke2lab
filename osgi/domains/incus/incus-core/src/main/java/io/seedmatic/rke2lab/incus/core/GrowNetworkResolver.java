@@ -38,6 +38,10 @@ public final class GrowNetworkResolver {
    * ClusterNetworkBlueprint#clustersOnSameHost}) — vmnet is isolated per-cluster, so a workload
    * cluster's bridge + dnsmasq reservations must exist for CAPN to DHCP-provision it in-cluster,
    * even though only this node grows standalone.
+   *
+   * <p>The clusters to PROFILE are a wider set — every cluster the plan carves ({@link
+   * ClusterNetworkBlueprint#clustersInFleet}) — because a profile is cluster-wide and a cluster may
+   * be birthed onto another member. See the note on {@code profiledClusters} below.
    */
   public GrowNetworkView resolve(String cluster, String node) {
     final ClusterNetworkBlueprint grown = synthesize(cluster, node);
@@ -50,11 +54,25 @@ public final class GrowNetworkResolver {
               coLocatedBlueprint.vmnetBridgeName(),
               vmnetBridgeConfig(coLocated, coLocatedBlueprint)));
     }
+    // ★ A DIFFERENT set from the bridges above, and the separation is load-bearing. A bridge is
+    // created on THIS host, so it stays co-located. A `node-<cluster>` profile is a cluster-wide
+    // incus object needed by every cluster that may be birthed — including one whose bridge lives
+    // on
+    // another member (model B). Measured 2026-09-27: CAPN refused nikopol-mgmt with "Requested
+    // profile node-nikopol-mgmt doesn't exist". The value is the bridge NAME only, which is all a
+    // profile needs and which resolves PER MEMBER, so an instance targeted at nikopol-nixos
+    // attaches
+    // to nikopol's `vmnet-mgmt` — no remote discovery anywhere.
+    final Map<String, String> profiledClusters = new LinkedHashMap<>();
+    for (final String fleetCluster : grown.clustersInFleet()) {
+      profiledClusters.put(fleetCluster, synthesize(fleetCluster, "master").vmnetBridgeName());
+    }
     return new GrowNetworkView(
         grown.fabric().hostMacaddr().value(),
         grown.wan().hostMacaddr().value(),
         grown.vmnetBridgeName(),
-        clusterBridges);
+        clusterBridges,
+        profiledClusters);
   }
 
   private ClusterNetworkBlueprint synthesize(String cluster, String node) {

@@ -106,4 +106,38 @@ class ClusterNetworkBlueprintTest {
     assertEquals("172.16.33.64/26", blueprint.fabric().lbCidr().toString());
     assertEquals("172.16.32.1", blueprint.fabric().gatewayInetaddr().getHostAddress());
   }
+
+  @Test
+  void clustersInFleet_coversEveryRealisedSlot_andExcludesTheUnrealisedOne() {
+    final ClusterNetworkBlueprint blueprint =
+        ClusterNetworkBlueprint.builder()
+            .cluster("bioskop-mgmt")
+            .node("master")
+            .deriveRecipeModel()
+            .build();
+
+    // Every REALISED slot × every role — and nothing for the carved-but-unrealised `test` slot, on
+    // which nothing is ever birthed. This is the set the `node-<cluster>` incus profiles follow, so
+    // an entry too few is a cluster CAPN cannot birth ("Requested profile ... doesn't exist") and
+    // an
+    // entry too many is a profile naming a host that does not exist.
+    assertEquals(
+        java.util.List.of("bioskop-mgmt", "bioskop-wrkld", "nikopol-mgmt", "nikopol-wrkld"),
+        blueprint.clustersInFleet());
+  }
+
+  @Test
+  void hostIds_areDerivedFromTheSlots_soThePublishedWireShapeHasOneSource() {
+    // ndh imports HOST_IDS at flake-eval time, so its shape is fixed while HOST_SLOTS carries the
+    // richer fact. Asserting they agree is what stops the two drifting apart.
+    assertEquals(
+        ClusterNetworkBlueprint.HOST_SLOTS.stream()
+            .map(ClusterNetworkBlueprint.HostRef::name)
+            .toList(),
+        java.util.List.copyOf(ClusterNetworkBlueprint.HOST_IDS.keySet()));
+    ClusterNetworkBlueprint.HOST_SLOTS.forEach(
+        slot ->
+            assertEquals(
+                slot.id(), ClusterNetworkBlueprint.HOST_IDS.get(slot.name()), slot.name()));
+  }
 }
