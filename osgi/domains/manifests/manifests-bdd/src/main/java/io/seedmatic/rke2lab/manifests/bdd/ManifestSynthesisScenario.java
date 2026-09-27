@@ -1126,7 +1126,14 @@ public class ManifestSynthesisScenario
         final Path root = pass.worktree().path();
         synthesize(
             new Pass(
-                ClusterRole.WRKLD.domainPolicy(CATALOG),
+                // The TARGET's own role, not WRKLD. This was hardcoded, which was right only while
+                // every child was a workload: measured 2026-09-27, nikopol-mgmt's branch came out
+                // with no cluster-api at all — no flux/, no crds/, no operators/ for it — because
+                // the WRKLD policy makes Cluster API MGMT-exclusive-and-therefore-absent. A
+                // management cluster birthed by another one could then never self-adopt, which is
+                // the whole second half of model B. `ofToken` fails loudly on a role it cannot
+                // read, unlike `of`, whose catch-all would have answered MGMT for a typo.
+                ClusterRole.ofToken(pass.target().role()).domainPolicy(CATALOG),
                 BootstrapIdentity.builder()
                     .clusterName(cluster)
                     .nodeName(FIRST_CONTROL_NODE)
