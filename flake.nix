@@ -1167,6 +1167,18 @@ USAGE
           '';
         };
 
+        # Re-exported from ndh (which owns the incus HOSTS) so the operator finds it in the same
+        # `nix run .#…` list as the grow, rather than having to remember which repo defines it —
+        # joining a member is a step of bringing a cluster up, so this is where it is looked for.
+        # Same shape as the `incus-client` / `manage-tailnet` re-exports above; flake.lock is the
+        # single ndh pin, so there is one version of the tool, not a copy.
+        #
+        # ⚠️ It reaches each member at `nixos.<domain>`, the FABRIC name — deliberately not the
+        # tailnet one, "which is what a renew changes". Measured 2026-09-27: a factory-reset
+        # nikopol-nixos came back on a new tailnet address under a new device, and this app was
+        # unaffected while `tailscale ssh` to the same host failed on a stale host key.
+        apps.nikopol-incus-cluster-join = inputs.ndh.apps.${system}.nikopol-incus-cluster-join;
+
         apps.grow = {
           type = "app";
           program = "${growApp}/bin/rke2lab-grow";
