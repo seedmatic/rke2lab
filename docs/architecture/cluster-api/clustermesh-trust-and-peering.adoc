@@ -332,7 +332,9 @@ Written as a protocol, not an impression — otherwise we will conclude what we 
 
 | the two tailnet locks, declarative
 | ✅
-| ndh `manage-tailnet`: `autoApprovers.routes` on the `/18` for `tag:k8s` + the `accept` ACL
+| ndh `manage-tailnet`: `autoApprovers.routes` on the `/18` for `tag:nixos` — the approver follows the
+  ADVERTISER, and since 2026-09-27 that is the bare-metal owning the bridge, not a `Connector` pod —
+  plus the `accept` ACL
 
 | a PKI that mints deterministic hierarchies, ADDITIVELY
 | ✅
