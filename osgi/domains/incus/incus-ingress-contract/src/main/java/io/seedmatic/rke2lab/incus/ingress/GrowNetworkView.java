@@ -27,6 +27,12 @@ import java.util.TreeMap;
  * instead would have created a bridge on the wrong host — and collided, since the bridge name is
  * ROLE-scoped ({@code vmnet-mgmt}) so two mgmt clusters on different members want the same name.
  *
+ * <p>★ {@link #grownCluster} names the cluster the grown node belongs to, and it exists because the
+ * bridge name cannot identify it: a bridge name is ROLE-scoped ({@code vmnet-mgmt}), so every mgmt
+ * cluster in the fleet shares one. Matching the grown node's profile on the bridge was unambiguous
+ * only while the set was co-located — widening it to the fleet made the last entry win, silently,
+ * and the profiles being identical today is what would have hidden it.
+ *
  * <p>The value is just the bridge NAME, which is all a profile needs (the NIC's {@code parent}) and
  * which resolves PER MEMBER: an instance targeted at nikopol-nixos attaches to nikopol's {@code
  * vmnet-mgmt}. That is what makes a non-co-located profile possible without any remote discovery.
@@ -41,6 +47,7 @@ public record GrowNetworkView(
     String fabricHwaddr,
     String wanHwaddr,
     String nodeBridgeName,
+    String grownCluster,
     Map<String, ClusterBridge> clusterBridges,
     Map<String, String> profiledClusters) {
 

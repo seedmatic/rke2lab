@@ -426,15 +426,18 @@ public final class InstanceGrow {
     for (final var entry : view.profiledClusters().entrySet()) {
       final Output<String> profile =
           ensureNodeProfile(entry.getKey(), entry.getValue(), projectDependency);
-      // The grown node attaches to the cluster whose vmnet bridge == nodeBridgeName — return THAT
-      // profile's name Output so the instance dependsOn it (ordered profile-before-instance).
-      if (entry.getValue().equals(view.nodeBridgeName())) {
+      // Matched on the CLUSTER NAME, never on the bridge: a bridge name is ROLE-scoped
+      // (`vmnet-mgmt`), so every mgmt cluster in the fleet shares one. The old bridge match was
+      // unambiguous only while this set was co-located — widening it to the fleet made the LAST
+      // entry win, and the profiles being byte-identical today is exactly what would have hidden
+      // that. Returned as an Output so the instance dependsOn it (profile before instance).
+      if (entry.getKey().equals(view.grownCluster())) {
         grownClusterProfile = profile;
       }
     }
     if (grownClusterProfile == null) {
       throw new IllegalStateException(
-          "no co-located cluster bridge matches the grown node's bridge " + view.nodeBridgeName());
+          "no node profile was ensured for the grown cluster " + view.grownCluster());
     }
     return grownClusterProfile;
   }

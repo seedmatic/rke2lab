@@ -71,6 +71,7 @@ public final class GrowNetworkResolver {
         grown.fabric().hostMacaddr().value(),
         grown.wan().hostMacaddr().value(),
         grown.vmnetBridgeName(),
+        cluster,
         clusterBridges,
         profiledClusters);
   }
