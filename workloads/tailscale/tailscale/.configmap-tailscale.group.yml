@@ -4,7 +4,6 @@ data:
   members: |-
     v1|Secret|tailscale-system|operator-oauth
     helm.cattle.io/v1|HelmChart|tailscale-system|tailscale-operator
-    tailscale.com/v1alpha1|Connector||controlplane
 kind: ConfigMap
 metadata:
   annotations:
