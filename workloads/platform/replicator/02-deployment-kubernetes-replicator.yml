@@ -1,0 +1,68 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: platform
+    io.seedmatic.rke2lab/package: replicator
+  labels:
+    app.kubernetes.io/instance: kubernetes-replicator
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: kubernetes-replicator
+    app.kubernetes.io/version: v2.12.4
+    helm.sh/chart: kubernetes-replicator-2.12.4
+  name: kubernetes-replicator
+  namespace: kube-system
+spec:
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: kubernetes-replicator
+      app.kubernetes.io/name: kubernetes-replicator
+  template:
+    metadata:
+      annotations:
+        io.seedmatic.rke2lab/domain: platform
+        io.seedmatic.rke2lab/package: replicator
+      labels:
+        app.kubernetes.io/instance: kubernetes-replicator
+        app.kubernetes.io/name: kubernetes-replicator
+    spec:
+      automountServiceAccountToken: true
+      containers:
+      - args:
+        - -replicate-secrets=true
+        - -replicate-configmaps=true
+        - -replicate-roles=true
+        - -replicate-role-bindings=true
+        - -replicate-service-accounts=true
+        image: quay.io/mittwald/kubernetes-replicator:v2.12.4
+        imagePullPolicy: Always
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /healthz
+            port: health
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+        name: kubernetes-replicator
+        ports:
+        - containerPort: 9102
+          name: health
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /readyz
+            port: health
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+        resources: {}
+        securityContext: {}
+      securityContext: {}
+      serviceAccountName: kubernetes-replicator

@@ -1,0 +1,30 @@
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: tailscale-tailnet-purge-operators
+  namespace: flux-system
+spec:
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
+  dependsOn:
+  - name: runtime-flox-controller-crds
+  - name: runtime-flox-controller-operators
+  - name: runtime-flox-controller-workloads
+  - name: runtime-flox-webhook-operators
+  - name: runtime-flox-webhook-workloads
+  - name: tailscale-funnel-cert-restore-operators
+  - name: tailscale-funnel-cert-restore-workloads
+  - name: tailscale-system-namespace-foundation
+  - name: tailscale-system-namespace-workloads
+  force: true
+  interval: 5m
+  path: ./operators/tailscale/tailnet-purge
+  prune: true
+  retryInterval: 30s
+  sourceRef:
+    kind: GitRepository
+    name: rke2lab
+  wait: true

@@ -1,0 +1,18 @@
+---
+apiVersion: v1
+data:
+  members: |-
+    v1|Namespace||kube-vip
+    v1|ServiceAccount|kube-vip|kube-vip
+    rbac.authorization.k8s.io/v1|ClusterRole||system:kube-vip-role
+    rbac.authorization.k8s.io/v1|ClusterRoleBinding||system:kube-vip-binding
+    apps/v1|DaemonSet|kube-vip|kube-vip-ds
+    v1|Service|kube-system|control-plane-nodeport
+kind: ConfigMap
+metadata:
+  annotations:
+    config.kubernetes.io/local-config: "true"
+    io.seedmatic.rke2lab/domain: high-availability
+    io.seedmatic.rke2lab/manifest-group: "true"
+    io.seedmatic.rke2lab/package: kube-vip
+  name: kube-vip.group

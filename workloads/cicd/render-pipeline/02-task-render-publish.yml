@@ -1,0 +1,161 @@
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: cicd
+    io.seedmatic.rke2lab/package: render-pipeline
+  name: render-publish
+  namespace: rke2lab-system
+spec:
+  params:
+  - name: cluster
+    type: string
+  - name: node
+    type: string
+  steps:
+  - image: rke2lab/flox-carrier:0.1.0
+    name: cache-prepare
+    script: |
+      #!/usr/bin/env bash
+      set -euxo pipefail
+      inbox_dir="/var/cache/rke2lab/maven/incoming/$(context.taskRun.name)"
+      mkdir -p "/var/cache/rke2lab/maven/base/repository" "/var/cache/rke2lab/maven/base/build-cache"
+      mkdir -p "$inbox_dir/repository" "$inbox_dir/build-cache"
+      : 'Narration is SINGLE-quoted on purpose.'
+      : 'Inside DOUBLE quotes a backtick is command substitution, so the shell runs it.'
+      : 'Three of them once made bash run cp, mv and added as commands: operand errors in'
+      : 'the log, and the very words the sentence explained replaced by their empty output.'
+      : 'Single quotes forbid that outright — at the price of forbidding the apostrophe,'
+      : 'which is why these lines read the way they do. Only a line that interpolates a'
+      : 'value keeps double quotes, and it carries no backtick.'
+      :
+      : 'Drop inboxes older than a day: the residue of renders that failed before publishing.'
+      : 'No find(1) — toolchains/kube carries coreutils, and find lives in findutils; a bash'
+      : 'glob plus stat is the same job without widening a shared toolchain for one caller.'
+      now="$(date +%s)"
+      pruned=0
+      for stale in "/var/cache/rke2lab/maven"/incoming/*/; do
+        [ -d "$stale" ] || continue
+        if [ "$(( now - $(stat -c %Y "$stale") ))" -gt 86400 ]; then
+          rm -rf "$stale"
+          pruned=$((pruned + 1))
+        fi
+      done
+      : 'SEED the build-cache of this run from the shared one, by HARD LINK.'
+      : 'The maven-build-cache extension has no read-through tail — unlike the local repository,'
+      : 'which gets maven.repo.local.tail — so a per-run location starts EMPTY and every render'
+      : 'would rebuild from scratch. A byte copy is out of the question: the cache reaches 1.1G.'
+      : 'But cp -al is metadata only, on the same dataset, so it costs neither space nor time,'
+      : 'and that is what lets the build-cache join the overlay at all.'
+      : 'A failed seed is TOLERATED — a cold build-cache costs time, not correctness — but its'
+      : 'reason is never hidden. Swallowing stderr here would leave the reported seeded size at 0'
+      : 'with nothing to say why, which is the one thing the figure cannot tell on its own.'
+      if [ -d "/var/cache/rke2lab/maven/base/build-cache" ]; then
+        cp -al "/var/cache/rke2lab/maven/base/build-cache/." "$inbox_dir/build-cache/" || true
+      fi
+      : 'State what this run reads through and what it pruned, so the figures cache-publish'
+      : 'prints at the other end have a baseline. No echo: xtrace already prints a : line with'
+      : 'its arguments expanded, so this is one command less for the same log.'
+      : "[cache-prepare] base repository $(du -sk "/var/cache/rke2lab/maven/base/repository" | cut -f1)K read-through | build-cache $(du -sk "$inbox_dir/build-cache" | cut -f1)K seeded | ${pruned} stale inbox(es) pruned"
+    volumeMounts:
+    - mountPath: /var/cache/rke2lab/maven
+      name: maven-cache
+  - env:
+    - name: RKE2LAB_SIGNING_KEY
+      valueFrom:
+        secretKeyRef:
+          key: ssh-private
+          name: manifests-render-signing
+          optional: true
+    image: rke2lab/flox-carrier:0.1.0
+    name: render
+    script: |
+      #!/usr/bin/env bash
+      set -euxo pipefail
+      : "The publish narrates live to stdout: it runs STANDALONE (not seed-master under Pulumi), so PaxLogbackConfigurer keeps its console appender on and the render/delivery logs land in this container's logs"
+      GIT_AUTH_DIR="$(workspaces.basic-auth.path)"
+      : "PaC mints the App token into the git_auth secret's git-provider-token key; read it RAW (not scraped from the .git-credentials URL) into RKE2LAB_PUSH_TOKEN for the ff-push (the scion reveals it in-container, ManifestSynthesisScenario.revealGithubToken) + nix + maven. Backticks, not the dollar-paren form, so Tekton does not claim the substitution as one of its own vars"
+      : "The same App token authenticates .mvn/settings.xml to GitHub Packages (the env.GH_TOKEN placeholder) so the reactor resolves the private seedmatic release java-systemd. Requires the App to carry packages:read"
+      : "nix must authenticate its flake-input fetches: the closure pulls a PRIVATE input, seedmatic/claude-hub transitively via ndh; the flox NRI sets NIX_CONFIG but no access-tokens, so an unauthenticated github fetch 404s on the private repo. Append the App token so nix reads it AS the App. Requires PaC to scope the git_auth token to include claude-hub via secret-github-app-scope-extra-repos"
+      : "xtrace is disabled across the next block so the App token is never echoed to the logs"
+      set +x
+      if [ -f "$GIT_AUTH_DIR/git-provider-token" ]; then
+        export RKE2LAB_PUSH_TOKEN=`cat "$GIT_AUTH_DIR/git-provider-token"`
+        export GH_TOKEN="$RKE2LAB_PUSH_TOKEN"
+        export NIX_CONFIG="${NIX_CONFIG:-}"$'\n'"access-tokens = github.com=$RKE2LAB_PUSH_TOKEN"
+      fi
+      set -x
+      : "OVERLAY over the cache: everyone READS the shared base, only the end of the run WRITES it. M2_REPO names the base because the flake bakes it as maven.repo.local.tail (a READ-THROUGH tail, ignoreAvailability=true) — Maven 3.9's chained local repository, verified present in maven-core-3.9.12. MAVEN_BUILD_CACHE names this run's own root, which the flake turns into maven.repo.local, so every write Maven makes lands in incoming/<run>/ and the base cannot be corrupted by a build — nor by one that is killed halfway. Both knobs already existed; in-cluster they pointed at the SAME directory, so the chained repo was wired to itself and bought nothing"
+      : "The volume is a RAW VOLUME, not a workspace, so the path is ours rather than Tekton's — hence the substitution rather than a workspaces.* reference"
+      export M2_REPO="/var/cache/rke2lab/maven/base/repository"
+      export MAVEN_BUILD_CACHE="/var/cache/rke2lab/maven/incoming/$(context.taskRun.name)"
+      : "Nothing sets the build-cache location, deliberately: the extension defaults it to the PARENT of maven.repo.local, which is this run's inbox — exactly where cache-prepare hard-linked the shared cache in, and exactly what cache-publish links back out. Both halves of the cache therefore ride the same overlay with one knob. An earlier attempt exported MAVEN_ARGS to pin the location; it never took effect, because the mvn runs inside a nix DERIVATION whose environment is sealed — only what the flake reads with builtins.getEnv at EVAL time crosses that boundary, which is why M2_REPO and MAVEN_BUILD_CACHE do and an ambient variable does not"
+      : "Secret-full render prerequisites — fail loud with a clear message, not a downstream decode error. SOPS_AGE_KEY arrives via the git-sops env spec.inject (flox-controller webhook); the sops-yaml filter is wired by the env on-activate hook; the clone step (also on git-sops) already smudged .secrets in this shared workspace at checkout"
+      set +x
+      [ -n "${SOPS_AGE_KEY:-}" ] || { echo >&2 "render: SOPS_AGE_KEY not set (git-sops inject / replicated sops-age missing)"; exit 1; }
+      set -x
+      git config --get filter.sops-yaml.smudge >/dev/null 2>&1 || { echo >&2 "render: sops-yaml git filter not registered (git-sops on-activate hook did not wire it)"; exit 1; }
+      : "The flox NRI plugin put nix on PATH, injected NIX_CONFIG (daemonless single-user) and hosts the /nix store overlay on the assigned persistent PVC, so there is no flox env and no flox activate. nix run .#render-manifests from the source checkout is the ONE render definition shared with dev and release: it builds manifests-cli, signs, and ff-pushes manifests/<cluster>; the exe locates its render worktree at .local.d/render/<cluster>"
+      nix run .#render-manifests -- "$(params.cluster)" "$(params.node)"
+    volumeMounts:
+    - mountPath: /var/cache/rke2lab/maven
+      name: maven-cache
+    workingDir: $(workspaces.source.path)
+  - image: rke2lab/flox-carrier:0.1.0
+    name: cache-publish
+    script: |
+      #!/usr/bin/env bash
+      set -euxo pipefail
+      inbox="/var/cache/rke2lab/maven/incoming/$(context.taskRun.name)"
+      base="/var/cache/rke2lab/maven/base"
+      if [ ! -d "$inbox" ]; then
+        : '[cache-publish] no inbox — nothing to publish'
+        exit 0
+      fi
+      : 'MEASURE. xtrace shows one cp line and says nothing about a step whose entire purpose is'
+      : 'a side effect on shared state. du/ls/wc/cut only — coreutils, not findutils.'
+      :
+      : 'The two halves are measured SEPARATELY and never summed: they are not the same kind of'
+      : 'number. repository/ is entirely new, never seeded — Maven reaches the shared copy through'
+      : 'maven.repo.local.tail instead. build-cache/ is largely the links cache-prepare seeded in,'
+      : 'so its size is NOT a delta, and adding the two would report 1.1G of borrowed links as'
+      : 'work done. What the base actually gained is the only honest total, measured on the base.'
+      repo_k="$(du -sk "$inbox/repository" | cut -f1)"
+      repo_n="$(ls -RA1 "$inbox/repository" | wc -l)"
+      bc_k="$(du -sk "$inbox/build-cache" | cut -f1)"
+      before_k="$(du -sk "$base" | cut -f1)"
+      : 'HARD LINKS, not a byte copy. The inbox and the base are two directories of the SAME'
+      : 'dataset, so cp -alf publishes by metadata alone: O(1) in bytes, whatever the delta'
+      : 'weighs. mv cannot serve — it does not MERGE into an existing tree, and merging is the'
+      : 'whole operation.'
+      :
+      : 'And -f rather than -n, which is not merely faster but more CORRECT. A released Maven'
+      : 'coordinate is immutable, so overwriting writes identical bytes; the mutable parts'
+      : '(maven-metadata, _remote.repositories, *.lastUpdated, a SNAPSHOT) are bookkeeping where'
+      : 'this run holds the fresher copy — under -n a stale SNAPSHOT in the base could never be'
+      : 'refreshed again.'
+      cp -alf "$inbox/." "$base/"
+      after_k="$(du -sk "$base" | cut -f1)"
+      : 'An added figure far below the repository delta means most of what this run resolved was'
+      : 'already in the base — the read-through tail is doing its job, and the next render will'
+      : 'download less still.'
+      :
+      : 'On the FIRST run after seeding landed, expect added to be roughly the build-cache size:'
+      : 'there was nothing to seed from, so the run produced that cache itself and it is new.'
+      : "[cache-publish] inbox: repository ${repo_k}K new (${repo_n} entries), build-cache ${bc_k}K seeded+produced | base ${before_k}K -> ${after_k}K, added $((after_k - before_k))K"
+      : 'Dropping the inbox removes only ITS links; the base keeps the files. That is also what'
+      : 'makes the hard links safe — nothing survives to be modified in place through a shared'
+      : 'inode.'
+      rm -rf "$inbox"
+    volumeMounts:
+    - mountPath: /var/cache/rke2lab/maven
+      name: maven-cache
+  volumes:
+  - name: maven-cache
+    persistentVolumeClaim:
+      claimName: manifests-maven-cache
+  workspaces:
+  - name: source
+  - name: basic-auth
+    optional: true
