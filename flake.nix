@@ -1,5 +1,5 @@
 {
-  description = "Flox runtime env catalog: per-workload packages (kdns, headplane, headscale, tailscale) the flox-nri-plugin injects. The plugin itself now lives in github:seedmatic/flox-nri-plugin (consumed as the flox-runtime input of the rke2lab flake).";
+  description = "Flox runtime env catalog: per-workload packages (kdns, tailscale) the flox-nri-plugin injects. The plugin itself now lives in github:seedmatic/flox-nri-plugin (consumed as the flox-runtime input of the rke2lab flake).";
 
   inputs = {
     flake-commons.url = "github:seedmatic/nix-flake-commons/develop";
@@ -18,22 +18,10 @@
       url = "github:lab42/kdns?ref=v0.2.27";
       flake = false;
     };
-    # Upstream headplane flake — its overlay carries the darwin pnpm-deps hash
-    # override that prod (`pkgs.headplane`) needs. The debug re-derivation below
-    # reuses THIS input as its `src` (a flake input is also a source tree), and
-    # reads its `version` from package.json — so the v0.7.0 tag lives in ONE
-    # place (this ref), not duplicated across a second `-src` input + a literal.
-    headplane = {
-      url = "github:tale/headplane?ref=v0.7.0";
-      inputs.flake-utils.follows = "flake-utils";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-    # Upstream headscale flake, v0.29.3 (v0.28.0 had a startup memory runaway —
-    # ~600Mi/s → OOM; v0.29.3 plateaus ~28MB).
-    headscale = {
-      url = "github:juanfont/headscale?ref=v0.29.3";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
+    # The `headplane` and `headscale` inputs are GONE (2026-09-27): rke2lab removed the mesh
+    # manifests domain, so nothing consumes their envs any more. They were the only reason this
+    # flake carried an overlay at all — headplane needed a darwin pnpm-deps hash override — and
+    # headplane pulled a pnpm dependency set into the lock for a workload nobody deployed.
     # rke2lab is the single owner of the `ndh` pin: this catalog is a branch of
     # rke2lab and part of its world, so it FOLLOWS rke2lab's ndh instead of
     # pinning ndh independently. That keeps the host (path A, rke2lab's
@@ -68,8 +56,6 @@
     nixpkgs,
     flake-utils,
     kdns-src,
-    headplane,
-    headscale,
     ndh,
     seed-incluster,
     flox,
@@ -79,9 +65,10 @@
       "aarch64-darwin"
       "aarch64-linux"
     ] (system: let
+      # No overlay: the only one this flake ever defined existed to fix headplane's pnpm deps on
+      # darwin, and headplane is gone.
       pkgs = import nixpkgs {
         inherit system;
-        overlays = [self.overlays.default];
       };
       lib = pkgs.lib;
 
@@ -90,8 +77,7 @@
       # variable, so the ref itself is irreducible), and flake.lock mirrors it as
       # `nodes.<input>.original.ref`. Read it back here — strip the leading `v` —
       # so a bump touches only the input ref (the lock refresh follows). Used for
-      # source-only inputs (kdns); upstream-flake inputs (headscale) carry their
-      # own version, and headplane derives it from package.json.
+      # source-only inputs (kdns); an upstream-flake input carries its own version.
       lockedVersion = input:
         lib.removePrefix "v"
         (builtins.fromJSON (builtins.readFile ./flake.lock)).nodes.${input}.original.ref;
@@ -162,35 +148,6 @@
         debug = true;
       };
 
-      # ---- headscale --------------------------------------------------
-      # Sourced from the upstream juanfont/headscale flake — they pin the Go
-      # toolchain themselves (main is on Go 1.26 which nixpkgs 1.25.9 can't
-      # satisfy). Two outputs:
-      #   - prod: upstream as-is (stripped, smallest binary, normal latency)
-      #   - debug: overrideAttrs to drop `-s -w`, disable strip, build with
-      #     `-N -l` (no inlining/optimization), wrap with delve in PATH so the
-      #     shell sidecar can `dlv attach $(pgrep headscale)` with full
-      #     source-level visibility through the shared PID namespace.
-      headscale-prod =
-        (headscale.packages.${system}.headscale or headscale.packages.${system}.default)
-        .overrideAttrs (_: {
-          doCheck = false;
-        });
-
-      headscale-debug = headscale-prod.overrideAttrs (old: {
-        pname = "headscale-debug";
-        dontStrip = true;
-        ldflags = lib.filter (f: f != "-s" && f != "-w") (old.ldflags or []);
-        gcflags = (old.gcflags or []) ++ ["all=-N -l"];
-        nativeBuildInputs = (old.nativeBuildInputs or []) ++ [pkgs.makeWrapper];
-        postFixup =
-          (old.postFixup or "")
-          + ''
-            wrapProgram "$out/bin/headscale" \
-              --prefix PATH : ${lib.makeBinPath [pkgs.delve]}
-          '';
-      });
-
       # ---- tailscale --------------------------------------------------
       # The fork tailscale/tailscaled (CNAME extra_records + SSH port-2222),
       # taken from ndh — ndh.packages.<system>.tailscale re-exports its
@@ -223,81 +180,6 @@
         gcflags = (old.gcflags or []) ++ ["all=-N -l"];
       });
 
-      # ---- headplane (debug only) -------------------------------------
-      # Prod headplane stays on `pkgs.headplane` via the cross-system overlay
-      # below — that overlay carries the darwin pnpm-deps hash override the
-      # operator runs into when `flox lock` evaluates the env on darwin. For
-      # debug we re-derive from the `headplane` input with sourcemaps preserved so
-      # `node --inspect` resolves to TS lines, accepting that we manage the
-      # pnpm-deps hash ourselves for this single derivation.
-      headplane-debug = pkgs.stdenv.mkDerivation rec {
-        pname = "headplane-debug";
-        # Single-sourced from the headplane input: its ref pins the tag, its
-        # package.json carries the version, and the input tree IS the src.
-        version = (builtins.fromJSON (builtins.readFile "${headplane}/package.json")).version;
-        src = headplane;
-
-        nativeBuildInputs = [pkgs.nodejs_22 pkgs.pnpm_10 pkgs.pnpm_10.configHook];
-        buildInputs = [pkgs.nodejs_22];
-
-        # First-build placeholder (same workflow as the vendorHash pattern):
-        # run `nix build .#headplane-debug` and copy the printed SRI hash here.
-        pnpmDeps = pkgs.pnpm_10.fetchDeps {
-          inherit pname version src;
-          hash = "sha256-QjfnE3rvk1NNON9JJfVIDuVf/zU7bveyTYYNc34SPMA="; # re-run nix build .#headplane-debug on bump to refresh
-          fetcherVersion = 1;
-        };
-
-        # Skip minification + keep sourcemaps so node --inspect lands on
-        # readable TS lines instead of mangled output.
-        env.NODE_ENV = "development";
-
-        buildPhase = ''
-          runHook preBuild
-          pnpm run build
-          runHook postBuild
-        '';
-
-        installPhase = ''
-          runHook preInstall
-          mkdir -p $out/share/headplane
-          cp -r build node_modules package.json $out/share/headplane/
-          # headplane runs drizzle-orm migrations from a CWD-relative ./drizzle
-          # (app/server/db/client.server.ts). Ship the migrations dir and launch
-          # from the app root, or startup dies "ENOENT scandir './drizzle'".
-          [ -d drizzle ] && cp -r drizzle $out/share/headplane/ || true
-          mkdir -p $out/bin
-          cat > $out/bin/headplane <<EOF
-          #!${pkgs.runtimeShell}
-          cd $out/share/headplane
-          exec ${pkgs.nodejs_22}/bin/node --enable-source-maps --inspect=0.0.0.0:9229 \
-            build/server/index.js "\$@"
-          EOF
-          chmod +x $out/bin/headplane
-          runHook postInstall
-        '';
-
-        meta = with lib; {
-          description = "Headplane web UI (debug build with sourcemaps + node --inspect)";
-          homepage = "https://github.com/tale/headplane";
-          license = licenses.agpl3Only;
-          platforms = platforms.unix;
-        };
-      };
-      # Regenerate the committed env manifest.lock files, then COMMIT the real
-      # bumps. Each env's manifest.toml pins packages by a RELATIVE flake path
-      # (path:../../..#pkg); nix resolves path: against CWD, so an env is locked
-      # from its OWN dir. Run from the catalog repo root (writes into the worktree,
-      # not the read-only store):
-      #   nix run .#lock-envs                                 # all envs
-      #   nix run .#lock-envs -- cluster-api/seed-incluster    # some
-      #
-      # A re-lock ALWAYS rewrites each package's `locked-url` — it embeds a narHash
-      # of the WHOLE catalog tree (a path: self-reference), so it churns on every
-      # run with no fixpoint, while the derivation/outputs stay put. So we diff the
-      # freshly-locked file against HEAD with `locked-url` stripped: pure churn is
-      # reverted (never staged), only a real derivation/outputs change is kept and
-      # committed. Idempotent — a no-op run leaves a clean tree and makes no commit.
       lockEnvsApp = pkgs.writeShellApplication {
         name = "lock-envs";
         runtimeInputs = [flox.packages.${system}.default pkgs.coreutils pkgs.git pkgs.jq];
@@ -369,7 +251,6 @@
 
       packages = {
         inherit kdns kdns-debug;
-        inherit headplane-debug;
 
         # Prod = upstream stripped build; debug = unstripped + `-N -l` + delve
         # wrapper. The Java side (FloxDebugPolicy.resolveFloxEnvironment) flips
@@ -377,16 +258,8 @@
         # which causes the NRI plugin to mount the debug-package binary in
         # place of the prod one — so port mappings and pod identity stay
         # untouched.
-        headscale = headscale-prod;
         tailscale = tailscale-prod;
-        inherit headscale-debug tailscale-debug;
-
-        # Prod headplane outputs flow through the overlay defined below so the
-        # darwin pnpm-deps override is in scope. The overlay is shared with
-        # any consumer that imports the runtime flake's overlays.default. Debug
-        # is re-derived above from the `headplane` input so we can preserve sourcemaps
-        # for `node --inspect`.
-        inherit (pkgs) headplane headplane-agent headplane-nixos-docs headplane-ssh-wasm;
+        inherit tailscale-debug;
 
         # The CI render toolchain the flox NRI plugin injects into the Tekton
         # render-publish step (the cicd/maven FloxEnv references these via
@@ -426,27 +299,5 @@
       };
 
       defaultPackage = kdns;
-    })
-    // {
-      # Cross-system overlay so headplane builds on darwin (pnpm hash override)
-      # and aarch64-linux alike. Mirrors the upstream headplane overlay with a
-      # single pnpm-deps fix-up for darwin.
-      overlays.default = final: prev: let
-        upstream = headplane.overlays.default final prev;
-      in
-        upstream
-        // {
-          headplane =
-            if final.stdenv.hostPlatform.isDarwin
-            then
-              upstream.headplane.overrideAttrs (old: {
-                pnpmDeps = final.pnpm_10.fetchDeps {
-                  inherit (old) pname version src;
-                  hash = "sha256-oSlxe//0AUA9oIFA6piULkHcDnbc+MMVvfMcah9IoxM=";
-                  fetcherVersion = 1;
-                };
-              })
-            else upstream.headplane;
-        };
-    };
+    });
 }
