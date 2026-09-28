@@ -400,6 +400,125 @@ half is still needed, so *the fork stays*. Two consequences:
 ★ And the naming these two threads need is the SAME: whatever gives the apiserver a stable name also
 retires the CNAME hack. The cleanup and the VIP work point one way.
 
+== 2026-09-28 (2) — the split zone is the only authority that answers everyone
+
+Measured live, during the cold start, on both bare-metals and from inside a pod. This CLOSES two of
+the three "measure before deciding" items above and reframes the certificate work.
+
+=== ★ A pod DOES resolve the split zones — including the peer's
+
+From a busybox pod on `bioskop-mgmt` (resolv.conf = CoreDNS `10.48.0.10`):
+
+[options="header"]
+|===
+| name | answer from a pod
+| `nixos.bioskop` | `172.16.0.1`
+| `bioskop-mgmt-master.bioskop` | `172.16.1.3` + `fd96:…:20::a50:a`
+| `nixos.nikopol` | `172.16.16.1` ← *cross-host, from a pod*
+|===
+
+So the chain CoreDNS → node resolver → this bare-metal's dnsmasq → `server=/nikopol/172.16.16.1`
+works end to end. ★ This is what makes naming the endpoint a real fix rather than a rename: the
+in-cluster probes — the audience that matters — can resolve a `.<host>` name today.
+
+=== ★ Every OTHER name answers a different address per asker, and two name another machine
+
+The incus server cert carried `<label> × {.local, .lan, <tailnet>}`. Resolved live:
+
+[options="header"]
+|===
+| name | from bioskop | from the Mac | denotes
+| `bioskop-nixos` | `127.0.0.2` | `100.90.5.23` | this host (two different ways)
+| `bioskop` | `100.76.71.8` | `192.168.1.129` | ⚠️ the VZ-HOST, not this VM
+| `bioskop.local` | `172.16.8.2` | — | ⚠️ `vzhost.bioskop`
+| `bioskop-nixos.lan` | `192.168.1.130` | `192.168.1.130` | this host, via the home router
+| *`nixos.bioskop`* | *`172.16.0.1`* | *`172.16.0.1`* | *this host, one answer*
+|===
+
+⚠️ And the product could never produce the right name: `bioskop-nixos.bioskop` is NXDOMAIN, because
+the split zone INVERTS the label order. That is why the missing name was not a forgotten entry but a
+shape the generator cannot express.
+
+=== ⚠️ The incus SAN list we control is on a cert the clustered daemon never serves
+
+★ *A correction to my own first reading of this, and the reason the incus half of the work was
+retired rather than shipped.* `ensure-incus-server-cert.sh` provisions `/var/lib/incus/server.crt`
+with the full SAN list — but measured 2026-09-28 on the wire:
+
+[options="header"]
+|===
+| | fingerprint | SANs
+| presented by BOTH members on `:8443` | `08:15:9E:B8…` | `DNS:bioskop-nixos`, `IP:127.0.0.1`, `IP:::1`
+| `/var/lib/incus/cluster.crt` (both, byte-identical) | `08:15:9E:B8…` | same
+| `/var/lib/incus/server.crt` (per member, RSA 4096) | `B9:AB:15:0F…` | the 8-name product
+|===
+
+So a clustered member serves the self-generated, cluster-WIDE `cluster.crt`; `server.crt` is a
+per-member IDENTITY, pinned by fingerprint and never presented. ndh already knew this and wrote it
+down — `modules/darwin/incus-remote-trust.d/post-activation.sh` measured it on 2026-09-26 and pins
+whichever file matches the wire.
+
+Two consequences. Widening `server.crt`'s SANs would rotate a cert three things pin (the Incus
+cluster member trust, each `<host>-incus-identity` Secret's `server-crt`, the operator's
+`servercerts`) *for no benefit at all*, since SANs are decoration on a fingerprint-pinned identity —
+the same identity-vs-address distinction {@code nixosHost} vs {@code nixosFabricFqdn} already draws.
+And because the served cert is ONE cert for the whole cluster, the names it must carry are BOTH
+zones' — `nixos.bioskop` AND `nixos.nikopol` — which is why nikopol today serves a cert whose only
+DNS name is `bioskop-nixos`.
+
+★ The real fix is already named in that same ndh comment: have the daemon serve a certificate issued
+by the fleet's own `mammoth-skate-tls` authority, installed cluster-wide via `incus cluster
+update-certificate`, so nothing is pinned and the identity survives a renew. `ClusterCaGenerator`
+already mints from that root. Not done; recorded here as the shape.
+
+=== The apiserver cert IS on the critical path
+
+kubectl and CAPI verify the hostname against the CA, which is exactly why the
+`bioskop-mgmt-fabric-name` context WORKS (`bioskop-mgmt-master.bioskop` is in the SAN set) while
+every other context dials a bare address. That is the half that was shipped.
+
+The apiserver cert is the opposite: kubectl and CAPI verify the hostname against the CA, which is
+exactly why the `bioskop-mgmt-fabric-name` context WORKS (`bioskop-mgmt-master.bioskop` is in the SAN
+set) while every other context dials a bare address.
+
+=== ★ The cattle clusters' SAN set was fiction
+
+`tlsSanSuperset` enumerated the CANONICAL pets. Measured:
+
+* `bioskop-wrkld-master.bioskop` → *NXDOMAIN* (that node is never created);
+* `bioskop-wrkld-control-plane-zg9cp.bioskop` → *resolves* (CAPI's generated name, auto-registered
+  from its DHCP hostname).
+
+So a birthed cluster's cert named six nodes that will never exist and missed the one that does —
+which is precisely why only `*-vip` contexts exist for those clusters. A per-NODE name cannot be the
+endpoint name; the VIP's can, because it is knowable before any node exists.
+
+=== What was built
+
+. `NamePlan.vipFabricFqdn` = `<role>-vip.<host>` — ONE definition. Not `<cluster>-vip.<host>`: a
+  cluster name IS `<host>-<role>`, so spelling the host in the label repeats the zone, the same
+  stutter `nixos.<host>` avoids.
+. `tlsSanSuperset` carries that name beside the VIP address, and the per-node entries moved UNDER
+  `fabricMacIsPredictable` — a pet cluster keeps them, a cattle cluster stops asserting phantoms.
+. The blueprint publishes the VIP as a MAC-less `SegmentHost` on the cluster's FABRIC segment, so
+  ndh renders `host-record=<role>-vip.<host>,<vip>`. The fabric segment is the one CONTAINED in the
+  bare-metal's managed net, hence the one whose hosts that dnsmasq serves; the address being on the
+  vmnet tier is irrelevant to a host-record — ndh already publishes `vzhost.<host>` at an address
+  outside the segment carrying it.
+Nothing was changed in ndh: the incus half belongs on `cluster.crt` (see above), not on the file we
+provision, so shipping it there would have rotated a pinned identity for nothing.
+
+⚠️ *Ordering, and it is not optional.* ndh reads rke2lab's blueprint as a flake input pinned by REV,
+so the `host-record` only appears after rke2lab is pushed → ndh's input bumped → the hosts switched.
+Only THEN can `controlPlaneEndpoint` name the VIP instead of its address (step 4 above) — flipping it
+before the name resolves would break every probe.
+
+⚠️ *And that input does not track this branch.* `ndh/flake.nix` pins
+`github:seedmatic/rke2lab/feature/nixos-node-substrate` (lock `acd0e45d4`) — the branch retired in
+September. A plain `nix flake update rke2lab` would follow the dead branch and pick up none of this,
+silently. The URL has to move to the integration branch first; same shape as the flox-catalogue,
+which had to be repointed at this branch for the same reason.
+
 == Related
 
 * ndh `docs/network-topology-c4.adoc#authorisation` — the tailnet policy, the Services
