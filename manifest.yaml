@@ -1,5 +1,5 @@
 source:
-  sha: 7ffca3e9a00daf3b7c2426feab57dc44fed0c3d7
+  sha: 45428c850073abbe7359d320cadc72325c7e821c
   dirty: false
 facet:
   debug:
@@ -14,7 +14,7 @@ facet:
     push: true
   workloadTargets: []
   network:
-    fabricBridgeParent: ""
+    fabricBridgeParent: fabric-br
 image:
   imageAlias: node-base
   imageFingerprint: e55cde891602351fbbc86a48301a76fbaae36af2ff924ed458f9a557e7d82222
