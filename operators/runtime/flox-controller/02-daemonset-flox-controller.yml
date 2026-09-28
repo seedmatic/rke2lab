@@ -53,7 +53,7 @@ spec:
               key: token
               name: floxhub-token
               optional: true
-        image: io.seedmatic.flox-controller:0.0.0-develop
+        image: io.seedmatic.flox-controller:b1zy8v3z2dykpm9q836lhbld867v414y
         imagePullPolicy: IfNotPresent
         name: controller
         ports:

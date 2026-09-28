@@ -27,7 +27,7 @@ spec:
           value: v1.9.0
         - name: ENVOY_GATEWAY_NAMESPACE
           value: envoy-gateway-system
-        image: rke2lab/flox-carrier:0.1.0
+        image: rke2lab/flox-carrier:lh4jz7nkzwya42rgil5g232vz9rayqvf
         name: installer
         resources:
           limits:

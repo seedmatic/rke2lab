@@ -55,7 +55,7 @@ spec:
           else
             echo "no saved funnel state for nikopol-mgmt-flux-webhook on the persist volume — clean first grow"
           fi
-        image: rke2lab/flox-carrier:0.1.0
+        image: rke2lab/flox-carrier:lh4jz7nkzwya42rgil5g232vz9rayqvf
         name: mirror
         volumeMounts:
         - mountPath: /persist

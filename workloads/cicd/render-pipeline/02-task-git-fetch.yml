@@ -14,7 +14,7 @@ spec:
   - name: revision
     type: string
   steps:
-  - image: rke2lab/flox-carrier:0.1.0
+  - image: rke2lab/flox-carrier:lh4jz7nkzwya42rgil5g232vz9rayqvf
     name: clone
     script: |
       #!/bin/sh
