@@ -16,7 +16,7 @@ spec:
   - "root,type=disk,path=/,pool=default"
   - "kmsg.dev,type=unix-char,source=/dev/kmsg,path=/dev/kmsg"
   - "zfs.dev,type=unix-char,source=/dev/zfs,path=/dev/zfs"
-  - "fabric0,type=nic,name=fabric0,nictype=bridged,parent=fabric-br"
+  - "fabric0,type=nic,name=fabric0,nictype=bridged,parent="
   - "vmnet0,type=nic,name=vmnet0,nictype=bridged,parent=vmnet-wrkld"
   image:
     name: bioskop-wrkld-node-base

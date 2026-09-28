@@ -1,9 +1,7 @@
 ---
 apiVersion: v1
 data:
-  members: |-
-    v1|Secret|flux-system|sops-age
-    v1|Secret|rke2lab-system|sops-age
+  members: ""
 kind: ConfigMap
 metadata:
   annotations:
