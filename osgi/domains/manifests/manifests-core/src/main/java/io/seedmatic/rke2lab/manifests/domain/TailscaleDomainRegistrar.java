@@ -6,6 +6,7 @@ import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.units.tailscale.FunnelCertRestoreManifestsUnit;
 import io.seedmatic.rke2lab.manifests.units.tailscale.FunnelStatePersistenceManifestsUnit;
 import io.seedmatic.rke2lab.manifests.units.tailscale.TailnetPurgeManifestsUnit;
+import io.seedmatic.rke2lab.manifests.units.tailscale.TailscaleEgressManifestsUnit;
 import io.seedmatic.rke2lab.manifests.units.tailscale.TailscaleManifestsUnit;
 import io.seedmatic.rke2lab.manifests.units.tailscale.TailscaleSystemNamespaceManifestsUnit;
 import java.util.List;
@@ -44,6 +45,7 @@ public final class TailscaleDomainRegistrar implements ManifestsDomainRegistrar 
             new FunnelCertRestoreManifestsUnit(),
             new TailnetPurgeManifestsUnit(),
             new TailscaleManifestsUnit(),
+            new TailscaleEgressManifestsUnit(),
             new FunnelStatePersistenceManifestsUnit()));
   }
 }
