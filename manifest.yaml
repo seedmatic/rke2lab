@@ -1,6 +1,6 @@
 source:
-  sha: 7ffca3e9a00daf3b7c2426feab57dc44fed0c3d7
-  dirty: false
+  sha: fa44962d0a73a57ad4a92cc45b4f44fcd506aae9
+  dirty: true
 facet:
   debug:
     mesh:
@@ -18,7 +18,7 @@ facet:
   - host: nikopol
     role: mgmt
   network:
-    fabricBridgeParent: ""
+    fabricBridgeParent: fabric-br
 image:
   imageAlias: node-base
   imageFingerprint: e55cde891602351fbbc86a48301a76fbaae36af2ff924ed458f9a557e7d82222
