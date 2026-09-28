@@ -27,10 +27,16 @@ import io.seedmatic.rke2lab.incus.ingress.IngressConfig;
 import io.seedmatic.rke2lab.incus.ingress.InstanceGrowPlan;
 import io.seedmatic.rke2lab.incus.ingress.NodeRuntimeContract;
 import io.seedmatic.rke2lab.incus.ingress.SplitImageFingerprint;
+import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.GeneralSecurityException;
+import java.security.MessageDigest;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
 import java.util.Base64;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -153,6 +159,30 @@ public final class InstanceGrow {
       log.accept("incus capn trust: no capn-provider certificate in the ingress config; skipping");
       return;
     }
+    // Adopt BY OMISSION when the daemon already trusts this exact certificate — the same discipline
+    // as ensureImage / ensureProfile / ensureNetwork, and this was the ONE resource here that had
+    // neither it nor an importId.
+    //
+    // ⚠️ Its javadoc above accepted a loud one-time collision, on the premise that a pre-existing
+    // entry means an operator added one by hand to a virgin host. That premise no longer holds: the
+    // trust store is DAEMON state and outlives the Pulumi stack, so a cold start on a FRESH stack
+    // meets the entry a previous run created — every time, not rarely. Measured 2026-09-28: the
+    // stack held 18 resources and no Certificate while the daemon was trusting one, and the grow
+    // died on "Certificate already in trust store". `pulumi refresh` cannot close that gap — it
+    // reconciles resources already IN the state and never discovers ones absent from it, which is
+    // why `seed-project` (which DOES importId) was adopted and this alone was not.
+    //
+    // Addressed by CONTENT: a rotated certificate has a different fingerprint, so it reads as
+    // absent
+    // and is created. Nothing has to be corrected in place, and no entry has to be renamed.
+    final String fingerprint = certificateFingerprint(pem);
+    if (importLookup.certificateTrusted(fingerprint)) {
+      log.accept(
+          "incus capn trust: the daemon already trusts "
+              + fingerprint
+              + "; adopting by omission (no Certificate declared)");
+      return;
+    }
     final CustomResourceOptions options =
         CustomResourceOptions.builder()
             .provider(providerContext.provider())
@@ -168,6 +198,26 @@ public final class InstanceGrow {
             .description("rke2lab: the in-cluster CAPN provider's identity")
             .build(),
         options);
+  }
+
+  /**
+   * How incus names a trust entry: the hex sha256 of the certificate's DER encoding. Parsed through
+   * {@code CertificateFactory} rather than by stripping the PEM armour by hand, so a stray newline
+   * or a bundle with trailing whitespace cannot yield a fingerprint that silently matches nothing.
+   */
+  private static String certificateFingerprint(String pem) {
+    try {
+      final var certificate =
+          (X509Certificate)
+              CertificateFactory.getInstance("X.509")
+                  .generateCertificate(
+                      new ByteArrayInputStream(pem.getBytes(StandardCharsets.UTF_8)));
+      return HexFormat.of()
+          .formatHex(MessageDigest.getInstance("SHA-256").digest(certificate.getEncoded()));
+    } catch (GeneralSecurityException ex) {
+      throw new IllegalStateException(
+          "the capn-provider certificate in the ingress config is not a readable X.509 PEM", ex);
+    }
   }
 
   /**
