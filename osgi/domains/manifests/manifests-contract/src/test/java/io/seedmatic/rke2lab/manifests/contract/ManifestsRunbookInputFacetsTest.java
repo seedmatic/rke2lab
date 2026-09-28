@@ -3,12 +3,14 @@ package io.seedmatic.rke2lab.manifests.contract;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.seedmatic.rke2lab.manifests.contract.ManifestsRunbookInput.DebugFacet;
 import io.seedmatic.rke2lab.manifests.contract.ManifestsRunbookInput.DeliveryFacet;
 import io.seedmatic.rke2lab.manifests.contract.ManifestsRunbookInput.Facets;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -37,11 +39,9 @@ class ManifestsRunbookInputFacetsTest {
     // An absent network coalesces to unknown() — a BLANK parent, never a plausible bridge name: the
     // render then poses a device with an empty parent, visibly wrong in a manifest, where a default
     // would silently attach a node to the wrong bridge.
-    assertNotNull(coalesced.network(), "an absent network sub-map defaults, never null");
-    assertEquals(
-        "",
-        coalesced.network().fabricBridgeParent(),
-        "an absent network defaults to a BLANK parent, not a plausible bridge name");
+    assertTrue(
+        coalesced.network().isEmpty(),
+        "an absent network is Optional.empty() — absence lives in the TYPE, never in a blank string");
   }
 
   @Test
@@ -51,7 +51,7 @@ class ManifestsRunbookInputFacetsTest {
             DebugFacet.builder().mesh(true).build(),
             new DeliveryFacet(true),
             List.of(new WorkloadTarget("bioskop", "wrkld")),
-            new ManifestsRunbookInput.NetworkFacet("fabric-br"));
+            Optional.of(new ManifestsRunbookInput.NetworkFacet("fabric-br")));
 
     assertEquals(true, partial.delivery().push(), "a present delivery is kept, not defaulted");
     assertTrue(partial.debug().mesh().enabled(), "a present debug is kept verbatim");
@@ -64,6 +64,26 @@ class ManifestsRunbookInputFacetsTest {
     // replayed
     // by an in-cluster render — the reason it stopped being an amendment role of its own.
     assertEquals(
-        "fabric-br", partial.network().fabricBridgeParent(), "a present network is kept verbatim");
+        "fabric-br",
+        partial.network().orElseThrow().fabricBridgeParent(),
+        "a present network is kept verbatim");
+  }
+
+  /**
+   * The boundary refuses a present-but-meaningless bridge. This is the guard whose absence was paid
+   * for on 2026-09-28: a blank parent travelled as if it were a value and the render published
+   * {@code parent=} for every node, a tree Flux would have applied over a correct live one. Absence
+   * is {@code Optional.empty()}; a {@code NetworkFacet} that EXISTS always names a bridge.
+   */
+  @Test
+  void a_blank_bridge_parent_is_refused_at_construction() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new ManifestsRunbookInput.NetworkFacet(""),
+        "a blank fabricBridgeParent must be refused, not carried as a sentinel for absence");
+    assertThrows(
+        NullPointerException.class,
+        () -> new ManifestsRunbookInput.NetworkFacet(null),
+        "a null fabricBridgeParent must be refused too");
   }
 }

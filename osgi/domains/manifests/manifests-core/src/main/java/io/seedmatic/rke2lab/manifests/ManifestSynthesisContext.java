@@ -126,11 +126,29 @@ public final class ManifestSynthesisContext {
    */
   /**
    * The bridge every node's fabric NIC attaches to — the operator's {@code rke2lab:network:}
-   * declaration, amended across the membrane. Blank when unamended, which renders a visibly empty
-   * parent rather than silently attaching a node to a plausible wrong bridge.
+   * declaration, carried in the manifests facet and therefore RECORDED on the branch, which is what
+   * lets an in-cluster render replay it.
+   *
+   * <p>⚠️ This is the ONE place its absence becomes an error, and the placement is deliberate. It
+   * is resolved HERE, when a unit actually poses devices, not when the render is assembled: a
+   * survey that renders nothing device-bearing never asks and must not fail. Resolving it eagerly
+   * upstream broke exactly that — measured 2026-09-28 against the in-container scenario test, whose
+   * surveyed materialiser is documented to render PENDING.
+   *
+   * <p>And it throws rather than answering a blank. A blank travelled once and the render published
+   * {@code parent=} for every node, a tree Flux would have applied over a correct live value. A
+   * failed render leaves the last good tree on the branch; a published one detaches every node.
    */
   public String fabricBridgeParent() {
-    return request.fabricBridgeParent();
+    return request
+        .fabricBridgeParent()
+        .orElseThrow(
+            () ->
+                new IllegalStateException(
+                    "this render poses node devices but has no fabric bridge:"
+                        + " facet.network.fabricBridgeParent is absent from both the sown amendment"
+                        + " and the branch's recorded facet. Re-render from the HOST once to seed"
+                        + " it."));
   }
 
   public ContainerImageRefs containerImages() {

@@ -50,6 +50,7 @@ import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.ScenarioCella
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.ScenarioInputSeed;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.ScenarioPlayer;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.SeedScenario;
+import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
 import io.seedmatic.rke2lab.seed.broker.port.EnclosureGate;
 import io.seedmatic.rke2lab.seed.broker.port.Parcel;
 import io.seedmatic.rke2lab.seed.broker.port.Persistence;
@@ -364,9 +365,21 @@ public class ManifestSynthesisScenario
   // Tolerant of unknown keys: a branch recorded before the publish facet was removed still carries
   // a `publish:` sub-map under `facet:`; the domain set is now role-derived, so that key is stale
   // and ignored rather than failing the replay decode.
+  // UNTYPED only: this parses the recorded yaml into a tree. Turning that tree into a wire record
+  // is
+  // the CODEC's job, because decoding one is a SET of rules — Optional via Jdk8Module, seam enums,
+  // Instant, unknown keys tolerated — and a hand-configured mapper is one more place to get them
+  // wrong. Measured 2026-09-28: it was, the moment a sub-facet component became Optional
+  // (`Optional<NetworkFacet> not supported by default: add Module jackson-datatype-jdk8`).
+  // SeedCodec's
+  // own javadoc names this reader among what it supersedes: its tolerance is "the contract the
+  // hand-rolled *Reader classes had".
   private static final YAMLMapper FACET_READER =
       (YAMLMapper)
           new YAMLMapper().configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+
+  /** The ONE set of wire-record decoding rules — never a bare mapper. */
+  private static final SeedCodec CODEC = new SeedCodec();
 
   // The name the Then records the facet under at the branch root (Then.RENDER_FACET_FILE).
   private static final String RENDERED_FACET_FILE = "manifest.yaml";
@@ -460,8 +473,10 @@ public class ManifestSynthesisScenario
             // coordinate. The earlier top-level component took the SEEDED value on the premise that
             // "a branch does not record it" — which held only while the sower was a host. The
             // in-cluster render has no host to declare it, so recording it is what makes the render
-            // possible at all.
-            facets.network()),
+            // possible at all. Falls back to the SEEDED one so a sower that does declare it is
+            // never
+            // overridden by a branch recorded before the field existed.
+            facets.network().or(() -> seeded.facets().network())),
         seeded.materializationRoot(),
         seeded.identity(),
         seeded.renderMode(),
@@ -478,12 +493,15 @@ public class ManifestSynthesisScenario
    */
   private ManifestsRunbookInput.Facets overlay(
       ManifestsRunbookInput.Facets base, java.util.Map<String, Boolean> overrides) {
-    final ObjectNode json = FACET_READER.valueToTree(base);
+    // Both ends through the CODEC, so the round-trip obeys ONE set of rules: a bare mapper here
+    // would
+    // drop an Optional sub-facet on the way out and fail to read it back on the way in.
+    final ObjectNode json = FACET_READER.valueToTree(CODEC.toMap(base));
     overrides.forEach((path, value) -> setBooleanAtPath(json, path, value));
     try {
-      return FACET_READER.treeToValue(json, ManifestsRunbookInput.Facets.class);
-    } catch (IOException ex) {
-      throw new UncheckedIOException("cannot overlay the edit facet: " + overrides, ex);
+      return CODEC.fromMap(json, ManifestsRunbookInput.Facets.class);
+    } catch (IllegalArgumentException ex) {
+      throw new IllegalStateException("cannot overlay the edit facet: " + overrides, ex);
     }
   }
 
@@ -498,18 +516,38 @@ public class ManifestSynthesisScenario
   }
 
   /**
-   * Decode the {@code facet} sub-tree of a recorded {@code manifest.yaml}; empty if
-   * absent/unreadable.
+   * Decode the {@code facet} sub-tree of a recorded {@code manifest.yaml} — THREE-valued, like
+   * {@link #recordedImage}: empty only when nothing was recorded, and a refusal when something was
+   * but this build cannot read it.
+   *
+   * <p>⚠️ It used to answer empty for both. That is the two-valued probe this repo has now paid for
+   * twice: a sub-facet whose constructor rejects its recorded value (a blank bridge parent, say)
+   * surfaces as a {@code JsonProcessingException} — an {@code IOException} — so "undecodable"
+   * collapsed into "absent", and the render would then drop the recorded debug AND workloadTargets
+   * with it, emptying the workload CR set on a branch that was merely too old. Absence is
+   * legitimate; unreadability is a bug that must not be answered with a plausible empty.
    */
   private Optional<ManifestsRunbookInput.Facets> recordedFacets(String manifestYaml) {
+    final JsonNode facet;
     try {
-      final JsonNode facet = FACET_READER.readTree(manifestYaml).path("facet");
-      if (facet.isMissingNode() || facet.isNull()) {
-        return Optional.empty();
-      }
-      return Optional.of(FACET_READER.treeToValue(facet, ManifestsRunbookInput.Facets.class));
-    } catch (IOException ex) {
+      facet = FACET_READER.readTree(manifestYaml).path("facet");
+    } catch (IOException unreadableContext) {
+      throw new IllegalStateException(
+          "the render context recorded at HEAD is unreadable, so the facet it records cannot be"
+              + " replayed; refusing to render as though the branch carried no policy",
+          unreadableContext);
+    }
+    if (facet.isMissingNode() || facet.isNull()) {
       return Optional.empty();
+    }
+    try {
+      return Optional.of(CODEC.fromMap(facet, ManifestsRunbookInput.Facets.class));
+    } catch (IllegalArgumentException undecodable) {
+      throw new IllegalStateException(
+          "HEAD records a facet this build cannot decode (a recording that predates a field this"
+              + " Facets requires, or a value it now rejects); refusing to render as though the"
+              + " branch carried no policy",
+          undecodable);
     }
   }
 
@@ -536,14 +574,29 @@ public class ManifestSynthesisScenario
       return Optional.empty();
     }
     try {
-      return Optional.of(FACET_READER.treeToValue(image, ImageState.class));
-    } catch (IOException | IllegalArgumentException undecodable) {
+      return Optional.of(CODEC.fromMap(image, ImageState.class));
+    } catch (IllegalArgumentException undecodable) {
       throw new IllegalStateException(
           "HEAD records an image this build cannot decode (a recording that predates a field this"
               + " ImageState requires, or a shape change); refusing to render as though the cluster"
               + " had no image",
           undecodable);
     }
+  }
+
+  /**
+   * The fabric bridge, PASSED THROUGH as an Optional rather than resolved here. Its absence becomes
+   * an error in {@link ManifestSynthesisContext#fabricBridgeParent()}, when a unit actually poses
+   * devices — resolving it at this point failed renders that never needed it, the surveyed
+   * materialiser among them.
+   *
+   * <p>Only the FABRIC bridge is recorded, and the asymmetry with vmnet is not an oversight: a
+   * bare-metal has ONE fabric bridge shared by every cluster it hosts, while the vmnet bridge is
+   * per-cluster — and a manager's branch renders the pools of SEVERAL clusters, so there is no
+   * single vmnet value at this scope. The blueprint derives that one per cluster instead.
+   */
+  private static Optional<String> fabricBridgeParent(ManifestsRunbookInput input) {
+    return input.network().map(ManifestsRunbookInput.NetworkFacet::fabricBridgeParent);
   }
 
   /**
@@ -732,7 +785,7 @@ public class ManifestSynthesisScenario
       // carried because the render poses the devices and cannot derive this one (the vmnet bridge
       // it
       // derives from the cluster's role).
-      String fabricBridgeParent,
+      Optional<String> fabricBridgeParent,
       List<WorkloadTarget> targets,
       Optional<WorkloadBootstrapBundlesMaterial> bundles) {}
 
@@ -1179,7 +1232,7 @@ public class ManifestSynthesisScenario
                     .build(),
                 root,
                 facet.image(),
-                facet.network().fabricBridgeParent(),
+                fabricBridgeParent(facet),
                 List.of(),
                 Optional.empty()),
             materials);
@@ -1251,7 +1304,7 @@ public class ManifestSynthesisScenario
                   identity(),
                   root,
                   facet.image(),
-                  facet.network().fabricBridgeParent(),
+                  fabricBridgeParent(facet),
                   facet.facets().workloadTargets(),
                   workloadBundles),
               materials);

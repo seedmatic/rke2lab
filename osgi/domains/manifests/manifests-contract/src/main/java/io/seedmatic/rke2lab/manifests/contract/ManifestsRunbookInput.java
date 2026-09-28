@@ -4,6 +4,7 @@ import io.seedmatic.rke2lab.manifests.contract.profiles.ImageState;
 import io.seedmatic.rke2lab.seed.broker.port.Amendment;
 import io.seedmatic.rke2lab.seed.broker.port.SeedContract;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -73,7 +74,7 @@ public record ManifestsRunbookInput(
    * consumer has no interest in which facet holds it, and {@code input.facets().network()} stutters
    * because the reader must then know both.
    */
-  public NetworkFacet network() {
+  public Optional<NetworkFacet> network() {
     return facets().network();
   }
 
@@ -145,7 +146,7 @@ public record ManifestsRunbookInput(
       DebugFacet debug,
       DeliveryFacet delivery,
       List<WorkloadTarget> workloadTargets,
-      NetworkFacet network) {
+      Optional<NetworkFacet> network) {
 
     /**
      * Coalesce absent sub-facets to their defaults — the host contributes the {@code
@@ -171,7 +172,7 @@ public record ManifestsRunbookInput(
       // the
       // render the first time that path ever ran (measured 2026-09-28 — the stale PaC trigger had
       // hidden it).
-      network = network != null ? network : NetworkFacet.unknown();
+      network = network != null ? network : Optional.empty();
     }
 
     public static Builder builder() {
@@ -186,12 +187,12 @@ public record ManifestsRunbookInput(
       private DebugFacet debug = DebugFacet.disabled();
       private DeliveryFacet delivery = DeliveryFacet.defaults();
       private List<WorkloadTarget> workloadTargets = List.of();
-      private NetworkFacet network = NetworkFacet.unknown();
+      private Optional<NetworkFacet> network = Optional.empty();
 
       private Builder() {}
 
       public Builder network(NetworkFacet network) {
-        this.network = network;
+        this.network = Optional.of(network);
         return this;
       }
 
@@ -222,19 +223,28 @@ public record ManifestsRunbookInput(
    * declaration on the host side of the membrane. The vmnet bridge is NOT here: it follows the
    * cluster's role, so the blueprint derives it and restating it would duplicate a convention.
    *
-   * <p>{@link #unknown()} when unamended (a bare survey, a unit test): a blank parent renders a
-   * device with an empty parent, which is visibly wrong in a manifest — preferable to a plausible
-   * default that silently attaches a node to the wrong bridge.
+   * <p>⚠️ There is no {@code unknown()} sentinel. It used to carry a BLANK parent to mean
+   * "unamended", and a blank string is the same mistake as a null: a value that is PRESENT and
+   * meaningless, which every consumer must then remember to test. Measured 2026-09-28 — one did
+   * not, and the render published {@code parent=} for every node, a tree Flux would have applied
+   * over a correct live value. So absence lives in the TYPE: {@link Facets#network()} is an {@link
+   * Optional}, and a consumer that needs the bridge resolves it once and fails there.
    */
   public record NetworkFacet(String fabricBridgeParent) {
 
     public NetworkFacet {
-      fabricBridgeParent = fabricBridgeParent == null ? "" : fabricBridgeParent;
-    }
-
-    /** Unamended — no operator network concern reached this render. */
-    public static NetworkFacet unknown() {
-      return new NetworkFacet("");
+      Objects.requireNonNull(fabricBridgeParent, "fabricBridgeParent");
+      // Refused AT THE BOUNDARY — the canonical constructor is where jackson turns the recorded
+      // yaml
+      // into a typed value, so this is the one place that can guarantee the rest of the render
+      // never
+      // meets a present-but-meaningless bridge. Checking downstream instead is what let `parent=`
+      // reach a published manifest.
+      if (fabricBridgeParent.isBlank()) {
+        throw new IllegalArgumentException(
+            "fabricBridgeParent is blank — a NetworkFacet that exists must name a bridge; absence is"
+                + " expressed by Optional.empty(), never by an empty string");
+      }
     }
   }
 

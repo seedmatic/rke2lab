@@ -34,11 +34,12 @@ public record ManifestSynthesisRequest(
     /*
      * The bridge every node's fabric NIC attaches to — an OPERATOR declaration from the host's
      * rke2lab:network: concern, which the render cannot derive (unlike the vmnet bridge, which follows
-     * the cluster's role and comes from the blueprint). Blank when unamended: a device with an empty
-     * parent is visibly wrong in a rendered manifest, which beats a plausible default that would
-     * silently attach a node to the wrong bridge.
+     * the cluster's role and comes from the blueprint). EMPTY when unamended, never a blank string:
+     * absence belongs to the type, so no consumer has to recognise a present-but-meaningless value.
+     * {@link ManifestSynthesisContext#fabricBridgeParent()} is the one place it becomes an error, and
+     * only for a render that actually poses devices — a survey that never asks never fails.
      */
-    String fabricBridgeParent,
+    Optional<String> fabricBridgeParent,
     Optional<IncusIdentityMaterial> incusIdentity,
     Optional<OperatorPkiMaterial> operatorPki,
     Optional<GithubAppMaterial> githubApp,
@@ -73,7 +74,7 @@ public record ManifestSynthesisRequest(
         Objects.requireNonNull(
             componentVersions, "componentVersions is required (no blank-version default)");
     imageState = imageState == null ? Optional.empty() : imageState;
-    fabricBridgeParent = fabricBridgeParent == null ? "" : fabricBridgeParent;
+    fabricBridgeParent = fabricBridgeParent == null ? Optional.empty() : fabricBridgeParent;
     incusIdentity = incusIdentity == null ? Optional.empty() : incusIdentity;
     operatorPki = operatorPki == null ? Optional.empty() : operatorPki;
     githubApp = githubApp == null ? Optional.empty() : githubApp;
@@ -228,7 +229,7 @@ public record ManifestSynthesisRequest(
     private BootstrapIdentity bootstrapIdentity = BootstrapIdentity.unknown();
     private ComponentVersions componentVersions = ComponentVersions.defaults();
     private Optional<ImageState> imageState = Optional.empty();
-    private String fabricBridgeParent = "";
+    private Optional<String> fabricBridgeParent = Optional.empty();
     private Optional<IncusIdentityMaterial> incusIdentity = Optional.empty();
     private Optional<OperatorPkiMaterial> operatorPki = Optional.empty();
     private Optional<GithubAppMaterial> githubApp = Optional.empty();
@@ -254,7 +255,7 @@ public record ManifestSynthesisRequest(
       return this;
     }
 
-    public Builder fabricBridgeParent(final String v) {
+    public Builder fabricBridgeParent(final Optional<String> v) {
       this.fabricBridgeParent = v;
       return this;
     }

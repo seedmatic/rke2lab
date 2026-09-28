@@ -122,7 +122,7 @@ class ClusterApiRenderTest {
             .imageState(Optional.of(imageState()))
             .workloadTargets(TARGETS)
             .manifestDomainPolicy(Optional.of(POLICY))
-            .fabricBridgeParent(FABRIC_BRIDGE)
+            .fabricBridgeParent(Optional.of(FABRIC_BRIDGE))
             .build();
 
     try (var bound = ManifestSynthesisContext.of(request).bind()) {

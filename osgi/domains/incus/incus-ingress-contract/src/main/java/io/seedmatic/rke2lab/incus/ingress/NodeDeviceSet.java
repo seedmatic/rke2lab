@@ -66,6 +66,13 @@ public record NodeDeviceSet(List<Device> devices) {
       final String fabricBridgeParent, final String vmnetBridgeName) {
     Objects.requireNonNull(fabricBridgeParent, "fabricBridgeParent");
     Objects.requireNonNull(vmnetBridgeName, "vmnetBridgeName");
+    // No emptiness test here, deliberately: absence belongs to the TYPE, not to a value this would
+    // have to recognise. The facet carries Optional<NetworkFacet> and its consumer resolves it, so
+    // a
+    // blank parent never reaches this point and nothing downstream must remember to check for one.
+    // The alternative was measured on 2026-09-28: a sentinel blank meaning "unamended" travelled
+    // through unchecked and the render published `parent=` for every node, a tree Flux would have
+    // applied over a correct live value.
     final List<Device> devices = new ArrayList<>();
     devices.add(new Device("root", "disk", ordered("path", "/", "pool", ROOT_POOL)));
     devices.add(unixChar("kmsg.dev", "/dev/kmsg"));
