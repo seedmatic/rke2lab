@@ -627,8 +627,8 @@ cross-domain ordering.
 | The cluster domain — `ClusterRuntimeNamespaceManifestsUnit` (runtime namespace setup).
 
 | `ClusterApiDomainRegistrar`
-| The cluster-api domain — Incus-identity Secret, image-state ConfigMap, the CAPI operator and the
-  cluster kubeconfig units.
+| The cluster-api domain — Incus-identity Secret, the `NodeImage` describing the realised node-base,
+  the CAPI operator and the cluster kubeconfig units.
 
 | `NetworkingDomainRegistrar`
 | The networking domain — Cilium (config + advanced), Envoy Gateway, KDNS units; depends on the

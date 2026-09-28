@@ -25,6 +25,7 @@ import io.seedmatic.rke2lab.incus.ingress.GrowImageView;
 import io.seedmatic.rke2lab.incus.ingress.GrowNetworkView;
 import io.seedmatic.rke2lab.incus.ingress.IngressConfig;
 import io.seedmatic.rke2lab.incus.ingress.InstanceGrowPlan;
+import io.seedmatic.rke2lab.incus.ingress.NodeRuntimeContract;
 import io.seedmatic.rke2lab.incus.ingress.SplitImageFingerprint;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -325,84 +326,13 @@ public final class InstanceGrow {
   }
 
   /**
-   * The privileged-container config the {@code node} profile carries — the CAPN default kernel set
-   * MINUS the legacy iptables trio the nftables-only kernel-6.18 substrate dropped
-   * (ip_tables/ip6_tables/iptable_raw FATAL modprobe), PLUS what cilium needs given that choice:
-   * xfrm_user for its route reconciler, and nft_compat with the xt_* extensions so its iptables-nft
-   * rules can be installed at all. Single source for standalone + CAPN nodes.
+   * The privileged-container config the {@code node-base} profile carries, taken from the ONE
+   * definition both sides of the host↔cluster seam read: {@link NodeRuntimeContract}. The
+   * in-cluster controller poses the same contract on {@code LXCMachine.spec.config}, where instance
+   * config WINS over this profile — so stating it twice let the deciding copy drift, and it did.
    */
   private Map<String, String> nodeProfileConfig() {
-    final Map<String, String> config = new LinkedHashMap<>();
-    config.put(
-        "raw.lxc",
-        String.join(
-            "\n",
-            "lxc.mount.auto = proc:rw sys:rw cgroup:rw",
-            "lxc.apparmor.profile = unconfined",
-            "lxc.cap.drop ="));
-    config.put("security.privileged", "true");
-    config.put("security.nesting", "true");
-    config.put("security.syscalls.intercept.bpf", "true");
-    config.put("security.syscalls.intercept.bpf.devices", "true");
-    // The cilium block below is what a nftables-only substrate has to give back, and every entry
-    // was
-    // established by loading it and watching the agent, not by guessing.
-    //
-    // xfrm_user: the agent's route reconciler calls safenetlink.NewHandle(nil), and a handle with
-    // no
-    // family list opens a socket for EVERY supported family — NETLINK_ROUTE, NETLINK_XFRM,
-    // NETLINK_NETFILTER.  Without it the XFRM socket returns EPROTONOSUPPORT and the start hook
-    // dies
-    // with "protocol not supported", so the agent never runs at all.
-    //
-    // nft_compat + the xt_* extensions: cilium ships iptables v1.8.8 with the nf_tables backend,
-    // and
-    // that backend realises `-m mark`, `-m comment`, `-j CT`, `-j TPROXY` through nft_compat.  With
-    // nft_compat absent every such rule fails ("Extension mark revision 0 not supported"), the
-    // agent's iptables reconciliation loop stays Degraded, and only 10 of its 34 rules land.  The
-    // consequence is subtle and total: the missing rules are the ones that stamp MARK_MAGIC_HOST on
-    // host-originated traffic, so inherit_identity_from_host() (bpf/lib/identity.h) falls to its
-    // else-branch and returns WORLD_ID — and resolve_srcid_ipv4() (bpf/bpf_host.c) then
-    // DELIBERATELY
-    // refuses to promote it back, because under ingress SNAT a world packet also carries the host's
-    // source IP.  So every host→pod packet is `world-ipv4`, and any pod carrying a policy denies
-    // the
-    // kubelet's health probes: flux's controllers sat 0/1 forever while the ipcache and the policy
-    // map both said `reserved:host` with zero packets matched.  Loading these took the rule count
-    // 10 → 34 and flux to 1/1.
-    //
-    // xt_comment/xt_conntrack are in the same rules; they happen to be live on bioskop-nixos from
-    // its own configuration, and are named here so the node does not depend on that.
-    //
-    // This belongs HERE rather than in the hypervisor's NixOS config (ndh carried an orphan
-    // modules/nixos/cilium-kernel-modules.nix that nothing imported, and that listed ip_set/xt_set
-    // —
-    // everything except what mattered): a kernel need of rke2lab's nodes is rke2lab's to declare,
-    // and stated here it travels with the profile to whatever host runs the container, including a
-    // CAPN-grown node on another machine.  A container cannot modprobe for itself in any case: it
-    // has neither kernel nor module tree, so incus doing it on the host is the only mechanism there
-    // is.
-    config.put(
-        "linux.kernel_modules",
-        String.join(
-            ",",
-            "ip_vs",
-            "ip_vs_rr",
-            "ip_vs_wrr",
-            "ip_vs_sh",
-            "netlink_diag",
-            "nf_nat",
-            "overlay",
-            "br_netfilter",
-            "xt_socket",
-            "xfrm_user",
-            "nft_compat",
-            "xt_mark",
-            "xt_CT",
-            "xt_TPROXY",
-            "xt_comment",
-            "xt_conntrack"));
-    return config;
+    return NodeRuntimeContract.nodeBase().toIncusConfig();
   }
 
   /**

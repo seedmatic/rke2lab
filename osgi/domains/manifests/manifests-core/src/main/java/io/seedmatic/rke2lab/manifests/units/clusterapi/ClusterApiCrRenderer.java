@@ -1,6 +1,7 @@
 package io.seedmatic.rke2lab.manifests.units.clusterapi;
 
 import io.seedmatic.rke2lab.manifests.contract.ManifestAnnotation;
+import io.seedmatic.rke2lab.manifests.contract.profiles.ImageState;
 import io.seedmatic.rke2lab.manifests.contract.profiles.IncusIdentityMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.WorkloadClusterCasMaterial.Pair;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
@@ -269,6 +270,44 @@ public final class ClusterApiCrRenderer {
   }
 
   /**
+   * The {@code NodeImage} — the realised node-base image described to the cluster that boots on it:
+   * its identity, where it lives, the RKE2 it bakes, and the runtime contract an instance must
+   * carry to run it. One per cluster namespace, because every cluster receives the description of
+   * the resources it depends on.
+   *
+   * <p>Named by the image ALIAS, which is what a {@code PoolIntention} references. Rendered from a
+   * typed {@link NodeImageCr} rather than an inline map — see that record for why, and for what it
+   * still does not guarantee.
+   */
+  public ApiObject nodeImage(
+      final Construct scope,
+      final String namespace,
+      final ImageState image,
+      final PackageMetadataProfile profile,
+      final ApiObject branchNamespace) {
+    final String name = image.imageAlias();
+    final ApiObject nodeImage =
+        new ApiObject(
+            scope,
+            "nodeimage-" + name,
+            ApiObjectProps.builder()
+                .apiVersion("cluster.seedmatic.io/v1alpha1")
+                .kind("NodeImage")
+                .metadata(
+                    ApiObjectMetadata.builder()
+                        .name(name)
+                        .namespace(namespace)
+                        .annotations(
+                            profile.packageAnnotations(
+                                "cluster.seedmatic.io|NodeImage|" + namespace + "|" + name))
+                        .build())
+                .build());
+    nodeImage.addDependency(branchNamespace);
+    nodeImage.addJsonPatch(JsonPatch.add("/spec", NodeImageCr.of(image).toSpec()));
+    return nodeImage;
+  }
+
+  /**
    * The control-node {@code PoolIntention} — the pool-level intent seed-incluster reconciles into
    * the RKE2ControlPlane + LXCMachineTemplate + the owned per-pet Machine/LXCMachine. {@code role:
    * control-plane} derives the CAPI treatment (etcd members, the object the Cluster references).
@@ -284,7 +323,7 @@ public final class ClusterApiCrRenderer {
       final String vip,
       final int port,
       final String rke2Version,
-      final String imageFingerprint,
+      final String imageName,
       final List<String> petNames,
       final String incusMember,
       final PackageMetadataProfile profile,
@@ -317,7 +356,9 @@ public final class ClusterApiCrRenderer {
                 "namespace", namespace,
                 "pool", CONTROL_NODE_POOL,
                 "role", "control-plane",
-                "image", Map.of("fingerprint", imageFingerprint),
+                // NAMES the NodeImage in this namespace — the pool no longer embeds a fingerprint,
+                // so the controller derives the image pin AND the runtime contract from one object.
+                "image", Map.of("name", imageName),
                 "rke2Version", rke2Version,
                 "controlPlaneEndpoint", Map.of("host", vip, "port", port),
                 "nodes", nodes,

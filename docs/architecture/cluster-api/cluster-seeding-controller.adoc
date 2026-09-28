@@ -89,6 +89,14 @@ So the model is a **2×2**: two ROLES (intention vs mirror) across two GRAINS
 | **mirror** (controller-owned) | `ClusterAdoption` | `PoolAdoption`
 |===
 
+Beside the 2×2 sits one object that is neither an intention nor a mirror:
+**`NodeImage`**, a published FACT describing the node-base image the pools boot on —
+its identity and the runtime contract an instance needs to run it. A pool
+REFERENCES it by name (`spec.image.name`), and the reconciler derives both the
+`LXCMachineTemplate` image pin and its instance config from that one object. See
+link:node-image-lifecycle.adoc[Node image lifecycle] for why the image deserves an
+object (and what broke while it did not have one).
+
 * **`ClusterIntention`** (1/cluster) — the cluster-level intention: kind, remote
   (endpoint + per-remote CAPN identity), image, versions, VIP, CIDRs. Materialises
   `Cluster` + `LXCCluster`.
@@ -1467,6 +1475,10 @@ carries its primacy as the primary out-of-band seeder.
 
 == Related documentation
 
+* link:node-image-lifecycle.adoc[Node image lifecycle] — the `NodeImage` this controller
+  resolves: why the realised image is an object, the three names (fingerprint / generation
+  alias / floating alias) and their audiences, and the graved upgrade-campaign need (a bump
+  is a transient state of the cluster, so the producer publishes and the cluster plays).
 * link:../atlas/cluster-seeding.adoc[Atlas L1 — In-cluster seeding view] — the global
   vision / avant→après of this subsystem (Diagram W): the 2×2, the greenfield-arm, and the
   cluster→git reflector + `PoolReflection` turn to unconditional determinism. Start there

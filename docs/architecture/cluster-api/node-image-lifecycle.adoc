@@ -1,0 +1,332 @@
+= Node image lifecycle — the realised artifact as a resource
+:toc: left
+:toclevels: 3
+:icons: font
+
+== Overview — what, why, the problem it solves
+
+The nix-built node-base image is ONE artifact. Until the `NodeImage` CR it had no
+owning object, and its identity was *shredded* across the CRs that consumed
+pieces of it:
+
+[options="header"]
+|===
+| `ImageState` field | Where it landed | Consumer
+| `imageFingerprint` | embedded inside each pool's spec | the `LXCMachineTemplate` image pin
+| `rke2Version` | a sibling scalar beside it | `RKE2ControlPlane.spec.version`
+| `incusProject` | inside the CAPN identity Secret | CAPN
+| `imageAlias` | a `<cluster>-image-state` ConfigMap | *nothing*
+| `imageBuildChecksum` | idem | *nothing*
+| `incusRemoteAddress` | idem | *nothing*
+|===
+
+Three of six fields existed only to fill a ConfigMap **no component ever read** —
+a fossil of the "Stage A → Stage B / seed-peers" era, superseded by the intention
+CRs which carry the fingerprint directly. The unit that rendered it is deleted.
+
+★ The cost was not the dead ConfigMap. It is that *because no object owned the
+image, the runtime contract of that image had nowhere to live* — so it was stated
+twice, once on rke2lab's host-side `node-base` incus profile and once inline in
+the in-cluster controller, and the two DIVERGED. The in-cluster copy carried nine
+kernel modules where the profile carried sixteen, missing exactly the entries each
+established by loading it and watching the cilium agent:
+
+* without `xfrm_user`, the agent's route reconciler opens a netlink socket for
+  every family, the XFRM one returns `EPROTONOSUPPORT`, and the start hook dies
+  with "protocol not supported" — the agent never runs;
+* without `nft_compat` + `xt_mark`/`xt_CT`/`xt_TPROXY`/`xt_comment`/`xt_conntrack`,
+  only 10 of its 34 iptables rules land; the missing ones stamp `MARK_MAGIC_HOST`
+  on host-originated traffic, so every host→pod packet reads as `world-ipv4` and
+  any pod carrying a policy denies the kubelet's health probes.
+
+⚠️ And the diverged copy is the one that WINS: the controller poses the contract on
+`LXCMachine.spec.config`, i.e. at INSTANCE level, which overrides both CAPN's
+embedded instance profile and our own profiles.
+
+One owner for the artifact makes that divergence structurally impossible rather
+than merely corrected.
+
+== The resource — `NodeImage`
+
+A published FACT, not an intention: the image exists on the source remote before
+the object is written, so there is no reconcile loop and no status — nothing is
+converged toward.
+
+[mermaid,node-image-publish-flow,svg]
+----
+flowchart LR
+  subgraph HOST["seed-master — the PRODUCER"]
+    BUILD["nix build node-base<br/>(the grow)"]
+    CONTRACT["NodeRuntimeContract.nodeBase()<br/>★ the ONE definition"]
+    AMEND["IMAGE_STATE amendment<br/>(JSON, over the membrane)"]
+  end
+
+  subgraph RENDER["manifests synthesis"]
+    STATE["ImageState record<br/>+ NodeRuntime"]
+    CR["NodeImage CR<br/>(typed NodeImageCr → toSpec)"]
+    POOL["PoolIntention<br/>spec.image.name → NodeImage"]
+  end
+
+  subgraph CLUSTER["the cluster that depends on it"]
+    FLUX["Flux applies the branch"]
+    REC["PoolAdoption reconciler"]
+    LXC["LXCMachineTemplate / LXCMachine<br/>image.fingerprint + spec.config"]
+  end
+
+  BUILD --> AMEND
+  CONTRACT --> AMEND
+  CONTRACT -->|"same value"| PROFILE["node-base incus profile<br/>(host GROW)"]
+  AMEND --> STATE
+  STATE --> CR
+  STATE --> POOL
+  CR --> FLUX
+  POOL --> FLUX
+  FLUX --> REC
+  REC -->|"resolves spec.image.name"| LXC
+
+  classDef host fill:#FFCDD2,stroke:#B71C1C
+  classDef render fill:#FFF9C4,stroke:#333
+  classDef incl fill:#C8E6C9,stroke:#333
+  class BUILD,CONTRACT,AMEND,PROFILE host
+  class STATE,CR,POOL render
+  class FLUX,REC,LXC incl
+----
+
+*Legend* — 🟥 host / producer · 🟨 the render (the published fact) · 🟩 in-cluster.
+
+The spec is modelled on the incus keys it becomes, not as an opaque map, so a
+missing field is a schema error rather than a silent default:
+
+[source,yaml]
+----
+kind: NodeImage
+spec:
+  alias: control-node
+  fingerprint: <sha256(metadata.tar.xz ++ rootfs.squashfs)>
+  buildChecksum: <sha256 of the build INPUTS>
+  rke2Version: v1.34.1+rke2r1        # normalised ONCE, by the producer
+  source:
+    endpoint: https://nixos.bioskop:8443   # the FABRIC FQDN — read from a pod
+    project: rke2lab                       # images are listed PER PROJECT
+  runtime:
+    kernelModules: [ip_vs, …, xfrm_user, nft_compat, xt_mark, xt_CT, xt_TPROXY]
+    rawLXC: |
+      lxc.mount.auto = proc:rw sys:rw cgroup:rw
+      …
+    security:
+      privileged: true
+      nesting: true
+      interceptBPF: true
+      interceptBPFDevices: true
+----
+
+ONE per cluster namespace: every cluster receives the description of the resources
+it depends on — the same reason `PoolIntention` duplicates its cluster-level facts
+rather than reaching for a shared object.
+
+=== Why the security flags are emitted even when false
+
+Instance config is what OVERRIDES CAPN's embedded profile, so a declared `false`
+has to be SENT to win over that profile's `true`. An omitted key silently inherits
+it.
+
+== Why a reference, not an embedded fingerprint
+
+`ImageRef` was always *called* a reference while embedding the fingerprint.
+
+[source,go]
+----
+// ❌ the pool embeds the artifact's hash — the artifact itself has no name
+type ImageRef struct { Fingerprint string }
+
+// ✅ the pool NAMES the NodeImage that describes the artifact
+type ImageRef struct { Name string }
+----
+
+The decisive argument is the upgrade: with an embedded fingerprint there is no
+name for the *old* artifact and no way to express "both exist, this one is in
+use". A reference makes the generation addressable, so rolling a pool becomes
+changing one reference instead of mutating an inner value.
+
+And the controller now derives BOTH the image pin AND the runtime contract from
+the one object it resolved — they cannot disagree.
+
+== Three names, three audiences
+
+[options="header"]
+|===
+| Name | Audience | Rule
+| *fingerprint* | provisioning | THE pin. `LXCMachineTemplate` pins this so a pool launches from the exact image that was built.
+| *generation alias* | the CR model | identity — addressable, so two generations can coexist as two objects.
+| *floating alias* | humans, CLI, observability | convenience only.
+|===
+
+❌ *Anti-pattern* — feeding the floating alias into provisioning:
+
+[source,yaml]
+----
+# NEVER: this silently restores "launch from whatever latest points at today"
+image:
+  alias: control-node     # floating
+----
+
+✅ Provisioning pins the fingerprint; the floating alias exists for
+`incus launch rke2lab:control-node` and for a human reading the image list.
+
+== The structured producer — a pilot
+
+`NodeImage` is the first of our own CRs rendered from a RECORD (`NodeImageCr`)
+rather than a hand-rolled `Map.of`. The record is the model; `toSpec()` flattens
+to maps only at the cdk8s edge — structured inside, flat at the boundary.
+
+What it buys: the field set becomes the compiler's business on the producing side,
+and the shape has one readable definition.
+
+⚠️ What it does NOT buy: proof of agreement with the deployed CRD schema. The
+component names still match the Go struct tags by CONVENTION. Proving it needs
+POJOs generated from the CRD — the graved target (fabric8 `java-generator` over
+the CRDs this build already stages into `target/generated-resources/crds`). This is
+the structured *producer*, not the generated contract.
+
+Adopting the pattern on a NEW object is deliberate: it seeds the target pattern
+without leaving the existing CR set half-migrated.
+
+== Future need — generations and upgrade campaigns
+
+NOT BUILT. Graved here because the alias is now load-bearing (it names the CR), so
+the shape of the future need constrains the present model.
+
+=== The need
+
+A node upgrade campaign rolls one node at a time, so old and new images must
+coexist in incus for the duration. That calls for a generation increment on the
+alias plus a floating alias for humans.
+
+★ *A bump is a TRANSIENT STATE of the cluster* — which settles the ownership:
+`seed-master` PRODUCES images and never decides who runs them; the campaign is
+PLAYED in-cluster.
+
+[mermaid,node-image-generation-ownership,svg]
+----
+flowchart TB
+  CELLAR["cellar (host)<br/>the ledger of what was PRODUCED<br/>generation ordinal ↔ checksum"]
+  FACET["branch facet<br/>the TARGET generation per cluster<br/>EDIT changes it · UPDATE preserves it"]
+  ROLL["in-cluster rollout<br/>PLAYS the roll — one node at a time,<br/>health gate, rollback<br/>writes effective state as a reflection"]
+
+  CELLAR -->|"publishes a generation"| FACET
+  FACET -->|"declares a desire"| ROLL
+  ROLL -.->|"reflection"| FACET
+
+  classDef host fill:#FFCDD2,stroke:#B71C1C
+  classDef seam fill:#FFF9C4,stroke:#333
+  classDef incl fill:#C8E6C9,stroke:#333
+  class CELLAR host
+  class FACET seam
+  class ROLL incl
+----
+
+The host publishes a *desire*, the cluster owns the *execution*. So the render
+legitimately owns the TARGET while the cluster owns the EFFECTIVE state — no
+two-owners conflict on one field.
+
+=== The generation is content-derived; the cellar keeps the ordinal
+
+`alias = <base>-<buildChecksum[0..8]>`. A counter alone is state someone must own
+and is ambiguous across two hosts; a checksum is already computed, idempotent
+(rebuilding identical inputs yields the same alias, so the grow does not churn),
+and matches the existing precedent — the fingerprint itself is content-derived.
+
+The cellar keeps the *ordinal* (generation 7 = checksum `abc`): the checksum is the
+identity, the cellar is the history, and it is what a future incus image pruner
+would consult.
+
+⚠️ The alias becomes the CR object name, so it must be DNS-1123 — the rke2 version
+(`1.34.1+rke2r1`) cannot go in raw.
+
+=== ⚠️ Two measured obstacles
+
+*1. No seam holds an in-cluster decision today — on EITHER side.*
+
+On the CR side, `poolintention_controller.go` reconciles the mirror with
+`CreateOrUpdate` and assigns `adoption.Spec = specFromPoolIntention(pi)` **wholesale
+on every pass**. The `PoolAdoption` is therefore a COPY, not an ownership boundary: a
+campaign writing it is reverted within seconds, and one writing the `PoolIntention`
+is reverted by the next Flux sync. This is the same two-owners-one-field trap
+already paid on the tailscale-owned `Service.spec.externalName`.
+
+On the branch side there IS durable state — the branch root records a render
+context `{source, facet, image}`, so the whole `ImageState` already survives there
+and a steady-state render replays it rather than emptying the CR set (the incus
+scion runs only at the grow). Read → decode → re-serialise is a fixpoint, so
+replaying causes no commit churn.
+
+⚠️ But its precedence is "a live seeded image (a GROW) wins; else replay HEAD". So
+the branch holds an in-cluster decision only against in-cluster renders
+(`UPDATE` = HEAD wins) — **the next host grow re-asserts it**. The rule that falls
+out is general and worth stating once:
+
+[quote]
+A cluster-owned decision cannot live in a place the grow re-asserts.
+
+So the target generation belongs neither in the recorded `ImageState` (the grow
+overwrites it) nor in the copied mirror (the reconcile overwrites it). It needs a
+home whose owner is the cluster — which is why a campaign wants its own object.
+
+*2. The pruning render, not incus, is what makes images hard to keep.* Every render
+directory carries `prune: true`, so a generation-stamped alias changes the object
+name on each rebuild and Flux DELETES the previous generation's `NodeImage`.
+
+✅ *Bounded answer* — the render emits the `NodeImage` of the target generation AND
+the previous one. A window of two, because a roll happens precisely between two
+generations. Coexistence becomes bounded by construction rather than by a garbage
+collector nobody wrote.
+
+=== Costs to price before starting
+
+* `ScenarioCellar` / `SeedRunLedger` is design-converged, *code not started* — this
+  path leans on a foundation that does not exist yet.
+* `RenderMode.overrides` is `Map<String, Boolean>`, deliberately boolean-only "so
+  the contract stays jackson-free", and its paths reach `debug` / `delivery` /
+  `workloadTargets` — the `Facets` sub-map, NOT the recorded `image` beside it. A
+  generation is neither a boolean nor reachable by those paths, so using `EDIT` as
+  the bump trigger means widening it on both axes.
+* A campaign is a STATE, not a field — ordering, one node at a time, a health gate
+  between nodes, rollback. That is an object with a status, not a copied scalar.
+
+Which generations are live is a CLUSTER fact (who is using what), not a producer
+fact. The producer publishes one generation; the cluster accumulates and decides.
+
+== Troubleshooting
+
+`PoolAdoption` stays `MaterialReady=False` with reason `ImageMissing`::
+The reconciler is waiting for Flux to apply the `NodeImage` named by
+`spec.image.name` in the pool's namespace. Check the render actually emitted it
+(the units no-op when no `ImageState` is bound — a bare survey or a secret-blind
+in-cluster render) and that Flux has synced the branch. The wait is deliberate:
+without the object the contract would have to be guessed, which is how the two
+copies diverged.
+
+A node comes up but cilium's agent never runs ("protocol not supported")::
+The instance is missing `xfrm_user`. Check
+`incus config get <instance> linux.kernel_modules` against
+`NodeImage.spec.runtime.kernelModules` — instance config wins over the profile, so
+the instance value is the one that decides.
+
+Flux keeps deleting a `NodeImage`::
+Expected while the render emits only one generation and the object name changes
+(see the pruning obstacle above). Coexistence needs the two-generation window.
+
+== Related Documentation
+
+* link:cluster-seeding-controller.adoc[Cluster Seeding Controller — seed-incluster] -
+  The controller that consumes this object; its 2×2 resource model is what
+  `NodeImage` sits beside.
+* link:management-workload-topology.adoc[Management / Workload Topology] -
+  Why a management cluster births and adopts the others, the relationship this
+  image description travels along.
+* link:manifests-rendered-branches.adoc[Manifests Rendered Branches] -
+  The delivery path (and the `prune: true` that constrains coexistence).
+* link:../osgi/host-cellar-realisation-spec.adoc[Host Cellar Realisation] -
+  The cellar proposed as the generation ledger.
+* link:../manifests/manifests-architecture.adoc[Manifests Architecture] -
+  Where the `cluster-api` domain's units live.

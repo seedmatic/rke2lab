@@ -178,7 +178,7 @@ in hand.
 
 Each unit declares an output directory (`<domain>/<outputDir>()`) where its manifests are
 exploded. A unit may legitimately produce *zero* manifests in a given mode — e.g.
-`ImageStateConfigMapManifestsUnit` skips when there is no real image identity. Without
+the cluster-api units skip when there is no real image identity bound. Without
 intervention, no output directory is created, and a downstream consumer expecting it (the
 explode step, a reader walking the per-resource tree) trips over the missing dir.
 

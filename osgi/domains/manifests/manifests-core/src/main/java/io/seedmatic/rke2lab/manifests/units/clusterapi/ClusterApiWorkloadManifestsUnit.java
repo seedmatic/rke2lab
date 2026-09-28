@@ -43,9 +43,9 @@ import software.constructs.Construct;
  * CANONICAL 4-server topology). Workers are a follow-up (none listed yet).
  *
  * <p>No-op when there are no targets (a mgmt-only / standalone run) or when no {@link ImageState}
- * is bound (a secret-blind in-cluster render / a bare survey): without the image fingerprint the
- * recipe would pin a non-existent image, so — like {@link ImageStateConfigMapManifestsUnit} — the
- * unit renders nothing rather than a misleading placeholder.
+ * is bound (a secret-blind in-cluster render / a bare survey): without the realised image the
+ * recipe would reference a {@code NodeImage} that describes nothing, so the unit renders nothing
+ * rather than a misleading placeholder.
  *
  * <p>The per-remote CAPN identity Secret {@code <host>-incus-identity} (foundation 5), the four
  * CAPRKE2 BYO-CA Secrets and the target's {@code <cluster>-server-manifests} bootstrap bundle are
@@ -145,10 +145,6 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
     // `rke2lab` project (instance names are globally unique via the blueprint), so the Secret is
     // keyed by the host (bioskop, nikopol). Rendered below, in THIS namespace.
     final String identitySecret = target.host() + "-incus-identity";
-    // CAPI/CAPRKE2 want the k8s version with a leading `v`; the nix-emitted rke2Version has none
-    // (e.g. `1.34.8+rke2r2`) — prefix it iff absent.
-    final String rke2Version =
-        image.rke2Version().startsWith("v") ? image.rke2Version() : "v" + image.rke2Version();
     // The workload's Incus remote — its host's engine (bioskop-nixos / nikopol-nixos). Intent
     // value;
     // the controller/CAPN authenticate from the identity Secret (which also carries `server`).
@@ -162,6 +158,9 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
     final String remoteEndpoint = "https://" + blueprint.names().nixosFabricFqdn() + ":8443";
 
     final ApiObject namespaceObject = renderer.namespace(scope, cluster, namespace, packageProfile);
+    // The realised image, described to the cluster that boots on it — the pool references it by
+    // name.
+    renderer.nodeImage(scope, namespace, image, packageProfile, namespaceObject);
     // The 2×2 intent: ONE cluster-level ClusterIntention + N pool-level PoolIntention (here just
     // the
     // control-node pool; worker pools are a follow-up). Both are Flux-owned and Flux-pruned;
@@ -193,8 +192,8 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
         namespace,
         vip,
         APISERVER_PORT,
-        rke2Version,
-        image.imageFingerprint(),
+        image.rke2Version(),
+        image.imageAlias(),
         pets,
         blueprint.names().nixosHost(),
         packageProfile,

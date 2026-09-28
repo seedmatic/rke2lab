@@ -102,10 +102,11 @@ public final class ClusterApiManagementManifestsUnit extends AbstractManifestsUn
     final int dash = cluster.lastIndexOf('-');
     final String host = dash < 0 ? cluster : cluster.substring(0, dash);
     final String identitySecret = host + "-incus-identity";
-    final String rke2Version =
-        image.rke2Version().startsWith("v") ? image.rke2Version() : "v" + image.rke2Version();
 
     final ApiObject namespaceObject = renderer.namespace(scope, cluster, namespace, packageProfile);
+    // The realised image, described to the cluster that boots on it — the pool references it by
+    // name.
+    renderer.nodeImage(scope, namespace, image, packageProfile, namespaceObject);
     // The 2×2 intent for the mgmt cluster's SELF-adoption: a cluster-level ClusterIntention + a
     // single-pet control-node PoolIntention (a management cluster is ONE control node). kind =
     // management records the federated role (birthed/adopted identically to a workload). The Incus
@@ -136,8 +137,8 @@ public final class ClusterApiManagementManifestsUnit extends AbstractManifestsUn
         namespace,
         vip,
         APISERVER_PORT,
-        rke2Version,
-        image.imageFingerprint(),
+        image.rke2Version(),
+        image.imageAlias(),
         pets,
         blueprint.names().nixosHost(),
         packageProfile,

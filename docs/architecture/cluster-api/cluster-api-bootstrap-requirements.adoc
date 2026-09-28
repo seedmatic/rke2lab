@@ -7,8 +7,10 @@ Plan for Phase 1 cleanup and flox environment architecture for cluster workloads
 == Overview
 
 Declarative CAPI/CAPN/CAPRKE2 installation runs via manifest layers: the Cluster API Operator with
-provider CRs, the Incus identity secret, the image-state ConfigMap (Stage A → Stage B handoff), the
-Flux GitRepository + root Kustomization, and the SOPS age Secret are all in place as manifest units.
+provider CRs, the Incus identity secret, the `NodeImage` describing the realised node-base
+(link:node-image-lifecycle.adoc[Node image lifecycle] — it replaced a write-only `image-state`
+ConfigMap), the Flux GitRepository + root Kustomization, and the SOPS age Secret are all in place as
+manifest units.
 
 This document covers what remains: (1) remove the old imperative clusterctl-based installation, (2)
 the flox-environment architecture for pod-level executable injection, (3) validating bootstrap with no
@@ -18,7 +20,7 @@ clusterctl dependency.
 ====
 Read against the management/workload separation (see the anchor,
 link:management-workload-topology.adoc[Management / Workload Topology]). Under the separation the
-`cluster-api` domain (operator + provider CRs + Incus identity + image-state ConfigMap) publishes to
+`cluster-api` domain (operator + provider CRs + Incus identity + the `NodeImage`) publishes to
 the *management* cluster *only* — that is where CAPI/CAPN/CAPRKE2 live. The `gitops` domain (Flux + the
 vCluster operator) publishes to the *workload* clusters. Two consequences for the units below: the
 `IncusIdentitySecretManifestsUnit` becomes *per-remote* (one identity secret per bare-metal — bioskop +
@@ -38,7 +40,9 @@ wired by `ClusterApiDomainRegistrar`):
 
 - `ClusterApiOperatorManifestsUnit` — operator + the Core/Infrastructure(CAPN)/ControlPlane+Bootstrap(CAPRKE2) provider CRs
 - `IncusIdentitySecretManifestsUnit` — CAPN identity Secret (becoming *per-remote*, see the IMPORTANT above)
-- `ImageStateConfigMapManifestsUnit` — the baked-image identity handoff to CAPN
+- the `NodeImage` rendered by the management/workload units — the realised node-base's identity AND
+  the runtime contract an instance needs to run it (link:node-image-lifecycle.adoc[Node image
+  lifecycle]). It superseded `ImageStateConfigMapManifestsUnit`, whose ConfigMap had no reader.
 - `ClusterKubeconfigManifestsUnit` — the cluster's kubeconfig Secret
 
 These render into the management cluster's rendered branch and reach it via Flux, not an imperative
