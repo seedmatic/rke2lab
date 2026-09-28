@@ -55,6 +55,8 @@ manage-tailnet.systems = ["aarch64-darwin"]
 k9s.pkg-path = "k9s"
 tektoncd-cli.pkg-path = "tektoncd-cli"
 clusterctl.pkg-path = "clusterctl"
+flox-mcp-server.pkg-path = "flox/flox-mcp-server"
+flox-mcp-server.pkg-group = "flox-mcp-server"
 
 
 ## Environment Variables ---------------------------------------------

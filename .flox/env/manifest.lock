@@ -40,6 +40,10 @@
         "version": "^3.3.27",
         "outputs": "all"
       },
+      "flox-mcp-server": {
+        "pkg-path": "flox/flox-mcp-server",
+        "pkg-group": "flox-mcp-server"
+      },
       "flux9s": {
         "flake": "github:seedmatic/rke2lab/feature/nixos-node-substrate#flux9s"
       },
@@ -266,6 +270,70 @@
     }
   },
   "packages": [
+    {
+      "attr_path": "flox-mcp-server",
+      "broken": false,
+      "derivation": "/nix/store/81niy9nvs7dqivb43h3v2nhvvxbcvxfr-flox-mcp-server-0.2.2.drv",
+      "description": "MCP server for Flox package manager",
+      "install_id": "flox-mcp-server",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/mcp-server?rev=97aa112badd2c6ac25d70229088a1a3317463725",
+      "name": "flox-mcp-server-0.2.2",
+      "pname": "flox-mcp-server",
+      "rev": "97aa112badd2c6ac25d70229088a1a3317463725",
+      "rev_count": 37,
+      "rev_date": "2026-08-19T14:52:11Z",
+      "scrape_date": "2026-09-27T20:47:05.250421Z",
+      "stabilities": [
+        "staging",
+        "unstable",
+        "stable"
+      ],
+      "unfree": false,
+      "version": "0.2.2",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "dist": "/nix/store/3nh50p6nqj50vf3x1ns2b27djwv58cv7-flox-mcp-server-0.2.2-dist",
+        "out": "/nix/store/gybr0dgyvb8w85riywiwc16gvl0yzsxw-flox-mcp-server-0.2.2"
+      },
+      "system": "aarch64-darwin",
+      "group": "flox-mcp-server",
+      "priority": 5
+    },
+    {
+      "attr_path": "flox-mcp-server",
+      "broken": false,
+      "derivation": "/nix/store/m1bvcw4kbcx02k2kq3kiw9qc03pl0msp-flox-mcp-server-0.2.2.drv",
+      "description": "MCP server for Flox package manager",
+      "install_id": "flox-mcp-server",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/mcp-server?rev=97aa112badd2c6ac25d70229088a1a3317463725",
+      "name": "flox-mcp-server-0.2.2",
+      "pname": "flox-mcp-server",
+      "rev": "97aa112badd2c6ac25d70229088a1a3317463725",
+      "rev_count": 37,
+      "rev_date": "2026-08-19T14:52:11Z",
+      "scrape_date": "2026-09-27T20:47:05.250423Z",
+      "stabilities": [
+        "staging",
+        "unstable",
+        "stable"
+      ],
+      "unfree": false,
+      "version": "0.2.2",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "dist": "/nix/store/givi9a1vmq7n4icskbja6n4410zz1c3m-flox-mcp-server-0.2.2-dist",
+        "out": "/nix/store/xa9r62ig2nxpiy7272pm2g909z634d70-flox-mcp-server-0.2.2"
+      },
+      "system": "aarch64-linux",
+      "group": "flox-mcp-server",
+      "priority": 5
+    },
     {
       "attr_path": "gh",
       "broken": false,
@@ -3372,6 +3440,64 @@
       "priority": 5
     },
     {
+      "install_id": "incus-client",
+      "locked-url": "github:seedmatic/rke2lab/f9af1297e4ddc77d3b2f1cb725ce94939e700b54?narHash=sha256-%2B6mlJa6Wu8WxmxP8OBbrNieYyzm9B6Y0k2rk%2BhOvubA%3D",
+      "flake-description": "RKE2 lab infrastructure and network blueprints",
+      "locked-flake-attr-path": "packages.aarch64-darwin.incus-client",
+      "derivation": "/nix/store/7ksq3h46dyrc75r24sv41x3chmpwq8w4-incus-client-7.4.0.drv",
+      "outputs": {
+        "out": "/nix/store/sz3r5yhrym5572glmqz1smnva2bd60sz-incus-client-7.4.0"
+      },
+      "output-names": [
+        "out"
+      ],
+      "outputs-to-install": [
+        "out"
+      ],
+      "requested-outputs-to-install": [],
+      "package-system": "aarch64-darwin",
+      "system": "aarch64-darwin",
+      "name": "incus-client-7.4.0",
+      "pname": "incus-client",
+      "version": "7.4.0",
+      "description": "Powerful system container and virtual machine manager",
+      "licenses": [
+        "Apache-2.0"
+      ],
+      "broken": false,
+      "unfree": false,
+      "priority": 5
+    },
+    {
+      "install_id": "incus-client",
+      "locked-url": "github:seedmatic/rke2lab/f9af1297e4ddc77d3b2f1cb725ce94939e700b54?narHash=sha256-%2B6mlJa6Wu8WxmxP8OBbrNieYyzm9B6Y0k2rk%2BhOvubA%3D",
+      "flake-description": "RKE2 lab infrastructure and network blueprints",
+      "locked-flake-attr-path": "packages.aarch64-linux.incus-client",
+      "derivation": "/nix/store/bkxsmg2fvsmssd7kiixc8k9nz5wxk82f-incus-client-7.4.0.drv",
+      "outputs": {
+        "out": "/nix/store/s4p9ypc24p94m25nfgjyja6xdari9r6h-incus-client-7.4.0"
+      },
+      "output-names": [
+        "out"
+      ],
+      "outputs-to-install": [
+        "out"
+      ],
+      "requested-outputs-to-install": [],
+      "package-system": "aarch64-linux",
+      "system": "aarch64-linux",
+      "name": "incus-client-7.4.0",
+      "pname": "incus-client",
+      "version": "7.4.0",
+      "description": "Powerful system container and virtual machine manager",
+      "licenses": [
+        "Apache-2.0"
+      ],
+      "broken": false,
+      "unfree": false,
+      "priority": 5
+    },
+    {
       "install_id": "jdk25",
       "locked-url": "github:seedmatic/rke2lab/c7b520d1443f89ea8d43b95b5a2568e4472ad92c?narHash=sha256-RO/6OMaVFUhJWskhHe/rFurKsA%2BZMvQlf7KXvC%2BaX5s%3D",
       "flake-description": "RKE2 lab infrastructure and network blueprints",
@@ -3430,6 +3556,29 @@
       "broken": false,
       "unfree": false,
       "priority": 1
+    },
+    {
+      "install_id": "manage-tailnet",
+      "locked-url": "github:seedmatic/rke2lab/f9af1297e4ddc77d3b2f1cb725ce94939e700b54?narHash=sha256-%2B6mlJa6Wu8WxmxP8OBbrNieYyzm9B6Y0k2rk%2BhOvubA%3D",
+      "flake-description": "RKE2 lab infrastructure and network blueprints",
+      "locked-flake-attr-path": "packages.aarch64-darwin.manage-tailnet",
+      "derivation": "/nix/store/00w8dlpqhi24j1vjqpw6p32r10mq2dsh-manage-tailnet.drv",
+      "outputs": {
+        "out": "/nix/store/jfh573625cx5sbb9yzjzf0b6n1wbhblk-manage-tailnet"
+      },
+      "output-names": [
+        "out"
+      ],
+      "outputs-to-install": [
+        "out"
+      ],
+      "requested-outputs-to-install": [],
+      "package-system": "aarch64-darwin",
+      "system": "aarch64-darwin",
+      "name": "manage-tailnet",
+      "broken": false,
+      "unfree": false,
+      "priority": 5
     },
     {
       "install_id": "maven",
@@ -3666,87 +3815,6 @@
       "broken": false,
       "unfree": false,
       "priority": 5
-    },
-    {
-      "install_id": "incus-client",
-      "locked-url": "github:seedmatic/rke2lab/f9af1297e4ddc77d3b2f1cb725ce94939e700b54?narHash=sha256-%2B6mlJa6Wu8WxmxP8OBbrNieYyzm9B6Y0k2rk%2BhOvubA%3D",
-      "flake-description": "RKE2 lab infrastructure and network blueprints",
-      "locked-flake-attr-path": "packages.aarch64-darwin.incus-client",
-      "derivation": "/nix/store/7ksq3h46dyrc75r24sv41x3chmpwq8w4-incus-client-7.4.0.drv",
-      "outputs": {
-        "out": "/nix/store/sz3r5yhrym5572glmqz1smnva2bd60sz-incus-client-7.4.0"
-      },
-      "output-names": [
-        "out"
-      ],
-      "outputs-to-install": [
-        "out"
-      ],
-      "requested-outputs-to-install": [],
-      "package-system": "aarch64-darwin",
-      "system": "aarch64-darwin",
-      "name": "incus-client-7.4.0",
-      "pname": "incus-client",
-      "version": "7.4.0",
-      "description": "Powerful system container and virtual machine manager",
-      "licenses": [
-        "Apache-2.0"
-      ],
-      "broken": false,
-      "unfree": false,
-      "priority": 5
-    },
-    {
-      "install_id": "incus-client",
-      "locked-url": "github:seedmatic/rke2lab/f9af1297e4ddc77d3b2f1cb725ce94939e700b54?narHash=sha256-%2B6mlJa6Wu8WxmxP8OBbrNieYyzm9B6Y0k2rk%2BhOvubA%3D",
-      "flake-description": "RKE2 lab infrastructure and network blueprints",
-      "locked-flake-attr-path": "packages.aarch64-linux.incus-client",
-      "derivation": "/nix/store/bkxsmg2fvsmssd7kiixc8k9nz5wxk82f-incus-client-7.4.0.drv",
-      "outputs": {
-        "out": "/nix/store/s4p9ypc24p94m25nfgjyja6xdari9r6h-incus-client-7.4.0"
-      },
-      "output-names": [
-        "out"
-      ],
-      "outputs-to-install": [
-        "out"
-      ],
-      "requested-outputs-to-install": [],
-      "package-system": "aarch64-linux",
-      "system": "aarch64-linux",
-      "name": "incus-client-7.4.0",
-      "pname": "incus-client",
-      "version": "7.4.0",
-      "description": "Powerful system container and virtual machine manager",
-      "licenses": [
-        "Apache-2.0"
-      ],
-      "broken": false,
-      "unfree": false,
-      "priority": 5
-    },
-    {
-      "install_id": "manage-tailnet",
-      "locked-url": "github:seedmatic/rke2lab/f9af1297e4ddc77d3b2f1cb725ce94939e700b54?narHash=sha256-%2B6mlJa6Wu8WxmxP8OBbrNieYyzm9B6Y0k2rk%2BhOvubA%3D",
-      "flake-description": "RKE2 lab infrastructure and network blueprints",
-      "locked-flake-attr-path": "packages.aarch64-darwin.manage-tailnet",
-      "derivation": "/nix/store/00w8dlpqhi24j1vjqpw6p32r10mq2dsh-manage-tailnet.drv",
-      "outputs": {
-        "out": "/nix/store/jfh573625cx5sbb9yzjzf0b6n1wbhblk-manage-tailnet"
-      },
-      "output-names": [
-        "out"
-      ],
-      "outputs-to-install": [
-        "out"
-      ],
-      "requested-outputs-to-install": [],
-      "package-system": "aarch64-darwin",
-      "system": "aarch64-darwin",
-      "name": "manage-tailnet",
-      "broken": false,
-      "unfree": false,
-      "priority": 5
     }
   ],
   "compose": {
@@ -3764,6 +3832,10 @@
         },
         "dasel": {
           "pkg-path": "dasel"
+        },
+        "flox-mcp-server": {
+          "pkg-path": "flox/flox-mcp-server",
+          "pkg-group": "flox-mcp-server"
         },
         "flux9s": {
           "flake": "github:seedmatic/rke2lab/feature/nixos-node-substrate#flux9s"
