@@ -139,7 +139,7 @@ public final class ClusterApiManagementManifestsUnit extends AbstractManifestsUn
         vip,
         APISERVER_PORT,
         image.rke2Version(),
-        image.imageAlias(),
+        ClusterApiCrRenderer.nodeImageName(cluster, image),
         NodeDeviceSet.forCluster(
                 ManifestSynthesisContext.current().fabricBridgeParent(),
                 blueprint.vmnetBridgeName())

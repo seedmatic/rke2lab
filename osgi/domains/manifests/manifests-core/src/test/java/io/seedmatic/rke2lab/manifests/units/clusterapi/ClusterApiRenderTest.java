@@ -169,6 +169,18 @@ class ClusterApiRenderTest {
   void requireEveryClusterGetsItsOwnNodeImage(@TempDir Path outdir) {
     final List<Map<String, Object>> documents = render(outdir, clusterApiUnits());
 
+    // Names must be DISTINCT, not just namespaces: the exploder writes one file per kind + name.
+    final List<String> names =
+        documents.stream()
+            .filter(d -> "NodeImage".equals(kindOf(d)))
+            .map(d -> (Map<String, Object>) d.get("metadata"))
+            .map(m -> String.valueOf(m.get("name")))
+            .sorted()
+            .toList();
+    assertEquals(
+        List.of("bioskop-mgmt-node-base", "bioskop-wrkld-node-base", "nikopol-mgmt-node-base"),
+        names);
+
     final List<String> namespaces =
         documents.stream()
             .filter(d -> "NodeImage".equals(kindOf(d)))
@@ -200,7 +212,11 @@ class ClusterApiRenderTest {
       // A REFERENCE, not an embedded fingerprint: the pool names the NodeImage that describes the
       // artifact, so the controller derives the image pin AND the runtime contract from one object.
       assertEquals(Set.of("name"), image.keySet());
-      assertEquals("node-base", image.get("name"));
+      // Cluster-SCOPED: every target renders into one cell and the exploder names files by object
+      // name, so a fleet-wide `node-base` would collapse two NodeImages onto one file — which it
+      // did,
+      // leaving bioskop-wrkld with none and its pool at ImageMissing.
+      assertEquals(String.valueOf(spec.get("clusterRef")) + "-node-base", image.get("name"));
     }
   }
 

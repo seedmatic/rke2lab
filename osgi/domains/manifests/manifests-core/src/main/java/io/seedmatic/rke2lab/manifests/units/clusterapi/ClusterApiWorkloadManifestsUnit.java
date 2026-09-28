@@ -194,7 +194,7 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
         vip,
         APISERVER_PORT,
         image.rke2Version(),
-        image.imageAlias(),
+        ClusterApiCrRenderer.nodeImageName(cluster, image),
         NodeDeviceSet.forCluster(
                 ManifestSynthesisContext.current().fabricBridgeParent(),
                 blueprint.vmnetBridgeName())

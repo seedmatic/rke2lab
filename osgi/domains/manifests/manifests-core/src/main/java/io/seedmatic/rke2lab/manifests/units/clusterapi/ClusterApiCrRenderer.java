@@ -294,7 +294,7 @@ public final class ClusterApiCrRenderer {
       final ImageState image,
       final PackageMetadataProfile profile,
       final ApiObject branchNamespace) {
-    final String name = image.imageAlias();
+    final String name = nodeImageName(cluster, image);
     final ApiObject nodeImage =
         new ApiObject(
             scope,
@@ -314,6 +314,26 @@ public final class ClusterApiCrRenderer {
     nodeImage.addDependency(branchNamespace);
     nodeImage.addJsonPatch(JsonPatch.add("/spec", NodeImageCr.of(image).toSpec()));
     return nodeImage;
+  }
+
+  /**
+   * The NodeImage's object name — ONE definition, so the CR and the {@code PoolIntention} that
+   * references it cannot disagree.
+   *
+   * <p>⚠️ Cluster-SCOPED, and that is not decoration. Every target renders into the SAME {@code
+   * cluster-api/cluster-api-workload} cell, and the exploder names each file by kind + object name
+   * — so two NodeImages both called {@code node-base} (legitimate in Kubernetes, being in different
+   * namespaces) collapse onto ONE file and the second silently overwrites the first. Measured
+   * 2026-09-28: the workload cell held a single {@code 02-nodeimage-node-base.yml} carrying {@code
+   * rke2lab-nikopol-mgmt}, so {@code bioskop-wrkld} had no NodeImage at all and its pool sat at
+   * {@code ImageMissing} — no machines, no master node.
+   *
+   * <p>It is also simply the convention its siblings follow ({@code clusterintention-<cluster>},
+   * {@code poolintention-<cluster>-control-node}): an object rendered per cluster into a shared
+   * cell carries the cluster in its name.
+   */
+  public static String nodeImageName(final String cluster, final ImageState image) {
+    return cluster + "-" + image.imageAlias();
   }
 
   /**
