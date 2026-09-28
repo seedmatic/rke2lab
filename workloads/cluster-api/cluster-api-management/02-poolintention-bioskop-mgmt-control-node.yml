@@ -12,8 +12,14 @@ spec:
   controlPlaneEndpoint:
     host: 10.80.7.10
     port: 6443
+  devices:
+  - "root,type=disk,path=/,pool=default"
+  - "kmsg.dev,type=unix-char,source=/dev/kmsg,path=/dev/kmsg"
+  - "zfs.dev,type=unix-char,source=/dev/zfs,path=/dev/zfs"
+  - "fabric0,type=nic,name=fabric0,nictype=bridged,parent=fabric-br"
+  - "vmnet0,type=nic,name=vmnet0,nictype=bridged,parent=vmnet-mgmt"
   image:
-    name: node-base
+    name: bioskop-mgmt-node-base
   namespace: rke2lab-bioskop-mgmt
   nodeLabels:
   - flox.seedmatic.io/enabled=true
