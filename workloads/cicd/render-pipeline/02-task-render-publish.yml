@@ -14,7 +14,7 @@ spec:
   - name: node
     type: string
   steps:
-  - image: rke2lab/flox-carrier:0.1.0
+  - image: rke2lab/flox-carrier:lh4jz7nkzwya42rgil5g232vz9rayqvf
     name: cache-prepare
     script: |
       #!/usr/bin/env bash
@@ -68,7 +68,7 @@ spec:
           key: ssh-private
           name: manifests-render-signing
           optional: true
-    image: rke2lab/flox-carrier:0.1.0
+    image: rke2lab/flox-carrier:lh4jz7nkzwya42rgil5g232vz9rayqvf
     name: render
     script: |
       #!/usr/bin/env bash
@@ -102,7 +102,7 @@ spec:
     - mountPath: /var/cache/rke2lab/maven
       name: maven-cache
     workingDir: $(workspaces.source.path)
-  - image: rke2lab/flox-carrier:0.1.0
+  - image: rke2lab/flox-carrier:lh4jz7nkzwya42rgil5g232vz9rayqvf
     name: cache-publish
     script: |
       #!/usr/bin/env bash

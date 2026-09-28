@@ -38,7 +38,7 @@ spec:
           value: bioskop-wrkld
         - name: REFLECTOR_WRITE
           value: "true"
-        image: rke2lab/flox-carrier:0.1.0
+        image: rke2lab/flox-carrier:lh4jz7nkzwya42rgil5g232vz9rayqvf
         imagePullPolicy: IfNotPresent
         livenessProbe:
           httpGet:

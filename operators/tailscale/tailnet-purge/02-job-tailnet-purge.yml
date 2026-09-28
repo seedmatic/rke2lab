@@ -74,7 +74,7 @@ spec:
             fi
             sleep 5
           done
-        image: rke2lab/flox-carrier:0.1.0
+        image: rke2lab/flox-carrier:lh4jz7nkzwya42rgil5g232vz9rayqvf
         name: purge
         volumeMounts:
         - mountPath: /etc/tailnet

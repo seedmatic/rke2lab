@@ -48,7 +48,7 @@ spec:
           # alone and never compares the issuer (feature/acme: shouldStartDomainRenewal is
           # ARI-or-expiry; the ACME directory URL is merely logged).
           printf '%s\n' 'STAGING' > "$dir/issuance"
-        image: rke2lab/flox-carrier:0.1.0
+        image: rke2lab/flox-carrier:lh4jz7nkzwya42rgil5g232vz9rayqvf
         name: mirror
         volumeMounts:
         - mountPath: /persist
