@@ -296,7 +296,78 @@ collector nobody wrote.
 Which generations are live is a CLUSTER fact (who is using what), not a producer
 fact. The producer publishes one generation; the cluster accumulates and decides.
 
+== Where the image identity SHOULD come from — the unwired seam
+
+NOT BUILT, and it contradicts part of what is built. Graved because it decides the shape
+of everything above.
+
+`host-cellar-realisation-spec.adoc` is explicit: the image fingerprint is a HARVEST
+conserved at the cellar and re-read by address, never a value handed around.
+
+[quote]
+when the synthesis genuinely needs the fingerprint, the manifests scion FETCHES the
+image scion's harvest from the cellar (`Cellar.fetch`), it does not receive it amended
+
+The same spec names `imageState` as a vestige of the former host bootstrap and says it
+"must STAY unwired". ⚠️ It has since been wired: `ManifestsRunbookInput` carries
+`@Amendment(IMAGE_STATE) Optional<ImageState>`, and the `NodeImage` CR described above is
+rendered FROM that amendment. So this document's own increment deepened the vestige
+rather than avoiding it.
+
+The spec's discriminator is what makes the target shape clear — amendments carry the
+*where* and the *posture*, never a CULTIVATED value (a fingerprint, a urn, a checksum):
+
+[options="header"]
+|===
+| Fact | Nature | Belongs on
+| `fingerprint`, `alias`, `buildChecksum` | CULTIVATED — produced by a build | the cellar, fetched by address
+| `source.endpoint`, `source.project` | where | may travel as an amendment
+| `runtime` (modules, `raw.lxc`, `security.*`) | a DECLARED CONSTANT of the recipe, not cultivated | may travel — but not nested inside the cultivated record
+|===
+
+So the target is not "delete the amendment": it is to split the two natures that
+`ImageState` currently fuses. The runtime contract is a constant and may be amended; the
+identity is a harvest and must be fetched. Today they ride together, which is why the one
+that must not travel does.
+
+=== The three sources of an image identity
+
+An absent artefact set is NOT an absent image, and the difference is what makes a survey
+honest:
+
+. *mint* — the live grow builds it;
+. *the cellar* — the previous run's harvest, read by address. The DESIGNED path, unwired
+  from the host grow today;
+. *the daemon* — the `node-base` alias a completed grow posed, which is why
+  `poseNodeBaseAliasAndGcImages` exists. Wired (`IncusImportLookup.nodeBaseFingerprint`),
+  and what makes a preview work on a fresh worktree: a new worktree empties the Pulumi
+  stack, not the daemon.
+
+Only when all three are silent is it an error — and then it must BE an error.
+
+=== The rule that governs both repairs
+
+Two defects here were the same shape, and the project had already named it
+(`destructive-gate-needs-three-valued-probe`, graved after the tart/diskutil incident):
+
+[quote]
+Under `prune: true`, emitting nothing IS AN ACT. So "I do not know" must fail, and only
+"there is nothing" may emit nothing.
+
+A read failure must never be allowed to become a delete, nor a guess.
+
 == Troubleshooting
+
+The grow fails with "no node-base image can be identified"::
+Neither source answered: no built artefacts (a surveying run builds none) and the daemon
+holds no `node-base` alias in the project. Mint one with a live grow. This is deliberate —
+it used to compute a fingerprint from whatever files happened to be on disk, which is why
+it appeared to work until the first run from a fresh worktree.
+
+The render fails with "HEAD records an image this build cannot decode"::
+The branch's recorded render context predates a field the current `ImageState` requires.
+A grow re-records it. The refusal is the point: emptying the render instead would prune
+the cluster's `ClusterIntention` / `PoolIntention`.
 
 `PoolAdoption` stays `MaterialReady=False` with reason `ImageMissing`::
 The reconciler is waiting for Flux to apply the `NodeImage` named by
