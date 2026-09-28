@@ -92,14 +92,15 @@ spec:
                 - port
                 type: object
               image:
-                description: Image pins the nix-built node-base the pool's LXCMachines
-                  boot on / adopt.
+                description: |-
+                  Image NAMES the NodeImage the pool's LXCMachines boot on / adopt — the realised node-base, with
+                  the runtime contract an instance needs to run it.
                 properties:
-                  fingerprint:
+                  name:
                     minLength: 1
                     type: string
                 required:
-                - fingerprint
+                - name
                 type: object
               namespace:
                 description: Namespace is where the CAPI CR-set, the owned PoolAdoption,

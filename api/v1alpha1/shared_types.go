@@ -23,11 +23,14 @@ type ClusterNetwork struct {
 	ServiceDomain string `json:"serviceDomain,omitempty"`
 }
 
-// ImageRef pins the nix-built node-base image by fingerprint — the SAME node-base the instances
-// boot on (so the adopted machine template matches).
+// ImageRef NAMES the NodeImage a cluster's pools boot on, resolved in the same namespace. A
+// reference, which is what it has always been called: it used to EMBED the fingerprint instead, so
+// the image had no owning object and everything else about it — the alias, the build checksum, the
+// baked RKE2 version, the source remote, and above all the runtime contract an instance needs to run
+// it — was either scattered across sibling fields or dropped. See NodeImage.
 type ImageRef struct {
 	// +kubebuilder:validation:MinLength=1
-	Fingerprint string `json:"fingerprint"`
+	Name string `json:"name"`
 }
 
 // Remote is the target Incus engine a cluster's nodes are provisioned on / adopted from —

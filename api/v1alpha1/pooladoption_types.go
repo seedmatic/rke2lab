@@ -28,7 +28,8 @@ type PoolAdoptionSpec struct {
 	// Role is the CAPI treatment (control-plane vs worker).
 	Role PoolRole `json:"role"`
 
-	// Image pins the nix-built node-base the pool's LXCMachines boot on / adopt.
+	// Image NAMES the NodeImage the pool's LXCMachines boot on / adopt — the realised node-base, with
+	// the runtime contract an instance needs to run it.
 	Image ImageRef `json:"image"`
 
 	// RKE2Version is the CAPRKE2 version for this pool.

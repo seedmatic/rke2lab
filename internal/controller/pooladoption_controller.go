@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -41,6 +43,7 @@ type PoolAdoptionReconciler struct {
 
 // +kubebuilder:rbac:groups=cluster.seedmatic.io,resources=pooladoptions,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=cluster.seedmatic.io,resources=pooladoptions/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=cluster.seedmatic.io,resources=nodeimages,verbs=get;list;watch
 // +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=machines,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=rke2controlplanes,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=lxcmachines,verbs=get;list;watch;create;update;patch;delete
@@ -121,8 +124,27 @@ func (r *PoolAdoptionReconciler) reconcileSteps(
 			"waiting for Flux to apply the RKE2 config ConfigMaps in "+spec.Namespace)
 		return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
 	}
+	// The node image this pool boots on — the realised artifact seed-master describes as a NodeImage:
+	// its fingerprint AND the runtime contract an instance must carry to run it (kernel modules,
+	// raw.lxc, security.*). Gated like the config above, and for a sharper reason: the contract used to
+	// be RESTATED here as a literal, which let it drift from rke2lab's host-side `node-base` profile
+	// and lose xfrm_user, nft_compat and the four xt_* extensions. Reading it from the one object that
+	// owns the image makes that divergence impossible rather than merely corrected, so a missing
+	// NodeImage must WAIT — never fall back to a guess.
+	var image adoptionv1alpha1.NodeImage
+	if err := r.Get(ctx,
+		types.NamespacedName{Namespace: spec.Namespace, Name: spec.Image.Name}, &image); err != nil {
+		if apierrors.IsNotFound(err) {
+			r.mark(a, adoptionv1alpha1.PoolConditionMaterialReady, false, "ImageMissing",
+				"waiting for Flux to apply NodeImage "+spec.Image.Name+" in "+spec.Namespace)
+			return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
+		}
+		r.mark(a, adoptionv1alpha1.PoolConditionMaterialReady, false, "Error", err.Error())
+		return ctrl.Result{}, err
+	}
+
 	r.mark(a, adoptionv1alpha1.PoolConditionMaterialReady, true, "MaterialReady",
-		"BYO-CA Secrets + bootstrap bundle + RKE2 config present")
+		"BYO-CA Secrets + bootstrap bundle + RKE2 config + NodeImage present")
 
 	// Resolve the roster + mode from the reflection (the reflector's git-only record) — the
 	// adopt-vs-greenfield switch, read DIRECTLY from git (immune to any Flux timing):
@@ -142,7 +164,7 @@ func (r *PoolAdoptionReconciler) reconcileSteps(
 	//    roster size), created paused (the RCP carries the paused annotation DIRECTLY — inert from
 	//    birth). The Cluster + LXCCluster are the ClusterAdoption's, not ours.
 	for _, obj := range []*unstructured.Unstructured{
-		r.lxcMachineTemplateObj(spec),
+		r.lxcMachineTemplateObj(spec, image),
 		r.rke2ControlPlaneObj(spec, true, len(roster), configFiles),
 	} {
 		// Own the pool CR-set for cascade GC: deleting the PoolAdoption (or, transitively, its parent
@@ -278,7 +300,7 @@ func (r *PoolAdoptionReconciler) reconcileSteps(
 				}
 				for _, obj := range []*unstructured.Unstructured{
 					r.bootstrapSecretObj(spec, st.name),
-					r.lxcMachineObj(spec, st.name),
+					r.lxcMachineObj(spec, st.name, image),
 					r.machineObj(spec, st.name, rcpUID),
 				} {
 					if err := ensure(ctx, r.Client, obj); err != nil {
@@ -632,10 +654,10 @@ func (r *PoolAdoptionReconciler) deletePetCRSet(
 ) error {
 	objs := []*unstructured.Unstructured{
 		r.machineObj(spec, nodeName, rcpUID),
-		r.lxcMachineObj(spec, infraName),
+		lxcMachineRef(spec, infraName),
 	}
 	if infraName != nodeName {
-		objs = append(objs, r.lxcMachineObj(spec, nodeName))
+		objs = append(objs, lxcMachineRef(spec, nodeName))
 	}
 	objs = append(objs, r.bootstrapSecretObj(spec, nodeName))
 	for _, obj := range objs {
@@ -646,22 +668,33 @@ func (r *PoolAdoptionReconciler) deletePetCRSet(
 	return nil
 }
 
-func (r *PoolAdoptionReconciler) lxcMachineTemplateObj(spec adoptionv1alpha1.PoolAdoptionSpec) *unstructured.Unstructured {
+func (r *PoolAdoptionReconciler) lxcMachineTemplateObj(
+	spec adoptionv1alpha1.PoolAdoptionSpec, image adoptionv1alpha1.NodeImage,
+) *unstructured.Unstructured {
 	obj := newObj(gvkLXCMachineTemplate, controlPlaneName(spec.ClusterName), spec.Namespace)
 	obj.Object["spec"] = map[string]any{
-		"template": map[string]any{"spec": lxcMachineSpec(spec.ClusterName, spec.Image.Fingerprint, spec.Target)},
+		"template": map[string]any{"spec": lxcMachineSpec(spec.ClusterName, image, spec.Target)},
 	}
 	return obj
 }
 
-func (r *PoolAdoptionReconciler) lxcMachineObj(spec adoptionv1alpha1.PoolAdoptionSpec, nodeName string) *unstructured.Unstructured {
-	obj := newObj(gvkLXCMachine, nodeName, spec.Namespace)
+func (r *PoolAdoptionReconciler) lxcMachineObj(
+	spec adoptionv1alpha1.PoolAdoptionSpec, nodeName string, image adoptionv1alpha1.NodeImage,
+) *unstructured.Unstructured {
+	obj := lxcMachineRef(spec, nodeName)
 	obj.SetLabels(map[string]string{clusterNameLabel: spec.ClusterName})
-	body := lxcMachineSpec(spec.ClusterName, spec.Image.Fingerprint, spec.Target)
+	body := lxcMachineSpec(spec.ClusterName, image, spec.Target)
 	// providerID = lxc:///<name> → CAPN adopts the existing instance (this pet is present).
 	body["providerID"] = "lxc:///" + nodeName
 	obj.Object["spec"] = body
 	return obj
+}
+
+// lxcMachineRef is an LXCMachine addressed by identity alone — the GVK, name and namespace a Delete
+// needs. Distinct from lxcMachineObj because the teardown path has no business resolving a NodeImage
+// just to build a spec the API server discards.
+func lxcMachineRef(spec adoptionv1alpha1.PoolAdoptionSpec, nodeName string) *unstructured.Unstructured {
+	return newObj(gvkLXCMachine, nodeName, spec.Namespace)
 }
 
 func (r *PoolAdoptionReconciler) machineObj(spec adoptionv1alpha1.PoolAdoptionSpec, nodeName string, rcpUID types.UID) *unstructured.Unstructured {
@@ -773,36 +806,55 @@ func (r *PoolAdoptionReconciler) rke2ControlPlaneObj(spec adoptionv1alpha1.PoolA
 //     hands out an IP — avahi/mDNS is IP-agnostic, no reservation). Order [node-<cluster>, node-base]
 //     — incus applies profiles left-to-right, node-base LAST = precedence.
 //
-// CONFIG is set INLINE here (not via the profiles): CAPN applies one of its embedded instance
-// profiles (kind/kubeadm/…, internal/static/embed/*.yaml) at the INSTANCE-config level, which
-// overrides our profiles — and every one of them sets linux.kernel_modules WITH the legacy iptables
-// trio (ip_tables/ip6_tables/iptable_raw) that FATAL-modprobes on the nftables-only kernel-6.18
-// substrate. LXCMachine.spec.config wins over that embedded default, so we re-assert the
-// kernel-6.18-safe set (+ the privileged raw.lxc/security our node-base needs) HERE.
+// CONFIG is set INLINE here (not via the profiles), and it comes from the NodeImage: CAPN applies one
+// of its embedded instance profiles (kind/kubeadm/…, internal/static/embed/*.yaml) at the
+// INSTANCE-config level, which overrides our profiles — and every one of them sets
+// linux.kernel_modules WITH the legacy iptables trio (ip_tables/ip6_tables/iptable_raw) that
+// FATAL-modprobes on the nftables-only kernel-6.18 substrate. LXCMachine.spec.config wins over that
+// embedded default, so the contract asserted HERE is the one that decides.
+//
+// ★ Which is exactly why it must be READ, not restated. This body used to carry the module list as a
+// literal, and it had drifted from rke2lab's host-side `node-base` profile: missing xfrm_user (without
+// which cilium's route reconciler dies on "protocol not supported") and nft_compat + the four xt_*
+// extensions (without which 10 of its 34 iptables rules land, host-originated traffic reads as
+// world-ipv4, and any pod carrying a policy denies the kubelet's health probes). One object owns the
+// image and its contract; both sides now derive from it.
+//
 // target is the Incus cluster member to create on; empty leaves the key out, which hands placement
 // back to Incus — it then picks the member with the fewest instances and breaks ties AT RANDOM. Set
 // it. The key is omitted rather than sent empty because CAPN treats "" as "no target given", and an
 // explicit empty string in the CR would read like a decision when it is the absence of one.
-func lxcMachineSpec(clusterName, fingerprint, target string) map[string]any {
+func lxcMachineSpec(
+	clusterName string, image adoptionv1alpha1.NodeImage, target string,
+) map[string]any {
 	spec := map[string]any{
 		"instanceType": "container",
 		"profiles":     []any{nodeProfileName(clusterName), "node-base"},
-		"image":        map[string]any{"fingerprint": fingerprint},
-		"config": map[string]any{
-			"raw.lxc":                                 "lxc.mount.auto = proc:rw sys:rw cgroup:rw\nlxc.apparmor.profile = unconfined\nlxc.cap.drop =",
-			"security.privileged":                     "true",
-			"security.nesting":                        "true",
-			"security.syscalls.intercept.bpf":         "true",
-			"security.syscalls.intercept.bpf.devices": "true",
-			// The CAPN embedded set MINUS the legacy iptables trio (ip_tables/ip6_tables/iptable_raw)
-			// the nftables-only kernel-6.18 substrate dropped — else incus FATAL-modprobes at start.
-			"linux.kernel_modules": "ip_vs,ip_vs_rr,ip_vs_wrr,ip_vs_sh,netlink_diag,nf_nat,overlay,br_netfilter,xt_socket",
-		},
+		"image":        map[string]any{"fingerprint": image.Spec.Fingerprint},
+		"config":       incusConfig(image.Spec.Runtime),
 	}
 	if target != "" {
 		spec["target"] = target
 	}
 	return spec
+}
+
+// incusConfig flattens a NodeRuntime onto the Incus instance-config keys it models. Every security
+// flag is emitted even when false: instance config is what OVERRIDES CAPN's embedded profile, so a
+// declared false has to be SENT to win over that profile's true — an omitted key would silently
+// inherit it.
+func incusConfig(runtime adoptionv1alpha1.NodeRuntime) map[string]any {
+	config := map[string]any{
+		"linux.kernel_modules":                    strings.Join(runtime.KernelModules, ","),
+		"security.privileged":                     strconv.FormatBool(runtime.Security.Privileged),
+		"security.nesting":                        strconv.FormatBool(runtime.Security.Nesting),
+		"security.syscalls.intercept.bpf":         strconv.FormatBool(runtime.Security.InterceptBPF),
+		"security.syscalls.intercept.bpf.devices": strconv.FormatBool(runtime.Security.InterceptBPFDevices),
+	}
+	if runtime.RawLXC != "" {
+		config["raw.lxc"] = runtime.RawLXC
+	}
+	return config
 }
 
 // nodeProfileName is the per-cluster incus profile carrying the node's NICs — the shared naming
