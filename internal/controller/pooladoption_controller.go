@@ -673,7 +673,7 @@ func (r *PoolAdoptionReconciler) lxcMachineTemplateObj(
 ) *unstructured.Unstructured {
 	obj := newObj(gvkLXCMachineTemplate, controlPlaneName(spec.ClusterName), spec.Namespace)
 	obj.Object["spec"] = map[string]any{
-		"template": map[string]any{"spec": lxcMachineSpec(spec.ClusterName, image, spec.Target)},
+		"template": map[string]any{"spec": lxcMachineSpec(image, spec.Devices, spec.Target)},
 	}
 	return obj
 }
@@ -683,7 +683,7 @@ func (r *PoolAdoptionReconciler) lxcMachineObj(
 ) *unstructured.Unstructured {
 	obj := lxcMachineRef(spec, nodeName)
 	obj.SetLabels(map[string]string{clusterNameLabel: spec.ClusterName})
-	body := lxcMachineSpec(spec.ClusterName, image, spec.Target)
+	body := lxcMachineSpec(image, spec.Devices, spec.Target)
 	// providerID = lxc:///<name> → CAPN adopts the existing instance (this pet is present).
 	body["providerID"] = "lxc:///" + nodeName
 	obj.Object["spec"] = body
@@ -800,11 +800,16 @@ func (r *PoolAdoptionReconciler) rke2ControlPlaneObj(spec adoptionv1alpha1.PoolA
 // lxcMachineSpec is the privileged-container LXCMachine/template body, pinned to our nix-built
 // node-base by fingerprint.
 //
-// DEVICES ride the incus profiles (created at grow by rke2lab's InstanceGrow):
-//   - "node-base"      — root disk + kmsg/zfs unix-char + lan0 (the cluster-invariant LAN NIC).
-//   - "node-<cluster>" — the per-cluster vmnet0 (dynamic MAC/IP; the vmnet bridge's ipv4.dhcp.ranges
-//     hands out an IP — avahi/mDNS is IP-agnostic, no reservation). Order [node-<cluster>, node-base]
-//     — incus applies profiles left-to-right, node-base LAST = precedence.
+// DEVICES are posed INLINE, from the list the render publishes on the pool — there are no incus
+// profiles any more.  They used to ride "node-base" + "node-<cluster>", two Pulumi resources the HOST
+// grow created for clusters it does not otherwise know about, under a profile-name convention derived
+// on BOTH sides of the Java/Go boundary.  Inlining them deletes the resources, the convention and the
+// provider defect behind them (that resource could CREATE a profile's devices and never CORRECT
+// them), and it needs no new authority over Incus: CAPN already creates the instances.
+//
+// The list is PUBLISHED rather than derived here: the bridge name is a blueprint fact
+// (`vmnet-<role>`), and deriving it again in Go would re-create exactly the cross-language
+// convention this removes.
 //
 // CONFIG is set INLINE here (not via the profiles), and it comes from the NodeImage: CAPN applies one
 // of its embedded instance profiles (kind/kubeadm/…, internal/static/embed/*.yaml) at the
@@ -825,18 +830,29 @@ func (r *PoolAdoptionReconciler) rke2ControlPlaneObj(spec adoptionv1alpha1.PoolA
 // it. The key is omitted rather than sent empty because CAPN treats "" as "no target given", and an
 // explicit empty string in the CR would read like a decision when it is the absence of one.
 func lxcMachineSpec(
-	clusterName string, image adoptionv1alpha1.NodeImage, target string,
+	image adoptionv1alpha1.NodeImage, devices []string, target string,
 ) map[string]any {
 	spec := map[string]any{
 		"instanceType": "container",
-		"profiles":     []any{nodeProfileName(clusterName), "node-base"},
 		"image":        map[string]any{"fingerprint": image.Spec.Fingerprint},
 		"config":       incusConfig(image.Spec.Runtime),
+	}
+	if len(devices) > 0 {
+		spec["devices"] = toAnySlice(devices)
 	}
 	if target != "" {
 		spec["target"] = target
 	}
 	return spec
+}
+
+// toAnySlice widens a string list for the unstructured body, which takes []any.
+func toAnySlice(values []string) []any {
+	widened := make([]any, 0, len(values))
+	for _, value := range values {
+		widened = append(widened, value)
+	}
+	return widened
 }
 
 // incusConfig flattens a NodeRuntime onto the Incus instance-config keys it models. Every security
@@ -857,11 +873,6 @@ func incusConfig(runtime adoptionv1alpha1.NodeRuntime) map[string]any {
 	return config
 }
 
-// nodeProfileName is the per-cluster incus profile carrying the node's NICs — the shared naming
-// contract with rke2lab's InstanceGrow (which CREATES it): "node-<cluster>".
-func nodeProfileName(clusterName string) string {
-	return "node-" + clusterName
-}
 
 // SetupWithManager wires the reconciler to PoolAdoption events + the owned pool CR-set's.
 func (r *PoolAdoptionReconciler) SetupWithManager(mgr ctrl.Manager) error {

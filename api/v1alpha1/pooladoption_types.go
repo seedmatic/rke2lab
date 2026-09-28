@@ -49,6 +49,19 @@ type PoolAdoptionSpec struct {
 	// +optional
 	NodeLabels []string `json:"nodeLabels,omitempty"`
 
+	// Devices are the Incus device definitions every node of this pool gets, posed INLINE on the
+	// LXCMachine/template — each entry in CAPN's `<device>,<key>=<value>` form, e.g.
+	// "vmnet0,type=nic,nictype=bridged,parent=vmnet-mgmt".
+	//
+	// PUBLISHED by the render, not derived here: the set comes from the addressing blueprint (which
+	// bridge a cluster's role sits on, the root pool, the unix-char passthroughs), and deriving the
+	// bridge name again in Go would re-create the cross-language naming convention that inlining these
+	// removed. It replaces the "node-base" + "node-<cluster>" Incus profiles the HOST grow used to
+	// create — two resources for clusters the host does not otherwise know about, behind a provider
+	// that could create a profile's devices and never correct them.
+	// +optional
+	Devices []string `json:"devices,omitempty"`
+
 	// Target is the Incus cluster member this pool's instances are created on — projected from the
 	// PoolIntention and posed on LXCMachineTemplate.spec.target (and the per-pet LXCMachine, which
 	// shares the same spec builder). See PoolIntentionSpec.Target for why it must be stated at all.
