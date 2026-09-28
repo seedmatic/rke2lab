@@ -409,16 +409,23 @@ public class ManifestSynthesisScenario
     final RenderMode.Verb verb = mode.verb();
     final Optional<String> headManifest =
         rendered.flatMap(worktree -> worktree.readAtHead(RENDERED_FACET_FILE));
-    final Optional<ManifestsRunbookInput.Facets> head = headManifest.flatMap(this::recordedFacets);
+    // EXISTENCE only — deliberately not a decode. The guards below ask whether the branch already
+    // records a facet, which is a question about the FILE, and answering it by decoding made a GROW
+    // hostage to a recording it is about to overwrite: measured 2026-09-28, a branch carrying a
+    // value
+    // the rules now reject (a blank bridge parent) refused the very grow that would have replaced
+    // it.
+    // The same trap, one field over, as the ImageState note below — which is why this is separated.
+    final boolean headRecordsFacet = headManifest.filter(this::recordsFacet).isPresent();
     switch (verb) {
       case INIT -> {
-        if (head.isPresent()) {
+        if (headRecordsFacet) {
           throw new IllegalStateException(
               "init: manifests/<cluster> already has a recorded facet — use update or edit");
         }
       }
       case UPDATE, EDIT -> {
-        if (head.isEmpty()) {
+        if (!headRecordsFacet) {
           throw new IllegalStateException(
               verb.name().toLowerCase(java.util.Locale.ROOT)
                   + ": manifests/<cluster> has no recorded facet yet — use init");
@@ -441,11 +448,14 @@ public class ManifestSynthesisScenario
     return switch (verb) {
       case GROW, INIT -> seeded;
       case UPDATE ->
-          withDebug(seeded, head.orElseThrow(), headManifest.flatMap(this::recordedImage));
+          withDebug(
+              seeded,
+              headManifest.flatMap(this::recordedFacets).orElseThrow(),
+              headManifest.flatMap(this::recordedImage));
       case EDIT ->
           withDebug(
               seeded,
-              overlay(head.orElseThrow(), mode.overrides()),
+              overlay(headManifest.flatMap(this::recordedFacets).orElseThrow(), mode.overrides()),
               headManifest.flatMap(this::recordedImage));
     };
   }
@@ -527,6 +537,23 @@ public class ManifestSynthesisScenario
    * with it, emptying the workload CR set on a branch that was merely too old. Absence is
    * legitimate; unreadability is a bug that must not be answered with a plausible empty.
    */
+  /**
+   * Does this recording carry a {@code facet:} at all — asked WITHOUT decoding it. The verb guards
+   * need existence, not a value, and conflating the two is what let a recording the current rules
+   * reject refuse a GROW that was about to overwrite it.
+   */
+  private boolean recordsFacet(String manifestYaml) {
+    try {
+      final JsonNode facet = FACET_READER.readTree(manifestYaml).path("facet");
+      return !facet.isMissingNode() && !facet.isNull();
+    } catch (IOException unreadableContext) {
+      throw new IllegalStateException(
+          "the render context recorded at HEAD is unreadable, so whether it records a facet cannot be"
+              + " decided; refusing to guess",
+          unreadableContext);
+    }
+  }
+
   private Optional<ManifestsRunbookInput.Facets> recordedFacets(String manifestYaml) {
     final JsonNode facet;
     try {
