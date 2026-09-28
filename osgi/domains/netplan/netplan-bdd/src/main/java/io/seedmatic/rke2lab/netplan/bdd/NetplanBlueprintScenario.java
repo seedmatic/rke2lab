@@ -233,6 +233,20 @@ public class NetplanBlueprintScenario
       for (String cluster : clusterNames) {
         final ClusterNetworkBlueprint bp = blueprintOf(cluster, "master");
         final List<SegmentHost> fabricHosts = new ArrayList<>();
+        // The cluster's ENDPOINT name, and the only host row that holds for every cluster: no
+        // `mac`,
+        // so ndh renders it as a `host-record` (a name→address assertion) rather than a reservation
+        // — nothing binds a VIP to a hwaddr, kube-vip announces it from whichever node holds it.
+        // It rides the FABRIC segment because that is the one contained in the bare-metal's managed
+        // net, hence the one whose hosts its dnsmasq serves and whose zone qualifies their names;
+        // the address itself is on the vmnet tier, which a host-record does not care about — ndh
+        // already publishes `vzhost.<domain>` at an address outside the segment carrying it.
+        fabricHosts.add(
+            new SegmentHost(
+                bp.names().vipFabricFqdn(),
+                Optional.empty(),
+                bp.vip().vipHostInetaddr().getHostAddress(),
+                Optional.of(bp.vip().vipHostInetaddr6().getHostAddress())));
         if (bp.fabricMacIsPredictable()) {
           for (String node : ClusterTopology.of(ClusterRole.of(cluster)).nodeNames()) {
             final ClusterNetworkBlueprint nodeBp = blueprintOf(cluster, node);
