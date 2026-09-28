@@ -16,12 +16,12 @@
   "packages": [
     {
       "install_id": "seed-incluster",
-      "locked-url": "path:/private/var/lib/git/seedmatic/rke2lab.d/flox-catalogue?lastModified=1790601096&narHash=sha256-48CFGbWBYUGvaev5k3b9SZcgUqZZs1yvsRnHdsaB9dA%3D",
+      "locked-url": "path:/private/var/lib/git/seedmatic/rke2lab.d/flox-catalogue?lastModified=1790613091&narHash=sha256-2wukHBbR8FhAG0XUXD8jzUgm3%2Bxvk1C2Ee4ocSHtDAc%3D",
       "flake-description": "Flox runtime env catalog: per-workload packages (kdns, tailscale) the flox-nri-plugin injects. The plugin itself now lives in github:seedmatic/flox-nri-plugin (consumed as the flox-runtime input of the rke2lab flake).",
       "locked-flake-attr-path": "packages.aarch64-linux.seed-incluster",
-      "derivation": "/nix/store/b0pr7qk0rzx127310jhnh2b6nqcdx3kr-io.seedmatic.seed-incluster-0.0.0-develop.drv",
+      "derivation": "/nix/store/xmgm6kgbbfsg4wz0idhnn6r2l0v7psh6-io.seedmatic.seed-incluster-0.0.0-develop.drv",
       "outputs": {
-        "out": "/nix/store/rv6931ly85rxsl0k60h2bwd3jzs4sxyv-io.seedmatic.seed-incluster-0.0.0-develop"
+        "out": "/nix/store/6xx3mvlyxxm88b15d1s4994m4642irjj-io.seedmatic.seed-incluster-0.0.0-develop"
       },
       "output-names": [
         "out"
