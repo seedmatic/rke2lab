@@ -37,23 +37,19 @@
             meta.mainProgram = "seed-incluster";
           };
 
-          # OCI image for the in-cluster Deployment — the DISTRIBUTION artifact. Air-gap
-          # path (as for flox-controller): rke2lab bakes this tar into the node-base image,
-          # rke2 auto-imports it into containerd at boot, and the Deployment references
-          # `io.seedmatic.seed-incluster:<version>` with IfNotPresent. Unlike
-          # flox-controller this controller ONLY talks to the kube API (via its
-          # ServiceAccount) — it does NOT exec node nix/flox, so there is no host /nix mount
-          # and no nsenter: a plain static binary + cacert. dockerTools can't build on darwin
-          # (build on aarch64-linux).
-          seed-incluster-image = pkgs.dockerTools.buildLayeredImage {
-            name = "io.seedmatic.seed-incluster";
-            tag = version;
-            contents = [ pkgs.cacert ];
-            config = {
-              Entrypoint = [ "${seed-incluster}/bin/seed-incluster" ];
-              Env = [ "SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt" ];
-            };
-          };
+          # NO OCI image output, and re-adding one is a regression. This controller is delivered
+          # by the FLOX RUNTIME: the `cluster-api/seed-incluster` flox env installs the binary
+          # from the flox-catalogue, and the pod runs the minimal flox carrier with that binary on
+          # PATH — so the env's lock, which pins a STORE PATH, is what carries a new build. rke2lab
+          # stopped re-exporting and baking the image accordingly; verified 2026-09-28 that nothing
+          # in rke2lab, the flox-catalogue or ndh referenced `seed-incluster-image`.
+          #
+          # ★ It was also the WORSE of the two delivery shapes. Its tag was `version`, a static
+          # VERSION file, and the air-gap path (baked tar + rke2 auto-import) pairs with
+          # `imagePullPolicy: IfNotPresent` — so a node already holding that tag would never adopt
+          # a rebuild, silently. The flox env is content-addressed by construction and has no such
+          # failure mode; flox-controller, which CANNOT use an env (it is the thing that realises
+          # them), had to solve it with a content-derived tag instead.
 
           # The generated CRDs as a store artifact — the single source rke2lab's manifest
           # synthesis emits into the cluster's `crds` layer (the 2×2 set: ClusterIntention +
