@@ -502,14 +502,28 @@ public class ManifestSynthesisScenario
    * no image).
    */
   private Optional<ImageState> recordedImage(String manifestYaml) {
+    final JsonNode image;
     try {
-      final JsonNode image = FACET_READER.readTree(manifestYaml).path("image");
-      if (image.isMissingNode() || image.isNull()) {
-        return Optional.empty();
-      }
-      return Optional.of(FACET_READER.treeToValue(image, ImageState.class));
-    } catch (IOException ex) {
+      image = FACET_READER.readTree(manifestYaml).path("image");
+    } catch (IOException unreadableContext) {
+      throw new IllegalStateException(
+          "the render context recorded at HEAD is unreadable, so the image it records cannot be"
+              + " replayed; refusing to render as though the cluster had none",
+          unreadableContext);
+    }
+    // ABSENT — no image was ever recorded here (a branch older than this field, or a grow that
+    // built none). The only legitimate empty: there is nothing to replay.
+    if (image.isMissingNode() || image.isNull()) {
       return Optional.empty();
+    }
+    try {
+      return Optional.of(FACET_READER.treeToValue(image, ImageState.class));
+    } catch (IOException | IllegalArgumentException undecodable) {
+      throw new IllegalStateException(
+          "HEAD records an image this build cannot decode (a recording that predates a field this"
+              + " ImageState requires, or a shape change); refusing to render as though the cluster"
+              + " had no image",
+          undecodable);
     }
   }
 
