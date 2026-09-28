@@ -9,7 +9,7 @@ metadata:
   namespace: rke2lab-bioskop-mgmt
 spec:
   alias: node-base
-  buildChecksum: f88d84a08e5f70a55180089fdd318051c774d7dbd135a2b7d671786e79fb1140
+  buildChecksum: e4f38cc5ace77fff1b55247cc33a8a665434a7ee8ab45c6505f5063e291e25ff
   fingerprint: e55cde891602351fbbc86a48301a76fbaae36af2ff924ed458f9a557e7d82222
   rke2Version: v1.34.10+rke2r1
   runtime:
