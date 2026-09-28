@@ -268,7 +268,7 @@ public final class SeedInclusterManifestsUnit extends AbstractManifestsUnit {
 
     final Map<String, Object> container = new LinkedHashMap<>();
     container.put("name", "controller");
-    container.put("image", ManifestSynthesisContext.current().floxDebugPolicy().prodImage());
+    container.put("image", ManifestSynthesisContext.current().containerImages().carrier());
     container.put("imagePullPolicy", "IfNotPresent");
     container.put("command", List.of(NAME));
     container.put(

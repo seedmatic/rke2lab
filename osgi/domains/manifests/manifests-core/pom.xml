@@ -233,7 +233,7 @@
                 <!-- Pass THIS build's profile-specific dir (target~claude / target~nxmatic / target)
                      so the CRDs land where build-helper embeds from; Maven resolves the property
                      before sh sees it. -->
-                <argument>nix run .#stage-flox-controller-crd -- "${project.build.directory}/generated-resources/crds" &amp;&amp; nix run .#stage-seed-incluster-crd -- "${project.build.directory}/generated-resources/crds" &amp;&amp; nix run .#stage-seed-incluster-rbac -- "${project.build.directory}/generated-resources/rbac" &amp;&amp; nix run .#stage-flox-controller-rbac -- "${project.build.directory}/generated-resources/rbac"</argument>
+                <argument>nix run .#stage-flox-controller-crd -- "${project.build.directory}/generated-resources/crds" &amp;&amp; nix run .#stage-seed-incluster-crd -- "${project.build.directory}/generated-resources/crds" &amp;&amp; nix run .#stage-seed-incluster-rbac -- "${project.build.directory}/generated-resources/rbac" &amp;&amp; nix run .#stage-flox-controller-rbac -- "${project.build.directory}/generated-resources/rbac" &amp;&amp; nix run .#stage-image-refs -- "${project.build.directory}/generated-resources/image-refs"</argument>
               </arguments>
             </configuration>
           </execution>
@@ -260,6 +260,13 @@
                 <resource>
                   <directory>${project.build.directory}/generated-resources/rbac</directory>
                   <targetPath>rbac</targetPath>
+                </resource>
+                <!-- The baked images' RepoTags. Both tags are derived from image CONTENT, so the
+                     synthesis reads them from here rather than carrying a literal that a rebuild
+                     would silently invalidate. -->
+                <resource>
+                  <directory>${project.build.directory}/generated-resources/image-refs</directory>
+                  <targetPath>image-refs</targetPath>
                 </resource>
               </resources>
             </configuration>

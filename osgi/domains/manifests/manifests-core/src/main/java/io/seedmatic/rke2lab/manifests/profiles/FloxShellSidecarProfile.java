@@ -1,6 +1,7 @@
 // @codebase
 package io.seedmatic.rke2lab.manifests.profiles;
 
+import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
 import io.seedmatic.rke2lab.manifests.contract.FloxAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.profiles.FloxDebugPolicy;
 import java.util.LinkedHashMap;
@@ -85,7 +86,7 @@ public final class FloxShellSidecarProfile {
     }
     LinkedHashMap<String, Object> container = new LinkedHashMap<>();
     container.put("name", sidecarContainerName());
-    container.put("image", policy.debugImage());
+    container.put("image", ManifestSynthesisContext.current().containerImages().carrier());
     container.put("imagePullPolicy", "IfNotPresent");
     container.put("command", List.of("/bin/sleep", "infinity"));
     container.put(

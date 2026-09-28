@@ -119,6 +119,15 @@ public final class ManifestSynthesisContext {
     return request.floxDebugPolicy();
   }
 
+  /**
+   * The RepoTags of the images baked into the node, READ from what the build staged — see {@link
+   * ContainerImageRefs} for why they cannot be literals. Not carried on the request: they are facts
+   * of the build, identical for every run, so nothing amends them.
+   */
+  public ContainerImageRefs containerImages() {
+    return ContainerImageRefs.staged();
+  }
+
   public BootstrapIdentity bootstrapIdentity() {
     return request.bootstrapIdentity();
   }

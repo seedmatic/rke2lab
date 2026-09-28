@@ -274,7 +274,7 @@ public final class RenderPipelineManifestsUnit extends AbstractManifestsUnit {
                       "name",
                       "clone",
                       "image",
-                      ManifestSynthesisContext.current().floxDebugPolicy().prodImage(),
+                      ManifestSynthesisContext.current().containerImages().carrier(),
                       "script",
                       """
                       #!/bin/sh
@@ -385,7 +385,7 @@ public final class RenderPipelineManifestsUnit extends AbstractManifestsUnit {
                       // stock base. The toolchain (nix + the git-sops env) arrives via flox NRI
                       // injection onto this container; no JDK/nix baked into the image.
                       "image",
-                      ManifestSynthesisContext.current().floxDebugPolicy().prodImage(),
+                      ManifestSynthesisContext.current().containerImages().carrier(),
                       "workingDir",
                       "$(workspaces.source.path)",
                       "script",
@@ -450,7 +450,7 @@ public final class RenderPipelineManifestsUnit extends AbstractManifestsUnit {
         "volumeMounts",
         cacheMount(),
         "image",
-        ManifestSynthesisContext.current().floxDebugPolicy().prodImage(),
+        ManifestSynthesisContext.current().containerImages().carrier(),
         "script",
         """
         #!/usr/bin/env bash
@@ -522,7 +522,7 @@ public final class RenderPipelineManifestsUnit extends AbstractManifestsUnit {
         "volumeMounts",
         cacheMount(),
         "image",
-        ManifestSynthesisContext.current().floxDebugPolicy().prodImage(),
+        ManifestSynthesisContext.current().containerImages().carrier(),
         "script",
         """
         #!/usr/bin/env bash

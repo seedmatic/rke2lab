@@ -217,7 +217,7 @@ public final class FloxControllerManifestsUnit extends AbstractManifestsUnit {
       final String namespace,
       final ApiObject serviceAccount,
       final ApiObject clusterRoleBinding) {
-    final String image = ManifestSynthesisContext.current().floxDebugPolicy().floxControllerImage();
+    final String image = ManifestSynthesisContext.current().containerImages().floxController();
     final Map<String, String> podLabels =
         Map.of("app.kubernetes.io/name", NAME, "app.kubernetes.io/component", "node-agent");
 

@@ -537,6 +537,9 @@
             destRbac=${rbacStagingDir}
             ${stageSeedInclusterRbac}
             ${stageFloxControllerRbac}
+            destRefs=${imageRefStagingDir}
+            ${stageFloxControllerImageRef}
+            ${stageFloxCarrierImageRef}
             mvnHost -Dshfmt.version=${pkgs.shfmt.version} -DskipTests -Dflox.crd-staging.skip=true ${mvnArgs} package
           '';
 
@@ -645,6 +648,49 @@
         # The flox-controller ClusterRole (controller-gen output from its markers). Staged onto the
         # /rbac/flox-controller/ classpath resource dir — FloxControllerManifestsUnit includes it.
         floxControllerRbac = (flox-controller.packages.${system} or { }).flox-controller-rbac or null;
+
+        # The two baked OCI images' RepoTags, staged onto the classpath at /image-refs/ for the
+        # synthesis to READ.
+        #
+        # ★ They are published rather than written down because both tags are now derived from the
+        # image's CONTENT (dockerTools' output hash, the explicit tag omitted). They used to be
+        # static — `0.0.0-develop` and `0.1.0` — restated as Java literals in FloxDebugPolicy under a
+        # javadoc pleading that they "MUST match the RepoTag". With the air-gap path (baked tar +
+        # rke2 auto-import) and `imagePullPolicy: IfNotPresent`, a node already holding a tag NEVER
+        # replaces it, so a rebuild shipped new content that no pod ever ran and nothing reported it.
+        # A derived tag makes the reference unwritable by hand, which is exactly the point.
+        floxControllerImageRef =
+          (flox-controller.packages.${system} or { }).flox-controller-image-ref or null;
+
+        # The carrier's tag comes from the NODE's pkgs — the very ones
+        # nixosConfigurations.rke2-node-base bakes the image with — so the tag the synthesis renders
+        # and the image on the node cannot disagree. A separately imported nixpkgs would agree only
+        # BY COINCIDENCE (no overlays on the node today), and a coincidence is the fragility this
+        # whole change removes.
+        floxCarrierImageRef =
+          let
+            carrier = import ./nixos/flox-carrier-image.nix {
+              pkgs = self.nixosConfigurations.rke2-node-base.pkgs;
+            };
+          in
+          pkgs.writeTextDir "flox-carrier" "${carrier.imageName}:${carrier.imageTag}";
+
+        # Staged into target/ (generated) like the CRDs and the RBAC, so `mvn clean` wipes it and a
+        # stale ref can never linger on the classpath — which for a content-derived tag would mean
+        # rendering a reference to an image the node does not have.
+        imageRefStagingDir =
+          "osgi/domains/manifests/manifests-core/target/generated-resources/image-refs";
+
+        stageFloxControllerImageRef =
+          nixpkgs.lib.optionalString (floxControllerImageRef != null) ''
+            mkdir -p "$destRefs"
+            install -m 644 ${floxControllerImageRef}/* "$destRefs/"
+          '';
+
+        stageFloxCarrierImageRef = ''
+          mkdir -p "$destRefs"
+          install -m 644 ${floxCarrierImageRef}/* "$destRefs/"
+        '';
         # Staged into the module's target/ (generated), NOT src/: `mvn clean` wipes it, so a
         # renamed/removed CRD never lingers as a stale checked-out source file (and no .gitignore
         # marker is buried in src to advertise a "resource" dir that is really generated output).
@@ -1260,6 +1306,25 @@ USAGE
             echo "staged ClusterAdoption CRD into $dest/ from ${seedInclusterCrds}"
           '');
           meta.description = "Stage the ClusterAdoption CRD (from the flake) onto the manifest-synthesis classpath";
+        };
+
+        # Stage the two baked images' RepoTags onto the manifest-synthesis classpath at
+        # /image-refs/ for the DEV loop (release builds stage them inside seedMasterJar). Both tags
+        # are derived from image content, so the synthesis READS them here — there is no literal
+        # anywhere that could still be right after a rebuild.
+        apps.stage-image-refs = {
+          type = "app";
+          program = toString (pkgs.writeShellScript "stage-image-refs" ''
+            set -euo pipefail
+            # $1 = the Maven build dir to stage into; defaults to imageRefStagingDir for a bare
+            # `nix run` in the dev loop.
+            destRefs="''${1:-${imageRefStagingDir}}"
+            ${stageFloxControllerImageRef}
+            ${stageFloxCarrierImageRef}
+            echo "staged image refs into $destRefs/:"
+            for ref in "$destRefs"/*; do printf '  %s = %s\n' "$(basename "$ref")" "$(cat "$ref")"; done
+          '');
+          meta.description = "Stage the flox-controller + flox-carrier RepoTags (content-derived) onto the manifest-synthesis classpath";
         };
 
         # Stage the seed-incluster ClusterRole (single-sourced from the flake's +kubebuilder:rbac
