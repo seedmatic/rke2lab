@@ -5,11 +5,11 @@ metadata:
   annotations:
     io.seedmatic.rke2lab/domain: cluster-api
     io.seedmatic.rke2lab/package: cluster-api-management
-  name: node-base
+  name: nikopol-mgmt-node-base
   namespace: rke2lab-nikopol-mgmt
 spec:
   alias: node-base
-  buildChecksum: e4f38cc5ace77fff1b55247cc33a8a665434a7ee8ab45c6505f5063e291e25ff
+  buildChecksum: 232b70b5908d2c25d954550b29c2dc2657ed1834ab0f0f72a52679fb1878613a
   fingerprint: e55cde891602351fbbc86a48301a76fbaae36af2ff924ed458f9a557e7d82222
   rke2Version: v1.34.10+rke2r1
   runtime:
