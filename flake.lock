@@ -284166,11 +284166,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1790574916,
-        "narHash": "sha256-7qLz9LawoDXELQbnxXuPj9/wkkAlZSfzYtw/lIqecY8=",
+        "lastModified": 1790600759,
+        "narHash": "sha256-jrb+N9/EsfO0nYeAXPD7drgG74o0dJCgKSE5LeqW/SY=",
         "owner": "seedmatic",
         "repo": "rke2lab",
-        "rev": "d54da28aa8741c61a79ee1cf5018c944d342b391",
+        "rev": "e5998c8a2d2206279909715c95f81e9ca83e6507",
         "type": "github"
       },
       "original": {
