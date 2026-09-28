@@ -30,7 +30,19 @@
     # doesn't take this catalog as an input (it references the flox-catalogue
     # branch at runtime via the FloxCatalog), and the ndh<->rke2lab edge is
     # already cut in rke2lab (ndh.inputs.rke2lab.follows = ""), so no cycle.
-    rke2lab.url = "github:seedmatic/rke2lab/feature/nixos-node-substrate";
+    # This ref names the branch the PROPAGATION READS FROM — the active chantier's branch, not a
+    # blessed integration line. `update-flox-envs` GUARDS on it equalling the branch it is run from,
+    # so it is what decides whether a checkpoint can reach a cluster at all.
+    #
+    # ★ Pointing it at the active branch is deliberate, and it costs nothing: the app commits and
+    # pushes this catalog on EVERY propagation anyway, so tracking `develop` instead would buy only
+    # one thing — a merge into `develop` at every checkpoint. Determinism does not come from the
+    # branch name: references resolve at BUILD, so the rev in flake.lock is what reaches a node.
+    #
+    # ⚠️ The one real hazard is lifecycle, not correctness: left on a RETIRED branch this strands
+    # the propagation path. It had rotted onto `feature/nixos-node-substrate` that way. So repoint it
+    # when a chantier ends — once per chantier, not per checkpoint.
+    rke2lab.url = "github:seedmatic/rke2lab/feature/viewpoint-separation";
     rke2lab.inputs.flake-commons.follows = "flake-commons";
 
     # ndh (public) carries manage-tailnet + the tailscale fork

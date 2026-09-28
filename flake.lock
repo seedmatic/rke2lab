@@ -282548,16 +282548,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1790527590,
-        "narHash": "sha256-ZBarH91NBOUQpoHXZN20EOmx0dSfxMCeNDllFCD1Ed0=",
+        "lastModified": 1790575057,
+        "narHash": "sha256-JNE1a8o0sEU19dOcNLS+YQbw1PloJGHykEJL8gZZN2c=",
         "owner": "seedmatic",
         "repo": "rke2lab",
-        "rev": "12e881af5c02d8bce3889b55394ea9898b6d8f13",
+        "rev": "b11805cf386a3b0dd10d429afc91a601541cba2a",
         "type": "github"
       },
       "original": {
         "owner": "seedmatic",
-        "ref": "feature/nixos-node-substrate",
+        "ref": "feature/viewpoint-separation",
         "repo": "rke2lab",
         "type": "github"
       }
