@@ -58,6 +58,26 @@ public final class TailscaleEgressManifestsUnit extends AbstractManifestsUnit {
   private static final String PROXY_GROUP_NAME = "egress";
 
   /**
+   * The {@code ProxyClass} carrying {@code acceptRoutes}, named for what it does rather than for
+   * the group that uses it — an ingress or kube-apiserver group would want the same setting.
+   *
+   * <p>⚠️ It is not optional plumbing; without it the relay CANNOT reach a subnet-routed address.
+   * The operator sets {@code AcceptRoutes: "false"} for every ProxyGroup, explicitly overriding
+   * tailscaled's own default of true ({@code proxygroup.go:1198}), and the ONLY lever is a
+   * ProxyClass ({@code shouldAcceptRoutes} reads nothing else — {@code sts.go:1166}). Measured
+   * 2026-09-28 inside {@code egress-0}: {@code "RouteAll": false} and an empty routing table for
+   * the peer's spans, so a dial to the peer's VIP failed even with the tailnet grant reconciled.
+   *
+   * <p>★ It also corrects a reading of that same measurement. "Its own bare-metal answers, the peer
+   * fails" looked like a policy asymmetry; it is not. The local addresses are reached by the pod's
+   * ORDINARY routing — its node sits on the vmnet span and the fabric gateway is its next hop —
+   * with no tailnet involved at all. Only the peer needs a tailnet route, and an unaccepted route
+   * is never installed. So the grant and this setting are two independent preconditions, and the
+   * grant alone proves nothing.
+   */
+  private static final String PROXY_CLASS_NAME = "accept-routes";
+
+  /**
    * Explicit rather than inherited: the operator defaults to 2, and this is the HA the per-cluster
    * {@code Connector} that used to advertise routes never had — a relay that dies with a single pod
    * would fail exactly while a half-born cluster is being debugged.
@@ -89,7 +109,30 @@ public final class TailscaleEgressManifestsUnit extends AbstractManifestsUnit {
         ManifestSynthesisContext.current()
             .bootstrapIdentity()
             .clusterNameOrDefault(DefaultNodeEnvContext.DEFAULT_CLUSTER_NAME);
-    final String namespace = TailscaleRefs.SYSTEM_NAMESPACE.name();
+    // ProxyClass and ProxyGroup are both CLUSTER-scoped (measured on the live CRDs), so neither
+    // carries a namespace and the package key spells `default` — the convention this domain's
+    // Namespace unit already uses for a cluster-scoped object.
+    final ApiObject proxyClass =
+        new ApiObject(
+            scope,
+            "proxyclass-" + PROXY_CLASS_NAME,
+            ApiObjectProps.builder()
+                .apiVersion("tailscale.com/v1alpha1")
+                .kind("ProxyClass")
+                .metadata(
+                    ApiObjectMetadata.builder()
+                        .name(PROXY_CLASS_NAME)
+                        .annotations(
+                            packageProfile.packageAnnotations(
+                                "tailscale.com|ProxyClass|default|" + PROXY_CLASS_NAME))
+                        .build())
+                .build());
+    // ⚠️ `tailscale`, not `tailscaleConfig`: the Go field is `TailscaleConfig` but its JSON tag is
+    // `tailscale` (types_proxyclass.go:73), and the CRD only serves the latter — reading the Go
+    // name
+    // would have produced a key the API server drops in silence.
+    proxyClass.addJsonPatch(
+        org.cdk8s.JsonPatch.add("/spec", Map.of("tailscale", Map.of("acceptRoutes", true))));
 
     final ApiObject proxyGroup =
         new ApiObject(
@@ -101,10 +144,9 @@ public final class TailscaleEgressManifestsUnit extends AbstractManifestsUnit {
                 .metadata(
                     ApiObjectMetadata.builder()
                         .name(PROXY_GROUP_NAME)
-                        .namespace(namespace)
                         .annotations(
                             packageProfile.packageAnnotations(
-                                "tailscale.com|ProxyGroup|" + namespace + "|" + PROXY_GROUP_NAME))
+                                "tailscale.com|ProxyGroup|default|" + PROXY_GROUP_NAME))
                         .build())
                 .build());
     proxyGroup.addJsonPatch(
@@ -118,7 +160,10 @@ public final class TailscaleEgressManifestsUnit extends AbstractManifestsUnit {
                 "tags",
                 List.of(PROXY_TAG),
                 "hostnamePrefix",
-                hostnamePrefix(cluster))));
+                hostnamePrefix(cluster),
+                "proxyClass",
+                PROXY_CLASS_NAME)));
+    proxyGroup.addDependency(proxyClass);
   }
 
   /**
