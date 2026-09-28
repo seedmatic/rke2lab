@@ -373,9 +373,19 @@ intent, not existing code to extend.
 === The shape to build
 
 . a `ProxyGroup type: egress` in the cluster that PROBES (the parent);
-. a Service `ExternalName` per target, annotated `tailnet-target-ip: <target VIP>` — ⚠️ OWNED BY THE
-  CONTROLLER, never Flux: the tailscale operator MUTATES `spec.externalName`, so a force-apply SSA
+. a Service `ExternalName` per target — ⚠️ OWNED BY THE CONTROLLER, never Flux: the tailscale
+  operator MUTATES `spec.externalName` to the ClusterIP Service it provisions, so a force-apply SSA
   would make the Service flap. That trap is already documented for the VIP Service;
++
+⚠️ *Corrected 2026-09-28 against the operator source we deploy* (v1.102.3,
+`cmd/k8s-operator/egress-services.go`). The annotation is `tailscale.com/tailnet-ip`, NOT
+`tailnet-target-ip` — that is the pre-ProxyGroup spelling, and an unrecognised annotation is
+IGNORED IN SILENCE. `validateEgressService` is the whole contract, and it is worth quoting because
+four of the five conditions are easy to miss: `tailscale.com/proxy-group` set; ONE of
+`tailscale.com/tailnet-fqdn` / `tailscale.com/tailnet-ip`; at least one entry in `spec.ports`;
+`spec.type` exactly `ExternalName`; and the referenced ProxyGroup of `spec.type: egress`. ★ That a
+raw `tailnet-ip` is accepted is what makes this viable at all — our target is a kube-vip ADDRESS,
+not a tailnet device, so an FQDN-only egress could not have expressed it.
 . the tailnet grant admitting `tag:k8s` → the vmnet segments (one line, in ndh — the proxy carries
   `tag:k8s`, not `tag:headless`, so the grant widened on 2026-09-27 does not cover it);
 . LATER, and only then: `controlPlaneEndpoint` names the Service instead of the IP, which is what
