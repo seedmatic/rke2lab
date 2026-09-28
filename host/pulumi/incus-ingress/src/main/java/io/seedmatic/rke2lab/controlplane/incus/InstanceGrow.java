@@ -28,6 +28,7 @@ import io.seedmatic.rke2lab.incus.ingress.InstanceGrowPlan;
 import io.seedmatic.rke2lab.incus.ingress.NodeRuntimeContract;
 import io.seedmatic.rke2lab.incus.ingress.SplitImageFingerprint;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Base64;
 import java.util.LinkedHashMap;
@@ -431,11 +432,57 @@ public final class InstanceGrow {
    * leaked old images once the replaced instance no longer clones them.
    */
   private Output<String> ensureImage(GrowImageView view, Resource projectDependency) {
+    final Path metadata = Path.of(view.metadataPath());
+    final Path rootfs = Path.of(view.dataPath());
+    // ★ NO ARTEFACTS IS NOT NO IMAGE. A surveying run is handed the SurveyingImageBuilder, which
+    // plans the build and shells nothing, so the two files never appear — but the image itself is
+    // still identifiable, because the DAEMON holds the one a previous grow posed the node-base
+    // alias
+    // on. A fresh worktree empties the Pulumi stack, not the daemon.
+    //
+    // ⚠️ Measured 2026-09-28 on a fresh worktree: computing the fingerprint from the files as the
+    // FIRST act died on NoSuchFileException before declaring anything. It had only ever appeared to
+    // work because earlier REAL runs left incus.tar.xz + rootfs.squashfs lying in the old
+    // checkout's
+    // .local.d — the step was reading leftovers, not state.
+    //
+    // So resolve, never invent and never silently skip: an invented fingerprint would make a
+    // preview
+    // claim an image that does not exist, and dropping the instance would make a survey describe a
+    // cluster nobody asked for. If no source answers, that IS an error and it says which sources
+    // were
+    // tried (see host-cellar-realisation-spec: the cellar is the DESIGNED third source, and
+    // reaching
+    // it from here is the unwired part of that spec — named in the message rather than faked).
+    if (!Files.isRegularFile(metadata) || !Files.isRegularFile(rootfs)) {
+      final String recovered =
+          importLookup
+              .nodeBaseFingerprint(config.incusProject())
+              .orElseThrow(
+                  () ->
+                      new IllegalStateException(
+                          "no node-base image can be identified: no built artifacts at "
+                              + metadata
+                              + " + "
+                              + rootfs
+                              + " (a surveying run builds none) and the daemon holds no '"
+                              + IncusImportLookup.NODE_BASE_ALIAS
+                              + "' alias in project "
+                              + config.incusProject()
+                              + ". Mint it with a live grow, or fetch the image harvest from the"
+                              + " cellar once that path is wired."));
+      log.accept(
+          "incus image ensure: no built artifacts — recovered the image from the daemon's "
+              + IncusImportLookup.NODE_BASE_ALIAS
+              + " alias ("
+              + recovered
+              + "); adopting by omission");
+      return Output.of(recovered);
+    }
     // Content-addressed: incus derives a SPLIT image's fingerprint as sha256(metadata.tar.xz ++
     // rootfs.squashfs), metadata first (verified against the live daemon). Compute it host-side to
     // decide whether the daemon already holds this exact content before deciding to upload.
-    final String fingerprint =
-        SplitImageFingerprint.of(Path.of(view.metadataPath()), Path.of(view.dataPath()));
+    final String fingerprint = SplitImageFingerprint.of(metadata, rootfs);
     // Adopt BY OMISSION when the daemon already holds it (a prior run, or the retired CLI-import
     // era): reference the fingerprint, declare NO Image — re-uploading identical bytes is rejected
     // as

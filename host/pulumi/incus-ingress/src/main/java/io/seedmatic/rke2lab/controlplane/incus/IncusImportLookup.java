@@ -101,13 +101,21 @@ public final class IncusImportLookup {
    * create path, both correct. A miss throws, caught as absent.
    */
   public boolean imageExists(String fingerprint, String incusProject) {
+    return nodeBaseFingerprint(incusProject).filter(fingerprint::equals).isPresent();
+  }
+
+  /**
+   * The content fingerprint the stable {@link #NODE_BASE_ALIAS} currently resolves to, or empty
+   * when the daemon holds no such alias (a virgin daemon, or one where no grow ever completed).
+   *
+   * <p>It is the DAEMON as a source of image identity, which matters when the local artifacts are
+   * gone: a fresh worktree has an empty Pulumi stack but the daemon still holds the image a
+   * previous grow posed this alias on, so the identity is recoverable without rebuilding. {@link
+   * #imageExists} is this same lookup plus a comparison — one lookup implementation, two questions.
+   */
+  public Optional<String> nodeBaseFingerprint(String incusProject) {
     log.accept(
-        "incus lookup getImage: start alias="
-            + NODE_BASE_ALIAS
-            + " fingerprint="
-            + fingerprint
-            + " project="
-            + incusProject);
+        "incus lookup getImage: start alias=" + NODE_BASE_ALIAS + " project=" + incusProject);
     try {
       final var image =
           IncusFunctions.getImagePlain(
@@ -115,10 +123,10 @@ public final class IncusImportLookup {
                   context.invokeOptions())
               .orTimeout(invokeTimeoutSeconds(), TimeUnit.SECONDS)
               .join();
-      return image != null && fingerprint.equals(image.fingerprint());
+      return image == null ? Optional.empty() : Optional.ofNullable(image.fingerprint());
     } catch (Exception ex) {
       log.accept("incus lookup getImage: absent (" + summarizeLookupFailure(ex) + ")");
-      return false;
+      return Optional.empty();
     }
   }
 
