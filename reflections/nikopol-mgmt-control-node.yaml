@@ -13,7 +13,7 @@ spec:
   clusterRef: nikopol-mgmt
   namespace: rke2lab-nikopol-mgmt
   nodes:
-  - name: nikopol-mgmt-control-plane-ck5vx
+  - name: nikopol-mgmt-control-plane-cw8gw
   pool: control-node
 status:
   lastReflectTime: null
