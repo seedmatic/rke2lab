@@ -397,10 +397,6 @@ public class ManifestSynthesisScenario
     final Optional<String> headManifest =
         rendered.flatMap(worktree -> worktree.readAtHead(RENDERED_FACET_FILE));
     final Optional<ManifestsRunbookInput.Facets> head = headManifest.flatMap(this::recordedFacets);
-    // The node-base ImageState the last grow recorded at HEAD: replayed into a steady-state UPDATE
-    // /EDIT render because the incus scion (the live IMAGE_STATE amendment) runs ONLY at the grow —
-    // without this the in-cluster render is ImageState-blind and empties the image-pinned CR set.
-    final Optional<ImageState> recordedImage = headManifest.flatMap(this::recordedImage);
     switch (verb) {
       case INIT -> {
         if (head.isPresent()) {
@@ -419,10 +415,25 @@ public class ManifestSynthesisScenario
         // No guard: the grow's facet is the SSOT, applied whether the branch is new or not.
       }
     }
+    // The node-base ImageState the last grow recorded at HEAD is replayed into a steady-state
+    // UPDATE/EDIT render, because the incus scion (the live IMAGE_STATE amendment) runs ONLY at the
+    // grow — without it the in-cluster render is ImageState-blind and would empty the image-pinned
+    // CR set.
+    //
+    // ★ Decoded INSIDE the arms that use it, never before the switch. A GROW carries a live
+    // ImageState and overwrites the recording, so it must not be held hostage by one it is about to
+    // replace: read eagerly, an undecodable HEAD (a recording predating a field this ImageState
+    // requires) refused the very grow that would have healed it. Measured 2026-09-28 on a cold
+    // start.
     return switch (verb) {
       case GROW, INIT -> seeded;
-      case UPDATE -> withDebug(seeded, head.orElseThrow(), recordedImage);
-      case EDIT -> withDebug(seeded, overlay(head.orElseThrow(), mode.overrides()), recordedImage);
+      case UPDATE ->
+          withDebug(seeded, head.orElseThrow(), headManifest.flatMap(this::recordedImage));
+      case EDIT ->
+          withDebug(
+              seeded,
+              overlay(head.orElseThrow(), mode.overrides()),
+              headManifest.flatMap(this::recordedImage));
     };
   }
 
