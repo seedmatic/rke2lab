@@ -305,6 +305,101 @@ first thing to move; a member's own bridge answers no and should stay.
   as letting a commit birth a cluster — and worth deciding explicitly rather than
   inheriting.
 
+== 2026-09-28 — the VIP flow, measured on the operator we deploy
+
+Everything below is read from the SOURCE at the version we run (tailscale 1.102.3, CAPN v0.9.0),
+not from docs. It supersedes the three-candidate framing above where it contradicts it.
+
+=== ★ The VIP has TWO consumers, of different reach — do not conflate them
+
+[options="header"]
+|===
+| consumer | tailnet member? | path to the VIP | state
+| the operator on bioskop (its kubeconfig) | *yes* | host subnet routes | ✅ works since 2026-09-27
+| pods in the mgmt cluster (CAPI's probe) | no | the node's IP, which no grant names | ❌ broken
+|===
+
+So the requirement is NOT "replace the VIP": it is to make what the in-cluster probes already dial
+resolvable and reachable FROM A POD. And `controlPlaneEndpoint` is an IP today
+(`https://<vipHostInetAddr>:6443`), so there is nothing to "resolve" — an IP can only be routed.
+
+⚠️ Measured on the operator kubeconfig: THREE context forms already coexist — `bioskop-mgmt`,
+`bioskop-mgmt-fabric-name`, and the `-vip` ones. That is the asymmetry of MECHANISM this work should
+collapse, not merely a spelling difference.
+
+=== What the operator offers at 1.102.3
+
+`ProxyGroup.spec.type` ∈ `egress` | `ingress` | `kube-apiserver`; `replicas` defaults to *2* (the HA
+the removed `Connector` never had). For `kube-apiserver`:
+
+* `kubeAPIServer.hostname` — a DNS label, ≤63 chars, *unique across the whole tailnet*. It is a SPEC
+  field, so it is DETERMINISTIC: `<cluster>-apiserver` is knowable before the cluster exists, which
+  means the render CAN write it into `controlPlaneEndpoint`. That question is closed.
+* `kubeAPIServer.mode` ∈ `auth` | `noauth`, ⚠️ *defaulting to auth*. In `auth` mode requests are
+  "additionally impersonated using the sender's tailnet identity" — so with an egress proxy as the
+  sender, EVERY pod collapses into one identity. Same shape as the trap already paid on
+  `clustermesh-remote-users`, where a shared client cert collapsed all peers into one user and
+  nullified the per-peer authorization. It must be set explicitly.
+* `status.URL` + `status.Devices[].TailnetIPs` — published after reconcile, hence unusable as a
+  render-time contract; the deterministic hostname is what makes the contract writable.
+
+=== ⚠️ The tension that decides the shape
+
+A `kube-apiserver` ProxyGroup is an API-server PROXY: it terminates TLS and re-originates. Our
+authorization is a CLIENT CERT from the BYO-CA. The 2026-09-12 design chose `ProxyGroup type: egress`
++ a Service `ExternalName` in L4 pass-through precisely for that — "TLS bout-en-bout, contrairement à
+`apiServerProxy`" — and live-probed it.
+
+[options="header"]
+|===
+| shape | buys | costs
+| egress + `kube-apiserver` | policy expressible *tag→tag*, no CIDR in any grant, VIP off the path | TLS terminated at the proxy ⇒ the client-cert model must be revisited
+| *egress + the VIP in L4 pass-through* | TLS end-to-end, client certs intact, already probed | grants keep naming the vmnet CIDRs in `dst`
+|===
+
+★ Chosen: the second, because the requirement is that EXISTING in-cluster probes keep working, and it
+touches no contract. The `kube-apiserver` ProxyGroup stays as a later simplification, once it is known
+whether `noauth` preserves a client cert (not the same question as whether it terminates TLS).
+
+=== ⚠️ Correction to the archived record
+
+`claude-preview.archive-2026-09-25` marks the Service `ExternalName <w>-apiserver` with
+`tailnet-target-ip` as "✅ EXISTE". *It does not exist in code* — verified 2026-09-28 across rke2lab,
+seed-incluster, the flox-catalogue and ndh: zero occurrences of `ExternalName` or
+`tailnet-target-ip`. Either it was created out of band for the 2026-09-12 probe, or "exists" meant
+"is proven". So this is GREENFIELD, and "the adoption controller owns the VIP Service" is a design
+intent, not existing code to extend.
+
+=== The shape to build
+
+. a `ProxyGroup type: egress` in the cluster that PROBES (the parent);
+. a Service `ExternalName` per target, annotated `tailnet-target-ip: <target VIP>` — ⚠️ OWNED BY THE
+  CONTROLLER, never Flux: the tailscale operator MUTATES `spec.externalName`, so a force-apply SSA
+  would make the Service flap. That trap is already documented for the VIP Service;
+. the tailnet grant admitting `tag:k8s` → the vmnet segments (one line, in ndh — the proxy carries
+  `tag:k8s`, not `tag:headless`, so the grant widened on 2026-09-27 does not cover it);
+. LATER, and only then: `controlPlaneEndpoint` names the Service instead of the IP, which is what
+  finally STABILISES resolution for the probes from both vantage points.
+
+Steps 1-3 touch no contract and already unblock the probe that holds `nikopol-mgmt` at `Degraded`.
+
+=== Adjacent finding — the tailscaled fork stays
+
+The fork (`github:nxmatic/tailscale`, rebased on release-branch/1.102) carries TWO patches:
+CNAME-in-`extra_records` resolver support *and* SSH interception (the port-2222 switch). The CNAME
+half is dead — headscale hibernates and the SaaS forbids arbitrary MagicDNS records — but the SSH
+half is still needed, so *the fork stays*. Two consequences:
+
+* `flake.nix:111`'s justification names a reason that no longer applies; left uncorrected it misleads
+  exactly as `acl.hujson`'s "controller-AGNOSTIC" header did twice in one day;
+* ★ `catalog.netplan.tailnet.hosts.<host>.serviceNames` now has NO consumer — it feeds headscale
+  `dns.extra_records`, which hibernate. Same shape as the dead `image-state` ConfigMap: a declared
+  fact nothing reads, waiting for its delivery (Tailscale Services, or a ProxyGroup hostname). The
+  vocabulary is right; only the delivery is missing.
+
+★ And the naming these two threads need is the SAME: whatever gives the apiserver a stable name also
+retires the CNAME hack. The cleanup and the VIP work point one way.
+
 == Related
 
 * ndh `docs/network-topology-c4.adoc#authorisation` — the tailnet policy, the Services
