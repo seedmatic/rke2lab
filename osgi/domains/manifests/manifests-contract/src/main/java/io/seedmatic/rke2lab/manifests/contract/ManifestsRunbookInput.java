@@ -203,16 +203,15 @@ public record ManifestsRunbookInput(
    * device with an empty parent, which is visibly wrong in a manifest — preferable to a plausible
    * default that silently attaches a node to the wrong bridge.
    */
-  public record NetworkFacet(String fabricBridgeParent, String vmnetNetworkName) {
+  public record NetworkFacet(String fabricBridgeParent) {
 
     public NetworkFacet {
       fabricBridgeParent = fabricBridgeParent == null ? "" : fabricBridgeParent;
-      vmnetNetworkName = vmnetNetworkName == null ? "" : vmnetNetworkName;
     }
 
     /** Unamended — no operator network concern reached this render. */
     public static NetworkFacet unknown() {
-      return new NetworkFacet("", "");
+      return new NetworkFacet("");
     }
   }
 

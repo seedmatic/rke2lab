@@ -229,6 +229,18 @@ public class ClusterSeedScenario
    * in-cluster provider, and the {@link IngressConfig} the GROW turns into the daemon's trust
    * entry.
    */
+  /**
+   * The {@code network-facet} amendment payload. Built from the host's TYPED value rather than
+   * re-serialising the operator's yaml subtree blind: unlike {@code rke2lab:manifests:}, this
+   * concern IS typed on the host side, so there is no blind subtree to forward — and the render
+   * reads exactly one key of it.
+   */
+  private static String networkFacetJson(String fabricBridgeParent) {
+    final ObjectNode facet = JsonNodeFactory.instance.objectNode();
+    facet.put("fabricBridgeParent", fabricBridgeParent == null ? "" : fabricBridgeParent);
+    return facet.toString();
+  }
+
   private static String readCapnClientCert() {
     try (var in = ClusterSeedScenario.class.getResourceAsStream("/incus/capn-client.crt")) {
       return in == null
@@ -374,7 +386,7 @@ public class ClusterSeedScenario
               new FacetContributor(
                   new AmendCoordinate("manifests"),
                   Amendment.NETWORK_FACET,
-                  run.facet("network").orElse("")),
+                  networkFacetJson(run.config().fabricBridgeParent())),
               new Hashtable<>());
       // The workload cluster names the cluster-pki seal pre-seeds a CA for — dug from the SAME
       // manifests FACET (its workloadTargets), offered per-consult to the cluster-pki crossing.
