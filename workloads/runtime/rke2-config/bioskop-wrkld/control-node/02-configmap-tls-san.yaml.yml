@@ -7,13 +7,8 @@ data:
     - "0.0.0.0"
     - "127.0.0.1"
     - "10.80.15.10"
+    - "wrkld-vip.bioskop"
     - "10.80.8.1"
-    - "bioskop-wrkld-master.bioskop"
-    - "bioskop-wrkld-peer1.bioskop"
-    - "bioskop-wrkld-peer2.bioskop"
-    - "bioskop-wrkld-peer3.bioskop"
-    - "bioskop-wrkld-worker1.bioskop"
-    - "bioskop-wrkld-worker2.bioskop"
 kind: ConfigMap
 metadata:
   annotations:
