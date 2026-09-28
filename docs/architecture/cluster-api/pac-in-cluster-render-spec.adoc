@@ -825,9 +825,18 @@ FloxEnv flavor is `FloxEnvFolder=cicd`.
 == Which revision, which branch
 
 PaC fetches the *pushed commit* (`@R`) and matches `on-target-branch` — the branch the cluster was
-grown from (the source-of-truth branch: `feature/nixos-node-substrate` today, `main` at term). The
+grown from (the source-of-truth branch: `feature/viewpoint-separation` today, `main` at term). The
 `.tekton/` PipelineRun must exist on that branch. The rendered revision is thus the triggering push's
 commit — determinism + consistency with what an operator would render.
+
+⚠️ *The trigger is single-valued, and a stale value fails silently.* Exactly one source branch may
+win, because every render publishes to the shared `manifests/<cluster>` branches. So the branch name
+is a literal that must be maintained — and on 2026-09-28 it was found still naming
+`feature/nixos-node-substrate`, weeks after that branch was retired: pushes matched nothing, *no*
+`PipelineRun` was created, and there was no error to notice. The symptom surfaced elsewhere entirely
+(a newly rendered `tls-san` that never reached any cluster), which is the shape to watch for. The
+same fact is encoded a second time as ndh's `rke2lab` flake input URL and had rotted identically;
+when this branch is superseded, both move together.
 
 == Anti-patterns
 
