@@ -19,10 +19,21 @@ import java.util.Map;
 public final class FacetContributor implements AmendmentContributor {
 
   private final AmendCoordinate coordinate;
+  private final String role;
   private final String facetJson;
 
   public FacetContributor(AmendCoordinate coordinate, String facetJson) {
+    this(coordinate, Amendment.FACET, facetJson);
+  }
+
+  /**
+   * Contribute {@code facetJson} under an explicit ROLE — for a second operator concern subtree
+   * reaching the SAME consultation (the assembler binds one role to one component, so two subtrees
+   * cannot both arrive as {@link Amendment#FACET}).
+   */
+  public FacetContributor(AmendCoordinate coordinate, String role, String facetJson) {
     this.coordinate = coordinate;
+    this.role = role;
     this.facetJson = facetJson;
   }
 
@@ -33,6 +44,6 @@ public final class FacetContributor implements AmendmentContributor {
 
   @Override
   public Map<String, String> roles() {
-    return facetJson.isBlank() ? Map.of() : Map.of(Amendment.FACET, facetJson);
+    return facetJson.isBlank() ? Map.of() : Map.of(role, facetJson);
   }
 }

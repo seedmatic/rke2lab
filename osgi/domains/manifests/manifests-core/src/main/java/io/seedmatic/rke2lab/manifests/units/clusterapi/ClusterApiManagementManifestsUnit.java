@@ -1,5 +1,6 @@
 package io.seedmatic.rke2lab.manifests.units.clusterapi;
 
+import io.seedmatic.rke2lab.incus.ingress.NodeDeviceSet;
 import io.seedmatic.rke2lab.manifests.AbstractManifestsUnit;
 import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
 import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
@@ -139,6 +140,10 @@ public final class ClusterApiManagementManifestsUnit extends AbstractManifestsUn
         APISERVER_PORT,
         image.rke2Version(),
         image.imageAlias(),
+        NodeDeviceSet.forCluster(
+                ManifestSynthesisContext.current().fabricBridgeParent(),
+                blueprint.vmnetBridgeName())
+            .toCapnSpecs(),
         pets,
         blueprint.names().nixosHost(),
         packageProfile,

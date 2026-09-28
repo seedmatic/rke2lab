@@ -7,6 +7,7 @@ import io.seedmatic.rke2lab.manifests.contract.profiles.WorkloadClusterCasMateri
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.cdk8s.ApiObject;
@@ -332,6 +333,7 @@ public final class ClusterApiCrRenderer {
       final int port,
       final String rke2Version,
       final String imageName,
+      final List<String> devices,
       final List<String> petNames,
       final String incusMember,
       final PackageMetadataProfile profile,
@@ -356,30 +358,37 @@ public final class ClusterApiCrRenderer {
                         .build())
                 .build());
     poolIntention.addDependency(clusterIntention);
-    poolIntention.addJsonPatch(
-        JsonPatch.add(
-            "/spec",
-            Map.of(
-                "clusterRef", cluster,
-                "namespace", namespace,
-                "pool", CONTROL_NODE_POOL,
-                "role", "control-plane",
-                // NAMES the NodeImage in this namespace — the pool no longer embeds a fingerprint,
-                // so the controller derives the image pin AND the runtime contract from one object.
-                "image", Map.of("name", imageName),
-                "rke2Version", rke2Version,
-                "controlPlaneEndpoint", Map.of("host", vip, "port", port),
-                "nodes", nodes,
-                "nodeLabels", poolNodeLabels(),
-                // WHERE this pool's instances are created — seed-incluster poses it on
-                // LXCMachineTemplate.spec.target, and through it CAPN's placement. It must be
-                // stated:
-                // Incus otherwise picks the member with the fewest instances and breaks ties AT
-                // RANDOM, so a node can be born on a bare-metal whose dnsmasq holds no reservation
-                // for it and whose subnet does not address this cluster. Harmless while exactly one
-                // member is eligible — which is what ndh arranges today, and exactly what stops
-                // being true for a cluster on the second bare-metal.
-                "target", incusMember)));
+    // A LinkedHashMap, not Map.of: the spec passed ten pairs (Map.of's limit) and — more usefully —
+    // an insertion-ordered map makes the rendered YAML diff as a CHANGE rather than a reshuffle.
+    final Map<String, Object> spec = new LinkedHashMap<>();
+    spec.put("clusterRef", cluster);
+    spec.put("namespace", namespace);
+    spec.put("pool", CONTROL_NODE_POOL);
+    spec.put("role", "control-plane");
+    // NAMES the NodeImage in this namespace — the pool no longer embeds a fingerprint, so the
+    // controller derives the image pin AND the runtime contract from that one object.
+    spec.put("image", Map.of("name", imageName));
+    spec.put("rke2Version", rke2Version);
+    spec.put("controlPlaneEndpoint", Map.of("host", vip, "port", port));
+    spec.put("nodes", nodes);
+    spec.put("nodeLabels", poolNodeLabels());
+    // The node's Incus devices, posed INLINE on the LXCMachine by CAPN. They replaced the
+    // `node-base` + `node-<cluster>` profiles the host grow used to create for clusters it does not
+    // otherwise know about — see NodeDeviceSet.
+    //
+    // ⚠️ The FULL set, including `root`: with no profile named, nothing else supplies a disk.
+    // Incus's
+    // own `default` profile carries one, but it is not applied when the profile list is empty — and
+    // ours (`node-base`) is exactly what is being removed. Measured on the live daemon 2026-09-28.
+    spec.put("devices", List.copyOf(devices));
+    // WHERE this pool's instances are created — seed-incluster poses it on
+    // LXCMachineTemplate.spec.target, and through it CAPN's placement. It must be stated: Incus
+    // otherwise picks the member with the fewest instances and breaks ties AT RANDOM, so a node can
+    // be born on a bare-metal whose dnsmasq holds no reservation for it and whose subnet does not
+    // address this cluster. Harmless while exactly one member is eligible — which is what ndh
+    // arranges today, and exactly what stops being true for a cluster on the second bare-metal.
+    spec.put("target", incusMember);
+    poolIntention.addJsonPatch(JsonPatch.add("/spec", spec));
     return poolIntention;
   }
 

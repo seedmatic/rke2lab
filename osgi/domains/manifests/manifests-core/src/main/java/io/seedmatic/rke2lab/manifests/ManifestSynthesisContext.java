@@ -124,6 +124,15 @@ public final class ManifestSynthesisContext {
    * ContainerImageRefs} for why they cannot be literals. Not carried on the request: they are facts
    * of the build, identical for every run, so nothing amends them.
    */
+  /**
+   * The bridge every node's fabric NIC attaches to — the operator's {@code rke2lab:network:}
+   * declaration, amended across the membrane. Blank when unamended, which renders a visibly empty
+   * parent rather than silently attaching a node to a plausible wrong bridge.
+   */
+  public String fabricBridgeParent() {
+    return request.fabricBridgeParent();
+  }
+
   public ContainerImageRefs containerImages() {
     return ContainerImageRefs.staged();
   }

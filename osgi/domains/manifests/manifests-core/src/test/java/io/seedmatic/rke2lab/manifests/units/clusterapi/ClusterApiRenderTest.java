@@ -62,6 +62,9 @@ class ClusterApiRenderTest {
   private static final List<WorkloadTarget> TARGETS =
       List.of(new WorkloadTarget("bioskop", "wrkld"), new WorkloadTarget("nikopol", "mgmt"));
 
+  /** The operator's host declaration the render cannot derive — see NodeDeviceSet. */
+  private static final String FABRIC_BRIDGE = "fabric-br";
+
   /** Only the domains under test — a policy is required, and an absent one renders nothing. */
   private static final ManifestDomainPolicy POLICY =
       ManifestDomainPolicy.builder().clusterApi(true).runtime(true).cluster(true).build();
@@ -119,6 +122,7 @@ class ClusterApiRenderTest {
             .imageState(Optional.of(imageState()))
             .workloadTargets(TARGETS)
             .manifestDomainPolicy(Optional.of(POLICY))
+            .fabricBridgeParent(FABRIC_BRIDGE)
             .build();
 
     try (var bound = ManifestSynthesisContext.of(request).bind()) {
@@ -197,6 +201,37 @@ class ClusterApiRenderTest {
       // artifact, so the controller derives the image pin AND the runtime contract from one object.
       assertEquals(Set.of("name"), image.keySet());
       assertEquals("node-base", image.get("name"));
+    }
+  }
+
+  @Test
+  void requirePoolIntentionsCarryTheFullDeviceSet(@TempDir Path outdir) {
+    final List<Map<String, Object>> documents = render(outdir, clusterApiUnits());
+
+    for (final Map<String, Object> pool :
+        documents.stream().filter(d -> "PoolIntention".equals(kindOf(d))).toList()) {
+      @SuppressWarnings("unchecked")
+      final Map<String, Object> spec = (Map<String, Object>) pool.get("spec");
+      @SuppressWarnings("unchecked")
+      final List<String> devices = (List<String>) spec.get("devices");
+      final String cluster = String.valueOf(spec.get("clusterRef"));
+
+      // ⚠️ `root` above all: with no profile named, NOTHING else supplies a disk — Incus's own
+      // `default` profile is not applied when the profile list is empty, and ours is what was
+      // removed. A node born without it is the failure this asserts against.
+      assertTrue(
+          devices.stream().anyMatch(d -> d.startsWith("root,type=disk")),
+          () -> cluster + " has no root disk device: " + devices);
+      // The fabric bridge is the operator's declaration, the vmnet one follows the cluster's role.
+      assertTrue(
+          devices.contains("fabric0,type=nic,name=fabric0,nictype=bridged,parent=" + FABRIC_BRIDGE),
+          () -> cluster + " is not attached to " + FABRIC_BRIDGE + ": " + devices);
+      final String role = cluster.substring(cluster.lastIndexOf('-') + 1);
+      assertTrue(
+          devices.contains("vmnet0,type=nic,name=vmnet0,nictype=bridged,parent=vmnet-" + role),
+          () -> cluster + " is not on vmnet-" + role + ": " + devices);
+      // No profile is named any more: the devices ARE the declaration.
+      assertFalse(spec.containsKey("profiles"), () -> cluster + " still names Incus profiles");
     }
   }
 

@@ -61,7 +61,8 @@ public record ManifestsRunbookInput(
     @Amendment(Amendment.SOIL) Optional<String> materializationRoot,
     @Amendment(Amendment.IDENTITY) Optional<Identity> identity,
     @Amendment(Amendment.RENDER_MODE) Optional<RenderMode> renderMode,
-    @Amendment(Amendment.IMAGE_STATE) Optional<ImageState> image) {
+    @Amendment(Amendment.IMAGE_STATE) Optional<ImageState> image,
+    @Amendment(Amendment.NETWORK_FACET) NetworkFacet network) {
 
   public static Builder builder() {
     return new Builder();
@@ -88,6 +89,7 @@ public record ManifestsRunbookInput(
     private Optional<Identity> identity = Optional.empty();
     private Optional<RenderMode> renderMode = Optional.empty();
     private Optional<ImageState> image = Optional.empty();
+    private NetworkFacet network = NetworkFacet.unknown();
 
     private Builder() {}
 
@@ -116,8 +118,14 @@ public record ManifestsRunbookInput(
       return this;
     }
 
+    public Builder network(NetworkFacet network) {
+      this.network = network;
+      return this;
+    }
+
     public ManifestsRunbookInput build() {
-      return new ManifestsRunbookInput(facets, materializationRoot, identity, renderMode, image);
+      return new ManifestsRunbookInput(
+          facets, materializationRoot, identity, renderMode, image, network);
     }
   }
 
@@ -182,6 +190,29 @@ public record ManifestsRunbookInput(
       public Facets build() {
         return new Facets(debug, delivery, workloadTargets);
       }
+    }
+  }
+
+  /**
+   * The {@code rke2lab:network:} concern subtree, mirroring its yaml EXACTLY. The render poses
+   * every node's Incus devices and needs the FABRIC bridge those NICs attach to — an operator
+   * declaration on the host side of the membrane. The vmnet bridge is NOT here: it follows the
+   * cluster's role, so the blueprint derives it and restating it would duplicate a convention.
+   *
+   * <p>{@link #unknown()} when unamended (a bare survey, a unit test): a blank parent renders a
+   * device with an empty parent, which is visibly wrong in a manifest — preferable to a plausible
+   * default that silently attaches a node to the wrong bridge.
+   */
+  public record NetworkFacet(String fabricBridgeParent, String vmnetNetworkName) {
+
+    public NetworkFacet {
+      fabricBridgeParent = fabricBridgeParent == null ? "" : fabricBridgeParent;
+      vmnetNetworkName = vmnetNetworkName == null ? "" : vmnetNetworkName;
+    }
+
+    /** Unamended — no operator network concern reached this render. */
+    public static NetworkFacet unknown() {
+      return new NetworkFacet("", "");
     }
   }
 

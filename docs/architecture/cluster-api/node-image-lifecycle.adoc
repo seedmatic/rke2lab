@@ -429,6 +429,73 @@ concord check (the pattern `flake.nix`'s `node-label-concord` already uses for a
 constant the nix side must match) — but that only catches a typo, never "same tag, new
 content". Deriving the tag removes the literal, so there is nothing left to keep in step.
 
+== The node's devices — inline, from one definition
+
+A node is an Incus container, so something must say which disk, which passthroughs and which bridges
+it gets. That used to be two Incus PROFILES the HOST grow created as Pulumi resources — `node-base`
+(fleet-wide) and `node-<cluster>` (per cluster). Both are gone; `NodeDeviceSet` is the one definition,
+posed INLINE by each consumer.
+
+=== Why the profiles went
+
+Three defects, and only the third is about tidiness:
+
+* ⚠️ *They collided on every cold start.* A fresh Pulumi stack meets a daemon that still holds them,
+  and `Profile` was the one resource here with neither `importId` nor adopt-by-omission — so the grow
+  died on "The profile already exists" while `seed-project` (which imports) was adopted. `pulumi
+  refresh` cannot help: it reconciles resources already IN the state and never discovers ones absent
+  from it.
+* ⚠️ *Their devices could be created but never corrected.* The provider models `devices` as an ordered
+  list that churns, so it is ignored — meaning a change to a NIC's parent or name reached an existing
+  profile only if an operator deleted it by hand. It bit twice on 2026-09-24.
+* *They needed a name on both sides of the language boundary* — `node-<cluster>` in Java,
+  `nodeProfileName` in Go: two derivations of one convention.
+
+★ And inlining them needs NO new authority over Incus, which is what made it the right move on a
+branch about giving each part its role: there is no profile left to create, and CAPN already creates
+the instances. Adopting the profiles by omission instead would have made their config write-once —
+the defect that once hid six kernel modules cilium needs.
+
+=== What CAPN already provides, measured in its source
+
+`internal/instances/kubeadm.go` applies `static.DefaultKubeadmProfile(...)` itself —
+`opts.WithConfig(profile.Config).WithDevices(profile.Devices)` — so the `incus profile create kubeadm`
+its docs describe is for people launching containers BY HAND, not a prerequisite for the provider.
+
+The build order in `controller_util_launch.go` is what makes our contract decide:
+
+. CAPN's own kubeadm profile (config + devices, including `/dev/kmsg`)
+. `WithProfiles(spec.Profiles)` — additive, and now empty
+. `WithDevices(spec.Devices)`
+. `WithConfig(spec.Config)`, then CAPN's cluster metadata
+
+So our `spec.config` lands AFTER the built-in profile. That is why the kernel-module list is asserted
+there and why it wins — and it must be the WHOLE list, since `linux.kernel_modules` is a single
+comma-string that replaces rather than merges.
+
+=== ⚠️ The full device set, including `root`
+
+With no profile named, nothing else supplies a disk. Incus's own `default` profile carries one, but it
+is not applied when the profile list is empty, and OUR base profile is precisely what is being
+removed. Measured on the live daemon on 2026-09-28: `node-base` declared `root`, `kmsg.dev`,
+`zfs.dev` and `fabric0`, and both live instances referenced it.
+
+`kmsg.dev` duplicates what CAPN already gives; it is declared anyway, at an identical value, so the two
+delivery paths stay symmetric — the standalone master gets NO CAPN base, being created by the Pulumi
+provider directly, so it needs the full set regardless.
+
+=== Who publishes what
+
+The vmnet bridge follows the cluster's ROLE, so the blueprint derives it. The fabric bridge does not:
+it is an operator declaration in the host's `rke2lab:network:` concern, which reaches the render as its
+own amendment role (`NETWORK_FACET`) — contributed verbatim, exactly as `rke2lab:manifests:` is. The
+render then composes the set and publishes it on `PoolIntention.spec.devices`; the controller poses it
+and derives nothing.
+
+⚠️ Ordering when this lands: an Incus profile cannot be deleted while an instance references it, so
+the instances are recreated first and the orphaned profiles removed after — which a cold start does
+anyway.
+
 == Troubleshooting
 
 The grow fails with "no node-base image can be identified"::

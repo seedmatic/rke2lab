@@ -459,7 +459,12 @@ public class ManifestSynthesisScenario
         seeded.renderMode(),
         // A live seeded image (a grow) wins; else replay the ImageState the grow recorded at HEAD,
         // so a steady-state render pins the same node-base image instead of emptying the CR set.
-        seeded.image().or(() -> recordedImage));
+        seeded.image().or(() -> recordedImage),
+        // The operator's network concern is the SEEDED one either way: it is a host declaration,
+        // not
+        // something a branch records, so an UPDATE/EDIT render keeps what this run was amended
+        // with.
+        seeded.network());
   }
 
   /**
@@ -719,6 +724,12 @@ public class ManifestSynthesisScenario
       BootstrapIdentity identity,
       Path root,
       Optional<ImageState> image,
+      // The bridge every node's fabric NIC attaches to — the operator's rke2lab:network:
+      // declaration,
+      // carried because the render poses the devices and cannot derive this one (the vmnet bridge
+      // it
+      // derives from the cluster's role).
+      String fabricBridgeParent,
       List<WorkloadTarget> targets,
       Optional<WorkloadBootstrapBundlesMaterial> bundles) {}
 
@@ -1165,6 +1176,7 @@ public class ManifestSynthesisScenario
                     .build(),
                 root,
                 facet.image(),
+                facet.network().fabricBridgeParent(),
                 List.of(),
                 Optional.empty()),
             materials);
@@ -1230,6 +1242,7 @@ public class ManifestSynthesisScenario
                   identity(),
                   root,
                   facet.image(),
+                  facet.network().fabricBridgeParent(),
                   facet.facets().workloadTargets(),
                   workloadBundles),
               materials);
@@ -1298,6 +1311,7 @@ public class ManifestSynthesisScenario
               // ConfigMap and the workload CR units pin the image fingerprint + RKE2 version from
               // it.
               .imageState(pass.image())
+              .fabricBridgeParent(pass.fabricBridgeParent())
               .workloadTargets(pass.targets())
               .workloadBootstrapBundles(pass.bundles())
               // The materials revealed from the cellar, each empty on a bare survey / a

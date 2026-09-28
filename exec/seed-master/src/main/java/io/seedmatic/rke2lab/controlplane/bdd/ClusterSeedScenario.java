@@ -359,6 +359,23 @@ public class ClusterSeedScenario
               AmendmentContributor.class,
               new FacetContributor(new AmendCoordinate("manifests"), manifestsFacet.orElse("")),
               new Hashtable<>());
+      // The operator's rke2lab:network: subtree, to the SAME manifests consultation under its own
+      // role: the render poses every node's Incus devices, and the FABRIC bridge those NICs attach
+      // to
+      // is an operator declaration on this side of the membrane (the vmnet one it derives from the
+      // cluster's role). Contributed verbatim, like the manifests facet beside it — the host names
+      // no
+      // device vocabulary.
+      gardening
+          .connection()
+          .context()
+          .registerService(
+              AmendmentContributor.class,
+              new FacetContributor(
+                  new AmendCoordinate("manifests"),
+                  Amendment.NETWORK_FACET,
+                  run.facet("network").orElse("")),
+              new Hashtable<>());
       // The workload cluster names the cluster-pki seal pre-seeds a CA for — dug from the SAME
       // manifests FACET (its workloadTargets), offered per-consult to the cluster-pki crossing.
       this.workloadClusterNames = workloadClusterNames(manifestsFacet);
