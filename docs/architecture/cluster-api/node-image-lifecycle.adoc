@@ -356,6 +356,79 @@ Under `prune: true`, emitting nothing IS AN ACT. So "I do not know" must fail, a
 
 A read failure must never be allowed to become a delete, nor a guess.
 
+== The same rule on the BAKED OCI images
+
+The governing rule — *an artefact's identity must move with its content* — is not specific to
+the node image. Three baked container images were breaking it, and silently.
+
+=== Why a static tag is a silent no-op deploy
+
+These images reach a node through the air-gap path: the `.tar.gz` is baked into the
+node-base image, rke2 auto-imports it into local containerd at boot, and pods reference it
+with `imagePullPolicy: IfNotPresent` — there is no registry to pull from, so that policy is
+structural, not a choice.
+
+⚠️ `IfNotPresent` means a node already holding a RepoTag NEVER replaces it. With a static
+tag, a rebuilt binary therefore shipped *inside* the node image while every pod kept running
+the old one, and **nothing reported it**. "I deployed and nothing changed, with no error" is
+the worst class of failure: it does not even announce itself.
+
+=== What each image does now
+
+[options="header"]
+|===
+| Image | Delivery | Identity
+| `flox-controller` | baked OCI — it CANNOT use a flox env, being the thing that *realises*
+  flox envs (an env delivering it would have to run to realise itself) | tag omitted ⇒
+  dockerTools derives it from the OUTPUT HASH
+| `flox-carrier` | baked OCI — the minimal base every flox-injected pod runs | idem
+| `seed-incluster` | the flox env `cluster-api/seed-incluster` installs the binary; the pod
+  runs the carrier with it on PATH | DELETED — the env's lock pins a store path, so it is
+  content-addressed by construction
+|===
+
+★ So the two shapes are not equivalent, and the choice is forced rather than stylistic: a
+flox env is content-addressed for free, and only what *cannot* use one needs a
+content-derived tag. The `seed-incluster` OCI output was removed rather than fixed, because
+it had no consumer left and was the worse shape of the two.
+
+=== A derived tag cannot be written down — which is the point
+
+Both tags used to be Java literals on `FloxDebugPolicy` (`rke2lab/flox-carrier:0.1.0`,
+`io.seedmatic.flox-controller:0.0.0-develop`) under a javadoc pleading that they "MUST match
+the RepoTag the nix image is tagged with". The plea *was* the design: nothing enforced it,
+and one of the two lived in another repository's `VERSION` file.
+
+Now the flake PUBLISHES each ref and stages it onto the synthesis classpath at
+`/image-refs/` — the same mechanism, pom wiring and `mvn clean` hygiene as `/crds/` and
+`/rbac/` — and the synthesis READS it through `ContainerImageRefs`, reached from
+`ManifestSynthesisContext.containerImages()`.
+
+[source,java]
+----
+// ❌ a literal that a rebuild silently invalidates
+container.put("image", "io.seedmatic.flox-controller:0.0.0-develop");
+
+// ✅ read what the build staged
+container.put("image",
+    ManifestSynthesisContext.current().containerImages().floxController());
+----
+
+Two properties worth keeping:
+
+* the carrier's ref is computed from the NODE's pkgs
+  (`nixosConfigurations.rke2-node-base.pkgs`, via the leaf both the module and the flake
+  import), so the tag rendered and the image baked cannot disagree. A separately imported
+  nixpkgs would agree only BY COINCIDENCE — there are no overlays on the node today — and a
+  coincidence is the fragility being removed;
+* a missing staged ref fails AT THE POINT OF USE, naming the step that produces it. It is
+  never defaulted: a guessed tag would name an image no node holds.
+
+★ And it makes a guard unnecessary rather than needed. The alternative was a build-time
+concord check (the pattern `flake.nix`'s `node-label-concord` already uses for a Java
+constant the nix side must match) — but that only catches a typo, never "same tag, new
+content". Deriving the tag removes the literal, so there is nothing left to keep in step.
+
 == Troubleshooting
 
 The grow fails with "no node-base image can be identified"::
