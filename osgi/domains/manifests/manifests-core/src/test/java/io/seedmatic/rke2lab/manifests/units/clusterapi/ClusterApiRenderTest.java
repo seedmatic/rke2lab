@@ -1,0 +1,241 @@
+package io.seedmatic.rke2lab.manifests.units.clusterapi;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import io.seedmatic.rke2lab.manifests.Cdk8sApiObjectResolver;
+import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
+import io.seedmatic.rke2lab.manifests.ManifestsUnit;
+import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
+import io.seedmatic.rke2lab.manifests.YamlMapper;
+import io.seedmatic.rke2lab.manifests.contract.ManifestDomainPolicy;
+import io.seedmatic.rke2lab.manifests.contract.ManifestSynthesisRequest;
+import io.seedmatic.rke2lab.manifests.contract.WorkloadTarget;
+import io.seedmatic.rke2lab.manifests.contract.profiles.BootstrapIdentity;
+import io.seedmatic.rke2lab.manifests.contract.profiles.ImageState;
+import io.seedmatic.rke2lab.manifests.contract.profiles.NodeRuntime;
+import io.seedmatic.rke2lab.manifests.node.DefaultNodeEnvContext;
+import io.seedmatic.rke2lab.manifests.units.cluster.ClusterRuntimeNamespaceManifestsUnit;
+import io.seedmatic.rke2lab.manifests.units.runtime.SeedInclusterManifestsUnit;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import org.cdk8s.App;
+import org.cdk8s.AppProps;
+import org.cdk8s.Chart;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+/**
+ * The cluster-api units RENDERED with a bound {@link ImageState}, which is the only condition under
+ * which they emit anything at all.
+ *
+ * <p>Why this exists: without a bound image state those units NO-OP, so every test passed while the
+ * render was broken and the first real check was a grow — three defects in three cold starts on
+ * 2026-09-28, each minutes into a provisioning run:
+ *
+ * <ul>
+ *   <li>a cdk8s construct-id collision, because every workload target rendered into ONE scope and
+ *       the id was derived from the image alias, which is fleet-wide;
+ *   <li>a CR rendered whose CRD the seed-incluster unit did not emit, so the synthesis'
+ *       CRD-provider gate refused the render;
+ *   <li>a pool referencing the image the wrong way round.
+ * </ul>
+ *
+ * <p>Same bargain as {@link io.seedmatic.rke2lab.manifests.unitrepo.RealDomainGraphTest}: seconds
+ * here instead of minutes there, against the REAL units rather than a fixture.
+ *
+ * <p>TWO workload targets, deliberately: one target cannot collide with itself, so a single-target
+ * fixture would have reproduced none of it.
+ */
+@Tag("osgi")
+class ClusterApiRenderTest {
+
+  private static final String MANAGEMENT_CLUSTER = "bioskop-mgmt";
+
+  private static final List<WorkloadTarget> TARGETS =
+      List.of(new WorkloadTarget("bioskop", "wrkld"), new WorkloadTarget("nikopol", "mgmt"));
+
+  /** Only the domains under test — a policy is required, and an absent one renders nothing. */
+  private static final ManifestDomainPolicy POLICY =
+      ManifestDomainPolicy.builder().clusterApi(true).runtime(true).cluster(true).build();
+
+  /** Our CR group — the one whose CRDs this project renders itself. */
+  private static final String OWNED_GROUP = "cluster.seedmatic.io";
+
+  /**
+   * A realised image, shaped exactly as the incus scion forwards it. The runtime contract is
+   * present because {@link ImageState} requires it — a recording without it is undecodable, which
+   * is the point of that requirement.
+   */
+  private static ImageState imageState() {
+    return new ImageState(
+        "node-base",
+        "0f7a1c9d2b3e4f5a6b7c8d9e0f1a2b3c4d5e6f708192a3b4c5d6e7f809a1b2c3",
+        "sha256-buildinputs",
+        "rke2lab",
+        "https://nixos.bioskop:8443",
+        "1.34.1+rke2r1",
+        new NodeRuntime(
+            List.of("ip_vs", "xfrm_user", "nft_compat"),
+            "lxc.mount.auto = proc:rw sys:rw cgroup:rw",
+            true,
+            true,
+            true,
+            true));
+  }
+
+  private static BootstrapIdentity identity() {
+    return new BootstrapIdentity(
+        MANAGEMENT_CLUSTER,
+        1,
+        "token",
+        "cluster.local",
+        "dev",
+        "master",
+        1,
+        "management",
+        "bioskop-nixos",
+        "bioskop-mgmt-master",
+        "bioskop-mgmt-master.bioskop");
+  }
+
+  /**
+   * Render the given units into ONE chart, as a synthesis does, and return the emitted documents.
+   */
+  private static List<Map<String, Object>> render(
+      final Path outdir, final List<ManifestsUnit> units) {
+    final App app = new App(AppProps.builder().outdir(outdir.toString()).build());
+    final Chart chart = new Chart(app, "manifests");
+    final ManifestSynthesisRequest request =
+        ManifestSynthesisRequest.builder(outdir, outdir.resolve("manifests.yaml"))
+            .bootstrapIdentity(identity())
+            .imageState(Optional.of(imageState()))
+            .workloadTargets(TARGETS)
+            .manifestDomainPolicy(Optional.of(POLICY))
+            .build();
+
+    try (var bound = ManifestSynthesisContext.of(request).bind()) {
+      for (final ManifestsUnit unit : units) {
+        unit.apply(
+            new ManifestsUnitContext(
+                chart,
+                "cluster-api",
+                unit.manifestUnitId(),
+                new Cdk8sApiObjectResolver(chart),
+                POLICY,
+                new DefaultNodeEnvContext(identity()),
+                new YamlMapper()));
+      }
+    }
+
+    final List<Map<String, Object>> documents = new ArrayList<>();
+    for (final Object document : chart.toJson()) {
+      @SuppressWarnings("unchecked")
+      final Map<String, Object> asMap = (Map<String, Object>) document;
+      documents.add(asMap);
+    }
+    return documents;
+  }
+
+  private static List<ManifestsUnit> clusterApiUnits() {
+    final ClusterApiCrRenderer renderer = new ClusterApiCrRenderer();
+    return List.of(
+        new ClusterApiManagementManifestsUnit(renderer),
+        new ClusterApiWorkloadManifestsUnit(renderer));
+  }
+
+  private static String kindOf(final Map<String, Object> document) {
+    return String.valueOf(document.get("kind"));
+  }
+
+  private static String groupOf(final Map<String, Object> document) {
+    final String apiVersion = String.valueOf(document.get("apiVersion"));
+    final int slash = apiVersion.indexOf('/');
+    return slash < 0 ? "" : apiVersion.substring(0, slash);
+  }
+
+  @Test
+  void requireEveryClusterGetsItsOwnNodeImage(@TempDir Path outdir) {
+    final List<Map<String, Object>> documents = render(outdir, clusterApiUnits());
+
+    final List<String> namespaces =
+        documents.stream()
+            .filter(d -> "NodeImage".equals(kindOf(d)))
+            .map(d -> (Map<String, Object>) d.get("metadata"))
+            .map(m -> String.valueOf(m.get("namespace")))
+            .toList();
+
+    // One per cluster — the management one plus both targets. The metadata NAME repeats (it is the
+    // fleet-wide image alias, scoped by namespace); only the construct id is per-cluster, and
+    // deriving it from the alias instead collided on the second target.
+    assertEquals(
+        List.of("rke2lab-bioskop-mgmt", "rke2lab-bioskop-wrkld", "rke2lab-nikopol-mgmt"),
+        namespaces.stream().sorted().toList());
+  }
+
+  @Test
+  void requirePoolIntentionsReferenceTheNodeImageByName(@TempDir Path outdir) {
+    final List<Map<String, Object>> documents = render(outdir, clusterApiUnits());
+
+    final List<Map<String, Object>> pools =
+        documents.stream().filter(d -> "PoolIntention".equals(kindOf(d))).toList();
+    assertEquals(3, pools.size());
+
+    for (final Map<String, Object> pool : pools) {
+      @SuppressWarnings("unchecked")
+      final Map<String, Object> spec = (Map<String, Object>) pool.get("spec");
+      @SuppressWarnings("unchecked")
+      final Map<String, Object> image = (Map<String, Object>) spec.get("image");
+      // A REFERENCE, not an embedded fingerprint: the pool names the NodeImage that describes the
+      // artifact, so the controller derives the image pin AND the runtime contract from one object.
+      assertEquals(Set.of("name"), image.keySet());
+      assertEquals("node-base", image.get("name"));
+    }
+  }
+
+  @Test
+  void requireEveryOwnedCrHasItsCrdRendered(@TempDir Path outdir) {
+    final List<ManifestsUnit> units = new ArrayList<>(clusterApiUnits());
+    // The seed-incluster unit REFERENCES the rke2lab-system Namespace another unit creates, so the
+    // prerequisite is rendered too — the resolver is a real cross-unit lookup, not a stub.
+    units.add(new ClusterRuntimeNamespaceManifestsUnit());
+    units.add(new SeedInclusterManifestsUnit());
+    final List<Map<String, Object>> documents = render(outdir, units);
+
+    final Set<String> renderedCrKinds = new LinkedHashSet<>();
+    final Set<String> crdKinds = new LinkedHashSet<>();
+    for (final Map<String, Object> document : documents) {
+      if ("CustomResourceDefinition".equals(kindOf(document))) {
+        @SuppressWarnings("unchecked")
+        final Map<String, Object> spec = (Map<String, Object>) document.get("spec");
+        if (OWNED_GROUP.equals(String.valueOf(spec.get("group")))) {
+          @SuppressWarnings("unchecked")
+          final Map<String, Object> names = (Map<String, Object>) spec.get("names");
+          crdKinds.add(String.valueOf(names.get("kind")));
+        }
+      } else if (OWNED_GROUP.equals(groupOf(document))) {
+        renderedCrKinds.add(kindOf(document));
+      }
+    }
+
+    // A CR whose CRD nothing provides fails the render at the CRD-provider gate — correctly,
+    // because
+    // the Flux planner cannot compute the ordering edge that keeps Flux from applying the CR before
+    // its CRD. Adding a kind without adding its staged CRD to the seed-incluster unit is exactly
+    // the
+    // omission this catches.
+    assertFalse(renderedCrKinds.isEmpty(), "the cluster-api units rendered no owned CR");
+    assertTrue(
+        crdKinds.containsAll(renderedCrKinds),
+        () ->
+            "rendered CRs with no CRD emitted: "
+                + renderedCrKinds.stream().filter(kind -> !crdKinds.contains(kind)).toList());
+  }
+}

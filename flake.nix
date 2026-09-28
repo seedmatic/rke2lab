@@ -152,6 +152,14 @@
       # linux-builder is involved on this path.
       blueprintSystem = "aarch64-darwin";
 
+      # The system the NODE runs — Incus containers on the Apple-Silicon hypervisor. ONE literal,
+      # because two consumers must agree on it: nixosConfigurations.rke2-node-base (which BAKES the
+      # images) and the image-ref staging (which PUBLISHES their RepoTags). A dockerTools tag is the
+      # image's output hash and therefore per-system, so publishing a ref computed for the staging
+      # HOST names an image no node holds — measured 2026-09-28, the render asked for the darwin tag
+      # while containerd held the linux one, and there is no registry to pull the difference from.
+      nodeSystem = "aarch64-linux";
+
       # Single source of truth for the Maven-build toolchain. This one attrset
       # feeds two consumers: the build derivations below, and the re-exported
       # `packages` that the flox env pins against — so the dev loop and the store
@@ -659,8 +667,17 @@
         # rke2 auto-import) and `imagePullPolicy: IfNotPresent`, a node already holding a tag NEVER
         # replaces it, so a rebuild shipped new content that no pod ever ran and nothing reported it.
         # A derived tag makes the reference unwritable by hand, which is exactly the point.
+        # ⚠️ The NODE's system, never `${system}`. The tag is the image's OUTPUT HASH, so it differs
+        # per system — and the ref is staged from a DARWIN host while the node runs the aarch64-linux
+        # build. Taking `packages.${system}` published `…:b1zy8v3z…` (darwin) for an image the node
+        # holds as `…:9r99n0zs…` (linux): a reference to something no node has, which is the very
+        # failure this whole change removes. Measured 2026-09-28 on the first cold start after it.
+        #
+        # The carrier's ref avoids this by construction (it is built from
+        # nixosConfigurations.rke2-node-base.pkgs); this is the same discipline, stated explicitly
+        # because here the wrong system is the one in scope.
         floxControllerImageRef =
-          (flox-controller.packages.${system} or { }).flox-controller-image-ref or null;
+          (flox-controller.packages.${nodeSystem} or { }).flox-controller-image-ref or null;
 
         # The carrier's tag comes from the NODE's pkgs — the very ones
         # nixosConfigurations.rke2-node-base bakes the image with — so the tag the synthesis renders
@@ -1420,7 +1437,7 @@ USAGE
       # `incus image import <metadata>/tarball/*.tar.xz <squashfs> --alias rke2lab/node-base`.
       # Per-node identity (node-ip, hostname, token) is injected at instance creation, not baked.
       nixosConfigurations.rke2-node-base = nixpkgs.lib.nixosSystem {
-        system = "aarch64-linux";
+        system = nodeSystem;
         specialArgs = {
           inherit flox flox-runtime flox-controller;
           ndh = inputs.ndh;
