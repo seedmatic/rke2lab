@@ -106,7 +106,7 @@ public final class ClusterApiManagementManifestsUnit extends AbstractManifestsUn
     final ApiObject namespaceObject = renderer.namespace(scope, cluster, namespace, packageProfile);
     // The realised image, described to the cluster that boots on it — the pool references it by
     // name.
-    renderer.nodeImage(scope, namespace, image, packageProfile, namespaceObject);
+    renderer.nodeImage(scope, cluster, namespace, image, packageProfile, namespaceObject);
     // The 2×2 intent for the mgmt cluster's SELF-adoption: a cluster-level ClusterIntention + a
     // single-pet control-node PoolIntention (a management cluster is ONE control node). kind =
     // management records the federated role (birthed/adopted identically to a workload). The Incus

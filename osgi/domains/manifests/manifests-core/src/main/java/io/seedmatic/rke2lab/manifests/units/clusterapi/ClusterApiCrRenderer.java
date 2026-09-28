@@ -278,9 +278,17 @@ public final class ClusterApiCrRenderer {
    * <p>Named by the image ALIAS, which is what a {@code PoolIntention} references. Rendered from a
    * typed {@link NodeImageCr} rather than an inline map — see that record for why, and for what it
    * still does not guarantee.
+   *
+   * <p>⚠️ The construct id carries the CLUSTER, the object name does not. Every cluster gets its
+   * own NodeImage describing the same artifact, so the metadata name repeats legitimately — it is
+   * scoped by namespace — while cdk8s construct ids must be unique within the scope, and the
+   * workload unit renders every target into ONE scope. Deriving the id from the alias alone
+   * collided on the second target ("There is already a Construct with name 'nodeimage-node-base'"),
+   * exactly as its siblings avoid by keying on {@code cluster} / {@code poolName}.
    */
   public ApiObject nodeImage(
       final Construct scope,
+      final String cluster,
       final String namespace,
       final ImageState image,
       final PackageMetadataProfile profile,
@@ -289,7 +297,7 @@ public final class ClusterApiCrRenderer {
     final ApiObject nodeImage =
         new ApiObject(
             scope,
-            "nodeimage-" + name,
+            "nodeimage-" + cluster,
             ApiObjectProps.builder()
                 .apiVersion("cluster.seedmatic.io/v1alpha1")
                 .kind("NodeImage")

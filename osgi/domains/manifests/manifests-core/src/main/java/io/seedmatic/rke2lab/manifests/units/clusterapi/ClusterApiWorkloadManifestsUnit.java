@@ -160,7 +160,7 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
     final ApiObject namespaceObject = renderer.namespace(scope, cluster, namespace, packageProfile);
     // The realised image, described to the cluster that boots on it — the pool references it by
     // name.
-    renderer.nodeImage(scope, namespace, image, packageProfile, namespaceObject);
+    renderer.nodeImage(scope, cluster, namespace, image, packageProfile, namespaceObject);
     // The 2×2 intent: ONE cluster-level ClusterIntention + N pool-level PoolIntention (here just
     // the
     // control-node pool; worker pools are a follow-up). Both are Flux-owned and Flux-pruned;
