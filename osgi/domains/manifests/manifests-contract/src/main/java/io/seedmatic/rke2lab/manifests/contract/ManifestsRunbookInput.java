@@ -61,11 +61,20 @@ public record ManifestsRunbookInput(
     @Amendment(Amendment.SOIL) Optional<String> materializationRoot,
     @Amendment(Amendment.IDENTITY) Optional<Identity> identity,
     @Amendment(Amendment.RENDER_MODE) Optional<RenderMode> renderMode,
-    @Amendment(Amendment.IMAGE_STATE) Optional<ImageState> image,
-    @Amendment(Amendment.NETWORK_FACET) NetworkFacet network) {
+    @Amendment(Amendment.IMAGE_STATE) Optional<ImageState> image) {
 
   public static Builder builder() {
     return new Builder();
+  }
+
+  /**
+   * The network concern, read at the same depth as {@link #image} — it is STORED inside {@link
+   * Facets} (that is what gets recorded on the branch and replayed by an in-cluster render), but a
+   * consumer has no interest in which facet holds it, and {@code input.facets().network()} stutters
+   * because the reader must then know both.
+   */
+  public NetworkFacet network() {
+    return facets().network();
   }
 
   /**
@@ -89,7 +98,6 @@ public record ManifestsRunbookInput(
     private Optional<Identity> identity = Optional.empty();
     private Optional<RenderMode> renderMode = Optional.empty();
     private Optional<ImageState> image = Optional.empty();
-    private NetworkFacet network = NetworkFacet.unknown();
 
     private Builder() {}
 
@@ -118,14 +126,8 @@ public record ManifestsRunbookInput(
       return this;
     }
 
-    public Builder network(NetworkFacet network) {
-      this.network = network;
-      return this;
-    }
-
     public ManifestsRunbookInput build() {
-      return new ManifestsRunbookInput(
-          facets, materializationRoot, identity, renderMode, image, network);
+      return new ManifestsRunbookInput(facets, materializationRoot, identity, renderMode, image);
     }
   }
 
@@ -140,7 +142,10 @@ public record ManifestsRunbookInput(
    * ClusterRole}.
    */
   public record Facets(
-      DebugFacet debug, DeliveryFacet delivery, List<WorkloadTarget> workloadTargets) {
+      DebugFacet debug,
+      DeliveryFacet delivery,
+      List<WorkloadTarget> workloadTargets,
+      NetworkFacet network) {
 
     /**
      * Coalesce absent sub-facets to their defaults — the host contributes the {@code
@@ -155,6 +160,18 @@ public record ManifestsRunbookInput(
       debug = debug != null ? debug : DebugFacet.disabled();
       delivery = delivery != null ? delivery : DeliveryFacet.defaults();
       workloadTargets = workloadTargets != null ? List.copyOf(workloadTargets) : List.of();
+      // Coalesced to unknown(), NOT to a plausible bridge name: an absent parent renders a device
+      // with an empty parent, visibly wrong in a manifest, where a default would silently attach a
+      // node to the wrong bridge. It lives HERE rather than beside `image` because it is the same
+      // KIND of fact as workloadTargets — a GROW-recorded coordinate the CLI's own facet never
+      // sets.
+      // Being inside Facets is what makes it travel: the branch records `facet:` verbatim, so an
+      // in-cluster UPDATE replays it with no separate read/write path. As a top-level amendment it
+      // was mandatory at the amend door and the in-cluster sower could not offer it, which broke
+      // the
+      // render the first time that path ever ran (measured 2026-09-28 — the stale PaC trigger had
+      // hidden it).
+      network = network != null ? network : NetworkFacet.unknown();
     }
 
     public static Builder builder() {
@@ -169,8 +186,14 @@ public record ManifestsRunbookInput(
       private DebugFacet debug = DebugFacet.disabled();
       private DeliveryFacet delivery = DeliveryFacet.defaults();
       private List<WorkloadTarget> workloadTargets = List.of();
+      private NetworkFacet network = NetworkFacet.unknown();
 
       private Builder() {}
+
+      public Builder network(NetworkFacet network) {
+        this.network = network;
+        return this;
+      }
 
       public Builder debug(DebugFacet debug) {
         this.debug = debug;
@@ -188,7 +211,7 @@ public record ManifestsRunbookInput(
       }
 
       public Facets build() {
-        return new Facets(debug, delivery, workloadTargets);
+        return new Facets(debug, delivery, workloadTargets, network);
       }
     }
   }

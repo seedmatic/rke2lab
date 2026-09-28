@@ -487,10 +487,22 @@ provider directly, so it needs the full set regardless.
 === Who publishes what
 
 The vmnet bridge follows the cluster's ROLE, so the blueprint derives it. The fabric bridge does not:
-it is an operator declaration in the host's `rke2lab:network:` concern, which reaches the render as its
-own amendment role (`NETWORK_FACET`) — contributed verbatim, exactly as `rke2lab:manifests:` is. The
-render then composes the set and publishes it on `PoolIntention.spec.devices`; the controller poses it
-and derives nothing.
+it is an operator declaration in the host's `rke2lab:network:` concern, which the grow merges INTO the
+manifests facet under `network`. The render then composes the set and publishes it on
+`PoolIntention.spec.devices`; the controller poses it and derives nothing.
+
+⚠️ *It rides inside the facet, and that is load-bearing.* It first shipped as an amendment role of its
+own (`NETWORK_FACET`), which made it MANDATORY at the amend door — and the in-cluster render has no
+host to declare it, so the first time that path ever ran it refused outright ("no sower offered:
+network-facet"). Inside the facet it travels the way `workloadTargets` already does: the branch records
+`facet:` verbatim in its root `manifest.yaml`, so a steady-state render replays it with no second
+read/write path and no obligation on a second sower. Absent, it coalesces to a BLANK parent rather than
+a plausible bridge name — a device with an empty parent is visibly wrong in a manifest, where a default
+would silently attach a node to the wrong bridge.
+
+★ The defect was invisible for a different reason worth recording: the Pipelines-as-Code trigger still
+named a retired branch, so the in-cluster render had never once run. Two faults masked each other, and
+fixing the trigger is what surfaced this one.
 
 ⚠️ Ordering when this lands: an Incus profile cannot be deleted while an instance references it, so
 the instances are recreated first and the orphaned profiles removed after — which a cold start does

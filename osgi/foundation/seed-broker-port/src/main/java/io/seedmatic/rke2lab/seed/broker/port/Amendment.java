@@ -40,18 +40,6 @@ public @interface Amendment {
   String FACET = "facet";
 
   /**
-   * The operator's {@code rke2lab:network:} concern subtree, contributed VERBATIM the way {@link
-   * #FACET} carries {@code rke2lab:manifests:}. It exists because a node's bridge attachment is
-   * declared by the operator on the HOST side ({@code fabricBridgeParent} in Pulumi.dev.yaml) while
-   * the render that must pose it lives across the membrane — and the render cannot derive it: the
-   * vmnet bridge follows the cluster's role (the blueprint knows it), the FABRIC bridge does not.
-   *
-   * <p>A distinct role rather than a second {@code FACET} contribution, because the assembler binds
-   * one role to one component and rejects a role borne by several as ambiguous.
-   */
-  String NETWORK_FACET = "network-facet";
-
-  /**
    * The identity provisioning coordinates — the flat scalars (identity root, cluster, node,
    * automount) the host holds and a domain needs to RECONSTRUCT the provisioning topology in-world.
    * The host fills it from its {@code BootstrapConfig}; the scion computes its own paths from it (§

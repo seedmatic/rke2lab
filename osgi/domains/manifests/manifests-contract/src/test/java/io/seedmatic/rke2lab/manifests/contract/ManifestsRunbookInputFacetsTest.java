@@ -24,7 +24,7 @@ class ManifestsRunbookInputFacetsTest {
   @Test
   void the_compact_constructor_defaults_every_absent_sub_facet() {
     // What jackson hands the canonical constructor for a yaml that carries none of the sub-maps.
-    final Facets coalesced = new Facets(null, null, null);
+    final Facets coalesced = new Facets(null, null, null, null);
 
     assertNotNull(coalesced.debug(), "an absent debug sub-map defaults, never null");
     assertNotNull(coalesced.delivery(), "an absent delivery sub-map defaults, never null");
@@ -34,6 +34,14 @@ class ManifestsRunbookInputFacetsTest {
     // workloads.
     assertTrue(
         coalesced.workloadTargets().isEmpty(), "an absent workloadTargets defaults to empty");
+    // An absent network coalesces to unknown() — a BLANK parent, never a plausible bridge name: the
+    // render then poses a device with an empty parent, visibly wrong in a manifest, where a default
+    // would silently attach a node to the wrong bridge.
+    assertNotNull(coalesced.network(), "an absent network sub-map defaults, never null");
+    assertEquals(
+        "",
+        coalesced.network().fabricBridgeParent(),
+        "an absent network defaults to a BLANK parent, not a plausible bridge name");
   }
 
   @Test
@@ -42,7 +50,8 @@ class ManifestsRunbookInputFacetsTest {
         new Facets(
             DebugFacet.builder().mesh(true).build(),
             new DeliveryFacet(true),
-            List.of(new WorkloadTarget("bioskop", "wrkld")));
+            List.of(new WorkloadTarget("bioskop", "wrkld")),
+            new ManifestsRunbookInput.NetworkFacet("fabric-br"));
 
     assertEquals(true, partial.delivery().push(), "a present delivery is kept, not defaulted");
     assertTrue(partial.debug().mesh().enabled(), "a present debug is kept verbatim");
@@ -51,5 +60,10 @@ class ManifestsRunbookInputFacetsTest {
         "bioskop-wrkld",
         partial.workloadTargets().get(0).clusterName(),
         "the target's clusterName is <host>-<role>");
+    // The network rides INSIDE the facet, which is what makes it recorded on the branch and
+    // replayed
+    // by an in-cluster render — the reason it stopped being an amendment role of its own.
+    assertEquals(
+        "fabric-br", partial.network().fabricBridgeParent(), "a present network is kept verbatim");
   }
 }

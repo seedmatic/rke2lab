@@ -453,18 +453,21 @@ public class ManifestSynthesisScenario
       Optional<ImageState> recordedImage) {
     return new ManifestsRunbookInput(
         new ManifestsRunbookInput.Facets(
-            facets.debug(), seeded.facets().delivery(), facets.workloadTargets()),
+            facets.debug(),
+            seeded.facets().delivery(),
+            facets.workloadTargets(),
+            // HEAD wins, exactly as for debug/workloadTargets: the fabric bridge is a GROW-recorded
+            // coordinate. The earlier top-level component took the SEEDED value on the premise that
+            // "a branch does not record it" — which held only while the sower was a host. The
+            // in-cluster render has no host to declare it, so recording it is what makes the render
+            // possible at all.
+            facets.network()),
         seeded.materializationRoot(),
         seeded.identity(),
         seeded.renderMode(),
         // A live seeded image (a grow) wins; else replay the ImageState the grow recorded at HEAD,
         // so a steady-state render pins the same node-base image instead of emptying the CR set.
-        seeded.image().or(() -> recordedImage),
-        // The operator's network concern is the SEEDED one either way: it is a host declaration,
-        // not
-        // something a branch records, so an UPDATE/EDIT render keeps what this run was amended
-        // with.
-        seeded.network());
+        seeded.image().or(() -> recordedImage));
   }
 
   /**
@@ -1187,7 +1190,13 @@ public class ManifestSynthesisScenario
         recordRenderFacet(
             root,
             new ManifestsRunbookInput.Facets(
-                facet.facets().debug(), facet.facets().delivery(), List.of()),
+                facet.facets().debug(),
+                facet.facets().delivery(),
+                List.of(),
+                // The network rides along: a TARGET branch renders in-cluster too, and its own
+                // render has no host to declare the fabric parent either. Dropping it here would
+                // leave exactly the hole that broke the manager's render, one branch further down.
+                facet.network()),
             facet.image());
         recordSopsPolicy(root);
         recordInstallConfigFlake(root);

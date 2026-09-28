@@ -230,15 +230,39 @@ public class ClusterSeedScenario
    * entry.
    */
   /**
-   * The {@code network-facet} amendment payload. Built from the host's TYPED value rather than
-   * re-serialising the operator's yaml subtree blind: unlike {@code rke2lab:manifests:}, this
-   * concern IS typed on the host side, so there is no blind subtree to forward — and the render
-   * reads exactly one key of it.
+   * The operator's {@code rke2lab:manifests:} subtree with the host's network concern merged in
+   * under {@code network} — the fabric bridge every node's Incus NIC attaches to (the vmnet one the
+   * render derives from the cluster's role). Taken from the host's TYPED value rather than
+   * re-serialised blind: unlike the rest of the subtree, this concern is typed on this side.
+   *
+   * <p>Merged INTO the facet rather than contributed as a role of its own, which is what it was
+   * until 2026-09-28. A distinct mandatory role obliged EVERY sower to offer it, and the in-cluster
+   * render has no host to declare it — so the first time that path ever ran it refused the render
+   * outright ("no sower offered: network-facet"). Inside the facet it travels the way {@code
+   * workloadTargets} already does: the branch records {@code facet:} verbatim, so a steady-state
+   * render replays it with no second read/write path and no sower obligation.
    */
-  private static String networkFacetJson(String fabricBridgeParent) {
-    final ObjectNode facet = JsonNodeFactory.instance.objectNode();
-    facet.put("fabricBridgeParent", fabricBridgeParent == null ? "" : fabricBridgeParent);
+  private static String withNetwork(Optional<String> manifestsFacet, String fabricBridgeParent) {
+    final ObjectNode facet = readFacetObject(manifestsFacet);
+    facet
+        .putObject("network")
+        .put("fabricBridgeParent", fabricBridgeParent == null ? "" : fabricBridgeParent);
     return facet.toString();
+  }
+
+  /** The operator's subtree as an object, or an empty one when unset/blank/not an object. */
+  private static ObjectNode readFacetObject(Optional<String> manifestsFacet) {
+    final String raw = manifestsFacet.orElse("").trim();
+    if (raw.isEmpty()) {
+      return JsonNodeFactory.instance.objectNode();
+    }
+    try {
+      final JsonNode parsed = new ObjectMapper().readTree(raw);
+      return parsed instanceof ObjectNode object ? object : JsonNodeFactory.instance.objectNode();
+    } catch (IOException ex) {
+      throw new IllegalStateException(
+          "the rke2lab:manifests: facet is not readable as JSON: " + raw, ex);
+    }
   }
 
   private static String readCapnClientCert() {
@@ -369,24 +393,9 @@ public class ClusterSeedScenario
           .context()
           .registerService(
               AmendmentContributor.class,
-              new FacetContributor(new AmendCoordinate("manifests"), manifestsFacet.orElse("")),
-              new Hashtable<>());
-      // The operator's rke2lab:network: subtree, to the SAME manifests consultation under its own
-      // role: the render poses every node's Incus devices, and the FABRIC bridge those NICs attach
-      // to
-      // is an operator declaration on this side of the membrane (the vmnet one it derives from the
-      // cluster's role). Contributed verbatim, like the manifests facet beside it — the host names
-      // no
-      // device vocabulary.
-      gardening
-          .connection()
-          .context()
-          .registerService(
-              AmendmentContributor.class,
               new FacetContributor(
                   new AmendCoordinate("manifests"),
-                  Amendment.NETWORK_FACET,
-                  networkFacetJson(run.config().fabricBridgeParent())),
+                  withNetwork(manifestsFacet, run.config().fabricBridgeParent())),
               new Hashtable<>());
       // The workload cluster names the cluster-pki seal pre-seeds a CA for — dug from the SAME
       // manifests FACET (its workloadTargets), offered per-consult to the cluster-pki crossing.
