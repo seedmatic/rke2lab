@@ -1604,14 +1604,23 @@ A bare-metal answers on FIVE names and seven-plus addresses. The cert has one of
 | `fd96:…:a50:1`, `fd96:…:a50:801`, `fd7a:115c:a1e0::b32:518` | the v6 twins of vmnet + tailnet
 |===
 
-⚠️ **One entry is not blueprint-derived.** The vmnet gateways and the fabric address follow from
-`clusterId = (host<<1)|role` and the /21 carve, so they are deterministic and a reissue is
-mechanical. The **tailnet address is assigned by the tailnet**, so it is the single entry that can
-change under the cert.
+⚠️ **Exactly one entry cannot be known in advance.** The vmnet gateways and the fabric address follow
+from `clusterId = (host<<1)|role` and the /21 carve; the LAN address is a declared bbox reservation
+(below). All are deterministic, so a reissue is mechanical. The **tailnet address is assigned by the
+tailnet** — nothing declares it.
 
-★ Which argues for a change on the other side: have the incus member URL be the **MagicDNS name**
-(`<host>-nixos.mammoth-skate.ts.net`) rather than the raw tailnet IP. The SAN then covers it by name,
-and tailnet address churn stops invalidating the listener cert.
+★ So for the tailnet the SAN carries the NAME, never the address. The MagicDNS name is fully
+derivable — `<hostname>` + the tailnet constant `mammoth-skate.ts.net`, the same identity the
+`mammoth-skate-tls` root already carries — so it can be stated up front where the IP cannot.
+
+That pairs with a change on the other side: have the incus member URL be
+`https://<host>-nixos.mammoth-skate.ts.net:8443` rather than the raw tailnet IP it uses today. Name
+in the SAN + name in the member URL, and the tailnet address stops mattering to the cert at all.
+
+⚠️ Residual caveat: a tailnet name is fixed at REGISTRATION, and a re-registration while a ghost
+device still holds the name takes a suffixed one (`<host>-nixos-1`) — which would miss the SAN. The
+name is stable in steady state, not across a re-enrolment; see the ephemeral-key work on tailnet node
+identity.
 
 ==== Who knows these names — and the one export that is missing
 
