@@ -18,8 +18,13 @@ mcp-needs-auth-cache.json
 plans/
 telemetry/
 
-# Session checkpoints — private, auto-generated before compaction
-checkpoint-*.md
+# Session checkpoints — private, auto-generated before compaction.
+# ANCHORED with a leading slash: unanchored, it also matched
+# `.claude/memory/checkpoint-identity-to-seam-backlog.md`, a real memory file whose
+# name merely starts with the same word — so that file could never be committed, and
+# MEMORY.md's "Known debt" recorded the link it fixes as dead while the file sat
+# untracked on one machine. A name-shaped rule must say WHERE it applies.
+/checkpoint-*.md
 
 # Diagram preview scratch — overwritten every query, never committed
 claude-preview.adoc

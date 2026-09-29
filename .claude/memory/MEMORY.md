@@ -108,18 +108,26 @@ rename keeps the old word, so a literal search finds nothing in the code.
   index entry target exists except one, which never existed in git and whose
   content lived only in its index line: rebuilt as
   `checkpoint-identity-to-seam-backlog.md`.
-  **16 refs / 40 occurrences remain genuinely dead** — no file in this memory nor
-  in the hub, and no near-name suggesting a rename: `realm-boundary-gate` (7×),
-  `flox-controller-build-deploy-state` (6×),
-  `cold-start-cleanup-and-funnel-cert-persistence` (6×),
-  `spec-figure-first-reading-loop` (4×), `c4-diagrams-flowchart-not-native-dsl` (3×),
-  `port-edge-domain-ownership`, `ghapp-webhook-reconcile-and-funnel-rename`,
-  `caprke2-byo-ca-secret-contract` (2× each), then `thread-manifestations`,
-  `systematic-debugging`, `runtime-view`, `render-config`,
-  `pipeline-spec-legibility-cleanup-post-go`,
-  `flox-gate-secret-flow-devlxd-then-certmanager`, `flox-envs-runtime-crd-delivery`,
-  `flox-carrier-containerize-spike`. Each is a fact someone meant to write and
-  did not; the citing entries still hold the gist.
+  ⚠️ **That rebuild could never be committed, for 10 days.** `.claude/.gitignore`
+  carried an UNANCHORED `checkpoint-*.md` (meant for session checkpoints), which also
+  matched the memory file whose name starts with the same word. Anchored to
+  `/checkpoint-*.md` on 2026-09-29. A name-shaped rule must say WHERE it applies.
+- **★ Corrected 2026-09-29 — 7 of those 16 "dead" refs were never dead.**
+  The 09-19 audit ran against ONE memory tree while the files sat in the other:
+  memory was written into the `main` checkout while work was committed from each
+  session's own worktree, so two trees diverged (248 files vs 325). The 3-way merge
+  that reconciled them recovered `caprke2-byo-ca-secret-contract`,
+  `cold-start-cleanup-and-funnel-cert-persistence`, `flox-carrier-containerize-spike`,
+  `flox-controller-build-deploy-state`, `flox-envs-runtime-crd-delivery`,
+  `flox-gate-secret-flow-devlxd-then-certmanager` and
+  `ghapp-webhook-reconcile-and-funnel-rename`.
+  **9 refs remain genuinely dead**, re-verified against the reconciled tree AND the
+  hub on 2026-09-29: `realm-boundary-gate` (7×), `spec-figure-first-reading-loop` (4×),
+  `c4-diagrams-flowchart-not-native-dsl` (3×), `port-edge-domain-ownership`,
+  `thread-manifestations`, `systematic-debugging`, `runtime-view`, `render-config`,
+  `pipeline-spec-legibility-cleanup-post-go`. Each is a fact someone meant to write
+  and did not; the citing entries still hold the gist.
   Re-run: extract `\[\[name\]\]` from `*.md`, resolve bare names against this dir
   and `hub:` ones against the hub memory dir. Ignore `name`/`x`/`links`/`link` —
-  they are syntax examples in the header, not refs.
+  they are syntax examples in the header, not refs. **And run it against ONE
+  reconciled tree** — an audit over a forked memory reports false deaths.
