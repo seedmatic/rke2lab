@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 0b18b1f3-3eda-496a-865d-1fbc722b0d30
-  modified: 2026-09-23T19:56:41.881Z
+  modified: 2026-09-24T17:34:07.644Z
 ---
 
 Journée du 2026-09-23, migration de la fabric (ndh + nnh + rke2lab). **Sept** défauts trouvés,
@@ -102,9 +102,25 @@ En hibernant le domaine `mesh`, j'ai voulu empêcher le rendu des FloxEnv `mesh/
 domaine. Le garde aurait supprimé les envs *prod* dès que le debug est éteint (le cas normal), et
 cassé au réveil du mesh sans debug.
 
-`FloxEnvManifestsUnit` (domaine **runtime**, donc rendu par tous les clusters) n'a accès qu'à
-`floxDebugPolicy()`. Faire suivre la politique de domaine demande de la câbler jusqu'au contexte
-de synthèse — machinerie neuve, non faite.
+✅ **CORRIGÉ le 2026-09-24, et ma conclusion d'alors était fausse.** J'avais écrit que
+faire suivre la politique de domaine « demande de la câbler jusqu'au contexte de synthèse —
+machinerie neuve, non faite ». Il n'y avait rien à câbler : `ManifestsUnitContext` est un
+record dont un composant est déjà `ManifestDomainPolicy manifestDomainPolicy`, et
+`doSynthesize` reçoit déjà ce contexte. La porte tient en une ligne :
+
+```java
+context.manifestDomainPolicy().isEnabled(ManifestDomainCatalog.MESH)
+```
+
+La règle à retenir, elle, tient : **deux portes, deux questions.** `FloxDebugPolicy`
+choisit une *saveur* (prod / debug) ; `ManifestDomainPolicy` décide de l'*existence*.
+Et le `folder` d'un env ne dit pas qui le possède — `tailscale`/`tailnet` sont dans le
+dossier `mesh` mais appartiennent au domaine tailscale, vivant.
+
+⚠️ Décision utilisateur : les envs sont **hibernés, pas supprimés** — le domaine se dit
+hiberné, ce qui énonce une intention de réveil, donc ils doivent pouvoir revenir avec lui.
+Le domaine mesh existe toujours en code (≈450 lignes : `units/mesh/*`,
+`MeshDomainRegistrar`), éteint par politique seule.
 
 ⚠️ **Et l'ordre de nettoyage est contraint** : supprimer les entrées `environment.d/mesh/{headscale,
 headplane}` du flox-catalogue **avant** que l'unité cesse de les déclarer laisserait des CR pointant
@@ -112,4 +128,14 @@ vers un verrou absent — la panne du matin, où un env non GC-rooté a bloqué 
 health checks de leurs Kustomizations. Séquence sûre : l'unité d'abord, le catalogue ensuite.
 
 See [[darwin-nic-service-not-device]] [[nix-darwin-activation-keys-are-fixed]]
-[[fabric-segment-pinning-and-federation-from-nnh]] [[fabric-migration-state-and-queue]].
+[[fabric-segment-pinning-and-federation-from-nnh]] [[fabric-migration-state-and-queue]]
+[[capi-template-is-stamped-not-referenced]].
+
+## Le membre « lu qu'à la naissance », mesuré (2026-09-24)
+
+La quatrième signature de la liste ci-dessus a reçu son cas d'école, et c'est le plus
+coûteux : un `LXCMachineTemplate` est **estampillé** dans la `spec` de la `LXCMachine`
+à sa création, jamais relu ; le fingerprint d'image qu'il épinglait avait de surcroît
+été collecté par le grow. Aucune condition ne le disait — il fallait *tenter une
+création* pour l'apprendre, et entre-temps le cluster avait perdu sa réparabilité.
+Détail et remède dans [[capi-template-is-stamped-not-referenced]].

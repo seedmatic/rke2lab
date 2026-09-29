@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 0b18b1f3-3eda-496a-865d-1fbc722b0d30
-  modified: 2026-09-20T13:43:01.816Z
+  modified: 2026-09-28T10:06:09.948Z
 ---
 
 Toute sonde dont la réponse **négative** déclenche une destruction doit renvoyer
@@ -95,5 +95,37 @@ Implémenté dans `ndh` `e3451f13` : `tart:vm:store-layers:replacement:guard`, q
 de **remplacement** (interdit sous ESP préservé) et nomme `VM_FACTORY_RESET=true` dans
 l'erreur.
 
+## 2026-09-28 — la règle vaut aussi quand « l'acte » est de NE RIEN ÉMETTRE (rke2lab)
+
+Troisième instance, et d'une forme nouvelle : aucune commande de suppression n'était
+écrite. `ManifestSynthesisScenario.recordedImage` décodait le sous-arbre `image:` du
+contexte de rendu enregistré au HEAD de la branche et répondait à **deux** valeurs — une
+valeur ou vide — en avalant *tout* échec dans le vide (`catch (IOException) →
+Optional.empty()`) : YAML malformé, fichier illisible, enregistrement que ce build ne sait
+pas mapper.
+
+★ Or vide **n'est pas inerte** : vide ⇒ les unités cluster-api ne rendent rien, et chaque
+répertoire de rendu porte `prune: true` ⇒ **Flux supprime** la `ClusterIntention` /
+`PoolIntention` qu'il ne retrouve pas, et le CR-set CAPI part avec la cascade d'ownerRefs.
+Un seul octet illisible sur la branche était donc un ordre permanent de démonter l'intention
+d'un cluster vivant. Personne ne l'avait déclenché — c'est mon ajout d'un champ requis à
+`ImageState` qui l'a rendu atteignable, et c'est comme ça qu'il a été vu.
+
+**La généralisation à retenir :**
+
+> Sous `prune: true`, **ne rien émettre EST un acte**. Donc « je ne sais pas » doit échouer,
+> et seul « il n'y a rien » a le droit de n'émettre rien.
+
+Corrigé en trois valeurs (rke2lab `99e20f2ad`) : pas de clé `image:` ⇒ absent, le seul vide
+légitime ; présent et décodable ⇒ rejoué ; présent et **indécodable** ⇒ exception.
+
+★ Et le jumeau du même jour, l'autre moitié de la même erreur : `InstanceGrow.ensureImage`
+concluait d'artefacts absents que l'image était absente. Faux — un worktree neuf vide la
+**stack Pulumi**, pas le **démon**, qui tient encore l'image sur laquelle un grow précédent a
+posé l'alias `node-base`. Une sonde négative ne doit donc pas seulement éviter de détruire :
+elle doit **chercher ailleurs** avant de conclure. Trois sources pour une identité d'image —
+minter · le cellier (conçu, non câblé) · l'alias du démon — et erreur seulement si les trois
+se taisent (rke2lab `6a297176d`). Détail dans [[node-image-published-as-cr]].
+
 See [[erofs-store-layer-stack-vision]] [[nerd-nixos-tart-vm-renew-procedure]]
-[[materializer-corp-mac-identity-gcroots]].
+[[materializer-corp-mac-identity-gcroots]] [[node-image-published-as-cr]].

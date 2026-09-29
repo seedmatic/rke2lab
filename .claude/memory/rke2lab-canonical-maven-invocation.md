@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 0b18b1f3-3eda-496a-865d-1fbc722b0d30
-  modified: 2026-09-20T20:41:18.334Z
+  modified: 2026-09-25T15:59:06.648Z
 ---
 
 ```
@@ -35,5 +35,31 @@ flox activate -- ./mvnw clean verify -Pall-worlds,claude \
 -am` reste valable pour cibler, mais il faut y ajouter `-Pall-worlds,claude`) — j'ai fait l'erreur
 de lancer `-pl :incus-ingress -am compile` tout court, ce qui (a) ne vérifie pas grand-chose et
 (b) écrit dans le `target/` de l'utilisateur.
+
+## Récidive le 2026-09-25 — et le symptôme qui doit me le rappeler
+
+J'ai de nouveau lancé `flox activate -- ./mvnw package` **sans profil**, alors que cette note
+existait. Résultat : **tous** les modules compilent `SUCCESS`, et la porte `osgi-staging` de
+`seed-master` échoue seule :
+
+```
+[realm-wiring-integrity] the assembled uber-jar must boot with every bundle resolved and the
+flat/bundle export sets disjoint: [the assembled framework failed to boot:
+java.lang.reflect.InvocationTargetException]
+```
+
+Le `InvocationTargetException` n'est PAS déballé par `StagingExecutionStrategy` (l.376 met juste
+`ex` dans le message), donc `-e` ne donne rien de plus que la pile Maven — ne pas perdre de temps
+à la chercher là.
+
+★ **Heuristique** : un échec de boot du framework assemblé **alors que la compilation passe
+partout** doit d'abord faire suspecter *le profil manquant*, pas mon diff. Deux mécanismes
+concourent : (a) le `target/` partagé peut livrer des classes compilées par l'IDE, et (b) sans
+aucun `-P`, les profils `activeByDefault` sont actifs — or le pom de seed-master s'appuie
+explicitement sur le fait qu'un `-P` les désactive (le profil `bench` s'arme par l'*absence* de
+`skipBench` pour cette raison même). Donc bâtir sans profil ne produit pas seulement un autre
+répertoire : ça produit une **autre configuration de build**.
+
+Et `package` ne suffit pas — c'est `verify` qui exerce la porte dans sa forme attendue.
 
 See [[common-d-is-a-directory-wide-nix-input]].
