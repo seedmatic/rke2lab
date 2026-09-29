@@ -11,7 +11,7 @@ metadata:
 
 **SUPERSEDED / folded (2026-07-02).** The parked doc
 `docs/architecture/patterns/dsl-unification-exploration.adoc` was DELETED (`git rm`); its living
-content merged into `docs/architecture/osgi/pipeline-spec.adoc` (the one pipeline spec, OSGi-owned).
+content merged into `docs/architecture/bdd/bdd.adoc` (the one pipeline spec, OSGi-owned).
 Do NOT restart this as a separate subject — it IS the pipeline spec now. See
 [[pipeline-jgiven-separation-design]] for the full arc.
 

@@ -56,4 +56,4 @@ explicitly deferred until the model stabilises (user: "chacun à sa place" later
 
 **NEXT TOPIC undecided.** Natural successors: recruit-a-specialist (consume an Assessment-without-
 prescription), or a real Remediator tier, or the module reorg. [[doctor-live-record-roadmap]]
-[[works-best-from-concrete-code]] [[docs-diagrams-not-java]].
+[[hub:works-best-from-concrete-code]] [[hub:docs-diagrams-not-java]].

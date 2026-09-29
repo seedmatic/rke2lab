@@ -35,4 +35,4 @@ The seven proven mechanisms to consult during the ClusterSeed-vertical migration
 
 Durable design record (lifted into `docs/` on `design/pre-integration`, not on the disposable branch):
 `docs/architecture/osgi/bdd-pipeline-poc-design.adoc` + the Diagram Q / go-no-go table in
-`docs/architecture/atlas/host-pipeline.adoc`. See [[pipeline-spec-legibility-cleanup-post-go]].
+`docs/architecture/atlas/seed.adoc`. See [[pipeline-spec-legibility-cleanup-post-go]].

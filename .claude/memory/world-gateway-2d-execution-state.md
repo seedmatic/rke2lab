@@ -166,7 +166,7 @@ Changes DONE (files edited, not yet built):
 - `WorldGatewayCatalog.FIELD_INTERVENTIONS` DELETED.
 
 STILL TODO for T7 (resume here):
-1. Add `InterventionWire` to docs/architecture/osgi/world-gateway-spec.adoc (SPEC_COVERAGE names it,
+1. Add `InterventionWire` to docs/architecture/osgi/seed-broker-spec.adoc (SPEC_COVERAGE names it,
    like ReadinessVerdict/InterventionRequest — else ERROR).
 2. Migrate tests: `InterventionReaderTest` (fromOutputMap→fromWire, build InterventionWire not Map),
    `InterventionLedgerReaderTest` (rewrite: one InterventionWire per Document, drop FIELD_INTERVENTIONS

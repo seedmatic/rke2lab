@@ -1,0 +1,27 @@
+---
+name: nerd-nixos-tart-vm-renew-procedure
+description: How to renew/re-provision the nerd-nixos Tart VM (ZFS pools) from bioskop via ndh — the materializer entry point + first-boot switch to bioskop-nixos
+metadata: 
+  node_type: memory
+  type: project
+  originSessionId: a38c4453-c630-4e3d-afec-eca508d52df3
+  modified: 2026-09-17T14:11:09.962Z
+---
+
+**nerd-nixos = VM NixOS Tart** matérialisée sur un Mac hôte macOS (via `nerd-tart-<host>-materialize`), pas une machine à côté. **L'hôte varie** : bioskop (config `bioskop-nixos`, ce runbook) OU le Mac corp de nikopol (config `nikopol-nixos`) — au 2026-09-17 elle tournait sur le baremetal nikopol. Reach SSH + TMPDIR : voir [[nerd-nixos-ssh-reach-and-tmpdir-socket-limit]]. Ses zpools vivent dans des disques VM-locaux `~/.tart/vms/nerd-nixos/{tank1,tank2,tank3}.img` (raidz1) + `recover.img`. Un « renew » = factory-reset qui détruit ces disques et les recrée depuis l'image de bringup (pools ZFS pré-semés). Repo ndh = `/private/var/lib/git/seedmatic/ndh`, branche `develop`.
+
+**Flux de renew complet (depuis le checkout ndh, sur bioskop) :**
+```bash
+VM_FACTORY_RESET=true nix run .#nerd-tart-bioskop-materialize   # détruit+recrée les disques/zpools
+~/.tart/vms/nerd-nixos.sh                                       # boote le shell de bringup (hostname nerd-nixos)
+nixos-rebuild switch --flake .#bioskop-nixos --target-host root@bioskop-nixos.local
+```
+Le 1er boot ne lance QUE le système de bringup minimal (`nerd-nixos`, pas de `/etc/nixos`) ; le `nixos-rebuild switch --target-host` depuis bioskop pousse+active la vraie config **`bioskop-nixos`** (le runtime NixOS de la VM = config host-spécifique, pas `nerd-nixos`). `zfs-bootstrap-activation` importe/étend les pools au 1er boot ZFS (`forceImportRoot/All=true`, survit à un crash). Runbook : `docs/vm-operator-runbook.adoc` Phase 2 (reset) + Phase 3 (switch), et `docs/operator-commands.adoc`. Rescue sans wipe (crash récupérable) : runbook §550-987.
+
+**GAP corrigé (2026-09-16) :** l'ancien `nix run .#nerd-tart-vm-materialize` avait été RETIRÉ des sorties top-level du flake (commentaire « intentionally not exposed »). Piège : bioskop a `vmMaterializerEnableActivationHook = false` (pas de hook darwin-rebuild) ET `nerd-tart-<host>-deploy` cible un vzhost DISTANT → plus AUCUN point d'entrée pour matérialiser localement. Fix : re-exposé `packages.<system>.nerd-tart-<host>-materialize` (per-host, dans le bloc `tartAttrs` de `flake.nix`, à côté de `-config`/`-deploy`) ; `meta.mainProgram` fait marcher `nix run`. Docs `operator-commands.adoc`/`vm-operator-runbook.adoc` renommées `vm-` → `bioskop-`. **Follow-up non fait :** blocs morts `hostDarwinApps`/`hostDarwinPackages`/`hostLinux*` (mkHostOutputs return `apps`/`packages` jamais fusionnés/lus) — préexistants, chaîne de bindings à démêler (`ndhBootstrapRuntimePackageLinux` redéfini 3×).
+
+**Dépannage en attendant (sans le flake) :** le bundle materializer est épinglé par un gcroot GC-safe — `VM_FACTORY_RESET=true /nix/var/nix/gcroots/per-user/nxmatic/tart-nerd-nixos-materialize/bin/activate.sh` (reflète la dernière activation darwin, ne rebuild pas l'image).
+
+**★ ŒUF-POULE builder (2026-09-16, vécu + documenté) :** builder `bioskop-nixos` (aarch64-linux) exige un builder aarch64-linux ; from-scratch, `/etc/nix/machines` pointe le cassé `root@nerd-nixos.local` ET `darwin-rebuild switch` ne peut pas monter l'embedded linux-builder (son propre guest custom = build aarch64-linux) → `platform mismatch`. Sortie : amorcer un builder **stock cache-substituable** — `flox activate -- create-builder` OU `nix run nixpkgs#darwin.linux-builder` (QEMU ; `darwin.linux-builder-vz` PAS dans le pin nixpkgs par défaut → `github:NixOS/nixpkgs/nixpkgs-unstable#darwin.linux-builder-vz`). **GOTCHA clé : `create-builder` génère la keypair dans le CWD du lanceur (`keys/`) → l'installer root-owned dans `/etc/nix/builder_ed25519` (0600) sinon daemon `Permission denied (publickey)`.** Puis câbler root : alias ssh `/etc/ssh/ssh_config.d/100-linux-builder.conf` (HostName localhost, Port 31022, User builder, IdentityFile /etc/nix/builder_ed25519, UserKnownHostsFile /var/root/.ssh/known_hosts.linux-builder) + `/etc/nix/machines` = `ssh-ng://builder@linux-builder aarch64-linux /etc/nix/builder_ed25519 8 1 big-parallel,kvm,nixos-test - -`. Vérif `sudo nix store info --store ssh-ng://linux-builder`, puis build `.#bioskop-nixos` (PAS besoin de darwin-rebuild). **★ AUTOMATISÉ (2026-09-16) : app flake `nix run .#bootstrap-linux-builder` (+ `--stop`) fait TOUT ça** — lance le vz linux-builder depuis `nixpkgs-unstable` (le pin flake-commons `26.05pre-git` n'a PAS `linux-builder-vz` ; unstable oui), fixe KEYS (anti-piège cwd), écrit alias ssh + machines (backup), avec le **sudo ambiant `/usr/bin/sudo`** (JAMAIS sudo dans `runtimeInputs` de writeShellApplication → shadowerait le setuid ; cf. `cleanup-activations`). Script `modules/.common.d/bootstrap-linux-builder.d/`, wiring `flake.nix` (`pkgsUnstableForDarwin` + app). Le builder tourne attaché → build `.#bioskop-nixos` depuis un 2e terminal. Handbook `docs/host-builder-phases.adoc` §"Cold bootstrap from zero" mène désormais avec l'app. Handbook : `ndh/docs/host-builder-phases.adoc` §"Cold bootstrap from zero" (gravé cette session). bioskop `ndh.hostBuilder` = défaut `bootstrap` (ligne commentée dans hosts/bioskop/darwin.nix) ; repasser `steady` une fois le sibling up.
+
+See [[nixos-node-substrate-state]].

@@ -39,7 +39,7 @@ The user is starting a test discipline for rke2lab (near-zero coverage today: on
 
 **Sharing technical stages — start with test-jar, expect to migrate.** Decision: begin with Maven `test-jar` (manifests publishes its stages, seed-master consumes scope=test). The user has bad experience with test-jar (same GAV as main jar + classifier; Maven mishandles transitive test-jar deps / classifier confusion). Accepted as a known risk to avoid creating a module prematurely; migrate to a dedicated `bdd-fixtures`/`test-support` module when the pain hits. Prototype starts in `manifests/src/test` (stages+scenarios together) before any extraction.
 
-**Scenario language = English.** Per [[shared-artifacts-in-english]], JGiven scenario/step prose is living documentation = a shared artifact → write method names and `@As` text in en-US, not French.
+**Scenario language = English.** Per [[hub:shared-artifacts-in-english]], JGiven scenario/step prose is living documentation = a shared artifact → write method names and `@As` text in en-US, not French.
 
 **Design decisions locked in the 2026-06-04 brainstorm (ready to resume):**
 - *Narrative level:* two-tier (operator narrative on top via `@NestedSteps`, reusable technical steps underneath).
@@ -112,4 +112,4 @@ JGiven ships JUnit-6 support; import `junit-bom` before spring-boot in `bom/pom.
 `@ParameterizedTest` under a JGiven `ScenarioTest` (it probes JUnit ≥5.13 `ParameterInfo`; we have
 5.10.5 → harmless NoClassDefFoundError noise). Prefer one explicit scenario per case.
 
-See [[working-style-narrate-progress]] and [[config-restructuring-state]] and [[runbook-doctor-state]].
+See [[hub:working-style-narrate-progress]] and [[config-restructuring-state]] and [[runbook-doctor-state]].

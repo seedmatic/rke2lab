@@ -93,5 +93,5 @@ the 2 decisions, the glossary remediation; re-seat the unitrepo atlas as the 4th
 secures the corpus (docrepo-dag-wip is local-only, never pushed — the standing risk). Last design hole
 before the spec = **deplier Diagram 5: the mediation seam** (`ResourceDescription`/ACL as the formal
 before/after extension of `-port`/`awaitService`). Only AFTER the spec can a plan for the first
-framework-unlocked increment (handler edge + load-from-store) be written. See [[docrepo-dag-state]] (hub)
+framework-unlocked increment (handler edge + load-from-store) be written. See [[hub:docrepo-dag-state]] (hub)
 [[osgi-runtime-r4-boot-seam-state]] [[step2-decomposition-state]].

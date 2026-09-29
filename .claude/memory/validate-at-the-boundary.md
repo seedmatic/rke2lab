@@ -40,11 +40,11 @@ delegate) AT the point foreign data/exceptions enter = correct, it's the boundar
 Distinguish by asking: "does any FOREIGN path reach this constructor/method without passing a
 delegate I control?" No → trust the caller. Yes → that path needs the delegate, put the check THERE.
 
-**NOT in tension with the layered error contract** ([[error-handling-layered-contract]]): that says a
+**NOT in tension with the layered error contract** ([[hub:error-handling-layered-contract]]): that says a
 present-but-broken thing must THROW, not be masked (e.g. the same review's CRITICAL — a corrupt ledger
 must propagate, not fold to empty). Both are "errors surface at their true origin, never deported":
 the boundary delegate is exactly where a foreign break has its origin. Surfaced during the
-[[intervention-provenance-state]] final review; validates [[works-best-from-concrete-code]] (the rule
+[[intervention-provenance-state]] final review; validates [[hub:works-best-from-concrete-code]] (the rule
 crystallized from a concrete reviewer suggestion the user rejected). See also
-[[user-profile-senior-dev]] — errors-as-logs is the deepest pain, and a guard-that-never-fires plus a
+[[hub:user-profile-senior-dev]] — errors-as-logs is the deepest pain, and a guard-that-never-fires plus a
 swallowed-corruption are two faces of deporting the decision away from its origin.

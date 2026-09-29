@@ -155,7 +155,7 @@ NEW/UPDATED this session, all uncommitted:
 - UPDATED `docs/architecture/osgi/staging-gates-governance-spec.adoc` — now FOUR gates; Gate→StagingGate
   throughout; added the REALM_BOUNDARY row + a detailed two-realm/auto-attribution/reads-bodies+exec-
   classes subsection; C4 diagram gained RealmBoundary; fail-at-end notes the WARN→ERROR lifecycle.
-- UPDATED `docs/architecture/osgi/world-gateway-spec.adoc` — invariant now names REALM_BOUNDARY as the
+- UPDATED `docs/architecture/osgi/seed-broker-spec.adoc` — invariant now names REALM_BOUNDARY as the
   load-bearing guard (greps demoted to eyeballs); Sequencing rewritten gate-first/flip-last + the
   "two plans" note; Related-docs link to the governance spec.
 - `.claude/claude-preview.adoc` — the gate-design figures (scratch).
@@ -174,5 +174,5 @@ NEXT, in order:
 Note: cdk8s-carrier staging fix (376e7d95 + 9e57ba82) ALREADY committed session 1 — done, separate.
 
 See [[multiplexor-two-models-design]] (the prior, now-revised design) [[cdk8s-carrier-flat-jar-pattern]]
-[[maven-build-cache-and-staging-verify]] [[options-always-as-c4-diagrams]] [[diagram-preview-file]]
+[[maven-build-cache-and-staging-verify]] [[options-always-as-c4-diagrams]] [[hub:diagram-preview-file]]
 [[object-graph-navigability-principle]].

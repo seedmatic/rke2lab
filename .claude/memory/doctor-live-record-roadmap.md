@@ -55,7 +55,7 @@ rework and step 2/3 grow on top.
 
 **NEXT TOPIC = DELIBERATELY UNDECIDED (user's call, 2026-06-10).** Foundation-first discipline:
 step 1 is the tested foundation; decide the next chantier in a FRESH session with the working code
-in hand ([[works-best-from-concrete-code]]). My standing advice when resumed: step 2 (remediation/
+in hand ([[hub:works-best-from-concrete-code]]). My standing advice when resumed: step 2 (remediation/
 Referral) has the real driver and is the natural precursor to the HealthSystem gating — do NOT jump
 straight to HealthSystem (over-investment for a population of one). Adjacent unrelated chantiers if
 the user pivots: [[seed-vcluster]], [[config-restructuring-state]] Increment 2.

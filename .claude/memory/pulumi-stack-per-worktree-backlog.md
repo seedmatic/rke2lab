@@ -13,7 +13,7 @@ metadata:
 - Main checkout → `/rke2lab/.pulumi-state/` → holds the REAL `dev` stack (+ `noexport-test`, `sandbox-selfread`, history, backups).
 - Any `.claude/worktrees/<x>/` → its own `.pulumi-state/`, created empty by the `on-activate` `mkdir -p`. `pulumi stack ls` there = empty.
 
-**The tension (this is the crux):** user asked "shouldn't a worktree import the dev stack at init?" — but a naive import RE-CREATES the cross-session sharing that the [[worktree-per-conversation]] rule just eliminated. Two worktrees each holding a `dev` that points at the SAME real master = divergent states + colliding `pulumi up` on one infra. Must split two needs:
+**The tension (this is the crux):** user asked "shouldn't a worktree import the dev stack at init?" — but a naive import RE-CREATES the cross-session sharing that the [[hub:worktree-per-conversation]] rule just eliminated. Two worktrees each holding a `dev` that points at the SAME real master = divergent states + colliding `pulumi up` on one infra. Must split two needs:
 - **Mutate real dev infra** → stays at the MAIN checkout only (single source of truth for dev state). A worktree should NOT `up` dev.
 - **Preview/test the worktree's code against realistic data** → either a throwaway stack (proven safe this session: isolated worktree-local backend, `pulumi preview` exercised the full runtime path) OR a READ-ONLY frozen snapshot of dev (export→import a copy, never written back to the real master).
 
@@ -23,4 +23,4 @@ Rule of thumb: **copy state to READ it, never to re-write it to the same infra.*
 
 **A SECOND worktree-init concern joins this brainstorm (2026-06-14): sops re-smudge.** Same shape — "what does a fresh worktree need to be usable?" `git worktree add` leaves the sops-governed files (`.secrets`, `.ndh-ssh.d/keys.yaml`, `**/01-secret-*.yaml`) ENCRYPTED, because the smudge filter runs before `.sops.yaml` lands in the new dir (ordering bug, NOT a missing file — `.sops.yaml` is tracked so it IS there; a symlink is the wrong fix). Proven fix: post-creation re-smudge — `rm <sops files> && git checkout -- <sops files>` (ENC[ count → 0). Full diagnosis in [[sops-worktree-smudge-noise]]. So the worktree-init story has TWO automation candidates that want ONE hook: (1) provision a usable Pulumi stack, (2) re-smudge sops secrets. Likely landing spot = a worktree-creation hook (or the flox `on-activate`, which already runs the `mkdir -p .pulumi-state`). Brainstorm them together.
 
-See [[worktree-per-conversation]] (the isolation rule this must not violate), [[sops-worktree-smudge-noise]] (the second init concern), and [[preview-whatif-topic]] (self-referential state read patterns already explored).
+See [[hub:worktree-per-conversation]] (the isolation rule this must not violate), [[sops-worktree-smudge-noise]] (the second init concern), and [[preview-whatif-topic]] (self-referential state read patterns already explored).

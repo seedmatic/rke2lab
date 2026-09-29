@@ -3,7 +3,7 @@ name: orchestration-purity-benefit
 description: "ANALYSIS + HORIZON INCREMENT (2026-06-21): what we'd gain by making the ORCHESTRATION pure (decoupling the jgiven scenario engine from the host), and why it's worth planning as a SEPARATE increment. Not pure-OSGi by dogma (host orchestration may well be the final architecture); but maximizing what lives in OSGi is a goal because that's where the code is best-structured and decouplable. The big benefit: a pure scenario engine makes the designer runbook a pure bundle, and lets a scenario be resolved as a unit (gates become resolution edges -> the compass becomes Felix-mechanical, not hand-counted)."
 metadata:
   node_type: memory
-  type: project
+  type: feedback
 ---
 
 ## The question (the user's, precisely)

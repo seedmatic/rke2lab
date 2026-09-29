@@ -3,7 +3,7 @@ name: prefer-osgi-edge-three-reasons
 description: "Three POSITIVE reasons to materialise a playable external edge in the OSGi world rather than host — explicit frontier, inherited SCR IoC, and free fail-fast — surfaced building ssh-to-age-edge. Playability only ENABLES the choice; these are why to MAKE it."
 metadata:
   node_type: memory
-  type: project
+  type: feedback
 ---
 
 When an external edge's contact is *playable* (pure JDK — `ProcessBuilder`, `java.nio` — runs inside

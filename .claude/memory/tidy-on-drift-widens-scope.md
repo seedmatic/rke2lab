@@ -26,4 +26,4 @@ it. It is intentional, not accidental sprawl.
 - The distinction that still matters: a widening toward a CONVENED pattern is welcome; an unconvened
   new abstraction is not. If unsure whether a pattern was convened, ask — don't assume either way.
 
-Related: [[refactor-statics-on-touch]] [[sequential-no-compat-workflow]] [[works-best-from-concrete-code]].
+Related: [[refactor-statics-on-touch]] [[hub:sequential-no-compat-workflow]] [[hub:works-best-from-concrete-code]].

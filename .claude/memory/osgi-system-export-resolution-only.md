@@ -120,5 +120,5 @@ so a split fails loudly, not silently.
   doc standard — AsciiDoc + the anti-pattern ❌/✅).
 
 See [[osgi-runtime-r4-boot-seam-state]] (THE SPEC)
-[[osgi-runtime-r1-scr-state]] (single-exporter trick) [[model-substrate-alignment]] (OSGi describes,
+[[osgi-runtime-r1-scr-state]] (single-exporter trick) [[hub:model-substrate-alignment]] (OSGi describes,
 host actualises) [[system-space-world-universe-glossary]] (osgi world vs host world).

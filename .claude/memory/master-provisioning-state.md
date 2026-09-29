@@ -138,5 +138,5 @@ probe: ssh bioskop-nixos → incus exec master → `systemctl status rke2lab-dbu
 **WHERE WE STOPPED:** Phase 1 of [[systematic-debugging]] (root-cause investigation), read-only only,
 NO fix attempted, NO `pulumi` run. Decided to save state + start a FRESH session (context was heavy:
 referral round-trip design→plan→9-task execution→merge all happened first). Resume cold from this note.
-[[works-best-from-concrete-code]] [[error-handling-layered-contract]] (the throw-vs-Observation choice
+[[hub:works-best-from-concrete-code]] [[hub:error-handling-layered-contract]] (the throw-vs-Observation choice
 is exactly the leaf-throws-vs-typed-result tension).

@@ -235,5 +235,5 @@ VALUE (leaning this) or a re-sowable coordinate; and whether `SplitCoordinate` c
 a sibling meta-coordinate reads better.
 
 See [[seed-broker-contribution-model]] [[runmode-livegate-pulumi-abstraction]] [[preview-whatif-topic]]
-[[diagram-preview-file]] [[docs-diagrams-not-java]]. Lexicon:
+[[hub:diagram-preview-file]] [[hub:docs-diagrams-not-java]]. Lexicon:
 `docs/architecture/osgi/seed-gardening-lexicon.adoc`; spec: `docs/architecture/osgi/seed-broker-spec.adoc`.

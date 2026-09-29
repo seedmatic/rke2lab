@@ -72,5 +72,5 @@ they lack) — `pluginManagement` + per-bundle opt-in is the only clean cut.
   the roster + roadmap. When the first host module migrates, FILL `host-parent` (it is the waiting hook).
 
 See [[bnd-annotations-spike-state]] (the just-merged proof), [[step2-decomposition-state]] (parent
-chantier + module roster), [[check-osgi-standard-before-modeling]], [[build-verification-gotchas]],
-[[external-worktree-operating-model-state]].
+chantier + module roster), [[hub:check-osgi-standard-before-modeling]], [[build-verification-gotchas]],
+[[hub:external-worktree-operating-model-state]].

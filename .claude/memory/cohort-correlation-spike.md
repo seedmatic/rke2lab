@@ -31,7 +31,7 @@ cheaply, before committing the design.
   `PulumiBackendLayout.stacksDir(backend, project)` → `recordFor` each. Registry read-core UNCHANGED.
 - `Generalist.cohortFinding(symptom)` folds the cohort; `SystemdAdapterStage.consultDoctor` logs it.
 - The repo's FIRST custom annotation `io.seedmatic.rke2lab.controlplane.meta.Spike` (SOURCE retention) —
-  see [[branch-namespaces]]. KEY STRUCTURAL LEARNING: the per-patient pure clinical methods
+  see [[hub:branch-namespaces]]. KEY STRUCTURAL LEARNING: the per-patient pure clinical methods
   (`historyOf`/`efficacyOf`) fold across patients FOR FREE — the model was shaped right.
 - (An earlier standalone `CohortReader` was absorbed into the registry; a nullable backendDir on
   Generalist was rejected mid-flight by the user as no-incomplete-state violation → null-object

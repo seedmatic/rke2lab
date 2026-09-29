@@ -181,7 +181,7 @@ face of the same robustness gain as record-privacy, and it serves the session's 
 
 ## NEXT (agreed sequencing)
 
-1. Author spec `docs/architecture/osgi/multiplexor-spec.adoc` (the 4 preview diagrams graduate in).
+1. Author spec `docs/architecture/osgi/seed-broker-spec.adoc` (the 4 preview diagrams graduate in).
 2. Atlas update — extend the Doctor subsystem view with a BEFORE/AFTER additivity proof
    (monotone-with-named-erasure: `OUTPUT_KEY`/`toOutputMap`/`*Reader` erased, `StackCoordinate`
    moves out) + a "Verdict — does it hold?".

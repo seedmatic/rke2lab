@@ -187,4 +187,4 @@ See [[osgi-runtime-r4-boot-seam-state]] (R4, which this de-risks — the self-co
 the boot seam), [[osgi-runtime-r3-consume-references-state]] (the dual-path + NodeEnvContributorRegistry
 `forServiceLoader`), [[osgi-runtime-migration-state]] (spec §4 the runtime target),
 the atlas `docs/architecture/integration-atlas.adoc` §"The two spaces" (the bundle/host contract +
-wrong-direction-crossing language this builds on), [[model-substrate-alignment]].
+wrong-direction-crossing language this builds on), [[hub:model-substrate-alignment]].

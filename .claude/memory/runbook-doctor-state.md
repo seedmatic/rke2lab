@@ -13,7 +13,7 @@ holds the graph (state `dependencies`) and the longitudinal log (update history)
 the diagnostic layer Pulumi ignores, per-node, additively; NOT a top-level `medicalRecord` blob, NOT
 edges, NOT timestamp. This REVERSES the previously-locked spec-IncE decisions (top-level blob / full
 record / renegotiated guard) — see `docs/architecture/doctor/layer3-medical-record-design.adoc` (a8c37c75) + its plan
-(the layer-3 design (committed 9b9302d9); both prose+C4/UML, no Java — [[docs-diagrams-not-java]]).
+(the layer-3 design (committed 9b9302d9); both prose+C4/UML, no Java — [[hub:docs-diagrams-not-java]]).
 4 commits: **52781714** `Checkpoint` enum (single-source join key: `slug()` + derived
 `resourceName()`="seed-"+slug; both stages' SCENARIO_ID + both resource names consume it — kills the
 clusterApi/cluster-api hand-aligned-literal risk; identity ONLY, never topology). **13bb7715** the
@@ -374,7 +374,7 @@ Operator UX is already fine: `policy.preview.simulate.<scenario>: <kind>` in `Pu
 (shipped commented as a template); preview-only by construction (apply never reads it).
 
 **Read first:** `docs/architecture/doctor/runbook-doctor.adoc` (the design). Migrated from `wip/` to
-`docs/architecture/doctor/` at merge time ([[wip-guard-hooks]] enforces that `wip/` never reaches main).
+`docs/architecture/doctor/` at merge time ([[hub:wip-guard-hooks]] enforces that `wip/` never reaches main).
 
 **What it is (two intertwined subsystems):**
 - *Runbook* — the deliverable: a rendered `.adoc` DAG (git model) of the readiness scenarios played
@@ -404,7 +404,7 @@ use case"; the runbook-doctor spec assumes the doctor is born in its Increment B
 numbering/ownership at the start of the work. Also: InfraDomain enum is designed to gain a
 per-constant `specialist()` once the doctor types exist — that's the config↔doctor seam.
 
-**Conventions in force:** [[sequential-no-compat-workflow]] (delete old paths same change, no
+**Conventions in force:** [[hub:sequential-no-compat-workflow]] (delete old paths same change, no
 compat), BDD-in-main / TDD-in-test split ([[bdd-jgiven-test-strategy]]), JGiven stages must be
 non-final (byte-buddy subclasses them), build via `flox activate -- ./mvnw -pl :seed-master -am
 test -DskipTests=false` (reactor, tests skipped by default), Claude may run compile/test/preview.

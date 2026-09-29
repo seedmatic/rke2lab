@@ -12,7 +12,7 @@ work.
 
 **How to apply:** when a feature/refactor branch is finished and green, integrate by DIRECT MERGE to
 `origin/main` — rebase the branch onto current `origin/main`, `git merge --ff-only`, push, then remove
-the external worktree and `git branch -d` (per [[external-worktree-operating-model-state]] cleanup
+the external worktree and `git branch -d` (per [[hub:external-worktree-operating-model-state]] cleanup
 recipe). When the question "merge / PR / keep" comes up, default to merge for rke2lab. (This is a
 per-project preference; other repos in the fleet may differ — don't generalise without checking.)
 Contrast: the harness's `finishing-a-development-branch` skill offers PR as an option; for rke2lab,

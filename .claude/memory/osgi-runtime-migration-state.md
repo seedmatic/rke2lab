@@ -134,8 +134,8 @@ The terminal gate to `main` = "capable of provisioning master", nothing less.
   when I do ask, lead with a (Recommended) option ([[ask-question-mark-recommended]]).
 - Build-verify FULL `-Posgi -Dmaven.build.cache.skipCache=true` ([[build-verification-gotchas]]).
 
-See [[step2-decomposition-state]] [[osgi-logging-and-cli-debt]] [[docrepo-dag-state]]
-[[bnd-annotations-spike-state]] [[check-osgi-standard-before-modeling]] [[exec-aggregator-state]]
+See [[step2-decomposition-state]] [[osgi-logging-and-cli-debt]] [[hub:docrepo-dag-state]]
+[[bnd-annotations-spike-state]] [[hub:check-osgi-standard-before-modeling]] [[exec-aggregator-state]]
 [[osgi-test-in-vscode-three-ways]].
 </content>
 </invoke>

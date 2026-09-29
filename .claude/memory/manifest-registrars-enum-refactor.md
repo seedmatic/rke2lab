@@ -5,7 +5,7 @@ metadata:
   type: project
 ---
 
-CANDIDATE next topic (NOT for the refactor/config branch — see [[sequential-no-compat-workflow]]):
+CANDIDATE next topic (NOT for the refactor/config branch — see [[hub:sequential-no-compat-workflow]]):
 apply the enum-implements-interface pattern to the manifest domain registrars, the same way
 [[config-restructuring-state]]'s `InfraDomain` enum does for Stage-A infra domains.
 

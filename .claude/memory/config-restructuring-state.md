@@ -37,7 +37,7 @@ operator prescriptions. Open question (spec Review): doctor-core ownership (conf
 shared neutral module).
 
 **Preview-only branch:** nothing deploys from refactor/config; `pulumi preview` is the only test.
-Combined with [[sequential-no-compat-workflow]]: no green-between-commits machinery, old code
+Combined with [[hub:sequential-no-compat-workflow]]: no green-between-commits machinery, old code
 deleted in the same change that supersedes it.
 
 **Goal:** kill the fragmented config (3 independent Pulumi `Config` readers —
@@ -91,5 +91,5 @@ offline path (no mandatory validation, for EnvironmentStage's null-context branc
 
 **Next step when resuming:** start Increment 2 (doctor) on `feature/runbook-doctor` — see that
 branch's `docs/architecture/doctor/runbook-doctor.adoc`. Build commands: `flox activate -- ./mvnw -pl :seed-master -am test
--DskipTests=false` (reactor; tests skipped by default — see [[sequential-no-compat-workflow]] and
+-DskipTests=false` (reactor; tests skipped by default — see [[hub:sequential-no-compat-workflow]] and
 CLAUDE.md build conventions; Claude may run compile/test/preview, not live-system mutations).
