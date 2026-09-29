@@ -1567,10 +1567,100 @@ its own.
 
 Target state: issue the listener cert from the `mammoth-skate-tls` root via
 `incus cluster update-certificate` (cluster-wide, which is right — a clustered member serves
-`cluster.crt`), carrying EVERY name the host answers to — `<host>-nixos`, `nixos.<host>`, the fabric
-address, the tailnet address, loopback — and have the identity Secrets trust the **CA** rather than
-the leaf. Then the leaf is replaceable without touching a single consumer, and a cold start stops
-invalidating the fleet's trust material.
+`cluster.crt`), and have the identity Secrets trust the **CA** rather than the leaf. Then the leaf is
+replaceable without touching a single consumer, and a cold start stops invalidating the fleet's trust
+material.
+
+==== The SAN set, enumerated from the live host (2026-09-29, `bioskop-nixos`)
+
+A bare-metal answers on FIVE names and seven-plus addresses. The cert has one of each.
+
+[cols="2,2,3",options="header"]
+|===
+| DNS name | Resolves to | Why it belongs
+
+| `<host>-nixos` | — | the hostname; the ONLY SAN the cert carries today
+| `nixos.<host>` | `172.16.0.1` | ★ the split-horizon FQDN **every** `remote.endpoint` dials
+| `<host>-nixos.lan` | `192.168.1.130` | the bbox gateway's LAN name
+| `<host>-nixos.local` | ⚠️ unresolved from the Mac | mDNS — legitimate on the LAN, unverified here
+| `<host>-nixos.mammoth-skate.ts.net` | `100.90.5.23` | the tailnet MagicDNS name
+|===
+
+[cols="2,3",options="header"]
+|===
+| Address | Why it belongs
+
+| `100.90.5.23` (tailscale0)
+| ★★★ the member's OWN url in `incus cluster list` — the cluster addresses itself by an IP its cert
+  does not name
+
+| `10.80.0.1`, `10.80.8.1` (vmnet-mgmt / -wrkld)
+| ★★★ how a NODE reaches its host's engine — measured OPEN from inside a cluster
+
+| `172.16.0.1` (fabric-br) | what `nixos.<host>` resolves to
+| `192.168.1.130` (lan-br) | what `<host>-nixos.lan` resolves to
+| `172.16.8.1/30` (lan-br) | the point-to-point leg toward the bbox
+| `127.0.0.1`, `::1` | already present; keep
+| `fd96:…:a50:1`, `fd96:…:a50:801`, `fd7a:115c:a1e0::b32:518` | the v6 twins of vmnet + tailnet
+|===
+
+⚠️ **One entry is not blueprint-derived.** The vmnet gateways and the fabric address follow from
+`clusterId = (host<<1)|role` and the /21 carve, so they are deterministic and a reissue is
+mechanical. The **tailnet address is assigned by the tailnet**, so it is the single entry that can
+change under the cert.
+
+★ Which argues for a change on the other side: have the incus member URL be the **MagicDNS name**
+(`<host>-nixos.mammoth-skate.ts.net`) rather than the raw tailnet IP. The SAN then covers it by name,
+and tailnet address churn stops invalidating the listener cert.
+
+==== Who knows these names — and the one export that is missing
+
+Checked against `network-blueprint.json` (2026-09-29), the SAN set spans BOTH repos, so neither can
+mint the cert alone:
+
+[cols="2,1,2",options="header"]
+|===
+| Entry | In the blueprint? | Source of truth
+
+| `172.16.0.1` fabric gateway | ✅ `.addressing.<cluster>.master.ips.fabricGateway` | rke2lab
+| `10.80.0.1` / `10.80.8.1` node gateways | ✅ `…ips.nodeGateway` | rke2lab
+| `<host>-nixos`, `nixos.<host>` | ❌ computed in `NamePlan`, NEVER EXPORTED | rke2lab
+| `192.168.1.130`, `<host>-nixos.lan` | n/a | ✅ ndh `catalog.netplan.lan` — DECLARED, see below
+| `172.16.8.1/30` bbox p2p leg | ❌ | ndh
+| `100.90.5.23`, `…mammoth-skate.ts.net` | ❌ | the tailnet (assigned, not declared anywhere)
+|===
+
+The blueprint's `hosts` is only a name->id map (`{bioskop: 0, nikopol: 1}`, the basis of
+`clusterId = (host<<1)|role`), and `fabricFqdn` is emitted PER NODE
+(`bioskop-mgmt-master.bioskop`), never per host.
+
+★ The LAN half, by contrast, is fully declared: the bbox fixed-address reservations are ndh's act,
+and its catalog is structured enough to SELECT from (read 2026-09-29):
+
+[source,json]
+----
+{ "cidr": "192.168.1.0/24", "domain": ".lan", "gateway": "192.168.1.254",
+  "hosts": {
+    "bioskop":       { "ip": "192.168.1.129", "kind": "darwin-host" },
+    "bioskop-nixos": { "ip": "192.168.1.130", "kind": "nixos", "parent": "bioskop" },
+    "nikopol":       { "ip": "192.168.1.33",  "kind": "darwin-host" },
+    "nikopol-nixos": { "ip": "192.168.1.34",  "kind": "nixos" } } }
+----
+
+ⓘ Independent confirmation that the NixOS host CANNOT take the bare `<host>` name: `nikopol` is a
+`darwin-host` at `.33` and `nikopol-nixos` a `nixos` at `.34` — two machines.
+
+So the SAN set is **derivable, not a hand-written list**: `kind == "nixos"` selects exactly the hosts
+in question, `domain` composes `<host>-nixos.lan`, `ip` gives the address, and rke2lab's blueprint
+supplies the fabric + vmnet gateways. Two consequences:
+
+. ⚠️ **rke2lab must export its host-level names** — the ONE real gap. `NamePlan.nixosHost` and
+  `nixosFabricFqdn` exist in Java and die there, so ndh would have to restate `nixos.<host>` by
+  hand: the duplication this repo removes everywhere else. Widen the blueprint's `hosts` from an id
+  map to a record carrying the host's names + gateways. Nothing needs correcting in ndh.
+. ★ **ndh mints the cert**, being the only place both halves are visible: it consumes rke2lab's
+  blueprint (fabric, vmnet, and — once exported — the names), declares the LAN half itself, and owns
+  the `mammoth-skate-tls` root. rke2lab's job is to make its half derivable, not to mint.
 
 [[recreate]]
 == Recreate & rebirth — operator gestures
