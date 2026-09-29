@@ -30,6 +30,12 @@ telemetry/
 claude-preview.adoc
 # Design brainstorm scratch — working notes for a session, never committed
 claude-brainstorm-*.adoc
+# Any whiteboard, whatever it is named. The two patterns above only caught the names WE
+# happened to use, so a session's whiteboard under any other name leaked into commits by
+# default — `opencode-control-plane-whiteboard.adoc` (52 KB of another session's live
+# notes) was swept in that way on 2026-09-29. A whiteboard declares itself in its first
+# line; the filename convention is what git can act on, so enforce the suffix.
+*-whiteboard.adoc
 diag-*.svg
 
 # nixos-node-substrate migration working notes — living scratch, never committed
