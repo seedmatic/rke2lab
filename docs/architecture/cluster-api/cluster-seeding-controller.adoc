@@ -145,6 +145,27 @@ node re-matchable by `providerID` after any cold-start. So
 `ClusterIntention.spec` carries the **blueprint node list**, not a
 cattle pool + replica count.
 
+[WARNING]
+====
+**Measured 2026-09-29 — this last sentence is where the model leaks.** Refusing a
+replica count made the roster carry the COUNT as well as the NAMES, and the count is
+then taken from whichever roster the reconcile resolved — which, after the first life,
+is the *observed* one. So the declared intent can never scale a pool:
+
+[cols="2,1,1",options="header"]
+|===
+| Object | Value | Source
+| `PoolIntention/bioskop-wrkld-control-node.spec.nodes` | **3** (`master`, `peer1`, `peer2`) | declared
+| `RKE2ControlPlane/bioskop-wrkld-control-plane.spec.replicas` | **1** | `len(roster)`
+| `PoolAdoption.status` present / totalPets | 1 / 1 | observed
+|===
+
+`pooladoption_controller.go:168` sizes the RCP with `len(roster)`, and on the adopt path
+`roster = reflection.Spec.Nodes`. A pool that has lived at N is pinned at N forever.
+See <<declaration-triad>> for the resolution (the count becomes declared, the names stay
+observed).
+====
+
 == Reconcile — adopt-first, guarded by cluster-level existence
 
 [[existence]]
@@ -1083,12 +1104,12 @@ This is for **traceability + orphan detection** (git-side), not k8s GC: a reflec
 sequenceDiagram
   participant C as seed-incluster
   participant E as etcd
-  participant G as git (manifests/&lt;cluster&gt;)
+  participant G as git (manifests/{cluster})
   Note over C,G: EXPORT — cluster→git (the reflector's ONLY write)
   C->>E: observe live Machines (the roster)
   C->>C: build PoolReflection + owner annotation {kind,name,namespace} (UID-free)
-  C->>G: commit onto manifests/&lt;cluster&gt;<br/>(App-token · retry-on-conflict · NEVER force-push)
-  Note over C,G: DECIDE — the controller reads manifests/&lt;cluster&gt; from git → adopt vs greenfield
+  C->>G: commit onto manifests/{cluster}<br/>(App-token · retry-on-conflict · NEVER force-push)
+  Note over C,G: DECIDE — the controller reads manifests/{cluster} from git → adopt vs greenfield
   Note over C,E: VIEW — the controller surfaces the observed roster on the intention's STATUS (kubectl)
   Note over C,G: PRUNE — owner PoolIntention gone ⇒ reflector deletes its file (no etcd copy to GC)
 ----
@@ -1119,6 +1140,31 @@ immune to any apply-ordering at bootstrap. Present → ADOPT the observed roster
 provisions its own, the reflector writes the first reflection). The canonical `PoolIntention.spec.nodes`
 seed is used ONLY to SIZE a greenfield RCP; once the cluster has run, the reflection is the roster of
 record. Reflection ↔ reality mismatches are CAPI/CAPN's to reconcile (their layer, not ours).
+
+[WARNING]
+====
+**This paragraph is silent on what sizes an ADOPT, and that silence is the defect**
+(measured 2026-09-29). The RCP is built with `len(roster)` on *both* paths, so on the
+adopt path the replica count comes from the **reflection** — the observed roster feeds
+back into the desired count and closes a loop the intent cannot open:
+
+[mermaid,cluster-seeding-count-feedback,svg]
+----
+flowchart LR
+  DECL["PoolIntention.spec.nodes = 3<br/>(intent)"] -.->|"ignored once a<br/>reflection exists"| X["∅ never read"]
+  REFL["PoolReflection<br/>observed nodes = 1"] -->|"len(roster)"| RCP["RCP replicas = 1"]
+  RCP --> INST["1 instance"]
+  INST --> OBS["the reflector observes 1"]
+  OBS --> REFL
+  classDef bad fill:#fce8e6,stroke:#c5221f
+  classDef dead fill:#f1f3f4,stroke:#9aa0a6,stroke-dasharray:4
+  class REFL,RCP,INST,OBS bad
+  class DECL,X dead
+----
+
+The reflection's job is to record an **identity** (so a survivor re-matches by
+`providerID`); sizing is not its business. See <<declaration-triad>>.
+====
 
 [[reflector-no-merge]]
 === Same branch, the render's ESCAPE preserves the reflection — no CRD, no Flux
@@ -1220,6 +1266,188 @@ remote endpoint. The residual asymmetry is *self vs managed*, not the CR shape:
 
 At a mgmt cold-start every cluster converges back to `Adopted` — the mgmt
 self-adopts, the survived workload is re-adopted — nothing is re-provisioned.
+
+[WARNING]
+====
+**The self branch conflates "never greenfield" with "the seed names my nodes", and a
+sub-plane breaks the second half** (measured 2026-09-29). `resolveRoster` returns
+`(spec.Nodes, greenfield=false)` for the self cluster — right to refuse greenfielding a
+management plane (the reflector cannot reflect its own cold-start), wrong to conclude the
+roster *is* the seed. That only holds for a plane **birthed by a host grow**:
+
+[cols="1,1,1,1",options="header"]
+|===
+| Cluster | Who created it | Who NAMED it | Self view
+
+| `bioskop-mgmt` | the host `grow` | the declaration | ✅ `Adopted`
+| `nikopol-mgmt` | CAPN, via `bioskop-mgmt` | CAPRKE2 (`…-control-plane-p6xqq`) | ❌ `Adopting`, `present=∅`, `totalPets=1`
+|===
+
+`nikopol-mgmt`'s own controller looks for the declared `nikopol-mgmt-master` while the
+live node is `nikopol-mgmt-control-plane-p6xqq`, so `PetsPresent` never becomes true.
+This generalises to **every** `kind: management` sub-plane, since a sub-plane is by
+definition birthed by its parent. Resolution: <<declaration-triad>>.
+====
+
+[[declaration-triad]]
+== The declaration triad — who creates, who names, who counts (📐 planned, not built)
+
+Three of this document's claims leak in the same place: `PoolIntention.spec.nodes` is
+made to answer **three different questions at once**, and two of them are then answered
+by proxies. Measured 2026-09-29; no code changed yet.
+
+[cols="1,2,2,1",options="header"]
+|===
+| # | Question | Answered today by | Sound?
+
+| Q1
+| Who **creates** the instance? (the host `grow`, or CAPN)
+| `ClusterNetworkBlueprint.fabricMacIsPredictable()` = `ClusterRole == MGMT`
+| ✅ measured correct
+
+| Q2
+| Who **names** the instance? (the declaration, or the provisioner)
+| `resolveRoster()` — the *presence* of a `PoolReflection`
+| ⚠️ a runtime accident, never declared
+
+| Q3
+| Who **addresses** it? (a `dhcp-host` reservation, or an ordinary lease)
+| the same `fabricMacIsPredictable()`
+| ✅ but coupled to Q1
+|===
+
+[IMPORTANT]
+====
+**`nature` (pet vs cattle) is Q2 alone — it is NOT the MAC predicate.** The predicate
+speaks of the `10:66:6a:4c:<clusterId>:<nodeId>` hwaddr *posed by the grow*, and the
+2026-09-23 measurement stands: `bioskop-wrkld-control-plane-899lr` came up on an
+ordinary lease. `bioskop-wrkld` declares three pets **and** has unpredictable MACs, so
+the two are orthogonal — making the predicate read `nature` would break addressing.
+====
+
+=== The three declaration cases
+
+[mermaid,cluster-seeding-declaration-cases,svg]
+----
+flowchart TD
+  subgraph C1["Case 1 — bioskop-mgmt · root"]
+    A1["host grow creates<br/>« bioskop-mgmt-master »"] --> B1["name from the DECLARATION"]
+    B1 --> D1["Q1 host · Q2 declaration · Q3 dhcp-host"]
+  end
+  subgraph C2["Case 2 — bioskop-wrkld / nikopol-wrkld · leaf child"]
+    A2["reflection absent ⇒ greenfield<br/>CAPRKE2 creates « …-control-plane-gtcqg »"] --> B2["name from the PROVISIONER<br/>reflector records it in git"]
+    B2 --> D2["Q1 CAPN · Q2 provisioner · Q3 lease"]
+  end
+  subgraph C3["Case 3 — nikopol-mgmt · sub-plane ❌"]
+    A3["parent greenfields it<br/>CAPRKE2 names it"] --> B3["but its OWN controller takes<br/>the SELF branch ⇒ reads the SEED"]
+    B3 --> D3["looks for a name that will never exist"]
+  end
+  classDef ok fill:#e6f4ea,stroke:#137333
+  classDef bad fill:#fce8e6,stroke:#c5221f
+  class D1,D2 ok
+  class B3,D3 bad
+----
+
+=== Two observed sources, each available where the other is not
+
+The roster of NAMES is always *observed* — the question is from where. Git and etcd are
+not competing answers; each covers the case the other cannot:
+
+[mermaid,cluster-seeding-observed-sources,svg]
+----
+flowchart TD
+  subgraph SELF["the SELF cluster"]
+    E["etcd membership / Nodes<br/>read from the LOCAL apiserver"]
+  end
+  subgraph CHILD["the CHILDREN"]
+    G["PoolReflection<br/>observed, committed to GIT"]
+  end
+  E -->|"available because SELF is running"| R["effective roster = the NAMES"]
+  G -->|"durable because git survives<br/>the child's cold-start"| R
+  D["PoolIntention.spec.replicas<br/>(intent)"] --> N["the COUNT"]
+  classDef o fill:#fef7e0,stroke:#f9ab00
+  classDef d fill:#e8f0fe,stroke:#1a73e8
+  class E,G o
+  class D d
+----
+
+A cold child has no etcd to query — hence git. A plane cannot write its own reflection —
+hence etcd. Three access levels to etcd, measured:
+
+[cols="1,2,2,1",options="header"]
+|===
+| # | Access | Yields | Cost
+
+| a
+| `RKE2ControlPlane.status.conditions` → `EtcdClusterHealthy=True Healthy`
+| quorum **health** — CAPRKE2 already dials etcd and publishes a verdict
+| none
+
+| b
+| the static pod `etcd-<nodeName>` in `kube-system` (measured:
+  `etcd-bioskop-wrkld-control-plane-gtcqg`)
+| ★ the **member roster by name** — under rke2 the etcd member name *is* the node name
+| a `list pods`
+
+| c
+| `etcdctl member list`
+| members + IDs + leader + peer URLs
+| ⚠️ client certs live on disk
+  (`/var/lib/rancher/rke2/server/tls/etcd/`), **not** a Secret — needs a hostPath or an
+  issued cert
+|===
+
+(b) is the sweet spot: the *pod name* is the roster, readable with ordinary RBAC and no
+certificate, and for the self cluster it is available exactly when needed — the survivor
+boots, etcd replays its datadir, the apiserver comes up, *then* the controller runs.
+
+❌ **The leader is not an identity.** It moves on its own (election, restart, partition);
+anchoring a name to it would make the name move. What is useful is the **member set**;
+leadership is a liveness/ordering fact only.
+
+✅ **And membership dissolves the pet↔node pairing question.** If a cattle control
+plane's identity comes from etcd membership, nothing needs to know which generated node
+is `peer1` — only that the member set has the intended cardinality and that each member
+keeps its datadir. Pet *names* for a cattle pool are over-specification.
+
+=== The plan — B then A
+
+[cols="1,2,2",options="header"]
+|===
+| Form | Fixes | Does NOT fix
+
+| **B** — observe the self roster (the local apiserver: etcd member pods / Nodes) instead
+  of trusting the seed, in `resolveRoster`'s SELF branch
+| case 3 — `nikopol-mgmt`, and every future sub-plane
+| nothing for a leaf child, which is no one's SELF
+
+| **A** — `nature` (`pet` \| `cattle`) + `replicas` on `PoolIntentionSpec`; the RCP reads
+  `spec.Replicas` instead of `len(roster)`
+| the count→observation loop: what lets a pool reach more than one node
+| nothing for case 3 — it would move the problem onto a reflection SELF cannot write
+|===
+
+Order: **B first** (it unblocks a stuck object and touches no CRD), **A second** (a
+contract change: two fields plus the replica reader). A is *not* deferred work — it
+corrects a live defect on `bioskop-wrkld`.
+
+What this means for `nikopol-wrkld` specifically: it is a **leaf child**, so it takes
+case 2 — the path that already works — and needs neither form to come up at **one** node.
+It needs **A** to come up at more than one; without it, it gets pinned at whatever it
+first observes, exactly as `bioskop-wrkld` is.
+
+=== Rejected and deferred
+
+❌ **Pinning the controller to the master by node affinity** to learn "the node I run
+on". It answers Q2 by *locality* when the object graph already carries the names
+(`Machine.spec.infrastructureRef`, read by `petInfraName`, <<infra-ref>>);
+it trades availability for that (the controller dies with its node); and it does not
+generalise — a three-pet pool has three nodes, and "the one I run on" names only one.
+
+⏸️ **A third field `substrate` (`grown` \| `provisioned`) for Q1/Q3.** It would let
+`fabricMacIsPredictable` stop deriving from the role, and would make `nikopol-mgmt`
+exactly expressible. Deferred: the predicate is measured *correct*, and `substrate` would
+have exactly one reader. Revisit when a second reader appears.
 
 [[recreate]]
 == Recreate & rebirth — operator gestures
@@ -1407,6 +1635,16 @@ carries its primacy as the primary out-of-band seeder.
 [[open-items]]
 == Open items
 
+. **Form B — the SELF roster from local observation** (<<declaration-triad>>). The fallback
+  is the open part: when the local observation is EMPTY (etcd not yet up, Nodes not yet
+  registered at a cold-start) it must fall back to the seed **without ever greenfielding**
+  — keep today's guard, add only "if I observe, the observed wins". *To settle: which
+  signal attests the observation is CONCLUSIVE rather than merely empty.* Same
+  three-valued trap already paid on the render facets — **absent ≠ undecidable**.
+. **Form A — `nature` + `replicas` on `PoolIntentionSpec`** (<<declaration-triad>>), and
+  `rke2ControlPlaneObj` reading `spec.Replicas` instead of `len(roster)`. *To settle:
+  whether `PoolReflection` should STOP carrying the count altogether, or merely stop being
+  read for it — leaving the field fed keeps the loop armed.*
 . **CRD shapes (federation-native, DECOMPOSED — see <<resource-model>>)** —
   `ClusterIntention.spec` is **cluster-level only**: `{ kind, remote (target Incus
   endpoint + per-remote CAPN identity Secret; local or over the tailnet), Incus
