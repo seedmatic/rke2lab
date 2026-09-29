@@ -889,7 +889,7 @@ when this branch is superseded, both move together.
   non-default layer produces no push
 | The render did not read the recorded facet — it fell back to the `publish` CLI's hardcoded default
   (which differs from the grow's stack facet). Confirm the root `manifest.yaml` exists on
-  `manifests/<cluster>` at HEAD (`git show manifests/<cluster>:manifest.yaml | yq .facet`) and that the
+  `manifests/<cluster>` at HEAD (`git show manifests/<cluster>:manifest.yaml \| yq .facet`) and that the
   render reads it (no drift-override param forcing a different source). A branch grown before this landed
   has no recorded manifest → one re-grow writes it. See <<render-config>>.
 | The `publish` step's render narration is invisible in the PipelineRun logs (only the Felix boot

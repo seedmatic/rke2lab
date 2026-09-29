@@ -329,12 +329,12 @@ sequenceDiagram
   L->>S: play — a post-processor sets SeedRun before GIVEN
   Note over S: GIVEN bootstraps (narrated) — consumes the connection, does NOT open it
   S->>S: registerService(RunGate/OpaqueCellar/Parcel) — the RUN layer, from SeedRun
-  Note over S: WHEN (13) — worktree(survey→facts, entry gate) · fetch · bbox(network reservations) · cluster-pki(CA seal) · ghapp(register) · replicator-secrets(seal) · ghapp-webhook(reconcile) · incus-provision · host GROW (gated on a live deployment; reads cold/warm Growth, files GrowOutcome on the TRANSIENT bus) · kubeconfig · readiness budget tuned to growth (WARM⇒fail-fast, COLD⇒patient) · systemd + cluster (AWAIT convergence; TOLERATING sows, aggregated) — THEN store→tag, then the closing gate fails the run if any crossing FAILED
+  Note over S: WHEN (13) — worktree(survey→facts, entry gate) · fetch · bbox(network reservations) · cluster-pki(CA seal) · ghapp(register) · replicator-secrets(seal) · ghapp-webhook(reconcile) · incus-provision · host GROW (gated on a live deployment — reads cold/warm Growth, files GrowOutcome on the TRANSIENT bus) · kubeconfig · readiness budget tuned to growth (WARM⇒fail-fast, COLD⇒patient) · systemd + cluster (AWAIT convergence — TOLERATING sows, aggregated) — THEN store→tag, then the closing gate fails the run if any crossing FAILED
   S->>Sc: broker.sow(RunbookCoordinate(soil), txId + writeSetOf(trunk)) — the ALLER sense
   Note over Sc: scion CE poses the write-set as Entry(inherited=true), scion reads own>inherited>durable
   Sc->>Sc: scion CE AfterTestExecution — STRIP the inherited before the front-door serializes
   Sc-->>S: runbook JSON → ScenarioGraft grafts it (scion's OWN tags fold into the trunk)
-  CE->>CE: AfterTestExecution — ROLE=ROOT ⇒ drain trunk tags → OpaqueCellar (pass OR fail; TRANSIENT evicted)
+  CE->>CE: AfterTestExecution — ROLE=ROOT ⇒ drain trunk tags → OpaqueCellar (pass OR fail — TRANSIENT evicted)
   WE->>WE: afterAll — close the connection (ownsLifecycle)
 ----
 
@@ -485,7 +485,9 @@ transactional]). What this PRESERVES, checked against the model:
   realised, the drain must reconstruct causality from the AMENDMENT graph (as this atlas already mandates —
   "read CAUSALLY from the amendment graph, not the runbook position"), NOT from fold order — a constraint
   the drain implementation must honour then. This is the one point tag+drain adds to the model.
-==== The `RunbookEnvelope` keeps `(runbook, consultations)`: consultations cross because the host
+====
+
+The `RunbookEnvelope` keeps `(runbook, consultations)`: consultations cross because the host
 GRAFTS them into the runbook; the harvest does not cross because its destination is the cellar, not the runbook.
 Two natures follow: RESOURCES (graph nodes + the `dependsOn` edge, read CAUSALLY from the amendment graph, not
 the runbook position) and top-level OUTPUTS (a PROJECTION of the resources — the read façade, host, no métier).

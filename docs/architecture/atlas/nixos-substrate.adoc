@@ -137,7 +137,7 @@ flowchart TB
     b3["package bump → new image → COLD-START of the control node"]
     b1 --> b2 --> b3
   end
-  subgraph AFTER[After — envs are first-class k8s (FloxEnv CRD)]
+  subgraph AFTER["After — envs are first-class k8s (FloxEnv CRD)"]
     a1["FOUNDATION baked: plugin + hooks + /etc/flox.toml + NRI config + flox controller"]
     a2["FloxEnv CR (synth) → flox controller (node-agent)<br/>realises closures onto host /nix + writes GC-roots"]
     a3["NRI plugin overlays host /nix ; annotation → FloxEnv CR<br/>image unchanged on bump → NO cold-start"]

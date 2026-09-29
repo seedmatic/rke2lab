@@ -61,7 +61,7 @@ graph TB
     Context -->|provides| NodeID
     Context -->|provides| InfraID
 
-    Units -->|reads via current()| Context
+    Units -->|"reads via current()"| Context
 
     style Identity fill:#fff4e6,stroke:#ff9900
     style Context fill:#ccffcc,stroke:#00cc66

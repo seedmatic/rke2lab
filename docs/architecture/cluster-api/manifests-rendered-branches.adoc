@@ -202,16 +202,16 @@ sequenceDiagram
   participant MG as management cluster
   participant WL as workload clusters
   OP->>M: commit source to main
-  M->>G: render + push manifests/&lt;host&gt;-mgmt (sow + operator/providers + workload CRs)
-  M->>G: render + push manifests/&lt;host&gt;-wrkld (app stack)
-  SM->>G: read manifests/&lt;host&gt;-mgmt
+  M->>G: render + push manifests/{host}-mgmt (sow + operator/providers + workload CRs)
+  M->>G: render + push manifests/{host}-wrkld (app stack)
+  SM->>G: read manifests/{host}-mgmt
   SM->>MG: sow single node — local-only (RKE2 + FluxRoot seed)
-  MG->>FM: FluxRoot brings up Flux, tracking manifests/&lt;host&gt;-mgmt
+  MG->>FM: FluxRoot brings up Flux, tracking manifests/{host}-mgmt
   FM->>MG: apply CAPI operator + providers + workload CRs
   Note over MG: CAPI · CAPN · CAPRKE2 reconcile the workload CRs
   MG->>WL: CAPI/CAPN greenfield-create nodes over the mesh
   WL-->>MG: control-plane ready → workload kubeconfig
-  Note over WL: each workload's own Flux then reconciles its app stack from manifests/&lt;host&gt;-wrkld
+  Note over WL: each workload's own Flux then reconciles its app stack from manifests/{host}-wrkld
 ----
 
 [[uniform]]
