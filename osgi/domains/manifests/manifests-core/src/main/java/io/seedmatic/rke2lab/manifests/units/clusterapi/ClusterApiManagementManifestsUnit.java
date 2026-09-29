@@ -110,9 +110,25 @@ public final class ClusterApiManagementManifestsUnit extends AbstractManifestsUn
     renderer.nodeImage(scope, cluster, namespace, image, packageProfile, namespaceObject);
     // The 2×2 intent for the mgmt cluster's SELF-adoption: a cluster-level ClusterIntention + a
     // single-pet control-node PoolIntention (a management cluster is ONE control node). kind =
-    // management records the federated role (birthed/adopted identically to a workload). The Incus
-    // engine is local, so the remote endpoint is empty (resolved from the identity Secret's
-    // `server`).
+    // management records the federated role (birthed/adopted identically to a workload).
+    //
+    // The remote endpoint is STATED, derived from this cluster's OWN blueprint — exactly as the
+    // workload path does for a child. It used to be left empty, on the reading that "the Incus
+    // engine is local, so resolve it from the identity Secret's `server`". That reading holds only
+    // for the ROOT plane, and by accident: the Secret's `server` names the host that MINTED it, and
+    // for the root that happens to be its own host.
+    //
+    // ⚠️ A sub-plane breaks it. Measured 2026-09-29: `nikopol-mgmt`'s own intention carried
+    // `endpoint: ""`, its `nikopol-incus-identity` Secret says `https://nixos.bioskop:8443`
+    // (bioskop
+    // minted it), so its CAPN dialled bioskop — `172.16.0.1`, i/o timeout — while `nixos.nikopol`
+    // (`172.16.16.1`) answered OPEN from inside that very cluster. Its PARENT's copy of the same
+    // intention was correct precisely BECAUSE it states the endpoint explicitly.
+    //
+    // Same defect shape as the roster the SELF branch used to take from the seed: a value that is
+    // right from the renderer's viewpoint and wrong from the subject's. Stating it removes the
+    // viewpoint from the answer.
+    final String remoteEndpoint = "https://" + blueprint.names().nixosFabricFqdn() + ":8443";
     final List<String> pets =
         ClusterNetworkBlueprint.CANONICAL_NODE_NAMES.stream()
             .limit(MANAGEMENT_CONTROL_PLANE_REPLICAS)
@@ -128,7 +144,7 @@ public final class ClusterApiManagementManifestsUnit extends AbstractManifestsUn
             APISERVER_PORT,
             List.of(blueprint.podCidr()),
             List.of(blueprint.serviceCidr()),
-            "",
+            remoteEndpoint,
             identitySecret,
             packageProfile,
             namespaceObject);

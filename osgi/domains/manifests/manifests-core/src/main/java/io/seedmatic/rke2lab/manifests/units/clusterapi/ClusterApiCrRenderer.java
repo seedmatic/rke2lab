@@ -212,8 +212,15 @@ public final class ClusterApiCrRenderer {
    * The cluster-level {@code ClusterIntention} — the Flux-owned intent seed-incluster reconciles
    * adopt-first into the Cluster + LXCCluster. Cluster-scoped facts only (VIP, CIDRs, remote +
    * identity, federated kind); the per-pool roster + template live in the {@code PoolIntention}
-   * children built by {@link #controlNodePoolIntention}. {@code remoteEndpoint} may be empty (the
-   * local engine, resolved from the identity Secret's {@code server} — the management case).
+   * children built by {@link #controlNodePoolIntention}.
+   *
+   * <p>{@code remoteEndpoint} is REQUIRED and must name the Incus engine of the host the cluster's
+   * instances live on. It used to be allowed empty for the management case, meaning "the local
+   * engine, resolve it from the identity Secret's {@code server}" — and that resolution is written
+   * from the viewpoint of whoever MINTED the Secret, not of the cluster the intention describes.
+   * Measured 2026-09-29: it sent {@code nikopol-mgmt}'s own CAPN to {@code nixos.bioskop} (i/o
+   * timeout) while its own engine answered. So the endpoint is stated by every caller and a blank
+   * is refused here, at the frontier, rather than travelling as a silent default.
    */
   public ApiObject clusterIntention(
       final Construct scope,
@@ -228,6 +235,15 @@ public final class ClusterApiCrRenderer {
       final String identitySecret,
       final PackageMetadataProfile profile,
       final ApiObject branchNamespace) {
+    if (remoteEndpoint == null || remoteEndpoint.isBlank()) {
+      throw new IllegalArgumentException(
+          "remoteEndpoint is blank for cluster "
+              + cluster
+              + " — it must NAME the Incus engine the cluster's instances live on. A blank used to"
+              + " mean 'resolve it from the identity Secret's server', which answers with the host"
+              + " that MINTED the Secret, not the cluster's own: that sent nikopol-mgmt's CAPN to"
+              + " nixos.bioskop and it timed out.");
+    }
     final ApiObject intention =
         new ApiObject(
             scope,
