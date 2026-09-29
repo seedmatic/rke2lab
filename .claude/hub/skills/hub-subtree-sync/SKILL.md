@@ -41,15 +41,31 @@ and you'll pay for it in conflicts you could have avoided by syncing down up fro
 - Keep `--squash` in **both** directions.
 - **NEVER delete the split branches** (see *Cleanup*) — the pull needs their base SHAs.
 
-## Topology (nikopol; check per host)
+## Topology — DIFFERS PER HOST, measure it
 
-- Consumer (this repo): a worktree of its own bare.
+Origin is `github.com/seedmatic/claude-hub` everywhere (moved from `nxmatic`; GitHub
+redirects, so a stale remote keeps working and hides itself — all remotes repointed
+2026-09-29).
+
+**nikopol** — bare + worktrees, so only the final push is outward:
+
 - Hub checkout `<hub>` = `/Volumes/git-worktree-store/nxmatic/claude-hub.d/main`,
   a worktree of the bare `/Volumes/git-bare-store/nxmatic/claude-hub.git`
-  (origin = `github.com/nxmatic/claude-hub`).
+  (directory names keep `nxmatic/`; that is a path, not the URL).
 - Add a `claude-hub` remote in this repo pointing at that **bare** (local, fast):
   `git remote add claude-hub /Volumes/git-bare-store/nxmatic/claude-hub.git`
   (idempotent — skip if present). Only the final `push origin main` touches GitHub.
+
+**This host (measured 2026-09-29)** — no bare, so TWO steps are outward:
+
+- Hub checkout `<hub>` = `/private/var/lib/git/nxmatic/claude-hub.d/main`, a plain clone
+  (`git rev-parse --git-common-dir` → `.git`, not a worktree of a bare).
+- The `claude-hub` remote here points at **GitHub**, not a local bare — so
+  `git push claude-hub split/...` is ALREADY an outward publish, on top of the final
+  `push origin main`. The skill's "only one outward step" holds only with a local bare.
+
+Derive it, don't assume: `git -C <hub> rev-parse --git-common-dir` and
+`git remote get-url claude-hub` answer both questions in one breath.
 
 ## Sync DOWN (claude-hub → this repo)
 
@@ -94,6 +110,28 @@ git -C <bare> fetch ssh://<user>@<host>/<path-to-that-clone> refs/heads/recover-
 ```
 Keep the `refs/recovered/<sha>` ref so GC can't drop it again. (Done 2026-08-15:
 recovered `d29f295` from bioskop to unblock a hub sync-up.)
+
+★ **Better: push the recovered object to ORIGIN, not into a local ref.** A local
+`refs/recovered/*` fixes one machine; the next clone hits the same wall, because the hub's
+own history references a base its own remote cannot serve ("not our ref"). Publishing the
+object makes every clone whole:
+
+```bash
+git -C <clone-that-has-it> push origin "<sha>:refs/heads/recovered/<short>"
+```
+
+Done 2026-09-29 for `ca44dc2` (referenced by `ad35be0 Squashed '.claude/' changes from
+37de71f..ca44dc2`): absent from every repo on this host, found in nikopol's bare, pushed to
+origin as `refs/heads/recovered/ca44dc2`. The failing `subtree pull` then succeeded in
+place. ⚠️ **Never delete that branch** — it is load-bearing for every future pull.
+
+⚠️ Two traps met on the way, both mine:
+- `"$sha:refs/heads/..."` in **zsh** parses `:r` as the *root* history modifier and eats the
+  `r`, producing `...efs/heads/...` and `src refspec does not match any`. Brace it:
+  `"${sha}:refs/heads/..."`.
+- `subtree pull` refuses outright with `working tree has modifications. Cannot add.` — an
+  UNTRACKED file is enough. If the hub checkout is dirty and you must not disturb it, run
+  the pull in a throwaway worktree: `git -C <hub> worktree add --detach /tmp/hub-sync main`.
 
 ## Cleanup — do NOT delete the split branches
 
