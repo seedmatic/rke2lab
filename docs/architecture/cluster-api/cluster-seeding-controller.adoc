@@ -1609,9 +1609,24 @@ from `clusterId = (host<<1)|role` and the /21 carve; the LAN address is a declar
 (below). All are deterministic, so a reissue is mechanical. The **tailnet address is assigned by the
 tailnet** — nothing declares it.
 
-★ So for the tailnet the SAN carries the NAME, never the address. The MagicDNS name is fully
-derivable — `<hostname>` + the tailnet constant `mammoth-skate.ts.net`, the same identity the
-`mammoth-skate-tls` root already carries — so it can be stated up front where the IP cannot.
+★ So for the tailnet the SAN carries the NAME, never the address. And the name needs no new constant:
+`<hostname>` + `catalog.netplan.tailnet.domain` (`.mammoth-skate.ts.net`), which ndh already declares.
+
+★★★ Read it from `catalog.netplan`, which is the naming authority for EVERY domain a host answers in
+— all colocated (2026-09-29):
+
+[source]
+----
+catalog.netplan.baremetal.<host>.domain = <host>                 # the split-horizon zone
+catalog.netplan.lan.domain              = .lan                   # the bbox
+catalog.netplan.tailnet.domain          = .mammoth-skate.ts.net  # the tailnet
+----
+
+⚠️ Not `catalog.tailnet` — that holds the ACL policy, tags and the (hibernating) headscale alias
+`mammoth-skate.duckdns.org`, no `.ts.net`. Looking there first is the mistake to skip.
+
+So the whole SAN set derives from ONE authority plus our own blueprint, and nothing in it is a
+literal.
 
 That pairs with a change on the other side: have the incus member URL be
 `https://<host>-nixos.mammoth-skate.ts.net:8443` rather than the raw tailnet IP it uses today. Name
