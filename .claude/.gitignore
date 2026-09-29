@@ -46,6 +46,15 @@ worktrees/
 # Local, machine-specific Claude settings
 settings.local.json
 
+# The knowledge base is NOT here — it lives on the orphan `memory` branch, checked out at
+# `<repo>.d/memory`, and sessions point `autoMemoryDirectory` at that worktree. Ignored so
+# a stray write into a CODE worktree can never be committed and re-fork the tree (two
+# divergent trees once made a dead-link audit record 7 live facts as dead).
+# ANCHORED: bare `memory/` would also match `.claude/hub/memory/`, the hub subtree's own
+# memory, which MUST stay tracked — the same unanchored-pattern trap as `checkpoint-*.md`
+# above.
+/memory/
+
 # Track hook scripts: counter the root .gitignore's generic [Bb]in/ rule
 !bin/
 !bin/*.sh
