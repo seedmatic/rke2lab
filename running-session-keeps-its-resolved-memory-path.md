@@ -37,9 +37,32 @@ git **3-way merge**, not a per-file winner: neither side was uniformly ahead —
 carried the migrations (`hub:` prefixes, renames, the MEMORY.md restructure), the
 branch carried newer content. Git auto-merged all but 2 files.
 
-★ The durable rule that follows: **memory is branch content, so it merges with the
-branch.** Per-worktree memory directories (what the `worktree` skill configures) do
-not prevent forking — they *guarantee* it. The failure is never the fork; it is
-leaving it unmerged, and auditing across it.
+★ The durable rule that followed: per-worktree memory directories do not prevent
+forking — they *guarantee* it. Treating memory as branch content that "merges at merge"
+is the reasoning that produced the fork, because the merge is the step nobody performs.
+
+## Resolved 2026-09-29 — memory is an ORPHAN BRANCH, not branch content
+
+The knowledge base moved OUT of the code branches onto an orphan `memory` branch with
+its own worktree at `<repo>.d/memory` (341 files). No code branch carries
+`.claude/memory/` any more, so there is one working copy and one line of history:
+forking becomes impossible rather than merely discouraged.
+
+**Why a branch and not a second repo** (the first proposal, and also
+`MEMORY-STRUCTURE-SPEC.md` step 1's `claude-memory`): rke2lab already uses orphan
+branches as independent artifacts — `flox-catalogue` (109 commits) and `seed-incluster`
+(46), neither sharing an ancestor with `main`. A branch gives the same isolation with no
+new repo, no subtree machinery and no cross-repo sync. The user proposed it; it is
+strictly better than what I suggested.
+
+**The two guards that make it hold**, both in `.claude/bin/`:
+
+- `memory-commit.sh` (**SessionEnd**) — commits + pushes the memory worktree. Needed
+  because the session that writes there is never the one that commits from there; that
+  gap is what left 32 files dirty for 11 days.
+- `memory-guard.sh` (**SessionStart**) — shouts if `autoMemoryDirectory` is unset or
+  points anywhere but the memory worktree, or if that worktree is dirty. At START,
+  because a running session cannot be redirected (above). Both locate the worktree by
+  **asking git which one is on the `memory` branch**, never by assuming a path.
 
 See [[workspace-is-not-a-cache]] [[measure-the-derived-value-not-the-assumed-one]].
