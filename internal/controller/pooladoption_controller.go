@@ -50,6 +50,9 @@ type PoolAdoptionReconciler struct {
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=lxcmachinetemplates,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;delete
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
+// Nodes: read-only, and ONLY for the SELF cluster's own roster (observedSelfRoster). A managed
+// cluster's nodes are never read from here — that is the reflector's git record, by design.
+// +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch
 
 // Reconcile drives one PoolAdoption. Every object is created-if-absent, so a re-reconcile (and a
 // cold-start, which wipes etcd and re-creates the CR-set) safely re-adopts the SURVIVING instances
@@ -345,18 +348,38 @@ func (r *PoolAdoptionReconciler) reconcileSteps(
 	return ctrl.Result{}, nil
 }
 
-// resolveRoster reads the reflection (the reflector's git-only record) to decide the mode + roster:
-//   - Git nil (reflector disabled)  → (seed roster, greenfield=false): adopt the canonical seed.
+// resolveRoster decides the mode + roster. The roster of NAMES is always OBSERVED; only the source
+// differs, and each source is available exactly where the other is not:
+//   - SELF cluster                   → (observed from the LOCAL apiserver, greenfield=false), seed as
+//     fallback while the observation is inconclusive. Never greenfielded.
+//   - Git nil (reflector disabled)   → (seed roster, greenfield=false): adopt the canonical seed.
 //   - reflection PRESENT             → (observed roster, greenfield=false): adopt by observed name.
 //   - reflection ABSENT              → (seed roster, greenfield=true): CAPRKE2 provisions; seed sizes the RCP.
 //
-// A git read error propagates (caller HOLDS) — greenfield is never armed on an unconfirmed absence.
+// A read error propagates (caller HOLDS) — greenfield is never armed on an unconfirmed absence.
 func (r *PoolAdoptionReconciler) resolveRoster(ctx context.Context, spec adoptionv1alpha1.PoolAdoptionSpec) (roster []adoptionv1alpha1.PetSpec, greenfield bool, err error) {
-	// The SELF cluster (the mgmt plane this controller runs on) is CANONICAL — it is never reflected
-	// (the reflector skips it: it cannot reflect its own cold-start), so its roster is ALWAYS the
-	// seed and it is ADOPTED, never greenfielded. Reading a (never-written) reflection would find it
-	// absent → wrongly greenfield the management plane.
+	// The SELF cluster is never reflected — the reflector cannot reflect its own cold-start — so it is
+	// ADOPTED, never greenfielded. But "never greenfield" does NOT imply "the seed names my nodes":
+	// that only holds for a plane born of a HOST GROW, where the declaration is what named the
+	// instance. A `kind: management` SUB-PLANE is born of its PARENT, greenfield, so CAPRKE2 named it
+	// — and hunting the declared name then waits for an instance that will never exist. Measured
+	// 2026-09-29: nikopol-mgmt sat at Adopting / present=0 / totalPets=1 in its own view while its
+	// parent reported it Adopted, because the seed says `nikopol-mgmt-master` and the node is
+	// `nikopol-mgmt-control-plane-p6xqq`.
+	//
+	// So ask the cluster instead of the declaration. For SELF that is free and authoritative: the
+	// controller runs INSIDE the cluster this pool belongs to, so the local apiserver's Nodes ARE the
+	// roster — the counterpart of the git reflection used for children.
 	if r.SelfCluster != "" && spec.ClusterName == r.SelfCluster {
+		observed, decided, oerr := r.observedSelfRoster(ctx, spec)
+		if oerr != nil {
+			return nil, false, oerr
+		}
+		if decided {
+			return observed, false, nil
+		}
+		// Inconclusive, NOT empty — a cold-start whose nodes have not registered yet. Fall back to the
+		// seed so the RCP is still sized and the pool can come up; the next reconcile observes.
 		return spec.Nodes, false, nil
 	}
 	if r.Git == nil {
@@ -370,6 +393,67 @@ func (r *PoolAdoptionReconciler) resolveRoster(ctx context.Context, spec adoptio
 		return spec.Nodes, true, nil // greenfield — the seed sizes the RCP replicas
 	}
 	return reflection.Spec.Nodes, false, nil
+}
+
+// labelControlPlane marks a control-plane node (rke2 sets it, value "true"). It is what makes a
+// control-plane pool's members identifiable from inside the cluster without consulting CAPI.
+const labelControlPlane = "node-role.kubernetes.io/control-plane"
+
+// observedSelfRoster reads the SELF cluster's roster from the LOCAL apiserver — the controller runs
+// inside the very cluster this pool describes, so its Nodes are the pool's members, observed rather
+// than declared.
+//
+// THREE-VALUED on purpose, and the middle value is the whole point: `decided=false` means the
+// observation is INCONCLUSIVE (nothing to read yet), which is NOT "the pool is empty". Believing an
+// empty read would wipe a roster during a cold-start; the caller falls back to the seed instead. An
+// error is the third value and makes the caller HOLD. Absent, undecidable and broken are three
+// different answers — collapsing them is the defect family this code keeps paying for.
+//
+// The name comes from `spec.providerID` (`lxc:///<instance>`), not from the node's own name: the
+// providerID is what CAPN matches an instance against, so it is the authoritative spelling. They
+// coincide today (measured 2026-09-29: node `nikopol-mgmt-control-plane-p6xqq` →
+// `lxc:///nikopol-mgmt-control-plane-p6xqq`, agreed by the cluster AND by its parent's LXCMachine),
+// and reading the field rather than assuming the equality is what keeps that a fact instead of a hope.
+func (r *PoolAdoptionReconciler) observedSelfRoster(
+	ctx context.Context, spec adoptionv1alpha1.PoolAdoptionSpec,
+) (roster []adoptionv1alpha1.PetSpec, decided bool, err error) {
+	// Only a control-plane pool is identifiable from node labels alone. A worker pool would be "every
+	// node without the control-plane label", which cannot tell TWO worker pools apart — so rather than
+	// guess, report inconclusive and let the seed/reflection answer. Claim only what is observable.
+	if spec.Role != adoptionv1alpha1.PoolRoleControlPlane {
+		return nil, false, nil
+	}
+
+	var nodes corev1.NodeList
+	if err := r.List(ctx, &nodes); err != nil {
+		return nil, false, fmt.Errorf("list self nodes: %w", err)
+	}
+
+	names := make([]string, 0, len(nodes.Items))
+	for i := range nodes.Items {
+		node := &nodes.Items[i]
+		if _, isControlPlane := node.Labels[labelControlPlane]; !isControlPlane {
+			continue
+		}
+		instance, ok := strings.CutPrefix(node.Spec.ProviderID, "lxc:///")
+		if !ok || instance == "" {
+			// A control-plane node we cannot name: present but undecodable. Refusing the whole reading
+			// is deliberate — a PARTIAL roster is worse than none, because the adopt branch would treat
+			// the missing pets as absent and tear down their CR-set.
+			return nil, false, nil
+		}
+		names = append(names, instance)
+	}
+	if len(names) == 0 {
+		return nil, false, nil // nothing registered yet — inconclusive, not empty
+	}
+
+	sort.Strings(names) // deterministic order, so the roster does not churn between reconciles
+	roster = make([]adoptionv1alpha1.PetSpec, 0, len(names))
+	for _, n := range names {
+		roster = append(roster, adoptionv1alpha1.PetSpec{Name: n})
+	}
+	return roster, true, nil
 }
 
 // derivePhase rolls the per-step conditions (+ the reconcile error) into the per-pool state machine phase.
