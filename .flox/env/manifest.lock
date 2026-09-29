@@ -10,6 +10,26 @@
         "pkg-path": "age",
         "pkg-group": "keyhole"
       },
+      "antora": {
+        "pkg-path": "antora",
+        "pkg-group": "asciidoc",
+        "outputs": "all"
+      },
+      "antora-lunr-extension": {
+        "pkg-path": "antora-lunr-extension",
+        "pkg-group": "asciidoc",
+        "outputs": "all"
+      },
+      "antora-ui-default": {
+        "pkg-path": "antora-ui-default",
+        "pkg-group": "asciidoc",
+        "outputs": "all"
+      },
+      "asciidoctor-with-extensions": {
+        "pkg-path": "asciidoctor-with-extensions",
+        "pkg-group": "asciidoc",
+        "outputs": "all"
+      },
       "bash": {
         "pkg-path": "bash",
         "outputs": "all"
@@ -45,7 +65,7 @@
         "pkg-group": "flox-mcp-server"
       },
       "flux9s": {
-        "flake": "github:seedmatic/rke2lab/feature/nixos-node-substrate#flux9s"
+        "flake": "github:seedmatic/rke2lab/feature/viewpoint-separation#flux9s"
       },
       "fluxcd": {
         "pkg-path": "fluxcd",
@@ -73,6 +93,9 @@
         "pkg-path": "gnupg",
         "pkg-group": "keyhole"
       },
+      "go-2fa": {
+        "pkg-path": "go-2fa"
+      },
       "graphviz": {
         "pkg-path": "graphviz"
       },
@@ -81,8 +104,17 @@
         "pkg-group": "k8s-kubectl-tools",
         "outputs": "all"
       },
+      "html2text": {
+        "pkg-path": "html2text",
+        "outputs": "all"
+      },
       "incus-client": {
-        "flake": "github:seedmatic/rke2lab/feature/nixos-node-substrate#incus-client"
+        "flake": "github:seedmatic/rke2lab/feature/viewpoint-separation#incus-client"
+      },
+      "jdk": {
+        "pkg-path": "jdk",
+        "pkg-group": "asciidoc",
+        "outputs": "all"
       },
       "jdk25": {
         "flake": "github:seedmatic/rke2lab#jdk25",
@@ -164,7 +196,7 @@
         "pkg-path": "lazygit"
       },
       "manage-tailnet": {
-        "flake": "github:seedmatic/rke2lab/feature/nixos-node-substrate#manage-tailnet",
+        "flake": "github:seedmatic/rke2lab/feature/viewpoint-separation#manage-tailnet",
         "systems": [
           "aarch64-darwin"
         ]
@@ -172,8 +204,16 @@
       "maven": {
         "flake": "github:seedmatic/rke2lab#maven"
       },
+      "mermaid-cli": {
+        "pkg-path": "mermaid-cli"
+      },
       "moreutils": {
         "pkg-path": "moreutils"
+      },
+      "nodejs": {
+        "pkg-path": "nodejs",
+        "pkg-group": "asciidoc",
+        "outputs": "all"
       },
       "openssh": {
         "pkg-path": "openssh",
@@ -188,6 +228,16 @@
       "pass": {
         "pkg-path": "pass",
         "pkg-group": "keyhole"
+      },
+      "plantuml": {
+        "pkg-path": "plantuml",
+        "pkg-group": "asciidoc",
+        "outputs": "all"
+      },
+      "pnpm": {
+        "pkg-path": "pnpm",
+        "pkg-group": "asciidoc",
+        "outputs": "all"
       },
       "podman-wrapper": {
         "flake": "git+https://github.com/nxmatic/fleet?dir=flox/k8s/.flox/flakes/podman-wrapper",
@@ -243,6 +293,9 @@
         "pkg-group": "manifest-tools-yaml-tools",
         "outputs": "all"
       },
+      "zgrviewer": {
+        "pkg-path": "zgrviewer"
+      },
       "zsh": {
         "pkg-path": "zsh",
         "outputs": "all"
@@ -257,10 +310,10 @@
       "PULUMI_HOME": "${XDG_STATE_HOME:-$HOME/.local/state}/pulumi"
     },
     "hook": {
-      "on-activate": "    if [ -d \"${FLOX_ENV_PROJECT}/.github\" ]; then\n      remote=$(git -C \"${FLOX_ENV_PROJECT}\" remote get-url origin 2>/dev/null || true)\n      if [ -n \"${remote}\" ]; then\n        remote_host=\"github.com\"\n        case \"${remote}\" in\n          git@*:* )\n            remote_host=$(printf '%s' \"${remote}\" | cut -d'@' -f 2 | cut -d':' -f 1)\n            ;;\n          http://*|https://*)\n            remote_host=$(printf '%s' \"${remote}\" | cut -d'/' -f 3)\n            ;;\n          ssh://*)\n            remote_host=$(printf '%s' \"${remote}\" | cut -d'/' -f 3 | cut -d':' -f 1)\n            ;;\n        esac\n    \n        if [ -n \"${GH_TOKEN:-}\" ] && ! gh auth status --hostname \"${remote_host}\" >/dev/null 2>&1; then\n          echo \"Detected GH_TOKEN, logging in gh for ${remote_host}...\" >&2\n          printf '%s' \"${GH_TOKEN}\" | gh auth login --with-token --hostname \"${remote_host}\" >/dev/null 2>&1 || true\n        fi\n    \n        if gh auth status --hostname \"${remote_host}\" >/dev/null 2>&1; then\n          gh auth setup-git --hostname \"${remote_host}\" >/dev/null 2>&1 || true\n        fi\n      fi\n    fi\n  \n    mkdir -p \"$PULUMI_HOME\"\n  \n  mkdir -p \"${PULUMI_HOME}\"\n  mkdir -p \"${FLOX_ENV_PROJECT}/.pulumi-state\"\n  if command -v javac >/dev/null 2>&1; then\n    export JAVA_HOME=\"$(dirname \"$(dirname \"$(command -v javac)\")\")\"\n  fi\n  if command -v gh >/dev/null 2>&1 && [ -z \"${GH_TOKEN:-}\" ]; then\n    export GH_TOKEN=\"$(gh auth token 2>/dev/null)\"\n  fi\n  export KUBECONFIG=\"${FLOX_ENV_PROJECT}/.local.d/kubeconfig.yaml\"\n"
+      "on-activate": "    if [ -z \"${PUPPETEER_EXECUTABLE_PATH:-}\" ]; then\n      for _shell in \"$HOME\"/.cache/puppeteer/chrome-headless-shell/*/chrome-headless-shell-*/chrome-headless-shell; do\n        [ -x \"$_shell\" ] && export PUPPETEER_EXECUTABLE_PATH=\"$_shell\"\n      done\n      unset _shell\n    fi\n  \n    if [ -d \"${FLOX_ENV_PROJECT}/.github\" ]; then\n      remote=$(git -C \"${FLOX_ENV_PROJECT}\" remote get-url origin 2>/dev/null || true)\n      if [ -n \"${remote}\" ]; then\n        remote_host=\"github.com\"\n        case \"${remote}\" in\n          git@*:* )\n            remote_host=$(printf '%s' \"${remote}\" | cut -d'@' -f 2 | cut -d':' -f 1)\n            ;;\n          http://*|https://*)\n            remote_host=$(printf '%s' \"${remote}\" | cut -d'/' -f 3)\n            ;;\n          ssh://*)\n            remote_host=$(printf '%s' \"${remote}\" | cut -d'/' -f 3 | cut -d':' -f 1)\n            ;;\n        esac\n    \n        if [ -n \"${GH_TOKEN:-}\" ] && ! gh auth status --hostname \"${remote_host}\" >/dev/null 2>&1; then\n          echo \"Detected GH_TOKEN, logging in gh for ${remote_host}...\" >&2\n          printf '%s' \"${GH_TOKEN}\" | gh auth login --with-token --hostname \"${remote_host}\" >/dev/null 2>&1 || true\n        fi\n    \n        if gh auth status --hostname \"${remote_host}\" >/dev/null 2>&1; then\n          gh auth setup-git --hostname \"${remote_host}\" >/dev/null 2>&1 || true\n        fi\n      fi\n    fi\n  \n    mkdir -p \"$PULUMI_HOME\"\n  \n  mkdir -p \"${PULUMI_HOME}\"\n  mkdir -p \"${FLOX_ENV_PROJECT}/.pulumi-state\"\n  if command -v javac >/dev/null 2>&1; then\n    export JAVA_HOME=\"$(dirname \"$(dirname \"$(command -v javac)\")\")\"\n  fi\n  if command -v gh >/dev/null 2>&1 && [ -z \"${GH_TOKEN:-}\" ]; then\n    export GH_TOKEN=\"$(gh auth token 2>/dev/null)\"\n  fi\n  export KUBECONFIG=\"${FLOX_ENV_PROJECT}/.local.d/kubeconfig.yaml\"\n"
     },
     "profile": {
-      "common": "    GITHUB_SIGNING_KEYFILE=\"$HOME\"/.ssh/keys.d/github-signing\n    if [[ -r \"$GITHUB_SIGNING_KEYFILE\" ]]; then\n      set -a\n      SOPS_AGE_KEY=$( ssh-to-age -private-key < \"$GITHUB_SIGNING_KEYFILE\" )\n      set +a\n    else\n      echo no signing key\n    fi\n  \n    if [ -d \"${FLOX_ENV_PROJECT}/.github\" ]; then\n      gh_login=\"\"\n      if [ -n \"${GH_TOKEN:-}\" ]; then\n        gh_login=$(gh api user --jq '.login' 2>/dev/null || true)\n      elif command -v pass >/dev/null 2>&1; then\n        gh_secret=$(pass show coding/github@work 2>/dev/null | head -n 1 || true)\n        if [ -n \"${gh_secret}\" ]; then\n          gh_login=$(env GH_TOKEN=\"${gh_secret}\" gh api user --jq '.login' 2>/dev/null || true)\n        fi\n      fi\n      if [ -n \"${gh_login}\" ]; then\n        remote=$(git -C \"${FLOX_ENV_PROJECT}\" remote get-url origin 2>/dev/null || true)\n        if [ -n \"${remote}\" ]; then\n          owner=$(printf '%s' \"${remote}\" | cut -d'/' -f 4)\n          repo_name=$(printf '%s' \"${remote}\" | cut -d'/' -f 5 | cut -d'.' -f 1)\n          export GITHUB_LOGIN=\"${gh_login}\"\n          export GITHUB_OWNER=\"${owner}\"\n          export GITHUB_REPOSITORY=\"${owner}/${repo_name}\"\n        fi\n      fi\n    fi\n  \n    GITHUB_SIGNING_KEYFILE=\"$HOME\"/.ssh/keys.d/github-signing\n    if [[ -r \"$GITHUB_SIGNING_KEYFILE\" ]]; then\n      set -a\n      SOPS_AGE_KEY=$( ssh-to-age -private-key < \"$GITHUB_SIGNING_KEYFILE\" )\n      set +a\n    else\n      echo no signing key\n    fi\n  "
+      "common": "    GITHUB_SIGNING_KEYFILE=\"$HOME\"/.ssh/keys.d/github-signing\n    if [[ -r \"$GITHUB_SIGNING_KEYFILE\" ]]; then\n      set -a\n      SOPS_AGE_KEY=$( ssh-to-age -private-key < \"$GITHUB_SIGNING_KEYFILE\" )\n      set +a\n    else\n      echo no signing key\n    fi\n  \n    export ANTORA_CACHE_DIR=\"${FLOX_ENV_PROJECT}/.cache/antora\"\n    export DOCS_BUILD_DIR=\"${FLOX_ENV_PROJECT}/.output/docs\"\n  \n    GITHUB_SIGNING_KEYFILE=\"$HOME\"/.ssh/keys.d/github-signing\n    if [[ -r \"$GITHUB_SIGNING_KEYFILE\" ]]; then\n      set -a\n      SOPS_AGE_KEY=$( ssh-to-age -private-key < \"$GITHUB_SIGNING_KEYFILE\" )\n      set +a\n    else\n      echo no signing key\n    fi\n  \n    if [ -d \"${FLOX_ENV_PROJECT}/.github\" ]; then\n      gh_login=\"\"\n      if [ -n \"${GH_TOKEN:-}\" ]; then\n        gh_login=$(gh api user --jq '.login' 2>/dev/null || true)\n      elif command -v pass >/dev/null 2>&1; then\n        gh_secret=$(pass show coding/github@work 2>/dev/null | head -n 1 || true)\n        if [ -n \"${gh_secret}\" ]; then\n          gh_login=$(env GH_TOKEN=\"${gh_secret}\" gh api user --jq '.login' 2>/dev/null || true)\n        fi\n      fi\n      if [ -n \"${gh_login}\" ]; then\n        remote=$(git -C \"${FLOX_ENV_PROJECT}\" remote get-url origin 2>/dev/null || true)\n        if [ -n \"${remote}\" ]; then\n          owner=$(printf '%s' \"${remote}\" | cut -d'/' -f 4)\n          repo_name=$(printf '%s' \"${remote}\" | cut -d'/' -f 5 | cut -d'.' -f 1)\n          export GITHUB_LOGIN=\"${gh_login}\"\n          export GITHUB_OWNER=\"${owner}\"\n          export GITHUB_REPOSITORY=\"${owner}/${repo_name}\"\n        fi\n      fi\n    fi\n  \n    GITHUB_SIGNING_KEYFILE=\"$HOME\"/.ssh/keys.d/github-signing\n    if [[ -r \"$GITHUB_SIGNING_KEYFILE\" ]]; then\n      set -a\n      SOPS_AGE_KEY=$( ssh-to-age -private-key < \"$GITHUB_SIGNING_KEYFILE\" )\n      set +a\n    else\n      echo no signing key\n    fi\n  "
     },
     "options": {
       "systems": [
@@ -270,6 +323,476 @@
     }
   },
   "packages": [
+    {
+      "attr_path": "antora",
+      "broken": false,
+      "derivation": "/nix/store/g80crrbxqqqjj5fxmlqr5dyhqkypskf8-antora-3.1.15.drv",
+      "description": "Modular documentation site generator. Designed for users of Asciidoctor",
+      "install_id": "antora",
+      "license": "MPL-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=7a0f122f5090cf4c2ade2a13a0e229d4e19ba71f",
+      "name": "antora-3.1.15",
+      "pname": "antora",
+      "rev": "7a0f122f5090cf4c2ade2a13a0e229d4e19ba71f",
+      "rev_count": 1080855,
+      "rev_date": "2026-09-28T06:58:16Z",
+      "scrape_date": "2026-09-29T04:58:27.447525Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "3.1.15",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/cyd73n2ijw43gjdmixdmpjkhi2ii1ff2-antora-3.1.15"
+      },
+      "system": "aarch64-darwin",
+      "group": "asciidoc",
+      "priority": 5
+    },
+    {
+      "attr_path": "antora",
+      "broken": false,
+      "derivation": "/nix/store/05f6id6dxnxj7fc3ln4smwcd73zlhh6m-antora-3.1.15.drv",
+      "description": "Modular documentation site generator. Designed for users of Asciidoctor",
+      "install_id": "antora",
+      "license": "MPL-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=7a0f122f5090cf4c2ade2a13a0e229d4e19ba71f",
+      "name": "antora-3.1.15",
+      "pname": "antora",
+      "rev": "7a0f122f5090cf4c2ade2a13a0e229d4e19ba71f",
+      "rev_count": 1080855,
+      "rev_date": "2026-09-28T06:58:16Z",
+      "scrape_date": "2026-09-29T05:29:59.743093Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "3.1.15",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/d93g09vwqqsbm59wm65fk648zryn5w2q-antora-3.1.15"
+      },
+      "system": "aarch64-linux",
+      "group": "asciidoc",
+      "priority": 5
+    },
+    {
+      "attr_path": "antora-lunr-extension",
+      "broken": false,
+      "derivation": "/nix/store/r3lrmvfs4xmpaa7p68s2nj3j8f62r04c-antora-lunr-extension-1.0.0-alpha.8.drv",
+      "description": "Antora extension adding offline, full-text search powered by Lunr",
+      "install_id": "antora-lunr-extension",
+      "license": "MPL-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=7a0f122f5090cf4c2ade2a13a0e229d4e19ba71f",
+      "name": "antora-lunr-extension-1.0.0-alpha.8",
+      "pname": "antora-lunr-extension",
+      "rev": "7a0f122f5090cf4c2ade2a13a0e229d4e19ba71f",
+      "rev_count": 1080855,
+      "rev_date": "2026-09-28T06:58:16Z",
+      "scrape_date": "2026-09-29T04:58:27.447598Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.0.0-alpha.8",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/3qmvd5l5sfh43pvf8hwjda8qidlycqah-antora-lunr-extension-1.0.0-alpha.8"
+      },
+      "system": "aarch64-darwin",
+      "group": "asciidoc",
+      "priority": 5
+    },
+    {
+      "attr_path": "antora-lunr-extension",
+      "broken": false,
+      "derivation": "/nix/store/yjlzz5ydrib810wzdqgm3rin06lkvrgh-antora-lunr-extension-1.0.0-alpha.8.drv",
+      "description": "Antora extension adding offline, full-text search powered by Lunr",
+      "install_id": "antora-lunr-extension",
+      "license": "MPL-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=7a0f122f5090cf4c2ade2a13a0e229d4e19ba71f",
+      "name": "antora-lunr-extension-1.0.0-alpha.8",
+      "pname": "antora-lunr-extension",
+      "rev": "7a0f122f5090cf4c2ade2a13a0e229d4e19ba71f",
+      "rev_count": 1080855,
+      "rev_date": "2026-09-28T06:58:16Z",
+      "scrape_date": "2026-09-29T05:29:59.743171Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.0.0-alpha.8",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/01ldglqf0zz59k9867ijl98n8wm1bp36-antora-lunr-extension-1.0.0-alpha.8"
+      },
+      "system": "aarch64-linux",
+      "group": "asciidoc",
+      "priority": 5
+    },
+    {
+      "attr_path": "antora-ui-default",
+      "broken": false,
+      "derivation": "/nix/store/avncfy9pndxxygcf6wbnlmd5mxk8qc5f-antora-ui-default-0-unstable-2024-12-26.drv",
+      "description": "Antora default UI bundle",
+      "install_id": "antora-ui-default",
+      "license": "MPL-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=7a0f122f5090cf4c2ade2a13a0e229d4e19ba71f",
+      "name": "antora-ui-default-0-unstable-2024-12-26",
+      "pname": "antora-ui-default",
+      "rev": "7a0f122f5090cf4c2ade2a13a0e229d4e19ba71f",
+      "rev_count": 1080855,
+      "rev_date": "2026-09-28T06:58:16Z",
+      "scrape_date": "2026-09-29T04:58:27.447671Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2024-12-26",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/k08var1yr8w588hx3h49db9702d7igqm-antora-ui-default-0-unstable-2024-12-26"
+      },
+      "system": "aarch64-darwin",
+      "group": "asciidoc",
+      "priority": 5
+    },
+    {
+      "attr_path": "antora-ui-default",
+      "broken": false,
+      "derivation": "/nix/store/wmgw8y1wgqpsyq7ydycvryvvb9yzx32r-antora-ui-default-0-unstable-2024-12-26.drv",
+      "description": "Antora default UI bundle",
+      "install_id": "antora-ui-default",
+      "license": "MPL-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=7a0f122f5090cf4c2ade2a13a0e229d4e19ba71f",
+      "name": "antora-ui-default-0-unstable-2024-12-26",
+      "pname": "antora-ui-default",
+      "rev": "7a0f122f5090cf4c2ade2a13a0e229d4e19ba71f",
+      "rev_count": 1080855,
+      "rev_date": "2026-09-28T06:58:16Z",
+      "scrape_date": "2026-09-29T05:29:59.743247Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2024-12-26",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/7gjzxdaas518ivwxln9fl4507gsv5wkw-antora-ui-default-0-unstable-2024-12-26"
+      },
+      "system": "aarch64-linux",
+      "group": "asciidoc",
+      "priority": 5
+    },
+    {
+      "attr_path": "asciidoctor-with-extensions",
+      "broken": false,
+      "derivation": "/nix/store/z70slq8f5vq2a51dfd58rl2wavx92x3p-asciidoctor-2.0.26.drv",
+      "description": "Faster Asciidoc processor written in Ruby, with many extensions enabled",
+      "install_id": "asciidoctor-with-extensions",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=7a0f122f5090cf4c2ade2a13a0e229d4e19ba71f",
+      "name": "asciidoctor-2.0.26",
+      "pname": "asciidoctor-with-extensions",
+      "rev": "7a0f122f5090cf4c2ade2a13a0e229d4e19ba71f",
+      "rev_count": 1080855,
+      "rev_date": "2026-09-28T06:58:16Z",
+      "scrape_date": "2026-09-29T04:58:27.466984Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2.0.26",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/fx9myw82nq5f36yrhi1s30wcdaldgmxw-asciidoctor-2.0.26"
+      },
+      "system": "aarch64-darwin",
+      "group": "asciidoc",
+      "priority": 5
+    },
+    {
+      "attr_path": "asciidoctor-with-extensions",
+      "broken": false,
+      "derivation": "/nix/store/iq05x5rr18wh75j5flc964nkbxzg78yb-asciidoctor-2.0.26.drv",
+      "description": "Faster Asciidoc processor written in Ruby, with many extensions enabled",
+      "install_id": "asciidoctor-with-extensions",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=7a0f122f5090cf4c2ade2a13a0e229d4e19ba71f",
+      "name": "asciidoctor-2.0.26",
+      "pname": "asciidoctor-with-extensions",
+      "rev": "7a0f122f5090cf4c2ade2a13a0e229d4e19ba71f",
+      "rev_count": 1080855,
+      "rev_date": "2026-09-28T06:58:16Z",
+      "scrape_date": "2026-09-29T05:29:59.788599Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2.0.26",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/kap2h78xsjdghmrwm1chyifk6igvnwm6-asciidoctor-2.0.26"
+      },
+      "system": "aarch64-linux",
+      "group": "asciidoc",
+      "priority": 5
+    },
+    {
+      "attr_path": "jdk",
+      "broken": false,
+      "derivation": "/nix/store/3hgxfm5p7q9jzh2g51d8c9cmjfz0nymc-zulu-ca-jdk-21.0.11.drv",
+      "description": "Certified builds of OpenJDK",
+      "install_id": "jdk",
+      "license": "GPL-2.0-only",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=7a0f122f5090cf4c2ade2a13a0e229d4e19ba71f",
+      "name": "zulu-ca-jdk-21.0.11",
+      "pname": "jdk",
+      "rev": "7a0f122f5090cf4c2ade2a13a0e229d4e19ba71f",
+      "rev_count": 1080855,
+      "rev_date": "2026-09-28T06:58:16Z",
+      "scrape_date": "2026-09-29T04:58:44.804563Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "21.0.11",
+      "outputs_to_install": [
+        "out",
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/9264ybc5skycmsz685nz3j2g8pj244wd-zulu-ca-jdk-21.0.11"
+      },
+      "system": "aarch64-darwin",
+      "group": "asciidoc",
+      "priority": 5
+    },
+    {
+      "attr_path": "jdk",
+      "broken": false,
+      "derivation": "/nix/store/2k0lnm5zpcbhni8lcvazaqdv03n4pb4c-openjdk-21.0.12.1+1.drv",
+      "description": "Open-source Java Development Kit",
+      "install_id": "jdk",
+      "license": "GPL-2.0-only",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=7a0f122f5090cf4c2ade2a13a0e229d4e19ba71f",
+      "name": "openjdk-21.0.12.1+1",
+      "pname": "jdk",
+      "rev": "7a0f122f5090cf4c2ade2a13a0e229d4e19ba71f",
+      "rev_count": 1080855,
+      "rev_date": "2026-09-28T06:58:16Z",
+      "scrape_date": "2026-09-29T05:30:22.978509Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "21.0.12.1+1",
+      "outputs_to_install": [
+        "out",
+        "out",
+        "out"
+      ],
+      "outputs": {
+        "debug": "/nix/store/wi8s4sk4i9j3kna2zhdfi4l5aj3kdshn-openjdk-21.0.12.1+1-debug",
+        "out": "/nix/store/glcgjqyysb3a0556x4flgimvjhq6zjrk-openjdk-21.0.12.1+1"
+      },
+      "system": "aarch64-linux",
+      "group": "asciidoc",
+      "priority": 5
+    },
+    {
+      "attr_path": "nodejs",
+      "broken": false,
+      "derivation": "/nix/store/j062ph4sqspapzz4bz4knx0icy2kfgjy-nodejs-24.20.0.drv",
+      "description": "Event-driven I/O framework for the V8 JavaScript engine",
+      "install_id": "nodejs",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=7a0f122f5090cf4c2ade2a13a0e229d4e19ba71f",
+      "name": "nodejs-24.20.0",
+      "pname": "nodejs",
+      "rev": "7a0f122f5090cf4c2ade2a13a0e229d4e19ba71f",
+      "rev_count": 1080855,
+      "rev_date": "2026-09-28T06:58:16Z",
+      "scrape_date": "2026-09-29T04:58:52.829222Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "24.20.0",
+      "outputs_to_install": [
+        "out",
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/7pn7zw2sciv3fih9l4xpyvx0q8hlrr0w-nodejs-24.20.0"
+      },
+      "system": "aarch64-darwin",
+      "group": "asciidoc",
+      "priority": 5
+    },
+    {
+      "attr_path": "nodejs",
+      "broken": false,
+      "derivation": "/nix/store/z4ixg7wqqz4wvlvb3ava11m1khid3a1g-nodejs-24.20.0.drv",
+      "description": "Event-driven I/O framework for the V8 JavaScript engine",
+      "install_id": "nodejs",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=7a0f122f5090cf4c2ade2a13a0e229d4e19ba71f",
+      "name": "nodejs-24.20.0",
+      "pname": "nodejs",
+      "rev": "7a0f122f5090cf4c2ade2a13a0e229d4e19ba71f",
+      "rev_count": 1080855,
+      "rev_date": "2026-09-28T06:58:16Z",
+      "scrape_date": "2026-09-29T05:30:39.153126Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "24.20.0",
+      "outputs_to_install": [
+        "out",
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/hnizp3p9k7gix8iqlip1pai9fy417ygy-nodejs-24.20.0"
+      },
+      "system": "aarch64-linux",
+      "group": "asciidoc",
+      "priority": 5
+    },
+    {
+      "attr_path": "plantuml",
+      "broken": false,
+      "derivation": "/nix/store/ghr9spnh5mw3bsz6kj6q1ldq4m9jj3z4-plantuml-1.2026.8.drv",
+      "description": "Draw UML diagrams using a simple and human readable text description",
+      "install_id": "plantuml",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=7a0f122f5090cf4c2ade2a13a0e229d4e19ba71f",
+      "name": "plantuml-1.2026.8",
+      "pname": "plantuml",
+      "rev": "7a0f122f5090cf4c2ade2a13a0e229d4e19ba71f",
+      "rev_count": 1080855,
+      "rev_date": "2026-09-28T06:58:16Z",
+      "scrape_date": "2026-09-29T04:59:06.860770Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.2026.8",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/cfbhy7j1ll7rc3jghxyh9akdv0fgy7jd-plantuml-1.2026.8"
+      },
+      "system": "aarch64-darwin",
+      "group": "asciidoc",
+      "priority": 5
+    },
+    {
+      "attr_path": "plantuml",
+      "broken": false,
+      "derivation": "/nix/store/x57agfkhhwi8376brmgl0k0y87vkfnnv-plantuml-1.2026.8.drv",
+      "description": "Draw UML diagrams using a simple and human readable text description",
+      "install_id": "plantuml",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=7a0f122f5090cf4c2ade2a13a0e229d4e19ba71f",
+      "name": "plantuml-1.2026.8",
+      "pname": "plantuml",
+      "rev": "7a0f122f5090cf4c2ade2a13a0e229d4e19ba71f",
+      "rev_count": 1080855,
+      "rev_date": "2026-09-28T06:58:16Z",
+      "scrape_date": "2026-09-29T05:30:57.925049Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.2026.8",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/9g9d2n9ndl0djgyaiydl2dv3l410p3y7-plantuml-1.2026.8"
+      },
+      "system": "aarch64-linux",
+      "group": "asciidoc",
+      "priority": 5
+    },
+    {
+      "attr_path": "pnpm",
+      "broken": false,
+      "derivation": "/nix/store/0bvzrnjgwzy3dp479a7mxmchnj1kf228-pnpm-12.3.4.drv",
+      "description": "Fast, disk space efficient package manager for JavaScript",
+      "install_id": "pnpm",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=7a0f122f5090cf4c2ade2a13a0e229d4e19ba71f",
+      "name": "pnpm-12.3.4",
+      "pname": "pnpm",
+      "rev": "7a0f122f5090cf4c2ade2a13a0e229d4e19ba71f",
+      "rev_count": 1080855,
+      "rev_date": "2026-09-28T06:58:16Z",
+      "scrape_date": "2026-09-29T04:59:06.983266Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "12.3.4",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/g3i1f7y60c3ra7cldxj6jq30c1pzwza3-pnpm-12.3.4"
+      },
+      "system": "aarch64-darwin",
+      "group": "asciidoc",
+      "priority": 5
+    },
+    {
+      "attr_path": "pnpm",
+      "broken": false,
+      "derivation": "/nix/store/fsh5axnpw1yg66x9mjzamr4akda6jkf2-pnpm-12.3.4.drv",
+      "description": "Fast, disk space efficient package manager for JavaScript",
+      "install_id": "pnpm",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=7a0f122f5090cf4c2ade2a13a0e229d4e19ba71f",
+      "name": "pnpm-12.3.4",
+      "pname": "pnpm",
+      "rev": "7a0f122f5090cf4c2ade2a13a0e229d4e19ba71f",
+      "rev_count": 1080855,
+      "rev_date": "2026-09-28T06:58:16Z",
+      "scrape_date": "2026-09-29T05:30:58.149675Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "12.3.4",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/iy8qzxcw132w07hli6y992qxg54xwx3j-pnpm-12.3.4"
+      },
+      "system": "aarch64-linux",
+      "group": "asciidoc",
+      "priority": 5
+    },
     {
       "attr_path": "flox-mcp-server",
       "broken": false,
@@ -2666,6 +3189,64 @@
       "priority": 5
     },
     {
+      "attr_path": "go-2fa",
+      "broken": false,
+      "derivation": "/nix/store/iv126fignp5imclb5x4jn9j1la5nv3f7-2fa-1.2.0.drv",
+      "description": "Two-factor authentication on the command line",
+      "install_id": "go-2fa",
+      "license": "BSD-3-Clause",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
+      "name": "2fa-1.2.0",
+      "pname": "go-2fa",
+      "rev": "e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
+      "rev_count": 1079315,
+      "rev_date": "2026-09-25T08:03:29Z",
+      "scrape_date": "2026-09-26T04:58:21.028954Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.2.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/xxq5abn431ccha9dgg7id7ss1fd47vxv-2fa-1.2.0"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "go-2fa",
+      "broken": false,
+      "derivation": "/nix/store/r3i1g6ddjabh4n6fij1ji62zpynlfkwf-2fa-1.2.0.drv",
+      "description": "Two-factor authentication on the command line",
+      "install_id": "go-2fa",
+      "license": "BSD-3-Clause",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
+      "name": "2fa-1.2.0",
+      "pname": "go-2fa",
+      "rev": "e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
+      "rev_count": 1079315,
+      "rev_date": "2026-09-25T08:03:29Z",
+      "scrape_date": "2026-09-26T05:29:40.768783Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.2.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/lmj23l2s1xln2lyh9j2qgir8p3bgj0pm-2fa-1.2.0"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
       "attr_path": "graphviz",
       "broken": false,
       "derivation": "/nix/store/8arlxqmysjscqpqfnm9zb12yaz7an365-graphviz-15.1.1.drv",
@@ -2719,6 +3300,64 @@
       ],
       "outputs": {
         "out": "/nix/store/243dk2na84dr8p38jcbvqzn5s57fnx3h-graphviz-15.1.1"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "html2text",
+      "broken": false,
+      "derivation": "/nix/store/nhfn8436a0ipa6w4mxcn822hxafwjd9x-html2text-2.4.0.drv",
+      "description": "Convert HTML to plain text",
+      "install_id": "html2text",
+      "license": "GPL-2.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
+      "name": "html2text-2.4.0",
+      "pname": "html2text",
+      "rev": "e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
+      "rev_count": 1079315,
+      "rev_date": "2026-09-25T08:03:29Z",
+      "scrape_date": "2026-09-26T04:58:35.412156Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2.4.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/0gigbhfjxwa5v4qj2mjs0a1f427dzr3j-html2text-2.4.0"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "html2text",
+      "broken": false,
+      "derivation": "/nix/store/ihmcyqh1vnml80gblxmhw28zfaj92qvb-html2text-2.4.0.drv",
+      "description": "Convert HTML to plain text",
+      "install_id": "html2text",
+      "license": "GPL-2.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
+      "name": "html2text-2.4.0",
+      "pname": "html2text",
+      "rev": "e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
+      "rev_count": 1079315,
+      "rev_date": "2026-09-25T08:03:29Z",
+      "scrape_date": "2026-09-26T05:29:58.554061Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2.4.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/611plv25xssd4nlphflnj3k5fagsbdby-html2text-2.4.0"
       },
       "system": "aarch64-linux",
       "group": "toplevel",
@@ -2835,6 +3474,64 @@
       ],
       "outputs": {
         "out": "/nix/store/mn5brvmmhi0ww0qkbsqxzf2dqy8k0r4l-lazygit-0.65.1"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "mermaid-cli",
+      "broken": false,
+      "derivation": "/nix/store/9pfm0n1n40v96lsgsv56lzj36dm0n480-mermaid-cli-11.17.0.drv",
+      "description": "Generation of diagrams from text in a similar manner as markdown",
+      "install_id": "mermaid-cli",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
+      "name": "mermaid-cli-11.17.0",
+      "pname": "mermaid-cli",
+      "rev": "e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
+      "rev_count": 1079315,
+      "rev_date": "2026-09-25T08:03:29Z",
+      "scrape_date": "2026-09-26T04:58:42.221882Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "11.17.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/bqv9a7ydfkx12jrwqwq696lf5yndp8cw-mermaid-cli-11.17.0"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "mermaid-cli",
+      "broken": false,
+      "derivation": "/nix/store/jziki0bpl209gxb87msgmi39ky6xy69l-mermaid-cli-11.17.0.drv",
+      "description": "Generation of diagrams from text in a similar manner as markdown",
+      "install_id": "mermaid-cli",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
+      "name": "mermaid-cli-11.17.0",
+      "pname": "mermaid-cli",
+      "rev": "e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
+      "rev_count": 1079315,
+      "rev_date": "2026-09-25T08:03:29Z",
+      "scrape_date": "2026-09-26T05:30:14.098774Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "11.17.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/pgppbn8p49sg5c13d62cyfgq1g3v60cp-mermaid-cli-11.17.0"
       },
       "system": "aarch64-linux",
       "group": "toplevel",
@@ -3312,6 +4009,64 @@
       "priority": 5
     },
     {
+      "attr_path": "zgrviewer",
+      "broken": false,
+      "derivation": "/nix/store/k2sg849kkz7dcm7f9x9cvprhlw24zpkn-zgrviewer-0.10.0.drv",
+      "description": "GraphViz graph viewer/navigator",
+      "install_id": "zgrviewer",
+      "license": "LGPL-2.1-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
+      "name": "zgrviewer-0.10.0",
+      "pname": "zgrviewer",
+      "rev": "e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
+      "rev_count": 1079315,
+      "rev_date": "2026-09-25T08:03:29Z",
+      "scrape_date": "2026-09-26T05:01:22.708025Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.10.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/rlsihyazxnnr7mq5443rlrkzgadai1rr-zgrviewer-0.10.0"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "zgrviewer",
+      "broken": false,
+      "derivation": "/nix/store/drgdn5wi0a4f19igrdv2z5i6143qq0in-zgrviewer-0.10.0.drv",
+      "description": "GraphViz graph viewer/navigator",
+      "install_id": "zgrviewer",
+      "license": "LGPL-2.1-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
+      "name": "zgrviewer-0.10.0",
+      "pname": "zgrviewer",
+      "rev": "e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
+      "rev_count": 1079315,
+      "rev_date": "2026-09-25T08:03:29Z",
+      "scrape_date": "2026-09-26T05:33:39.597703Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.10.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/fkg39a3zypcid2vvwdghzl5l0mpdvix3-zgrviewer-0.10.0"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
       "attr_path": "zsh",
       "broken": false,
       "derivation": "/nix/store/nyz4j8p30lnvs4zgk0q39pzmdd70paci-zsh-5.9.2.drv",
@@ -3383,7 +4138,7 @@
     },
     {
       "install_id": "flux9s",
-      "locked-url": "github:seedmatic/rke2lab/e1ece2438c8b5ee7739bd320f7a84b3b7c334d95?narHash=sha256-rrROHEd1EriyhHp5uPVveLZ6gytS2txG7jgEbPelDj4%3D",
+      "locked-url": "github:seedmatic/rke2lab/1b112ae98520a56ebee0cf5fb27f6f7714cff115?narHash=sha256-Juw2lnNuaTTN5gT4/1zUbspf2mcODYqEgG0PXwOZacQ%3D",
       "flake-description": "RKE2 lab infrastructure and network blueprints",
       "locked-flake-attr-path": "packages.aarch64-darwin.flux9s",
       "derivation": "/nix/store/fvpjmvmq2z5437wlx1yqddyr3kcid1rg-flux9s-1.0.3.drv",
@@ -3412,7 +4167,7 @@
     },
     {
       "install_id": "flux9s",
-      "locked-url": "github:seedmatic/rke2lab/e1ece2438c8b5ee7739bd320f7a84b3b7c334d95?narHash=sha256-rrROHEd1EriyhHp5uPVveLZ6gytS2txG7jgEbPelDj4%3D",
+      "locked-url": "github:seedmatic/rke2lab/1b112ae98520a56ebee0cf5fb27f6f7714cff115?narHash=sha256-Juw2lnNuaTTN5gT4/1zUbspf2mcODYqEgG0PXwOZacQ%3D",
       "flake-description": "RKE2 lab infrastructure and network blueprints",
       "locked-flake-attr-path": "packages.aarch64-linux.flux9s",
       "derivation": "/nix/store/3yjnfil6gvba2qxq215dzalivqxnigdq-flux9s-1.0.3.drv",
@@ -3441,7 +4196,7 @@
     },
     {
       "install_id": "incus-client",
-      "locked-url": "github:seedmatic/rke2lab/f9af1297e4ddc77d3b2f1cb725ce94939e700b54?narHash=sha256-%2B6mlJa6Wu8WxmxP8OBbrNieYyzm9B6Y0k2rk%2BhOvubA%3D",
+      "locked-url": "github:seedmatic/rke2lab/1b112ae98520a56ebee0cf5fb27f6f7714cff115?narHash=sha256-Juw2lnNuaTTN5gT4/1zUbspf2mcODYqEgG0PXwOZacQ%3D",
       "flake-description": "RKE2 lab infrastructure and network blueprints",
       "locked-flake-attr-path": "packages.aarch64-darwin.incus-client",
       "derivation": "/nix/store/7ksq3h46dyrc75r24sv41x3chmpwq8w4-incus-client-7.4.0.drv",
@@ -3470,7 +4225,7 @@
     },
     {
       "install_id": "incus-client",
-      "locked-url": "github:seedmatic/rke2lab/f9af1297e4ddc77d3b2f1cb725ce94939e700b54?narHash=sha256-%2B6mlJa6Wu8WxmxP8OBbrNieYyzm9B6Y0k2rk%2BhOvubA%3D",
+      "locked-url": "github:seedmatic/rke2lab/1b112ae98520a56ebee0cf5fb27f6f7714cff115?narHash=sha256-Juw2lnNuaTTN5gT4/1zUbspf2mcODYqEgG0PXwOZacQ%3D",
       "flake-description": "RKE2 lab infrastructure and network blueprints",
       "locked-flake-attr-path": "packages.aarch64-linux.incus-client",
       "derivation": "/nix/store/bkxsmg2fvsmssd7kiixc8k9nz5wxk82f-incus-client-7.4.0.drv",
@@ -3556,6 +4311,29 @@
       "broken": false,
       "unfree": false,
       "priority": 1
+    },
+    {
+      "install_id": "manage-tailnet",
+      "locked-url": "github:seedmatic/rke2lab/1b112ae98520a56ebee0cf5fb27f6f7714cff115?narHash=sha256-Juw2lnNuaTTN5gT4/1zUbspf2mcODYqEgG0PXwOZacQ%3D",
+      "flake-description": "RKE2 lab infrastructure and network blueprints",
+      "locked-flake-attr-path": "packages.aarch64-darwin.manage-tailnet",
+      "derivation": "/nix/store/ac69kkqm951852k724b6dy89spvck2hi-manage-tailnet.drv",
+      "outputs": {
+        "out": "/nix/store/s8n6440629hcb69g157k8c86i5vjx164-manage-tailnet"
+      },
+      "output-names": [
+        "out"
+      ],
+      "outputs-to-install": [
+        "out"
+      ],
+      "requested-outputs-to-install": [],
+      "package-system": "aarch64-darwin",
+      "system": "aarch64-darwin",
+      "name": "manage-tailnet",
+      "broken": false,
+      "unfree": false,
+      "priority": 5
     },
     {
       "install_id": "maven",
@@ -3792,29 +4570,6 @@
       "broken": false,
       "unfree": false,
       "priority": 5
-    },
-    {
-      "install_id": "manage-tailnet",
-      "locked-url": "github:seedmatic/rke2lab/ed531af2e06301285df485ebbabeb3998a928c84?narHash=sha256-WY3zAc00x5lduxurK20CvVCcClCKR8tmzilsBwigSb4%3D",
-      "flake-description": "RKE2 lab infrastructure and network blueprints",
-      "locked-flake-attr-path": "packages.aarch64-darwin.manage-tailnet",
-      "derivation": "/nix/store/h86zisidmch82ayiqbyvdkzp10bq8ps1-manage-tailnet.drv",
-      "outputs": {
-        "out": "/nix/store/jawgs6x98jz1mj9nr1nbm17lh9090w7s-manage-tailnet"
-      },
-      "output-names": [
-        "out"
-      ],
-      "outputs-to-install": [
-        "out"
-      ],
-      "requested-outputs-to-install": [],
-      "package-system": "aarch64-darwin",
-      "system": "aarch64-darwin",
-      "name": "manage-tailnet",
-      "broken": false,
-      "unfree": false,
-      "priority": 5
     }
   ],
   "compose": {
@@ -3838,13 +4593,13 @@
           "pkg-group": "flox-mcp-server"
         },
         "flux9s": {
-          "flake": "github:seedmatic/rke2lab/feature/nixos-node-substrate#flux9s"
+          "flake": "github:seedmatic/rke2lab/feature/viewpoint-separation#flux9s"
         },
         "graphviz": {
           "pkg-path": "graphviz"
         },
         "incus-client": {
-          "flake": "github:seedmatic/rke2lab/feature/nixos-node-substrate#incus-client"
+          "flake": "github:seedmatic/rke2lab/feature/viewpoint-separation#incus-client"
         },
         "jdk25": {
           "flake": "github:seedmatic/rke2lab#jdk25",
@@ -3854,7 +4609,7 @@
           "pkg-path": "k9s"
         },
         "manage-tailnet": {
-          "flake": "github:seedmatic/rke2lab/feature/nixos-node-substrate#manage-tailnet",
+          "flake": "github:seedmatic/rke2lab/feature/viewpoint-separation#manage-tailnet",
           "systems": [
             "aarch64-darwin"
           ]
@@ -3893,6 +4648,9 @@
       "include": {
         "environments": [
           {
+            "dir": "../.flox.d/asciidoc"
+          },
+          {
             "dir": "../.flox.d/git"
           },
           {
@@ -3914,6 +4672,128 @@
       }
     },
     "include": [
+      {
+        "manifest": {
+          "schema-version": "1.10.0",
+          "install": {
+            "age": {
+              "pkg-path": "age",
+              "pkg-group": "keyhole"
+            },
+            "antora": {
+              "pkg-path": "antora",
+              "pkg-group": "asciidoc",
+              "outputs": "all"
+            },
+            "antora-lunr-extension": {
+              "pkg-path": "antora-lunr-extension",
+              "pkg-group": "asciidoc",
+              "outputs": "all"
+            },
+            "antora-ui-default": {
+              "pkg-path": "antora-ui-default",
+              "pkg-group": "asciidoc",
+              "outputs": "all"
+            },
+            "asciidoctor-with-extensions": {
+              "pkg-path": "asciidoctor-with-extensions",
+              "pkg-group": "asciidoc",
+              "outputs": "all"
+            },
+            "gnupg": {
+              "pkg-path": "gnupg",
+              "pkg-group": "keyhole"
+            },
+            "go-2fa": {
+              "pkg-path": "go-2fa"
+            },
+            "graphviz": {
+              "pkg-path": "graphviz",
+              "pkg-group": "asciidoc",
+              "outputs": "all"
+            },
+            "html2text": {
+              "pkg-path": "html2text",
+              "outputs": "all"
+            },
+            "jdk": {
+              "pkg-path": "jdk",
+              "pkg-group": "asciidoc",
+              "outputs": "all"
+            },
+            "keychain": {
+              "pkg-path": "keychain",
+              "pkg-group": "keyhole"
+            },
+            "mermaid-cli": {
+              "pkg-path": "mermaid-cli"
+            },
+            "nodejs": {
+              "pkg-path": "nodejs",
+              "pkg-group": "asciidoc",
+              "outputs": "all"
+            },
+            "openssh": {
+              "pkg-path": "openssh",
+              "pkg-group": "keyhole",
+              "outputs": "all"
+            },
+            "openssl": {
+              "pkg-path": "openssl",
+              "pkg-group": "keyhole",
+              "outputs": "all"
+            },
+            "pass": {
+              "pkg-path": "pass",
+              "pkg-group": "keyhole"
+            },
+            "plantuml": {
+              "pkg-path": "plantuml",
+              "pkg-group": "asciidoc",
+              "outputs": "all"
+            },
+            "pnpm": {
+              "pkg-path": "pnpm",
+              "pkg-group": "asciidoc",
+              "outputs": "all"
+            },
+            "pwgen-secure": {
+              "pkg-path": "pwgen-secure",
+              "pkg-group": "keyhole",
+              "outputs": "all"
+            },
+            "sops": {
+              "pkg-path": "sops",
+              "pkg-group": "keyhole"
+            },
+            "ssh-to-age": {
+              "pkg-path": "ssh-to-age",
+              "pkg-group": "keyhole"
+            },
+            "zgrviewer": {
+              "pkg-path": "zgrviewer"
+            }
+          },
+          "hook": {
+            "on-activate": "    if [ -z \"${PUPPETEER_EXECUTABLE_PATH:-}\" ]; then\n      for _shell in \"$HOME\"/.cache/puppeteer/chrome-headless-shell/*/chrome-headless-shell-*/chrome-headless-shell; do\n        [ -x \"$_shell\" ] && export PUPPETEER_EXECUTABLE_PATH=\"$_shell\"\n      done\n      unset _shell\n    fi\n  "
+          },
+          "profile": {
+            "common": "    GITHUB_SIGNING_KEYFILE=\"$HOME\"/.ssh/keys.d/github-signing\n    if [[ -r \"$GITHUB_SIGNING_KEYFILE\" ]]; then\n      set -a\n      SOPS_AGE_KEY=$( ssh-to-age -private-key < \"$GITHUB_SIGNING_KEYFILE\" )\n      set +a\n    else\n      echo no signing key\n    fi\n  \n    export ANTORA_CACHE_DIR=\"${FLOX_ENV_PROJECT}/.cache/antora\"\n    export DOCS_BUILD_DIR=\"${FLOX_ENV_PROJECT}/.output/docs\"\n  "
+          },
+          "options": {
+            "systems": [
+              "aarch64-darwin",
+              "aarch64-linux",
+              "x86_64-linux",
+              "x86_64-darwin"
+            ]
+          }
+        },
+        "name": "asciidoc",
+        "descriptor": {
+          "dir": "../.flox.d/asciidoc"
+        }
+      },
       {
         "manifest": {
           "schema-version": "1.10.0",
@@ -4276,6 +5156,96 @@
             "age"
           ]
         },
+        "higher_priority_name": "git"
+      },
+      {
+        "warning": {
+          "Overriding": [
+            "install",
+            "gnupg"
+          ]
+        },
+        "higher_priority_name": "git"
+      },
+      {
+        "warning": {
+          "Overriding": [
+            "install",
+            "keychain"
+          ]
+        },
+        "higher_priority_name": "git"
+      },
+      {
+        "warning": {
+          "Overriding": [
+            "install",
+            "openssh"
+          ]
+        },
+        "higher_priority_name": "git"
+      },
+      {
+        "warning": {
+          "Overriding": [
+            "install",
+            "openssl"
+          ]
+        },
+        "higher_priority_name": "git"
+      },
+      {
+        "warning": {
+          "Overriding": [
+            "install",
+            "pass"
+          ]
+        },
+        "higher_priority_name": "git"
+      },
+      {
+        "warning": {
+          "Overriding": [
+            "install",
+            "pwgen-secure"
+          ]
+        },
+        "higher_priority_name": "git"
+      },
+      {
+        "warning": {
+          "Overriding": [
+            "install",
+            "sops"
+          ]
+        },
+        "higher_priority_name": "git"
+      },
+      {
+        "warning": {
+          "Overriding": [
+            "install",
+            "ssh-to-age"
+          ]
+        },
+        "higher_priority_name": "git"
+      },
+      {
+        "warning": {
+          "Overriding": [
+            "options",
+            "systems"
+          ]
+        },
+        "higher_priority_name": "k8s"
+      },
+      {
+        "warning": {
+          "Overriding": [
+            "install",
+            "age"
+          ]
+        },
         "higher_priority_name": "keyhole"
       },
       {
@@ -4355,6 +5325,15 @@
           "Overriding": [
             "install",
             "dasel"
+          ]
+        },
+        "higher_priority_name": "Current manifest"
+      },
+      {
+        "warning": {
+          "Overriding": [
+            "install",
+            "graphviz"
           ]
         },
         "higher_priority_name": "Current manifest"
