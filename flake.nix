@@ -30,6 +30,18 @@
             # UNSTRUCTURED, no typed CAPI/CAPRKE2/CAPN module import), so the vendor hash
             # matches. Regenerate after a go.mod change: set to lib.fakeHash, `nix build`,
             # paste the printed hash.
+            # Pinned to the CURRENT go.mod/go.sum. ⚠️ Any change to go.mod invalidates it, and the
+            # failure surfaces LATE and far away: there is no vendor/ dir in this repo, so a local
+            # `go build`/`go test` runs in module mode and passes, while nix generates a vendor dir
+            # from this hash and fails with `inconsistent vendoring … not marked as explicit in
+            # vendor/modules.txt`. Measured 2026-09-29: a single test-only dependency
+            # (controller-runtime's fake client, pulling gopkg.in/evanphx/json-patch.v4) got through
+            # a green local build and broke the FloxEnv realisation ON THE NODE.
+            #
+            # So when go.mod legitimately changes: set this to `lib.fakeHash`, build, and copy the
+            # hash nix reports. And prefer NOT changing it for a test — a unit test that forces a
+            # dependency bump forces it through the whole delivery chain (that one was rewritten with
+            # a hand-rolled lister instead, keeping go.mod byte-identical).
             vendorHash = "sha256-plCaumaII86Sptj7TkjvMvCy9D7bhjknqYvA8gakTTI=";
             subPackages = [ "cmd/seed-incluster" ];
             env.CGO_ENABLED = 0;
