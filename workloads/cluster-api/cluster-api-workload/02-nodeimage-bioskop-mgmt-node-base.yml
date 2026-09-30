@@ -5,8 +5,8 @@ metadata:
   annotations:
     io.seedmatic.rke2lab/domain: cluster-api
     io.seedmatic.rke2lab/package: cluster-api-workload
-  name: nikopol-wrkld-node-base
-  namespace: rke2lab-nikopol-wrkld
+  name: bioskop-mgmt-node-base
+  namespace: rke2lab-bioskop-mgmt
 spec:
   alias: node-base
   buildChecksum: 006375ee65ad175c49d00f05da601da69754fa89f999682485b1f4bba356f0f1

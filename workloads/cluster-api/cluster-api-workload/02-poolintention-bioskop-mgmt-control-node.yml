@@ -4,13 +4,13 @@ kind: PoolIntention
 metadata:
   annotations:
     io.seedmatic.rke2lab/domain: cluster-api
-    io.seedmatic.rke2lab/package: cluster-api-management
-  name: nikopol-mgmt-control-node
-  namespace: rke2lab-nikopol-mgmt
+    io.seedmatic.rke2lab/package: cluster-api-workload
+  name: bioskop-mgmt-control-node
+  namespace: rke2lab-bioskop-mgmt
 spec:
-  clusterRef: nikopol-mgmt
+  clusterRef: bioskop-mgmt
   controlPlaneEndpoint:
-    host: 10.80.23.10
+    host: 10.80.7.10
     port: 6443
   devices:
   - "root,type=disk,path=/,pool=default"
@@ -19,15 +19,15 @@ spec:
   - "fabric0,type=nic,name=fabric0,nictype=bridged,parent=fabric-br"
   - "vmnet0,type=nic,name=vmnet0,nictype=bridged,parent=vmnet-mgmt"
   image:
-    name: nikopol-mgmt-node-base
-  namespace: rke2lab-nikopol-mgmt
-  nature: cattle
+    name: bioskop-mgmt-node-base
+  namespace: rke2lab-bioskop-mgmt
+  nature: pet
   nodeLabels:
   - flox.seedmatic.io/enabled=true
   nodes:
-  - name: nikopol-mgmt-master
+  - name: bioskop-mgmt-master
   pool: control-node
   replicas: 1
   rke2Version: v1.34.10+rke2r1
   role: control-plane
-  target: nikopol-nixos
+  target: bioskop-nixos

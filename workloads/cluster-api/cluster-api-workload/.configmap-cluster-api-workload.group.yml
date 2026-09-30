@@ -2,6 +2,14 @@
 apiVersion: v1
 data:
   members: |-
+    v1|Namespace||rke2lab-bioskop-mgmt
+    cluster.seedmatic.io/v1alpha1|NodeImage|rke2lab-bioskop-mgmt|bioskop-mgmt-node-base
+    cluster.seedmatic.io/v1alpha1|ClusterIntention|rke2lab-bioskop-mgmt|bioskop-mgmt
+    cluster.seedmatic.io/v1alpha1|PoolIntention|rke2lab-bioskop-mgmt|bioskop-mgmt-control-node
+    v1|Namespace||rke2lab-bioskop-wrkld
+    cluster.seedmatic.io/v1alpha1|NodeImage|rke2lab-bioskop-wrkld|bioskop-wrkld-node-base
+    cluster.seedmatic.io/v1alpha1|ClusterIntention|rke2lab-bioskop-wrkld|bioskop-wrkld
+    cluster.seedmatic.io/v1alpha1|PoolIntention|rke2lab-bioskop-wrkld|bioskop-wrkld-control-node
     v1|Namespace||rke2lab-nikopol-wrkld
     cluster.seedmatic.io/v1alpha1|NodeImage|rke2lab-nikopol-wrkld|nikopol-wrkld-node-base
     cluster.seedmatic.io/v1alpha1|ClusterIntention|rke2lab-nikopol-wrkld|nikopol-wrkld
