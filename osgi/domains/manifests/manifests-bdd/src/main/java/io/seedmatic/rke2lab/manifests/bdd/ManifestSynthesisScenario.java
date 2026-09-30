@@ -1288,11 +1288,18 @@ public class ManifestSynthesisScenario
                 root,
                 facet.image(),
                 fabricBridgeParent(facet),
-                // No fleet for THIS pass: the parent lays the child's branch down as a bootstrap
-                // and
-                // renders no grandchild. The child's own in-cluster render adds what it owns, from
-                // the fleet recorded just below.
-                Optional.empty(),
+                // The SAME fleet as the managing pass — NOT empty. Every plane carries the same
+                // federation view and derives its ROLE from its POSITION in it, so a child's branch
+                // must show the whole fleet: its own intention (which needs the fleet to name its
+                // adopter) and the children IT owns.
+                //
+                // ⚠️ Empty here made the child's OWN intention VANISH the moment the adopter became
+                // required — measured 2026-09-30: manifests/nikopol-mgmt came out with no
+                // ClusterIntention at all. It was a leftover of the earlier reading, where a parent
+                // deliberately rendered no grandchild. Under a shared view that reading is wrong:
+                // whoever renders, the result must be IDENTICAL, which is what makes the two copies
+                // of a sub-plane's intention agree by construction instead of by coincidence.
+                facet.facets().clusterFleet(),
                 Optional.empty()),
             materials);
         // The branch records the facet that produced it, INCLUDING the full fleet, so a later
