@@ -884,14 +884,18 @@ This sets how much each door is worth defending, and it is the fact to remember:
 | Door | What the webhook is for | If an event is lost
 
 | Flux receiver
-| an ACCELERATOR — the real driver is `spec.interval` (measured `10m` on both `GitRepository`
-  objects)
-| ≤ one interval of latency. **Nothing is lost** — the poll converges.
+| the steady-state trigger — and `spec.interval` (relaxed 1m → `10m` *because* the receiver landed;
+  `FluxReceiverManifestsUnit` states this itself) is its FALLBACK
+| ≤ one interval of latency. **Nothing is lost** — the interval converges.
 
 | PaC
 | the **only** trigger. No interval, no poll, nothing to catch up
 | the render **never happens**, permanently.
 |===
+
+★ The asymmetry is about LOSS, not about which mechanism drives. Both doors are event-driven in
+steady state; only one has a floor underneath it. That is the whole design brief for the fan-out
+below — give PaC the floor Flux already has, and the event stops being load-bearing.
 
 ⚠️ And GitHub does **not** retry a failed webhook delivery — it is fire-and-forget (hence the manual
 *Redeliver* button). Repeated failures also risk GitHub disabling the hook. So pointing a webhook
@@ -918,44 +922,82 @@ controller here — desired state, observed state, an action that closes the gap
 | ACTION
 | trigger that plane's render — a POST to its PaC funnel
 
-| TRIGGER
-| the source head CHANGING. Which is the same git read as the observation, so there is nothing to
-  forward
+| WAKE-UP
+| the event the ROOT ALREADY RECEIVED. The App's one webhook lands on the root, PaC creates the
+  root's own render `PipelineRun` in `rke2lab-system`, and that object CARRIES the source sha — so
+  the fleet's event source is an in-cluster watch, not a network hop.
+
+| FLOOR
+| an interval. Bounds the LOSS (the wake-up bounds the latency), which is what gives PaC the
+  guarantee Flux already had.
 |===
 
-★ That last row is what collapsed an earlier draft of this section. Framed as "replicate the webhook
-event", the design needed an HTTP server, a second public funnel door for it, verbatim signature
-forwarding, and a durable retry queue. Framed as "the source head changed" — a fact already read to
-detect staleness — all four disappear. The webhook is not a thing to relay; it is an optimisation the
-interval already provides.
+★ Those last two rows are the correction of 2026-09-30, and they are the reason this section is
+about the ROOT and not about polling: *the cluster the GitHub App points at forwards the events to
+the fleet*. That was the decision all along; an earlier draft of this table collapsed it into "the
+source head changed" and lost the word EVENT, which made the design look like a poller.
+
+What stays rejected is only the TRANSPORT that phrase invites — a verbatim HTTP relay, which needs a
+server, a second public funnel door, signature re-emission and a durable retry queue. None of that is
+needed, because the event does not have to arrive at the child in the shape it arrived at the root:
+
+[cols="1,3",options="header"]
+|===
+| |
+
+| what is FORWARDED
+| the *fact* that the source moved, re-derived. The child is poked; it reads git itself.
+
+| what is NOT forwarded
+| the payload, its signature, its headers. Nothing of GitHub's wire format crosses the root.
+|===
+
+And the two rows compose rather than compete — the same pairing the <<_the_asymmetry_between_the_two_doors,asymmetry table>> describes one level down:
+
+* the WAKE-UP makes a push reach the whole fleet at once, so latency is a hop and not an interval;
+* the FLOOR makes a LOST wake-up cost latency instead of a render. GitHub does not retry, and an
+  itinerant host may be away exactly when the push lands — so without the floor the fan-out inherits
+  the very defect that made one-webhook-per-cluster unacceptable.
+
+⚠️ So the floor is not a fallback to drop once the watch works. It is the half of the design that
+makes an itinerant sub-plane safe, and the watch is the half that makes it fast.
 
 [mermaid,pac-fleet-render-reconciler,svg]
 ----
 flowchart TB
   GH[("git — seedmatic/rke2lab<br/>source HEAD + one branch per plane")]
+  APP{{"GitHub App — ONE webhook URL<br/>points at the ROOT, by construction"}}
 
-  subgraph PARENT["the PARENT plane — always reachable"]
-    REC["seed-incluster<br/>reconciles its children's branches<br/>STATELESS"]
+  subgraph PARENT["the ROOT plane — the fleet's event source, always reachable"]
+    PACR["PaC (root)<br/>creates the root's own render PipelineRun"]
+    REC["seed-incluster reconciler<br/>STATELESS — watch + interval"]
   end
 
   subgraph SUB["a SUB-plane — itinerant, may be offline"]
     PACS["PaC — renders its own branch"]
   end
 
-  GH -.->|"observe: source HEAD"| REC
-  GH -.->|"observe: each child's source.sha"| REC
-  REC -->|"behind ? POST to the DERIVED funnel url"| PACS
+  APP -->|"push event"| PACR
+  PACR -.->|"WAKE-UP: in-cluster watch<br/>the run CARRIES the source sha"| REC
+  GH -.->|"FLOOR: each child's recorded source.sha"| REC
+  REC -->|"behind ? poke the DERIVED funnel url<br/>re-derived, NOT the payload"| PACS
   PACS -->|"renders, advances its own source.sha"| GH
 
   classDef ok fill:#e6f4ea,stroke:#137333,color:#111
   classDef rec fill:#e8f0fe,stroke:#1a73e8,color:#111
   classDef obs fill:#f3e8fd,stroke:#8430ce,color:#111
-  class PACS ok
+  classDef ext fill:#fce8e6,stroke:#c5221f,color:#111
+  class PACS,PACR ok
   class REC rec
   class GH obs
+  class APP ext
   style PARENT fill:#f7fdf9,stroke:#137333,stroke-dasharray:4
   style SUB fill:#fffdf5,stroke:#f9ab00,stroke-dasharray:4
 ----
+
+★ Read the figure for what does NOT cross a network: the App's event enters ONCE, and its trip to the
+fleet is an in-cluster watch plus a derived poke. The root is the event source for the fleet precisely
+because it is the only plane GitHub can be sure to reach.
 
 === The SCOPE is the hierarchy — `ownedBy` filtered to the planes
 
@@ -1027,9 +1069,10 @@ landing while an itinerant host is away is a render lost for good, with auto-dis
 risk. It also puts fleet topology into GitHub settings where nothing in this repo can see it drift —
 the four hand-made hooks being the proof.
 
-❌ **Replicating the webhook EVENT** (an HTTP relay forwarding verbatim). Needs a server, a second
-public funnel door, and a durable queue, to buy latency the reconcile interval already bounds. See
-the TRIGGER row above.
+❌ **Replicating the webhook PAYLOAD** (an HTTP relay forwarding it verbatim, with its signature).
+Needs a server, a second public funnel door and a durable queue — to deliver bytes the child does not
+need, since it reads git itself. ⚠️ Not to be confused with forwarding the EVENT, which is the
+decided design: what is rejected is the TRANSPORT, never the topology — see the WAKE-UP row above.
 
 ❌ **A catch-up poller inside each plane.** Splits detection from emission across two hosts and puts
 the fleet view where the fleet is not declared. Detection needs the fleet and a git read; both are
