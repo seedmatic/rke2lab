@@ -107,14 +107,21 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
   @Override
   protected void doSynthesize(final Construct scope, final ManifestsUnitContext context) {
     final ManifestSynthesisContext synth = ManifestSynthesisContext.current();
-    final List<ClusterCoordinate> children = synth.ownedChildren();
+    // EVERY cluster the fleet declares except the SUBJECT, whose own intention is the management
+    // unit's. Not `ownedChildren()`: the federation view is UNIFORM, so a plane's branch carries
+    // the
+    // declaration for the whole fleet and the plane simply does not ACT on what it does not adopt
+    // (the controller gates on `adoptedBy`). Material still follows the adopter — see renderChild.
+    final String subject = synth.bootstrapIdentity().clusterName();
+    final List<ClusterCoordinate> others =
+        synth.fleetClusters().stream().filter(c -> !c.clusterName().equals(subject)).toList();
     final Optional<ImageState> maybeImage = synth.imageState();
-    if (children.isEmpty() || maybeImage.isEmpty()) {
+    if (others.isEmpty() || maybeImage.isEmpty()) {
       return;
     }
     final ImageState image = maybeImage.orElseThrow();
-    for (final ClusterCoordinate child : children) {
-      renderChild(scope, child, image);
+    for (final ClusterCoordinate other : others) {
+      renderChild(scope, other, image);
     }
   }
 
@@ -225,6 +232,14 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
     // node
     // instead of self-generating). A secret-blind render must not run steady-state, else it pushes
     // them empty and Flux prunes the populated ones.
+    // ⚠️ MATERIAL follows the ADOPTER, unlike the declaration above which is uniform. A plane holds
+    // credentials only for what it adopts: carrying a cluster's CA or admin credential where it has
+    // no business acting is how a child's branch came to hold its PARENT's CA and then its parent's
+    // admin certificate, each rendered from a run-scoped material onto a subject that was not the
+    // run's cluster (instances 5 and 6 of the viewpoint family).
+    if (!ManifestSynthesisContext.current().adopts(cluster)) {
+      return;
+    }
     final Optional<IncusIdentityMaterial> identity =
         ManifestSynthesisContext.current().incusIdentity();
     final Optional<WorkloadClusterCasMaterial.Entry> workloadCa =

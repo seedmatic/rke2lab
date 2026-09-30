@@ -199,6 +199,15 @@ public final class ClusterApiManagementManifestsUnit extends AbstractManifestsUn
     // with the scaffold duplication: ONE Secret name rendered by TWO units from different material,
     // and the copy Flux applies is the child's. Preferring the subject's makes the two agree by
     // construction rather than by coincidence.
+    // ⚠️ MATERIAL follows the ADOPTER. The subject's own intention above is rendered on EVERY plane
+    // (the view is uniform), but its credentials belong only to the plane that adopts it — which,
+    // for
+    // a cluster's own branch, is itself ONLY when it is the root. A sub-plane carrying its own
+    // admin
+    // material is what let it sign a kubeconfig its own apiserver then refused.
+    if (!ManifestSynthesisContext.current().adopts(cluster)) {
+      return;
+    }
     final Optional<WorkloadClusterCasMaterial.Entry> subjectCas =
         ManifestSynthesisContext.current().workloadCas().flatMap(all -> all.forCluster(cluster));
     final Optional<ManagementClusterCaMaterial> ownCas =

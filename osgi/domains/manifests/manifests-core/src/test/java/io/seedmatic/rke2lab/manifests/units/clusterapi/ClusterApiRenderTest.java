@@ -182,8 +182,14 @@ class ClusterApiRenderTest {
             .map(m -> String.valueOf(m.get("name")))
             .sorted()
             .toList();
+    // The WHOLE fleet, not just what this plane adopts: the federation view is UNIFORM, and a plane
+    // decides what to ACT on from `adoptedBy` rather than from what it was handed.
     assertEquals(
-        List.of("bioskop-mgmt-node-base", "bioskop-wrkld-node-base", "nikopol-mgmt-node-base"),
+        List.of(
+            "bioskop-mgmt-node-base",
+            "bioskop-wrkld-node-base",
+            "nikopol-mgmt-node-base",
+            "nikopol-wrkld-node-base"),
         names);
 
     final List<String> namespaces =
@@ -193,12 +199,51 @@ class ClusterApiRenderTest {
             .map(m -> String.valueOf(m.get("namespace")))
             .toList();
 
-    // One per cluster — the management one plus both targets. The metadata NAME repeats (it is the
+    // One per DECLARED cluster — four, the whole fleet. The metadata NAME repeats (it is the
     // fleet-wide image alias, scoped by namespace); only the construct id is per-cluster, and
     // deriving it from the alias instead collided on the second target.
     assertEquals(
-        List.of("rke2lab-bioskop-mgmt", "rke2lab-bioskop-wrkld", "rke2lab-nikopol-mgmt"),
+        List.of(
+            "rke2lab-bioskop-mgmt",
+            "rke2lab-bioskop-wrkld",
+            "rke2lab-nikopol-mgmt",
+            "rke2lab-nikopol-wrkld"),
         namespaces.stream().sorted().toList());
+  }
+
+  @Test
+  void requireTheDeclarationIsUniformButTheMaterialFollowsTheAdopter(@TempDir Path outdir) {
+    final List<Map<String, Object>> documents = render(outdir, clusterApiUnits());
+
+    // The DECLARATION reaches every declared cluster — the uniform federation view.
+    final List<String> declared =
+        documents.stream()
+            .filter(d -> "ClusterIntention".equals(kindOf(d)))
+            .map(d -> (Map<String, Object>) d.get("spec"))
+            .map(spec -> String.valueOf(spec.get("clusterName")))
+            .sorted()
+            .toList();
+    assertEquals(
+        List.of("bioskop-mgmt", "bioskop-wrkld", "nikopol-mgmt", "nikopol-wrkld"), declared);
+
+    // ★ But CREDENTIALS do not. The render subject here is bioskop-mgmt, which adopts itself,
+    // bioskop-wrkld and nikopol-mgmt — NOT nikopol-wrkld, whose adopter is nikopol-mgmt. So no CA
+    // Secret may appear for it: carrying credentials where a plane has no business acting is
+    // exactly
+    // how a child's branch came to hold its parent's CA and then its parent's admin certificate.
+    final List<String> caNamespaces =
+        documents.stream()
+            .filter(d -> "Secret".equals(kindOf(d)))
+            .map(d -> (Map<String, Object>) d.get("metadata"))
+            .map(m -> String.valueOf(m.get("namespace")))
+            .distinct()
+            .sorted()
+            .toList();
+    assertFalse(
+        caNamespaces.contains("rke2lab-nikopol-wrkld"),
+        "bioskop-mgmt must carry NO material for nikopol-wrkld — its adopter is nikopol-mgmt, but it"
+            + " still carries its DECLARATION: "
+            + caNamespaces);
   }
 
   @Test
@@ -207,7 +252,8 @@ class ClusterApiRenderTest {
 
     final List<Map<String, Object>> pools =
         documents.stream().filter(d -> "PoolIntention".equals(kindOf(d))).toList();
-    assertEquals(3, pools.size());
+    // One per declared cluster: the declaration is uniform across the fleet.
+    assertEquals(4, pools.size());
 
     for (final Map<String, Object> pool : pools) {
       @SuppressWarnings("unchecked")

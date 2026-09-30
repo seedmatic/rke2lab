@@ -200,6 +200,32 @@ public final class ManifestSynthesisContext {
     return request.clusterFleet().map(fleet -> fleet.adopterOf(cluster));
   }
 
+  /**
+   * EVERY cluster the fleet declares — the UNIFORM federation view that lands on every plane's
+   * branch. Empty when no fleet is declared (a bare survey / the standalone CLI).
+   *
+   * <p>A plane renders the DECLARATION for all of these and acts on only the ones it adopts ({@link
+   * #adopts}). That is what "same view, different position" means concretely, and it subsumes what
+   * used to be a render filter: a plane may carry an intention for a cluster whose Incus engine it
+   * cannot reach, because it will not act on it.
+   */
+  public List<ClusterCoordinate> fleetClusters() {
+    return request.clusterFleet().map(ClusterFleet::all).orElseGet(List::of);
+  }
+
+  /**
+   * Whether the render SUBJECT is {@code cluster}'s adopter — the one question that decides what
+   * this plane carries MATERIAL for. The declaration is common to every plane; credentials are not:
+   * a plane holds them only for what it adopts.
+   */
+  public boolean adopts(final String cluster) {
+    final String self = request.bootstrapIdentity().clusterName();
+    if (BootstrapIdentity.UNKNOWN.equals(self)) {
+      return false;
+    }
+    return adopterOf(cluster).map(self::equals).orElse(false);
+  }
+
   public List<ClusterCoordinate> ownedChildren() {
     final Optional<ClusterFleet> fleet = request.clusterFleet();
     if (fleet.isEmpty()) {

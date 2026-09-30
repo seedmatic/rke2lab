@@ -85,6 +85,29 @@ public record ClusterFleet(List<String> incusTargets, String rootHost) {
    * implied — it used to hold only because a sub-plane recognised its own NAME, which handed that
    * cluster two adopters (its parent and itself).
    */
+  /**
+   * EVERY cluster the fleet declares — each host crossed with each role, host-local first so a
+   * render is deterministic.
+   *
+   * <p>★ This is what makes the federation view UNIFORM: every plane's branch carries every
+   * intention, and only the BEHAVIOUR differs — a plane acts on an intention iff {@link #adopterOf}
+   * names it. The declaration is common; birthing and connecting are positional.
+   *
+   * <p>It also SUBSUMES what used to be a render filter. {@link #ownedBy} existed so a plane would
+   * not emit a CR-set for a cluster whose Incus engine it cannot reach; with the adopter stated,
+   * that plane can carry the intention and simply not act on it. The safety moved from "do not
+   * render it" to "do not act on it", which is strictly better: the same guard, without pruning the
+   * view.
+   */
+  public List<ClusterCoordinate> all() {
+    final List<ClusterCoordinate> every = new ArrayList<>();
+    for (final String host : incusTargets) {
+      every.add(new ClusterCoordinate(host, ClusterRole.MGMT));
+      every.add(new ClusterCoordinate(host, ClusterRole.WRKLD));
+    }
+    return List.copyOf(every);
+  }
+
   public String adopterOf(final String cluster) {
     final ClusterCoordinate target = ClusterCoordinate.ofClusterName(cluster);
     if (!incusTargets.contains(target.host())) {

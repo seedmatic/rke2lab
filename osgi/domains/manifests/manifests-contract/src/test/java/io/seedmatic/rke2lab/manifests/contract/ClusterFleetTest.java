@@ -109,6 +109,27 @@ class ClusterFleetTest {
   }
 
   @Test
+  void the_fleet_declares_every_host_crossed_with_every_role() {
+    // The UNIFORM view: this is what lands on every plane's branch, identically.
+    assertEquals(
+        List.of("bioskop-mgmt", "bioskop-wrkld", "nikopol-mgmt", "nikopol-wrkld"),
+        names(FLEET.all()).stream().sorted().toList());
+  }
+
+  @Test
+  void every_declared_cluster_has_an_adopter_inside_the_fleet() {
+    // The invariant the uniform view rests on: a plane can be handed ANY intention and always
+    // decide
+    // whether to act, because every declared cluster names an adopter that the fleet also declares.
+    for (final ClusterCoordinate c : FLEET.all()) {
+      final String adopter = FLEET.adopterOf(c.clusterName());
+      assertTrue(
+          names(FLEET.all()).contains(adopter),
+          c.clusterName() + " names adopter " + adopter + ", which must itself be declared");
+    }
+  }
+
+  @Test
   void a_single_host_fleet_owns_only_its_workload() {
     final ClusterFleet lone = new ClusterFleet(List.of("bioskop"), "bioskop");
     assertEquals(List.of("bioskop-wrkld"), names(lone.ownedBy("bioskop-mgmt")));
