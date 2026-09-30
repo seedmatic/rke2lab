@@ -1,0 +1,33 @@
+---
+apiVersion: cluster.seedmatic.io/v1alpha1
+kind: PoolIntention
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: cluster-api
+    io.seedmatic.rke2lab/package: cluster-api-workload
+  name: nikopol-wrkld-control-node
+  namespace: rke2lab-nikopol-wrkld
+spec:
+  clusterRef: nikopol-wrkld
+  controlPlaneEndpoint:
+    host: 10.80.31.10
+    port: 6443
+  devices:
+  - "root,type=disk,path=/,pool=default"
+  - "kmsg.dev,type=unix-char,source=/dev/kmsg,path=/dev/kmsg"
+  - "zfs.dev,type=unix-char,source=/dev/zfs,path=/dev/zfs"
+  - "fabric0,type=nic,name=fabric0,nictype=bridged,parent=fabric-br"
+  - "vmnet0,type=nic,name=vmnet0,nictype=bridged,parent=vmnet-wrkld"
+  image:
+    name: nikopol-wrkld-node-base
+  namespace: rke2lab-nikopol-wrkld
+  nodeLabels:
+  - flox.seedmatic.io/enabled=true
+  nodes:
+  - name: nikopol-wrkld-master
+  - name: nikopol-wrkld-peer1
+  - name: nikopol-wrkld-peer2
+  pool: control-node
+  rke2Version: v1.34.10+rke2r1
+  role: control-plane
+  target: nikopol-nixos

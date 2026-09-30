@@ -1,7 +1,16 @@
 ---
 apiVersion: v1
 data:
-  members: ""
+  members: |-
+    v1|Namespace||rke2lab-nikopol-mgmt
+    cluster.seedmatic.io/v1alpha1|NodeImage|rke2lab-nikopol-mgmt|nikopol-mgmt-node-base
+    cluster.seedmatic.io/v1alpha1|ClusterIntention|rke2lab-nikopol-mgmt|nikopol-mgmt
+    cluster.seedmatic.io/v1alpha1|PoolIntention|rke2lab-nikopol-mgmt|nikopol-mgmt-control-node
+    v1|Secret|rke2lab-nikopol-mgmt|nikopol-mgmt-ca
+    v1|Secret|rke2lab-nikopol-mgmt|nikopol-mgmt-cca
+    v1|Secret|rke2lab-nikopol-mgmt|nikopol-mgmt-etcd
+    v1|Secret|rke2lab-nikopol-mgmt|nikopol-mgmt-peer-etcd
+    v1|Secret|rke2lab-nikopol-mgmt|nikopol-incus-identity
 kind: ConfigMap
 metadata:
   annotations:

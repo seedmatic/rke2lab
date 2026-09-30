@@ -9,6 +9,13 @@ data:
     v1|ConfigMap|rke2lab-nikopol-mgmt|etcd-metrics.yaml
     v1|ConfigMap|rke2lab-nikopol-mgmt|etcd.yaml
     v1|ConfigMap|rke2lab-nikopol-mgmt|tls-san.yaml
+    v1|ConfigMap|rke2lab-nikopol-wrkld|cidrs.yaml
+    v1|ConfigMap|rke2lab-nikopol-wrkld|core.yaml
+    v1|ConfigMap|rke2lab-nikopol-wrkld|debug.yaml
+    v1|ConfigMap|rke2lab-nikopol-wrkld|disable.yaml
+    v1|ConfigMap|rke2lab-nikopol-wrkld|etcd-metrics.yaml
+    v1|ConfigMap|rke2lab-nikopol-wrkld|etcd.yaml
+    v1|ConfigMap|rke2lab-nikopol-wrkld|tls-san.yaml
 kind: ConfigMap
 metadata:
   annotations:
