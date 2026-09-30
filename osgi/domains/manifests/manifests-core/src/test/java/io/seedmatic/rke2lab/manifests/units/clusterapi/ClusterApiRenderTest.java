@@ -247,6 +247,33 @@ class ClusterApiRenderTest {
   }
 
   @Test
+  void requireEveryIntentionPointsAtTheRENDERERsOwnIncusEndpoint(@TempDir Path outdir) {
+    final List<Map<String, Object>> documents = render(outdir, clusterApiUnits());
+
+    // ★ The endpoint belongs to the READER, not to the cluster described. Incus is CLUSTERED, so a
+    // client talks to ANY member it can reach and `spec.target` decides placement — and a plane can
+    // reach only its OWN host's engine (measured: from bioskop's cluster nixos.nikopol times out).
+    // The render subject here is bioskop-mgmt, so EVERY intention on this branch — including
+    // nikopol-mgmt's and nikopol-wrkld's — must name nixos.bioskop.
+    for (final Map<String, Object> doc : documents) {
+      if (!"ClusterIntention".equals(kindOf(doc))) {
+        continue;
+      }
+      @SuppressWarnings("unchecked")
+      final Map<String, Object> spec = (Map<String, Object>) doc.get("spec");
+      @SuppressWarnings("unchecked")
+      final Map<String, Object> remote = (Map<String, Object>) spec.get("remote");
+      assertEquals(
+          "https://nixos.bioskop:8443",
+          String.valueOf(remote.get("endpoint")),
+          "the endpoint is the RENDERER's engine, not "
+              + spec.get("clusterName")
+              + "'s — deriving it from the described cluster sent bioskop's CAPN to 172.16.16.1 and"
+              + " stalled nikopol-mgmt's birth");
+    }
+  }
+
+  @Test
   void requireEachPoolDeclaresItsOwnSizeAndAWorkloadAsksForThree(@TempDir Path outdir) {
     final List<Map<String, Object>> documents = render(outdir, clusterApiUnits());
 

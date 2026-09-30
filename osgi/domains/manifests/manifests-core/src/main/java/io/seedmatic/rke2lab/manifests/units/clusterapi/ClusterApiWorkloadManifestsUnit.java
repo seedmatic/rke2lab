@@ -121,12 +121,15 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
     }
     final ImageState image = maybeImage.orElseThrow();
     for (final ClusterCoordinate other : others) {
-      renderChild(scope, other, image);
+      renderChild(scope, other, image, subject);
     }
   }
 
   private void renderChild(
-      final Construct scope, final ClusterCoordinate child, final ImageState image) {
+      final Construct scope,
+      final ClusterCoordinate child,
+      final ImageState image,
+      final String subject) {
     final String cluster = child.clusterName();
     // ★ The role is read off the coordinate, already TYPED: it was parsed once, loudly, where the
     // fleet was decoded. Re-parsing it from the composed name here would be a round-trip through
@@ -166,17 +169,39 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
     // `rke2lab` project (instance names are globally unique via the blueprint), so the Secret is
     // keyed by the host (bioskop, nikopol). Rendered below, in THIS namespace.
     final String identitySecret = child.host() + "-incus-identity";
-    // The workload's Incus remote — its host's engine (bioskop-nixos / nikopol-nixos). Intent
-    // value;
-    // the controller/CAPN authenticate from the identity Secret (which also carries `server`).
+    // ★ The endpoint belongs to the READER, not to the cluster being described — the one field on
+    // this CR that is genuinely POSITIONAL. Incus is CLUSTERED (measured 2026-09-30: bioskop-nixos
+    // database-leader and nikopol-nixos database-client, both ONLINE, one cluster), so a client
+    // talks
+    // to ANY member it can reach and `spec.target` decides PLACEMENT. Reaching the target member
+    // directly is neither required nor possible: from bioskop's cluster nixos.nikopol
+    // (172.16.16.1) times out, while nixos.bioskop (172.16.0.1) is open, and the mirror from
+    // nikopol's.
+    //
+    // ⚠️ So this is derived from the RENDER SUBJECT — the cluster whose branch this is, hence whose
+    // plane will reconcile it — and NOT from the child. Deriving it from the child is a mistake I
+    // made and measured: it sent bioskop's CAPN to 172.16.16.1:8443 on every LXCCluster reconcile
+    // for nikopol-mgmt, and its birth stalled at `0/1 present, 1 pending`. The original code passed
+    // "" here and fell back to the identity Secret's `server` (the local engine, since the local
+    // host minted it) — which was RIGHT for a parent's copy, and wrong only for a sub-plane's own
+    // copy, because that Secret was minted by the parent and copied verbatim.
     //
     // The fabric FQDN, not the bare host name: CAPN dials this from a POD, and a pod resolves
-    // through CoreDNS — where the bare name reached the vmnet bridge's dnsmasq, which answered it
-    // from the host's /etc/hosts (127.0.0.2). CAPN then dialled its own :8443 diagnostics port and
-    // reported "certificate is valid for localhost". Derived on the TARGET's cluster name, so a
-    // target on another bare-metal needs no special case — one form, every audience. See
-    // ClusterNetworkBlueprint.NamePlan.
-    final String remoteEndpoint = "https://" + blueprint.names().nixosFabricFqdn() + ":8443";
+    // through
+    // CoreDNS — where the bare name reached the vmnet bridge's dnsmasq, which answered from the
+    // host's /etc/hosts (127.0.0.2), so CAPN dialled its own :8443 and reported "certificate is
+    // valid
+    // for localhost". See ClusterNetworkBlueprint.NamePlan.
+    final String remoteEndpoint =
+        "https://"
+            + ClusterNetworkBlueprint.builder()
+                .cluster(subject)
+                .node("master")
+                .deriveRecipeModel()
+                .build()
+                .names()
+                .nixosFabricFqdn()
+            + ":8443";
 
     final ApiObject namespaceObject = renderer.namespace(scope, cluster, namespace, packageProfile);
     // The realised image, described to the cluster that boots on it — the pool references it by
