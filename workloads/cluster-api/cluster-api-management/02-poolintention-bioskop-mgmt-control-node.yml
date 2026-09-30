@@ -8,6 +8,7 @@ metadata:
   name: bioskop-mgmt-control-node
   namespace: rke2lab-bioskop-mgmt
 spec:
+  adoptedBy: bioskop-mgmt
   clusterRef: bioskop-mgmt
   controlPlaneEndpoint:
     host: 10.80.7.10
@@ -30,4 +31,4 @@ spec:
   replicas: 1
   rke2Version: v1.34.10+rke2r1
   role: control-plane
-  target: bioskop-nixos
+  target: bioskop

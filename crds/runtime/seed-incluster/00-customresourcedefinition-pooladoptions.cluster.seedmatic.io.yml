@@ -75,6 +75,17 @@ spec:
               here. The BYO-CA Secrets (<cluster>-{ca,cca,etcd,peer-etcd}) — needed by a control-plane pool —
               are delivered by seed-master into Namespace; this controller only references them.
             properties:
+              adoptedBy:
+                description: |-
+                  AdoptedBy names the management cluster that adopts this pool's CLUSTER — mirrored from its
+                  ClusterIntention so the gate exists at BOTH levels.
+
+                  ⚠️ Gating only the cluster left this level open: measured 2026-09-30, bioskop carried
+                  nikopol-wrkld's PoolIntention and its controller acted on it (phase Pending), stopped only by a
+                  Secret it happens not to render. That is a safe accident, not a rule — it relies on material
+                  being absent rather than on ownership being checked, and it would act the moment material
+                  appeared.
+                type: string
               clusterName:
                 description: ClusterName is the CAPI Cluster this pool belongs to (the RCP/Machines reference it).
                 minLength: 1

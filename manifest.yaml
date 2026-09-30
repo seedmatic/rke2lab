@@ -1,5 +1,5 @@
 source:
-  sha: 07eaa414f2d9e03dfad86faf6ba169009ed3b9e7
+  sha: cea22ba1bb459bc41bdc57cadcd83be4ba8a7a70
   dirty: false
 facet:
   debug:
@@ -16,12 +16,13 @@ facet:
   - bioskop
   - nikopol
   rootIncusHost: bioskop
+  workloadControlPlane: single
   network:
     fabricBridgeParent: fabric-br
 image:
   imageAlias: node-base
   imageFingerprint: e55cde891602351fbbc86a48301a76fbaae36af2ff924ed458f9a557e7d82222
-  imageBuildChecksum: 006375ee65ad175c49d00f05da601da69754fa89f999682485b1f4bba356f0f1
+  imageBuildChecksum: 6abcb5e23f923e1c24101c9093d6cf629ee32a24a468f09e5a20b7f8270fe078
   incusProject: rke2lab
   incusRemoteAddress: https://nixos.bioskop:8443
   rke2Version: v1.34.10+rke2r1

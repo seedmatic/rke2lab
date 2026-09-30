@@ -8,6 +8,7 @@ metadata:
   name: bioskop-wrkld-control-node
   namespace: rke2lab-bioskop-wrkld
 spec:
+  adoptedBy: bioskop-mgmt
   clusterRef: bioskop-wrkld
   controlPlaneEndpoint:
     host: 10.80.15.10
@@ -26,10 +27,8 @@ spec:
   - flox.seedmatic.io/enabled=true
   nodes:
   - name: bioskop-wrkld-master
-  - name: bioskop-wrkld-peer1
-  - name: bioskop-wrkld-peer2
   pool: control-node
-  replicas: 3
+  replicas: 1
   rke2Version: v1.34.10+rke2r1
   role: control-plane
-  target: bioskop-nixos
+  target: bioskop
