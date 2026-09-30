@@ -1,7 +1,7 @@
 ---
 apiVersion: v1
 data:
-  members: v1|Secret|rke2lab-system|manifests-render-signing
+  members: ""
 kind: ConfigMap
 metadata:
   annotations:
