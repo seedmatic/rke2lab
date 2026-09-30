@@ -16,6 +16,8 @@ import com.tngtech.jgiven.impl.Scenario;
 import io.seedmatic.rke2lab.auth.contract.GithubReaderTokenMint;
 import io.seedmatic.rke2lab.auth.contract.GithubWriterTokenMint;
 import io.seedmatic.rke2lab.manifests.bdd.versions.GitBotIdentities;
+import io.seedmatic.rke2lab.manifests.contract.ClusterCoordinate;
+import io.seedmatic.rke2lab.manifests.contract.ClusterFleet;
 import io.seedmatic.rke2lab.manifests.contract.ClusterRole;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainPolicy;
@@ -25,7 +27,6 @@ import io.seedmatic.rke2lab.manifests.contract.ManifestSynthesisService;
 import io.seedmatic.rke2lab.manifests.contract.ManifestsRunbookInput;
 import io.seedmatic.rke2lab.manifests.contract.NodeBootstrapArtifact;
 import io.seedmatic.rke2lab.manifests.contract.RenderMode;
-import io.seedmatic.rke2lab.manifests.contract.WorkloadTarget;
 import io.seedmatic.rke2lab.manifests.contract.profiles.BootstrapIdentity;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ClusterIssuerCaMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.FloxDebugPolicy;
@@ -92,7 +93,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
  * the layers the role publishes — invisible at the master frontier.
  *
  * <p>A run plays <strong>N+1 passes</strong>, not one: a {@link ClusterRole#WRKLD} pass per {@link
- * WorkloadTarget} — each onto that target's own {@code manifests/<cluster>} branch — and then the
+ * ClusterCoordinate} — each onto that child's own {@code manifests/<cluster>} branch — and then the
  * managing pass, which consumes what those carved ({@link WorkloadBootstrapBundlesMaterial}) to
  * render each target's {@code <cluster>-server-manifests} Secret. A cluster being born cannot
  * render its own first branch (no Tekton, no Flux, and no pod at all until its CNI is configured —
@@ -461,14 +462,14 @@ public class ManifestSynthesisScenario
   }
 
   /**
-   * A copy of {@code seeded} taking debug + workloadTargets from {@code facets} (HEAD), keeping
-   * only the seeded {@code delivery}. Rationale: debug/workloadTargets are GROW-recorded
-   * coordinates (the CLI's facet never sets workloadTargets — it comes from the grow's Pulumi
-   * config), so HEAD wins; only {@code delivery} is verb-carried (the CLI's push intent). An
-   * earlier version took workloadTargets from {@code seeded} and a steady-state render — whose
-   * seeded facet has none — stripped them off the recorded manifest, emptying the workload CR set.
-   * The domain set is no longer replayed here: it is a function of the cluster ROLE (see {@link
-   * ClusterRole}), derived fresh from the identity on every render.
+   * A copy of {@code seeded} taking debug + the fleet from {@code facets} (HEAD), keeping only the
+   * seeded {@code delivery}. Rationale: debug/incusTargets are GROW-recorded coordinates (the CLI's
+   * facet never sets incusTargets — it comes from the grow's Pulumi config), so HEAD wins; only
+   * {@code delivery} is verb-carried (the CLI's push intent). An earlier version took the targets
+   * from {@code seeded} and a steady-state render — whose seeded facet has none — stripped them off
+   * the recorded manifest, emptying the workload CR set. The domain set is no longer replayed here:
+   * it is a function of the cluster ROLE (see {@link ClusterRole}), derived fresh from the identity
+   * on every render.
    */
   private ManifestsRunbookInput withDebug(
       ManifestsRunbookInput seeded,
@@ -478,8 +479,12 @@ public class ManifestSynthesisScenario
         new ManifestsRunbookInput.Facets(
             facets.debug(),
             seeded.facets().delivery(),
-            facets.workloadTargets(),
-            // HEAD wins, exactly as for debug/workloadTargets: the fabric bridge is a GROW-recorded
+            facets.incusTargets(),
+            // HEAD wins, with the SEEDED value as the fallback — the same shape as the network
+            // below, and for the same reason: a branch recorded before rootIncusHost existed has
+            // none, and the sower (a host grow) does.
+            facets.rootIncusHost().or(() -> seeded.facets().rootIncusHost()),
+            // HEAD wins, exactly as for debug/incusTargets: the fabric bridge is a GROW-recorded
             // coordinate. The earlier top-level component took the SEEDED value on the premise that
             // "a branch does not record it" — which held only while the sower was a host. The
             // in-cluster render has no host to declare it, so recording it is what makes the render
@@ -533,9 +538,9 @@ public class ManifestSynthesisScenario
    * <p>⚠️ It used to answer empty for both. That is the two-valued probe this repo has now paid for
    * twice: a sub-facet whose constructor rejects its recorded value (a blank bridge parent, say)
    * surfaces as a {@code JsonProcessingException} — an {@code IOException} — so "undecodable"
-   * collapsed into "absent", and the render would then drop the recorded debug AND workloadTargets
-   * with it, emptying the workload CR set on a branch that was merely too old. Absence is
-   * legitimate; unreadability is a bug that must not be answered with a plausible empty.
+   * collapsed into "absent", and the render would then drop the recorded debug AND the fleet with
+   * it, emptying the workload CR set on a branch that was merely too old. Absence is legitimate;
+   * unreadability is a bug that must not be answered with a plausible empty.
    */
   /**
    * Does this recording carry a {@code facet:} at all — asked WITHOUT decoding it. The verb guards
@@ -813,7 +818,13 @@ public class ManifestSynthesisScenario
       // it
       // derives from the cluster's role).
       Optional<String> fabricBridgeParent,
-      List<WorkloadTarget> targets,
+      // The declared fleet, from which the render DERIVES the children it owns. Empty on a
+      // per-child
+      // pass: a parent lays the child's branch down as a bootstrap, and the child's own render is
+      // what adds ITS children (the alternative — the parent rendering its grandchildren — would
+      // put
+      // a CR-set on a plane whose cluster-pki never sealed that cluster's CAs).
+      Optional<ClusterFleet> fleet,
       Optional<WorkloadBootstrapBundlesMaterial> bundles) {}
 
   /**
@@ -821,7 +832,7 @@ public class ManifestSynthesisScenario
    * manifests/<cluster>} branch, and the plan that seals it. Prepared by the scenario (which owns
    * the delivery seam) and played by the WHEN (which owns the synthesis).
    */
-  private record TargetPass(WorkloadTarget target, LinkedWorktree worktree, Delivery delivery) {}
+  private record TargetPass(ClusterCoordinate child, LinkedWorktree worktree, Delivery delivery) {}
 
   /**
    * The cluster-pki seal's {@code admin-credentials} cellar case, addressed by its NEUTRAL wire
@@ -952,13 +963,30 @@ public class ManifestSynthesisScenario
    * <p>Not closed, for the same reason the managing worktree is not — and {@code prepare} is
    * idempotent, so a re-run starts clean while the last render stays inspectable on disk.
    */
+  /**
+   * The children this render OWNS, derived from the declared fleet by the owner rule — the filter
+   * that replaced an unconditional loop over every declared target. Empty when no fleet is declared
+   * (a bare survey / the standalone CLI) or when the render has no identity: a pass that does not
+   * know WHICH cluster it renders for cannot know what that cluster owns, and answering "all of
+   * them" there is precisely the viewpoint error the derivation removes.
+   */
+  private static List<ClusterCoordinate> ownedChildren(final ManifestsRunbookInput effective) {
+    final Optional<ClusterFleet> fleet = effective.facets().clusterFleet();
+    if (fleet.isEmpty()) {
+      return List.of();
+    }
+    return effective
+        .identity()
+        .map(identity -> fleet.orElseThrow().ownedBy(identity.clusterName()))
+        .orElseGet(List::of);
+  }
+
   private List<TargetPass> prepareWorkloadPasses(
       ManifestsRunbookInput effective,
       Optional<LinkedWorktree> rendered,
       Optional<Delivery> delivery) {
-    if (rendered.isEmpty()
-        || delivery.isEmpty()
-        || effective.facets().workloadTargets().isEmpty()) {
+    final List<ClusterCoordinate> children = ownedChildren(effective);
+    if (rendered.isEmpty() || delivery.isEmpty() || children.isEmpty()) {
       return List.of();
     }
     final Path renderRoot = rendered.orElseThrow().path().getParent();
@@ -968,12 +996,12 @@ public class ManifestSynthesisScenario
     final RenderedBranch branch = renderedBranch.orElseThrow();
     final Delivery plan = delivery.orElseThrow();
     final List<TargetPass> passes = new ArrayList<>();
-    for (final WorkloadTarget target : effective.facets().workloadTargets()) {
-      final String cluster = target.clusterName();
+    for (final ClusterCoordinate child : children) {
+      final String cluster = child.clusterName();
       final Path soil = renderRoot.resolve(cluster).resolve(cluster + "-" + FIRST_CONTROL_NODE);
       passes.add(
           new TargetPass(
-              target,
+              child,
               branch.prepare(soil, BRANCH_PREFIX + cluster),
               plan.forBranchOf(renderCommitMessage(cluster))));
     }
@@ -1241,18 +1269,18 @@ public class ManifestSynthesisScenario
         @Hidden List<TargetPass> passes, @Hidden Materials materials) {
       final List<WorkloadBootstrapBundlesMaterial.Entry> carved = new ArrayList<>();
       for (final TargetPass pass : passes) {
-        final String cluster = pass.target().clusterName();
+        final String cluster = pass.child().clusterName();
         final Path root = pass.worktree().path();
         synthesize(
             new Pass(
-                // The TARGET's own role, not WRKLD. This was hardcoded, which was right only while
+                // The CHILD's own role, not WRKLD. This was hardcoded, which was right only while
                 // every child was a workload: measured 2026-09-27, nikopol-mgmt's branch came out
                 // with no cluster-api at all — no flux/, no crds/, no operators/ for it — because
                 // the WRKLD policy makes Cluster API MGMT-exclusive-and-therefore-absent. A
                 // management cluster birthed by another one could then never self-adopt, which is
-                // the whole second half of model B. `ofToken` fails loudly on a role it cannot
-                // read, unlike `of`, whose catch-all would have answered MGMT for a typo.
-                ClusterRole.ofToken(pass.target().role()).domainPolicy(CATALOG),
+                // the whole second half of model B. The role now arrives TYPED on the coordinate,
+                // parsed once and loudly where the fleet was decoded.
+                pass.child().role().domainPolicy(CATALOG),
                 BootstrapIdentity.builder()
                     .clusterName(cluster)
                     .nodeName(FIRST_CONTROL_NODE)
@@ -1260,20 +1288,31 @@ public class ManifestSynthesisScenario
                 root,
                 facet.image(),
                 fabricBridgeParent(facet),
-                List.of(),
+                // No fleet for THIS pass: the parent lays the child's branch down as a bootstrap
+                // and
+                // renders no grandchild. The child's own in-cluster render adds what it owns, from
+                // the fleet recorded just below.
+                Optional.empty(),
                 Optional.empty()),
             materials);
-        // The branch records the facet that produced it — MINUS the targets, since it manages none
-        // —
-        // so a later steady-state render of THIS branch replays its own policy, never the
-        // manager's.
+        // The branch records the facet that produced it, INCLUDING the full fleet, so a later
+        // steady-state render of THIS branch derives the children IT owns.
+        //
+        // ⚠️ This used to record an empty target list, reasoned as "MINUS the targets, since it
+        // manages none". That held only while every child was a workload. Since a child can be a
+        // management plane (model B), the empty list is what made manifests/nikopol-mgmt
+        // structurally CHILDLESS — measured 2026-09-30: its cluster-api-workload package contained
+        // nothing but the group ConfigMap, so nikopol-wrkld could never be declared. The fleet is
+        // host-agnostic and the owner rule does the narrowing, so propagating it verbatim is both
+        // simpler and correct.
         recordRenderFacet(
             root,
             new ManifestsRunbookInput.Facets(
                 facet.facets().debug(),
                 facet.facets().delivery(),
-                List.of(),
-                // The network rides along: a TARGET branch renders in-cluster too, and its own
+                facet.facets().incusTargets(),
+                facet.facets().rootIncusHost(),
+                // The network rides along: a CHILD branch renders in-cluster too, and its own
                 // render has no host to declare the fabric parent either. Dropping it here would
                 // leave exactly the hole that broke the manager's render, one branch further down.
                 facet.network()),
@@ -1319,7 +1358,7 @@ public class ManifestSynthesisScenario
       final Path root = rendered.map(LinkedWorktree::path).orElseGet(this::freshTempDir);
       // The managing pass runs LAST, after the per-target ones, because it consumes what they
       // carve:
-      // its workloadTargets are the DIFFERENT clusters whose CAPI CR set lands on
+      // its OWNED CHILDREN are the DIFFERENT clusters whose CAPI CR set lands on
       // manifests/<host>-mgmt (model B — the CRs live where CAPI runs), and workloadBundles are
       // those
       // same clusters' bootstrap bundles, rendered here as their <cluster>-server-manifests
@@ -1332,7 +1371,7 @@ public class ManifestSynthesisScenario
                   root,
                   facet.image(),
                   fabricBridgeParent(facet),
-                  facet.facets().workloadTargets(),
+                  facet.facets().clusterFleet(),
                   workloadBundles),
               materials);
       // Record the facet that produced this tree at the branch ROOT, so the branch is
@@ -1401,7 +1440,7 @@ public class ManifestSynthesisScenario
               // it.
               .imageState(pass.image())
               .fabricBridgeParent(pass.fabricBridgeParent())
-              .workloadTargets(pass.targets())
+              .clusterFleet(pass.fleet())
               .workloadBootstrapBundles(pass.bundles())
               // The materials revealed from the cellar, each empty on a bare survey / a
               // secret-blind

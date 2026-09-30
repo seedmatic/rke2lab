@@ -217,7 +217,7 @@ public class ClusterPkiSealScenario
                                         existing.orElseThrow(), ageKey, decryptor)));
       }
       // The workload BYO-CA sets — minted ADDITIVELY (keep the entries already sealed, mint only
-      // the clusters newly appearing in workloadTargets), independent of the mgmt CA idempotency
+      // the clusters newly appearing in the declared fleet), independent of the mgmt CA idempotency
       // gate above so a new workload cluster gets its CA even on a re-grow of an existing mgmt.
       final Optional<WorkloadClusterCas> existingWorkload =
           cellar.fetch(parcel, ClusterPkiCoordinate.WORKLOAD_CLUSTER_CAS, WorkloadClusterCas.class);

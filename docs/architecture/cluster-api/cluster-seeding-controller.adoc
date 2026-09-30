@@ -1697,7 +1697,7 @@ exactly expressible. Deferred: the predicate is measured *correct*, and `substra
 have exactly one reader. Revisit when a second reader appears.
 
 [[cluster-set-derives-from-hosts]]
-=== The cluster set DERIVES from the host list (📐 decided 2026-09-29, not built)
+=== The cluster set DERIVES from the host list (✅ shipped 2026-09-30)
 
 `workloadTargets` in the stack config enumerated `{host, role}` pairs — and `ClusterRole` is a
 closed two-value enum (`mgmt`, `wrkld`). So the pairs were REDUNDANT: the list of bare-metals
@@ -1729,23 +1729,89 @@ already prefers over direct remote-Incus — and the 2026-09-29 probes are the e
 from bioskop's cluster `nixos.nikopol` is UNREACHABLE while `nixos.bioskop` is OPEN, and from
 nikopol's cluster exactly the mirror. Each plane reaches only its own engine.
 
-⚠️ `ClusterApiWorkloadManifestsUnit` today renders EVERY entry (`for (target : targets)`, no
-filter), so adding `{nikopol, wrkld}` to the single list would make bioskop emit its CR-set and
-CAPN would fail on an engine it cannot reach. The derivation IS the filter.
+⚠️ `ClusterApiWorkloadManifestsUnit` used to render EVERY entry (`for (target : targets)`, no
+filter), so adding `{nikopol, wrkld}` to the single list would have made bioskop emit its CR-set and
+CAPN fail on an engine it cannot reach. **The derivation IS the filter**, and that is what shipped.
 
-Four pieces, in order:
+==== What carries it — `ClusterFleet` and `ClusterCoordinate`
 
-. read `incusTargets` and derive the clusters + owners; each render keeps only what it owns;
-. propagate the full host list into every child's facet — today bioskop writes `[]` into
-  `manifests/nikopol-mgmt`, which is why that sub-plane is structurally childless;
-. rename the type: `WorkloadTarget` -> `ClusterCoordinate` (a `{host, role}` pair IS the
-  coordinate the addressing plan derives from, `clusterId = (host<<1)|role`), and the field name
-  stops claiming "workload" for a list that already holds `{nikopol, mgmt}`;
-. ⚠️ MIGRATION: the facet is recorded verbatim on each branch and read back by the in-cluster
-  render. New code reading an OLD branch finds no `incusTargets` — an empty cluster set — so it
-  renders no child intentions and **Flux prunes the children's CR-sets**. Fail LOUD on the missing
-  key, naming the remedy (re-render from the HOST once), exactly as
-  `ManifestSynthesisContext.fabricBridgeParent()` does. No compatibility shim.
+`ClusterFleet` (manifests-contract) is the declared fleet plus the ONE rule; nothing else may
+express ownership:
+
+[source,java]
+----
+record ClusterFleet(List<String> incusTargets, String rootHost) {
+  List<ClusterCoordinate> ownedBy(String renderingCluster);
+}
+----
+
+`ClusterCoordinate(String host, ClusterRole role)` replaces `WorkloadTarget` — a `{host, role}` pair
+IS the coordinate the addressing plan derives from (`clusterId = (host<<1)|role`), and the field name
+stops claiming "workload" for a list that held `{nikopol, mgmt}`. Its role is TYPED, parsed once and
+loudly where the fleet is decoded, so no reader re-parses through the catch-all `ClusterRole.of`. It
+also refuses a host containing a dash — the symptom of passing a *cluster name* where the host
+belongs, which is the confusion that made half the clusters vanish from the netplan projection.
+
+`ownedBy` is read by `ManifestSynthesisContext.ownedChildren()` (the units) and by
+`ManifestSynthesisScenario` (which child branches to prepare). A workload cluster owns nothing: it
+runs no `seed-incluster`.
+
+==== Why `rootHost` is DECLARED, not inferred
+
+The root is the plane `seed-master` seeds out-of-band — the single `STANDALONE` boot, the one cluster
+that adopts itself. Nothing in a host list reveals it, and every way of inferring it is a viewpoint
+waiting to disagree with itself:
+
+* taking the first entry makes yaml ORDER load-bearing;
+* deriving it from *who is rendering* makes an in-cluster re-render compute a DIFFERENT owned set
+  than the operator's render of the same branch — and Flux would then **prune the children it had
+  just applied**.
+
+So the grow records it once, from `rke2lab:cluster.host` (which by definition names the
+out-of-band-seeded cluster), and it travels inside the facet exactly as `network.fabricBridgeParent`
+does. The operator writes no extra key.
+
+Three-valued at the read, like every other probe on this branch: no `incusTargets` ⟹ **absent** (a
+bare survey / the standalone CLI owns nothing); hosts + root ⟹ **present**; hosts WITHOUT a root ⟹
+**broken**, and loud — that is the migration symptom of a branch recorded before the field existed,
+and staying quiet there is the silent teardown above.
+
+==== The sub-plane was structurally childless — measured, then fixed
+
+`ManifestSynthesisScenario` recorded the child's facet "MINUS the targets, since it manages none".
+That held only while every child was a workload. Measured 2026-09-30 on the rendered branch:
+
+[cols="2,3",options="header"]
+|===
+| Branch | Intentions carried
+
+| `manifests/bioskop-mgmt`
+| **3** — `bioskop-mgmt` (self, package `cluster-api-management`) + `bioskop-wrkld` +
+  `nikopol-mgmt` (children, package `cluster-api-workload`)
+
+| `manifests/nikopol-mgmt`
+| **1** — `nikopol-mgmt` (self). Its `cluster-api-workload` package held nothing but the group
+  ConfigMap, so `nikopol-wrkld` could never be declared.
+
+| `manifests/bioskop-wrkld`
+| **0** — correct: a workload branch carries only its own app stack.
+|===
+
+The child's recorded facet now keeps the FULL host list. The fleet is host-agnostic and the owner
+rule does the narrowing, so propagating it verbatim is both simpler and correct.
+
+⚠️ A CA is still sealed for every cluster the fleet implies, not only the owned ones:
+`ClusterSeedScenario` is a FLAT-realm class and the staging law forbids it from referencing
+`manifests.contract`, so narrowing there would need a SECOND copy of the owner rule. An unused CA is
+inert (minting is deterministic and offline, nothing renders it); a duplicated ownership rule is a
+silent divergence. The material is the cheaper cost.
+
+==== Migration
+
+The facet is recorded verbatim on each branch and read back by the in-cluster render, so new code
+reading an OLD branch finds no `incusTargets`. That is handled by the three-valued read above rather
+than a compatibility shim: an old branch simply carries no fleet until **one re-render from the
+HOST** per cluster reseeds it.
 
 ★ This also removes the `host` vs `{host, role}` confusion that produced FOUR distinct defects in
 one day — including the `default -> MGMT` catch-all whose removal is recorded in `ClusterRole`

@@ -8,7 +8,7 @@ import java.util.List;
  * The wire contract for the cluster-pki seal's runbook trigger — the ONE amendment the seal scion
  * takes. It carries {@link Amendment#WORKLOAD_TARGETS}: {@link #workloadClusters} is the flat list
  * of CAPI {@code Cluster} names ({@code <host>-<role>}) the management cluster will greenfield, the
- * same {@code workloadTargets} the manifests facet carries. Only the host holds it (from {@code
+ * same {@code incusTargets} the manifests facet carries. Only the host holds it (from {@code
  * BootstrapConfig}); it fills it by role — never by field name.
  *
  * <p>Everything else the seal needs it reads in-container (the ndh key-store + {@code .sops.yaml}),

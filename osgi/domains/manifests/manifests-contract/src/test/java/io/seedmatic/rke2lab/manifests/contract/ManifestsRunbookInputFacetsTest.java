@@ -26,16 +26,18 @@ class ManifestsRunbookInputFacetsTest {
   @Test
   void the_compact_constructor_defaults_every_absent_sub_facet() {
     // What jackson hands the canonical constructor for a yaml that carries none of the sub-maps.
-    final Facets coalesced = new Facets(null, null, null, null);
+    final Facets coalesced = new Facets(null, null, null, null, null);
 
     assertNotNull(coalesced.debug(), "an absent debug sub-map defaults, never null");
     assertNotNull(coalesced.delivery(), "an absent delivery sub-map defaults, never null");
     // The safe delivery default: render + commit locally, never push until the operator opts in.
     assertFalse(coalesced.delivery().push(), "delivery defaults to push OFF");
-    // An absent workloadTargets list is an empty list, never null — a mgmt cluster with no
-    // workloads.
+    // An absent incusTargets list is an empty list, never null — a bare survey / the standalone
+    // CLI, which declares no fleet and therefore owns no child.
+    assertTrue(coalesced.incusTargets().isEmpty(), "an absent incusTargets defaults to empty");
     assertTrue(
-        coalesced.workloadTargets().isEmpty(), "an absent workloadTargets defaults to empty");
+        coalesced.clusterFleet().isEmpty(),
+        "no declared host means NO fleet — absent, not an empty fleet that would own things");
     // An absent network coalesces to unknown() — a BLANK parent, never a plausible bridge name: the
     // render then poses a device with an empty parent, visibly wrong in a manifest, where a default
     // would silently attach a node to the wrong bridge.
@@ -50,16 +52,21 @@ class ManifestsRunbookInputFacetsTest {
         new Facets(
             DebugFacet.builder().mesh(true).build(),
             new DeliveryFacet(true),
-            List.of(new WorkloadTarget("bioskop", "wrkld")),
+            List.of("bioskop", "nikopol"),
+            Optional.of("bioskop"),
             Optional.of(new ManifestsRunbookInput.NetworkFacet("fabric-br")));
 
     assertEquals(true, partial.delivery().push(), "a present delivery is kept, not defaulted");
     assertTrue(partial.debug().mesh().enabled(), "a present debug is kept verbatim");
-    assertEquals(1, partial.workloadTargets().size(), "a present workloadTargets is kept");
+    assertEquals(2, partial.incusTargets().size(), "a present incusTargets is kept");
+    // The fleet is DERIVED from the pair, and the owner rule narrows it: the root plane renders its
+    // own host's workload plus the one cross-host hop that births a sub-plane.
     assertEquals(
-        "bioskop-wrkld",
-        partial.workloadTargets().get(0).clusterName(),
-        "the target's clusterName is <host>-<role>");
+        List.of("bioskop-wrkld", "nikopol-mgmt"),
+        partial.clusterFleet().orElseThrow().ownedBy("bioskop-mgmt").stream()
+            .map(ClusterCoordinate::clusterName)
+            .toList(),
+        "the fleet derives the children the ROOT plane owns");
     // The network rides INSIDE the facet, which is what makes it recorded on the branch and
     // replayed
     // by an in-cluster render — the reason it stopped being an amendment role of its own.
@@ -85,5 +92,21 @@ class ManifestsRunbookInputFacetsTest {
         NullPointerException.class,
         () -> new ManifestsRunbookInput.NetworkFacet(null),
         "a null fabricBridgeParent must be refused too");
+  }
+
+  @Test
+  void declared_hosts_without_a_root_are_LOUD_not_an_empty_fleet() {
+    // The migration symptom: a branch recorded before rootIncusHost existed decodes hosts but no
+    // root. Answering "no fleet" there would render NO child while Flux prunes the children it had
+    // already applied — a silent teardown. Three values, and this is the third: absent (no hosts)
+    // is fine, present is fine, half-present is BROKEN.
+    final Facets halfDecoded =
+        new Facets(null, null, List.of("bioskop", "nikopol"), Optional.empty(), null);
+
+    final IllegalStateException loud =
+        assertThrows(IllegalStateException.class, halfDecoded::clusterFleet);
+    assertTrue(
+        loud.getMessage().contains("Re-render from the HOST once"),
+        "the failure must name the remedy, not just the missing key");
   }
 }

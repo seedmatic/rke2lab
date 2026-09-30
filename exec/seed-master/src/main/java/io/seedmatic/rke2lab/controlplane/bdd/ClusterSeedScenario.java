@@ -239,14 +239,23 @@ public class ClusterSeedScenario
    * until 2026-09-28. A distinct mandatory role obliged EVERY sower to offer it, and the in-cluster
    * render has no host to declare it — so the first time that path ever ran it refused the render
    * outright ("no sower offered: network-facet"). Inside the facet it travels the way {@code
-   * workloadTargets} already does: the branch records {@code facet:} verbatim, so a steady-state
+   * incusTargets} already does: the branch records {@code facet:} verbatim, so a steady-state
    * render replays it with no second read/write path and no sower obligation.
+   *
+   * <p>{@code rootIncusHost} rides along for exactly the same reason, and it is the ONE fact the
+   * operator does not write: the root plane is the cluster THIS grow seeds out-of-band, so the grow
+   * is the only place that knows it. Recording it is what lets a child's in-cluster render derive
+   * the same owned set as its parent's render of the same branch — inferring it instead (yaml
+   * order, or "whoever is rendering") would have an in-cluster re-render own a DIFFERENT set and
+   * Flux prune the children it had just applied. See {@code ClusterFleet}.
    */
-  private static String withNetwork(Optional<String> manifestsFacet, String fabricBridgeParent) {
+  private static String withGrowCoordinates(
+      Optional<String> manifestsFacet, String fabricBridgeParent, String rootIncusHost) {
     final ObjectNode facet = readFacetObject(manifestsFacet);
     facet
         .putObject("network")
         .put("fabricBridgeParent", fabricBridgeParent == null ? "" : fabricBridgeParent);
+    facet.put("rootIncusHost", rootIncusHost == null ? "" : rootIncusHost);
     return facet.toString();
   }
 
@@ -291,7 +300,7 @@ public class ClusterSeedScenario
     JsonNode imageScalars;
 
     // The workload cluster names the cluster-pki seal must pre-seed a deterministic CA for — dug
-    // from the manifests FACET (workloadTargets[].{host,role} -> <host>-<role>), offered to the
+    // from the manifests FACET (incusTargets[] x {mgmt,wrkld} -> <host>-<role>), offered to the
     // cluster-pki crossing under the neutral WORKLOAD_TARGETS role. Name-resolved like
     // imageScalars.
     @ProvidedScenarioState(resolution = Resolution.NAME)
@@ -395,11 +404,12 @@ public class ClusterSeedScenario
               AmendmentContributor.class,
               new FacetContributor(
                   new AmendCoordinate("manifests"),
-                  withNetwork(manifestsFacet, run.config().fabricBridgeParent())),
+                  withGrowCoordinates(
+                      manifestsFacet, run.config().fabricBridgeParent(), run.config().host())),
               new Hashtable<>());
       // The workload cluster names the cluster-pki seal pre-seeds a CA for — dug from the SAME
-      // manifests FACET (its workloadTargets), offered per-consult to the cluster-pki crossing.
-      this.workloadClusterNames = workloadClusterNames(manifestsFacet);
+      // manifests FACET (its incusTargets), offered per-consult to the cluster-pki crossing.
+      this.workloadClusterNames = fleetClusterNames(manifestsFacet, run.config());
       // The incus-identity seal's host-world creds — assembled from config + ~/.config/incus + the
       // bundled capn client cert, offered to the incus-identity crossing.
       this.incusIdentityHostCreds = incusIdentityHostCreds(run.config());
@@ -482,22 +492,39 @@ public class ClusterSeedScenario
     // OSGi codec rather than spinning a bare ObjectMapper.
     private final SeedCodec codec = new SeedCodec();
 
-    // Dig the workload cluster names (<host>-<role>) out of the manifests FACET's workloadTargets.
-    // Absent facet / no targets -> an empty array (a mgmt-only grow seeds no workload CA).
-    private JsonNode workloadClusterNames(Optional<String> manifestsFacetJson) {
+    // The clusters this grow pre-seeds a deterministic CA for: every cluster the declared fleet
+    // implies, minus THIS one (a plane's own CA is the management CA, sealed separately).
+    //
+    // ⚠️ Deliberately WIDER than the set the render will emit, and it does NOT apply the owner
+    // rule.
+    // That rule lives in `ClusterFleet`, in the manifests BUNDLE realm, and the staging law forbids
+    // this flat-realm class from referencing it ("the membrane speaks slugs") — so the only way to
+    // narrow here would be a SECOND copy of the rule, which is the copy that drifts. A CA minted
+    // for
+    // a cluster this plane does not own is inert: minting is deterministic and offline, nothing
+    // renders it, and Flux never sees it. An over-wide seal costs unused key material in the
+    // cellar;
+    // a duplicated ownership rule costs a silent divergence. Take the material.
+    private JsonNode fleetClusterNames(
+        Optional<String> manifestsFacetJson, BootstrapConfig config) {
       final ArrayNode names = JsonNodeFactory.instance.arrayNode();
       if (manifestsFacetJson.isEmpty()) {
         return names;
       }
       codec
           .decode(manifestsFacetJson.orElseThrow())
-          .path("workloadTargets")
+          .path("incusTargets")
           .forEach(
-              target -> {
-                final String host = target.path("host").asText("");
-                final String role = target.path("role").asText("");
-                if (!host.isBlank() && !role.isBlank()) {
-                  names.add(host + "-" + role);
+              node -> {
+                final String host = node.asText("");
+                if (host.isBlank()) {
+                  return;
+                }
+                for (final String role : List.of("mgmt", "wrkld")) {
+                  final String cluster = host + "-" + role;
+                  if (!cluster.equals(config.clusterName())) {
+                    names.add(cluster);
+                  }
                 }
               });
       return names;

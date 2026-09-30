@@ -4,9 +4,9 @@ import io.seedmatic.rke2lab.incus.ingress.NodeDeviceSet;
 import io.seedmatic.rke2lab.manifests.AbstractManifestsUnit;
 import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
 import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
+import io.seedmatic.rke2lab.manifests.contract.ClusterCoordinate;
 import io.seedmatic.rke2lab.manifests.contract.ClusterRole;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
-import io.seedmatic.rke2lab.manifests.contract.WorkloadTarget;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ImageState;
 import io.seedmatic.rke2lab.manifests.contract.profiles.IncusIdentityMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.WorkloadClusterCasMaterial;
@@ -19,11 +19,18 @@ import software.constructs.Construct;
 
 /**
  * Renders the {@code ClusterIntention} + {@code PoolIntention} intent (the 2×2 decomposition) for
- * each WORKLOAD cluster onto the MANAGEMENT cluster's own branch ({@code manifests/<host>-mgmt}) —
- * model B: the CRs live where CAPI runs, so the management cluster's Flux applies them and the
- * in-cluster {@code seed-incluster} controller reconciles them adopt-first into a DIFFERENT cluster
- * ({@code <host>-wrkld}). There is no imperative {@code kubectl apply} and no {@code -wrkld}-branch
- * CRs (that branch carries only the workload's own app stack).
+ * every cluster this plane OWNS — its CHILDREN — onto its own branch ({@code
+ * manifests/<host>-mgmt}): model B, the CRs live where CAPI runs, so this cluster's Flux applies
+ * them and the in-cluster {@code seed-incluster} controller reconciles them adopt-first into a
+ * DIFFERENT cluster. There is no imperative {@code kubectl apply} and no {@code -wrkld}-branch CRs
+ * (that branch carries only the workload's own app stack).
+ *
+ * <p>⚠️ "Workload" in this class's name is a LEFTOVER, and the same lie {@code workloadTargets}
+ * carried: a child can be a MANAGEMENT cluster ({@code nikopol-mgmt}, birthed by {@code
+ * bioskop-mgmt}), and this unit renders it — switching shape on {@link ClusterCoordinate#role()}.
+ * The name is due to follow; {@link #OUTPUT_DIR} is NOT, because {@code cluster-api-workload} is
+ * the path already written into every rendered branch and into Flux's kustomizations, so renaming
+ * it would make Flux prune and recreate the whole package.
  *
  * <p>This unit no longer renders the raw CAPI CR-set (Cluster/LXCCluster/RKE2ControlPlane/
  * MachineDeployment). That set is materialised IN-CLUSTER by {@code seed-incluster} from the {@code
@@ -33,23 +40,23 @@ import software.constructs.Construct;
  * unit's job narrows to the DECLARATIVE recipe + the credentials the controller expands the CR-set
  * from.
  *
- * <p>The render subject stays {@link ManifestSynthesisContext#bootstrapIdentity()} (the management
- * cluster); the workload clusters ride beside it as {@link
- * ManifestSynthesisContext#workloadTargets()} (the manifests-facet sub-facet). For each target this
- * unit derives that cluster's whole {@link ClusterNetworkBlueprint} from its {@link
- * WorkloadTarget#clusterName()} — pod/service CIDRs, the kube-vip VIP — pins the image to {@link
- * ImageState#imageFingerprint()} and the RKE2 version to {@link ImageState#rke2Version()} (the
- * node-base identity the incus scion forwarded), and lists the control-plane pets ({@code master +
- * peer1 + peer2} = 3 etcd members; peer3 dropped for workloads — a workload is NOT the full
- * CANONICAL 4-server topology). Workers are a follow-up (none listed yet).
+ * <p>The render subject stays {@link ManifestSynthesisContext#bootstrapIdentity()} (this plane);
+ * its children ride beside it as {@link ManifestSynthesisContext#ownedChildren()} — DERIVED by the
+ * owner rule from the declared fleet, never enumerated. For each child this unit derives that
+ * cluster's whole {@link ClusterNetworkBlueprint} from its {@link ClusterCoordinate#clusterName()}
+ * — pod/service CIDRs, the kube-vip VIP — pins the image to {@link ImageState#imageFingerprint()}
+ * and the RKE2 version to {@link ImageState#rke2Version()} (the node-base identity the incus scion
+ * forwarded), and lists the control-plane pets ({@code master + peer1 + peer2} = 3 etcd members for
+ * a workload; peer3 dropped — a workload is NOT the full CANONICAL 4-server topology — and ONE for
+ * a management child). Workers are a follow-up (none listed yet).
  *
- * <p>No-op when there are no targets (a mgmt-only / standalone run) or when no {@link ImageState}
- * is bound (a secret-blind in-cluster render / a bare survey): without the realised image the
- * recipe would reference a {@code NodeImage} that describes nothing, so the unit renders nothing
- * rather than a misleading placeholder.
+ * <p>No-op when this plane owns no child (a workload cluster, a bare survey, the standalone CLI) or
+ * when no {@link ImageState} is bound (a secret-blind in-cluster render): without the realised
+ * image the recipe would reference a {@code NodeImage} that describes nothing, so the unit renders
+ * nothing rather than a misleading placeholder.
  *
  * <p>The per-remote CAPN identity Secret {@code <host>-incus-identity} (foundation 5), the four
- * CAPRKE2 BYO-CA Secrets and the target's {@code <cluster>-server-manifests} bootstrap bundle are
+ * CAPRKE2 BYO-CA Secrets and the child's {@code <cluster>-server-manifests} bootstrap bundle are
  * rendered HERE ON THE BRANCH via the shared {@link ClusterApiCrRenderer} (the SAME collaborator
  * {@link ClusterApiManagementManifestsUnit} uses), sops-encrypted, when their material is present
  * (a secret-full render). One {@code rke2lab} incus project (foundation 4 dropped — instance names
@@ -100,26 +107,25 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
   @Override
   protected void doSynthesize(final Construct scope, final ManifestsUnitContext context) {
     final ManifestSynthesisContext synth = ManifestSynthesisContext.current();
-    final List<WorkloadTarget> targets = synth.workloadTargets();
+    final List<ClusterCoordinate> children = synth.ownedChildren();
     final Optional<ImageState> maybeImage = synth.imageState();
-    if (targets.isEmpty() || maybeImage.isEmpty()) {
+    if (children.isEmpty() || maybeImage.isEmpty()) {
       return;
     }
     final ImageState image = maybeImage.orElseThrow();
-    for (final WorkloadTarget target : targets) {
-      renderTarget(scope, target, image);
+    for (final ClusterCoordinate child : children) {
+      renderChild(scope, child, image);
     }
   }
 
-  private void renderTarget(
-      final Construct scope, final WorkloadTarget target, final ImageState image) {
-    final String cluster = target.clusterName();
-    // ★ The DECLARED role, read off the target rather than re-parsed from the composed name: a
-    // target carries its role as a FIELD, so `ClusterRole.of(cluster)` would be a round-trip. Both
-    // now FAIL on anything they cannot read — the catch-all that used to answer MGMT is what let
-    // the
+  private void renderChild(
+      final Construct scope, final ClusterCoordinate child, final ImageState image) {
+    final String cluster = child.clusterName();
+    // ★ The role is read off the coordinate, already TYPED: it was parsed once, loudly, where the
+    // fleet was decoded. Re-parsing it from the composed name here would be a round-trip through
+    // `ClusterRole.of`, whose catch-all answers MGMT for anything it cannot read — what let the
     // netplan projection pass hosts as cluster names and lose half the clusters in silence.
-    final ClusterRole role = ClusterRole.ofToken(target.role());
+    final ClusterRole role = child.role();
     final int controlPlaneReplicas =
         switch (role) {
           case MGMT -> MANAGEMENT_CONTROL_PLANE_REPLICAS;
@@ -145,7 +151,7 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
     // one
     // `rke2lab` project (instance names are globally unique via the blueprint), so the Secret is
     // keyed by the host (bioskop, nikopol). Rendered below, in THIS namespace.
-    final String identitySecret = target.host() + "-incus-identity";
+    final String identitySecret = child.host() + "-incus-identity";
     // The workload's Incus remote — its host's engine (bioskop-nixos / nikopol-nixos). Intent
     // value;
     // the controller/CAPN authenticate from the identity Secret (which also carries `server`).

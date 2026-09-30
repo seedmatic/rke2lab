@@ -19,7 +19,7 @@ import java.util.Optional;
  *
  * <ul>
  *   <li>{@link Amendment#FACET} — {@link #facets} is the WHOLE {@code rke2lab:manifests:} concern
- *       map of {@code Pulumi.dev.yaml} ({@code {debug, delivery, workloadTargets}}), one composite
+ *       map of {@code Pulumi.dev.yaml} ({@code {debug, delivery, incusTargets}}), one composite
  *       component so the role binds to ONE field. The host contributes the yaml subtree verbatim as
  *       the FACET value (an {@link io.seedmatic.rke2lab.seed.broker.port.AmendmentContributor} it
  *       registers into the world); the assembler gathers it at the amend door and the binder places
@@ -134,10 +134,10 @@ public record ManifestsRunbookInput(
 
   /**
    * The {@code rke2lab:manifests:} concern map, mirroring its yaml sub-map EXACTLY ({@code {debug,
-   * delivery, workloadTargets}}) — the single {@link Amendment#FACET} component so the role binds
-   * to ONE field (the binder rejects a role borne by several components as ambiguous). The host
+   * delivery, incusTargets}}) — the single {@link Amendment#FACET} component so the role binds to
+   * ONE field (the binder rejects a role borne by several components as ambiguous). The host
    * contributes this whole subtree verbatim; the scion reads {@code facets().debug()} / {@code
-   * facets().delivery()} / {@code facets().workloadTargets()} and flattens each. The compact
+   * facets().delivery()} / {@code facets().clusterFleet()} and flattens each. The compact
    * constructor coalesces any sub-facet the operator omitted to its default, so a partial yaml
    * decodes complete. Which manifest domains render is NOT here — it follows the cluster {@link
    * ClusterRole}.
@@ -145,26 +145,28 @@ public record ManifestsRunbookInput(
   public record Facets(
       DebugFacet debug,
       DeliveryFacet delivery,
-      List<WorkloadTarget> workloadTargets,
+      List<String> incusTargets,
+      Optional<String> rootIncusHost,
       Optional<NetworkFacet> network) {
 
     /**
      * Coalesce absent sub-facets to their defaults — the host contributes the {@code
      * rke2lab:manifests:} yaml subtree VERBATIM, and jackson decodes a record component absent from
      * the yaml (a partial config that omits {@code delivery:}, {@code debug:} or {@code
-     * workloadTargets:}) to {@code null}. The compact constructor makes every sub-facet non-null,
-     * so a consumer reads a complete facet whatever the operator wrote (a partial yaml never NPEs
-     * nor silently pushes). {@code workloadTargets} coalesces to an empty list — a management
-     * cluster with no declared workloads.
+     * incusTargets:}) to {@code null}. The compact constructor makes every sub-facet non-null, so a
+     * consumer reads a complete facet whatever the operator wrote (a partial yaml never NPEs nor
+     * silently pushes). {@code incusTargets} coalesces to an empty list — a bare survey or the
+     * standalone CLI, which declares no fleet and therefore renders no child.
      */
     public Facets {
       debug = debug != null ? debug : DebugFacet.disabled();
       delivery = delivery != null ? delivery : DeliveryFacet.defaults();
-      workloadTargets = workloadTargets != null ? List.copyOf(workloadTargets) : List.of();
+      incusTargets = incusTargets != null ? List.copyOf(incusTargets) : List.of();
+      rootIncusHost = rootIncusHost != null ? rootIncusHost : Optional.empty();
       // Coalesced to unknown(), NOT to a plausible bridge name: an absent parent renders a device
       // with an empty parent, visibly wrong in a manifest, where a default would silently attach a
       // node to the wrong bridge. It lives HERE rather than beside `image` because it is the same
-      // KIND of fact as workloadTargets — a GROW-recorded coordinate the CLI's own facet never
+      // KIND of fact as rootIncusHost — a GROW-recorded coordinate the CLI's own facet never
       // sets.
       // Being inside Facets is what makes it travel: the branch records `facet:` verbatim, so an
       // in-cluster UPDATE replays it with no separate read/write path. As a top-level amendment it
@@ -173,6 +175,36 @@ public record ManifestsRunbookInput(
       // render the first time that path ever ran (measured 2026-09-28 — the stale PaC trigger had
       // hidden it).
       network = network != null ? network : Optional.empty();
+    }
+
+    /**
+     * The declared fleet, or empty when none is declared (a bare survey / the standalone CLI —
+     * neither owns a child). Three-valued on purpose, and the third value is the one that matters:
+     *
+     * <ul>
+     *   <li>ABSENT — no {@code incusTargets}: nothing to derive, render no child.
+     *   <li>PRESENT — hosts plus the root: the owner rule applies ({@link ClusterFleet#ownedBy}).
+     *   <li>BROKEN — hosts WITHOUT a root: loud. That is the migration symptom of a branch recorded
+     *       before {@code rootIncusHost} existed, and staying quiet would render no child while
+     *       Flux PRUNES the children it had already applied.
+     * </ul>
+     */
+    public Optional<ClusterFleet> clusterFleet() {
+      if (incusTargets.isEmpty()) {
+        return Optional.empty();
+      }
+      return Optional.of(
+          new ClusterFleet(
+              incusTargets,
+              rootIncusHost.orElseThrow(
+                  () ->
+                      new IllegalStateException(
+                          "this facet declares incusTargets "
+                              + incusTargets
+                              + " but no rootIncusHost — the plane seed-master seeds out-of-band"
+                              + " cannot be inferred, and guessing it would make an in-cluster"
+                              + " re-render own a DIFFERENT set than the operator's render of the"
+                              + " same branch. Re-render from the HOST once to seed it."))));
     }
 
     public static Builder builder() {
@@ -186,7 +218,8 @@ public record ManifestsRunbookInput(
     public static final class Builder {
       private DebugFacet debug = DebugFacet.disabled();
       private DeliveryFacet delivery = DeliveryFacet.defaults();
-      private List<WorkloadTarget> workloadTargets = List.of();
+      private List<String> incusTargets = List.of();
+      private Optional<String> rootIncusHost = Optional.empty();
       private Optional<NetworkFacet> network = Optional.empty();
 
       private Builder() {}
@@ -206,13 +239,20 @@ public record ManifestsRunbookInput(
         return this;
       }
 
-      public Builder workloadTargets(List<WorkloadTarget> workloadTargets) {
-        this.workloadTargets = workloadTargets;
+      /** The Incus hosts the fleet spans — the ONE list the operator declares. */
+      public Builder incusTargets(List<String> incusTargets) {
+        this.incusTargets = incusTargets;
+        return this;
+      }
+
+      /** The host of the out-of-band-seeded ROOT plane, recorded by the grow. */
+      public Builder rootIncusHost(String rootIncusHost) {
+        this.rootIncusHost = Optional.of(rootIncusHost);
         return this;
       }
 
       public Facets build() {
-        return new Facets(debug, delivery, workloadTargets, network);
+        return new Facets(debug, delivery, incusTargets, rootIncusHost, network);
       }
     }
   }

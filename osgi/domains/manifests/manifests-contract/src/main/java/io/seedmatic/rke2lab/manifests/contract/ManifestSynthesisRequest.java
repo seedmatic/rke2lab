@@ -18,7 +18,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
-import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -48,7 +47,7 @@ public record ManifestSynthesisRequest(
     Optional<WorkloadClusterCasMaterial> workloadCas,
     Optional<ManagementClusterCaMaterial> managementCas,
     Optional<WorkloadBootstrapBundlesMaterial> workloadBootstrapBundles,
-    List<WorkloadTarget> workloadTargets)
+    Optional<ClusterFleet> clusterFleet)
     implements ManifestDomainPolicyAware {
 
   private static final String ENABLED_DOMAINS_PROPERTY = "rke2lab.manifests.policy.enabledDomains";
@@ -84,9 +83,11 @@ public record ManifestSynthesisRequest(
     managementCas = managementCas == null ? Optional.empty() : managementCas;
     workloadBootstrapBundles =
         workloadBootstrapBundles == null ? Optional.empty() : workloadBootstrapBundles;
-    // The workload clusters this (management) render must emit CAPI CRs for — empty on a mgmt-only
-    // or standalone run. Coalesced to an empty immutable list so a slice-less request never NPEs.
-    workloadTargets = workloadTargets != null ? List.copyOf(workloadTargets) : List.of();
+    // The declared fleet this render derives its CHILDREN from — empty on a bare survey, the
+    // standalone CLI, and on a per-child pass (a parent lays down the child's branch as a
+    // bootstrap;
+    // the child's own render adds ITS children). Coalesced so a slice-less request never NPEs.
+    clusterFleet = clusterFleet != null ? clusterFleet : Optional.empty();
   }
 
   public static Builder builder(Path synthOutdir, Path synthManifestFile) {
@@ -110,7 +111,7 @@ public record ManifestSynthesisRequest(
         .workloadCas(workloadCas)
         .managementCas(managementCas)
         .workloadBootstrapBundles(workloadBootstrapBundles)
-        .workloadTargets(workloadTargets);
+        .clusterFleet(clusterFleet);
   }
 
   // Immutable transformations: each returns a new request with one slice replaced. They delegate to
@@ -238,7 +239,7 @@ public record ManifestSynthesisRequest(
     private Optional<WorkloadClusterCasMaterial> workloadCas = Optional.empty();
     private Optional<ManagementClusterCaMaterial> managementCas = Optional.empty();
     private Optional<WorkloadBootstrapBundlesMaterial> workloadBootstrapBundles = Optional.empty();
-    private List<WorkloadTarget> workloadTargets = List.of();
+    private Optional<ClusterFleet> clusterFleet = Optional.empty();
 
     private Builder(Path synthOutdir, Path synthManifestFile) {
       this.synthOutdir = synthOutdir;
@@ -315,8 +316,8 @@ public record ManifestSynthesisRequest(
       return this;
     }
 
-    public Builder workloadTargets(final List<WorkloadTarget> v) {
-      this.workloadTargets = v;
+    public Builder clusterFleet(final Optional<ClusterFleet> v) {
+      this.clusterFleet = v;
       return this;
     }
 
@@ -338,7 +339,7 @@ public record ManifestSynthesisRequest(
           workloadCas,
           managementCas,
           workloadBootstrapBundles,
-          workloadTargets);
+          clusterFleet);
     }
   }
 

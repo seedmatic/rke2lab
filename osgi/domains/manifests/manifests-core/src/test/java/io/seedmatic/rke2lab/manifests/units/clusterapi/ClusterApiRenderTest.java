@@ -9,9 +9,9 @@ import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
 import io.seedmatic.rke2lab.manifests.ManifestsUnit;
 import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
 import io.seedmatic.rke2lab.manifests.YamlMapper;
+import io.seedmatic.rke2lab.manifests.contract.ClusterFleet;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainPolicy;
 import io.seedmatic.rke2lab.manifests.contract.ManifestSynthesisRequest;
-import io.seedmatic.rke2lab.manifests.contract.WorkloadTarget;
 import io.seedmatic.rke2lab.manifests.contract.profiles.BootstrapIdentity;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ImageState;
 import io.seedmatic.rke2lab.manifests.contract.profiles.NodeRuntime;
@@ -59,8 +59,13 @@ class ClusterApiRenderTest {
 
   private static final String MANAGEMENT_CLUSTER = "bioskop-mgmt";
 
-  private static final List<WorkloadTarget> TARGETS =
-      List.of(new WorkloadTarget("bioskop", "wrkld"), new WorkloadTarget("nikopol", "mgmt"));
+  /**
+   * The live fleet. The children this render emits are DERIVED from it by the owner rule — {@code
+   * bioskop-wrkld} (host-local) and {@code nikopol-mgmt} (the one cross-host hop) — which is
+   * exactly the pair {@code manifests/bioskop-mgmt} carries today.
+   */
+  private static final ClusterFleet FLEET =
+      new ClusterFleet(List.of("bioskop", "nikopol"), "bioskop");
 
   /** The operator's host declaration the render cannot derive — see NodeDeviceSet. */
   private static final String FABRIC_BRIDGE = "fabric-br";
@@ -120,7 +125,7 @@ class ClusterApiRenderTest {
         ManifestSynthesisRequest.builder(outdir, outdir.resolve("manifests.yaml"))
             .bootstrapIdentity(identity())
             .imageState(Optional.of(imageState()))
-            .workloadTargets(TARGETS)
+            .clusterFleet(Optional.of(FLEET))
             .manifestDomainPolicy(Optional.of(POLICY))
             .fabricBridgeParent(Optional.of(FABRIC_BRIDGE))
             .build();

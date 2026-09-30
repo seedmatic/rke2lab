@@ -1,8 +1,9 @@
 // @codebase
 package io.seedmatic.rke2lab.manifests;
 
+import io.seedmatic.rke2lab.manifests.contract.ClusterCoordinate;
+import io.seedmatic.rke2lab.manifests.contract.ClusterFleet;
 import io.seedmatic.rke2lab.manifests.contract.ManifestSynthesisRequest;
-import io.seedmatic.rke2lab.manifests.contract.WorkloadTarget;
 import io.seedmatic.rke2lab.manifests.contract.profiles.BootstrapIdentity;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ClusterIssuerCaMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.FloxDebugPolicy;
@@ -175,13 +176,26 @@ public final class ManifestSynthesisContext {
   }
 
   /**
-   * The workload clusters this (management) render must emit CAPI CRs for — the cluster-api units
-   * derive each target's {@code ClusterNetworkBlueprint} from its {@link
-   * WorkloadTarget#clusterName()}. Empty on a mgmt-only or standalone run. Distinct from {@link
-   * #bootstrapIdentity()}, which stays the render's own (management) cluster.
+   * The clusters this render must emit CAPI CRs for — its OWN children, DERIVED from the declared
+   * fleet by the owner rule ({@link ClusterFleet#ownedBy}) rather than enumerated by the operator.
+   * The cluster-api units derive each child's {@code ClusterNetworkBlueprint} from its {@link
+   * ClusterCoordinate#clusterName()}. Distinct from {@link #bootstrapIdentity()}, which stays the
+   * render's own cluster — never in this list.
+   *
+   * <p>Empty when no fleet is declared (a bare survey / the standalone CLI) or when the subject
+   * cluster is unknown — a render that does not know WHO it is cannot know what it owns, and
+   * answering "everything" there is exactly the viewpoint error the derivation exists to remove.
    */
-  public List<WorkloadTarget> workloadTargets() {
-    return request.workloadTargets();
+  public List<ClusterCoordinate> ownedChildren() {
+    final Optional<ClusterFleet> fleet = request.clusterFleet();
+    if (fleet.isEmpty()) {
+      return List.of();
+    }
+    final String self = request.bootstrapIdentity().clusterName();
+    if (BootstrapIdentity.UNKNOWN.equals(self)) {
+      return List.of();
+    }
+    return fleet.orElseThrow().ownedBy(self);
   }
 
   public Optional<ImageState> imageState() {

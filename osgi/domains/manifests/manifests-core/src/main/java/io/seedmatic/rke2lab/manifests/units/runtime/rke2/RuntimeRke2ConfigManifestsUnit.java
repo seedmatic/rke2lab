@@ -30,8 +30,8 @@ import software.constructs.Construct;
  * Renders the RKE2 boot config ({@code config.yaml.d} fragments) for a MANAGEMENT render — the
  * management cluster serves the config of everything it manages. It emits fragments for the SUBJECT
  * (only when the subject is itself a management cluster — a workload's config lives on its
- * manager's branch, not its own) PLUS every {@link ManifestSynthesisContext#workloadTargets()
- * workload target}. A workload render produces nothing here.
+ * manager's branch, not its own) PLUS every {@link ManifestSynthesisContext#ownedChildren() owned
+ * child}. A workload render produces nothing here.
  *
  * <p>The fragments are the CONTROL-PLANE pool's config: the only consumers of these branch
  * fragments are control-plane nodes. Workers are bootstrap-injected by CAPRKE2 (their config rides
@@ -66,14 +66,14 @@ public final class RuntimeRke2ConfigManifestsUnit extends AbstractManifestsUnit 
   protected void doSynthesize(final Construct scope, final ManifestsUnitContext context) {
     final ManifestSynthesisContext synth = ManifestSynthesisContext.current();
     // The clusters this management render serves config for: the subject IFF it is a management
-    // cluster (a workload's config lives on its manager's branch), plus every workload target.
+    // cluster (a workload's config lives on its manager's branch), plus every child it OWNS.
     final Set<String> clusters = new LinkedHashSet<>();
     final String subject =
         synth.bootstrapIdentity().clusterNameOrDefault(DefaultNodeEnvContext.DEFAULT_CLUSTER_NAME);
     if (ClusterRole.of(subject) == ClusterRole.MGMT) {
       clusters.add(subject);
     }
-    synth.workloadTargets().forEach(target -> clusters.add(target.clusterName()));
+    synth.ownedChildren().forEach(child -> clusters.add(child.clusterName()));
     clusters.forEach(cluster -> renderControlNodeConfig(scope, cluster));
   }
 
