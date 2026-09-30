@@ -1,0 +1,10 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: high-availability
+    io.seedmatic.rke2lab/package: kube-vip
+  labels:
+    name: kube-vip
+  name: kube-vip

@@ -1,0 +1,19 @@
+---
+apiVersion: cluster.seedmatic.io/v1alpha1
+kind: VolumeIntention
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: cicd
+    io.seedmatic.rke2lab/layer: operators
+    io.seedmatic.rke2lab/package: render-pipeline
+  name: maven-cache
+  namespace: rke2lab-system
+spec:
+  capacity: 4Gi
+  claimRef:
+    name: manifests-maven-cache
+    namespace: rke2lab-system
+  dataset: maven-cache
+  nodeRole: control-plane
+  pool: tank/rke2lab/wrkld/persist
+  storageClassName: openebs-zfs-persist

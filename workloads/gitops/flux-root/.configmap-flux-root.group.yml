@@ -1,0 +1,14 @@
+---
+apiVersion: v1
+data:
+  members: |-
+    source.toolkit.fluxcd.io/v1|GitRepository|flux-system|rke2lab
+    kustomize.toolkit.fluxcd.io/v1|Kustomization|flux-system|flux
+kind: ConfigMap
+metadata:
+  annotations:
+    config.kubernetes.io/local-config: "true"
+    io.seedmatic.rke2lab/domain: gitops
+    io.seedmatic.rke2lab/manifest-group: "true"
+    io.seedmatic.rke2lab/package: flux-root
+  name: flux-root.group

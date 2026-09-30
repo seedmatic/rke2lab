@@ -1,0 +1,24 @@
+---
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: storage
+    io.seedmatic.rke2lab/package: openebs-zfs
+  name: openebs-zfs
+  namespace: openebs
+spec:
+  chart: zfs-localpv
+  createNamespace: true
+  repo: https://openebs.github.io/zfs-localpv
+  targetNamespace: openebs
+  valuesContent: |
+    crds:
+      csi:
+        volumeSnapshots:
+          enabled: false
+    zfs:
+      bin: /usr/sbin/zfs
+    zfsNode:
+      kubeletDir: /var/lib/kubelet
+  version: 2.8.0
