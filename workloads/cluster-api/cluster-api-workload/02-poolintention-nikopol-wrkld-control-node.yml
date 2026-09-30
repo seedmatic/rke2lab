@@ -27,10 +27,8 @@ spec:
   - flox.seedmatic.io/enabled=true
   nodes:
   - name: nikopol-wrkld-master
-  - name: nikopol-wrkld-peer1
-  - name: nikopol-wrkld-peer2
   pool: control-node
-  replicas: 3
+  replicas: 1
   rke2Version: v1.34.10+rke2r1
   role: control-plane
-  target: nikopol-nixos
+  target: nikopol
