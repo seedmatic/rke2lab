@@ -449,6 +449,13 @@ public final class ClusterApiCrRenderer {
     spec.put("rke2Version", rke2Version);
     spec.put("controlPlaneEndpoint", Map.of("host", vip, "port", port));
     spec.put("nodes", nodes);
+    // The DECLARED size — what the control plane is sized from. The controller used to take
+    // len(roster), and the roster is OBSERVED, so a pool that had run at N was re-declared N for
+    // ever: bioskop-wrkld declared three pets and stood at one across two cold starts, because a
+    // one-node PoolReflection survives in git. The count is intent; the roster answers only which
+    // NAMES. Derived from the pet list because that IS the declared shape here — one expression, so
+    // the two cannot disagree.
+    spec.put("replicas", nodes.size());
     spec.put("nodeLabels", poolNodeLabels());
     // The node's Incus devices, posed INLINE on the LXCMachine by CAPN. They replaced the
     // `node-base` + `node-<cluster>` profiles the host grow used to create for clusters it does not

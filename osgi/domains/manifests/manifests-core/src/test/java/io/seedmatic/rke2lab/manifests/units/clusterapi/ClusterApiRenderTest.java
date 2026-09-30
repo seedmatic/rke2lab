@@ -247,6 +247,44 @@ class ClusterApiRenderTest {
   }
 
   @Test
+  void requireEachPoolDeclaresItsOwnSizeAndAWorkloadAsksForThree(@TempDir Path outdir) {
+    final List<Map<String, Object>> documents = render(outdir, clusterApiUnits());
+
+    // The count must be DECLARED, not inferred from what a pool happens to be running. The
+    // controller
+    // used to size the control plane with len(roster) — the OBSERVED roster — so a pool that had
+    // come
+    // up at one node was re-declared at one for ever, and bioskop-wrkld stood at 1 against its
+    // three
+    // declared pets across two cold starts.
+    final Map<String, Integer> replicasByCluster = new java.util.TreeMap<>();
+    for (final Map<String, Object> pool : documents) {
+      if (!"PoolIntention".equals(kindOf(pool))) {
+        continue;
+      }
+      @SuppressWarnings("unchecked")
+      final Map<String, Object> spec = (Map<String, Object>) pool.get("spec");
+      @SuppressWarnings("unchecked")
+      final List<Object> nodes = (List<Object>) spec.get("nodes");
+      final int replicas = ((Number) spec.get("replicas")).intValue();
+      // Declared size and declared roster are ONE expression at the render, so they cannot drift.
+      assertEquals(
+          nodes.size(),
+          replicas,
+          "replicas must equal the declared pet count for " + spec.get("clusterRef"));
+      replicasByCluster.put(String.valueOf(spec.get("clusterRef")), replicas);
+    }
+
+    // A management cluster is ONE control node; a workload takes master+peer1+peer2 = 3 etcd
+    // members.
+    assertEquals(
+        1, replicasByCluster.get("bioskop-mgmt"), "a management plane is one control node");
+    assertEquals(1, replicasByCluster.get("nikopol-mgmt"), "a sub-plane is one control node too");
+    assertEquals(3, replicasByCluster.get("bioskop-wrkld"), "a workload asks for THREE");
+    assertEquals(3, replicasByCluster.get("nikopol-wrkld"), "and so does the other workload");
+  }
+
+  @Test
   void requirePoolIntentionsReferenceTheNodeImageByName(@TempDir Path outdir) {
     final List<Map<String, Object>> documents = render(outdir, clusterApiUnits());
 
