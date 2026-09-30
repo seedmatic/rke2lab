@@ -1848,6 +1848,45 @@ host is the same species of lie as `workloadTargets` holding a mgmt entry. -> `i
 reading that as "the NixOS host is already renamed" conflates two machines. The NixOS hosts both
 still answer `<host>-nixos` (`ssh bioskop-nixos hostname` -> `bioskop-nixos`).
 
+[[scaffold-duplication]]
+==== ⚠️ A sub-plane's intention exists TWICE, and nothing retires the first copy
+
+Intentions are NOT broadcast across the fleet — each branch carries a narrow set (measured
+2026-09-30, see the table above). There is exactly ONE exception, and it is deliberate: a sub-plane's
+`ClusterIntention` exists on **two** branches at once.
+
+[cols="2,3",options="header"]
+|===
+| Copy | Written by
+
+| `manifests/bioskop-mgmt`, package `cluster-api-workload`
+| the PARENT's render — the copy that BIRTHS it (`ClusterApiWorkloadManifestsUnit`, switching shape
+  on the child's role)
+
+| `manifests/nikopol-mgmt`, package `cluster-api-management`
+| its OWN render — the copy it SELF-ADOPTS from (`ClusterApiManagementManifestsUnit`)
+|===
+
+Both delegate to the same `ClusterApiCrRenderer`, which is why the two copies are byte-identical
+apart from the `io.seedmatic.rke2lab/package` annotation (diffed 2026-09-30: that one line).
+
+★ **But they agree by CONSTRUCTION, not by enforcement** — one derivation, one seed-master run, one
+source commit. Nothing checks it. The moment a sub-plane's in-cluster render runs from a DIFFERENT
+commit than its parent's, the copies can drift, silently. That is not hypothetical: it already
+happened once, and cost a whole debugging session — the parent's copy stated
+`endpoint: https://nixos.nikopol:8443` while the self copy carried `endpoint: ""`, so the sub-plane's
+CAPN dialled its parent's engine (`9e4f1b131`).
+
+And model B says the parent's copy is only an ECHAFAUDAGE — the CAPI plan that births the sub-plane,
+after which the sub-plane adopts itself. **Nothing retires it.** Both copies live forever, so the
+drift window never closes.
+
+To settle, when the federation question is next opened: either the parent's copy gains an explicit
+scaffold marker and is pruned once the sub-plane reports self-adoption, or the two copies are made
+provably identical by construction (one renderer, one writer) rather than by coincidence. Until then
+the drift is a latent defect of the same family as <<declaration-triad>> — a value correct from one
+viewpoint and wrong from the other.
+
 [[incus-listener-cert]]
 === ⚠️ The Incus listener cert names nothing we dial (measured 2026-09-29)
 
