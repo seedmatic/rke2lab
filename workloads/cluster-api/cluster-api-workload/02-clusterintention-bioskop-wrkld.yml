@@ -22,5 +22,5 @@ spec:
   kind: workload
   namespace: rke2lab-bioskop-wrkld
   remote:
-    endpoint: https://nixos.bioskop:8443
+    endpoint: https://nixos.nikopol:8443
     identitySecretName: bioskop-incus-identity
