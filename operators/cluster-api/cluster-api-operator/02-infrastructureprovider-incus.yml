@@ -9,6 +9,15 @@ metadata:
   name: incus
   namespace: capn-system
 spec:
+  configSecret:
+    name: capn-provider-config
+    namespace: capn-system
+  deployment:
+    containers:
+    - env:
+      - name: SSL_CERT_DIR
+        value: /etc/ssl/certs:/etc/rke2lab/ca
+      name: manager
   fetchConfig:
     url: https://github.com/lxc/cluster-api-provider-incus/releases/v0.9.0/infrastructure-components.yaml
   version: v0.9.0

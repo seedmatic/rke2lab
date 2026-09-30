@@ -19,6 +19,7 @@ data:
     v1|Secret|rke2lab-nikopol-wrkld|nikopol-wrkld-cca
     v1|Secret|rke2lab-nikopol-wrkld|nikopol-wrkld-etcd
     v1|Secret|rke2lab-nikopol-wrkld|nikopol-wrkld-peer-etcd
+    v1|Secret|rke2lab-nikopol-wrkld|nikopol-wrkld-server-manifests
 kind: ConfigMap
 metadata:
   annotations:
