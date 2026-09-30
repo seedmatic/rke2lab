@@ -1141,6 +1141,7 @@ provisions its own, the reflector writes the first reflection). The canonical `P
 seed is used ONLY to SIZE a greenfield RCP; once the cluster has run, the reflection is the roster of
 record. Reflection ↔ reality mismatches are CAPI/CAPN's to reconcile (their layer, not ours).
 
+[[count-feedback]]
 [WARNING]
 ====
 **This paragraph is silent on what sizes an ADOPT, and that silence is the defect**
@@ -1290,11 +1291,11 @@ definition birthed by its parent. Resolution: <<declaration-triad>>.
 ====
 
 [[declaration-triad]]
-== The declaration triad — who creates, who names, who counts (📐 planned, not built)
+== The declaration triad — who creates, who names, who counts (form B ✅ shipped, form A 📐 planned)
 
 Three of this document's claims leak in the same place: `PoolIntention.spec.nodes` is
 made to answer **three different questions at once**, and two of them are then answered
-by proxies. Measured 2026-09-29; no code changed yet.
+by proxies. Measured 2026-09-29; **form B shipped the same day**, form A is still planned.
 
 [cols="1,2,2,1",options="header"]
 |===
@@ -1307,8 +1308,9 @@ by proxies. Measured 2026-09-29; no code changed yet.
 
 | Q2
 | Who **names** the instance? (the declaration, or the provisioner)
-| `resolveRoster()` — the *presence* of a `PoolReflection`
-| ⚠️ a runtime accident, never declared
+| `resolveRoster()` — for a CHILD the *presence* of a `PoolReflection`, for SELF the
+  **locally observed** Nodes (form B)
+| ⚠️ observed, never declared — sound for both, but it is still an inference
 
 | Q3
 | Who **addresses** it? (a `dhcp-host` reservation, or an ordinary lease)
@@ -1327,26 +1329,264 @@ the two are orthogonal — making the predicate read `nature` would break addres
 
 === The three declaration cases
 
-[mermaid,cluster-seeding-declaration-cases,svg]
+==== Context — who declares, who creates, who names
+
+The three questions are answered by three DIFFERENT actors, and no single one of them sees
+all three. That is the whole difficulty; it is also why a value read from the wrong
+viewpoint looks correct.
+
+[mermaid,cluster-seeding-declaration-context,svg]
+----
+flowchart TB
+  OP["👤 Operator — the Mac<br/>the out-of-band seeder"]
+
+  subgraph DECL["git — the DECLARED intent, applied and PRUNED by Flux"]
+    direction LR
+    CI["ClusterIntention<br/>kind: management or workload"]
+    PI["PoolIntention<br/>role: control-plane or worker<br/>nodes: PetSpec[] — Q2 + the COUNT"]
+  end
+
+  subgraph PLANES["the reconciling planes — each with its own etcd"]
+    direction LR
+    subgraph ROOT["bioskop-mgmt — the ROOT plane"]
+      direction TB
+      API1["its own apiserver<br/>Nodes + etcd member pods"]
+      CTRL1["seed-incluster<br/>SELF_CLUSTER_NAME=bioskop-mgmt"]
+      API1 -.->|"the SELF roster"| CTRL1
+    end
+    subgraph SUB["nikopol-mgmt — a SUB-plane"]
+      direction TB
+      API2["its own apiserver"]
+      CTRL2["seed-incluster<br/>SELF_CLUSTER_NAME=nikopol-mgmt"]
+      API2 -.->|"likewise"| CTRL2
+    end
+  end
+
+  subgraph OBS["git, SAME branch — the OBSERVED state"]
+    PR["PoolReflection<br/>⚠️ git-only, NEVER in etcd<br/>nodes: the observed roster"]
+  end
+
+  subgraph ACT["who actually CREATES the instance"]
+    direction LR
+    HOST["grow on the host<br/>POSES the hwaddr — Q1 + Q3"]
+    CAPI["CAPRKE2 + CAPN<br/>MINT the names — Q1 + Q2"]
+  end
+
+  OP -->|"rke2lab render"| DECL
+  CI --> CTRL1
+  PI --> CTRL1
+  CTRL1 -->|"births the sub-plane"| CTRL2
+  CTRL1 --> CAPI
+  CTRL2 --> CAPI
+  HOST -->|"case 1 ONLY"| CAPI
+  CTRL1 -->|"reflects its CHILDREN<br/>never itself"| PR
+  CTRL2 -->|"likewise"| PR
+  PR -.->|"read back — adopt vs greenfield"| CTRL1
+
+  classDef intent fill:#e8f0fe,stroke:#1a73e8,color:#111
+  classDef ctrl fill:#e6f4ea,stroke:#137333,color:#111
+  classDef act fill:#fef7e0,stroke:#f9ab00,color:#111
+  classDef obsv fill:#f3e8fd,stroke:#8430ce,color:#111
+  class CI,PI intent
+  class CTRL1,CTRL2 ctrl
+  class HOST,CAPI act
+  class API1,API2,PR obsv
+  style DECL fill:#f8fbff,stroke:#1a73e8,stroke-dasharray:4
+  style OBS fill:#fdfaff,stroke:#8430ce,stroke-dasharray:4
+  style PLANES fill:#f7fdf9,stroke:#137333,stroke-dasharray:4
+  style ACT fill:#fffdf5,stroke:#f9ab00,stroke-dasharray:4
+  style ROOT fill:#ffffff,stroke:#137333
+  style SUB fill:#ffffff,stroke:#137333
+----
+
+*Legend* — blue = intent declared in git (Flux applies and PRUNES it) · green = the
+controller, whose own state lives in etcd · purple = an OBSERVED source · amber = the actor
+that actually CREATES the instance. A dashed edge is an observation, a solid one a
+declaration or an act.
+
+★ The root plane has no parent, so nothing can reflect its cold-start — hence the SELF
+branch. The sub-plane has BOTH a parent that births it and a SELF branch of its own, and
+that is exactly where case 3 goes wrong.
+
+==== The object model — and where each question is answered
+
+[mermaid,cluster-seeding-declaration-classes,svg]
+----
+classDiagram
+    class ClusterIntention {
+        +clusterName: string
+        +kind: ClusterKind
+        +controlPlaneEndpoint: APIEndpoint
+        +remote: Remote
+    }
+    class PoolIntention {
+        +clusterRef: string
+        +pool: string
+        +role: PoolRole
+        +nodes: PetSpec[]
+        ..Q2 AND the COUNT AND the NAMES..
+    }
+    class PetSpec {
+        +name: string
+        ..no nature, no replica count..
+    }
+    class PoolReflection {
+        +nodes: PetSpec[]
+        ..OBSERVED, git-only..
+        ..its PRESENCE is the Q2 switch..
+    }
+    class PoolAdoption {
+        +present: int
+        +absent: int
+        +pending: int
+        +voidedPets: string[]
+    }
+    class ClusterNetworkBlueprint {
+        +fabricMacIsPredictable(): bool
+        ..Q1 and Q3, derived from the ROLE..
+    }
+
+    ClusterIntention "1" --> "*" PoolIntention
+    PoolIntention "1" --> "*" PetSpec
+    PoolIntention ..> PoolReflection : observed mirror
+    PoolIntention --> PoolAdoption : reconciled into
+    PoolIntention ..> ClusterNetworkBlueprint : SSOT projection
+----
+
+★ `PoolIntention.spec.nodes` carries **three things at once** — the *count* (it sizes the
+`RKE2ControlPlane` replicas), the *names* (the base of `providerID = lxc:///{name}`) and
+the *nature* (by being non-empty at all). Nothing in the schema separates them, so every
+reader has to guess which of the three it is looking at. Form A splits the first off
+(`replicas`) and names the third (`nature`); the second stays observed.
+
+==== The switch that separates the cases — `resolveRoster`
+
+[mermaid,cluster-seeding-roster-switch,svg]
 ----
 flowchart TD
-  subgraph C1["Case 1 — bioskop-mgmt · root"]
-    A1["host grow creates<br/>« bioskop-mgmt-master »"] --> B1["name from the DECLARATION"]
-    B1 --> D1["Q1 host · Q2 declaration · Q3 dhcp-host"]
-  end
-  subgraph C2["Case 2 — bioskop-wrkld / nikopol-wrkld · leaf child"]
-    A2["reflection absent ⇒ greenfield<br/>CAPRKE2 creates « …-control-plane-gtcqg »"] --> B2["name from the PROVISIONER<br/>reflector records it in git"]
-    B2 --> D2["Q1 CAPN · Q2 provisioner · Q3 lease"]
-  end
-  subgraph C3["Case 3 — nikopol-mgmt · sub-plane ❌"]
-    A3["parent greenfields it<br/>CAPRKE2 names it"] --> B3["but its OWN controller takes<br/>the SELF branch ⇒ reads the SEED"]
-    B3 --> D3["looks for a name that will never exist"]
-  end
+  START["PoolAdoption reconcile"] --> SELF{"spec.clusterName<br/>== SELF_CLUSTER_NAME ?"}
+  SELF -->|yes| OBS["observedSelfRoster<br/>list the LOCAL Nodes"]
+  OBS --> DEC{"decided ?"}
+  DEC -->|"yes — control-plane Nodes<br/>with an lxc:/// providerID"| C1A["roster = the OBSERVED names<br/>greenfield = FALSE"]
+  DEC -->|"no — cold start,<br/>nothing registered yet"| C1B["roster = spec.nodes<br/>greenfield = FALSE<br/>inconclusive, NOT empty"]
+  OBS -->|error| ERR["FAIL — a broken probe is<br/>never an absence"]
+  SELF -->|no| GITNIL{"r.Git == nil ?"}
+  GITNIL -->|yes| FB["roster = spec.nodes<br/>greenfield = FALSE<br/>deterministic fallback"]
+  GITNIL -->|no| READ["ReadReflection"]
+  READ -->|error| HOLD["HOLD — never greenfield on<br/>an unconfirmed absence"]
+  READ -->|present| C2A["roster = reflection.nodes<br/>greenfield = FALSE<br/>adopt the OBSERVED"]
+  READ -->|absent| C2B["roster = spec.nodes<br/>greenfield = TRUE<br/>CAPRKE2 provisions"]
+
   classDef ok fill:#e6f4ea,stroke:#137333
-  classDef bad fill:#fce8e6,stroke:#c5221f
-  class D1,D2 ok
-  class B3,D3 bad
+  classDef guard fill:#fef7e0,stroke:#f9ab00
+  class C1A,C1B,C2A,C2B,FB ok
+  class ERR,HOLD guard
 ----
+
+Every leaf is three-valued by construction: **present**, **absent**, and **undecidable** —
+and the third never collapses into the second. That is the shape the SELF branch was
+missing.
+
+[NOTE]
+====
+The SELF branch used to read `roster = spec.nodes` unconditionally, and it was **right on
+one half, wrong on the other**:
+
+* ✅ "never greenfield the management plane" — sound, the reflector cannot reflect its own
+  cold-start.
+* ❌ "therefore its roster IS the seed" — true only if that cluster was born from a
+  **grow**. False for `nikopol-mgmt`, greenfielded under a CAPI-minted name.
+
+Observing removes the viewpoint from the answer instead of picking a better guess.
+====
+
+==== Case 1 — `bioskop-mgmt`: a pet birthed by the host, and its own SELF
+
+[mermaid,cluster-seeding-declaration-case1,svg]
+----
+sequenceDiagram
+    participant OP as Operator
+    participant HOST as grow (the host)
+    participant INC as Incus
+    participant CTRL as seed-incluster (SELF)
+
+    OP->>HOST: grow bioskop-mgmt
+    HOST->>INC: create instance bioskop-mgmt-master<br/>hwaddr POSED 10:66:6a:4c:01:01
+    Note over INC: the name comes from the DECLARATION
+    OP->>CTRL: PoolIntention nodes: [bioskop-mgmt-master]
+    CTRL->>CTRL: resolveRoster → SELF → observe → the Node IS bioskop-mgmt-master
+    CTRL->>INC: LXCMachine providerID=lxc:///bioskop-mgmt-master
+    INC-->>CTRL: adopted ✅
+    Note over CTRL: Q1 host · Q2 declaration · Q3 dhcp-host
+----
+
+The declaration and the observation AGREE here — which is precisely why trusting the seed
+worked for years and why the defect stayed invisible. The observed path is inert on this
+case (verified 2026-09-29: the Node name equals the declared pet).
+
+==== Case 2 — `bioskop-wrkld` / `nikopol-wrkld`: a leaf child, cattle then reflected
+
+[mermaid,cluster-seeding-declaration-case2,svg]
+----
+sequenceDiagram
+    participant CTRL as seed-incluster (bioskop-mgmt)
+    participant GIT as git (the reflection)
+    participant CAPI as CAPRKE2 / CAPN
+    participant INC as Incus
+
+    CTRL->>GIT: ReadReflection(bioskop-wrkld) → ABSENT
+    Note over CTRL: greenfield = TRUE
+    CTRL->>CAPI: RKE2ControlPlane replicas = len(seed) = 3
+    CAPI->>INC: create bioskop-wrkld-control-plane-899lr<br/>hwaddr MINTED, ORDINARY lease
+    Note over INC: the name comes from the PROVISIONER
+    CTRL->>GIT: the reflector writes the OBSERVED roster
+    CTRL->>CTRL: next reconcile → reflection PRESENT → adopt by observed name
+    INC-->>CTRL: adopted ✅
+    Note over CTRL: Q1 CAPN · Q2 provisioner · Q3 lease
+----
+
+★ Here the seed `nodes: [master, peer1, peer2]` serves **only to count**. Its names will
+never name anything. This is the case where the triple role of `nodes` is most visible —
+and where the count-feedback loop <<count-feedback>> then pins the pool at what it first
+observed.
+
+==== Case 3 — `nikopol-mgmt`: born cattle, but SELF to its own controller
+
+[mermaid,cluster-seeding-declaration-case3,svg]
+----
+sequenceDiagram
+    participant B as seed-incluster (bioskop-mgmt)
+    participant CAPI as CAPRKE2 / CAPN
+    participant INC as Incus
+    participant N as seed-incluster (nikopol-mgmt, SELF)
+
+    B->>CAPI: greenfield (reflection absent)
+    CAPI->>INC: create nikopol-mgmt-control-plane-p6xqq
+    INC-->>B: adopted ✅ (as seen FROM bioskop)
+    Note over N: the SAME cluster, seen from INSIDE
+    N->>N: resolveRoster → SELF branch
+    rect rgb(252, 232, 230)
+    Note over N: ❌ BEFORE — roster = spec.nodes = [nikopol-mgmt-master]<br/>petInfraName → no Machine · lxcMachinePresence → never present<br/>PetsPresent=False, AwaitingInstances 0/1 — a name that will never exist
+    end
+    rect rgb(230, 244, 234)
+    N->>N: ✅ NOW — observedSelfRoster lists its own control-plane Node
+    N->>N: providerID lxc:///nikopol-mgmt-control-plane-p6xqq → the roster
+    N->>CAPI: Machine + LXCMachine for the name that ACTUALLY exists
+    end
+    Note over N: Q1 CAPN · Q2 provisioner — and the code now READS provisioner
+----
+
+[NOTE]
+====
+This was *the* defect, and it was structural rather than cosmetic: the SELF shortcut
+**assumed the self cluster was born a pet**. True for the root (birthed by a grow), false
+for every sub-plane birthed by its parent — and it would have recurred on each new
+`kind: management`.
+
+Delivered 2026-09-29 (seed-incluster `4af4e79c9`): `nikopol-mgmt` went from `absent`
+(hopeless — no such object could ever appear) to `pending` on CAPN's own verdict, having
+created the `Machine`/`LXCMachine` for `nikopol-mgmt-control-plane-p6xqq`.
+====
 
 === Two observed sources, each available where the other is not
 
@@ -1416,20 +1656,27 @@ keeps its datadir. Pet *names* for a cattle pool are over-specification.
 |===
 | Form | Fixes | Does NOT fix
 
-| **B** — observe the self roster (the local apiserver: etcd member pods / Nodes) instead
-  of trusting the seed, in `resolveRoster`'s SELF branch
+| ✅ **B** — observe the self roster (the local apiserver: etcd member pods / Nodes) instead
+  of trusting the seed, in `resolveRoster`'s SELF branch. **Shipped 2026-09-29**,
+  seed-incluster `4af4e79c9`
 | case 3 — `nikopol-mgmt`, and every future sub-plane
 | nothing for a leaf child, which is no one's SELF
 
-| **A** — `nature` (`pet` \| `cattle`) + `replicas` on `PoolIntentionSpec`; the RCP reads
+| 📐 **A** — `nature` (`pet` \| `cattle`) + `replicas` on `PoolIntentionSpec`; the RCP reads
   `spec.Replicas` instead of `len(roster)`
 | the count→observation loop: what lets a pool reach more than one node
 | nothing for case 3 — it would move the problem onto a reflection SELF cannot write
 |===
 
-Order: **B first** (it unblocks a stuck object and touches no CRD), **A second** (a
+Order was **B first** (it unblocked a stuck object and touched no CRD), **A second** (a
 contract change: two fields plus the replica reader). A is *not* deferred work — it
 corrects a live defect on `bioskop-wrkld`.
+
+B's implementation landed on the Node list rather than the etcd member pods: the `Node`
+carries `spec.providerID = lxc:///{instance}`, which is the very key the adoption matches
+on, so it needs no translation — where an etcd pod name would have had to be trusted to
+equal the node name. The three access levels above stay recorded for the day a roster is
+needed while the apiserver is up but the Nodes are not yet registered.
 
 What this means for `nikopol-wrkld` specifically: it is a **leaf child**, so it takes
 case 2 — the path that already works — and needs neither form to come up at **one** node.
@@ -1872,13 +2119,17 @@ carries its primacy as the primary out-of-band seeder.
 [[open-items]]
 == Open items
 
-. **Form B — the SELF roster from local observation** (<<declaration-triad>>). The fallback
-  is the open part: when the local observation is EMPTY (etcd not yet up, Nodes not yet
-  registered at a cold-start) it must fall back to the seed **without ever greenfielding**
-  — keep today's guard, add only "if I observe, the observed wins". *To settle: which
-  signal attests the observation is CONCLUSIVE rather than merely empty.* Same
-  three-valued trap already paid on the render facets — **absent ≠ undecidable**.
-. **Form A — `nature` + `replicas` on `PoolIntentionSpec`** (<<declaration-triad>>), and
+. ✅ **Form B — the SELF roster from local observation** — *settled and shipped 2026-09-29*
+  (seed-incluster `4af4e79c9`), kept here because the question it answered recurs. The open
+  part was the fallback: when the local observation is EMPTY (Nodes not yet registered at a
+  cold-start) it must fall back to the seed **without ever greenfielding**. What attests a
+  CONCLUSIVE observation: a non-empty set of Nodes labelled
+  `node-role.kubernetes.io/control-plane` whose `spec.providerID` all parse as `lxc:///…`.
+  Anything short of that — no such Node, or one whose providerID does not parse — returns
+  `decided = false` and the seed is used unchanged; a **failing List** returns an error
+  rather than an absence. Three values, never two: **absent ≠ undecidable ≠ broken** — the
+  same trap already paid on the render facets.
+. 📐 **Form A — `nature` + `replicas` on `PoolIntentionSpec`** (<<declaration-triad>>), and
   `rke2ControlPlaneObj` reading `spec.Replicas` instead of `len(roster)`. *To settle:
   whether `PoolReflection` should STOP carrying the count altogether, or merely stop being
   read for it — leaving the field fed keeps the loop armed.*
