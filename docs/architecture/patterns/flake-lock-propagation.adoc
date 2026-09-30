@@ -132,6 +132,41 @@ rke2lab. A docs-only commit moves none of them, so the bump is dropped and the c
 first round.
 ====
 
+[IMPORTANT]
+.Why it terminates is an ASYMMETRY OF KIND, not disjointness — corrected 2026-09-30 by observation
+====
+An earlier version of this section said the cycle terminates because the two directions consume
+DISJOINT things (rke2lab→ndh carries the plans, ndh→rke2lab carries tooling). Measured the same day,
+that is wrong: relocking rke2lab's `ndh` pin after an ndh change to its CATALOG — nothing to do with
+the tooling — still moved a rke2lab derivation, and the guard rightly KEPT the bump.
+
+The reason is that rke2lab RE-EXPORTS ndh packages (`manage-tailnet`,
+`nikopol-incus-cluster-join`). A wrapper embeds the wrapped store path, so ANY ndh revision moves it.
+
+[cols="1,2,2",options="header"]
+|===
+| Direction | What it consumes | Sensitivity
+
+| ndh -> rke2lab
+| PACKAGES (re-export wrappers)
+| REVISION-sensitive — moves on every upstream revision, whatever changed
+
+| rke2lab -> ndh
+| DATA (`lib.networkBlueprint`, via IFD)
+| VALUE-sensitive — moves only when the JSON itself differs
+|===
+
+So the cycle dies at the first VALUE-sensitive hop, not at the first hop. Above, rke2lab moved
+(`b7db1c54d`) but that commit touched only `flake.lock`, so the blueprint's VALUE is unchanged and
+ndh's own guard will drop the return bump.
+
+★ The rule to keep: a cycle terminates iff at least one direction is value-sensitive. Two
+revision-sensitive consumers pointing at each other would ping-pong for ever, and no guard on
+derivations could stop it — the guard would be telling the truth every round. That is the shape to
+refuse when wiring a new edge, and it is not visible from the lock graph alone: it depends on whether
+an edge carries a package or a value.
+====
+
 Worked through:
 
 [cols="1,2,2",options="header"]
