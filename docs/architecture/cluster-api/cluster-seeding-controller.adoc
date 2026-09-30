@@ -1918,7 +1918,47 @@ the first three did not.
 | the identity Secret's `server`, from `material.serverAddress()`
 | the host that MINTED the material — right for the root by ACCIDENT, since it mints its own
 | every child. Fixed 2026-09-30
+
+| 5
+| the four BYO-CA Secrets, from `managementCas()` — "the live CA of the cluster THIS RUN belongs to"
+| the run's own cluster
+| a child whose branch the parent renders. Measured: `manifests/nikopol-mgmt` carried BIOSKOP's CA.
+  Fixed 2026-09-30 by making the SUBJECT's material win
+
+| 6
+| the CAPI `<cluster>-kubeconfig`, from the run-scoped `operatorPki()`
+| the run's own cluster
+| every child. ⚠️ NOT yet fixed — see below
 |===
+
+★ All six are one sentence: **run-scoped material applied to a subject that is not the run's
+cluster.** The per-child render pass makes every run-scoped material suspect, and the cure is always
+the same — prefer the SUBJECT-specific material, keep the run-scoped one as the fallback.
+
+[IMPORTANT]
+.Instance 6 — the invariant was written down, and the code contradicted it one realm away
+====
+`ClusterKubeconfigManifestsUnit` renders the canonical `<cluster>-kubeconfig` that CAPI reads, from
+`ManifestSynthesisContext.operatorPki()` — run-scoped. So a child's kubeconfig is signed by the
+PARENT's client CA. Measured 2026-09-30: `nikopol-mgmt-kubeconfig` carried
+`issuer=CN=rke2-client-ca@…205` (bioskop's) with `notBefore=Sep 28`, a credential sealed at the
+PREVIOUS cold start and replayed — so nikopol's apiserver answered 401 and its self-adoption held at
+`Accessible=False`, even after instance 5 was fixed and the CA matched on both sides.
+
+★ And the invariant was ALREADY stated, in `ClusterSeedScenario.publishOperatorKubeconfig`'s javadoc:
+"Each workload cluster brings its OWN credentials — its CA hierarchy is a SIBLING of the management
+one, **so the management admin certificate opens nothing there**." The host side honours it (it loops
+`workloadAdmins()` per cluster); the manifests side does not, because the per-cluster admin material
+**never crosses the membrane** — the realm has `workloadCas()` but no `workloadAdmins()` equivalent.
+
+The fix therefore needs plumbing, not a precedence: a per-cluster admin material sown from the seal
+and selected by subject. `WorkloadClusterCasMaterial` is the exact template to copy.
+
+⏸️ **Or the duplicate is retired instead.** bioskop's CAPI has ALREADY fully adopted nikopol-mgmt
+(`Machine` Running, `LXCMachine` provisioned). Its self-adoption is the <<scaffold-duplication,
+scaffold>> that nothing retires — so the choice is between making both copies correct and making
+there be one. That decision belongs with the federation question.
+====
 
 [WARNING]
 ====
