@@ -14,6 +14,8 @@ spec:
   namespace: rke2lab-bioskop-wrkld
   nodes:
   - name: bioskop-wrkld-control-plane-k5lz6
+  - name: bioskop-wrkld-control-plane-ljtpw
+  - name: bioskop-wrkld-control-plane-sw7h2
   pool: control-node
 status:
   lastReflectTime: null
