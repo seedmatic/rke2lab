@@ -1102,7 +1102,41 @@ reason this was deferred no longer holds. See <<return-to-service>>.
 The cost is small and already half-paid: `prepareWorkloadPasses` goes ONE level
 (`ownedChildren(self)`), so `ownedBy(nikopol-mgmt) = [nikopol-wrkld]` is never reached and its
 bootstrap bundle never carved — which is exactly why that pool waits today. The closure terminates on
-its own (a workload owns nothing). ✅ Verified 2026-09-30 that no host-local state blocks it: the
+its own (a workload owns nothing).
+
+[[rendered-by]]
+==== The closure is `ClusterFleet.renderedBy` — landed, and NOT yet switched on
+
+The contract is in place and tested (`ClusterFleetTest`): breadth-first from the renderer, itself
+excluded, each level host-local first. Two questions that look alike are kept apart —
+
+[cols="1,2",options="header"]
+|===
+| Method | Question it answers
+
+| `ownedBy`
+| whose machines do I DRIVE? ONE level, because a plane's CAPI reaches only its own children's Incus
+  engine. Unchanged, and still what the CR-emitting units ask.
+
+| `renderedBy`
+| whose branch do I WRITE? The CLOSURE, because writing a branch needs no reachability — it is a git
+  push.
+|===
+
+⚠️ The call site still walks ONE level, deliberately. Switching it alone would MISPLACE material:
+every carved bootstrap bundle is handed to the MANAGING pass, so a grandchild's bundle would render
+`<grandchild>-server-manifests` onto the ROOT's branch instead of its adopter's — a CA private key on
+a cluster with no use for it. Two pieces must land together with the switch:
+
+. passes ordered DEEPEST-FIRST, so a child's bundle exists before its adopter's pass runs;
+. each bundle routed to the pass of the cluster that ADOPTS it, which is "material follows the
+  adopter" restated correctly — the material's PLACEMENT follows the adopter, whoever renders it.
+
+★ And one property is recorded as a test because asserting its opposite is the tempting mistake, made
+here first: the closures OVERLAP. `nikopol-wrkld` is in the root's and in `nikopol-mgmt`'s, and
+`manifests/nikopol-mgmt` already has two writers today (the root as a child pass, nikopol as its own
+managing pass). That is not a collision to remove — it is the uniform view, and DETERMINISM is what
+makes it safe, not exclusivity. ✅ Verified 2026-09-30 that no host-local state blocks it: the
 child pass already receives the PARENT's `ImageState` (`facet.image()`), and `recordedImage` replays
 the one the last grow graved at HEAD — and `ImageState` is a CONTENT identity (`imageFingerprint`,
 `rke2Version`), the same on every Incus member, not a location.

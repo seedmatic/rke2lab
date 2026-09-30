@@ -31,6 +31,83 @@ class ClusterFleetTest {
   }
 
   @Test
+  void the_root_RENDERS_the_whole_closure_including_the_grandchild_one_level_missed() {
+    // The defect this closure fixes, stated as the test: `ownedBy` stops at nikopol-mgmt, so
+    // nikopol-wrkld's branch was NEVER produced — its bootstrap bundle never carved, its
+    // control-node pool waiting on a Secret nobody would write. Breadth-first from the root, each
+    // level host-local first, so the order is stable across runs.
+    assertEquals(
+        List.of("bioskop-wrkld", "nikopol-mgmt", "nikopol-wrkld"),
+        names(FLEET.renderedBy("bioskop-mgmt")));
+  }
+
+  @Test
+  void a_sub_plane_renders_only_below_itself_so_the_recursion_does_not_climb() {
+    // The closure must not become "everything". A sub-plane writes its own child's branch and
+    // nothing above or beside it — otherwise two planes would write the same branch.
+    assertEquals(List.of("nikopol-wrkld"), names(FLEET.renderedBy("nikopol-mgmt")));
+  }
+
+  @Test
+  void a_render_never_includes_ITSELF_whatever_the_position() {
+    // The renderer's own branch is the managing pass, not a child pass. Including itself would make
+    // it render its own tree twice, the second time as a target.
+    for (final String plane : List.of("bioskop-mgmt", "nikopol-mgmt", "bioskop-wrkld")) {
+      assertTrue(
+          names(FLEET.renderedBy(plane)).stream().noneMatch(plane::equals),
+          plane + " must not be among the branches it writes");
+    }
+  }
+
+  @Test
+  void no_cluster_but_the_root_is_ORPHANED_and_the_root_alone_covers_the_whole_fleet() {
+    // The invariant that matters is COVERAGE, not exclusivity. Every non-root cluster must be
+    // written
+    // by at least one plane — an orphan is a branch that never exists, which is the defect the
+    // closure
+    // fixes — and the root's own closure must cover all of them, because the root is the position
+    // that
+    // is always up.
+    final List<String> everyNonRoot =
+        FLEET.all().stream()
+            .map(ClusterCoordinate::clusterName)
+            .filter(name -> !name.equals("bioskop-mgmt"))
+            .sorted()
+            .toList();
+    assertEquals(
+        everyNonRoot,
+        names(FLEET.renderedBy("bioskop-mgmt")).stream().sorted().toList(),
+        "the root writes every branch but its own");
+  }
+
+  @Test
+  void the_closures_OVERLAP_and_that_is_the_design_not_a_defect() {
+    // ⚠️ Recorded as a test because asserting the opposite is the tempting mistake — it was made
+    // here
+    // first. nikopol-wrkld is in the root's closure AND in nikopol-mgmt's, so if both planes
+    // render,
+    // both write that branch. Worse, manifests/nikopol-mgmt already has two writers today: the root
+    // writes it as a child pass, nikopol writes it as its own managing pass.
+    //
+    // That is not a collision to remove — it is the uniform federation view, and what makes it safe
+    // is
+    // that the render is DETERMINISTIC, so the two copies agree by construction rather than by luck
+    // (ManifestSynthesisScenario states this invariant on the child facet). What it does require is
+    // that a redundant write be a NO-OP rather than a rewrite, which is why the material seal's
+    // locality is the open question for a fully redundant render — not the closure.
+    assertTrue(
+        names(FLEET.renderedBy("bioskop-mgmt")).contains("nikopol-wrkld")
+            && names(FLEET.renderedBy("nikopol-mgmt")).contains("nikopol-wrkld"),
+        "nikopol-wrkld is in both closures — determinism, not exclusivity, is what makes that safe");
+  }
+
+  @Test
+  void a_workload_renders_nothing_so_the_closure_terminates_on_its_own() {
+    assertTrue(FLEET.renderedBy("bioskop-wrkld").isEmpty());
+    assertTrue(FLEET.renderedBy("nikopol-wrkld").isEmpty());
+  }
+
+  @Test
   void a_sub_plane_owns_its_OWN_host_s_workload_and_nothing_across_a_host() {
     // The un-sterilisation: this used to be an empty list, which is why manifests/nikopol-mgmt was
     // structurally childless. And decisively it does NOT contain bioskop-mgmt — a sub-plane must

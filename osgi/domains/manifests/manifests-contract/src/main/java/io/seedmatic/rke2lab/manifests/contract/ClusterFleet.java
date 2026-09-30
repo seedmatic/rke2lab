@@ -1,7 +1,11 @@
 package io.seedmatic.rke2lab.manifests.contract;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * The fleet, derived from the ONE thing the operator declares — the Incus hosts:
@@ -76,23 +80,6 @@ public record ClusterFleet(
   }
 
   /**
-   * The cluster that ADOPTS {@code cluster} — its single adopter, stated on the rendered {@code
-   * ClusterIntention.spec.adoptedBy} so every plane can carry the SAME federation view and derive
-   * its ROLE from its POSITION in it.
-   *
-   * <ul>
-   *   <li>a workload names its own host's plane — {@code adopter(<host>-wrkld) = <host>-mgmt}
-   *   <li>a management plane names the ROOT, which births sub-planes
-   *   <li>the ROOT names ITSELF: having no parent, it is the one cluster that self-adopts
-   * </ul>
-   *
-   * <p>★ The root is not a special case in the READER: a plane acts on an intention iff {@code
-   * adoptedBy} equals its own name, and for the root that happens to be its own intention. One
-   * comparison, and the "exactly ONE adopter per cluster" invariant becomes checkable instead of
-   * implied — it used to hold only because a sub-plane recognised its own NAME, which handed that
-   * cluster two adopters (its parent and itself).
-   */
-  /**
    * EVERY cluster the fleet declares — each host crossed with each role, host-local first so a
    * render is deterministic.
    *
@@ -115,6 +102,23 @@ public record ClusterFleet(
     return List.copyOf(every);
   }
 
+  /**
+   * The cluster that ADOPTS {@code cluster} — its single adopter, stated on the rendered {@code
+   * ClusterIntention.spec.adoptedBy} so every plane can carry the SAME federation view and derive
+   * its ROLE from its POSITION in it.
+   *
+   * <ul>
+   *   <li>a workload names its own host's plane — {@code adopter(<host>-wrkld) = <host>-mgmt}
+   *   <li>a management plane names the ROOT, which births sub-planes
+   *   <li>the ROOT names ITSELF: having no parent, it is the one cluster that self-adopts
+   * </ul>
+   *
+   * <p>★ The root is not a special case in the READER: a plane acts on an intention iff {@code
+   * adoptedBy} equals its own name, and for the root that happens to be its own intention. One
+   * comparison, and the "exactly ONE adopter per cluster" invariant becomes checkable instead of
+   * implied — it used to hold only because a sub-plane recognised its own NAME, which handed that
+   * cluster two adopters (its parent and itself).
+   */
   public String adopterOf(final String cluster) {
     final ClusterCoordinate target = ClusterCoordinate.ofClusterName(cluster);
     if (!incusTargets.contains(target.host())) {
@@ -164,5 +168,56 @@ public record ClusterFleet(
           .forEach(owned::add);
     }
     return List.copyOf(owned);
+  }
+
+  /**
+   * Every cluster whose BRANCH the plane rendering {@code renderingCluster} produces — the
+   * TRANSITIVE closure of {@link #ownedBy}, itself excluded.
+   *
+   * <p>★ Do not confuse this with {@link #ownedBy}. They answer two different questions and both
+   * are needed:
+   *
+   * <ul>
+   *   <li>{@code ownedBy} — whose machines do I DRIVE? One level, because a plane's CAPI reaches
+   *       only its own children's Incus engine.
+   *   <li>{@code renderedBy} — whose branch do I WRITE? The closure, because writing a branch needs
+   *       no reachability at all: it is a git push.
+   * </ul>
+   *
+   * <p>Conflating them is what left {@code <host>-wrkld} of a SUB-plane undeclarable: the render
+   * walked one level, so the grandchild's branch was never produced, its bootstrap bundle never
+   * carved, and its control-node pool waited on a Secret nobody would ever write.
+   *
+   * <h2>Why the closure, and not a trigger that makes each plane render its own</h2>
+   *
+   * <p>Because a plane coming back online must NOT catch up. A sub-plane on an itinerant host is
+   * offline part of the time; telling it "you are behind, render now" orders the heaviest and most
+   * fragile act — clone, reactor build, cold nix store — at its most fragile moment, and a render
+   * is how material gets minted. With the closure its branch is already current, written in its
+   * absence, so return-to-service is a pure apply and a returning plane holds no declarative
+   * authority to misuse. That is the same lesson as a {@code pet} pool never greenfielding from an
+   * inconclusive read: on return, ABSENT and CANNOT-TELL-YET look alike.
+   *
+   * <p>Ordered breadth-first from the renderer, each level host-local first, so a render is
+   * deterministic across runs. Terminates without a visited-set argument — the adopter relation is
+   * a tree (exactly one adopter per cluster, the root excepted, and {@code ownedBy} never returns
+   * the renderer) — but keeps one anyway, so a future topology that is not a tree degrades into a
+   * duplicate-free list instead of looping for ever.
+   */
+  public List<ClusterCoordinate> renderedBy(final String renderingCluster) {
+    final List<ClusterCoordinate> ordered = new ArrayList<>();
+    final Set<String> seen = new LinkedHashSet<>();
+    seen.add(ClusterCoordinate.ofClusterName(renderingCluster).clusterName());
+    final Deque<String> frontier = new ArrayDeque<>();
+    frontier.add(renderingCluster);
+    while (!frontier.isEmpty()) {
+      for (final ClusterCoordinate child : ownedBy(frontier.removeFirst())) {
+        if (seen.add(child.clusterName())) {
+          ordered.add(child);
+          frontier.addLast(child.clusterName());
+        }
+      }
+    }
+    return List.copyOf(ordered);
   }
 }

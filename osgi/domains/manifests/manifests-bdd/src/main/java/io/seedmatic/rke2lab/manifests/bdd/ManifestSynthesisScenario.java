@@ -980,11 +980,19 @@ public class ManifestSynthesisScenario
    * idempotent, so a re-run starts clean while the last render stays inspectable on disk.
    */
   /**
-   * The children this render OWNS, derived from the declared fleet by the owner rule — the filter
-   * that replaced an unconditional loop over every declared target. Empty when no fleet is declared
-   * (a bare survey / the standalone CLI) or when the render has no identity: a pass that does not
-   * know WHICH cluster it renders for cannot know what that cluster owns, and answering "all of
-   * them" there is precisely the viewpoint error the derivation removes.
+   * The children this render writes a branch for — ONE level of the owner rule today, and the
+   * TRANSITIVE closure ({@link ClusterFleet#renderedBy}) once material routing lands.
+   *
+   * <p>★ The two questions are not the same. Writing a branch needs no reachability — it is a git
+   * push — where DRIVING a cluster's machines does, and that is what {@code ownedBy} answers for
+   * the CR-emitting units. Conflating them is what leaves a sub-plane's workload undeclarable: the
+   * walk stops one level short, so {@code nikopol-wrkld}'s branch is never produced, its bootstrap
+   * bundle never carved, and its control-node pool waits for a Secret nobody writes.
+   *
+   * <p>Empty when no fleet is declared (a bare survey / the standalone CLI) or when the render has
+   * no identity: a pass that does not know WHICH cluster it renders for cannot know what that
+   * cluster owns, and answering "all of them" there is precisely the viewpoint error the derivation
+   * removes.
    */
   private static List<ClusterCoordinate> ownedChildren(final ManifestsRunbookInput effective) {
     final Optional<ClusterFleet> fleet = effective.facets().clusterFleet();
@@ -1001,6 +1009,14 @@ public class ManifestSynthesisScenario
       ManifestsRunbookInput effective,
       Optional<LinkedWorktree> rendered,
       Optional<Delivery> delivery) {
+    // ⚠️ STILL one level, deliberately. {@link ClusterFleet#renderedBy} is the closure this is
+    // moving
+    // to, and its contract is landed + tested — but switching here ALONE would misplace material:
+    // every
+    // carved bootstrap bundle is handed to the MANAGING pass, so a grandchild's bundle would render
+    // `<grandchild>-server-manifests` onto the ROOT's branch instead of its adopter's, putting a CA
+    // private key on a cluster that has no use for it. Two pieces must land with the switch: passes
+    // ordered deepest-first, and each bundle routed to the pass of the cluster that ADOPTS it.
     final List<ClusterCoordinate> children = ownedChildren(effective);
     if (rendered.isEmpty() || delivery.isEmpty() || children.isEmpty()) {
       return List.of();
