@@ -170,7 +170,7 @@ public final class ClusterApiManagementManifestsUnit extends AbstractManifestsUn
                 blueprint.vmnetBridgeName())
             .toCapnSpecs(),
         pets,
-        blueprint.names().nixosHost(),
+        blueprint.names().incusMember(),
         adoptedBy,
         packageProfile,
         clusterIntention);

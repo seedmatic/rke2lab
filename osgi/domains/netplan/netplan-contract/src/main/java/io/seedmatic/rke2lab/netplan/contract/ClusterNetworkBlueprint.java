@@ -361,6 +361,19 @@ public record ClusterNetworkBlueprint(
             // cluster). The operator-facing authority is config's rke2lab:cluster:remoteIncus; this
             // is the netplan-domain mirror derived from the same bare host.
             hostOf(clusterName) + "-nixos",
+            // The INCUS CLUSTER MEMBER — the bare host, WITHOUT the -nixos suffix. A pool's
+            // `spec.target` states this for placement, and `incusTargets` lists exactly these.
+            //
+            // ★ Split out of nixosHost rather than renamed, because that one field was serving TWO
+            // concepts: the NixOS HOSTNAME (which systemd/dbus resolve to reach the host, and which
+            // must KEEP its suffix — `nikopol` is already the name of the RDP host, a different
+            // machine) and the incus MEMBER name. `incus cluster rename` makes a member's name
+            // independent of the OS hostname, which is what allows the two to differ at all.
+            //
+            // ⚠️ Ordering: the live members must be renamed BEFORE a render states this, or
+            // `target:`
+            // names a member that does not exist and placement fails.
+            hostOf(clusterName),
             // Same zone as nodeFabricFqdn above — the bare-metal's OWN dnsmasq serves both, so the
             // infra host and its instances answer from one authority.
             "nixos." + hostOf(clusterName),
@@ -701,6 +714,7 @@ public record ClusterNetworkBlueprint(
       String nodeHostname,
       String nodeFabricFqdn,
       String nixosHost,
+      String incusMember,
       String nixosFabricFqdn,
       String vipFabricFqdn) {}
 

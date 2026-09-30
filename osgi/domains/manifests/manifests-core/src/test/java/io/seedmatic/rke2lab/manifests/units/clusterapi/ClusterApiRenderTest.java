@@ -247,6 +247,34 @@ class ClusterApiRenderTest {
   }
 
   @Test
+  void requireThePoolTargetsTheBareIncusMemberNotTheNixosHostname(@TempDir Path outdir) {
+    final List<Map<String, Object>> documents = render(outdir, clusterApiUnits());
+
+    // ★ `spec.target` names the incus CLUSTER MEMBER, which is the bare host — NOT the NixOS
+    // hostname. The two were one field (`nixosHost`) serving two concepts, and they must differ:
+    // the hostname keeps its `-nixos` suffix because `nikopol` is already the name of the RDP host,
+    // a DIFFERENT machine, while the member drops it. `incus cluster rename` is what makes a
+    // member's name independent of the OS hostname.
+    for (final Map<String, Object> doc : documents) {
+      if (!"PoolIntention".equals(kindOf(doc))) {
+        continue;
+      }
+      @SuppressWarnings("unchecked")
+      final Map<String, Object> spec = (Map<String, Object>) doc.get("spec");
+      final String target = String.valueOf(spec.get("target"));
+      final String cluster = String.valueOf(spec.get("clusterRef"));
+      final String expected = cluster.substring(0, cluster.lastIndexOf('-'));
+      assertEquals(
+          expected,
+          target,
+          "the pool of " + cluster + " must target the bare incus member, not a -nixos hostname");
+      assertFalse(
+          target.endsWith("-nixos"),
+          "the target must NOT carry the NixOS hostname suffix: " + target);
+    }
+  }
+
+  @Test
   void requireEveryIntentionPointsAtTheRENDERERsOwnIncusEndpoint(@TempDir Path outdir) {
     final List<Map<String, Object>> documents = render(outdir, clusterApiUnits());
 
