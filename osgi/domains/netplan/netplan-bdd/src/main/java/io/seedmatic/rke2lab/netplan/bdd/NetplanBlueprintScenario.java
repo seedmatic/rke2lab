@@ -23,11 +23,13 @@ import java.net.InetAddress;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -344,7 +346,8 @@ public class NetplanBlueprintScenario
               allAddressing,
               segments,
               asns,
-              ClusterNetworkBlueprint.HOST_IDS);
+              ClusterNetworkBlueprint.HOST_IDS,
+              hostFactsFor(ClusterNetworkBlueprint.HOST_IDS.keySet()));
       return self();
     }
 
@@ -421,7 +424,56 @@ public class NetplanBlueprintScenario
       Map<String, Map<String, NodeAddressing>> addressing,
       List<Segment> segments,
       Map<String, String> asns,
-      Map<String, Integer> hosts) {}
+      Map<String, Integer> hosts,
+      Map<String, HostFacts> hostFacts) {}
+
+  /**
+   * The per-bare-metal facts rke2lab OWNS and ndh needs — chiefly to build the Incus listener
+   * cert's SAN set, which today names only `<host>-nixos` and loopback while every consumer dials
+   * `nixos.<host>` (see the seeding spec § incus-listener-cert).
+   *
+   * <p>★ ONLY the two names rke2lab is the authority for: the {@code <host>-nixos} hostname
+   * convention and the split-horizon {@code nixos.<host>} FQDN. Deliberately NOT here:
+   *
+   * <ul>
+   *   <li>the {@code .lan}, {@code .local} and tailnet forms — ndh's {@code catalog.netplan} owns
+   *       those three domains, and concatenating them here would duplicate an authority instead of
+   *       consuming it;
+   *   <li>the interface ADDRESSES — ndh configures vmnet, fabric-br and lan-br, so it knows them
+   *       first-hand. Re-deriving them here to hand them back would invert the ownership.
+   * </ul>
+   *
+   * <p>Beside {@code hosts} rather than folded into it: {@code hosts} is the ID ALLOCATION that
+   * {@code clusterId = (host<<1)|role} consumes — an INPUT — while these are DERIVED. And the
+   * export comment above requires the existing JSON keys to stay byte-identical.
+   */
+  record HostFacts(String hostname, String fabricFqdn) {}
+
+  /**
+   * The host-level names, derived once per bare-metal. Any of a host's clusters yields them, since
+   * both forms are built from the HOST segment of {@code <host>-<role>} — so this reads them off
+   * the mgmt blueprint rather than re-concatenating strings, keeping
+   * ClusterNetworkBlueprint.NamePlan the single source.
+   */
+  private static Map<String, HostFacts> hostFactsFor(final Set<String> hosts) {
+    final Map<String, HostFacts> facts = new LinkedHashMap<>();
+    for (final String host : hosts) {
+      final ClusterNetworkBlueprint.NamePlan names =
+          ClusterNetworkBlueprint.builder()
+              .cluster(host + "-" + ClusterRole.MGMT.token())
+              .node("master")
+              .deriveRecipeModel()
+              .build()
+              .names();
+      facts.put(host, new HostFacts(names.nixosHost(), names.nixosFabricFqdn()));
+    }
+    // Insertion order KEPT, not Map.copyOf: this lands in a COMMITTED artifact, and an unordered
+    // map
+    // would let two regenerations differ, which the anti-drift gate would then report as staleness.
+    // HOST_IDS is itself order-preserving (derived from the declared host list), so the export is
+    // deterministic end to end.
+    return Collections.unmodifiableMap(facts);
+  }
 
   /**
    * A network span the cluster owns — uniform with ndh's baremetal segments: the attribution triple

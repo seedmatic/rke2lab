@@ -636,5 +636,19 @@
     "bioskop": 0,
     "nikopol": 1,
     "test": 2
+  },
+  "hostFacts": {
+    "bioskop": {
+      "hostname": "bioskop-nixos",
+      "fabricFqdn": "nixos.bioskop"
+    },
+    "nikopol": {
+      "hostname": "nikopol-nixos",
+      "fabricFqdn": "nixos.nikopol"
+    },
+    "test": {
+      "hostname": "test-nixos",
+      "fabricFqdn": "nixos.test"
+    }
   }
 }
