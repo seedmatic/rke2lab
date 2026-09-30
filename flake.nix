@@ -1279,6 +1279,7 @@ USAGE
 
           baseline=$(evalmap)
           do_catalogue=0
+          env_targets=()
           for t in "''${targets[@]}"; do
             case $t in
               plans)    echo "== plans =="   ; regen_artifact regen-dataplan  dataplan.json          plans   || true ; echo ;;
@@ -1287,16 +1288,15 @@ USAGE
                 echo "== inputs =="
                 while read -r i; do relock_input "$i" || true; done < <(all_inputs)
                 echo ;;
-              envs)
-                echo "== flox envs (own branch: flox-catalogue) =="
-                ( cd "$CAT" && nix run .#lock-envs )
-                do_catalogue=1
-                echo ;;
-              envs:*)
-                echo "== flox env ''${t#envs:} (own branch: flox-catalogue) =="
-                ( cd "$CAT" && nix run .#lock-envs -- "''${t#envs:}" )
-                do_catalogue=1
-                echo ;;
+              # ⚠️ The env locks are NOT taken here. They resolve `path:../../..#<attr>` against the
+              # CATALOGUE's flake, so locking before its rke2lab pin moves records the OLD derivation
+              # and then reports "unchanged (churn dropped)" — a sincere answer to a question asked too
+              # early. Measured 2026-09-30: cluster-api/seed-incluster reported unchanged, the pin then
+              # advanced, and the env kept pinning the previous controller binary, so the node would
+              # never have realised it. Re-locking the SAME env after the bump reported BUMPED and the
+              # drv changed. So the targets only RECORD what to lock; the catalogue hop does it, after.
+              envs) env_targets+=("") ; do_catalogue=1 ;;
+              envs:*) env_targets+=("''${t#envs:}") ; do_catalogue=1 ;;
               catalogue) do_catalogue=1 ;;
               *)
                 if all_inputs | grep -qx -- "$t"; then
@@ -1331,6 +1331,16 @@ USAGE
             else
               echo "  already pinning rke2lab ''${rke_after:0:9}"
             fi
+            # NOW the envs, with the pin already moved — see the note at the env targets above.
+            # lock-envs applies the same guard one level down: it re-locks and commits only real
+            # derivation bumps, dropping locked-url churn.
+            for e in "''${env_targets[@]}"; do
+              if [ -z "$e" ]; then
+                ( cd "$CAT" && nix run .#lock-envs )
+              else
+                ( cd "$CAT" && nix run .#lock-envs -- "$e" )
+              fi
+            done
             # ASSERT the landing rather than trust the bump report: a lagging push, a stale
             # --refresh cache or a catalogue tracking another branch all end here quietly on a rev
             # that is not what this run built. The point is to make ONE revision travel — prove it.
