@@ -66,6 +66,12 @@ config:
     incusTargets:
       - bioskop
       - nikopol
+    # The control-plane shape every WORKLOAD cluster takes. A WORD, not a number: `ha` is THREE
+    # because three is the smallest etcd quorum that survives losing one — two would be strictly
+    # worse than one (both members needed for quorum, so double the failure surface for no gain) and
+    # four buys nothing over three. A MANAGEMENT cluster is not configurable: it is one control node
+    # by construction. Absent = ha, which is what the hardcoded constant did.
+    workloadControlPlane: single # single | ha
   rke2lab:policy:
     network:
       lan:
