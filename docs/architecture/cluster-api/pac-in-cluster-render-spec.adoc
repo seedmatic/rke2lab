@@ -838,6 +838,219 @@ is a literal that must be maintained — and on 2026-09-28 it was found still na
 same fact is encoded a second time as ndh's `rke2lab` flake input URL and had rotted identically;
 when this branch is superseded, both move together.
 
+[[webhook-delivery]]
+== Fleet render delivery — a RECONCILER in the root, not a webhook per cluster (📐 decided 2026-09-30)
+
+A sub-plane on an ITINERANT host cannot be a webhook destination. This section records the
+measurement that proved it, and the shape decided instead.
+
+=== The measurement
+
+`nikopol-mgmt` had no `PipelineRun` at all, while GitHub reported a successful delivery — and every
+component on the cluster was healthy, which is what made it confusing:
+
+[cols="2,3",options="header"]
+|===
+| Checked | Found
+
+| the successful delivery
+| it targeted `nikopol-mgmt-flux-webhook`, the **Flux** receiver. A Flux receiver reconciles a
+  `GitRepository`; it never creates a `PipelineRun`. Right door for Flux, wrong door for a render.
+
+| PaC on the sub-plane
+| controller + watcher + webhook all `Running`
+
+| its `Repository` CR
+| correct — `cluster=nikopol-mgmt`, `pipelinerun_provenance: source`
+
+| its funnel `nikopol-mgmt-pipelines-webhook`
+| **up and public** — HTTP 200, TLS verified
+
+| its PaC controller log
+| **silent since start** — no event had EVER reached it
+|===
+
+The cause is structural: **a GitHub App has exactly ONE webhook URL**, and `GithubAppCli` builds it
+as `PacWebhookFunnel(DEFAULT_CLUSTER, DEFAULT_TAILNET)` — the ROOT's funnel, by construction. The
+four repository-level webhooks that did exist all targeted `*-flux-webhook`, one per cluster, and
+were provisioned BY HAND. The sub-plane's PaC funnel was built, certificated, and wired to nothing.
+
+=== The asymmetry between the two doors
+
+This sets how much each door is worth defending, and it is the fact to remember:
+
+[cols="1,2,2",options="header"]
+|===
+| Door | What the webhook is for | If an event is lost
+
+| Flux receiver
+| an ACCELERATOR — the real driver is `spec.interval` (measured `10m` on both `GitRepository`
+  objects)
+| ≤ one interval of latency. **Nothing is lost** — the poll converges.
+
+| PaC
+| the **only** trigger. No interval, no poll, nothing to catch up
+| the render **never happens**, permanently.
+|===
+
+⚠️ And GitHub does **not** retry a failed webhook delivery — it is fire-and-forget (hence the manual
+*Redeliver* button). Repeated failures also risk GitHub disabling the hook. So pointing a webhook
+straight at a host that is offline part of the time silently loses renders, and that is why the
+obvious wiring — one repo webhook per cluster — is REJECTED here rather than adopted.
+
+=== The decided shape — the PARENT reconciles its sub-planes' render freshness
+
+Not a proxy, and in the end not a relay either: a reconciler of the same shape as every other
+controller here — desired state, observed state, an action that closes the gap.
+
+[cols="1,3",options="header"]
+|===
+| | 
+
+| DESIRED
+| every sub-plane's branch is rendered at the source branch HEAD
+
+| OBSERVED
+| each `manifests/<cluster>` branch records the facet that produced it, including `source.sha` and
+  `dirty` (<<render-config>>). Verified 2026-09-30: both branches at `9ccd89923`, `dirty: false`,
+  equal to the source head — an in-sync fleet makes the loop do nothing.
+
+| ACTION
+| trigger that plane's render — a POST to its PaC funnel
+
+| TRIGGER
+| the source head CHANGING. Which is the same git read as the observation, so there is nothing to
+  forward
+|===
+
+★ That last row is what collapsed an earlier draft of this section. Framed as "replicate the webhook
+event", the design needed an HTTP server, a second public funnel door for it, verbatim signature
+forwarding, and a durable retry queue. Framed as "the source head changed" — a fact already read to
+detect staleness — all four disappear. The webhook is not a thing to relay; it is an optimisation the
+interval already provides.
+
+[mermaid,pac-fleet-render-reconciler,svg]
+----
+flowchart TB
+  GH[("git — seedmatic/rke2lab<br/>source HEAD + one branch per plane")]
+
+  subgraph PARENT["the PARENT plane — always reachable"]
+    REC["seed-incluster<br/>reconciles its children's branches<br/>STATELESS"]
+  end
+
+  subgraph SUB["a SUB-plane — itinerant, may be offline"]
+    PACS["PaC — renders its own branch"]
+  end
+
+  GH -.->|"observe: source HEAD"| REC
+  GH -.->|"observe: each child's source.sha"| REC
+  REC -->|"behind ? POST to the DERIVED funnel url"| PACS
+  PACS -->|"renders, advances its own source.sha"| GH
+
+  classDef ok fill:#e6f4ea,stroke:#137333,color:#111
+  classDef rec fill:#e8f0fe,stroke:#1a73e8,color:#111
+  classDef obs fill:#f3e8fd,stroke:#8430ce,color:#111
+  class PACS ok
+  class REC rec
+  class GH obs
+  style PARENT fill:#f7fdf9,stroke:#137333,stroke-dasharray:4
+  style SUB fill:#fffdf5,stroke:#f9ab00,stroke-dasharray:4
+----
+
+=== The SCOPE is the hierarchy — `ownedBy` filtered to the planes
+
+A parent reconciles exactly the children that RENDER, which is the children that are planes:
+
+[source,text]
+----
+ownedBy(bioskop-mgmt) = [bioskop-wrkld (WRKLD), nikopol-mgmt (MGMT)]  -> filter MGMT -> [nikopol-mgmt]
+ownedBy(nikopol-mgmt) = [nikopol-wrkld (WRKLD)]                       -> filter MGMT -> []
+----
+
+A workload child drops out by ROLE, needing no special case: it runs no PaC and owns no branch of
+intentions. The recursion terminates on its own and generalises to N tiers — each plane pokes only
+the sub-planes it birthed, the same hierarchy as adoption.
+
+=== Where it lives — `seed-incluster`, because it already IS this relation
+
+[cols="1,3",options="header"]
+|===
+| Reason | 
+
+| the responsibility is ALREADY there
+| `PoolReflection` is the parent writing into its CHILD's branch what it observes of that child.
+  Render freshness is the parent ensuring its child's branch is CURRENT. Same responsibility, other
+  artifact — not a CI/CD concern bolted onto a CAPI controller.
+
+| the plumbing is already there
+| `reflector_git.go` drives go-git at BOTH ends (clone + commit) against these very branches, with
+  the `contents:write` App token already mounted.
+
+| the loop is already there
+| a controller-runtime reconciler, with the parent/child relation as its subject.
+
+| the fan-out needs no config
+| every door is `https://<cluster>-<leaf>.<tailnet>` — `Funnel.hostname()` is `<cluster>-<leaf>` and
+  `FunnelLeaf` holds exactly `pipelines-webhook` and `flux-webhook`. Crossed with the declared fleet
+  (`ClusterFleet`, see `cluster-seeding-controller.adoc` § `cluster-set-derives-from-hosts`), the
+  target list is a pure derivation. ★ A dividend of the fleet becoming declared.
+|===
+
+Stateless by construction: a failed POST is retried by the next pass, so the loop IS the durability
+and git stays the only state. And the loop terminates because a successful render always rewrites
+`manifest.yaml` — the recorded `source.sha` is IN it — so the observed state always advances and a
+no-change render cannot leave a plane looking permanently behind. (The sha is redundantly in the
+branch's HEAD commit message, `render <cluster> manifests @ <sha>`, the cheaper read.)
+
+⚠️ `dirty: true` must NOT count as in sync, or a local render from an uncommitted tree would suppress
+the real one.
+
+=== What this DELETES
+
+Worth more for what it removes than for what it adds:
+
+* **The four hand-provisioned Flux webhooks.** Reached by derivation instead, and Flux's own
+  `interval` already made them accelerators rather than requirements.
+* **`RepoWebhookConfig`, `GithubRepoWebhookConfigurer`, `GithubRepoWebhookConfigurerEdge`** —
+  written, never called, and now never to be. They exist for the per-cluster repo webhook this design
+  rejects; keeping them would be dead code preserved for an abandoned plan.
+* **`administration=write`** in the App's requested permissions (`GithubAppCli`), whose only purpose
+  is managing repo webhooks.
+
+So GitHub keeps exactly ONE webhook — the App's, on the root — and the repo carries no fleet topology
+in its settings.
+
+=== Rejected
+
+❌ **One repository webhook per cluster.** The obvious wiring. GitHub does not retry, so a push
+landing while an itinerant host is away is a render lost for good, with auto-disable as a further
+risk. It also puts fleet topology into GitHub settings where nothing in this repo can see it drift —
+the four hand-made hooks being the proof.
+
+❌ **Replicating the webhook EVENT** (an HTTP relay forwarding verbatim). Needs a server, a second
+public funnel door, and a durable queue, to buy latency the reconcile interval already bounds. See
+the TRIGGER row above.
+
+❌ **A catch-up poller inside each plane.** Splits detection from emission across two hosts and puts
+the fleet view where the fleet is not declared. Detection needs the fleet and a git read; both are
+the parent's.
+
+⏸️ **The root rendering its children's branches outright**, so a sub-plane needs no PaC at all. It
+costs one argument in `ManifestSynthesisScenario` (the child pass receives no fleet today, so it
+renders no grandchild) plus a grandchild render pass to carve the bootstrap bundle —
+`prepareWorkloadPasses` goes one level only, and without that bundle the pool waits. Deferred on
+principle rather than effort: it re-centralises rendering in the root. What a sub-plane keeps either
+way is worth naming — **autonomy of reconciliation** (it reconciles whatever is on its branch while
+cut off); only **autonomy of declaration** differs.
+
+=== Open
+
+* The reconcile interval — a latency-versus-churn trade, not a correctness question: the loop
+  converges at any interval. Bounded below by the shared nix/maven cache PVC each render warms.
+* How the parent AUTHENTICATES its poke to the child's PaC: sign a synthetic push with the shared
+  `webhook.secret` (identical across clusters — measured 2026-09-30, same sha256, and both hold the
+  same App id + private key), or use PaC's `/incoming` endpoint, which exists for external triggers.
+
 == Anti-patterns
 
 * ❌ *Render the PipelineRun via the synthesis.* PaC only matches `.tekton/` in the repo; a rendered
