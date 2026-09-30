@@ -22,5 +22,5 @@ spec:
   kind: management
   namespace: rke2lab-nikopol-mgmt
   remote:
-    endpoint: https://nixos.nikopol:8443
+    endpoint: https://nixos.bioskop:8443
     identitySecretName: nikopol-incus-identity
