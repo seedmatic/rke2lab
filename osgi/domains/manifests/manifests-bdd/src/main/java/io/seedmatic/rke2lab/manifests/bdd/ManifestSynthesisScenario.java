@@ -475,29 +475,39 @@ public class ManifestSynthesisScenario
       ManifestsRunbookInput seeded,
       ManifestsRunbookInput.Facets facets,
       Optional<ImageState> recordedImage) {
+    // ★ Assembled through the BUILDER, by NAME. The positional constructor swapped
+    // rootIncusHost with workloadControlPlane here — both are Optional<String>, so it compiled
+    // silently and the in-cluster render died on `unknown control-plane shape 'bioskop'` (measured
+    // 2026-09-30). Two adjacent same-typed components make a positional call a trap that no
+    // compiler can catch, which is exactly the case the builder discipline exists for.
+    final ManifestsRunbookInput.Facets.Builder merged =
+        ManifestsRunbookInput.Facets.builder()
+            // HEAD wins for debug/incusTargets: they are GROW-recorded coordinates (the CLI's facet
+            // never sets incusTargets — it comes from the grow's Pulumi config). Only `delivery` is
+            // verb-carried, so it is the seeded one.
+            .debug(facets.debug())
+            .delivery(seeded.facets().delivery())
+            .incusTargets(facets.incusTargets());
+    // The three optional coordinates below share ONE rule — HEAD wins, the SOWER is the fallback —
+    // because each was added after branches already existed: a branch recorded before the field
+    // falls back to what the sower declares, and a sower that declares one is never overridden.
+    // Left ABSENT when neither has it, so the record's own default applies rather than a value
+    // invented here.
+    facets
+        .rootIncusHost()
+        .or(() -> seeded.facets().rootIncusHost())
+        .ifPresent(merged::rootIncusHost);
+    facets
+        .workloadControlPlane()
+        .or(() -> seeded.facets().workloadControlPlane())
+        .ifPresent(merged::workloadControlPlane);
+    // The fabric bridge is likewise GROW-recorded. An earlier version took the SEEDED value on the
+    // premise that "a branch does not record it" — true only while the sower was a host. The
+    // in-cluster render has no host to declare it, so recording it is what makes that render
+    // possible at all.
+    facets.network().or(() -> seeded.facets().network()).ifPresent(merged::network);
     return new ManifestsRunbookInput(
-        new ManifestsRunbookInput.Facets(
-            facets.debug(),
-            seeded.facets().delivery(),
-            facets.incusTargets(),
-            // HEAD wins with the SEEDED fallback, same as the two below: the control-plane shape is
-            // a
-            // GROW-recorded declaration, so a branch that has one keeps it and one recorded before
-            // the
-            // field existed falls back to what the sower declares.
-            facets.workloadControlPlane().or(() -> seeded.facets().workloadControlPlane()),
-            // HEAD wins, with the SEEDED value as the fallback — the same shape as the network
-            // below, and for the same reason: a branch recorded before rootIncusHost existed has
-            // none, and the sower (a host grow) does.
-            facets.rootIncusHost().or(() -> seeded.facets().rootIncusHost()),
-            // HEAD wins, exactly as for debug/incusTargets: the fabric bridge is a GROW-recorded
-            // coordinate. The earlier top-level component took the SEEDED value on the premise that
-            // "a branch does not record it" — which held only while the sower was a host. The
-            // in-cluster render has no host to declare it, so recording it is what makes the render
-            // possible at all. Falls back to the SEEDED one so a sower that does declare it is
-            // never
-            // overridden by a branch recorded before the field existed.
-            facets.network().or(() -> seeded.facets().network())),
+        merged.build(),
         seeded.materializationRoot(),
         seeded.identity(),
         seeded.renderMode(),
@@ -1318,19 +1328,21 @@ public class ManifestSynthesisScenario
         // nothing but the group ConfigMap, so nikopol-wrkld could never be declared. The fleet is
         // host-agnostic and the owner rule does the narrowing, so propagating it verbatim is both
         // simpler and correct.
-        recordRenderFacet(
-            root,
-            new ManifestsRunbookInput.Facets(
-                facet.facets().debug(),
-                facet.facets().delivery(),
-                facet.facets().incusTargets(),
-                facet.facets().rootIncusHost(),
-                facet.facets().workloadControlPlane(),
-                // The network rides along: a CHILD branch renders in-cluster too, and its own
-                // render has no host to declare the fabric parent either. Dropping it here would
-                // leave exactly the hole that broke the manager's render, one branch further down.
-                facet.network()),
-            facet.image());
+        // Through the BUILDER, like the merge in withDebug — the two sites that assemble a Facets
+        // must not stand in two different forms, or the positional trap that swapped
+        // rootIncusHost/workloadControlPlane there survives here for the next reader.
+        final ManifestsRunbookInput.Facets.Builder childFacets =
+            ManifestsRunbookInput.Facets.builder()
+                .debug(facet.facets().debug())
+                .delivery(facet.facets().delivery())
+                .incusTargets(facet.facets().incusTargets());
+        facet.facets().rootIncusHost().ifPresent(childFacets::rootIncusHost);
+        facet.facets().workloadControlPlane().ifPresent(childFacets::workloadControlPlane);
+        // The network rides along: a CHILD branch renders in-cluster too, and its own render has no
+        // host to declare the fabric parent either. Dropping it here would leave exactly the hole
+        // that broke the manager's render, one branch further down.
+        facet.network().ifPresent(childFacets::network);
+        recordRenderFacet(root, childFacets.build(), facet.image());
         recordSopsPolicy(root);
         recordInstallConfigFlake(root);
         pass.delivery().seal(pass.worktree());
