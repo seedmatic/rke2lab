@@ -1219,6 +1219,7 @@ USAGE
               echo "already current"
             else
               git -C "$RKE" commit -q -m "chore($3): regen $2" -- "$2"
+              committed=1
               echo "REGENERATED — $2 was stale"
             fi
           }
@@ -1243,6 +1244,7 @@ USAGE
             else
               git -C "$RKE" commit -q -m "chore(flake): relock $1" -- flake.lock
               baseline=$after
+              committed=1
               echo "BUMPED — derivations moved"
             fi
           }
@@ -1280,6 +1282,7 @@ USAGE
           baseline=$(evalmap)
           do_catalogue=0
           env_targets=()
+          committed=0
           for t in "''${targets[@]}"; do
             case $t in
               plans)    echo "== plans =="   ; regen_artifact regen-dataplan  dataplan.json          plans   || true ; echo ;;
@@ -1295,6 +1298,13 @@ USAGE
               # advanced, and the env kept pinning the previous controller binary, so the node would
               # never have realised it. Re-locking the SAME env after the bump reported BUMPED and the
               # drv changed. So the targets only RECORD what to lock; the catalogue hop does it, after.
+              # Naming an env is for a SURGICAL act only. Normally you do not: any change committed to
+              # rke2lab implies the catalogue must be re-pinned and the envs re-locked, because the
+              # envs resolve `path:../../..#<attr>` THROUGH the catalogue's flake. Requiring the
+              # operator to pair `relock seed-incluster envs:cluster-api/seed-incluster` made them
+              # supply a dependency relation they should not have to know — and let them name the
+              # wrong env, or forget it. The derivation guard drops the envs that did not move, so
+              # re-locking all of them is both cheap and correct.
               envs) env_targets+=("") ; do_catalogue=1 ;;
               envs:*) env_targets+=("''${t#envs:}") ; do_catalogue=1 ;;
               catalogue) do_catalogue=1 ;;
@@ -1309,6 +1319,17 @@ USAGE
                 fi ;;
             esac
           done
+
+          # Anything committed here must TRAVEL: the catalogue pins rke2lab and the envs resolve
+          # through it, so a change that stops at this repo is a change the nodes never see. The
+          # operator therefore never has to pair a target with its env — see the note at the env
+          # targets.
+          if [ "$committed" = 1 ] && [ "$do_catalogue" = 0 ]; then
+            do_catalogue=1
+            env_targets=("")
+            echo "  (committed here ⇒ re-pinning the catalogue and re-locking every env)"
+            echo
+          fi
 
           # Push whatever the artifacts did. The catalogue hop resolves
           # github:seedmatic/rke2lab/<branch> and therefore pins what the REMOTE answers, not this
