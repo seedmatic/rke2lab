@@ -34,6 +34,26 @@ type ClusterIntentionSpec struct {
 
 	// Remote is the target Incus engine for THIS cluster's nodes (endpoint + identity Secret).
 	Remote Remote `json:"remote"`
+
+	// AdoptedBy names the management cluster that ADOPTS this one — its single adopter. The root
+	// names ITSELF (it has no parent); every other cluster names its parent plane.
+	//
+	// ★ This exists so every plane can carry the SAME federation view and derive its ROLE from its
+	// POSITION in it, rather than each being handed a pruned model. A plane acts on an intention iff
+	// `AdoptedBy == SELF_CLUSTER_NAME` — one comparison that covers the root's self-adoption and a
+	// parent's adoption of its children with no special case, and that makes the "exactly ONE
+	// adopter per cluster" invariant CHECKABLE instead of implied.
+	//
+	// ⚠️ Before this field, a sub-plane adopted itself BECAUSE it recognised its own name — so
+	// `nikopol-mgmt` had two adopters (its parent and itself), against the documented model, and the
+	// two raced over one instance. Measured 2026-09-30: the parent held it `Running` and provisioned
+	// while the self copy sat in `Adopting`.
+	// Optional in the SCHEMA on purpose: a required field would have the apiserver reject every
+	// pre-migration intention before this controller could say anything, and Flux would then fail to
+	// apply across the whole fleet at once. Absent is instead refused HERE, naming the remedy — the
+	// same three-valued read `rootIncusHost` and `fabricBridgeParent` use.
+	// +optional
+	AdoptedBy string `json:"adoptedBy,omitempty"`
 }
 
 // ClusterIntentionPhase mirrors the ClusterAdoption aggregate phase back onto the intent, so
@@ -53,6 +73,11 @@ const (
 	IntentionPhaseAdopted ClusterIntentionPhase = "Adopted"
 	// IntentionPhaseDegraded — pools present but the control plane is unreachable; retry adopt.
 	IntentionPhaseDegraded ClusterIntentionPhase = "Degraded"
+	// IntentionPhaseObserved — this plane SEES the intention but is not its adopter, so it acts on
+	// nothing. Not an error and not a wait: the federation view is shared, and only the cluster named
+	// by AdoptedBy reconciles it. A plane's own intention reads Observed on every plane but its
+	// adopter's.
+	IntentionPhaseObserved ClusterIntentionPhase = "Observed"
 )
 
 // The condition types the ClusterIntention reconciler reports.

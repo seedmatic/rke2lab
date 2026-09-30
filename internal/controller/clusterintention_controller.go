@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"fmt"
 	"context"
 
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -24,6 +25,11 @@ import (
 type ClusterIntentionReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+
+	// SelfCluster is the cluster this controller runs IN (SELF_CLUSTER_NAME). It is compared against
+	// each intention's AdoptedBy: this plane materialises an adoption ONLY for the clusters it
+	// adopts. Every plane sees the whole federation; its POSITION decides what it acts on.
+	SelfCluster string
 }
 
 // +kubebuilder:rbac:groups=cluster.seedmatic.io,resources=clusterintentions,verbs=get;list;watch;create;update;patch;delete
@@ -62,6 +68,25 @@ func (r *ClusterIntentionReconciler) Reconcile(ctx context.Context, req ctrl.Req
 func (r *ClusterIntentionReconciler) reconcileSteps(
 	ctx context.Context, ci *adoptionv1alpha1.ClusterIntention,
 ) (ctrl.Result, error) {
+	// A plane acts on an intention IFF it is that cluster's adopter. Every plane carries the same
+	// federation view — including intentions for clusters it does not adopt — and derives its role
+	// from its POSITION in that view. Without this, a sub-plane adopted ITSELF merely because it
+	// recognised its own name, giving that cluster TWO adopters (its parent and itself) against the
+	// documented "exactly one adopter" model, and the two raced over one instance.
+	if ci.Spec.AdoptedBy == "" {
+		// Three-valued, and this is the third: absent is not "nobody adopts it", it is a branch
+		// rendered before the field existed. Acting on that guess is what produced the double
+		// adoption, so refuse and name the remedy.
+		return ctrl.Result{}, fmt.Errorf(
+			"ClusterIntention %s/%s declares no adoptedBy — re-render from the HOST once to seed it",
+			ci.Namespace, ci.Name)
+	}
+	if r.SelfCluster != "" && ci.Spec.AdoptedBy != r.SelfCluster {
+		log.FromContext(ctx).V(1).Info("not this plane's to adopt",
+			"cluster", ci.Spec.ClusterName, "adoptedBy", ci.Spec.AdoptedBy, "self", r.SelfCluster)
+		ci.Status.Phase = adoptionv1alpha1.IntentionPhaseObserved
+		return ctrl.Result{}, nil
+	}
 	// Materialise the owned ClusterAdoption (the mirror). CreateOrUpdate so a spec change flows
 	// through, and a cold-start (etcd wiped -> the mirror gone) re-creates it from the surviving,
 	// Flux-re-rendered ClusterIntention. SetControllerReference makes it a cascade-GC child AND (via

@@ -76,6 +76,7 @@ func main() {
 	if err := (&controller.ClusterIntentionReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
+		SelfCluster: os.Getenv("SELF_CLUSTER_NAME"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ClusterIntention")
 		os.Exit(1)
