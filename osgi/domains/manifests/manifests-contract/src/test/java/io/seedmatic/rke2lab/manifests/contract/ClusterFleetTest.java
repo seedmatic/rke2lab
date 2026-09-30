@@ -78,6 +78,37 @@ class ClusterFleetTest {
   }
 
   @Test
+  void every_cluster_names_exactly_one_adopter_and_only_the_root_names_itself() {
+    // The rule a plane reads to decide what it acts on. The root's self-adoption is NOT a special
+    // case in the reader: it falls out of the root naming itself.
+    assertEquals("bioskop-mgmt", FLEET.adopterOf("bioskop-mgmt"), "the root adopts itself");
+    assertEquals(
+        "bioskop-mgmt", FLEET.adopterOf("bioskop-wrkld"), "a workload names its own plane");
+    assertEquals("bioskop-mgmt", FLEET.adopterOf("nikopol-mgmt"), "a sub-plane names the ROOT");
+    assertEquals(
+        "nikopol-mgmt", FLEET.adopterOf("nikopol-wrkld"), "a workload names its OWN host's plane");
+  }
+
+  @Test
+  void the_adopter_of_every_cluster_agrees_with_who_owns_it() {
+    // The two derivations must not be able to disagree: X appears in ownedBy(P) iff adopterOf(X) is
+    // P — except the root, which adopts itself and is therefore no one's child.
+    final List<String> planes = List.of("bioskop-mgmt", "nikopol-mgmt");
+    for (final String plane : planes) {
+      for (final ClusterCoordinate owned : FLEET.ownedBy(plane)) {
+        assertEquals(
+            plane,
+            FLEET.adopterOf(owned.clusterName()),
+            owned.clusterName() + " is owned by " + plane + ", so it must name it as adopter");
+      }
+    }
+    assertEquals(
+        "bioskop-mgmt",
+        FLEET.adopterOf("bioskop-mgmt"),
+        "the root is in no one's ownedBy, and names itself");
+  }
+
+  @Test
   void a_single_host_fleet_owns_only_its_workload() {
     final ClusterFleet lone = new ClusterFleet(List.of("bioskop"), "bioskop");
     assertEquals(List.of("bioskop-wrkld"), names(lone.ownedBy("bioskop-mgmt")));

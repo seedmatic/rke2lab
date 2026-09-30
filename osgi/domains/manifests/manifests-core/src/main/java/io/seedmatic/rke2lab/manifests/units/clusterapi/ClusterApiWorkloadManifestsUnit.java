@@ -139,6 +139,13 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
           case MGMT -> "management";
           case WRKLD -> "workload";
         };
+    // The child's single adopter — DERIVED, not assumed to be this plane: the derivation is the one
+    // place that rule lives, and ClusterFleetTest pins that it cannot disagree with ownedBy.
+    final Optional<String> maybeAdopter = ManifestSynthesisContext.current().adopterOf(cluster);
+    if (maybeAdopter.isEmpty()) {
+      return;
+    }
+    final String adoptedBy = maybeAdopter.orElseThrow();
     final ClusterNetworkBlueprint blueprint =
         ClusterNetworkBlueprint.builder()
             .cluster(cluster)
@@ -186,6 +193,7 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
             List.of(blueprint.serviceCidr()),
             remoteEndpoint,
             identitySecret,
+            adoptedBy,
             packageProfile,
             namespaceObject);
     final List<String> pets =

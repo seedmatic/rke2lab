@@ -186,6 +186,20 @@ public final class ManifestSynthesisContext {
    * cluster is unknown — a render that does not know WHO it is cannot know what it owns, and
    * answering "everything" there is exactly the viewpoint error the derivation exists to remove.
    */
+  /**
+   * The cluster that ADOPTS {@code cluster} — derived from the declared fleet ({@link
+   * ClusterFleet#adopterOf}), stated on the rendered intention so every plane can carry the same
+   * federation view and derive its role from its position in it.
+   *
+   * <p>Empty when no fleet is declared (a bare survey / the standalone CLI). A caller must then
+   * render NO intention: one without an adopter is the state that let a sub-plane adopt itself by
+   * recognising its own name — the same discipline as an absent {@link #imageState()}, where the
+   * unit renders nothing rather than a misleading placeholder.
+   */
+  public Optional<String> adopterOf(final String cluster) {
+    return request.clusterFleet().map(fleet -> fleet.adopterOf(cluster));
+  }
+
   public List<ClusterCoordinate> ownedChildren() {
     final Optional<ClusterFleet> fleet = request.clusterFleet();
     if (fleet.isEmpty()) {

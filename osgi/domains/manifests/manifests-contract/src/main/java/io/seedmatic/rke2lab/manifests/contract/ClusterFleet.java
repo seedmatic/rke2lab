@@ -69,6 +69,41 @@ public record ClusterFleet(List<String> incusTargets, String rootHost) {
   }
 
   /**
+   * The cluster that ADOPTS {@code cluster} — its single adopter, stated on the rendered {@code
+   * ClusterIntention.spec.adoptedBy} so every plane can carry the SAME federation view and derive
+   * its ROLE from its POSITION in it.
+   *
+   * <ul>
+   *   <li>a workload names its own host's plane — {@code adopter(<host>-wrkld) = <host>-mgmt}
+   *   <li>a management plane names the ROOT, which births sub-planes
+   *   <li>the ROOT names ITSELF: having no parent, it is the one cluster that self-adopts
+   * </ul>
+   *
+   * <p>★ The root is not a special case in the READER: a plane acts on an intention iff {@code
+   * adoptedBy} equals its own name, and for the root that happens to be its own intention. One
+   * comparison, and the "exactly ONE adopter per cluster" invariant becomes checkable instead of
+   * implied — it used to hold only because a sub-plane recognised its own NAME, which handed that
+   * cluster two adopters (its parent and itself).
+   */
+  public String adopterOf(final String cluster) {
+    final ClusterCoordinate target = ClusterCoordinate.ofClusterName(cluster);
+    if (!incusTargets.contains(target.host())) {
+      throw new IllegalStateException(
+          "cluster '"
+              + cluster
+              + "' is on host '"
+              + target.host()
+              + "', absent from the declared incusTargets "
+              + incusTargets
+              + " — the fleet cannot name its adopter");
+    }
+    return switch (target.role()) {
+      case WRKLD -> new ClusterCoordinate(target.host(), ClusterRole.MGMT).clusterName();
+      case MGMT -> new ClusterCoordinate(rootHost, ClusterRole.MGMT).clusterName();
+    };
+  }
+
+  /**
    * The clusters the plane rendering {@code renderingCluster} must emit a CR-set for — its
    * children, never itself (the self-adoption intent is {@code
    * ClusterApiManagementManifestsUnit}'s).

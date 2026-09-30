@@ -91,6 +91,13 @@ public final class ClusterApiManagementManifestsUnit extends AbstractManifestsUn
     final ImageState image = maybeImage.orElseThrow();
     final String cluster =
         synth.bootstrapIdentity().clusterNameOrDefault(DefaultNodeEnvContext.DEFAULT_CLUSTER_NAME);
+    // The subject's single adopter. Absent fleet ⟹ render NOTHING: an intention without an adopter
+    // is what let a sub-plane adopt itself by recognising its own name.
+    final Optional<String> maybeAdopter = synth.adopterOf(cluster);
+    if (maybeAdopter.isEmpty()) {
+      return;
+    }
+    final String adoptedBy = maybeAdopter.orElseThrow();
     final ClusterNetworkBlueprint blueprint =
         ClusterNetworkBlueprint.builder()
             .cluster(cluster)
@@ -147,6 +154,7 @@ public final class ClusterApiManagementManifestsUnit extends AbstractManifestsUn
             List.of(blueprint.serviceCidr()),
             remoteEndpoint,
             identitySecret,
+            adoptedBy,
             packageProfile,
             namespaceObject);
     renderer.controlNodePoolIntention(

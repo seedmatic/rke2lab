@@ -260,8 +260,17 @@ public final class ClusterApiCrRenderer {
       final List<String> serviceCidrs,
       final String remoteEndpoint,
       final String identitySecret,
+      final String adoptedBy,
       final PackageMetadataProfile profile,
       final ApiObject branchNamespace) {
+    if (adoptedBy == null || adoptedBy.isBlank()) {
+      throw new IllegalArgumentException(
+          "adoptedBy is blank for cluster "
+              + cluster
+              + " — an intention must NAME its single adopter (the root names itself). Without it a"
+              + " plane falls back to recognising its own name, which is what gave a sub-plane TWO"
+              + " adopters: its parent and itself.");
+    }
     if (remoteEndpoint == null || remoteEndpoint.isBlank()) {
       throw new IllegalArgumentException(
           "remoteEndpoint is blank for cluster "
@@ -301,6 +310,12 @@ public final class ClusterApiCrRenderer {
                 namespace,
                 "kind",
                 kind,
+                // The single adopter. Every plane carries the same federation view; this is what
+                // lets
+                // each derive its ROLE from its POSITION — a plane reconciles an intention iff this
+                // names it. See ClusterFleet.adopterOf.
+                "adoptedBy",
+                adoptedBy,
                 "controlPlaneEndpoint",
                 Map.of("host", vip, "port", port),
                 "clusterNetwork",
