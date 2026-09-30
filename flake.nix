@@ -1096,24 +1096,84 @@ USAGE
           };
         });
 
-      # Propagate a seed-incluster bump across the three rke2lab worktrees — all
-      # branches of THIS repo, so `git worktree list` discovers them (no hard-coded
-      # paths). Push the seed-incluster branch, bump+push rke2lab's own
-      # seed-incluster pin, then bump flox-catalogue's rke2lab input + re-lock ALL its
-      # flox envs (via the catalog's own `lock-envs`, which now relocks every env — any
-      # env that follows rke2lab picks up the bump) AND push it too (all three hops
-      # auto-push for consistency — the operator gate is the deliberate invocation itself
-      # + the branch-match guard, not a manual final push). Pushing the catalog is what
-      # makes the cluster's FloxCatalog sync + the FloxEnvs re-realize. The chain is
-      # push-gated (a github: input only sees a rev once pushed), so each hop must push
-      # before the next resolves it. Idempotent: a hop already at the target rev is
-      # skipped, and a no-op run makes no commit and pushes nothing.
-      updateFloxEnvsApp = pkgs.writeShellApplication {
-        name = "update-flox-envs";
+      # The repos that pin US — the one fact a lock cannot answer (it says who I consume,
+      # never who consumes me). DECLARED here rather than discovered, because in a model
+      # where each repo owns its own lock it must also own the list of those it notifies;
+      # discovering it by scanning sibling checkouts would make our behaviour depend on
+      # another repo's working state. See
+      # docs/architecture/patterns/flake-lock-propagation.adoc § who-consumes-me.
+      #
+      # rke2lab's own orphan branches (seed-incluster, flox-catalogue) are NOT listed: they
+      # are ours, handled in-tree below, not asked by request.
+      relockConsumers = [ "github:seedmatic/ndh" ];
+
+      # relock — reconcile every DERIVED, COMMITTED artifact of THIS repo, and only this repo's.
+      #
+      # The rule (docs/architecture/patterns/flake-lock-propagation.adoc): bumping an input is
+      # editing YOUR lock; making someone pin YOU is THEIR act. So this touches rke2lab's own
+      # artifacts and its own orphan BRANCHES' (seed-incluster, flox-catalogue — branches of this
+      # repo, discovered via `git worktree list`, never hard-coded paths), and crosses a repo
+      # boundary only as a REQUEST (`--downstream` runs the consumer's own `relock`).
+      #
+      # ★ A lock and a generated artifact are the SAME KIND of thing: a committed file derived
+      # from a source that can go stale. `flake.lock` derives from inputs, `dataplan.json` from
+      # DataplanLayout, an env's `manifest.lock` from its manifest. The repo already GATES their
+      # staleness in `nix flake check` and already carries per-artifact regen apps; relock is the
+      # one verb that REPAIRS what those gates only report. Hence targets, not just inputs — the
+      # operator names what to reconcile, and no target means all of it.
+      #
+      # ★ And a lock is a statement about OUTPUTS, not about freshness: an input bump whose
+      # exported derivations do not move is REVERTED, not carried. It adds no information, costs a
+      # revision, and would keep the rke2lab <-> ndh CYCLE turning — a round that changes no
+      # derivation commits nothing, so it notifies nobody and the chain dies. Measured 2026-09-30:
+      # the whole exported package set evaluates to drv paths in ~9s, cheap enough to run PER
+      # INPUT, which also attributes impact per input.
+      #
+      # The chain is push-gated: a `github:` input only sees a revision once pushed, so each hop
+      # pushes before the next resolves it.
+      relockApp = pkgs.writeShellApplication {
+        name = "relock";
         runtimeInputs = [pkgs.coreutils pkgs.git pkgs.jq pkgs.nix];
         text = ''
           RKE=$(git rev-parse --show-toplevel)
           cur=$(git -C "$RKE" rev-parse --abbrev-ref HEAD)
+          downstream=0
+          targets=()
+          for a in "$@"; do
+            case $a in
+              --downstream) downstream=1 ;;
+              -h|--help)
+                cat <<'USAGE'
+          relock [--downstream] [target...]
+
+          Reconcile this repo's derived, committed artifacts. No target = ALL of them.
+
+            inputs            every flake input          -> flake.lock
+            <input-name>      one input (ndh, flox-controller, flox-runtime, …)
+            plans             regen-dataplan             -> dataplan.json
+            netplan           regen-blueprint            -> network-blueprint.json
+            envs              every flox env             -> flox-catalogue */manifest.lock
+            envs:<id>         one env (cluster-api/seed-incluster)
+            catalogue         the flox-catalogue branch's rke2lab pin
+
+          An input bump that moves no exported derivation is DROPPED, not carried.
+          --downstream then REQUESTS each declared consumer's own relock.
+          USAGE
+                exit 0 ;;
+              -*) echo "relock: unknown flag '$a' (try --help)" >&2; exit 2 ;;
+              *) targets+=("$a") ;;
+            esac
+          done
+
+          # The per-input comparison attributes a derivation change to the input just bumped, so
+          # any OTHER uncommitted edit would be credited to it. Refuse rather than mislead.
+          dirty=$(git -C "$RKE" status --porcelain -- . ':!flake.lock' ':!dataplan.json' ':!network-blueprint.json')
+          if [ -n "$dirty" ]; then
+            echo "REFUSING: the worktree carries changes beyond the artifacts relock owns, so a" >&2
+            echo "derivation change could not be attributed. Commit or set them aside:" >&2
+            printf '%s\n' "$dirty" >&2
+            exit 1
+          fi
 
           wt_for_branch() {
             local want=$1 path="" br=""
@@ -1136,6 +1196,57 @@ USAGE
               | .nodes[$nn].locked.rev // empty' "$1"
           }
 
+          # The MEANINGFUL projection of a flake edge: every exported package's derivation path.
+          # NOT a projection of the lock's fields — in a flake.lock `locked.rev` IS the content
+          # identity, so deleting it would make every bump compare equal and look impact-free.
+          evalmap() {
+            nix eval --json "$RKE#packages.${system}" \
+              --apply 'ps: builtins.mapAttrs (_: p: if p ? drvPath then p.drvPath else null) ps' \
+              | jq -S .
+          }
+
+          all_inputs() { jq -r '.nodes.root.inputs | keys[]' "$RKE/flake.lock"; }
+
+          # Re-derive a committed artifact and commit it only if it MOVED. No eval needed: the
+          # regen writes the file, and git already tells us whether it changed.
+          regen_artifact() { # $1 app  $2 file  $3 label
+            printf '  %-18s ' "$3"
+            if ! ( cd "$RKE" && nix run ".#$1" ) >/dev/null 2>&1; then
+              echo "FAILED (nix run .#$1)"
+              return 1
+            fi
+            if git -C "$RKE" diff --quiet -- "$2"; then
+              echo "already current"
+            else
+              git -C "$RKE" commit -q -m "chore($3): regen $2" -- "$2"
+              echo "REGENERATED — $2 was stale"
+            fi
+          }
+
+          relock_input() { # $1 input name
+            printf '  %-18s ' "$1"
+            if ! ( cd "$RKE" && nix flake update "$1" --refresh ) >/dev/null 2>&1; then
+              echo "FAILED to resolve"
+              return 1
+            fi
+            if git -C "$RKE" diff --quiet -- flake.lock; then
+              echo "already current"
+              return 0
+            fi
+            local after
+            after=$(evalmap)
+            if [ "$after" = "$baseline" ]; then
+              # A lock is a statement about outputs: carrying this adds nothing and would keep the
+              # rke2lab <-> ndh cycle turning.
+              git -C "$RKE" checkout -q -- flake.lock
+              echo "moved, NO derivation impact -> dropped"
+            else
+              git -C "$RKE" commit -q -m "chore(flake): relock $1" -- flake.lock
+              baseline=$after
+              echo "BUMPED — derivations moved"
+            fi
+          }
+
           SIC=$(wt_for_branch seed-incluster) || { echo "no worktree on branch 'seed-incluster'" >&2; exit 1; }
           CAT=$(wt_for_branch flox-catalogue) || { echo "no worktree on branch 'flox-catalogue'" >&2; exit 1; }
 
@@ -1146,78 +1257,117 @@ USAGE
             exit 1
           fi
 
+          # No target = everything, in dependency order: artifacts first (they can move the
+          # derivations the input guard compares against), then inputs, then the catalogue.
+          if [ "''${#targets[@]}" -eq 0 ]; then
+            targets=(plans netplan inputs envs catalogue)
+          fi
+
           echo "worktrees:"
-          echo "  seed-incluster : $SIC"
           echo "  rke2lab ($cur) : $RKE"
+          echo "  seed-incluster : $SIC"
           echo "  flox-catalogue : $CAT"
+          echo "targets: ''${targets[*]}"
           echo
 
-          echo "== hop 1/3: seed-incluster -> push =="
-          if [ -n "$(git -C "$SIC" status --porcelain)" ]; then
-            echo "  note: seed-incluster worktree is dirty — only committed HEAD is pushed"
-          fi
-          sic_rev=$(git -C "$SIC" rev-parse HEAD)
+          # Our own branches first: the seed-incluster INPUT resolves github:, which sees only
+          # what is pushed.
+          echo "== own branches: push before resolving =="
           git -C "$SIC" push origin seed-incluster
-          echo "  seed-incluster @ ''${sic_rev:0:9} pushed"
+          echo "  seed-incluster @ $(git -C "$SIC" rev-parse --short=9 HEAD) pushed"
           echo
 
-          echo "== hop 2/3: rke2lab -> flake update seed-incluster =="
-          before=$(lockrev "$RKE/flake.lock" seed-incluster)
-          ( cd "$RKE" && nix flake update seed-incluster --refresh )
-          after=$(lockrev "$RKE/flake.lock" seed-incluster)
-          if [ "$before" = "$after" ]; then
-            echo "  already at seed-incluster ''${after:0:9} — no lock change to commit"
-          else
-            git -C "$RKE" commit -q -m "chore(flake): bump seed-incluster -> ''${after:0:9}" -- flake.lock
-            echo "  bumped ''${before:0:9} -> ''${after:0:9}, committed"
-          fi
-          # Push rke2lab UNCONDITIONALLY, whatever the lock did. Hop 3 resolves
-          # github:seedmatic/rke2lab/<branch>, which sees only PUSHED revisions — so the catalog
-          # pins whatever is on the remote, not what is in this worktree. Pushing only when the
-          # seed-incluster pin moved was the hole: any other rke2lab commit (a feature, a doc) left
-          # HEAD unpushed, and hop 3 then pinned an OLDER rev while reporting a clean bump. Measured
-          # 2026-09-30: the catalog sat at 9ccd89923 while HEAD was fec07de85. The app already states
-          # this invariant ("each hop must push before the next resolves it"); it only enforced it
-          # for the hop that happened to change a lock.
+          baseline=$(evalmap)
+          do_catalogue=0
+          for t in "''${targets[@]}"; do
+            case $t in
+              plans)    echo "== plans =="   ; regen_artifact regen-dataplan  dataplan.json          plans   || true ; echo ;;
+              netplan)  echo "== netplan ==" ; regen_artifact regen-blueprint network-blueprint.json netplan || true ; echo ;;
+              inputs)
+                echo "== inputs =="
+                while read -r i; do relock_input "$i" || true; done < <(all_inputs)
+                echo ;;
+              envs)
+                echo "== flox envs (own branch: flox-catalogue) =="
+                ( cd "$CAT" && nix run .#lock-envs )
+                do_catalogue=1
+                echo ;;
+              envs:*)
+                echo "== flox env ''${t#envs:} (own branch: flox-catalogue) =="
+                ( cd "$CAT" && nix run .#lock-envs -- "''${t#envs:}" )
+                do_catalogue=1
+                echo ;;
+              catalogue) do_catalogue=1 ;;
+              *)
+                if all_inputs | grep -qx -- "$t"; then
+                  echo "== input $t =="
+                  relock_input "$t" || true
+                  echo
+                else
+                  echo "relock: unknown target '$t' (try --help)" >&2
+                  exit 2
+                fi ;;
+            esac
+          done
+
+          # Push whatever the artifacts did. The catalogue hop resolves
+          # github:seedmatic/rke2lab/<branch> and therefore pins what the REMOTE answers, not this
+          # worktree — so pushing only on a change was the hole: any other commit left HEAD
+          # unpushed and the catalogue silently pinned an older rev while reporting a clean bump
+          # (measured 2026-09-30: catalogue at 9ccd89923 while HEAD was fec07de85).
           git -C "$RKE" push
           rke_head=$(git -C "$RKE" rev-parse HEAD)
           echo "  rke2lab @ ''${rke_head:0:9} pushed"
           echo
 
-          echo "== hop 3/3: flox-catalogue -> flake update rke2lab + re-lock ALL envs =="
-          rke_before=$(lockrev "$CAT/flake.lock" rke2lab)
-          ( cd "$CAT" && nix flake update rke2lab --refresh )
-          rke_after=$(lockrev "$CAT/flake.lock" rke2lab)
-          # lock-envs relocks EVERY flox env (auto-commits ONLY real derivation bumps —
-          # drops locked-url churn); any env that follows rke2lab picks up the bump.
-          ( cd "$CAT" && nix run .#lock-envs )
-          if [ "$rke_before" != "$rke_after" ]; then
-            git -C "$CAT" commit -q -m "chore(flake): bump rke2lab -> ''${rke_after:0:9} (seed-incluster ''${after:0:9} via follows)" -- flake.lock
-            echo "  bumped rke2lab ''${rke_before:0:9} -> ''${rke_after:0:9}, committed (NOT pushed)"
-          else
-            echo "  catalog already at rke2lab ''${rke_after:0:9} — flake.lock unchanged"
+          if [ "$do_catalogue" = 1 ]; then
+            echo "== own branch flox-catalogue: pin rke2lab =="
+            rke_before=$(lockrev "$CAT/flake.lock" rke2lab)
+            ( cd "$CAT" && nix flake update rke2lab --refresh )
+            rke_after=$(lockrev "$CAT/flake.lock" rke2lab)
+            if [ "$rke_before" != "$rke_after" ]; then
+              git -C "$CAT" commit -q -m "chore(flake): relock rke2lab -> ''${rke_after:0:9}" -- flake.lock
+              echo "  pinned rke2lab ''${rke_before:0:9} -> ''${rke_after:0:9}"
+            else
+              echo "  already pinning rke2lab ''${rke_after:0:9}"
+            fi
+            # ASSERT the landing rather than trust the bump report: a lagging push, a stale
+            # --refresh cache or a catalogue tracking another branch all end here quietly on a rev
+            # that is not what this run built. The point is to make ONE revision travel — prove it.
+            if [ "$rke_after" != "$rke_head" ]; then
+              echo "MISMATCH: the catalogue pinned rke2lab ''${rke_after:0:9} but this run pushed ''${rke_head:0:9} —" >&2
+              echo "the propagation did NOT carry this revision. Check that '$cur' is the branch the" >&2
+              echo "catalogue tracks and that the push above reached the remote." >&2
+              exit 1
+            fi
+            echo "  verified: catalogue pins rke2lab ''${rke_head:0:9} — the revision this run pushed"
+            ahead=$(git -C "$CAT" rev-list --count '@{u}..HEAD' 2>/dev/null || echo 0)
+            if [ "''${ahead:-0}" -gt 0 ] 2>/dev/null; then
+              git -C "$CAT" push
+              echo "  flox-catalogue pushed $ahead commit(s) — FloxCatalog syncs, FloxEnvs re-realize"
+            else
+              echo "  flox-catalogue already up to date"
+            fi
+            echo
           fi
-          # ASSERT the landing, rather than trusting the bump report. `nix flake update` resolves the
-          # branch as the remote currently answers it; a lagging push, a stale --refresh cache or a
-          # catalog tracking a DIFFERENT branch all end here quietly, pinning a rev that is not what
-          # this run built. The whole chain exists to make one revision travel, so its last act is to
-          # prove the revision arrived.
-          if [ "$rke_after" != "$rke_head" ]; then
-            echo "MISMATCH: the catalog pinned rke2lab ''${rke_after:0:9} but this run pushed ''${rke_head:0:9} —" >&2
-            echo "the propagation did NOT carry this revision. Check that '$cur' is the branch the" >&2
-            echo "catalog tracks and that the push above reached the remote." >&2
-            exit 1
-          fi
-          echo "  verified: catalog pins rke2lab ''${rke_head:0:9} — the revision this run pushed"
-          echo
 
-          ahead=$(git -C "$CAT" rev-list --count '@{u}..HEAD' 2>/dev/null || echo 0)
-          if [ "''${ahead:-0}" -gt 0 ] 2>/dev/null; then
-            git -C "$CAT" push
-            echo "DONE — flox-catalogue pushed $ahead commit(s); the cluster's FloxCatalog will sync + the FloxEnv re-realize."
+          # Crossing a repo boundary is a REQUEST, never a reach-in: we do not edit a consumer's
+          # lock, we run the consumer's OWN relock. Off by default — it mutates another repo.
+          consumers=(${pkgs.lib.concatStringsSep " " (map (c: "\"${c}\"") relockConsumers)})
+          if [ "$downstream" = 1 ]; then
+            echo "== downstream: request each consumer's own relock =="
+            for c in "''${consumers[@]}"; do
+              printf '  %-28s ' "$c"
+              if nix run "$c#relock" 2>/dev/null; then
+                echo "  ^ done"
+              else
+                echo "exposes no #relock yet — skipped (that app is THAT repo's to add)"
+              fi
+            done
           else
-            echo "DONE — flox-catalogue already up to date (nothing to push)."
+            echo "consumers NOT notified (pass --downstream): ''${consumers[*]}"
           fi
+          echo "DONE"
         '';
       };
       in {
@@ -1395,10 +1545,10 @@ USAGE
           meta.description = "Stage the flox-controller ClusterRole (from the flake) onto the manifest-synthesis classpath";
         };
 
-        apps.update-flox-envs = {
+        apps.relock = {
           type = "app";
-          program = "${updateFloxEnvsApp}/bin/update-flox-envs";
-          meta.description = "Propagate a seed-incluster bump then update ALL flox envs: push seed-incluster, bump+push rke2lab, bump flox-catalogue's rke2lab input + re-lock every env + push";
+          program = "${relockApp}/bin/relock";
+          meta.description = "Reconcile THIS repo's locks: bump each input, DROP any bump that moves no exported derivation, push, then pin+re-lock the flox-catalogue branch. --downstream requests each declared consumer's own relock";
         };
 
         # Anti-drift gate: fail if the committed JSON diverges from the jar output
