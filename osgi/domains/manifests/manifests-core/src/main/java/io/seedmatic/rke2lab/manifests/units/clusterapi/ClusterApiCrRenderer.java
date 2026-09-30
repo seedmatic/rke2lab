@@ -468,6 +468,11 @@ public final class ClusterApiCrRenderer {
     // ⚠️ NOT derivable from the role, and that is why it must be stated: nikopol-mgmt is
     // `kind: management` and CATTLE (its node is …-control-plane-9f5kb, not the declared …-master).
     spec.put("nature", cluster.equals(adoptedBy) ? "pet" : "cattle");
+    // The adopter, at the POOL level too. Gating only the ClusterIntention left this one open: a
+    // plane
+    // carried a pool it does not adopt and acted on it, stopped only by material it happens not to
+    // render — a safe accident, not a rule. The gate must sit at every level the render reaches.
+    spec.put("adoptedBy", adoptedBy);
     // The DECLARED size — what the control plane is sized from. The controller used to take
     // len(roster), and the roster is OBSERVED, so a pool that had run at N was re-declared N for
     // ever: bioskop-wrkld declared three pets and stood at one across two cold starts, because a

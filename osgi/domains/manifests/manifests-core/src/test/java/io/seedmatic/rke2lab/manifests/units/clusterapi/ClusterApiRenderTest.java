@@ -317,6 +317,15 @@ class ClusterApiRenderTest {
       final Map<String, Object> poolSpec = (Map<String, Object>) pool.get("spec");
       natureByCluster.put(
           String.valueOf(poolSpec.get("clusterRef")), String.valueOf(poolSpec.get("nature")));
+      // The gate must exist at the POOL level too — see the renderer. bioskop-mgmt adopts its own
+      // pool, bioskop-wrkld's and nikopol-mgmt's; nikopol-wrkld's names nikopol-mgmt, so this plane
+      // reads it and does not act.
+      final String expected =
+          "nikopol-wrkld".equals(poolSpec.get("clusterRef")) ? "nikopol-mgmt" : "bioskop-mgmt";
+      assertEquals(
+          expected,
+          String.valueOf(poolSpec.get("adoptedBy")),
+          "the pool of " + poolSpec.get("clusterRef") + " must name its adopter");
     }
     assertEquals(
         "pet", natureByCluster.get("bioskop-mgmt"), "the ROOT is the only pet — it was grown");
