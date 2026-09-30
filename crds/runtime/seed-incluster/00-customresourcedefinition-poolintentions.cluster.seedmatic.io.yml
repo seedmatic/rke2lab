@@ -63,14 +63,6 @@ spec:
           metadata:
             type: object
           spec:
-            description: |-
-              PoolIntentionSpec is the POOL-LEVEL intent seed-master renders for one node pool of a cluster —
-              the Flux-owned recipe for the pool's CAPI template shape (RKE2ControlPlane for a control-plane
-              pool, MachineDeployment + RKE2ConfigTemplate for a worker pool) + its LXCMachineTemplate + its
-              named pets. A cluster has N PoolIntentions (one per pool), each ownerRef'd to the ClusterIntention.
-              The controller reconciles each adopt-first and OWNS a PoolAdoption (the pool mirror). The
-              cluster-level facts (image, versions, VIP) are DUPLICATED here from the same blueprint SSOT so the
-              pool reconcile is decoupled from the cluster reconcile.
             properties:
               clusterRef:
                 description: |-
@@ -123,6 +115,28 @@ spec:
                 description: "Namespace is where the CAPI CR-set, the owned PoolAdoption, and the referenced Secrets live."
                 minLength: 1
                 type: string
+              nature:
+                description: |-
+                  Nature says WHO NAMES this pool's instances — the last of the triad's three questions to stop
+                  being inferred.
+
+                  ★ It used to be read off the PRESENCE of a PoolReflection file, which is a runtime accident: the
+                  same pool answered "declaration" before its first reflection existed and "provisioner" after,
+                  with nothing declaring the difference. Q1 (who CREATES) and Q3 (who ADDRESSES) were already
+                  derived from the role; only this one had no owner.
+
+                  `pet` — the DECLARATION names the instance (a host `grow` posed it, so spec.nodes IS the roster,
+                  and such a pool can never be greenfielded). `cattle` — the PROVISIONER names it, so the roster
+                  is OBSERVED (locally for the self cluster, from the reflection for a child) and the count comes
+                  from Replicas.
+
+                  ⚠️ It is NOT derivable from the role: nikopol-mgmt is `kind: management` and cattle, because its
+                  PARENT birthed it through CAPRKE2 (its node is …-control-plane-9f5kb, not the declared
+                  …-master). What it tracks is whether the cluster was grown out-of-band — true of the root alone.
+                enum:
+                - pet
+                - cattle
+                type: string
               nodeLabels:
                 description: |-
                   NodeLabels are the kubelet --node-label values every node of this pool registers with, as
@@ -159,6 +173,25 @@ spec:
                   and (for workers) the MachineDeployment; the CAPI TREATMENT is Role, not this name.
                 minLength: 1
                 type: string
+              replicas:
+                description: |-
+                  Replicas is the INTENDED size of this pool — the desired count, declared.
+
+                  ★ It exists because the count used to be read from the ROSTER, and the roster is OBSERVED. So
+                  once a pool had run at N, `len(roster)` returned N, the RKE2ControlPlane was sized N, CAPRKE2
+                  provisioned N, the reflector observed N, and the loop closed on itself: the pool was pinned at
+                  whatever it first came up as, for good. Measured 2026-09-29 and again after the 2026-09-30 cold
+                  start: bioskop-wrkld declared THREE pets and stood at `replicas: 1`, because a one-node
+                  reflection survives a cold start in git.
+
+                  So the count comes from the INTENT and the names from OBSERVATION. Those are different
+                  questions and the roster only ever answered the second one.
+
+                  Optional in the SCHEMA so a pre-migration branch still applies (a required field would have the
+                  apiserver reject it before the controller could name the remedy); zero is refused at the READ.
+                format: int32
+                minimum: 1
+                type: integer
               rke2Version:
                 description: "RKE2Version is the CAPRKE2 version for this pool (control-plane RCP, or worker RKE2ConfigTemplate)."
                 minLength: 1

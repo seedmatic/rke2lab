@@ -21,6 +21,7 @@ spec:
   image:
     name: bioskop-wrkld-node-base
   namespace: rke2lab-bioskop-wrkld
+  nature: cattle
   nodeLabels:
   - flox.seedmatic.io/enabled=true
   nodes:
@@ -28,6 +29,7 @@ spec:
   - name: bioskop-wrkld-peer1
   - name: bioskop-wrkld-peer2
   pool: control-node
+  replicas: 3
   rke2Version: v1.34.10+rke2r1
   role: control-plane
   target: bioskop-nixos
