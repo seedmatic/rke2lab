@@ -1,0 +1,305 @@
+= Flake lock propagation — who owns which lock, and why the cycle is not a problem
+:toc: macro
+:toclevels: 3
+
+toc::[]
+
+== Overview
+
+Every repo in the fleet carries its own flake, and several carry each other as inputs. So a change in
+one repo has to *travel*: a revision is only visible to a `github:` input once pushed, and only
+reaches a consumer once that consumer's lock is bumped. The question this document answers is not how
+to bump a lock — `nix flake update` does that — but **whose job it is**, and what stops the travelling
+when two repos each carry the other.
+
+It exists because the one app that does this today, `update-flox-envs` in rke2lab, hardcodes a
+three-hop chain over a graph that is neither three hops nor a chain.
+
+[[measured-graph]]
+== The measured graph (2026-09-30)
+
+Read off the `flake.lock` root inputs of each checkout, keeping only our own repos:
+
+[mermaid,flake-lock-graph,svg]
+----
+flowchart LR
+  FC["nix-flake-commons<br/>develop"]
+  NRI["flox-nri-plugin<br/>develop"]
+  CTRL["flox-controller<br/>develop"]
+  SIC["rke2lab@seed-incluster<br/>a BRANCH of rke2lab"]
+  RKE["rke2lab<br/>feature/viewpoint-separation"]
+  NDH["ndh<br/>develop"]
+  CAT["rke2lab@flox-catalogue<br/>a BRANCH of rke2lab"]
+
+  FC --> RKE
+  NRI --> RKE
+  CTRL --> RKE
+  SIC --> RKE
+  NDH --> RKE
+  RKE --> NDH
+  RKE --> CAT
+  NDH --> CAT
+  FC --> CAT
+  SIC --> CAT
+
+  classDef own fill:#e6f4ea,stroke:#137333,color:#111
+  classDef peer fill:#fef7e0,stroke:#f9ab00,color:#111
+  classDef up fill:#e8f0fe,stroke:#1a73e8,color:#111
+  class RKE,SIC,CAT own
+  class NDH peer
+  class FC,NRI,CTRL up
+----
+
+*Legend* — green = rke2lab and its own orphan branches · amber = a PEER repo (mutual input) · blue =
+a pure upstream (consumed, consumes nothing of ours).
+
+Two facts shape everything below:
+
+. **`seed-incluster` and `flox-catalogue` are orphan BRANCHES of rke2lab**, not separate repos. So
+  rke2lab editing their locks is rke2lab editing its own.
+. **`rke2lab` and `ndh` are mutual inputs** — rke2lab pins `ndh@develop` (for `manage-tailnet` and
+  the re-exported Incus tooling), and ndh pins `rke2lab@feature/viewpoint-separation` (for the
+  plans: `networkBlueprintJson`, `dataplanJson`, `planJar`). ⚠️ ndh's `develop` tracks our FEATURE
+  branch, so the cycle is live.
+
+[[ownership]]
+== The rule — a repo owns its own locks, and asks for the rest
+
+[IMPORTANT]
+====
+**Bumping an input is editing YOUR lock. Making someone pin YOU is THEIR act.**
+
+So propagation across a repo boundary is a **request**, never a reach-in: rke2lab does not run
+`nix flake update rke2lab` inside ndh's checkout — it asks ndh's own app to update ndh's lock.
+====
+
+This is the single-owner rule applied to locks, and it draws the line cleanly:
+
+[cols="2,1,3",options="header"]
+|===
+| Lock | Owner | Why
+
+| rke2lab's own (`flake-commons`, `flox-controller`, `flox-runtime`, `ndh`, `seed-incluster`)
+| rke2lab
+| they are its inputs
+
+| the `seed-incluster` and `flox-catalogue` branch locks
+| rke2lab
+| they are its own branches — not a foreign repo
+
+| ndh's own (including its `rke2lab` pin)
+| **ndh**
+| a different repo. rke2lab may ASK, never edit
+|===
+
+★ This *validates* the current `update-flox-envs` scope — it touches the `seed-incluster` and
+`flox-catalogue` locks, which are rke2lab's own branches, so it is within its rights. It is wrong
+only about what one would be tempted to ADD to it: the `ndh <- rke2lab plans` edge belongs to an app
+in ndh, not here.
+
+[[termination]]
+== Why the cycle needs no cut — termination is by DERIVATION impact
+
+A cycle looks fatal if you think in revisions: bump ndh's `rke2lab` pin and ndh gets a new rev, which
+rke2lab should then pin, which gives rke2lab a new rev, which ndh should pin… no fixed point.
+
+There is one — in **derivation** space, not revision space. The rule already exists in this fleet, in
+the catalogue's `lock-envs`:
+
+[source,bash]
+----
+proj='del(.packages[]."locked-url")'     # the MEANINGFUL projection of the lock
+# normalise both sides with `jq -S`, and if the projections are equal:
+#   git checkout -- manifest.lock          -> the bump is DROPPED, no revision is emitted
+----
+
+Each hop guarded that way is self-limiting: a round that changes no derivation commits nothing, so it
+notifies nobody and the chain dies. **The cycle is benign, and declaring an edge "cut" is a patch for
+a problem the guard removes.**
+
+⚠️ But the projection does NOT transpose literally. In a flox `manifest.lock`, `locked-url` is
+volatile and the rest carries meaning. In a `flake.lock`, `locked.rev` **IS** the content identity —
+deleting it would make every lock compare equal and every bump look impact-free. The correct analogue
+is one level further out:
+
+[NOTE]
+====
+**The meaningful projection of a flake edge is the DERIVATION PATHS of the outputs the consumer
+actually uses** — not the fields of the lock.
+
+For `ndh <- rke2lab` that is the plans (`networkBlueprintJson`, `dataplanJson`, `planJar`), not all of
+rke2lab. A docs-only commit moves none of them, so the bump is dropped and the cycle stops on its
+first round.
+====
+
+Worked through:
+
+[cols="1,2,2",options="header"]
+|===
+| Round | Test | Outcome
+
+| rke2lab moves → ndh
+| does any plan drv change?
+| docs-only commit ⟹ no ⟹ bump dropped, **no new ndh revision**, chain ends
+
+| a plan really changes → ndh bumps
+| rke2lab re-evaluates: does any output it takes FROM ndh change?
+| `manage-tailnet` / Incus tooling untouched ⟹ no ⟹ dropped, chain ends
+|===
+
+[[who-consumes-me]]
+== The open question — a lock says who I consume, never who consumes me
+
+Propagation by request needs a notify list, and that list is the one fact a repo cannot read from its
+own lock. Three ways, none yet chosen:
+
+[cols="1,2,2",options="header"]
+|===
+| Option | For | Against
+
+| **(a) declared in each repo** — "my consumers: […]"
+| explicit, and CONSISTENT with the model: in a design where each repo owns its lock, each should own
+  the list of those it notifies. The list is tiny (rke2lab → ndh + its catalogue branch; ndh →
+  rke2lab)
+| duplicated across N repos
+
+| (b) discovered by scanning sibling worktrees' locks
+| derived rather than enumerated
+| ⚠️ depends on what happens to be checked out locally — my behaviour would depend on another repo's
+  working state
+
+| (c) one shared graph in `flake-commons`, which everything already depends on
+| a single source of truth
+| makes `flake-commons` a config carrier, and any move in it pokes the whole fleet
+|===
+
+**Recommended: (a)**, for the consistency reason. (b) stays useful as an operator convenience for the
+local loop.
+
+[[today-app]]
+== What `update-flox-envs` covers, and the two defects fixed on 2026-09-30
+
+Its three hops are `rke2lab@seed-incluster -> rke2lab -> flox-catalogue`. Audited against
+<<measured-graph>>:
+
+[cols="2,1,2",options="header"]
+|===
+| Edge | Covered | Note
+
+| `rke2lab@seed-incluster -> rke2lab` | ✅ | hop 2
+| `rke2lab -> flox-catalogue` | ✅ | hop 3
+| `flox-nri-plugin`, `flox-controller` -> `rke2lab` | ❌ | rke2lab's OWN lock — legitimately ours, and missing
+| `flake-commons` -> everything | ❌ | likewise
+| `ndh -> rke2lab` | ❌ | rke2lab's own lock — ours
+| `rke2lab -> ndh` | ❌ | **not ours** — belongs to an app in ndh (<<ownership>>)
+| `ndh -> flox-catalogue` | ❌ | the catalogue's lock is ours; the bump is ours
+|===
+
+Two defects of the same family were fixed the same day — both *silent skips*, where a hop reports
+success while pinning something stale:
+
+. **rke2lab was pushed only when the `seed-incluster` pin moved.** Any other commit (a feature, a
+  doc) left HEAD unpushed, and hop 3 then resolved `github:seedmatic/rke2lab/<branch>` to an OLDER
+  rev while reporting a clean bump. Measured: the catalogue sat at `9ccd89923` while HEAD was
+  `fec07de85`. The app already STATED the invariant — "the chain is push-gated … each hop must push
+  before the next resolves it" — and enforced it only for the hop that happened to change a lock.
+  Now rke2lab is pushed unconditionally.
+. **The landing was reported, never asserted.** `nix flake update` resolves the branch as the remote
+  currently answers it, so a lagging push, a stale `--refresh` cache or a catalogue tracking a
+  different branch all ended quietly on a rev that is not what the run built. The last act now
+  PROVES the revision arrived, and fails loud naming the cause.
+
+★ The general lesson, the same one the cluster set taught one layer down:
+the app enumerated a chain where it should have derived a graph. Deriving the hops from the lock
+graph — with each hop guarded by derivation impact — is the durable shape; the two fixes above only
+close the silent holes in the meantime.
+
+[[naming]]
+== The app name — `relock`, uniform across repos (✅ decided 2026-09-30)
+
+A structural constraint decides this more than taste: in a model where propagation is a REQUEST, the
+caller must know nothing about the callee beyond its name. So **the name must be identical in every
+repo** — that uniformity is what makes `nix run <any repo>#relock` possible with no per-repo
+knowledge.
+
+`relock` it is, for three reasons in order of weight:
+
+. **It is already this project's word** for the act — flox-controller's `relock` annotation, which
+  "remains the COMMAND of the bump but gains a per-input scope". Reuse the vocabulary rather than
+  invent a second one.
+. It names the OUTCOME, not the mechanism. `update-locks` describes `nix flake update`; `relock`
+  describes what a consumer cares about — the lock is re-established.
+. House style is a short kebab-case imperative: `grow`, `lock-envs`, `mint-gh-app-token`,
+  `manage-tailnet`.
+
+Propagation is a SCOPE, not a second name — following the per-input scope already decided for the
+annotation:
+
+[cols="1,3",options="header"]
+|===
+| Invocation | Effect
+
+| `relock`
+| my lock (my inputs + my own branches). No-impact bumps dropped; only real ones committed + pushed.
+
+| `relock --downstream`
+| the same, then REQUESTS each declared consumer's own `relock` (<<who-consumes-me>>)
+|===
+
+⚠️ Avoid **`propagate`**: the word is taken and carries a bad association here —
+`propagateRelock` in flox-controller is recorded as the regression that stamped every catalogue
+revision as a total relock.
+
+⏸️ `reconcile-locks` is the more accurate alternative (it converges, it is guarded, and it echoes the
+Flux vocabulary used throughout). Not recommended: longer, and less idiomatic for a `nix run` app.
+
+★ Hygiene consequence: `update-flox-envs` is REPLACED, not complemented. `relock` covers its three
+hops (its own branches included) and the notify step replaces hop 3. Do not keep both.
+
+[[in-cluster]]
+== ⏸️ Deferred — running the reconcile IN-CLUSTER, on Tekton
+
+Noted as a direction, not designed. Recorded because both the argument and the objection are
+non-obvious.
+
+**The argument.** The render pipeline already does a strictly larger version of this job: clone at a
+revision, build with the reactor, commit and ff-push (link:../cluster-api/pac-in-cluster-render-spec.adoc[pac-in-cluster-render-spec]).
+It already holds the App token, and it already owns a WARM nix-store PVC — which matters more here
+than anywhere, because the derivation-impact guard (<<termination>>) requires *evaluating* each
+consumer's outputs, and that is ruinous from a cold store. Decisively, it would remove the operator's
+workstation from the propagation path: `update-flox-envs` locates its hops with `git worktree list`,
+so propagation is today bound to ONE machine having the right checkouts.
+
+**The objection, which is sharper than it looks.** A cluster-hosted reconcile naturally CENTRALISES,
+and centralising is exactly what <<ownership>> forbids: a pipeline in bioskop-mgmt bumping ndh's lock
+is rke2lab's cluster editing another repo's state. The distributed model does not map onto one
+cluster's pipeline — unless the pipeline is merely the RUNNER and still invokes each repo's own app
+(`nix run github:<repo>#relock`). Then ownership survives: the app is the repo's, only the compute is
+shared. Any design here must keep that distinction explicit, or it silently becomes the reach-in this
+document rejects.
+
+Open if it is picked up: what triggers it (a push, as PaC does, or the same staleness loop the render
+reconciler uses), and how cross-repo evaluation gets its private inputs — a problem the render
+pipeline already had to solve once, with a token scoped to extra repos.
+
+== Anti-patterns
+
+* ❌ *Reaching into another repo's lock* because both checkouts are on the same machine. ✅ Ask that
+  repo's own app — ownership is not about filesystem access.
+* ❌ *Declaring a cycle edge "cut"* to make propagation terminate. ✅ Guard each hop by derivation
+  impact; the cycle then terminates by itself and no edge is special.
+* ❌ *Projecting a `flake.lock` by deleting revisions*, by analogy with `lock-envs`. ✅ Compare the
+  drv paths of the outputs the consumer uses — in a flake.lock the rev IS the identity.
+* ❌ *Pushing only when a lock changed.* ✅ Push whatever the lock did: the next hop resolves the
+  REMOTE, not the worktree.
+* ❌ *Trusting a bump report.* ✅ Assert the consumer landed on the revision this run pushed.
+
+== Related Documentation
+
+* link:flake-build-entry-point.adoc[Flake build entry point] — how a build is entered, the other half
+  of the flake story
+* link:flox-store-resolved-runtime-and-builder.adoc[Flox store-resolved runtime and builder] — why the
+  envs pin store paths, which is what makes a lock the delivery vehicle
+* link:../cluster-api/cluster-seeding-controller.adoc[Cluster seeding controller] §
+  `cluster-set-derives-from-hosts` — the same derive-don't-enumerate correction one layer down, on the
+  cluster set

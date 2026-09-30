@@ -1166,12 +1166,22 @@ USAGE
           ( cd "$RKE" && nix flake update seed-incluster --refresh )
           after=$(lockrev "$RKE/flake.lock" seed-incluster)
           if [ "$before" = "$after" ]; then
-            echo "  already at seed-incluster ''${after:0:9} — nothing to commit/push"
+            echo "  already at seed-incluster ''${after:0:9} — no lock change to commit"
           else
             git -C "$RKE" commit -q -m "chore(flake): bump seed-incluster -> ''${after:0:9}" -- flake.lock
-            git -C "$RKE" push
-            echo "  bumped ''${before:0:9} -> ''${after:0:9}, committed + pushed"
+            echo "  bumped ''${before:0:9} -> ''${after:0:9}, committed"
           fi
+          # Push rke2lab UNCONDITIONALLY, whatever the lock did. Hop 3 resolves
+          # github:seedmatic/rke2lab/<branch>, which sees only PUSHED revisions — so the catalog
+          # pins whatever is on the remote, not what is in this worktree. Pushing only when the
+          # seed-incluster pin moved was the hole: any other rke2lab commit (a feature, a doc) left
+          # HEAD unpushed, and hop 3 then pinned an OLDER rev while reporting a clean bump. Measured
+          # 2026-09-30: the catalog sat at 9ccd89923 while HEAD was fec07de85. The app already states
+          # this invariant ("each hop must push before the next resolves it"); it only enforced it
+          # for the hop that happened to change a lock.
+          git -C "$RKE" push
+          rke_head=$(git -C "$RKE" rev-parse HEAD)
+          echo "  rke2lab @ ''${rke_head:0:9} pushed"
           echo
 
           echo "== hop 3/3: flox-catalogue -> flake update rke2lab + re-lock ALL envs =="
@@ -1187,6 +1197,18 @@ USAGE
           else
             echo "  catalog already at rke2lab ''${rke_after:0:9} — flake.lock unchanged"
           fi
+          # ASSERT the landing, rather than trusting the bump report. `nix flake update` resolves the
+          # branch as the remote currently answers it; a lagging push, a stale --refresh cache or a
+          # catalog tracking a DIFFERENT branch all end here quietly, pinning a rev that is not what
+          # this run built. The whole chain exists to make one revision travel, so its last act is to
+          # prove the revision arrived.
+          if [ "$rke_after" != "$rke_head" ]; then
+            echo "MISMATCH: the catalog pinned rke2lab ''${rke_after:0:9} but this run pushed ''${rke_head:0:9} —" >&2
+            echo "the propagation did NOT carry this revision. Check that '$cur' is the branch the" >&2
+            echo "catalog tracks and that the push above reached the remote." >&2
+            exit 1
+          fi
+          echo "  verified: catalog pins rke2lab ''${rke_head:0:9} — the revision this run pushed"
           echo
 
           ahead=$(git -C "$CAT" rev-list --count '@{u}..HEAD' 2>/dev/null || echo 0)
