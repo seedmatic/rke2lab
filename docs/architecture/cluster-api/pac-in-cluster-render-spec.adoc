@@ -839,10 +839,27 @@ same fact is encoded a second time as ndh's `rke2lab` flake input URL and had ro
 when this branch is superseded, both move together.
 
 [[webhook-delivery]]
-== Fleet render delivery — a RECONCILER in the root, not a webhook per cluster (📐 decided 2026-09-30)
+== Fleet render delivery — the ROOT is the fleet's event source (📐 2026-09-30)
 
 A sub-plane on an ITINERANT host cannot be a webhook destination. This section records the
-measurement that proved it, and the shape decided instead.
+measurement that proved it, and what follows from it.
+
+[IMPORTANT]
+.Read the ORDER of this section — its middle is superseded by its end
+====
+Three things are settled and stable:
+
+. the root is the fleet's **single event source** — a GitHub App has one webhook URL, and the root is
+  the only position GitHub can be sure to reach;
+. the fan-out target list is a **derivation** of `ClusterFleet`, never fleet topology stored in
+  GitHub's settings;
+. the returning plane must not **catch up** (<<return-to-service>>).
+
+What is SUPERSEDED is the *mechanism* below — a reconciler that POKES each sub-plane's PaC. (3) turned
+out to condemn it: the poke orders the returning plane to render, which is the destructive act, at its
+most fragile moment. The successor is a fleet-SCOPED render, at the end of this section. ⚠️ Do not
+build the poke; the measurement and the asymmetry that motivated it are what remain worth reading.
+====
 
 === The measurement
 
@@ -1078,13 +1095,85 @@ decided design: what is rejected is the TRANSPORT, never the topology — see th
 the fleet view where the fleet is not declared. Detection needs the fleet and a git read; both are
 the parent's.
 
-⏸️ **The root rendering its children's branches outright**, so a sub-plane needs no PaC at all. It
-costs one argument in `ManifestSynthesisScenario` (the child pass receives no fleet today, so it
-renders no grandchild) plus a grandchild render pass to carve the bootstrap bundle —
-`prepareWorkloadPasses` goes one level only, and without that bundle the pool waits. Deferred on
-principle rather than effort: it re-centralises rendering in the root. What a sub-plane keeps either
-way is worth naming — **autonomy of reconciliation** (it reconciles whatever is on its branch while
-cut off); only **autonomy of declaration** differs.
+📐 **The render's SCOPE becomes the fleet** — the root renders the transitive closure of `ownedBy`,
+so a sub-plane needs no PaC at all. Recorded here as the successor to everything above, because the
+reason this was deferred no longer holds. See <<return-to-service>>.
+
+The cost is small and already half-paid: `prepareWorkloadPasses` goes ONE level
+(`ownedChildren(self)`), so `ownedBy(nikopol-mgmt) = [nikopol-wrkld]` is never reached and its
+bootstrap bundle never carved — which is exactly why that pool waits today. The closure terminates on
+its own (a workload owns nothing). ✅ Verified 2026-09-30 that no host-local state blocks it: the
+child pass already receives the PARENT's `ImageState` (`facet.image()`), and `recordedImage` replays
+the one the last grow graved at HEAD — and `ImageState` is a CONTENT identity (`imageFingerprint`,
+`rke2Version`), the same on every Incus member, not a location.
+
+The deferral said it "re-centralises rendering in the root". Under a uniform federation view that
+reading is wrong: the root is not a centre, it is the **position that is always up**. The code already
+asserts the invariant that makes this safe —
+
+[quote,ManifestSynthesisScenario, the child facet]
+whoever renders, the result must be IDENTICAL, which is what makes the two copies of a sub-plane's
+intention agree by construction instead of by coincidence.
+
+[[return-to-service]]
+=== ★ The hazard is RETURN-TO-SERVICE, not the outage
+
+The decisive argument, and it is not availability — it is that **a plane coming back online must not
+catch up**. This is the greenfield defect one layer up: a `pet` pool may never greenfield from an
+inconclusive read, because *absent* and *I cannot tell yet* look alike on return
+(`pooladoption_controller.go` § `resolveRoster`). A plane that returns, reads "not rendered", and
+concludes "I render" commits the same error.
+
+⚠️ And be precise about WHY re-rendering is destructive, because the obvious answer is wrong. The
+render IS deterministic — `ClusterSeal.sealWorkloadCas` is additive and idempotent, and a cluster
+already in the seal *keeps* its CA, "never re-minted — a re-mint would rotate every workload cert".
+The random mint happens ONCE, the first time a cluster appears in the declared fleet. What makes the
+render deterministic is therefore the PERSISTED SEAL, and that seal is **host-side**
+(`ClusterPkiCoordinate`: "sealed host-side once per cluster"). So a second renderer does not mint
+*differently* — it mints because it has no `existing` to keep. The constraint is the seal's
+LOCALITY, not the render's nature.
+
+[cols="1,2,1",options="header"]
+|===
+| Shape | What the returning plane does | Verdict
+
+| a POKE from the parent
+| it is TOLD it is behind, so it renders — the heaviest, most fragile act (clone, reactor build, cold
+  nix store) ordered at the worst moment
+| ❌ the poke IS the hazard
+
+| fleet-scoped render, ONE renderer
+| nothing. Its branch is already current, rendered in its absence; it only APPLIES
+| ✅ safe by construction — it holds no declarative authority to misuse
+
+| fleet-scoped render, ANY renderer
+| it renders too, minting FRESH CAs over the valid ones. Not latency — corruption
+| ⚠️ needs both guards below
+|===
+
+So return-to-service is a pure apply, and the expensive half of the work was done by a plane that was
+up all along. ⏸️ Making the render REDUNDANT (any plane may render, which is what a uniform view
+naturally wants) needs TWO conditions, not one:
+
+. the SEAL must be reachable from the rendering position — it is host-side today, so a second plane
+  has nothing to keep. This is a question about where the seal STORE lives, not about the render;
+. the push must be guarded by IMPACT — identical tree ⟹ no commit. The same drv comparison
+  `relock` uses (link:../patterns/flake-lock-propagation.adoc[flake-lock-propagation] §
+  `termination`). Without it a returning renderer REWRITES instead of converging.
+
+★ Condition 2 is also the ENFORCEMENT of determinism, not merely a guard on top of it: a render that
+is deterministic produces no commit on a re-run, so the guard is silent. Every commit it does NOT
+suppress is a non-determinism to find and remove — which makes it a detector as much as a brake.
+
+What a sub-plane keeps either way is worth naming: **autonomy of reconciliation** — offline it cannot
+receive a new declaration (it cannot reach git either), but it keeps enforcing the last artifact its
+source-controller fetched, so it does not regress. Only **autonomy of declaration** moves, and the
+argument that it never belonged to a sub-plane is strong: declaring needs the source, which needs the
+network.
+
+⚠️ Until the redundant form lands, a root that is down means nothing is declared anywhere. Acceptable
+only while the root is the non-itinerant position — which is a property of today's fleet, not of the
+model.
 
 === Open
 
