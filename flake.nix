@@ -1150,8 +1150,10 @@ USAGE
 
             inputs            every flake input          -> flake.lock
             <input-name>      one input (ndh, flox-controller, flox-runtime, …)
-            plans             regen-dataplan             -> dataplan.json
-            netplan           regen-blueprint            -> network-blueprint.json
+            artifacts         every regen-* app this repo exposes (discovered)
+            plans             regen-dataplan
+            netplan           regen-blueprint
+            regen-<name>      one regen app by name
             envs              every flox env             -> flox-catalogue */manifest.lock
             envs:<id>         one env (cluster-api/seed-incluster)
             catalogue         the flox-catalogue branch's rke2lab pin
@@ -1207,20 +1209,31 @@ USAGE
 
           all_inputs() { jq -r '.nodes.root.inputs | keys[]' "$RKE/flake.lock"; }
 
-          # Re-derive a committed artifact and commit it only if it MOVED. No eval needed: the
-          # regen writes the file, and git already tells us whether it changed.
-          regen_artifact() { # $1 app  $2 file  $3 label
-            printf '  %-18s ' "$3"
+          # Every `regen-*` app this flake exposes — DISCOVERED, not listed. A repo's generated
+          # artifacts are whatever its regen apps write, and it already declares those as apps; making
+          # a caller re-list them (app AND filename) is the same "enumerate what you could derive" the
+          # cluster set was cured of. It also means a new regen app is covered the day it lands.
+          regen_apps() {
+            nix eval --json "$RKE#apps.${system}" --apply 'as: builtins.attrNames as' 2>/dev/null \
+              | jq -r '.[] | select(startswith("regen-"))'
+          }
+
+          # Re-derive and commit only what MOVED. No eval needed and no filename needed: the regen
+          # writes whatever it writes, and git reports it.
+          regen_artifact() { # $1 app
+            printf '  %-18s ' "$1"
             if ! ( cd "$RKE" && nix run ".#$1" ) >/dev/null 2>&1; then
               echo "FAILED (nix run .#$1)"
               return 1
             fi
-            if git -C "$RKE" diff --quiet -- "$2"; then
+            local -a moved=()
+            mapfile -t moved < <(git -C "$RKE" diff --name-only)
+            if [ "''${#moved[@]}" -eq 0 ]; then
               echo "already current"
             else
-              git -C "$RKE" commit -q -m "chore($3): regen $2" -- "$2"
+              git -C "$RKE" commit -q -m "chore(relock): regen via $1" -- "''${moved[@]}"
               committed=1
-              echo "REGENERATED — $2 was stale"
+              echo "REGENERATED — ''${moved[*]} was stale"
             fi
           }
 
@@ -1249,20 +1262,26 @@ USAGE
             fi
           }
 
-          SIC=$(wt_for_branch seed-incluster) || { echo "no worktree on branch 'seed-incluster'" >&2; exit 1; }
-          CAT=$(wt_for_branch flox-catalogue) || { echo "no worktree on branch 'flox-catalogue'" >&2; exit 1; }
+          # Orphan-branch hops are OPTIONAL — a repo with none simply skips them. NOT a parameter: a
+          # repo either carries such a branch or it does not, and `git worktree list` already answers
+          # that. This is what lets the same implementation serve a repo like ndh, which has neither a
+          # seed-incluster nor a flox-catalogue branch.
+          SIC=$(wt_for_branch seed-incluster) || SIC=""
+          CAT=$(wt_for_branch flox-catalogue) || CAT=""
 
-          cat_ref=$(jq -r '.nodes.rke2lab.original.ref' "$CAT/flake.lock")
-          if [ "$cat_ref" != "$cur" ]; then
-            echo "MISMATCH: flox-catalogue tracks rke2lab@$cat_ref but this worktree is on '$cur' —" >&2
-            echo "propagation would not reach the catalog. Stand on '$cat_ref' (or repoint the catalog)." >&2
-            exit 1
+          if [ -n "$CAT" ]; then
+            cat_ref=$(jq -r '.nodes.rke2lab.original.ref // empty' "$CAT/flake.lock")
+            if [ -n "$cat_ref" ] && [ "$cat_ref" != "$cur" ]; then
+              echo "MISMATCH: flox-catalogue tracks rke2lab@$cat_ref but this worktree is on '$cur' —" >&2
+              echo "propagation would not reach the catalog. Stand on '$cat_ref' (or repoint the catalog)." >&2
+              exit 1
+            fi
           fi
 
           # No target = everything, in dependency order: artifacts first (they can move the
           # derivations the input guard compares against), then inputs, then the catalogue.
           if [ "''${#targets[@]}" -eq 0 ]; then
-            targets=(plans netplan inputs envs catalogue)
+            targets=(artifacts inputs envs catalogue)
           fi
 
           echo "worktrees:"
@@ -1272,12 +1291,14 @@ USAGE
           echo "targets: ''${targets[*]}"
           echo
 
-          # Our own branches first: the seed-incluster INPUT resolves github:, which sees only
-          # what is pushed.
-          echo "== own branches: push before resolving =="
-          git -C "$SIC" push origin seed-incluster
-          echo "  seed-incluster @ $(git -C "$SIC" rev-parse --short=9 HEAD) pushed"
-          echo
+          # Our own branches first: an orphan-branch INPUT resolves github:, which sees only what is
+          # pushed.
+          if [ -n "$SIC" ]; then
+            echo "== own branches: push before resolving =="
+            git -C "$SIC" push origin seed-incluster
+            echo "  seed-incluster @ $(git -C "$SIC" rev-parse --short=9 HEAD) pushed"
+            echo
+          fi
 
           baseline=$(evalmap)
           do_catalogue=0
@@ -1285,8 +1306,16 @@ USAGE
           committed=0
           for t in "''${targets[@]}"; do
             case $t in
-              plans)    echo "== plans =="   ; regen_artifact regen-dataplan  dataplan.json          plans   || true ; echo ;;
-              netplan)  echo "== netplan ==" ; regen_artifact regen-blueprint network-blueprint.json netplan || true ; echo ;;
+              # Every generated artifact this repo knows how to re-derive. `plans` and `netplan` stay as
+              # the OPERATOR's words for two of them — naming two aliases is not the same as making a
+              # caller enumerate an app AND a filename.
+              artifacts)
+                echo "== artifacts (every regen-* app) =="
+                while read -r app; do regen_artifact "$app" || true; done < <(regen_apps)
+                echo ;;
+              plans)    echo "== plans =="   ; regen_artifact regen-dataplan  || true ; echo ;;
+              netplan)  echo "== netplan ==" ; regen_artifact regen-blueprint || true ; echo ;;
+              regen-*)  echo "== $t =="      ; regen_artifact "$t"            || true ; echo ;;
               inputs)
                 echo "== inputs =="
                 while read -r i; do relock_input "$i" || true; done < <(all_inputs)
