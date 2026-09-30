@@ -83,8 +83,9 @@ func main() {
 	}
 
 	if err := (&controller.PoolIntentionReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:      mgr.GetClient(),
+		Scheme:      mgr.GetScheme(),
+		SelfCluster: os.Getenv("SELF_CLUSTER_NAME"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PoolIntention")
 		os.Exit(1)

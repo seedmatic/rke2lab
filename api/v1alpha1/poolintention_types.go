@@ -57,6 +57,17 @@ type PoolIntentionSpec struct {
 	// +kubebuilder:validation:MinItems=1
 	Nodes []PetSpec `json:"nodes"`
 
+	// AdoptedBy names the management cluster that adopts this pool's CLUSTER — mirrored from its
+	// ClusterIntention so the gate exists at BOTH levels.
+	//
+	// ⚠️ Gating only the cluster left this level open: measured 2026-09-30, bioskop carried
+	// nikopol-wrkld's PoolIntention and its controller acted on it (phase Pending), stopped only by a
+	// Secret it happens not to render. That is a safe accident, not a rule — it relies on material
+	// being absent rather than on ownership being checked, and it would act the moment material
+	// appeared.
+	// +optional
+	AdoptedBy string `json:"adoptedBy,omitempty"`
+
 	// Nature says WHO NAMES this pool's instances — the last of the triad's three questions to stop
 	// being inferred.
 	//
@@ -156,6 +167,9 @@ const (
 	PoolIntentionPhaseAdopted PoolIntentionPhase = "Adopted"
 	// PoolIntentionPhaseDegraded — pets present but a pool step failed; surface + retry adopt.
 	PoolIntentionPhaseDegraded PoolIntentionPhase = "Degraded"
+	// PoolIntentionPhaseObserved — this plane SEES the pool but is not its cluster's adopter, so it
+	// acts on nothing. The federation view is shared; only the adopter reconciles.
+	PoolIntentionPhaseObserved PoolIntentionPhase = "Observed"
 )
 
 // The condition types the PoolIntention reconciler reports.

@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"fmt"
 	"context"
 
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -21,6 +22,11 @@ import (
 type PoolIntentionReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+
+	// SelfCluster is the cluster this controller runs IN (SELF_CLUSTER_NAME), compared against each
+	// pool's AdoptedBy. The gate exists at BOTH levels: gating only the ClusterIntention left this one
+	// open, and a pool this plane does not adopt was stopped only by material it happens not to have.
+	SelfCluster string
 }
 
 // +kubebuilder:rbac:groups=cluster.seedmatic.io,resources=poolintentions,verbs=get;list;watch;create;update;patch;delete
@@ -57,6 +63,22 @@ func (r *PoolIntentionReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 func (r *PoolIntentionReconciler) reconcileSteps(
 	ctx context.Context, pi *adoptionv1alpha1.PoolIntention,
 ) (ctrl.Result, error) {
+	// A plane materialises a pool adoption IFF it adopts that pool's cluster — the same rule the
+	// ClusterIntention gate applies, at the level that was left open. Measured 2026-09-30: bioskop
+	// carried nikopol-wrkld's PoolIntention and its controller acted on it, stopped only by a Secret
+	// bioskop does not render. Relying on absent material is a safe ACCIDENT, not a rule.
+	if pi.Spec.AdoptedBy == "" {
+		return ctrl.Result{}, fmt.Errorf(
+			"PoolIntention %s/%s declares no adoptedBy — re-render from the HOST once to seed it",
+			pi.Namespace, pi.Name)
+	}
+	if r.SelfCluster != "" && pi.Spec.AdoptedBy != r.SelfCluster {
+		log.FromContext(ctx).V(1).Info("not this plane's pool to adopt",
+			"cluster", pi.Spec.ClusterRef, "pool", pi.Spec.Pool,
+			"adoptedBy", pi.Spec.AdoptedBy, "self", r.SelfCluster)
+		pi.Status.Phase = adoptionv1alpha1.PoolIntentionPhaseObserved
+		return ctrl.Result{}, nil
+	}
 	adoption := &adoptionv1alpha1.PoolAdoption{
 		ObjectMeta: metav1.ObjectMeta{Name: pi.Name, Namespace: pi.Namespace},
 	}
@@ -104,6 +126,7 @@ func specFromPoolIntention(pi *adoptionv1alpha1.PoolIntention) adoptionv1alpha1.
 		Nodes:                pi.Spec.Nodes,
 		Replicas:             pi.Spec.Replicas,
 		Nature:               pi.Spec.Nature,
+		AdoptedBy:            pi.Spec.AdoptedBy,
 		NodeLabels:           pi.Spec.NodeLabels,
 		Devices:              pi.Spec.Devices,
 		Target:               pi.Spec.Target,

@@ -43,6 +43,17 @@ type PoolAdoptionSpec struct {
 	// +kubebuilder:validation:MinItems=1
 	Nodes []PetSpec `json:"nodes"`
 
+	// AdoptedBy names the management cluster that adopts this pool's CLUSTER — mirrored from its
+	// ClusterIntention so the gate exists at BOTH levels.
+	//
+	// ⚠️ Gating only the cluster left this level open: measured 2026-09-30, bioskop carried
+	// nikopol-wrkld's PoolIntention and its controller acted on it (phase Pending), stopped only by a
+	// Secret it happens not to render. That is a safe accident, not a rule — it relies on material
+	// being absent rather than on ownership being checked, and it would act the moment material
+	// appeared.
+	// +optional
+	AdoptedBy string `json:"adoptedBy,omitempty"`
+
 	// Nature says WHO NAMES this pool's instances, mirrored from the PoolIntention: `pet` ⟹ the
 	// declaration is the roster, `cattle` ⟹ the roster is observed. It replaces reading Q2 off the
 	// PRESENCE of a reflection file, which was a runtime accident. See PoolIntentionSpec.Nature.
