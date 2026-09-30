@@ -1105,7 +1105,7 @@ bootstrap bundle never carved — which is exactly why that pool waits today. Th
 its own (a workload owns nothing).
 
 [[rendered-by]]
-==== The closure is `ClusterFleet.renderedBy` — landed, and NOT yet switched on
+==== The closure is `ClusterFleet.renderedBy` — ✅ landed and switched on
 
 The contract is in place and tested (`ClusterFleetTest`): breadth-first from the renderer, itself
 excluded, each level host-local first. Two questions that look alike are kept apart —
@@ -1123,14 +1123,37 @@ excluded, each level host-local first. Two questions that look alike are kept ap
   push.
 |===
 
-⚠️ The call site still walks ONE level, deliberately. Switching it alone would MISPLACE material:
-every carved bootstrap bundle is handed to the MANAGING pass, so a grandchild's bundle would render
-`<grandchild>-server-manifests` onto the ROOT's branch instead of its adopter's — a CA private key on
-a cluster with no use for it. Two pieces must land together with the switch:
+Switching the scope alone would have MISPLACED material — every carved bootstrap bundle was handed to
+the MANAGING pass, so a grandchild's bundle would have rendered `<grandchild>-server-manifests` (a CA
+private key) onto the ROOT's branch instead of its adopter's, while still leaving the adopter's branch
+without the one Secret its pool waits for. So three things landed together:
 
-. passes ordered DEEPEST-FIRST, so a child's bundle exists before its adopter's pass runs;
-. each bundle routed to the pass of the cluster that ADOPTS it, which is "material follows the
-  adopter" restated correctly — the material's PLACEMENT follows the adopter, whoever renders it.
+. the scope is the closure;
+. passes are walked DEEPEST-FIRST — `renderedBy` is breadth-first, so reversing it puts every child
+  before the pass that adopts it, which on a tree IS a post-order;
+. each bundle is routed to the pass of the cluster that ADOPTS it — "material follows the adopter"
+  restated correctly: the material's PLACEMENT follows the adopter, whoever renders it. The rule had
+  been implemented as "only the adopter RENDERS it", which is the easy way to guarantee it and exactly
+  why a grandchild could not be declared at all.
+
+Which makes the walk do this, and the last two rows are the fix:
+
+[cols="1,2,2",options="header"]
+|===
+| Order | Pass | Bundles it receives
+
+| 1 | `nikopol-wrkld` | none (a workload adopts nobody) — carves its own
+| 2 | `nikopol-mgmt` | `nikopol-wrkld`'s ⟶ renders `nikopol-wrkld-server-manifests` **on its own
+  branch**, which is the Secret the pool was waiting for
+| 3 | `bioskop-wrkld` | none — carves its own
+| 4 | the MANAGING pass | `bioskop-wrkld`'s ONLY. `nikopol-wrkld`'s is filtered out, because the root
+  does not adopt it
+|===
+
+★ Note what the one-level walk was NOT: a reachability limit. Seen from nikopol, one level already
+suffices — `ownedBy(nikopol-mgmt) = [nikopol-wrkld]`, and nikopol's own render carves that bundle onto
+its own branch. What was missing is that nikopol never RENDERS. The closure is what lets the root do
+it in nikopol's place, which is the whole point of <<return-to-service>>.
 
 ★ And one property is recorded as a test because asserting its opposite is the tempting mistake, made
 here first: the closures OVERLAP. `nikopol-wrkld` is in the root's and in `nikopol-mgmt`'s, and

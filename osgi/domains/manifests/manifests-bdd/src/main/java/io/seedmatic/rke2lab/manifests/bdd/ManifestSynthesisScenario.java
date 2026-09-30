@@ -67,7 +67,10 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
@@ -980,28 +983,34 @@ public class ManifestSynthesisScenario
    * idempotent, so a re-run starts clean while the last render stays inspectable on disk.
    */
   /**
-   * The children this render writes a branch for — ONE level of the owner rule today, and the
-   * TRANSITIVE closure ({@link ClusterFleet#renderedBy}) once material routing lands.
+   * The branches this render WRITES — the TRANSITIVE closure of the owner rule ({@link
+   * ClusterFleet#renderedBy}), not one level of it.
    *
    * <p>★ The two questions are not the same. Writing a branch needs no reachability — it is a git
    * push — where DRIVING a cluster's machines does, and that is what {@code ownedBy} answers for
-   * the CR-emitting units. Conflating them is what leaves a sub-plane's workload undeclarable: the
-   * walk stops one level short, so {@code nikopol-wrkld}'s branch is never produced, its bootstrap
-   * bundle never carved, and its control-node pool waits for a Secret nobody writes.
+   * the CR-emitting units. Conflating them is what left a sub-plane's workload undeclarable: the
+   * walk stopped one level short, so {@code nikopol-wrkld}'s branch was never produced, its
+   * bootstrap bundle never carved, and its control-node pool waited for a Secret nobody would
+   * write.
+   *
+   * <p>Note what that one level was NOT: a reachability limit. Seen from nikopol one level already
+   * suffices — {@code ownedBy(nikopol-mgmt) = [nikopol-wrkld]}, and nikopol's own render carves
+   * that bundle onto its own branch. What is missing is that nikopol never RENDERS, and the closure
+   * is what lets the root do it in its place.
    *
    * <p>Empty when no fleet is declared (a bare survey / the standalone CLI) or when the render has
    * no identity: a pass that does not know WHICH cluster it renders for cannot know what that
    * cluster owns, and answering "all of them" there is precisely the viewpoint error the derivation
    * removes.
    */
-  private static List<ClusterCoordinate> ownedChildren(final ManifestsRunbookInput effective) {
+  private static List<ClusterCoordinate> renderedChildren(final ManifestsRunbookInput effective) {
     final Optional<ClusterFleet> fleet = effective.facets().clusterFleet();
     if (fleet.isEmpty()) {
       return List.of();
     }
     return effective
         .identity()
-        .map(identity -> fleet.orElseThrow().ownedBy(identity.clusterName()))
+        .map(identity -> fleet.orElseThrow().renderedBy(identity.clusterName()))
         .orElseGet(List::of);
   }
 
@@ -1009,15 +1018,11 @@ public class ManifestSynthesisScenario
       ManifestsRunbookInput effective,
       Optional<LinkedWorktree> rendered,
       Optional<Delivery> delivery) {
-    // ⚠️ STILL one level, deliberately. {@link ClusterFleet#renderedBy} is the closure this is
-    // moving
-    // to, and its contract is landed + tested — but switching here ALONE would misplace material:
-    // every
-    // carved bootstrap bundle is handed to the MANAGING pass, so a grandchild's bundle would render
-    // `<grandchild>-server-manifests` onto the ROOT's branch instead of its adopter's, putting a CA
-    // private key on a cluster that has no use for it. Two pieces must land with the switch: passes
-    // ordered deepest-first, and each bundle routed to the pass of the cluster that ADOPTS it.
-    final List<ClusterCoordinate> children = ownedChildren(effective);
+    // DEEPEST-FIRST. `renderedBy` is breadth-first, so parents precede children; reversing it puts
+    // every child before the pass that ADOPTS it, which is what lets a bundle exist by the time its
+    // adopter renders. On a tree that reversal IS a post-order, and the adopter relation is a tree.
+    final List<ClusterCoordinate> children = new ArrayList<>(renderedChildren(effective));
+    Collections.reverse(children);
     if (rendered.isEmpty() || delivery.isEmpty() || children.isEmpty()) {
       return List.of();
     }
@@ -1299,7 +1304,11 @@ public class ManifestSynthesisScenario
      */
     public When the_workload_targets_are_rendered(
         @Hidden List<TargetPass> passes, @Hidden Materials materials) {
-      final List<WorkloadBootstrapBundlesMaterial.Entry> carved = new ArrayList<>();
+      // Carved bundles, keyed by the cluster they belong to, so each can be ROUTED to the pass of
+      // whoever adopts it. The passes arrive DEEPEST-FIRST, so a child's bundle is already in here
+      // by
+      // the time the pass of its adopter runs.
+      final Map<String, String> carvedByCluster = new LinkedHashMap<>();
       for (final TargetPass pass : passes) {
         final String cluster = pass.child().clusterName();
         final Path root = pass.worktree().path();
@@ -1332,7 +1341,16 @@ public class ManifestSynthesisScenario
                 // whoever renders, the result must be IDENTICAL, which is what makes the two copies
                 // of a sub-plane's intention agree by construction instead of by coincidence.
                 facet.facets().clusterFleet(),
-                Optional.empty()),
+                // The bundles THIS child adopts — carved by the passes below it, which ran first
+                // because the closure is walked deepest-first. Empty for a workload (it adopts
+                // nobody) and for a sub-plane whose own child carved nothing.
+                //
+                // ⚠️ This was hardcoded empty, which was right only while a child was always a
+                // leaf.
+                // A child that is itself a MANAGEMENT plane adopts its host's workload, and its
+                // branch is the ONLY place that workload's `<cluster>-server-manifests` belongs —
+                // the Secret its control-node pool waits for.
+                bundlesAdoptedBy(cluster, carvedByCluster)),
             materials);
         // The branch records the facet that produced it, INCLUDING the full fleet, so a later
         // steady-state render of THIS branch derives the children IT owns.
@@ -1362,15 +1380,51 @@ public class ManifestSynthesisScenario
         recordSopsPolicy(root);
         recordInstallConfigFlake(root);
         pass.delivery().seal(pass.worktree());
-        carvedBundle(root)
-            .ifPresent(
-                yaml -> carved.add(new WorkloadBootstrapBundlesMaterial.Entry(cluster, yaml)));
+        carvedBundle(root).ifPresent(yaml -> carvedByCluster.put(cluster, yaml));
       }
+      // The managing pass renders the bundles of the children the RENDERER adopts — NOT every
+      // bundle
+      // carved. Handing it all of them is what put a grandchild's `<cluster>-server-manifests` (a
+      // CA
+      // private key) on the root's branch instead of its adopter's, and left the adopter's branch
+      // without the one Secret its pool waits for.
       this.workloadBundles =
-          carved.isEmpty()
-              ? Optional.empty()
-              : Optional.of(new WorkloadBootstrapBundlesMaterial(carved));
+          facet
+              .identity()
+              .map(ManifestsRunbookInput.Identity::clusterName)
+              .flatMap(renderer -> bundlesAdoptedBy(renderer, carvedByCluster));
       return self();
+    }
+
+    /**
+     * The carved bundles whose cluster is ADOPTED by {@code adopter} — the routing that replaced
+     * "hand every bundle to the managing pass".
+     *
+     * <p>★ This is "material follows the adopter" stated correctly. The rule was implemented as
+     * "only the adopter RENDERS it", which is the easy way to guarantee it and the reason a
+     * grandchild could not be declared at all. What the rule actually demands is that the
+     * material's PLACEMENT follow the adopter — whoever renders. Same guarantee, without pruning
+     * the render.
+     *
+     * <p>Empty rather than an empty material: absent and present-but-empty are different facts
+     * downstream, and only one of them means "this pass adopts nobody".
+     */
+    private Optional<WorkloadBootstrapBundlesMaterial> bundlesAdoptedBy(
+        final String adopter, final Map<String, String> carvedByCluster) {
+      final Optional<ClusterFleet> fleet = facet.facets().clusterFleet();
+      if (fleet.isEmpty() || carvedByCluster.isEmpty()) {
+        return Optional.empty();
+      }
+      final List<WorkloadBootstrapBundlesMaterial.Entry> mine =
+          carvedByCluster.entrySet().stream()
+              .filter(entry -> fleet.orElseThrow().adopterOf(entry.getKey()).equals(adopter))
+              .map(
+                  entry ->
+                      new WorkloadBootstrapBundlesMaterial.Entry(entry.getKey(), entry.getValue()))
+              .toList();
+      return mine.isEmpty()
+          ? Optional.empty()
+          : Optional.of(new WorkloadBootstrapBundlesMaterial(mine));
     }
 
     /**
