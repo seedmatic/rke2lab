@@ -198,12 +198,12 @@
     },
     {
       "install_id": "git-sops-filter",
-      "locked-url": "path:/private/var/lib/git/seedmatic/rke2lab.d/flox-catalogue?lastModified=1790714368&narHash=sha256-Z0tQK2DXLok2W4JEwMwml%2B8FoXgvDbFOeZ3mB1M7Ouk%3D",
+      "locked-url": "path:/private/var/lib/git/seedmatic/rke2lab.d/flox-catalogue?lastModified=1790802725&narHash=sha256-%2BG/ygFXtocL%2BeYy5St6iWMMoVhG9qn8hsLmrRMJnxEE%3D",
       "flake-description": "Flox runtime env catalog: per-workload packages (kdns, tailscale) the flox-nri-plugin injects. The plugin itself now lives in github:seedmatic/flox-nri-plugin (consumed as the flox-runtime input of the rke2lab flake).",
       "locked-flake-attr-path": "packages.aarch64-linux.git-sops-filter",
-      "derivation": "/nix/store/2kdxcnvf9z5gjx3z7jgwsfqk97nl21f3-git-sops-filter.drv",
+      "derivation": "/nix/store/dppwy1zcbacpdypawgwxqh5gbb4sfgj0-git-sops-filter.drv",
       "outputs": {
-        "out": "/nix/store/ksid2yivyalslbdnns66s01wmhxz1540-git-sops-filter"
+        "out": "/nix/store/2vb2vb8z6q9shld728gz77fa5rhdg5x0-git-sops-filter"
       },
       "output-names": [
         "out"
