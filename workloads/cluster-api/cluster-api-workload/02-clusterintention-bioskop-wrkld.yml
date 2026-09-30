@@ -8,6 +8,7 @@ metadata:
   name: bioskop-wrkld
   namespace: rke2lab-bioskop-wrkld
 spec:
+  adoptedBy: bioskop-mgmt
   clusterName: bioskop-wrkld
   clusterNetwork:
     podCIDRs:

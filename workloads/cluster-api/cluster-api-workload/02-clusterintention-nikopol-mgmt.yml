@@ -8,6 +8,7 @@ metadata:
   name: nikopol-mgmt
   namespace: rke2lab-nikopol-mgmt
 spec:
+  adoptedBy: bioskop-mgmt
   clusterName: nikopol-mgmt
   clusterNetwork:
     podCIDRs:
