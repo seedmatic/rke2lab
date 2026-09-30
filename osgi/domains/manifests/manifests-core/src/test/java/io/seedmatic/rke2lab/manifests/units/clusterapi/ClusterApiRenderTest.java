@@ -10,6 +10,7 @@ import io.seedmatic.rke2lab.manifests.ManifestsUnit;
 import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
 import io.seedmatic.rke2lab.manifests.YamlMapper;
 import io.seedmatic.rke2lab.manifests.contract.ClusterFleet;
+import io.seedmatic.rke2lab.manifests.contract.ControlPlaneShape;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainPolicy;
 import io.seedmatic.rke2lab.manifests.contract.ManifestSynthesisRequest;
 import io.seedmatic.rke2lab.manifests.contract.profiles.BootstrapIdentity;
@@ -65,7 +66,7 @@ class ClusterApiRenderTest {
    * exactly the pair {@code manifests/bioskop-mgmt} carries today.
    */
   private static final ClusterFleet FLEET =
-      new ClusterFleet(List.of("bioskop", "nikopol"), "bioskop");
+      new ClusterFleet(List.of("bioskop", "nikopol"), "bioskop", ControlPlaneShape.HA);
 
   /** The operator's host declaration the render cannot derive — see NodeDeviceSet. */
   private static final String FABRIC_BRIDGE = "fabric-br";
@@ -119,13 +120,24 @@ class ClusterApiRenderTest {
    */
   private static List<Map<String, Object>> render(
       final Path outdir, final List<ManifestsUnit> units) {
+    return renderWithFleet(outdir, FLEET, units);
+  }
+
+  /** The same render, with a chosen fleet — so a declared shape can be varied in one test. */
+  private static List<Map<String, Object>> renderWithFleet(
+      final Path outdir, final ClusterFleet fleet) {
+    return renderWithFleet(outdir, fleet, clusterApiUnits());
+  }
+
+  private static List<Map<String, Object>> renderWithFleet(
+      final Path outdir, final ClusterFleet fleet, final List<ManifestsUnit> units) {
     final App app = new App(AppProps.builder().outdir(outdir.toString()).build());
     final Chart chart = new Chart(app, "manifests");
     final ManifestSynthesisRequest request =
         ManifestSynthesisRequest.builder(outdir, outdir.resolve("manifests.yaml"))
             .bootstrapIdentity(identity())
             .imageState(Optional.of(imageState()))
-            .clusterFleet(Optional.of(FLEET))
+            .clusterFleet(Optional.of(fleet))
             .manifestDomainPolicy(Optional.of(POLICY))
             .fabricBridgeParent(Optional.of(FABRIC_BRIDGE))
             .build();
@@ -244,6 +256,33 @@ class ClusterApiRenderTest {
         "bioskop-mgmt must carry NO material for nikopol-wrkld — its adopter is nikopol-mgmt, but it"
             + " still carries its DECLARATION: "
             + caNamespaces);
+  }
+
+  @Test
+  void requireADeclaredSingleShapeReachesTheRenderedWorkloadPool(@TempDir Path outdir) {
+    // The shape is DECLARED on the fleet, so changing it must change what a workload asks for — and
+    // must leave a management cluster untouched, which is one control node by construction.
+    final List<Map<String, Object>> documents =
+        renderWithFleet(
+            outdir,
+            new ClusterFleet(List.of("bioskop", "nikopol"), "bioskop", ControlPlaneShape.SINGLE));
+
+    final Map<String, Integer> replicas = new java.util.TreeMap<>();
+    for (final Map<String, Object> doc : documents) {
+      if (!"PoolIntention".equals(kindOf(doc))) {
+        continue;
+      }
+      @SuppressWarnings("unchecked")
+      final Map<String, Object> spec = (Map<String, Object>) doc.get("spec");
+      replicas.put(
+          String.valueOf(spec.get("clusterRef")), ((Number) spec.get("replicas")).intValue());
+    }
+    assertEquals(1, replicas.get("bioskop-wrkld"), "a declared `single` workload asks for ONE");
+    assertEquals(1, replicas.get("nikopol-wrkld"), "and so does the other");
+    assertEquals(
+        1,
+        replicas.get("bioskop-mgmt"),
+        "a management cluster is unaffected — one by construction");
   }
 
   @Test

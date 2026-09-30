@@ -48,10 +48,17 @@ import java.util.List;
  * list, so {@code nikopol-mgmt}'s own render derives {@code [nikopol-wrkld]} where it used to
  * receive an empty target list and be structurally childless.
  */
-public record ClusterFleet(List<String> incusTargets, String rootHost) {
+public record ClusterFleet(
+    List<String> incusTargets, String rootHost, ControlPlaneShape workloadControlPlane) {
 
   public ClusterFleet {
     incusTargets = incusTargets != null ? List.copyOf(incusTargets) : List.of();
+    // Defaults to HA, which is today's hardcoded behaviour — so an absent declaration changes
+    // nothing, and the operator opts INTO single. A management cluster is not configurable: it is
+    // one
+    // control node by construction, so this applies to workloads alone.
+    workloadControlPlane =
+        workloadControlPlane != null ? workloadControlPlane : ControlPlaneShape.HA;
     if (rootHost == null || rootHost.isBlank()) {
       throw new IllegalArgumentException(
           "the fleet needs its ROOT host — the plane seed-master seeds out-of-band. Absent from"

@@ -6,6 +6,7 @@ import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
 import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
 import io.seedmatic.rke2lab.manifests.contract.ClusterCoordinate;
 import io.seedmatic.rke2lab.manifests.contract.ClusterRole;
+import io.seedmatic.rke2lab.manifests.contract.ControlPlaneShape;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ImageState;
 import io.seedmatic.rke2lab.manifests.contract.profiles.IncusIdentityMaterial;
@@ -82,7 +83,6 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
   // 2026-09-27 a child can be a management cluster itself (model B: bioskop-mgmt births
   // nikopol-mgmt, which then self-adopts). Leaving these as workload constants would have grown a
   // three-node nikopol-mgmt announcing itself as a workload — right name, wrong shape.
-  private static final int WORKLOAD_CONTROL_PLANE_REPLICAS = 3;
 
   private static final int MANAGEMENT_CONTROL_PLANE_REPLICAS = 1;
 
@@ -136,10 +136,17 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
     // `ClusterRole.of`, whose catch-all answers MGMT for anything it cannot read — what let the
     // netplan projection pass hosts as cluster names and lose half the clusters in silence.
     final ClusterRole role = child.role();
+    // A management cluster is ONE control node by construction; a workload takes the DECLARED shape
+    // (`single` | `ha`), which replaces a hardcoded 3. The shape is a word rather than a number
+    // because 1 and 3 are not arbitrary points on a scale — see ControlPlaneShape.
     final int controlPlaneReplicas =
         switch (role) {
           case MGMT -> MANAGEMENT_CONTROL_PLANE_REPLICAS;
-          case WRKLD -> WORKLOAD_CONTROL_PLANE_REPLICAS;
+          case WRKLD ->
+              ManifestSynthesisContext.current()
+                  .workloadControlPlane()
+                  .orElse(ControlPlaneShape.HA)
+                  .replicas();
         };
     // The federated role recorded on the ClusterIntention — the SAME vocabulary the mgmt unit uses
     // for its self-adoption, so a birthed management cluster is indistinguishable from one that

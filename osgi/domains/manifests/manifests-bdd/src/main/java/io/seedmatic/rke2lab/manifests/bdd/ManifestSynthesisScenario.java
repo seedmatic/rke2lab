@@ -480,6 +480,12 @@ public class ManifestSynthesisScenario
             facets.debug(),
             seeded.facets().delivery(),
             facets.incusTargets(),
+            // HEAD wins with the SEEDED fallback, same as the two below: the control-plane shape is
+            // a
+            // GROW-recorded declaration, so a branch that has one keeps it and one recorded before
+            // the
+            // field existed falls back to what the sower declares.
+            facets.workloadControlPlane().or(() -> seeded.facets().workloadControlPlane()),
             // HEAD wins, with the SEEDED value as the fallback — the same shape as the network
             // below, and for the same reason: a branch recorded before rootIncusHost existed has
             // none, and the sower (a host grow) does.
@@ -1319,6 +1325,7 @@ public class ManifestSynthesisScenario
                 facet.facets().delivery(),
                 facet.facets().incusTargets(),
                 facet.facets().rootIncusHost(),
+                facet.facets().workloadControlPlane(),
                 // The network rides along: a CHILD branch renders in-cluster too, and its own
                 // render has no host to declare the fabric parent either. Dropping it here would
                 // leave exactly the hole that broke the manager's render, one branch further down.

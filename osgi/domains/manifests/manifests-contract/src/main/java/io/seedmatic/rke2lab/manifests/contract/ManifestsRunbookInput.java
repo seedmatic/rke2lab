@@ -147,6 +147,7 @@ public record ManifestsRunbookInput(
       DeliveryFacet delivery,
       List<String> incusTargets,
       Optional<String> rootIncusHost,
+      Optional<String> workloadControlPlane,
       Optional<NetworkFacet> network) {
 
     /**
@@ -163,6 +164,7 @@ public record ManifestsRunbookInput(
       delivery = delivery != null ? delivery : DeliveryFacet.defaults();
       incusTargets = incusTargets != null ? List.copyOf(incusTargets) : List.of();
       rootIncusHost = rootIncusHost != null ? rootIncusHost : Optional.empty();
+      workloadControlPlane = workloadControlPlane != null ? workloadControlPlane : Optional.empty();
       // Coalesced to unknown(), NOT to a plausible bridge name: an absent parent renders a device
       // with an empty parent, visibly wrong in a manifest, where a default would silently attach a
       // node to the wrong bridge. It lives HERE rather than beside `image` because it is the same
@@ -204,7 +206,10 @@ public record ManifestsRunbookInput(
                               + " but no rootIncusHost — the plane seed-master seeds out-of-band"
                               + " cannot be inferred, and guessing it would make an in-cluster"
                               + " re-render own a DIFFERENT set than the operator's render of the"
-                              + " same branch. Re-render from the HOST once to seed it."))));
+                              + " same branch. Re-render from the HOST once to seed it.")),
+              // A single expression so the shape and its default live in ONE place: absent ⟹ HA,
+              // which is what the hardcoded constant did, so an old facet renders identically.
+              workloadControlPlane.map(ControlPlaneShape::ofToken).orElse(ControlPlaneShape.HA)));
     }
 
     public static Builder builder() {
@@ -220,6 +225,7 @@ public record ManifestsRunbookInput(
       private DeliveryFacet delivery = DeliveryFacet.defaults();
       private List<String> incusTargets = List.of();
       private Optional<String> rootIncusHost = Optional.empty();
+      private Optional<String> workloadControlPlane = Optional.empty();
       private Optional<NetworkFacet> network = Optional.empty();
 
       private Builder() {}
@@ -251,8 +257,15 @@ public record ManifestsRunbookInput(
         return this;
       }
 
+      /** The control-plane shape every WORKLOAD cluster takes — {@code single} or {@code ha}. */
+      public Builder workloadControlPlane(String workloadControlPlane) {
+        this.workloadControlPlane = Optional.of(workloadControlPlane);
+        return this;
+      }
+
       public Facets build() {
-        return new Facets(debug, delivery, incusTargets, rootIncusHost, network);
+        return new Facets(
+            debug, delivery, incusTargets, rootIncusHost, workloadControlPlane, network);
       }
     }
   }

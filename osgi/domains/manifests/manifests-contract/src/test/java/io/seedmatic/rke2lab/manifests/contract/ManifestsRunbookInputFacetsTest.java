@@ -26,7 +26,7 @@ class ManifestsRunbookInputFacetsTest {
   @Test
   void the_compact_constructor_defaults_every_absent_sub_facet() {
     // What jackson hands the canonical constructor for a yaml that carries none of the sub-maps.
-    final Facets coalesced = new Facets(null, null, null, null, null);
+    final Facets coalesced = new Facets(null, null, null, null, null, null);
 
     assertNotNull(coalesced.debug(), "an absent debug sub-map defaults, never null");
     assertNotNull(coalesced.delivery(), "an absent delivery sub-map defaults, never null");
@@ -54,6 +54,7 @@ class ManifestsRunbookInputFacetsTest {
             new DeliveryFacet(true),
             List.of("bioskop", "nikopol"),
             Optional.of("bioskop"),
+            Optional.of("single"),
             Optional.of(new ManifestsRunbookInput.NetworkFacet("fabric-br")));
 
     assertEquals(true, partial.delivery().push(), "a present delivery is kept, not defaulted");
@@ -67,6 +68,20 @@ class ManifestsRunbookInputFacetsTest {
             .map(ClusterCoordinate::clusterName)
             .toList(),
         "the fleet derives the children the ROOT plane owns");
+    // The control-plane shape rides on the same facet, so it TRAVELS: recorded verbatim on the
+    // branch, an in-cluster re-render replays it. `single` was declared above, so a workload asks
+    // for ONE — and an absent declaration means `ha`, which is what the constant did.
+    assertEquals(
+        ControlPlaneShape.SINGLE,
+        partial.clusterFleet().orElseThrow().workloadControlPlane(),
+        "a declared shape is kept verbatim");
+    assertEquals(
+        ControlPlaneShape.HA,
+        new Facets(null, null, List.of("bioskop"), Optional.of("bioskop"), Optional.empty(), null)
+            .clusterFleet()
+            .orElseThrow()
+            .workloadControlPlane(),
+        "an absent shape defaults to ha — today's behaviour, so an old facet renders identically");
     // The network rides INSIDE the facet, which is what makes it recorded on the branch and
     // replayed
     // by an in-cluster render — the reason it stopped being an amendment role of its own.
@@ -101,7 +116,8 @@ class ManifestsRunbookInputFacetsTest {
     // already applied — a silent teardown. Three values, and this is the third: absent (no hosts)
     // is fine, present is fine, half-present is BROKEN.
     final Facets halfDecoded =
-        new Facets(null, null, List.of("bioskop", "nikopol"), Optional.empty(), null);
+        new Facets(
+            null, null, List.of("bioskop", "nikopol"), Optional.empty(), Optional.empty(), null);
 
     final IllegalStateException loud =
         assertThrows(IllegalStateException.class, halfDecoded::clusterFleet);

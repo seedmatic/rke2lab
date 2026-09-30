@@ -1756,6 +1756,36 @@ belongs, which is the confusion that made half the clusters vanish from the netp
 `ManifestSynthesisScenario` (which child branches to prepare). A workload cluster owns nothing: it
 runs no `seed-incluster`.
 
+==== The control-plane shape is declared as a WORD — `ControlPlaneShape`
+
+A workload's control-node count was a hardcoded `3`. It is now declared on the same facet:
+
+[source,yaml]
+----
+incusTargets:
+  - bioskop
+  - nikopol
+workloadControlPlane: ha   # single | ha
+----
+
+★ A word, not an integer, because the two values are not arbitrary points on a scale. `ha` is THREE
+because three is the smallest etcd quorum that survives losing one member; **two would be strictly
+worse than one** (it needs both members for quorum, so it doubles the failure surface for no gain)
+and four buys nothing over three while costing a node. A free integer would invite exactly those,
+and sizing a control plane is the one thing that must never be a guess — so `ofToken` is exhaustive
+and LOUD, like `ClusterRole.ofToken`.
+
+A MANAGEMENT cluster is NOT configurable: it is one control node by construction, so the shape
+applies to `WRKLD` alone.
+
+It rides on the manifests facet for the same reason `incusTargets` and `rootIncusHost` do — that
+facet is recorded on the branch VERBATIM, so an in-cluster re-render replays the same shape. Put in
+`rke2lab:cluster:` it would not travel at all, the in-cluster render having no Pulumi stack. And
+because the whole subtree is contributed verbatim, adding the key needed no plumbing in seed-master.
+
+Absent ⟹ `ha`, which is what the constant did, so a branch recorded before the field renders
+identically.
+
 ==== Why `rootHost` is DECLARED, not inferred
 
 The root is the plane `seed-master` seeds out-of-band — the single `STANDALONE` boot, the one cluster

@@ -3,6 +3,7 @@ package io.seedmatic.rke2lab.manifests;
 
 import io.seedmatic.rke2lab.manifests.contract.ClusterCoordinate;
 import io.seedmatic.rke2lab.manifests.contract.ClusterFleet;
+import io.seedmatic.rke2lab.manifests.contract.ControlPlaneShape;
 import io.seedmatic.rke2lab.manifests.contract.ManifestSynthesisRequest;
 import io.seedmatic.rke2lab.manifests.contract.profiles.BootstrapIdentity;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ClusterIssuerCaMaterial;
@@ -209,6 +210,14 @@ public final class ManifestSynthesisContext {
    * used to be a render filter: a plane may carry an intention for a cluster whose Incus engine it
    * cannot reach, because it will not act on it.
    */
+  /**
+   * The control-plane shape every WORKLOAD cluster takes, from the declared fleet. Empty when no
+   * fleet is declared (a bare survey), and then the caller renders no cluster anyway.
+   */
+  public Optional<ControlPlaneShape> workloadControlPlane() {
+    return request.clusterFleet().map(ClusterFleet::workloadControlPlane);
+  }
+
   public List<ClusterCoordinate> fleetClusters() {
     return request.clusterFleet().map(ClusterFleet::all).orElseGet(List::of);
   }

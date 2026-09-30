@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Test;
 class ClusterFleetTest {
 
   private static final ClusterFleet FLEET =
-      new ClusterFleet(List.of("bioskop", "nikopol"), "bioskop");
+      new ClusterFleet(List.of("bioskop", "nikopol"), "bioskop", ControlPlaneShape.HA);
 
   private static List<String> names(final List<ClusterCoordinate> owned) {
     return owned.stream().map(ClusterCoordinate::clusterName).toList();
@@ -131,7 +131,7 @@ class ClusterFleetTest {
 
   @Test
   void a_single_host_fleet_owns_only_its_workload() {
-    final ClusterFleet lone = new ClusterFleet(List.of("bioskop"), "bioskop");
+    final ClusterFleet lone = new ClusterFleet(List.of("bioskop"), "bioskop", ControlPlaneShape.HA);
     assertEquals(List.of("bioskop-wrkld"), names(lone.ownedBy("bioskop-mgmt")));
   }
 
@@ -139,15 +139,15 @@ class ClusterFleetTest {
   void the_root_must_be_declared_and_must_be_on_the_fleet() {
     assertThrows(
         IllegalArgumentException.class,
-        () -> new ClusterFleet(List.of("bioskop"), null),
+        () -> new ClusterFleet(List.of("bioskop"), null, ControlPlaneShape.HA),
         "an absent root host is loud — inferring it would make the owned set depend on who renders");
     assertThrows(
         IllegalArgumentException.class,
-        () -> new ClusterFleet(List.of("bioskop"), "   "),
+        () -> new ClusterFleet(List.of("bioskop"), "   ", ControlPlaneShape.HA),
         "a blank root host is loud too");
     assertThrows(
         IllegalArgumentException.class,
-        () -> new ClusterFleet(List.of("nikopol"), "bioskop"),
+        () -> new ClusterFleet(List.of("nikopol"), "bioskop", ControlPlaneShape.HA),
         "the seeding plane must be ON the fleet it seeds");
   }
 
