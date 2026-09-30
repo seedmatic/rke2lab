@@ -1,5 +1,11 @@
 # Rendered Secrets are sops-filtered: their data/stringData commit ENCRYPTED (never
 # plaintext), decrypted by Flux (sops-age) on reconcile. The recorded .sops.yaml names the
 # fields + recipients; only the irreducible bootstrap seed still rides the node-bootstrap lane.
-**/*-secret-*.yml filter=sops-yaml
-**/.secret-*.yml filter=sops-yaml
+#
+# `diff=` is what makes a RENDER REVIEWABLE. Without it `git diff` compares ciphertext, and
+# AES-GCM takes a fresh IV per encryption, so every Secret always looks changed and never says
+# what moved — which is how a render's real change hides among 28 walls of base64. The
+# sops-yaml textconv renders each blob decrypted instead; with no key it exits non-zero and git
+# falls back to the raw blob, so a missing key costs legibility and never truthfulness.
+**/*-secret-*.yml filter=sops-yaml diff=sops-yaml
+**/.secret-*.yml filter=sops-yaml diff=sops-yaml
