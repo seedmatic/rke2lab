@@ -123,6 +123,15 @@ spec:
                   Secrets live.
                 minLength: 1
                 type: string
+              nature:
+                description: |-
+                  Nature says WHO NAMES this pool's instances, mirrored from the PoolIntention: `pet` ⟹ the
+                  declaration is the roster, `cattle` ⟹ the roster is observed. It replaces reading Q2 off the
+                  PRESENCE of a reflection file, which was a runtime accident. See PoolIntentionSpec.Nature.
+                enum:
+                - pet
+                - cattle
+                type: string
               nodeLabels:
                 description: |-
                   NodeLabels are the kubelet --node-label values every node of this pool registers with, as

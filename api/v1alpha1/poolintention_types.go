@@ -11,6 +11,18 @@ import (
 // The controller reconciles each adopt-first and OWNS a PoolAdoption (the pool mirror). The
 // cluster-level facts (image, versions, VIP) are DUPLICATED here from the same blueprint SSOT so the
 // pool reconcile is decoupled from the cluster reconcile.
+// PoolNature says who NAMES a pool's instances — see PoolIntentionSpec.Nature.
+type PoolNature string
+
+const (
+	// PoolNaturePet — the declaration names the instance (a host grow posed it). spec.nodes IS the
+	// roster, and the pool can never be greenfielded.
+	PoolNaturePet PoolNature = "pet"
+	// PoolNatureCattle — the provisioner names the instance, so the roster is OBSERVED and the count
+	// comes from spec.replicas.
+	PoolNatureCattle PoolNature = "cattle"
+)
+
 type PoolIntentionSpec struct {
 	// ClusterRef is the name of the owning ClusterIntention (= its clusterName). The CAPI objects
 	// this pool builds reference the cluster by the deterministic name, so there is no runtime dep —
@@ -44,6 +56,26 @@ type PoolIntentionSpec struct {
 	// Nodes is the pool's explicit pet roster, adopted/provisioned by providerID (lxc:///<name>).
 	// +kubebuilder:validation:MinItems=1
 	Nodes []PetSpec `json:"nodes"`
+
+	// Nature says WHO NAMES this pool's instances — the last of the triad's three questions to stop
+	// being inferred.
+	//
+	// ★ It used to be read off the PRESENCE of a PoolReflection file, which is a runtime accident: the
+	// same pool answered "declaration" before its first reflection existed and "provisioner" after,
+	// with nothing declaring the difference. Q1 (who CREATES) and Q3 (who ADDRESSES) were already
+	// derived from the role; only this one had no owner.
+	//
+	// `pet` — the DECLARATION names the instance (a host `grow` posed it, so spec.nodes IS the roster,
+	// and such a pool can never be greenfielded). `cattle` — the PROVISIONER names it, so the roster
+	// is OBSERVED (locally for the self cluster, from the reflection for a child) and the count comes
+	// from Replicas.
+	//
+	// ⚠️ It is NOT derivable from the role: nikopol-mgmt is `kind: management` and cattle, because its
+	// PARENT birthed it through CAPRKE2 (its node is …-control-plane-9f5kb, not the declared
+	// …-master). What it tracks is whether the cluster was grown out-of-band — true of the root alone.
+	// +optional
+	// +kubebuilder:validation:Enum=pet;cattle
+	Nature PoolNature `json:"nature,omitempty"`
 
 	// Replicas is the INTENDED size of this pool — the desired count, declared.
 	//

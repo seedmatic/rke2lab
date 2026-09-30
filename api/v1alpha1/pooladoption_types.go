@@ -43,6 +43,13 @@ type PoolAdoptionSpec struct {
 	// +kubebuilder:validation:MinItems=1
 	Nodes []PetSpec `json:"nodes"`
 
+	// Nature says WHO NAMES this pool's instances, mirrored from the PoolIntention: `pet` ⟹ the
+	// declaration is the roster, `cattle` ⟹ the roster is observed. It replaces reading Q2 off the
+	// PRESENCE of a reflection file, which was a runtime accident. See PoolIntentionSpec.Nature.
+	// +optional
+	// +kubebuilder:validation:Enum=pet;cattle
+	Nature PoolNature `json:"nature,omitempty"`
+
 	// Replicas is the INTENDED pool size, mirrored from the PoolIntention. The control plane is sized
 	// from THIS, never from len(roster): the roster is OBSERVED, so sizing from it closed a loop on
 	// itself and pinned a pool at whatever it first came up as. See PoolIntentionSpec.Replicas.

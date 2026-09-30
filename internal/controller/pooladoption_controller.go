@@ -383,29 +383,55 @@ func (r *PoolAdoptionReconciler) resolveRoster(ctx context.Context, spec adoptio
 	// So ask the cluster instead of the declaration. For SELF that is free and authoritative: the
 	// controller runs INSIDE the cluster this pool belongs to, so the local apiserver's Nodes ARE the
 	// roster — the counterpart of the git reflection used for children.
-	if r.SelfCluster != "" && spec.ClusterName == r.SelfCluster {
-		observed, decided, oerr := r.observedSelfRoster(ctx, spec)
-		if oerr != nil {
-			return nil, false, oerr
-		}
-		if decided {
-			return observed, false, nil
-		}
-		// Inconclusive, NOT empty — a cold-start whose nodes have not registered yet. Fall back to the
-		// seed so the RCP is still sized and the pool can come up; the next reconcile observes.
+	// ★ WHO NAMES is now DECLARED, not inferred. It used to be read off the PRESENCE of a
+	// PoolReflection file — a runtime accident, where the same pool answered "the declaration" before
+	// its first reflection existed and "the provisioner" after, with nothing stating the difference.
+	switch spec.Nature {
+	case adoptionv1alpha1.PoolNaturePet:
+		// A host `grow` posed these instances, so the DECLARATION is the roster and no observation is
+		// needed. Decisively, a pet pool can never be greenfielded: its instances were named before
+		// any controller ran, so "not found" means WAIT, never "provision another".
 		return spec.Nodes, false, nil
+
+	case adoptionv1alpha1.PoolNatureCattle:
+		// The provisioner named them, so the roster must be OBSERVED. For the SELF cluster that is free
+		// and authoritative — the controller runs INSIDE the cluster this pool belongs to, so the local
+		// apiserver's Nodes ARE the roster, the counterpart of the git reflection used for children.
+		if r.SelfCluster != "" && spec.ClusterName == r.SelfCluster {
+			observed, decided, oerr := r.observedSelfRoster(ctx, spec)
+			if oerr != nil {
+				return nil, false, oerr
+			}
+			if decided {
+				return observed, false, nil
+			}
+			// Inconclusive, NOT empty — a cold-start whose Nodes have not registered yet. Fall back to
+			// the seed and NEVER greenfield: a running SELF cluster plainly exists, and provisioning
+			// here would add a second control node beside the one we are standing on.
+			return spec.Nodes, false, nil
+		}
+		if r.Git == nil {
+			return spec.Nodes, false, nil
+		}
+		reflection, present, err := r.Git.ReadReflection(ctx, r.SelfCluster, spec.ClusterName, spec.Pool)
+		if err != nil {
+			// Git unreadable ⇒ HOLD. Never greenfield on an UNCONFIRMED absence: the difference between
+			// "no reflection" and "could not read" is the difference between provisioning and
+			// duplicating.
+			return nil, false, err
+		}
+		if !present {
+			return spec.Nodes, true, nil // greenfield — CAPRKE2 provisions spec.Replicas and names them
+		}
+		return reflection.Spec.Nodes, false, nil
+
+	default:
+		// Three-valued, and this is the third: an unset nature is a branch rendered before the field
+		// existed, not a pool without one. Guessing is what the presence-of-a-file reading did.
+		return nil, false, fmt.Errorf(
+			"PoolIntention %s/%s declares no nature (pet|cattle) — re-render from the HOST once to seed it",
+			spec.Namespace, spec.Pool)
 	}
-	if r.Git == nil {
-		return spec.Nodes, false, nil
-	}
-	reflection, present, err := r.Git.ReadReflection(ctx, r.SelfCluster, spec.ClusterName, spec.Pool)
-	if err != nil {
-		return nil, false, err
-	}
-	if !present {
-		return spec.Nodes, true, nil // greenfield — the seed sizes the RCP replicas
-	}
-	return reflection.Spec.Nodes, false, nil
 }
 
 // labelControlPlane marks a control-plane node (rke2 sets it, value "true"). It is what makes a
