@@ -9,6 +9,7 @@ import io.seedmatic.rke2lab.manifests.contract.profiles.BootstrapIdentity;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ImageState;
 import io.seedmatic.rke2lab.manifests.contract.profiles.IncusIdentityMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ManagementClusterCaMaterial;
+import io.seedmatic.rke2lab.manifests.contract.profiles.WorkloadClusterCasMaterial;
 import io.seedmatic.rke2lab.manifests.node.DefaultNodeEnvContext;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import io.seedmatic.rke2lab.netplan.contract.ClusterNetworkBlueprint;
@@ -165,25 +166,63 @@ public final class ClusterApiManagementManifestsUnit extends AbstractManifestsUn
         packageProfile,
         clusterIntention);
 
-    // The mgmt cluster's OWN LIVE CA (four BYO-CA Secrets) + the CAPN identity, rendered on the
-    // branch sops-encrypted, only when revealed (a secret-full render). The controller guards on
-    // their presence; a secret-blind render omits them and the controller waits.
-    final Optional<ManagementClusterCaMaterial> cas =
+    // The four BYO-CA Secrets + the CAPN identity, rendered on the branch sops-encrypted, only when
+    // revealed (a secret-full render). The controller guards on their presence; a secret-blind
+    // render omits them and the controller waits.
+    //
+    // ⚠️ The CA is chosen by the render SUBJECT, not by the run. `managementCas()` means "the live
+    // CA
+    // of the cluster THIS RUN belongs to" — correct while the subject IS that cluster, and wrong
+    // the
+    // moment a parent renders a CHILD's branch, where the subject is someone else. So the
+    // SUBJECT-specific material wins and the run-scoped one is only the fallback.
+    //
+    // Measured 2026-09-30 on a live cold start: `manifests/nikopol-mgmt` carried
+    // `CN=rke2-server-ca@…205`, which is BIOSKOP's own CA, while nikopol's apiserver runs `@…207` —
+    // the CA bioskop had correctly sealed FOR nikopol and rendered into its own namespace from
+    // `workloadCas()`. So BYO-CA delivery worked; only the CHILD's branch carried the parent's CA.
+    // nikopol's CAPI signed a kubeconfig from it and its own apiserver answered 401 (`the server
+    // has
+    // asked for the client to provide credentials`) in 3ms — which is what proved the VIP and TLS
+    // were never the problem.
+    //
+    // ★ Fifth instance of the viewpoint family (see the seeding spec § viewpoint-family),
+    // compounded
+    // with the scaffold duplication: ONE Secret name rendered by TWO units from different material,
+    // and the copy Flux applies is the child's. Preferring the subject's makes the two agree by
+    // construction rather than by coincidence.
+    final Optional<WorkloadClusterCasMaterial.Entry> subjectCas =
+        ManifestSynthesisContext.current().workloadCas().flatMap(all -> all.forCluster(cluster));
+    final Optional<ManagementClusterCaMaterial> ownCas =
         ManifestSynthesisContext.current().managementCas();
     final Optional<IncusIdentityMaterial> identity =
         ManifestSynthesisContext.current().incusIdentity();
-    cas.ifPresent(
-        ca ->
-            renderer.caSecrets(
-                scope,
-                cluster,
-                namespace,
-                ca.serverCa(),
-                ca.clientCa(),
-                ca.etcdServerCa(),
-                ca.etcdPeerCa(),
-                packageProfile,
-                namespaceObject));
+    if (subjectCas.isPresent()) {
+      final WorkloadClusterCasMaterial.Entry ca = subjectCas.orElseThrow();
+      renderer.caSecrets(
+          scope,
+          cluster,
+          namespace,
+          ca.serverCa(),
+          ca.clientCa(),
+          ca.etcdServerCa(),
+          ca.etcdPeerCa(),
+          packageProfile,
+          namespaceObject);
+    } else {
+      ownCas.ifPresent(
+          ca ->
+              renderer.caSecrets(
+                  scope,
+                  cluster,
+                  namespace,
+                  ca.serverCa(),
+                  ca.clientCa(),
+                  ca.etcdServerCa(),
+                  ca.etcdPeerCa(),
+                  packageProfile,
+                  namespaceObject));
+    }
     identity.ifPresent(
         material ->
             renderer.identitySecret(

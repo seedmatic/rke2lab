@@ -1887,6 +1887,60 @@ provably identical by construction (one renderer, one writer) rather than by coi
 the drift is a latent defect of the same family as <<declaration-triad>> — a value correct from one
 viewpoint and wrong from the other.
 
+[[viewpoint-family]]
+=== ★ The viewpoint defect family — and how one of them survived its own fix
+
+Four defects on this branch share one shape: **a value that is correct from the viewpoint of
+whoever computed it, and wrong from the viewpoint of the subject it describes.** Collected here
+because the shape recurs faster than any individual fix, and the fourth instance teaches something
+the first three did not.
+
+[cols="1,2,2,1",options="header"]
+|===
+| # | The value | Correct from | Wrong for
+
+| 1
+| `resolveRoster`'s SELF branch taking `spec.nodes`
+| the RENDERER's view — it wrote that seed
+| the cluster itself, born under a CAPI-minted name. Fixed by form B (<<declaration-triad>>)
+
+| 2
+| `ClusterIntention.spec.remote.endpoint` left empty on a self-view
+| the ROOT, whose engine is local
+| a sub-plane, whose CAPN then resolved the address from elsewhere. Fixed `9e4f1b131`
+
+| 3
+| `PoolReflection` dictating the RCP's replica COUNT
+| the OBSERVER — it saw one node
+| the intent, which declared three. <<count-feedback>>, form A still planned
+
+| 4
+| the identity Secret's `server`, from `material.serverAddress()`
+| the host that MINTED the material — right for the root by ACCIDENT, since it mints its own
+| every child. Fixed 2026-09-30
+|===
+
+[WARNING]
+====
+**Instance 4 survived instance 2's fix, and presented identically.**
+
+`9e4f1b131` corrected the endpoint on the `ClusterIntention` — and nothing dials an intention. The
+address CAPN actually opens a socket to comes from the identity Secret, and that field still carried
+the minter's. So the symptom returned unchanged: measured 2026-09-30 on a live cold start,
+`nikopol-mgmt` self-adoption stuck in `Adopting` (`0/1 present, 1 pending`) with its CAPN looping
+`Get "https://nixos.bioskop:8443/1.0": dial tcp 172.16.0.1:8443: i/o timeout`, while its PARENT saw
+that same instance `Running` and provisioned.
+
+The lesson is not "check twice". It is: **a fix of the right SHAPE can aim at the wrong READER.**
+Stating a value removes the viewpoint only from the reader you stated it to. The repair was therefore
+not another correct value but a single one: the endpoint is computed ONCE per target and handed to
+BOTH the intention and the Secret, so they cannot disagree.
+
+★ Worth recording what was NOT wrong, because it narrows where to look next time: the roster (form B
+observed the real node and named it correctly), the placement `target`, the four CAs, the bootstrap
+bundle, and the parent's own adoption — all correct. Only the address.
+====
+
 [[incus-listener-cert]]
 === ⚠️ The Incus listener cert names nothing we dial (measured 2026-09-29)
 
