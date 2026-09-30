@@ -325,6 +325,12 @@ pipeline already had to solve once, with a token scoped to extra repos.
   impact; the cycle then terminates by itself and no edge is special.
 * ❌ *Projecting a `flake.lock` by deleting revisions*, by analogy with `lock-envs`. ✅ Compare the
   drv paths of the outputs the consumer uses — in a flake.lock the rev IS the identity.
+* ❌ *Projecting ONE side of the comparison.* ✅ Both sides, through the same function — `lock-envs`
+  normalises with `jq -S` on each. A one-sided projection makes the guard inert while looking
+  correct: measured 2026-09-30 in the git-sops clean filter, whose idempotence check compared
+  yq output against a producer's raw text and so re-encrypted every secret on every render
+  (link:../cluster-api/pac-in-cluster-render-spec.adoc[pac-in-cluster-render-spec] §
+  `render-determinism`).
 * ❌ *Pushing only when a lock changed.* ✅ Push whatever the lock did: the next hop resolves the
   REMOTE, not the worktree.
 * ❌ *Trusting a bump report.* ✅ Assert the consumer landed on the revision this run pushed.

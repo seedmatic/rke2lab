@@ -1161,9 +1161,111 @@ naturally wants) needs TWO conditions, not one:
   `relock` uses (link:../patterns/flake-lock-propagation.adoc[flake-lock-propagation] §
   `termination`). Without it a returning renderer REWRITES instead of converging.
 
-★ Condition 2 is also the ENFORCEMENT of determinism, not merely a guard on top of it: a render that
-is deterministic produces no commit on a re-run, so the guard is silent. Every commit it does NOT
-suppress is a non-determinism to find and remove — which makes it a detector as much as a brake.
+★ Condition 2 is needed for CONVERGENCE between two renderers. It is tempting to also call it a
+determinism detector — "a deterministic render commits nothing on a re-run" — and that was WRONG on
+this branch for a reason worth knowing, now fixed one layer down. See <<render-determinism>>.
+
+[[render-determinism]]
+=== The render was deterministic; its CARRIER was not (audited + fixed 2026-09-30)
+
+Audited because "every render rewrites every Secret" looks like a non-deterministic renderer. It was
+not the renderer. The law worth holding is narrower than byte-stability:
+
+[IMPORTANT]
+====
+**The render must be deterministic in WHAT THE CLUSTER APPLIES** — on the projection, not on the
+bytes. The producer already complied. The DELIVERY did not, and that was a real defect.
+====
+
+What was measured, on `manifests/bioskop-mgmt` (183 commits):
+
+[cols="2,3",options="header"]
+|===
+| Checked | Found
+
+| the render logic
+| ✅ clean — no clock, no randomness anywhere under `osgi/domains/manifests/`
+
+| the workload CAs
+| ✅ deterministic by PERSISTENCE — `sealWorkloadCas` is additive and a known cluster keeps its CA,
+  "never re-minted — a re-mint would rotate every workload cert"
+
+| `NodeImage.spec.buildChecksum`
+| moves when `fingerprint` does not — but it is a digest of INPUTS (revision-sensitive by design, so
+  stable for a given source) and the field's own doc states "no controller compares it today"
+
+| every rendered Secret
+| ⚠️ churned on EVERY render — sampled renders read `369 insertions(+), 369 deletions(-)` with nothing
+  changed. **Root-caused and fixed**, below
+|===
+
+==== The root cause was ONE line, and the guard already existed
+
+The git-sops **clean filter** already refuses to re-encrypt unchanged content: it decrypts `HEAD`,
+compares, and re-emits the OLD ciphertext on a match. It never fired.
+
+Its two sides were in two SPELLINGS of the same document — `git::sops decrypt` pipes through
+`yq eval .`, so the HEAD side was yq output while the input side was whatever the producer wrote. The
+whole difference was a leading `---` the renderer emits and sops's own output does not. **26 of 29**
+encrypted manifests differed by nothing else.
+
+That miss is never cheap: sops takes a fresh AES-GCM IV, a fresh ephemeral age key per recipient and a
+`lastmodified` stamp on every encryption, so each re-encryption is unconditionally a new blob — ~370
+lines of incompressible ciphertext per render, which git cannot delta-compress.
+
+Fixed in ndh (`04b778d5`) by projecting BOTH sides through one canonical form — the discipline
+`lock-envs` already applies with `jq -S`:
+
+[cols="1,2",options="header"]
+|===
+| Step | Why
+
+| `--no-doc`
+| drops the document separator — the actual difference
+
+| `sort_keys(..)`
+| makes key order irrelevant, so no producer's emission style can decide "changed"
+
+| project for the COMPARISON only
+| what gets encrypted is still the caller's input verbatim; no formatting is rewritten behind a
+  producer's back
+
+| an input that does not project compares UNEQUAL
+| staging the OLD blob for NEW content is the one outcome worse than churn — a silent loss
+|===
+
+⚠️ `yq eval .` is NOT a canonicaliser — it faithfully preserves whether the input carried a separator,
+so normalising one side through it fixes nothing (verified: 0 of 29 matched). The first attempt did
+exactly that and was measured wrong before being believed.
+
+Verified three ways against the store's own layout: an identical re-render keeps the SAME blob; the
+same content with reordered keys keeps the SAME blob; a changed value still produces a NEW blob.
+
+==== Why it was worth fixing — and why the reason is NOT runtime
+
+Stated plainly because two tempting justifications are false:
+
+* ❌ *runtime consequence* — there is none. Flux applies the DECRYPTED content, so an identical
+  plaintext yields no apiserver update, hence no watch event, hence nothing downstream restarts.
+* ❌ *the render pipeline pays for the history* — it should not: the SOURCE fetch is already
+  `--depth 1` (`RenderPipelineManifestsUnit`), and the RENDERED BRANCH fetch is not
+  (`GitCli` — `git fetch origin +<ref>:<ref>`). History is never read to render, so shallow-fetching
+  the branch is correct independently of this fix.
+* ✅ what it really buys: **diff legibility** (a human can see what a render changed), a branch that
+  stops growing ~28 incompressible blobs per render, and — decisively — condition 2 above
+  ARRIVING FOR FREE. Blob-level idempotence is exactly what a second renderer needs in order to
+  converge instead of rewrite.
+
+⚠️ Open, found during the audit and NOT fixed: the git-sops **textconv is dead code**. The dispatcher's
+`textconv` arm redirects stdin from the file and then falls through to `exit 1`, where every other arm
+re-execs. So it returns nothing, with no diagnostic, for every format — and git silently falls back to
+the raw blob. Consequence: `git diff` never shows plaintext for a sops file anywhere in the fleet,
+which is why nobody noticed. The `diff.sops-yaml.textconv` driver IS registered in git config; the
+generated `.gitattributes` also sets only `filter=`, leaving `diff:` unspecified.
+
+★ The lesson is the one this document keeps re-learning, now in the carrier rather than the producer:
+**a comparison must project BOTH sides, or it is not a comparison.** The guard was written, correct in
+intent, and inert for the want of one `yq` invocation on the other side.
 
 What a sub-plane keeps either way is worth naming: **autonomy of reconciliation** — offline it cannot
 receive a new declaration (it cannot reach git either), but it keeps enforcing the last artifact its
