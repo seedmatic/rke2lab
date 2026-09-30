@@ -8,6 +8,7 @@ metadata:
   name: bioskop-wrkld-control-node
   namespace: rke2lab-bioskop-wrkld
 spec:
+  adoptedBy: bioskop-mgmt
   clusterRef: bioskop-wrkld
   controlPlaneEndpoint:
     host: 10.80.15.10

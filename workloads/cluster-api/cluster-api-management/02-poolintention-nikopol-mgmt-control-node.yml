@@ -8,6 +8,7 @@ metadata:
   name: nikopol-mgmt-control-node
   namespace: rke2lab-nikopol-mgmt
 spec:
+  adoptedBy: bioskop-mgmt
   clusterRef: nikopol-mgmt
   controlPlaneEndpoint:
     host: 10.80.23.10

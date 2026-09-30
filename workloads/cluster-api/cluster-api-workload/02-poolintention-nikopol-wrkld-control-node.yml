@@ -8,6 +8,7 @@ metadata:
   name: nikopol-wrkld-control-node
   namespace: rke2lab-nikopol-wrkld
 spec:
+  adoptedBy: nikopol-mgmt
   clusterRef: nikopol-wrkld
   controlPlaneEndpoint:
     host: 10.80.31.10
