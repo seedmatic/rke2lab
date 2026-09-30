@@ -275,6 +275,31 @@ class ClusterApiRenderTest {
       replicasByCluster.put(String.valueOf(spec.get("clusterRef")), replicas);
     }
 
+    // ★ And the NATURE: `pet` for the ROOT alone — the one plane a host `grow` posed, name
+    // included.
+    // Every other cluster is birthed by a parent through CAPRKE2, which MINTS the name, so it is
+    // cattle regardless of its role. nikopol-mgmt is `kind: management` AND cattle, which is
+    // exactly
+    // why nature cannot be derived from the role.
+    final Map<String, String> natureByCluster = new java.util.TreeMap<>();
+    for (final Map<String, Object> pool : documents) {
+      if (!"PoolIntention".equals(kindOf(pool))) {
+        continue;
+      }
+      @SuppressWarnings("unchecked")
+      final Map<String, Object> poolSpec = (Map<String, Object>) pool.get("spec");
+      natureByCluster.put(
+          String.valueOf(poolSpec.get("clusterRef")), String.valueOf(poolSpec.get("nature")));
+    }
+    assertEquals(
+        "pet", natureByCluster.get("bioskop-mgmt"), "the ROOT is the only pet — it was grown");
+    assertEquals(
+        "cattle",
+        natureByCluster.get("nikopol-mgmt"),
+        "a sub-plane is CATTLE though its kind is management — CAPRKE2 minted its name");
+    assertEquals("cattle", natureByCluster.get("bioskop-wrkld"), "a workload is cattle");
+    assertEquals("cattle", natureByCluster.get("nikopol-wrkld"), "and so is the other");
+
     // A management cluster is ONE control node; a workload takes master+peer1+peer2 = 3 etcd
     // members.
     assertEquals(

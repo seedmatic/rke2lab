@@ -171,6 +171,7 @@ public final class ClusterApiManagementManifestsUnit extends AbstractManifestsUn
             .toCapnSpecs(),
         pets,
         blueprint.names().nixosHost(),
+        adoptedBy,
         packageProfile,
         clusterIntention);
 

@@ -414,8 +414,13 @@ public final class ClusterApiCrRenderer {
       final List<String> devices,
       final List<String> petNames,
       final String incusMember,
+      final String adoptedBy,
       final PackageMetadataProfile profile,
       final ApiObject clusterIntention) {
+    if (adoptedBy == null || adoptedBy.isBlank()) {
+      throw new IllegalArgumentException(
+          "adoptedBy is blank for pool of " + cluster + " — it decides the pool's NATURE");
+    }
     final String poolName = cluster + "-" + CONTROL_NODE_POOL;
     final List<Object> nodes =
         petNames.stream().map(name -> (Object) Map.of("name", name)).toList();
@@ -449,6 +454,20 @@ public final class ClusterApiCrRenderer {
     spec.put("rke2Version", rke2Version);
     spec.put("controlPlaneEndpoint", Map.of("host", vip, "port", port));
     spec.put("nodes", nodes);
+    // WHO NAMES these instances — the triad's Q2, declared instead of read off the presence of a
+    // PoolReflection file (a runtime accident: the same pool answered "declaration" before its
+    // first
+    // reflection existed and "provisioner" after).
+    //
+    // `pet` iff the cluster ADOPTS ITSELF — which is the root, and the root alone, because it is
+    // the
+    // one plane grown out-of-band by a host `grow` that POSED its instance and its name. Every
+    // other
+    // cluster is birthed by a parent through CAPRKE2, which mints the name.
+    //
+    // ⚠️ NOT derivable from the role, and that is why it must be stated: nikopol-mgmt is
+    // `kind: management` and CATTLE (its node is …-control-plane-9f5kb, not the declared …-master).
+    spec.put("nature", cluster.equals(adoptedBy) ? "pet" : "cattle");
     // The DECLARED size — what the control plane is sized from. The controller used to take
     // len(roster), and the roster is OBSERVED, so a pool that had run at N was re-declared N for
     // ever: bioskop-wrkld declared three pets and stood at one across two cold starts, because a

@@ -222,6 +222,7 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
             .toCapnSpecs(),
         pets,
         blueprint.names().nixosHost(),
+        adoptedBy,
         packageProfile,
         clusterIntention);
 
