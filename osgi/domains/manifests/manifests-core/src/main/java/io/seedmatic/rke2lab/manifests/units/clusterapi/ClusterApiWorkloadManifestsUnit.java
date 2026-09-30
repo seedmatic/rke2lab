@@ -230,6 +230,7 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
                 identitySecret,
                 material,
                 image.incusProject(),
+                remoteEndpoint,
                 packageProfile,
                 namespaceObject));
     workloadCa.ifPresent(

@@ -162,6 +162,25 @@ public final class ClusterApiCrRenderer {
     secret.addJsonPatch(JsonPatch.add("/data", Map.of("rke2lab-bootstrap.yaml", base64(bundle))));
   }
 
+  /**
+   * The per-remote CAPN identity Secret. {@code remoteEndpoint} is the address CAPN must DIAL for
+   * THIS cluster — the same value the cluster's {@code ClusterIntention.spec.remote.endpoint}
+   * states, passed in rather than taken from {@code material}.
+   *
+   * <p>⚠️ It used to be {@code material.serverAddress()}, which is the address of the host that
+   * MINTED the material — right for the root by accident (it minted its own) and wrong for every
+   * child. Measured 2026-09-30 on a live cold start: {@code nikopol-incus-identity} carried {@code
+   * server: https://nixos.bioskop:8443}, byte-identical to bioskop's own Secret, so nikopol-mgmt's
+   * CAPN dialled 172.16.0.1 and timed out on every LXCCluster/LXCMachine reconcile — its
+   * self-adoption stuck in {@code Adopting}, {@code 0/1 present, 1 pending}, while its PARENT saw
+   * the very same instance {@code Running}.
+   *
+   * <p>★ That is the fourth instance of one defect family, and the sharpest: {@code 9e4f1b131} had
+   * already fixed the endpoint on the INTENTION, which is the value nothing dials, while the value
+   * CAPN actually reads — this field — stayed wrong. A fix aimed at the right shape but the wrong
+   * reader. So the endpoint is now computed ONCE per target and given to BOTH objects; they can no
+   * longer disagree.
+   */
   public ApiObject identitySecret(
       final Construct scope,
       final String cluster,
@@ -169,8 +188,15 @@ public final class ClusterApiCrRenderer {
       final String identitySecret,
       final IncusIdentityMaterial material,
       final String incusProject,
+      final String remoteEndpoint,
       final PackageMetadataProfile profile,
       final ApiObject branchNamespace) {
+    if (remoteEndpoint == null || remoteEndpoint.isBlank()) {
+      throw new IllegalArgumentException(
+          "remoteEndpoint is blank for cluster "
+              + cluster
+              + " — CAPN would fall back to the minter's address and dial the wrong host");
+    }
     final ApiObject secret =
         new ApiObject(
             scope,
@@ -193,7 +219,8 @@ public final class ClusterApiCrRenderer {
         JsonPatch.add(
             "/data",
             Map.of(
-                "server", base64(material.serverAddress()),
+                // The TARGET's endpoint, not the minter's — see this method's javadoc.
+                "server", base64(remoteEndpoint),
                 "server-crt", base64(material.serverCert()),
                 "client-crt", base64(material.clientCert()),
                 "client-key", base64(material.clientKey()),

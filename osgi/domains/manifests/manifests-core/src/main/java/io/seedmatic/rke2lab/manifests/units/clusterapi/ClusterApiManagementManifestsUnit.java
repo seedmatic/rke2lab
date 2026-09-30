@@ -193,6 +193,7 @@ public final class ClusterApiManagementManifestsUnit extends AbstractManifestsUn
                 identitySecret,
                 material,
                 image.incusProject(),
+                remoteEndpoint,
                 packageProfile,
                 namespaceObject));
   }
