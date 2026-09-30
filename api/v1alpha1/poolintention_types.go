@@ -45,6 +45,24 @@ type PoolIntentionSpec struct {
 	// +kubebuilder:validation:MinItems=1
 	Nodes []PetSpec `json:"nodes"`
 
+	// Replicas is the INTENDED size of this pool — the desired count, declared.
+	//
+	// ★ It exists because the count used to be read from the ROSTER, and the roster is OBSERVED. So
+	// once a pool had run at N, `len(roster)` returned N, the RKE2ControlPlane was sized N, CAPRKE2
+	// provisioned N, the reflector observed N, and the loop closed on itself: the pool was pinned at
+	// whatever it first came up as, for good. Measured 2026-09-29 and again after the 2026-09-30 cold
+	// start: bioskop-wrkld declared THREE pets and stood at `replicas: 1`, because a one-node
+	// reflection survives a cold start in git.
+	//
+	// So the count comes from the INTENT and the names from OBSERVATION. Those are different
+	// questions and the roster only ever answered the second one.
+	//
+	// Optional in the SCHEMA so a pre-migration branch still applies (a required field would have the
+	// apiserver reject it before the controller could name the remedy); zero is refused at the READ.
+	// +optional
+	// +kubebuilder:validation:Minimum=1
+	Replicas int32 `json:"replicas,omitempty"`
+
 	// NodeLabels are the kubelet --node-label values every node of this pool registers with, as
 	// "key=value". Pool-scoped because that is the grain CAPRKE2's agentConfig has (one
 	// RKE2ControlPlane per control-plane pool, one RKE2ConfigTemplate per worker pool) — so a future

@@ -159,6 +159,25 @@ spec:
                   and (for workers) the MachineDeployment; the CAPI TREATMENT is Role, not this name.
                 minLength: 1
                 type: string
+              replicas:
+                description: |-
+                  Replicas is the INTENDED size of this pool — the desired count, declared.
+
+                  ★ It exists because the count used to be read from the ROSTER, and the roster is OBSERVED. So
+                  once a pool had run at N, `len(roster)` returned N, the RKE2ControlPlane was sized N, CAPRKE2
+                  provisioned N, the reflector observed N, and the loop closed on itself: the pool was pinned at
+                  whatever it first came up as, for good. Measured 2026-09-29 and again after the 2026-09-30 cold
+                  start: bioskop-wrkld declared THREE pets and stood at `replicas: 1`, because a one-node
+                  reflection survives a cold start in git.
+
+                  So the count comes from the INTENT and the names from OBSERVATION. Those are different
+                  questions and the roster only ever answered the second one.
+
+                  Optional in the SCHEMA so a pre-migration branch still applies (a required field would have the
+                  apiserver reject it before the controller could name the remedy); zero is refused at the READ.
+                format: int32
+                minimum: 1
+                type: integer
               rke2Version:
                 description: RKE2Version is the CAPRKE2 version for this pool (control-plane
                   RCP, or worker RKE2ConfigTemplate).

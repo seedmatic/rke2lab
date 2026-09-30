@@ -163,12 +163,25 @@ func (r *PoolAdoptionReconciler) reconcileSteps(
 	}
 	a.Status.TotalPets = int32(len(roster))
 
+	// The DECLARED size, never len(roster). The roster is OBSERVED, so sizing the control plane from
+	// it closed a loop on itself: a pool that had run at N was re-declared N for ever, and a
+	// one-node PoolReflection survives a cold start in git — which is why bioskop-wrkld declared
+	// three pets and stood at one across two cold starts. The count is intent; the roster answers
+	// only WHICH NAMES.
+	if spec.Replicas < 1 {
+		r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, false, "Error",
+			"spec.replicas is unset — re-render from the HOST once to seed it")
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, fmt.Errorf(
+			"PoolIntention %s/%s declares no replicas — re-render from the HOST once to seed it",
+			spec.Namespace, spec.Pool)
+	}
+
 	// 1. The pool's control-plane skeleton: LXCMachineTemplate + RKE2ControlPlane (replicas = the
-	//    roster size), created paused (the RCP carries the paused annotation DIRECTLY — inert from
+	//    DECLARED count), created paused (the RCP carries the paused annotation DIRECTLY — inert from
 	//    birth). The Cluster + LXCCluster are the ClusterAdoption's, not ours.
 	for _, obj := range []*unstructured.Unstructured{
 		r.lxcMachineTemplateObj(spec, image),
-		r.rke2ControlPlaneObj(spec, true, len(roster), configFiles),
+		r.rke2ControlPlaneObj(spec, true, int(spec.Replicas), configFiles),
 	} {
 		// Own the pool CR-set for cascade GC: deleting the PoolAdoption (or, transitively, its parent
 		// PoolIntention) tears down RCP + template; the RCP in turn owns the per-pet Machines.
@@ -209,7 +222,7 @@ func (r *PoolAdoptionReconciler) reconcileSteps(
 		// reflector then observes the emergent roster and writes the first reflection, so the NEXT
 		// reconcile reads it and ADOPTS. NodesAbsent routes derivePhase to Provisioning.
 		r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, false, "NodesAbsent",
-			fmt.Sprintf("greenfield: no reflection — CAPRKE2 provisioning %d control-node(s)", len(roster)))
+			fmt.Sprintf("greenfield: no reflection — CAPRKE2 provisioning %d control-node(s)", spec.Replicas))
 	} else {
 		// ADOPT, per pet in the ROSTER: for a pet CAPRKE2 does NOT already own, pre-create the owned
 		// Machine + concrete LXCMachine(providerID) + bootstrap sentinel, so CAPRKE2 counts it as its

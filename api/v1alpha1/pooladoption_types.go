@@ -43,6 +43,13 @@ type PoolAdoptionSpec struct {
 	// +kubebuilder:validation:MinItems=1
 	Nodes []PetSpec `json:"nodes"`
 
+	// Replicas is the INTENDED pool size, mirrored from the PoolIntention. The control plane is sized
+	// from THIS, never from len(roster): the roster is OBSERVED, so sizing from it closed a loop on
+	// itself and pinned a pool at whatever it first came up as. See PoolIntentionSpec.Replicas.
+	// +optional
+	// +kubebuilder:validation:Minimum=1
+	Replicas int32 `json:"replicas,omitempty"`
+
 	// NodeLabels are the kubelet --node-label values every node of this pool registers with, as
 	// "key=value" — projected from the PoolIntention and posed on the RKE2ControlPlane's
 	// agentConfig.nodeLabels, CAPRKE2's own field for this.

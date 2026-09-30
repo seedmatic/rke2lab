@@ -154,6 +154,14 @@ spec:
                   / MachineDeployment).
                 minLength: 1
                 type: string
+              replicas:
+                description: |-
+                  Replicas is the INTENDED pool size, mirrored from the PoolIntention. The control plane is sized
+                  from THIS, never from len(roster): the roster is OBSERVED, so sizing from it closed a loop on
+                  itself and pinned a pool at whatever it first came up as. See PoolIntentionSpec.Replicas.
+                format: int32
+                minimum: 1
+                type: integer
               rke2Version:
                 description: RKE2Version is the CAPRKE2 version for this pool.
                 minLength: 1
