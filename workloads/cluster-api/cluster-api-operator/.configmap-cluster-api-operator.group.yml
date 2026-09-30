@@ -25,6 +25,8 @@ data:
     v1|Namespace||caprke2-system
     operator.cluster.x-k8s.io/v1alpha2|CoreProvider|capi-system|cluster-api
     operator.cluster.x-k8s.io/v1alpha2|InfrastructureProvider|capn-system|incus
+    v1|Secret|capn-system|rke2lab-tls-authority-ca
+    v1|Secret|capn-system|capn-provider-config
     operator.cluster.x-k8s.io/v1alpha2|ControlPlaneProvider|caprke2-system|rke2
     operator.cluster.x-k8s.io/v1alpha2|BootstrapProvider|caprke2-system|rke2
 kind: ConfigMap
