@@ -176,12 +176,41 @@ public final class InstanceGrow {
             .retainOnDelete(true)
             .build();
 
+    // ★ RESTRICTED, scoped to this run's project — least privilege, and checked against incus 7.4's
+    // own authorisation driver (internal/server/auth/driver_tls.go) rather than hoped for, because
+    // an
+    // over-restricted identity fails as an opaque 403 at the first reconcile:
+    //
+    //   * `ObjectTypeServer` + `CanView` is granted to a restricted certificate, which is what
+    //     targeting a member needs — `GET /1.0/cluster` and `/1.0/cluster/members` are exactly that
+    //     entitlement (api_cluster.go). The `CanEdit` half, which would let it reshape the cluster,
+    //     is refused.
+    //   * instances, volumes and networks resolve by PROJECT, and this project is the one listed.
+    //   * images are readable by explicit inheritance from `default`, so a node-base living there
+    //     stays visible.
+    //   * storage POOLS grant `CanView` only — enough, since the pool is ndh's to create, never
+    // ours.
+    //
+    // ★ And the property that makes this a boundary rather than a convention:
+    // `ObjectTypeCertificate`
+    // grants a restricted certificate `CanView` ALONE. CAPN therefore cannot enrol a certificate at
+    // all — it can never widen its own trust. That asymmetry is the point of registering it from
+    // HERE:
+    // seed-master holds the operator's unrestricted identity, so it is the only party that CAN
+    // grant,
+    // and what it grants cannot grant further.
+    //
+    // ⚠️ Left unrestricted, this entry is full incus admin for a pod. That is what a hand-added
+    // entry
+    // gives you, and it is why this is declared rather than remembered.
     new Certificate(
         "seed-capn-provider-trust",
         CertificateArgs.builder()
             .name(CAPN_TRUST_ENTRY)
             .type("client")
             .certificate(pem)
+            .restricted(true)
+            .projects(List.of(config.incusProject()))
             .description("rke2lab: the in-cluster CAPN provider's identity")
             .build(),
         options);
