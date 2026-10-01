@@ -73,7 +73,7 @@ spec:
     script: |
       #!/usr/bin/env bash
       set -euxo pipefail
-      : "The publish narrates live to stdout: it runs STANDALONE (not seed-master under Pulumi), so PaxLogbackConfigurer keeps its console appender on and the render/delivery logs land in this container's logs"
+      : "The publish narrates live to stdout: it runs STANDALONE (not seed-outcluster under Pulumi), so PaxLogbackConfigurer keeps its console appender on and the render/delivery logs land in this container's logs"
       GIT_AUTH_DIR="$(workspaces.basic-auth.path)"
       : "PaC mints the App token into the git_auth secret's git-provider-token key; read it RAW (not scraped from the .git-credentials URL) into RKE2LAB_PUSH_TOKEN for the ff-push (the scion reveals it in-container, ManifestSynthesisScenario.revealGithubToken) + nix + maven. Backticks, not the dollar-paren form, so Tekton does not claim the substitution as one of its own vars"
       : "The same App token authenticates .mvn/settings.xml to GitHub Packages (the env.GH_TOKEN placeholder) so the reactor resolves the private seedmatic release java-systemd. Requires the App to carry packages:read"
