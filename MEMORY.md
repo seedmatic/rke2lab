@@ -72,6 +72,20 @@ Adding a fact: write the topic file, then one ≤200-char line in the right
 Checked against `feature/nixos-node-substrate` on 2026-09-19. Memory predating a
 rename keeps the old word, so a literal search finds nothing in the code.
 
+- **`seed-master` → `seed-outcluster`** (`17de9ca95`, 2026-10-01, pushed on
+  `feature/viewpoint-separation`). 161 files; **zero Java identifiers moved** (the
+  package stays `io.seedmatic.rke2lab.controlplane.*`), so only coordinates and prose
+  changed. Translate when searching: the Maven selector is now `-pl :seed-outcluster`,
+  the flake output `.#seed-outcluster`, the nix binding `seedOutclusterJar`, the jar
+  `share/java/seed-outcluster.jar`, the log `.local.d/seed-outcluster.log`. Memory and
+  `.claude/` were deliberately NOT swept (a record rewritten to match a later rename
+  falsifies it) — `incontainer-test-not-in-seedmaster-reactor.md` keeps the old word in
+  its FILENAME, and `docrepo-dag-state.md` carries ~30 historical mentions. ★ Why the
+  word changed: the pair did not contrast on one axis — the chain is
+  **`operator -> pulumi -> outcluster -> incluster`**, where link 1 is a PERSON (the one
+  who runs `pulumi`), so `master` was naming a rank inside a sequence of PLACES. The
+  spelling (no internal hyphen) is what kept the BRANCH `seed-incluster` out of scope:
+  no ref rename, no flake-input URL move, no lock churn. See [[runmode-livegate-pulumi-abstraction]].
 - **`world-gateway` → `seed-broker-port`** (`acd68a510`). Live branch: `seed-broker`
   in 392 files, `world-gateway` in 14 (docs only). Memory still says
   `world-gateway` in 49 files / 27 index entries — the `world-gateway-2a…2e`
