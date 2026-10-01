@@ -13,7 +13,7 @@ spec:
   clusterRef: nikopol-mgmt
   namespace: rke2lab-nikopol-mgmt
   nodes:
-  - name: nikopol-mgmt-control-plane-lswh8
+  - name: nikopol-mgmt-control-plane-btwzf
   pool: control-node
 status:
   lastReflectTime: null
