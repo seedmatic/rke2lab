@@ -11,7 +11,7 @@
   </parent>
 
   <artifactId>pulumi-edge</artifactId>
-  <name>host/pulumu/pulumi-edge</name>
+  <name>host/pulumi/pulumi-edge</name>
   <description>The Pulumi external edge: the single host-side home for every contact with the Pulumi
     state backend and Automation API, mutualised across all domains. Holds the low-level
     StackHandle/StackHistory/StackSnapshot/StackCheckpoint over the file backend, and the
