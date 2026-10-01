@@ -23,13 +23,18 @@ class BootstrapConfigFromTest {
     assertEquals("bioskop-mgmt", boot.clusterName());
     assertEquals("master", boot.nodeName());
     assertEquals("rke2lab", boot.incusProject());
-    // The remote LABEL stays the bare name (a pure label, never resolved); the resolvable address
-    // + the ssh builder host ride the LAN mDNS .local (the incus daemon binds dual-stack, and it is
-    // the operator's own ~/.config/incus channel — the bare tailnet name times out from here).
+    // The remote LABEL stays the bare name — a pure label, never resolved. Every RESOLVABLE form is
+    // `nixos.<host>`, the one name we declare: measured with getaddrinfo, `<host>-nixos` is
+    // captured
+    // by the home LAN through the `lan` search domain and `.local` stalls ~5s on macOS, so the two
+    // forms this used to assert both named something that is not ours.
     assertEquals("bioskop-nixos", boot.incusDefaultRemote());
-    assertEquals(URI.create("https://bioskop-nixos.local:8443"), boot.incusRemoteAddress());
+    assertEquals(URI.create("https://nixos.bioskop:8443"), boot.incusRemoteAddress());
     assertEquals("node-base", boot.imageAlias());
-    assertEquals("bioskop-nixos.local", boot.imageBuilderHost());
+    assertEquals("nixos.bioskop", boot.imageBuilderHost());
+    // ★ And it now agrees with the in-cluster form by construction rather than by coincidence: one
+    // daemon, one name, every audience.
+    assertEquals(boot.incusRemoteAddress(), boot.incusClusterAddress());
     assertEquals("fabric-br", boot.fabricBridgeParent());
     assertEquals("mammoth-skate.ts.net", boot.tailnet());
     // The automount root routes over the tailscale MagicDNS FQDN, not the LAN mDNS .local.

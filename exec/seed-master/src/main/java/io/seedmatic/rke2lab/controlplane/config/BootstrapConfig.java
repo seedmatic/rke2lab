@@ -84,19 +84,23 @@ public record BootstrapConfig(
     // The incus/nixos daemon host — the SINGLE place the "<host>-nixos" convention is spelled.
     // Explicit rke2lab:cluster:remoteIncus wins (a mgmt cluster grows a workload on ANOTHER host's
     // remote, so it is config, not decomposed from the cluster name); absent, defaulted here once.
-    // It is the incus remote LABEL, the resolvable daemon address, and the ssh builder host — one
-    // name for all three. Its RESOLVABLE form rides the LAN mDNS <host>-nixos.local (the incus
-    // daemon binds dual-stack [::]:8443 the .local name reaches — the operator's own
-    // ~/.config/incus
-    // channel; the bare tailnet name times out from the seed host).
+    // It is the incus remote LABEL only — NOT an address. The three resolvable forms it used to
+    // stand for now all come from `nixosFabricHost` below.
     final String remoteIncus = config.cluster().remoteIncus().orElseGet(() -> host + "-nixos");
-    final String nixosMdnsHost = remoteIncus + ".local";
-    // The SAME daemon, addressed for an IN-CLUSTER caller — because the audience decides the name
-    // and this one resolves nothing the other forms do. A pod resolves through CoreDNS, which
-    // reaches neither mDNS (so not nixosMdnsHost) nor the tailnet's MagicDNS (so not the bare
-    // `remoteIncus` the operator config carries for the Go provider). Worse, the bare name there
-    // used to come back as the host's own /etc/hosts loopback via the vmnet bridge's dnsmasq, so
-    // CAPN dialled ITSELF.
+    // ★ The ONE resolvable form, for every audience — operator, pod and ssh builder alike. It was
+    // the in-cluster form only, beside an mDNS `<host>-nixos.local` for the operator and a bare
+    // tailnet name for the Go provider; keeping three spellings of one daemon is what made this the
+    // THIRD place in a day where a name nobody declares answered first (the ssh `nixos.` alias and
+    // the Incus cluster member URL were the other two).
+    //
+    // Measured 2026-10-01 on the renewed hosts, with getaddrinfo — what every one of these callers
+    // actually uses: `nixos.<host>` resolves to the host's fabric address through that bare-metal's
+    // own dnsmasq, `<host>-nixos` is captured by the home LAN via the `lan` search domain, and
+    // `.local` stalls ~5s on macOS. One of the three is ours.
+    //
+    // A pod reaches it too (it resolves through CoreDNS, which sees neither mDNS nor MagicDNS), and
+    // the tailnet grant that makes a cluster node's fabric source legible is what finally closed
+    // that path — see ndh `manage-tailnet` baremetalNodeCidrs.
     //
     // Derived from the `host` ATOM, not from `remoteIncus`: `host` names the incus substrate the
     // nodes grow on, so it is the bare-metal whose dnsmasq serves the `.<host>` zone, while
@@ -123,11 +127,11 @@ public record BootstrapConfig(
         config
             .incus()
             .remoteAddress()
-            .orElseGet(() -> URI.create("https://" + nixosMdnsHost + ":8443")),
+            .orElseGet(() -> URI.create("https://" + nixosFabricHost + ":8443")),
         URI.create("https://" + nixosFabricHost + ":8443"),
         config.incus().configDir(),
         IMAGE_ALIAS,
-        config.image().builderHost().orElseGet(() -> nixosMdnsHost),
+        config.image().builderHost().orElseGet(() -> nixosFabricHost),
         config.network().fabricBridgeParent().orElse(DEFAULT_FABRIC_BRIDGE_PARENT),
         config.network().tailnet().orElse(DEFAULT_TAILNET),
         config.api().endpoint().orElse(DEFAULT_API_ENDPOINT),
