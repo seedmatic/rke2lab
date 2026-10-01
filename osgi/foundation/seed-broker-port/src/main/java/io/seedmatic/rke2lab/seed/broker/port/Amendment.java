@@ -99,13 +99,17 @@ public @interface Amendment {
   String WORKLOAD_TARGETS = "workload-targets";
 
   /**
-   * The host-world part of the CAPN provider's incus identity — the three fields only the host can
-   * read: the incus remote {@code serverAddress} (BootstrapConfig), the {@code serverCert} (the
-   * operator's {@code ~/.config/incus/servercerts/*.crt}), and the capn-provider {@code clientCert}
-   * (a bundled seed-master classpath resource). The incus-identity seal scion fills the fourth
-   * field (the client KEY) itself from {@code .secrets} — off this wire — and seals the assembled
-   * {@code IncusIdentityMaterial}, which {@code ClusterApiWorkloadManifestsUnit} renders as the
-   * {@code <host>-incus-identity} Secret CAPN authenticates to incus with.
+   * The host-world part of the CAPN provider's incus identity — the fields only the host can read:
+   * the incus remote {@code serverAddress} (BootstrapConfig) and the capn-provider {@code
+   * clientCert} (a bundled seed-master classpath resource). The incus-identity seal scion fills the
+   * remaining field (the client KEY) itself from {@code .secrets} — off this wire — and seals the
+   * assembled {@code IncusIdentityMaterial}, which {@code ClusterApiWorkloadManifestsUnit} renders
+   * as the {@code <host>-incus-identity} Secret CAPN authenticates to incus with.
+   *
+   * <p>A {@code serverCert} used to ride here too, read from the operator's {@code
+   * ~/.config/incus/servercerts/*.crt} so CAPN could pin the listener's leaf. It is gone with the
+   * pin: the listener is trusted by CA now, so that host-side file is no longer an input to
+   * anything.
    */
   String INCUS_IDENTITY = "incus-identity";
 

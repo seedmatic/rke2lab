@@ -17,6 +17,7 @@ import io.seedmatic.rke2lab.manifests.contract.profiles.OperatorPkiMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ReplicatorSourceSecretsMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.SigningKeyMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.SopsAgeMaterial;
+import io.seedmatic.rke2lab.manifests.contract.profiles.TlsAuthorityCaMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.WorkloadBootstrapBundlesMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.WorkloadClusterCasMaterial;
 import io.seedmatic.rke2lab.manifests.ingress.ComponentVersions;
@@ -261,6 +262,10 @@ public final class ManifestSynthesisContext {
 
   public Optional<ClusterIssuerCaMaterial> clusterIssuerCa() {
     return request.clusterIssuerCa();
+  }
+
+  public Optional<TlsAuthorityCaMaterial> tlsAuthorityCa() {
+    return request.tlsAuthorityCa();
   }
 
   public Optional<WorkloadClusterCasMaterial> workloadCas() {

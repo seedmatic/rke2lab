@@ -9,6 +9,7 @@ import io.seedmatic.rke2lab.manifests.contract.profiles.IncusIdentityMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ManagementClusterCaMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.OperatorPkiMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ReplicatorSourceSecretsMaterial;
+import io.seedmatic.rke2lab.manifests.contract.profiles.TlsAuthorityCaMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.WorkloadBootstrapBundlesMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.WorkloadClusterCasMaterial;
 import io.seedmatic.rke2lab.manifests.ingress.ComponentVersions;
@@ -44,6 +45,7 @@ public record ManifestSynthesisRequest(
     Optional<GithubAppMaterial> githubApp,
     Optional<ReplicatorSourceSecretsMaterial> replicatorSources,
     Optional<ClusterIssuerCaMaterial> clusterIssuerCa,
+    Optional<TlsAuthorityCaMaterial> tlsAuthorityCa,
     Optional<WorkloadClusterCasMaterial> workloadCas,
     Optional<ManagementClusterCaMaterial> managementCas,
     Optional<WorkloadBootstrapBundlesMaterial> workloadBootstrapBundles,
@@ -79,6 +81,7 @@ public record ManifestSynthesisRequest(
     githubApp = githubApp == null ? Optional.empty() : githubApp;
     replicatorSources = replicatorSources == null ? Optional.empty() : replicatorSources;
     clusterIssuerCa = clusterIssuerCa == null ? Optional.empty() : clusterIssuerCa;
+    tlsAuthorityCa = tlsAuthorityCa == null ? Optional.empty() : tlsAuthorityCa;
     workloadCas = workloadCas == null ? Optional.empty() : workloadCas;
     managementCas = managementCas == null ? Optional.empty() : managementCas;
     workloadBootstrapBundles =
@@ -108,6 +111,7 @@ public record ManifestSynthesisRequest(
         .githubApp(githubApp)
         .replicatorSources(replicatorSources)
         .clusterIssuerCa(clusterIssuerCa)
+        .tlsAuthorityCa(tlsAuthorityCa)
         .workloadCas(workloadCas)
         .managementCas(managementCas)
         .workloadBootstrapBundles(workloadBootstrapBundles)
@@ -155,6 +159,10 @@ public record ManifestSynthesisRequest(
 
   public ManifestSynthesisRequest withClusterIssuerCa(ClusterIssuerCaMaterial material) {
     return toBuilder().clusterIssuerCa(Optional.of(material)).build();
+  }
+
+  public ManifestSynthesisRequest withTlsAuthorityCa(TlsAuthorityCaMaterial material) {
+    return toBuilder().tlsAuthorityCa(Optional.of(material)).build();
   }
 
   public ManifestSynthesisRequest withWorkloadCas(WorkloadClusterCasMaterial material) {
@@ -236,6 +244,7 @@ public record ManifestSynthesisRequest(
     private Optional<GithubAppMaterial> githubApp = Optional.empty();
     private Optional<ReplicatorSourceSecretsMaterial> replicatorSources = Optional.empty();
     private Optional<ClusterIssuerCaMaterial> clusterIssuerCa = Optional.empty();
+    private Optional<TlsAuthorityCaMaterial> tlsAuthorityCa = Optional.empty();
     private Optional<WorkloadClusterCasMaterial> workloadCas = Optional.empty();
     private Optional<ManagementClusterCaMaterial> managementCas = Optional.empty();
     private Optional<WorkloadBootstrapBundlesMaterial> workloadBootstrapBundles = Optional.empty();
@@ -301,6 +310,11 @@ public record ManifestSynthesisRequest(
       return this;
     }
 
+    public Builder tlsAuthorityCa(final Optional<TlsAuthorityCaMaterial> v) {
+      this.tlsAuthorityCa = v;
+      return this;
+    }
+
     public Builder workloadCas(final Optional<WorkloadClusterCasMaterial> v) {
       this.workloadCas = v;
       return this;
@@ -336,6 +350,7 @@ public record ManifestSynthesisRequest(
           githubApp,
           replicatorSources,
           clusterIssuerCa,
+          tlsAuthorityCa,
           workloadCas,
           managementCas,
           workloadBootstrapBundles,

@@ -36,12 +36,14 @@ import io.seedmatic.rke2lab.manifests.contract.profiles.IncusIdentityMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ManagementClusterCaMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.OperatorPkiMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ReplicatorSourceSecretsMaterial;
+import io.seedmatic.rke2lab.manifests.contract.profiles.TlsAuthorityCaMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.WorkloadBootstrapBundlesMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.WorkloadClusterCasMaterial;
 import io.seedmatic.rke2lab.manifests.ingress.NodeGithubToken;
 import io.seedmatic.rke2lab.manifests.ingress.NodeGithubTokenCoordinate;
 import io.seedmatic.rke2lab.manifests.ingress.ServerManifestsBundle;
 import io.seedmatic.rke2lab.manifests.ingress.ServerManifestsCoordinate;
+import io.seedmatic.rke2lab.ndh.contract.NdhKeystoreCatalog;
 import io.seedmatic.rke2lab.ndh.contract.NdhKeystoreReader;
 import io.seedmatic.rke2lab.netplan.contract.ClusterNetworkBlueprint;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.CellarReceiver;
@@ -325,7 +327,7 @@ public class ManifestSynthesisScenario
         ReplicatorSourceSecretsMaterial.class);
   }
 
-  private static final String TAILNET_AUTHORITY = "mammoth-skate";
+  private static final String TAILNET_AUTHORITY = NdhKeystoreCatalog.TAILNET_AUTHORITY.entryName();
 
   // The tailnet authority DOMAIN (the key-store's authorities.mammoth-skate.domain). IN_CLUSTER the
   // sops key-store is unreadable, so the bot identity takes this constant — the same deployment
@@ -816,6 +818,7 @@ public class ManifestSynthesisScenario
       Optional<GithubAppMaterial> githubApp,
       Optional<ReplicatorSourceSecretsMaterial> replicatorSources,
       Optional<ClusterIssuerCaMaterial> clusterIssuerCa,
+      Optional<TlsAuthorityCaMaterial> tlsAuthorityCa,
       Optional<WorkloadClusterCasMaterial> workloadCas,
       Optional<ManagementClusterCaMaterial> managementCas,
       Optional<IncusIdentityMaterial> incusIdentity) {}
@@ -927,12 +930,18 @@ public class ManifestSynthesisScenario
     // § per-target-pass).
     final List<TargetPass> workloadPasses = prepareWorkloadPasses(effective, rendered, delivery);
     given().the_activation_facet(effective);
+    final Optional<ClusterIssuerCaMaterial> issuerCa = revealClusterIssuerCa();
     final Materials materials =
         new Materials(
             revealOperatorPki(),
             revealGithubApp(),
             revealReplicatorSources(),
-            revealClusterIssuerCa(),
+            issuerCa,
+            // DERIVED, not revealed a second time: the fleet's trust anchor is the root our own
+            // issuer chain ends at, so one reveal feeds both and the two cannot disagree. This is
+            // also what makes it available IN_CLUSTER, where the ndh key-store — the obvious source
+            // — is unreachable.
+            issuerCa.map(m -> TlsAuthorityCaMaterial.rootOf(m.caCertChainPem())),
             revealWorkloadCas(),
             revealManagementCas(),
             revealIncusIdentity());
@@ -1546,6 +1555,7 @@ public class ManifestSynthesisScenario
               .githubApp(materials.githubApp())
               .replicatorSources(materials.replicatorSources())
               .clusterIssuerCa(materials.clusterIssuerCa())
+              .tlsAuthorityCa(materials.tlsAuthorityCa())
               .workloadCas(materials.workloadCas())
               .managementCas(materials.managementCas())
               .incusIdentity(materials.incusIdentity())

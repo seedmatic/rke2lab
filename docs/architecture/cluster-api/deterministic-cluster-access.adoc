@@ -509,17 +509,180 @@ The workload's CA is not the only credential its birth needs: CAPN (the in-clust
 must also authenticate to the incus remote to provision the nodes. That credential is the
 `<host>-incus-identity` Secret the `LXCCluster.spec.secretRef` names, rendered on the same
 NODE_BOOTSTRAP lane by `ClusterApiWorkloadManifestsUnit`. It rides its own pre-provisioning seal,
-the twin of the cluster-pki seal: the host offers the three host-world creds (the incus remote
-address, the operator server cert from `~/.config/incus`, and the bundled capn-provider client cert)
-as the `INCUS_IDENTITY` amendment carried by `IncusIdentitySealInput`; the `IncusIdentitySealScenario`
-reads the fourth — the client key — in-container from `.secrets:incus.capn.clientKey` (off the
-amendment wire, never on the branch), seals the assembled identity, and `ManifestSynthesisScenario`
-reveals it.
+the twin of the cluster-pki seal: the host offers the host-world creds (the incus remote address and
+the bundled capn-provider client cert) as the `INCUS_IDENTITY` amendment carried by
+`IncusIdentitySealInput`; the `IncusIdentitySealScenario` reads the remaining one — the client key —
+in-container from `.secrets:incus.capn.clientKey` (off the amendment wire, never on the branch),
+seals the assembled identity, and `ManifestSynthesisScenario` reveals it.
+
+There used to be a third host-world cred, the operator's server cert from `~/.config/incus`. It is
+gone, and the next section is why.
 
 Unlike the replicator secrets, this identity is *MANDATORY* — a workload cannot be grown without it,
 so there is no fallback: an absent amendment, an incomplete cred, or a missing client key each raise
 an explicit exception rather than silently skipping. The record is always complete (its constructor
 rejects a blank field), so an unusable identity cannot even be constructed.
+
+[[capn-trusts-by-ca]]
+== CAPN trusts the Incus listener by CA, not by pinning its leaf (📐 2026-10-01)
+
+This section is the same idea as the whole document, applied one layer out. Everything above is about
+*owning the root* so a certificate can be reissued without redistributing trust. The CAPN provider
+identity was the one place that still pinned a LEAF — and so was the one place where reissuing a
+certificate broke something.
+
+=== The defect: a pinned leaf is an unreplaceable certificate
+
+`cluster-api-provider-incus` reads exactly six keys from the identity Secret — `server`,
+`server-crt`, `client-crt`, `client-key`, `project`, `insecure-skip-verify`. There is *no* `ca-crt`
+key. It passes `server-crt` straight to the incus client's `TLSServerCert`, which is the *pinned
+remote certificate*: the client compares the presented leaf against it and logs its fingerprint.
+
+Three consequences followed, and the third is the one that hid:
+
+. Every regeneration of the listener certificate invalidated every pinned copy at once — and a cold
+  start does one. The certificate was, in practice, unreplaceable.
+. The operator's `~/.config/incus/servercerts/<host>.crt` became a build input: `ClusterSeedScenario`
+  read it, the `INCUS_IDENTITY` amendment carried it, the seal filed it.
+. *A pin SKIPS name verification.* Measured 2026-10-01: both cluster members serve one certificate —
+  `incus cluster update-certificate` installs a single cluster certificate everywhere — and its SAN
+  named only `bioskop`. `nixos.nikopol` therefore served a certificate that never named it. Nothing
+  complained for as long as the pin was there.
+
+=== The exit, which the incus client documents itself
+
+[quote, incus client/connection.go]
+____
+Unless the remote server is trusted by the system CA, the remote certificate must be provided
+(TLSServerCert).
+____
+
+Read the other way, that sentence is the design: make the listener trusted by CA and the pin becomes
+unnecessary. Verified in the incus 7.4 source rather than assumed —
+
+* `shared/tls/tls.go` — `GetTLSConfigMem` leaves `RootCAs` nil when the server-cert PEM is empty, so
+  Go falls back to the *system pool*;
+* `client/util.go` — the transport then runs `VerifyHostname(config.ServerName)`, because
+  `insecure-skip-verify` is false. The exact-match path is a separate flag and stays off.
+
+So dropping `server-crt` buys chain verification *and* name verification. Which is why it could not
+be dropped alone: it is the change that turns consequence 3 from invisible into fatal.
+
+=== The three preconditions, all measured before the pin came out
+
+[cols="1,3,1"]
+|===
+|What must hold |Why |Where it lives
+
+|The listener leaf is signed by `mammoth-skate-tls`
+|Otherwise no CA we can ship verifies it.
+|ndh `mint-incus-listener-cert`
+
+|Its SAN names EVERY member
+|One certificate serves the whole cluster, so a per-host SAN leaves half the fleet unverifiable by
+ name. Fixed by deriving the SAN as the union over every declared bare-metal.
+|ndh `mint-incus-listener-cert`
+
+|`remote.endpoint` is a NAME the SAN carries
+|`VerifyHostname` checks the dialled name. `https://nixos.<host>:8443`, which is also what the
+ cluster member URL now uses, so the name is the same everywhere.
+|`ClusterApiManagementManifestsUnit`, ndh `incus-cluster`
+|===
+
+=== The delivery — two seams, because neither one can do both halves
+
+[source,mermaid]
+----
+flowchart LR
+  subgraph seal["cluster-pki seal (host)"]
+    ROOT["NdhKeystoreCatalog.TLS_AUTHORITY<br/>authorities.mammoth-skate-tls.ca_crt"]
+    CHAIN["ClusterCaGenerator<br/>chainPem(issuerCa, intermediate, root)"]
+    ROOT --> CHAIN
+  end
+  subgraph cellar["cellar (sealed at rest)"]
+    ICA["ClusterIssuerCaMaterial<br/>caCertChainPem"]
+  end
+  subgraph render["render (either realm)"]
+    TCA["TlsAuthorityCaMaterial<br/>= rootOf(chain) — the LAST block"]
+  end
+  subgraph cluster["capn-system"]
+    SEC["Secret rke2lab-tls-authority-ca<br/>ca.crt"]
+    CFG["Secret capn-provider-config<br/>CAPN_VOLUMES / CAPN_VOLUME_MOUNTS"]
+    POD["capn-controller-manager<br/>SSL_CERT_DIR=/etc/ssl/certs:/etc/rke2lab/ca"]
+    SEC --> POD
+    CFG --> POD
+  end
+  CHAIN --> ICA --> TCA --> SEC
+  TCA --> CFG
+
+  classDef host fill:#e8f0fe,stroke:#4285f4
+  classDef store fill:#fff4e5,stroke:#f9ab00
+  classDef rend fill:#e6f4ea,stroke:#34a853
+  classDef run fill:#fce8e6,stroke:#ea4335
+  class ROOT,CHAIN host
+  class ICA store
+  class TCA rend
+  class SEC,CFG,POD run
+----
+
+*Why `TlsAuthorityCaMaterial` is DERIVED and not read from the key-store.* The obvious source is
+`NdhKeystoreCatalog.TLS_AUTHORITY` through `NdhKeystoreReader`, and it is the wrong one: IN_CLUSTER
+the key-store is unreachable, and the in-cluster render is the steady state. A host-only read would
+give the operator's render a CA and the cluster's render none — and with `server-crt` empty, "none"
+is a provider that trusts nothing we signed. So it is the *last certificate* of
+`ClusterIssuerCaMaterial.caCertChainPem`, which `ClusterCaGenerator` assembles as
+`chainPem(issuerCa, intermediate, root)` with `root` being exactly that key-store entry. That
+material is cellar-borne, hence present in both realms, and the derivation states the invariant that
+matters: *the CA we ask a pod to trust is the root our own chain ends at.* Two independent reads
+could disagree; one derivation cannot.
+
+*Why the volume goes through `configSecret` and the env through `spec.deployment`.* CAPN's own
+components file declares `volumes: ${CAPN_VOLUMES:=[]}` and `volumeMounts: ${CAPN_VOLUME_MOUNTS:=[]}`
+— a declared extension point the CAPI operator substitutes from the provider's `configSecret`. The
+env cannot go there (CAPN declares no variable for it), and `spec.deployment.containers[]` carries
+`env` but neither `volumes` nor `volumeMounts`. So each half takes the only seam that can carry it.
+
+* ✅ *Use the provider's declared substitution variables.* They survive an upstream rename of the
+  Deployment.
+* ❌ *Do not use `spec.patches` for the volume.* A strategic merge keyed on
+  `capn-controller-manager` / `manager` goes SILENTLY inert the day either name moves — the failure
+  shape this repo keeps getting bitten by (a tool answering "less" instead of "I cannot").
+* ✅ *`SSL_CERT_DIR`, colon-separated, naming `/etc/ssl/certs` first.* Go replaces the directory list
+  with this value, so naming the image's own store keeps it.
+* ❌ *Not `SSL_CERT_FILE`.* It replaces the system bundle outright.
+* ⚠️ *The `configSecret` contents are IMMUTABLE to the operator* — changing them means renaming the
+  Secret. Affordable only because these two values NAME the CA Secret rather than carrying the CA, so
+  rotating the authority changes `rke2lab-tls-authority-ca` and leaves `capn-provider-config` alone.
+
+=== The guard
+
+`ClusterApiCrRenderer.identitySecret` refuses to render an identity when the render carries no
+`TlsAuthorityCaMaterial`. Without `server-crt` the Secret pins nothing, so a render with no CA would
+emit an identity that can verify nothing — silent at render time, total at runtime (every
+`LXCCluster` reconcile failing an unverifiable handshake). The two Secrets are rendered by sibling
+units of the same domain, so they travel together; the guard asserts that rather than trusting it.
+
+=== Troubleshooting
+
+[cols="2,3"]
+|===
+|Symptom |Cause
+
+|`x509: certificate signed by unknown authority` in `capn-controller-manager`
+|The CA is not in the pod. Check the `rke2lab-tls-authority-ca` Secret exists in `capn-system`, that
+ `capn-provider-config` is referenced by `InfrastructureProvider.spec.configSecret`, and that the pod
+ actually has `/etc/rke2lab/ca/ca.crt` — the operator substitutes the variables only when it
+ re-renders the provider.
+
+|`x509: certificate is valid for <names>, not nixos.<host>`
+|The listener certificate's SAN does not name the endpoint being dialled. Re-mint with the fleet-wide
+ SAN and re-run `incus cluster update-certificate`. Verify per member, never per fleet:
+ `openssl s_client -connect nixos.<host>:8443 -servername nixos.<host> -CAfile <ca> -verify_hostname nixos.<host>`.
+
+|Reconciles succeed but a reissued listener cert breaks them later
+|A `server-crt` has come back into the identity Secret. With the leaf present the pin wins, name
+ verification is skipped, and the unreplaceable certificate is back.
+|===
 
 == Related documentation
 
@@ -538,5 +701,8 @@ encoding.
   identity membrane the age-key delivery reuses.
 * link:cluster-api-bootstrap-requirements.adoc[Cluster API bootstrap requirements] — what the reachable
   cluster is expected to carry once access is established.
+* link:pac-in-cluster-render-spec.adoc#derived-materials[In-cluster render — derived materials] — why
+  the authority CA is derived from the issuer chain instead of read from the ndh key-store: the
+  key-store is unreachable IN_CLUSTER, and that is the realm the steady-state render runs in.
 * link:../integration-atlas.adoc[Integration Atlas] — the living integration view; this target sits on
   the secrets + cluster-readiness value threads.

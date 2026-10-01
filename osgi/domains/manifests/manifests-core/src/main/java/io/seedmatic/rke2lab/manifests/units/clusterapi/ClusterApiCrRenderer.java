@@ -1,5 +1,6 @@
 package io.seedmatic.rke2lab.manifests.units.clusterapi;
 
+import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
 import io.seedmatic.rke2lab.manifests.contract.ManifestAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ImageState;
 import io.seedmatic.rke2lab.manifests.contract.profiles.IncusIdentityMaterial;
@@ -180,6 +181,27 @@ public final class ClusterApiCrRenderer {
    * CAPN actually reads — this field — stayed wrong. A fix aimed at the right shape but the wrong
    * reader. So the endpoint is now computed ONCE per target and given to BOTH objects; they can no
    * longer disagree.
+   *
+   * <h2>Why there is no {@code server-crt}</h2>
+   *
+   * <p>There used to be, carrying the Incus listener's LEAF, and that is what made the listener
+   * certificate unreplaceable: CAPN hands {@code server-crt} to the incus client's {@code
+   * TLSServerCert}, the pinned remote certificate, so every regeneration invalidated every pinned
+   * copy at once — and a cold start does one. Worse, the pin also SKIPS name verification, which
+   * hid for months that the cluster certificate named only one of the two members.
+   *
+   * <p>Empty, the path is the one the incus client documents — <i>"unless the remote server is
+   * trusted by the system CA, the remote certificate must be provided"</i>. Read in incus 7.4:
+   * {@code GetTLSConfigMem} leaves {@code RootCAs} nil when the PEM is empty, so Go uses the system
+   * pool, and the client transport then runs {@code VerifyHostname(config.ServerName)} because
+   * {@code insecure-skip-verify} is false. Three things therefore have to hold, and all three were
+   * measured before this field was dropped: the listener leaf is signed by {@code
+   * mammoth-skate-tls}, its SAN names EVERY member (one certificate serves the whole cluster), and
+   * {@code remoteEndpoint} is a NAME the SAN carries — {@code https://nixos.&lt;host&gt;:8443}.
+   *
+   * <p>The authority itself reaches the provider pod through {@code
+   * ClusterApiOperatorManifestsUnit}; the guard below refuses to emit an identity when this render
+   * carries no CA, because an unpinned Secret with no trust anchor verifies nothing.
    */
   public ApiObject identitySecret(
       final Construct scope,
@@ -196,6 +218,21 @@ public final class ClusterApiCrRenderer {
           "remoteEndpoint is blank for cluster "
               + cluster
               + " — CAPN would fall back to the minter's address and dial the wrong host");
+    }
+    // ★ The Secret no longer carries `server-crt`, so CAPN verifies the listener against the SYSTEM
+    // pool — which only works if this render also delivers the authority into the provider pod. The
+    // two are rendered by sibling units of the same domain, so they travel together; this asserts
+    // it
+    // rather than trusting it, because the failure it prevents is silent at render time and total
+    // at
+    // runtime (every LXCCluster reconcile failing an unverifiable handshake).
+    if (ManifestSynthesisContext.current().tlsAuthorityCa().isEmpty()) {
+      throw new IllegalStateException(
+          "no TLS authority CA for cluster "
+              + cluster
+              + " — the identity Secret pins nothing, so CAPN would have to trust the Incus listener"
+              + " by system CA, and this render delivers no CA into capn-system. Refusing to emit an"
+              + " identity that cannot verify anything.");
     }
     final ApiObject secret =
         new ApiObject(
@@ -221,7 +258,9 @@ public final class ClusterApiCrRenderer {
             Map.of(
                 // The TARGET's endpoint, not the minter's — see this method's javadoc.
                 "server", base64(remoteEndpoint),
-                "server-crt", base64(material.serverCert()),
+                // ★ NO `server-crt`. Absent, CAPN leaves `RootCAs` nil and Go falls back to the
+                // system pool, then verifies the NAME (`GetTLSConfigMem` + the transport's
+                // `VerifyHostname`, incus 7.4). Present, it would pin the leaf and skip both.
                 "client-crt", base64(material.clientCert()),
                 "client-key", base64(material.clientKey()),
                 // Single project (foundation 4 dropped) — the same project the node-base image

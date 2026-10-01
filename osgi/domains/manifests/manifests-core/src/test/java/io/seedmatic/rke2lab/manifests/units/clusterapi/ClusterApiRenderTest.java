@@ -2,6 +2,7 @@ package io.seedmatic.rke2lab.manifests.units.clusterapi;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.seedmatic.rke2lab.manifests.Cdk8sApiObjectResolver;
@@ -15,7 +16,9 @@ import io.seedmatic.rke2lab.manifests.contract.ManifestDomainPolicy;
 import io.seedmatic.rke2lab.manifests.contract.ManifestSynthesisRequest;
 import io.seedmatic.rke2lab.manifests.contract.profiles.BootstrapIdentity;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ImageState;
+import io.seedmatic.rke2lab.manifests.contract.profiles.IncusIdentityMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.NodeRuntime;
+import io.seedmatic.rke2lab.manifests.contract.profiles.TlsAuthorityCaMaterial;
 import io.seedmatic.rke2lab.manifests.node.DefaultNodeEnvContext;
 import io.seedmatic.rke2lab.manifests.units.cluster.ClusterRuntimeNamespaceManifestsUnit;
 import io.seedmatic.rke2lab.manifests.units.runtime.SeedInclusterManifestsUnit;
@@ -131,6 +134,15 @@ class ClusterApiRenderTest {
 
   private static List<Map<String, Object>> renderWithFleet(
       final Path outdir, final ClusterFleet fleet, final List<ManifestsUnit> units) {
+    return renderWith(outdir, fleet, units, Optional.empty(), Optional.empty());
+  }
+
+  private static List<Map<String, Object>> renderWith(
+      final Path outdir,
+      final ClusterFleet fleet,
+      final List<ManifestsUnit> units,
+      final Optional<TlsAuthorityCaMaterial> tlsAuthorityCa,
+      final Optional<IncusIdentityMaterial> incusIdentity) {
     final App app = new App(AppProps.builder().outdir(outdir.toString()).build());
     final Chart chart = new Chart(app, "manifests");
     final ManifestSynthesisRequest request =
@@ -140,6 +152,8 @@ class ClusterApiRenderTest {
             .clusterFleet(Optional.of(fleet))
             .manifestDomainPolicy(Optional.of(POLICY))
             .fabricBridgeParent(Optional.of(FABRIC_BRIDGE))
+            .tlsAuthorityCa(tlsAuthorityCa)
+            .incusIdentity(incusIdentity)
             .build();
 
     try (var bound = ManifestSynthesisContext.of(request).bind()) {
@@ -505,5 +519,123 @@ class ClusterApiRenderTest {
         () ->
             "rendered CRs with no CRD emitted: "
                 + renderedCrKinds.stream().filter(kind -> !crdKinds.contains(kind)).toList());
+  }
+
+  private static final TlsAuthorityCaMaterial AUTHORITY_CA =
+      new TlsAuthorityCaMaterial(
+          "-----BEGIN CERTIFICATE-----\nMAMMOTHSKATEROOT\n-----END CERTIFICATE-----\n");
+
+  private static Optional<Map<String, Object>> named(
+      final List<Map<String, Object>> documents, final String kind, final String name) {
+    return documents.stream()
+        .filter(document -> kind.equals(kindOf(document)))
+        .filter(
+            document -> {
+              @SuppressWarnings("unchecked")
+              final Map<String, Object> metadata =
+                  (Map<String, Object>) document.getOrDefault("metadata", Map.of());
+              return name.equals(metadata.get("name"));
+            })
+        .findFirst();
+  }
+
+  @Test
+  void requireTheProviderPodIsHandedTheAUTHORITYRatherThanAPinnedLeaf(@TempDir Path outdir) {
+    // The switch this asserts: CAPN verifies the Incus listener against the system pool, so the CA
+    // has to arrive in the pod BY TWO SEAMS — the volume through the provider's own substitution
+    // variables, the env through spec.deployment. Neither seam can carry both halves.
+    final List<Map<String, Object>> documents =
+        renderWith(
+            outdir,
+            FLEET,
+            List.of(new ClusterApiOperatorManifestsUnit()),
+            Optional.of(AUTHORITY_CA),
+            Optional.empty());
+
+    final Map<String, Object> anchor =
+        named(documents, "Secret", "rke2lab-tls-authority-ca")
+            .orElseThrow(() -> new AssertionError("no CA Secret rendered in capn-system"));
+    @SuppressWarnings("unchecked")
+    final Map<String, Object> anchorData = (Map<String, Object>) anchor.get("data");
+    assertTrue(anchorData.containsKey("ca.crt"), "the anchor Secret must carry ca.crt");
+
+    final Map<String, Object> config =
+        named(documents, "Secret", "capn-provider-config")
+            .orElseThrow(() -> new AssertionError("no provider config Secret rendered"));
+    @SuppressWarnings("unchecked")
+    final Map<String, Object> configData = (Map<String, Object>) config.get("stringData");
+    final String volumes = String.valueOf(configData.get("CAPN_VOLUMES"));
+    final String mounts = String.valueOf(configData.get("CAPN_VOLUME_MOUNTS"));
+    // ⚠️ SINGLE-LINE, and this is the assertion that matters most here: the operator substitutes
+    // these values TEXTUALLY into the components YAML, so a multi-line block would land at the
+    // wrong
+    // indentation and corrupt the document rather than the field.
+    assertFalse(volumes.contains("\n"), "CAPN_VOLUMES must be single-line flow style");
+    assertFalse(mounts.contains("\n"), "CAPN_VOLUME_MOUNTS must be single-line flow style");
+    assertTrue(volumes.contains("rke2lab-tls-authority-ca"), "the volume must name the CA Secret");
+    assertTrue(mounts.contains("/etc/rke2lab/ca"), "the mount must land where SSL_CERT_DIR looks");
+
+    final Map<String, Object> provider =
+        named(documents, "InfrastructureProvider", "incus")
+            .orElseThrow(() -> new AssertionError("no InfrastructureProvider rendered"));
+    @SuppressWarnings("unchecked")
+    final Map<String, Object> spec = (Map<String, Object>) provider.get("spec");
+    assertEquals(
+        Map.of("name", "capn-provider-config", "namespace", "capn-system"),
+        spec.get("configSecret"),
+        "the provider must reference the config Secret, or the variables are never substituted");
+    final String rendered = String.valueOf(spec.get("deployment"));
+    assertTrue(rendered.contains("SSL_CERT_DIR"), "the container needs SSL_CERT_DIR");
+    // Both paths, in this order: Go REPLACES the directory list with this value, so dropping
+    // /etc/ssl/certs would take the image's own trust store away with it.
+    assertTrue(
+        rendered.contains("/etc/ssl/certs:/etc/rke2lab/ca"),
+        () -> "SSL_CERT_DIR must keep the system store alongside ours, got: " + rendered);
+  }
+
+  @Test
+  void requireNoAuthorityMeansNoTrustStoreAtAllRatherThanAnEmptyOne(@TempDir Path outdir) {
+    // A secret-blind render must not emit a half-wired trust store: an empty CA Secret and a
+    // configSecret pointing at it would read as success and fail every handshake.
+    final List<Map<String, Object>> documents =
+        renderWith(
+            outdir,
+            FLEET,
+            List.of(new ClusterApiOperatorManifestsUnit()),
+            Optional.empty(),
+            Optional.empty());
+
+    assertTrue(named(documents, "Secret", "rke2lab-tls-authority-ca").isEmpty());
+    assertTrue(named(documents, "Secret", "capn-provider-config").isEmpty());
+    final Map<String, Object> provider =
+        named(documents, "InfrastructureProvider", "incus")
+            .orElseThrow(() -> new AssertionError("no InfrastructureProvider rendered"));
+    @SuppressWarnings("unchecked")
+    final Map<String, Object> spec = (Map<String, Object>) provider.get("spec");
+    assertFalse(spec.containsKey("configSecret"), "no CA means no configSecret");
+    assertFalse(spec.containsKey("deployment"), "no CA means no SSL_CERT_DIR");
+    // The provider is still rendered and still fetches — the trust store is the only thing missing.
+    assertTrue(spec.containsKey("fetchConfig"));
+  }
+
+  @Test
+  void requireAnIdentityThatPinsNothingAndTrustsNothingIsREFUSED(@TempDir Path outdir) {
+    // The guard that keeps the two halves of the switch together. Since `server-crt` is gone, an
+    // identity Secret verifies via the system pool — so rendering one while this render carries no
+    // CA would produce an identity that can verify nothing: silent now, total at runtime.
+    final IncusIdentityMaterial identity =
+        new IncusIdentityMaterial(
+            "https://nixos.bioskop:8443",
+            "-----BEGIN CERTIFICATE-----\nCLIENT\n-----END CERTIFICATE-----\n",
+            "KEY");
+    final IllegalStateException refusal =
+        assertThrows(
+            IllegalStateException.class,
+            () ->
+                renderWith(
+                    outdir, FLEET, clusterApiUnits(), Optional.empty(), Optional.of(identity)));
+    assertTrue(
+        refusal.getMessage().contains("no TLS authority CA"),
+        () -> "refused for the wrong reason: " + refusal.getMessage());
   }
 }

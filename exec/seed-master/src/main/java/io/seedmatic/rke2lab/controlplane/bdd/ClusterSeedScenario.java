@@ -306,7 +306,7 @@ public class ClusterSeedScenario
     @ProvidedScenarioState(resolution = Resolution.NAME)
     JsonNode workloadClusterNames = JsonNodeFactory.instance.arrayNode();
 
-    // The CAPN provider's host-world incus creds (serverAddress + serverCert + clientCert) for the
+    // The CAPN provider's host-world incus creds (serverAddress + clientCert) for the
     // incus-identity seal crossing, offered under the neutral INCUS_IDENTITY role. Name-resolved.
     @ProvidedScenarioState(resolution = Resolution.NAME)
     JsonNode incusIdentityHostCreds = JsonNodeFactory.instance.objectNode();
@@ -531,40 +531,27 @@ public class ClusterSeedScenario
     }
 
     // Assemble the CAPN provider's host-world incus creds for the incus-identity seal amendment:
-    // serverAddress (config), serverCert (~/.config/incus/servercerts/<host>.crt), clientCert (the
-    // bundled capn-provider cert). Any missing read -> blank field, and the seal then files
-    // nothing.
+    // serverAddress (config) and clientCert (the bundled capn-provider cert). Any missing read ->
+    // blank field, and the seal then files nothing.
     //
     // serverAddress is the IN-CLUSTER address, not incusRemoteAddress: this field becomes the
     // `server` key of the CAPN identity Secret, which CAPN reads from a POD (LXCCluster.secretRef).
     // incusRemoteAddress is deliberately the bare tailnet name — the Go incus provider does not
     // resolve .local (documented in Pulumi.dev.yaml) — and a pod resolves neither that nor mDNS.
-    // The
-    // cert lookup below stays on incusRemoteAddress: it names a file in the OPERATOR's
-    // ~/.config/incus, a host-side fact.
+    //
+    // ★ There is no longer a third cred. `serverCert` read the OPERATOR's
+    // ~/.config/incus/servercerts/<host>.crt so CAPN could PIN that leaf, and the pin is what made
+    // the listener certificate unreplaceable — see IncusIdentityMaterial. CAPN trusts the authority
+    // by CA now, so this host-side fact is not a fact anybody needs, and the operator's incus
+    // config
+    // folder stops being an input to the seal.
     private ObjectNode incusIdentityHostCreds(BootstrapConfig config) {
       final ObjectNode creds = JsonNodeFactory.instance.objectNode();
       creds.put(
           "serverAddress",
           config.incusClusterAddress() == null ? "" : config.incusClusterAddress().toString());
-      creds.put("serverCert", readIncusServerCert(config));
       creds.put("clientCert", readCapnClientCert());
       return creds;
-    }
-
-    private String readIncusServerCert(BootstrapConfig config) {
-      final Path folder = config.incusConfigFolder();
-      final String host =
-          config.incusRemoteAddress() == null ? null : config.incusRemoteAddress().getHost();
-      if (folder == null || host == null || host.isBlank()) {
-        return "";
-      }
-      final Path certPath = folder.resolve("servercerts").resolve(host + ".crt");
-      try {
-        return Files.exists(certPath) ? Files.readString(certPath) : "";
-      } catch (IOException ex) {
-        throw new UncheckedIOException("could not read the incus server cert " + certPath, ex);
-      }
     }
   }
 

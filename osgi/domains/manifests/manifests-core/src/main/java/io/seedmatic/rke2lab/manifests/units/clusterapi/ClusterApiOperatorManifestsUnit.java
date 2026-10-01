@@ -5,11 +5,15 @@ import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
 import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.ManifestLayer;
+import io.seedmatic.rke2lab.manifests.contract.profiles.TlsAuthorityCaMaterial;
 import io.seedmatic.rke2lab.manifests.ingress.Component;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import io.seedmatic.rke2lab.manifests.units.platform.ClusterIssuerManifestsUnit;
 import io.seedmatic.rke2lab.manifests.upstream.UpstreamYamlInclusion;
 import io.seedmatic.rke2lab.manifests.upstream.UpstreamYamlInclusion.UpstreamRewrite;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -38,6 +42,25 @@ public final class ClusterApiOperatorManifestsUnit extends AbstractManifestsUnit
   private static final String UPSTREAM_SELFSIGNED_ISSUER = "capi-operator-selfsigned-issuer";
 
   private static final String UPSTREAM_SERVING_CERT = "capi-operator-serving-cert";
+
+  private static final String CAPN_NAMESPACE = "capn-system";
+
+  /**
+   * The CAPN provider's container, read off {@code infrastructure-components.yaml} for the pinned
+   * release: one Deployment {@code capn-controller-manager} with one container {@code manager}.
+   * Only the CONTAINER is named here, because {@code spec.deployment} keys on it and the operator
+   * supplies the Deployment — naming the Deployment too is what {@code spec.patches} would have
+   * required, and that is the coupling this avoids.
+   */
+  private static final String CAPN_CONTAINER = "manager";
+
+  private static final String TRUST_ANCHOR_SECRET = "rke2lab-tls-authority-ca";
+
+  private static final String TRUST_ANCHOR_VOLUME = "rke2lab-tls-authority-ca";
+
+  private static final String TRUST_ANCHOR_MOUNT = "/etc/rke2lab/ca";
+
+  private static final String PROVIDER_CONFIG_SECRET = "capn-provider-config";
 
   public ClusterApiOperatorManifestsUnit() {
     // dependsOn platform/cluster-issuer: the operator's serving Certificate now references the
@@ -122,28 +145,153 @@ public final class ClusterApiOperatorManifestsUnit extends AbstractManifestsUnit
                 .metadata(
                     ApiObjectMetadata.builder()
                         .name("incus")
-                        .namespace("capn-system")
+                        .namespace(CAPN_NAMESPACE)
                         .annotations(
                             packageProfile.packageAnnotations(
                                 "operator.cluster.x-k8s.io|InfrastructureProvider|capn-system|incus"))
                         .build())
                 .build());
 
+    final Map<String, Object> spec = new LinkedHashMap<>();
     // The CAPI operator resolves a non-clusterctl provider from a GitHub release URL that must
     // point at the components file itself (…/releases/<tag>/infrastructure-components.yaml); it
     // reads metadata.yaml from the same release. A bare …/releases base is rejected.
-    provider.addJsonPatch(
+    spec.put("version", version);
+    spec.put(
+        "fetchConfig",
+        Map.of(
+            "url",
+            "https://github.com/lxc/cluster-api-provider-incus/releases/"
+                + version
+                + "/infrastructure-components.yaml"));
+
+    ManifestSynthesisContext.current()
+        .tlsAuthorityCa()
+        .ifPresent(
+            material -> {
+              renderTrustAnchorSecret(scope, material);
+              renderProviderConfigSecret(scope);
+              // The CA must reach the provider POD's trust store, and the two halves come from two
+              // different seams because neither can do both:
+              //
+              //  * the VOLUME goes through `configSecret`. CAPN's own components file declares
+              //    `volumes: ${CAPN_VOLUMES:=[]}` and `volumeMounts: ${CAPN_VOLUME_MOUNTS:=[]}`,
+              // and
+              //    the operator substitutes those variables from that Secret — a declared extension
+              //    point, so it survives an upstream rename of the Deployment. `spec.patches` would
+              //    also work and is strictly worse: a strategic merge keyed on
+              //    `capn-controller-manager`/`manager` goes SILENTLY inert the day either name
+              // moves.
+              //  * the ENV goes through `spec.deployment`, because CAPN declares no variable for it
+              //    and `deployment.containers[]` carries `env` but neither `volumes` nor
+              //    `volumeMounts` (checked against the v1alpha2 schema).
+              //
+              // `SSL_CERT_DIR` and not `SSL_CERT_FILE`: Go REPLACES the dir list with this value,
+              // so
+              // naming `/etc/ssl/certs` alongside ours keeps the image's own store, whereas
+              // SSL_CERT_FILE would replace the system bundle outright.
+              spec.put(
+                  "configSecret",
+                  Map.of("name", PROVIDER_CONFIG_SECRET, "namespace", CAPN_NAMESPACE));
+              spec.put(
+                  "deployment",
+                  Map.of(
+                      "containers",
+                      List.of(
+                          Map.of(
+                              "name",
+                              CAPN_CONTAINER,
+                              "env",
+                              List.of(
+                                  Map.of(
+                                      "name",
+                                      "SSL_CERT_DIR",
+                                      "value",
+                                      "/etc/ssl/certs:" + TRUST_ANCHOR_MOUNT))))));
+            });
+
+    provider.addJsonPatch(JsonPatch.add("/spec", spec));
+  }
+
+  /**
+   * The fleet's TLS authority as a plain CA bundle in {@code capn-system}.
+   *
+   * <p>On the ORDINARY branch, unlike {@link ClusterIssuerManifestsUnit}'s CA Secret which rides
+   * the durable NODE_BOOTSTRAP lane: that one carries a private key, this one carries none. A CA
+   * certificate is public by construction, so Flux may apply it like any other manifest and a
+   * rotation is a normal reconcile rather than a node-side pose.
+   */
+  private void renderTrustAnchorSecret(
+      final Construct scope, final TlsAuthorityCaMaterial material) {
+    final ApiObject secret =
+        new ApiObject(
+            scope,
+            "secret-" + TRUST_ANCHOR_SECRET,
+            ApiObjectProps.builder()
+                .apiVersion("v1")
+                .kind("Secret")
+                .metadata(
+                    ApiObjectMetadata.builder()
+                        .name(TRUST_ANCHOR_SECRET)
+                        .namespace(CAPN_NAMESPACE)
+                        .annotations(
+                            packageProfile.packageAnnotations(
+                                "|Secret|" + CAPN_NAMESPACE + "|" + TRUST_ANCHOR_SECRET))
+                        .build())
+                .build());
+    secret.addJsonPatch(JsonPatch.add("/data", Map.of("ca.crt", base64(material.caCertPem()))));
+  }
+
+  /**
+   * The provider's substitution variables — the volume + mount that put {@link
+   * #TRUST_ANCHOR_SECRET} on the provider pod's filesystem.
+   *
+   * <p>⚠️ Both values are SINGLE-LINE flow-style JSON, deliberately. The operator substitutes these
+   * TEXTUALLY into the components YAML at {@code volumes: ${CAPN_VOLUMES:=[]}}, so a multi-line
+   * block would land at the wrong indentation and break the document rather than the field.
+   *
+   * <p>The operator treats a configSecret's contents as IMMUTABLE — to change them you rename the
+   * Secret. That is affordable here only because these two values are static: they NAME the CA
+   * Secret rather than carrying the CA, so rotating the authority changes {@link
+   * #TRUST_ANCHOR_SECRET}'s content and leaves this one untouched.
+   */
+  private void renderProviderConfigSecret(final Construct scope) {
+    final ApiObject secret =
+        new ApiObject(
+            scope,
+            "secret-" + PROVIDER_CONFIG_SECRET,
+            ApiObjectProps.builder()
+                .apiVersion("v1")
+                .kind("Secret")
+                .metadata(
+                    ApiObjectMetadata.builder()
+                        .name(PROVIDER_CONFIG_SECRET)
+                        .namespace(CAPN_NAMESPACE)
+                        .annotations(
+                            packageProfile.packageAnnotations(
+                                "|Secret|" + CAPN_NAMESPACE + "|" + PROVIDER_CONFIG_SECRET))
+                        .build())
+                .build());
+    secret.addJsonPatch(
         JsonPatch.add(
-            "/spec",
+            "/stringData",
             Map.of(
-                "version",
-                version,
-                "fetchConfig",
-                Map.of(
-                    "url",
-                    "https://github.com/lxc/cluster-api-provider-incus/releases/"
-                        + version
-                        + "/infrastructure-components.yaml"))));
+                "CAPN_VOLUMES",
+                "[{\"name\":\""
+                    + TRUST_ANCHOR_VOLUME
+                    + "\",\"secret\":{\"secretName\":\""
+                    + TRUST_ANCHOR_SECRET
+                    + "\"}}]",
+                "CAPN_VOLUME_MOUNTS",
+                "[{\"name\":\""
+                    + TRUST_ANCHOR_VOLUME
+                    + "\",\"mountPath\":\""
+                    + TRUST_ANCHOR_MOUNT
+                    + "\",\"readOnly\":true}]")));
+  }
+
+  private static String base64(final String value) {
+    return Base64.getEncoder().encodeToString(value.getBytes(StandardCharsets.UTF_8));
   }
 
   private void createControlPlaneProvider(final Construct scope, final String version) {
