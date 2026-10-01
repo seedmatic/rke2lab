@@ -2,7 +2,6 @@ package io.seedmatic.rke2lab.manifests.units.clusterapi;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.seedmatic.rke2lab.manifests.Cdk8sApiObjectResolver;
@@ -594,9 +593,12 @@ class ClusterApiRenderTest {
   }
 
   @Test
-  void requireNoAuthorityMeansNoTrustStoreAtAllRatherThanAnEmptyOne(@TempDir Path outdir) {
-    // A secret-blind render must not emit a half-wired trust store: an empty CA Secret and a
-    // configSecret pointing at it would read as success and fail every handshake.
+  void requireARenderWithoutTheCaStillWiresTheProviderAndWithdrawsNothing(@TempDir Path outdir) {
+    // ★ The 2026-10-01 correction, as the test. An IN-CLUSTER render is blind to host-sealed cellar
+    // cases, so it never carries the CA — and it must still emit the WIRING, because a render that
+    // omits what it cannot see is a render that PRUNES it. Gating these on the material made a
+    // successful in-cluster render withdraw the provider's trust-store volume and delete the
+    // anchor.
     final List<Map<String, Object>> documents =
         renderWith(
             outdir,
@@ -605,37 +607,26 @@ class ClusterApiRenderTest {
             Optional.empty(),
             Optional.empty());
 
-    assertTrue(named(documents, "Secret", "rke2lab-tls-authority-ca").isEmpty());
-    assertTrue(named(documents, "Secret", "capn-provider-config").isEmpty());
     final Map<String, Object> provider =
         named(documents, "InfrastructureProvider", "incus")
             .orElseThrow(() -> new AssertionError("no InfrastructureProvider rendered"));
     @SuppressWarnings("unchecked")
     final Map<String, Object> spec = (Map<String, Object>) provider.get("spec");
-    assertFalse(spec.containsKey("configSecret"), "no CA means no configSecret");
-    assertFalse(spec.containsKey("deployment"), "no CA means no SSL_CERT_DIR");
-    // The provider is still rendered and still fetches — the trust store is the only thing missing.
-    assertTrue(spec.containsKey("fetchConfig"));
-  }
-
-  @Test
-  void requireAnIdentityThatPinsNothingAndTrustsNothingIsREFUSED(@TempDir Path outdir) {
-    // The guard that keeps the two halves of the switch together. Since `server-crt` is gone, an
-    // identity Secret verifies via the system pool — so rendering one while this render carries no
-    // CA would produce an identity that can verify nothing: silent now, total at runtime.
-    final IncusIdentityMaterial identity =
-        new IncusIdentityMaterial(
-            "https://nixos.bioskop:8443",
-            "-----BEGIN CERTIFICATE-----\nCLIENT\n-----END CERTIFICATE-----\n",
-            "KEY");
-    final IllegalStateException refusal =
-        assertThrows(
-            IllegalStateException.class,
-            () ->
-                renderWith(
-                    outdir, FLEET, clusterApiUnits(), Optional.empty(), Optional.of(identity)));
+    assertEquals(
+        Map.of("name", "capn-provider-config", "namespace", "capn-system"),
+        spec.get("configSecret"),
+        "the configSecret reference carries no material, so a CA-less render must still state it");
     assertTrue(
-        refusal.getMessage().contains("no TLS authority CA"),
-        () -> "refused for the wrong reason: " + refusal.getMessage());
+        String.valueOf(spec.get("deployment")).contains("/etc/ssl/certs:/etc/rke2lab/ca"),
+        "SSL_CERT_DIR carries no material either");
+    assertTrue(
+        named(documents, "Secret", "capn-provider-config").isPresent(),
+        "its values are static strings, so they must render in every realm");
+
+    // Only the CA ITSELF is gated — and it rides the bootstrap lane, so its absence here prunes
+    // nothing.
+    assertTrue(
+        named(documents, "Secret", "rke2lab-tls-authority-ca").isEmpty(),
+        "no material means no anchor Secret, which is why it must not live on the reconciled branch");
   }
 }

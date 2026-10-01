@@ -654,13 +654,51 @@ env cannot go there (CAPN declares no variable for it), and `spec.deployment.con
   Secret. Affordable only because these two values NAME the CA Secret rather than carrying the CA, so
   rotating the authority changes `rke2lab-tls-authority-ca` and leaves `capn-provider-config` alone.
 
-=== The guard
+=== ⚠️ The guard that had to go, and the lane that replaced it (📐 2026-10-01)
 
-`ClusterApiCrRenderer.identitySecret` refuses to render an identity when the render carries no
-`TlsAuthorityCaMaterial`. Without `server-crt` the Secret pins nothing, so a render with no CA would
-emit an identity that can verify nothing — silent at render time, total at runtime (every
-`LXCCluster` reconcile failing an unverifiable handshake). The two Secrets are rendered by sibling
-units of the same domain, so they travel together; the guard asserts that rather than trusting it.
+`ClusterApiCrRenderer.identitySecret` briefly refused to render an identity when the render carried
+no `TlsAuthorityCaMaterial`. The intent was right — without `server-crt` the Secret pins nothing, so
+an identity with no anchor verifies nothing — and the PLACE was wrong, expensively:
+
+* an IN-CLUSTER render is blind to host-sealed cellar cases, so it NEVER carries that material;
+* the guard therefore failed every in-cluster render, for hours, with a message that read like a
+  design violation rather than a realm mismatch.
+
+And softening it would have been worse than the outage. The anchor Secret was on the ORDINARY branch,
+so a *successful* in-cluster render would have emitted the branch WITHOUT it and Flux would have
+PRUNED the fleet's trust anchor — the reward for a render finally working.
+
+So the fix is the lane, not the guard. Three pieces, by what each needs:
+
+[cols="2,1,3"]
+|===
+|What |Lane |Why
+
+|`rke2lab-tls-authority-ca` (the CA PEM)
+|NODE_BOOTSTRAP
+|It is the only piece carrying material. Posed node-side at grow, never on the reconciled branch, so
+ a render that cannot see it cannot withdraw it. `ClusterIssuerManifestsUnit`'s CA rides it for the
+ same reason — which is the one that generalises, *not* its private key.
+
+|`capn-provider-config` (the substitution variables)
+|ordinary
+|Static strings: the values NAME the CA Secret, they do not carry the CA. Every realm reproduces them
+ byte-for-byte.
+
+|`spec.configSecret` + `spec.deployment`
+|ordinary
+|A reference and a literal. Gating these is what let a render withdraw a wiring it could not see the
+ reason for.
+|===
+
+* ✅ *Decide a lane by WHO CAN SEE the material, not by whether it is secret.* That was the actual
+  mistake: "it carries no private key, so the ordinary branch is fine" reasons about the wrong
+  property.
+* ❌ *Do not assert a same-render invariant that only one realm can satisfy.* A guard that cannot hold
+  everywhere the code runs is not a guard — it is an outage with a good error message.
+* ⚠️ The cost is stated rather than hidden: a CA rotation lands at GROW, not on a reconcile — the same
+  cost the cluster-issuer CA already pays. The way out is not the ordinary branch; it is giving the
+  authority CA a source an in-cluster render can read, at which point the Secret moves back.
 
 === Troubleshooting
 

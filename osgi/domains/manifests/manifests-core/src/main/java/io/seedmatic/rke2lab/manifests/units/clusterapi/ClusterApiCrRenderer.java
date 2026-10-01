@@ -1,6 +1,5 @@
 package io.seedmatic.rke2lab.manifests.units.clusterapi;
 
-import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
 import io.seedmatic.rke2lab.manifests.contract.ManifestAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ImageState;
 import io.seedmatic.rke2lab.manifests.contract.profiles.IncusIdentityMaterial;
@@ -200,8 +199,9 @@ public final class ClusterApiCrRenderer {
    * {@code remoteEndpoint} is a NAME the SAN carries — {@code https://nixos.&lt;host&gt;:8443}.
    *
    * <p>The authority itself reaches the provider pod through {@code
-   * ClusterApiOperatorManifestsUnit}; the guard below refuses to emit an identity when this render
-   * carries no CA, because an unpinned Secret with no trust anchor verifies nothing.
+   * ClusterApiOperatorManifestsUnit}, on the NODE_BOOTSTRAP lane — so it is posed at GROW and is
+   * NOT a property this render can check. An earlier version asserted it here and brought down
+   * every in-cluster render; see the note at the removed guard.
    */
   public ApiObject identitySecret(
       final Construct scope,
@@ -219,21 +219,21 @@ public final class ClusterApiCrRenderer {
               + cluster
               + " — CAPN would fall back to the minter's address and dial the wrong host");
     }
-    // ★ The Secret no longer carries `server-crt`, so CAPN verifies the listener against the SYSTEM
-    // pool — which only works if this render also delivers the authority into the provider pod. The
-    // two are rendered by sibling units of the same domain, so they travel together; this asserts
+    // ⚠️ There WAS a guard here refusing to emit an identity when the render carried no TLS
+    // authority CA, and it was wrong in its PLACE, not in its intent. It asserted a same-render
+    // invariant that only ever held on the HOST: an in-cluster render is blind to host-sealed
+    // cellar
+    // cases, so it never has that material, and the guard therefore failed EVERY in-cluster render
+    // for
+    // hours. The identity Secret and the trust anchor do not even travel the same lane — the anchor
+    // rides NODE_BOOTSTRAP, posed at grow — so the invariant it wanted is a GROW-time property, and
     // it
-    // rather than trusting it, because the failure it prevents is silent at render time and total
-    // at
-    // runtime (every LXCCluster reconcile failing an unverifiable handshake).
-    if (ManifestSynthesisContext.current().tlsAuthorityCa().isEmpty()) {
-      throw new IllegalStateException(
-          "no TLS authority CA for cluster "
-              + cluster
-              + " — the identity Secret pins nothing, so CAPN would have to trust the Incus listener"
-              + " by system CA, and this render delivers no CA into capn-system. Refusing to emit an"
-              + " identity that cannot verify anything.");
-    }
+    // is documented at the material and at `ClusterApiOperatorManifestsUnit` rather than asserted
+    // here.
+    //
+    // ★ The lesson is the sharper one: a guard that cannot hold in every realm the code runs in is
+    // not
+    // a guard, it is an outage with a good error message.
     final ApiObject secret =
         new ApiObject(
             scope,

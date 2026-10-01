@@ -3,6 +3,7 @@ package io.seedmatic.rke2lab.manifests.units.clusterapi;
 import io.seedmatic.rke2lab.manifests.AbstractManifestsUnit;
 import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
 import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
+import io.seedmatic.rke2lab.manifests.contract.ManifestAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.ManifestLayer;
 import io.seedmatic.rke2lab.manifests.contract.profiles.TlsAuthorityCaMaterial;
@@ -165,61 +166,78 @@ public final class ClusterApiOperatorManifestsUnit extends AbstractManifestsUnit
                 + version
                 + "/infrastructure-components.yaml"));
 
+    // The CA reaches the provider POD's trust store by TWO seams, because neither can carry both
+    // halves:
+    //
+    //  * the VOLUME goes through `configSecret`. CAPN's own components file declares
+    //    `volumes: ${CAPN_VOLUMES:=[]}` and `volumeMounts: ${CAPN_VOLUME_MOUNTS:=[]}`, and the
+    //    operator substitutes those variables from that Secret — a declared extension point, so it
+    //    survives an upstream rename of the Deployment. `spec.patches` would also work and is
+    //    strictly worse: a strategic merge keyed on `capn-controller-manager`/`manager` goes
+    // SILENTLY
+    //    inert the day either name moves.
+    //  * the ENV goes through `spec.deployment`, because CAPN declares no variable for it and
+    //    `deployment.containers[]` carries `env` but neither `volumes` nor `volumeMounts` (checked
+    //    against the v1alpha2 schema).
+    //
+    // `SSL_CERT_DIR` and not `SSL_CERT_FILE`: Go REPLACES the dir list with this value, so naming
+    // `/etc/ssl/certs` alongside ours keeps the image's own store, whereas SSL_CERT_FILE would
+    // replace the system bundle outright.
+    //
+    // ★ UNCONDITIONAL, and that is the 2026-10-01 correction. These two carry no material: a
+    // `configSecret` is a NAME, and `SSL_CERT_DIR` is a literal. Gating them on the CA material
+    // made
+    // an IN-CLUSTER render — which is blind to host-sealed cellar cases, so it never has that
+    // material — emit a provider with neither, and the operator would then re-render the CAPN
+    // Deployment without its trust-store volume. A render must not be able to withdraw a wiring it
+    // cannot see the reason for.
+    spec.put("configSecret", Map.of("name", PROVIDER_CONFIG_SECRET, "namespace", CAPN_NAMESPACE));
+    spec.put(
+        "deployment",
+        Map.of(
+            "containers",
+            List.of(
+                Map.of(
+                    "name",
+                    CAPN_CONTAINER,
+                    "env",
+                    List.of(
+                        Map.of(
+                            "name",
+                            "SSL_CERT_DIR",
+                            "value",
+                            "/etc/ssl/certs:" + TRUST_ANCHOR_MOUNT))))));
+    // Static strings only — the variable VALUES name the CA Secret, they do not carry the CA — so
+    // this
+    // is unconditional too, and an in-cluster render reproduces it byte-for-byte.
+    renderProviderConfigSecret(scope);
+
+    // The CA itself rides the durable NODE_BOOTSTRAP lane, so it is the ONE piece gated on the
+    // material — see renderTrustAnchorSecret.
     ManifestSynthesisContext.current()
         .tlsAuthorityCa()
-        .ifPresent(
-            material -> {
-              renderTrustAnchorSecret(scope, material);
-              renderProviderConfigSecret(scope);
-              // The CA must reach the provider POD's trust store, and the two halves come from two
-              // different seams because neither can do both:
-              //
-              //  * the VOLUME goes through `configSecret`. CAPN's own components file declares
-              //    `volumes: ${CAPN_VOLUMES:=[]}` and `volumeMounts: ${CAPN_VOLUME_MOUNTS:=[]}`,
-              // and
-              //    the operator substitutes those variables from that Secret — a declared extension
-              //    point, so it survives an upstream rename of the Deployment. `spec.patches` would
-              //    also work and is strictly worse: a strategic merge keyed on
-              //    `capn-controller-manager`/`manager` goes SILENTLY inert the day either name
-              // moves.
-              //  * the ENV goes through `spec.deployment`, because CAPN declares no variable for it
-              //    and `deployment.containers[]` carries `env` but neither `volumes` nor
-              //    `volumeMounts` (checked against the v1alpha2 schema).
-              //
-              // `SSL_CERT_DIR` and not `SSL_CERT_FILE`: Go REPLACES the dir list with this value,
-              // so
-              // naming `/etc/ssl/certs` alongside ours keeps the image's own store, whereas
-              // SSL_CERT_FILE would replace the system bundle outright.
-              spec.put(
-                  "configSecret",
-                  Map.of("name", PROVIDER_CONFIG_SECRET, "namespace", CAPN_NAMESPACE));
-              spec.put(
-                  "deployment",
-                  Map.of(
-                      "containers",
-                      List.of(
-                          Map.of(
-                              "name",
-                              CAPN_CONTAINER,
-                              "env",
-                              List.of(
-                                  Map.of(
-                                      "name",
-                                      "SSL_CERT_DIR",
-                                      "value",
-                                      "/etc/ssl/certs:" + TRUST_ANCHOR_MOUNT))))));
-            });
+        .ifPresent(m -> renderTrustAnchorSecret(scope, m));
 
     provider.addJsonPatch(JsonPatch.add("/spec", spec));
   }
 
   /**
-   * The fleet's TLS authority as a plain CA bundle in {@code capn-system}.
+   * The fleet's TLS authority as a plain CA bundle in {@code capn-system}, on the durable
+   * NODE_BOOTSTRAP lane.
    *
-   * <p>On the ORDINARY branch, unlike {@link ClusterIssuerManifestsUnit}'s CA Secret which rides
-   * the durable NODE_BOOTSTRAP lane: that one carries a private key, this one carries none. A CA
-   * certificate is public by construction, so Flux may apply it like any other manifest and a
-   * rotation is a normal reconcile rather than a node-side pose.
+   * <p>⚠️ It was on the ORDINARY branch, reasoned from the fact that it carries no private key —
+   * and that reasoning was about the wrong property. What decides the lane is not whether the
+   * material is SECRET, it is which RENDERS can see it. This one is derived from a host-sealed
+   * cellar case, so an in-cluster render never has it; on the ordinary branch that means a
+   * SUCCESSFUL in-cluster render emits the branch WITHOUT this Secret and Flux prunes the fleet's
+   * trust anchor — quietly, as the reward for a render finally working. The bootstrap lane is the
+   * existing answer to exactly that: posed node-side at grow, never on the reconciled branch, so a
+   * render that cannot see it cannot withdraw it either. {@link ClusterIssuerManifestsUnit}'s CA
+   * rides it for the same reason, which is the one that generalises — not its private key.
+   *
+   * <p>The cost is the one that CA already pays and it is stated rather than hidden: a rotation
+   * lands at grow, not on a reconcile. The way out is not the ordinary branch — it is giving the
+   * authority CA a source an in-cluster render can read, at which point this moves back.
    */
   private void renderTrustAnchorSecret(
       final Construct scope, final TlsAuthorityCaMaterial material) {
@@ -236,7 +254,8 @@ public final class ClusterApiOperatorManifestsUnit extends AbstractManifestsUnit
                         .namespace(CAPN_NAMESPACE)
                         .annotations(
                             packageProfile.packageAnnotations(
-                                "|Secret|" + CAPN_NAMESPACE + "|" + TRUST_ANCHOR_SECRET))
+                                "|Secret|" + CAPN_NAMESPACE + "|" + TRUST_ANCHOR_SECRET,
+                                Map.of(ManifestAnnotation.NODE_BOOTSTRAP.key(), "true")))
                         .build())
                 .build());
     secret.addJsonPatch(JsonPatch.add("/data", Map.of("ca.crt", base64(material.caCertPem()))));

@@ -1350,20 +1350,32 @@ read would have given the operator's render a CA and the cluster's render none.
 
 So `ManifestSynthesisScenario` derives it from `ClusterIssuerCaMaterial.caCertChainPem` — the last
 certificate of a chain the seal assembles as `chainPem(issuerCa, intermediate, root)`, whose root IS
-that key-store entry. That material is cellar-borne, so the derivation works in both realms from ONE
-reveal.
+that key-store entry.
 
-* ✅ *Derive from something the cellar already carries* when a host-only source would split the two
-  realms. One reveal, one value, and the two realms cannot disagree.
-* ❌ *Read the host fact host-side and "handle" the in-cluster case separately.* That is two sources
-  for one value — the shape that produced every endpoint defect in this document.
-* ⚠️ A derived material is still `Optional`: absent on a bare survey. Where its absence would make a
-  render emit something that only LOOKS complete, the render must refuse — which is why
-  `ClusterApiCrRenderer.identitySecret` raises rather than emitting an identity that pins nothing and
-  trusts nothing.
+[IMPORTANT]
+====
+⚠️ *And that did NOT make it available in both realms, which was the whole point of deriving it.*
+Measured 2026-10-01: `CLUSTER_ISSUER_CA` is sealed by the cluster-pki seal, which runs on the HOST, and
+the in-cluster render does not see host-sealed cases. `INCUS_IDENTITY` *is* visible in-cluster — because
+its seal scion runs IN-CONTAINER. So the dividing line is not "cellar-borne versus not", it is *which
+realm SEALED it*, and this derivation simply moved the host-only dependency one hop without removing it.
 
-This is the same lesson as <<render-determinism>> one level up: the question is never "can this render
-produce bytes", it is "does what it produces mean the same thing from either viewpoint".
+The consequence is recorded in
+link:deterministic-cluster-access.adoc#capn-trusts-by-ca[the guard that had to go]: the material is
+genuinely absent in-cluster, so what depends on it must ride the NODE_BOOTSTRAP lane, and nothing may
+assert its presence at render time.
+====
+
+* ✅ *Ask which REALM SEALED a case, not whether it is in the cellar.* Both of these are cellar cases;
+  only one of them crosses into the cluster.
+* ❌ *Do not derive a value in order to dodge a realm split* without checking that the source actually
+  crosses. One reveal is only one value if both realms can perform it.
+* ⚠️ *An absent material must make a render emit LESS, never FAIL* — and if emitting less would prune
+  something, the thing belongs on the bootstrap lane instead.
+
+This is the same lesson as <<render-determinism>> one level up, and it bit in the same shape: the
+question is never "can this render produce bytes", it is "does what it produces mean the same thing
+from either viewpoint" — including when one viewpoint can see less.
 
 === Open
 
