@@ -8,9 +8,9 @@ import java.util.Objects;
  * The wire contract for the {@code incus-identity} seal's runbook trigger — the host-world part of
  * the CAPN provider identity, carried as the ONE {@link Amendment#INCUS_IDENTITY} the seal scion
  * takes. Only the host can read these: the incus remote {@code serverAddress} (BootstrapConfig) and
- * the capn-provider {@code clientCert} (a bundled seed-master classpath resource). The client KEY
- * is NOT here — the seal scion reads it in-container from {@code .secrets:incus.capn.clientKey} via
- * the {@code SecretsGateway}, so the private key never rides this wire nor the git branch.
+ * the capn-provider {@code clientCert} (a bundled seed-outcluster classpath resource). The client
+ * KEY is NOT here — the seal scion reads it in-container from {@code .secrets:incus.capn.clientKey}
+ * via the {@code SecretsGateway}, so the private key never rides this wire nor the git branch.
  *
  * <p>There was a third, the {@code serverCert} from the operator's {@code
  * ~/.config/incus/servercerts/*.crt}, which CAPN pinned. It is gone with the pin — the listener is

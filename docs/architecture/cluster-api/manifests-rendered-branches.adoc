@@ -43,8 +43,8 @@ So the split is not "which domains the master publishes into its `server-manifes
 |Nobody applies it — it is the build input
 
 |`manifests/nikopol-mgmt`
-|The management cluster's definition: the `seed-master` *sow* (single-node RKE2 bootstrap + the `FluxRoot` seed) + CAPI operator + the four providers + base + Tailscale client, AND the **workload CAPI CRs** (`Cluster` / `LXCCluster` / `RKE2ControlPlane` / `LXCMachineTemplate` / `MachineDeployment`) for every workload declared in the render's `workloadTargets` (un-paused — presence in the config IS the provisioning trigger; `spec.paused` is NOT used, it deadlocks Flux prune + wait, see below)
-|**`seed-master`** sows the node (local-only seed); the management cluster's **own Flux** then applies the rest of the branch — including the workload CRs, which **CAPI / CAPN** reconcile into the workload nodes
+|The management cluster's definition: the `seed-outcluster` *sow* (single-node RKE2 bootstrap + the `FluxRoot` seed) + CAPI operator + the four providers + base + Tailscale client, AND the **workload CAPI CRs** (`Cluster` / `LXCCluster` / `RKE2ControlPlane` / `LXCMachineTemplate` / `MachineDeployment`) for every workload declared in the render's `workloadTargets` (un-paused — presence in the config IS the provisioning trigger; `spec.paused` is NOT used, it deadlocks Flux prune + wait, see below)
+|**`seed-outcluster`** sows the node (local-only seed); the management cluster's **own Flux** then applies the rest of the branch — including the workload CRs, which **CAPI / CAPN** reconcile into the workload nodes
 
 |`manifests/nikopol-wrkld`
 |The workload's **app stack**: `gitops` · `storage` · `mesh` · `cicd` · `high-availability` — **no `cluster-api`**
@@ -56,11 +56,11 @@ So the split is not "which domains the master publishes into its `server-manifes
 |===
 
 The consumer is per-branch and drives the branch's shape (§ <<render-inputs,output shape>>): a
-`-mgmt` branch carries the management-plane shape — the `seed-master` sow + the CAPI operator and
+`-mgmt` branch carries the management-plane shape — the `seed-outcluster` sow + the CAPI operator and
 providers + the *workload CAPI CRs* — because CAPI runs *in the management cluster* and reconciles
 those CRs there; a `-wrkld` branch carries the workload's own **app stack** (gitops · storage · mesh ·
 cicd · high-availability), reconciled by the workload's own Flux once the cluster is up. The
-cluster-*creation* content therefore lives entirely on the `-mgmt` branch (read by `seed-master` for
+cluster-*creation* content therefore lives entirely on the `-mgmt` branch (read by `seed-outcluster` for
 the node seed, then reconciled by the management cluster's own Flux — the operator, the providers, and
 the workload CRs); a `-wrkld` branch has content to reconcile only after its cluster exists to host a
 Flux. **Flux everywhere** (the management cluster running its own Flux against `manifests/<host>-mgmt`
@@ -85,7 +85,7 @@ path convention a render could get wrong.
 === System context (C4 L1)
 
 `manifests` (the SSOT) reads `main` and pushes one rendered branch per cluster (history-preserving); each branch is
-consumed by the actor that grows that cluster — `seed-master` for `-mgmt`, CAPI/CAPN for `-wrkld`.
+consumed by the actor that grows that cluster — `seed-outcluster` for `-mgmt`, CAPI/CAPN for `-wrkld`.
 
 [mermaid,manifests-rendered-branches-context,svg]
 ----
@@ -99,7 +99,7 @@ flowchart LR
     BW1[("manifests/nikopol-wrkld<br/>app stack")]
     BW2[("manifests/bioskop-wrkld<br/>app stack")]
   end
-  SM["pulumi / seed-master"]
+  SM["pulumi / seed-outcluster"]
   FM["Flux (in nikopol-mgmt)"]
   MG["management cluster<br/>CAPI · CAPN · CAPRKE2"]
   W1["nikopol-wrkld"]
@@ -124,7 +124,7 @@ flowchart LR
 ----
 
 *Legend*: `manifests` is the only writer of `manifests/*`. The `-mgmt` branch (blue) is read by
-`seed-master` for the node seed, then reconciled by the management cluster's own Flux — which applies
+`seed-outcluster` for the node seed, then reconciled by the management cluster's own Flux — which applies
 the CAPI operator, the providers, and the *workload CAPI CRs* it carries; CAPI/CAPN then
 greenfield-create each workload (heavy arrows). A `-wrkld` branch (green) carries only that workload's
 app stack, reconciled by the workload's own Flux once it is up. Dashed = dormant until the bioskop
@@ -133,7 +133,7 @@ bare-metal is up.
 === Container view (C4 L2)
 
 What each container is, and what crosses between them: the render engine, the branches (with their
-payload), the `seed-master` host, and the clusters.
+payload), the `seed-outcluster` host, and the clusters.
 
 [mermaid,manifests-rendered-branches-containers,svg]
 ----
@@ -143,8 +143,8 @@ flowchart TB
   MAIN --> MOD
   MOD -->|"sow + operator/providers<br/>+ workload CRs"| BM[("manifests/&lt;host&gt;-mgmt")]
   MOD -->|"app stack"| BW[("manifests/&lt;host&gt;-wrkld")]
-  subgraph HOST["seed-master host · pulumi"]
-    SM["seed-master (Stage A)"]
+  subgraph HOST["seed-outcluster host · pulumi"]
+    SM["seed-outcluster (Stage A)"]
   end
   BM -->|reads| SM
   subgraph MGMT["management cluster · single node"]
@@ -197,7 +197,7 @@ sequenceDiagram
   actor OP as Operator
   participant M as manifests (SSOT)
   participant G as git · manifests/*
-  participant SM as seed-master (Stage A)
+  participant SM as seed-outcluster (Stage A)
   participant FM as Flux (in mgmt)
   participant MG as management cluster
   participant WL as workload clusters
@@ -490,7 +490,7 @@ because the render is a *pure function* of `(main, config, descriptor)` and ther
 |`host.N.drift.*` (staged vs live) |`git diff` (render worktree vs branch HEAD) before push
 |promotion rsync → `host.live.d` |`git push` (history-preserving, atomic ref update)
 |N-slot retention (rollback) |the branch history — `git revert` to a prior rendered commit (or re-render from `main@<sha>`)
-|remote reads `host.live.d` over the automount |Flux / `seed-master` read the branch — no manifests rsync
+|remote reads `host.live.d` over the automount |Flux / `seed-outcluster` read the branch — no manifests rsync
 |===
 
 The render worktree lives at **`.local.d/render/<host>-<role>/`** — a linked git worktree of the
@@ -556,7 +556,7 @@ A `manifests/*` branch has *no single canonical shape*: **its shape is a functio
 it.** `manifests` (the SSOT) projects the same rendered intent into the form each consumer expects,
 and a new consumer is just a new projection off the one source:
 
-* **`seed-master`** → a **sow**: the management node's RKE2 bootstrap (single-node config + the
+* **`seed-outcluster`** → a **sow**: the management node's RKE2 bootstrap (single-node config + the
   `FluxRoot` seed), applied `local-only` to bring the node up. NOT CAPI CRs — the management cluster
   is self-seeded, never a CAPI product.
 * **Flux** → **reconcilable manifests**: Kustomizations / HelmReleases / plain YAML it applies to a
@@ -564,9 +564,9 @@ and a new consumer is just a new projection off the one source:
 * **CAPI/CAPN** → **CRs**: `Cluster` / `LXCCluster` / `RKE2ControlPlane` / `LXCMachineTemplate` /
   `MachineDeployment` — carried as plain manifests Flux applies, then reconciled by CAPI into nodes.
 
-Where a shape is a projection of the generic *topology* (the `seed-master` sow and the CAPI CRs), it
+Where a shape is a projection of the generic *topology* (the `seed-outcluster` sow and the CAPI CRs), it
 is the *one* topology expressed in that consumer's language: `topology.controlPlanes=3` →
-`RKE2ControlPlane.replicas=3` for CAPI; `=1` → a single-node RKE2 config for `seed-master`. Growth ≠
+`RKE2ControlPlane.replicas=3` for CAPI; `=1` → a single-node RKE2 config for `seed-outcluster`. Growth ≠
 function — the same topology, one rendered form per consumer.
 
 === Delivery target — where it lands

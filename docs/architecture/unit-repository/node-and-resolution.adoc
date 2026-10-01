@@ -24,7 +24,7 @@ Six containers. The kernel is the only thing that is NOT a unit; everything
 above it is loaded from the store.
 
 In rke2lab the *kernel level-0* maps onto the host/exec *actualiser* — the boot
-seam (`SeedRuntime`) that boots an embedded Felix inside seed-master's
+seam (`SeedRuntime`) that boots an embedded Felix inside seed-outcluster's
 `Pulumi.run` callback. That actualiser is the level-0 that is not itself a unit:
 it mounts the store-equivalent (the local `ManifestsDomainRegistry`), starts the
 framework, and lets everything above it run as bundles. The bridge is explicit:

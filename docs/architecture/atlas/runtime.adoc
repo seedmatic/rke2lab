@@ -10,7 +10,7 @@ _L0 shows how this subsystem integrates with the others and the value that emerg
 
 The config view (above) proved the *schema/resolution* half of the bundle/host contract on the bench.
 This view tracks the **runtime** half: `java.util.ServiceLoader` is replaced with a launched Felix
-framework + Declarative Services (SCR), and `seed-master` boots the framework inside its `Pulumi.run`
+framework + Declarative Services (SCR), and `seed-outcluster` boots the framework inside its `Pulumi.run`
 callback and consumes the pure-model services from the registry. Two decisions shape it: the
 *API-extraction* (the boundary ports live in `osgi/<domain>/<domain>-port`, so the host compiles
 against the port and fails fast at build) and the *proof reframe* (the boot seam is proven by
@@ -27,7 +27,7 @@ services from the registry, and OSGi logs converge on the host's Logback via Pax
 [mermaid]
 ....
 flowchart TB
-  subgraph proc["seed-master exec-jar (one process, one binary:)"]
+  subgraph proc["seed-outcluster exec-jar (one process, one binary:)"]
     subgraph host["HOST world — flat classpath"]
       seam["host seam<br/>IncusResourceBootstrap"]:::host
       rt["FrameworkLaunch.embedded<br/>(framework-launcher — boots Felix)"]:::host
@@ -75,13 +75,13 @@ services from the SCR registry. The pieces:
   bundles intact (the model core + felix.scr/resolver + pax-logging). Proven by `pulumi preview` (full
   pipeline under Felix, no live deploy). All three entrypoints boot Felix the same way and demote the
   model `-core` to `runtime` scope. The host↔OSGi seam is `seed.broker.port` alone: every entrypoint
-  (seed-master + both CLIs) DRIVES a jGiven scenario that sows a coordinate through the broker,
+  (seed-outcluster + both CLIs) DRIVES a jGiven scenario that sows a coordinate through the broker,
   speaking only JSON — never `awaitService` on a typed domain service (a `type=contract` service
   registers with the bundle's class copy, so a flat host copy never matches). `netplan.api` moved into
   `netplan-contract` (single-exported); `netplan-cli`'s `yamlExport` sows `netplan` and grows the
   `netplan-bdd` scion. See link:seed.adoc[the seed atlas] and link:../osgi/netplan-bdd-spec.adoc[netplan-bdd-spec].
 * *The synthesis grammar + the boot decomposition* — the fluent-pipeline engine was once duplicated as
-  seed-master's `TopicRunner` + manifests-core's `SynthesisTopicRunner`, briefly unified into a shared
+  seed-outcluster's `TopicRunner` + manifests-core's `SynthesisTopicRunner`, briefly unified into a shared
   `pipeline-port` seam, then DISSOLVED: with the boot de-grammatised and the seed's own chains the last
   host holdout, manifests-core became its only OSGi consumer, so the engine relocated INTO manifests-core
   as un-exported internal synthesis (`Phase`/`PhaseRunner`/`PhaseFailure`,
@@ -197,7 +197,7 @@ flowchart TB
   (`pulumi preview` proved the deployed exec-jar always embeds the bundles, so the flat half was dead,
   not deferred — the no-fallback discipline). So `ServiceLoader` survives ONLY in the two un-migrated
   CLIs (and the 8 orphaned `META-INF/services` they still need); R5 deletes that last remnant. The
-  registry and the static path no longer "both live at once" in seed-master — only in the CLIs.
+  registry and the static path no longer "both live at once" in seed-outcluster — only in the CLIs.
 
 . *The ONE deliberate erasure is R5, and it is named.* R5 deletes `ServiceLoader`/`META-INF/services` —
   the single non-additive step in the whole migration. It is drawn amber (exploration), gated behind
@@ -319,11 +319,11 @@ AND its additivity.
 .. THEN the host compiles against a versioned port and the impl implements it — AND the ports are new
    osgi/ boxes, system-exported flat so host and bundle share one copy.
 
-. *seed-master boots Felix inside Pulumi.run and reads services from the registry* — `[playable]`
+. *seed-outcluster boots Felix inside Pulumi.run and reads services from the registry* — `[playable]`
   blue +
 .. GIVEN the host seam reading via `ServiceLoader`
 .. WHEN R4 embeds Felix in the `Pulumi.run` callback and the seam reads via `awaitService`
-.. THEN seed-master boots the framework and consumes pure-model services from the registry — proven
+.. THEN seed-outcluster boots the framework and consumes pure-model services from the registry — proven
    by `pulumi preview` — AND the host's `ServiceLoader` path is CUT to a single registry path (the
    one named, deliberate erasure, no-fallback discipline).
 

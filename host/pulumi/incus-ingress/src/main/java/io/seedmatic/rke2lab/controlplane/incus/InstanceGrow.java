@@ -52,7 +52,7 @@ import java.util.function.Consumer;
  * the node's config, so there are no host disk mounts and no cloud-init seed.
  *
  * <p>Instance-passing: it holds the run's {@link IngressConfig} (the ingress vocabulary the run
- * fills — it names no seed-master type), the {@link IncusProviderContext} it builds once, the
+ * fills — it names no seed-outcluster type), the {@link IncusProviderContext} it builds once, the
  * {@link IncusImportLookup} riding that context's invoke options, and a log sink. Its one act is
  * {@link #grow(InstanceGrowPlan)}.
  */
@@ -196,7 +196,7 @@ public final class InstanceGrow {
     // grants a restricted certificate `CanView` ALONE. CAPN therefore cannot enrol a certificate at
     // all — it can never widen its own trust. That asymmetry is the point of registering it from
     // HERE:
-    // seed-master holds the operator's unrestricted identity, so it is the only party that CAN
+    // seed-outcluster holds the operator's unrestricted identity, so it is the only party that CAN
     // grant,
     // and what it grants cannot grant further.
     //

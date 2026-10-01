@@ -17,7 +17,7 @@
     two planes over one door — `plan network export` (the network blueprint, sowing the `netplan`
     coordinate) and `plan dataset export` (the ZFS dataset layout, sowing the `dataplan` coordinate).
     Each verb drives PlanCliScenario on the embedded JUnit launcher (the same BDD-as-engine machinery
-    seed-master + manifests-cli use), sowing the plane's coordinate through the broker; that grows
+    seed-outcluster + manifests-cli use), sowing the plane's coordinate through the broker; that grows
     the domain scion in-container (NetplanBlueprintScenario / DataplanScenario, where the
     type=contract records are reachable) which writes its export JSON into a SOIL temp dir. The CLI
     reads that host-neutral JSON back and renders it (YAML for network, JSON for dataset) — no
@@ -135,7 +135,7 @@
       <artifactId>junit-platform-launcher</artifactId>
     </dependency>
     <!-- junit-jupiter-params staged as a bundle (runtime): jgiven-junit5 imports the params packages
-         MANDATORY in its bytecode, so the wire must resolve in-framework. Same as seed-master. -->
+         MANDATORY in its bytecode, so the wire must resolve in-framework. Same as seed-outcluster. -->
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter-params</artifactId>
@@ -153,7 +153,7 @@
     </dependency>
     <!-- The org.osgi.service.log API (LogLevel): scenario-engine's OsgiConnection exposes it as the
          framework log-level knob's currency, so the host flat classpath must carry it or the boot
-         hits NoClassDefFoundError. The SLIM spec artifact. Same declaration seed-master carries. -->
+         hits NoClassDefFoundError. The SLIM spec artifact. Same declaration seed-outcluster carries. -->
     <dependency>
       <groupId>org.osgi</groupId>
       <artifactId>org.osgi.service.log</artifactId>

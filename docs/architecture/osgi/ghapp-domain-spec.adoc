@@ -30,11 +30,11 @@ The `ghapp` domain owns *one thing*: the identity of the single org-owned GitHub
 
 *Declaration* — creating the App on GitHub, generating its key, installing it, and seeding
 `.secrets` — is NOT a domain job in the grow: it is an out-of-band operator ceremony driven by the
-standalone `ghapp` CLI (see <<The ghapp CLI>>). It is kept out of the grow deliberately: `seed-master`
+standalone `ghapp` CLI (see <<The ghapp CLI>>). It is kept out of the grow deliberately: `seed-outcluster`
 runs under `pulumi up`, whose gRPC engine captures the console and makes a mid-run browser/prompt
 unusable, so the human ceremony runs on a real console instead.
 
-Everything the system does with GitHub — `seed-master` pushing a rendered branch, each cluster's Flux
+Everything the system does with GitHub — `seed-outcluster` pushing a rendered branch, each cluster's Flux
 pulling it — is authenticated by a token minted from this one App. No personal PAT, no `gh auth token`,
 no deploy key. The *why* (escaping the corporate governance of personal tokens) lives in the
 link:../cluster-api/github-credential-model.adoc[credential-model vision]; this doc is the *how*.
@@ -53,7 +53,7 @@ The domain follows the standard `contract` / `edge` / `bdd` layout (like `auth`,
   `SecretsGateway`). No browser, no registration. And `GithubAppWebhookScenario` (+ its
   `GithubAppWebhookRunbookHandler` / `GithubAppWebhookAmendReflector`) — the grow-sown reconcile of the
   App's webhook to the current funnel.
-* *GithubAppCli* — the host-side `ghapp` operator command (a `seed-master` subcommand), driving the
+* *GithubAppCli* — the host-side `ghapp` operator command (a `seed-outcluster` subcommand), driving the
   declaration ceremony (`create` / `install` / `seed`) out-of-band. See <<The ghapp CLI>>.
 
 == Why declaration cannot be a loopback POST — GitHub's SameSite hardening
@@ -79,7 +79,7 @@ own page with the App's shape pre-selected, and the final "Create" click is *sam
 
 == The ghapp CLI — declaration, out of the grow
 
-`GithubAppCli` runs as the `ghapp` subcommand of `seed-master`'s `Main`, *before* the Pulumi envelope
+`GithubAppCli` runs as the `ghapp` subcommand of `seed-outcluster`'s `Main`, *before* the Pulumi envelope
 (so it needs no engine and prints to the real console). It drives the three-click ceremony and
 finishes it:
 
@@ -163,7 +163,7 @@ copy the writer mint and the reader-Secret render fetch). The PEM is never re-de
 
 == Flow — using it in the cluster via Flux
 
-The management cluster's Flux pulls the rendered branch as the App. `seed-master` renders a *githubapp
+The management cluster's Flux pulls the rendered branch as the App. `seed-outcluster` renders a *githubapp
 Secret* — the Flux Operator's native GitHub App auth shape — into the *local-only bootstrap seed* (the
 node's RKE2 auto-deploy dir), alongside the `FluxInstance` that references it via `pullSecret`. The
 chicken-and-egg is solved: the credentials arrive in the local-only seed, not in the branch they are
@@ -172,7 +172,7 @@ used to fetch.
 [mermaid,ghapp-flux,svg]
 ----
 flowchart TB
-  subgraph HOST["seed-master · pulumi-edge (host, under pulumi up)"]
+  subgraph HOST["seed-outcluster · pulumi-edge (host, under pulumi up)"]
     FE["fetch GithubAppCredentials<br/>(GhAppCoordinate.GITHUB_APP)"]
     RS["render githubapp Secret +<br/>FluxInstance(pullSecret)"]
     FE --> RS
@@ -205,7 +205,7 @@ below).
 
 == The writer — the spine
 
-The whole point of the reader is to have something to read: `seed-master` must *push* the rendered
+The whole point of the reader is to have something to read: `seed-outcluster` must *push* the rendered
 manifests so the cluster can pull them. That push is the spine, and it is where `GithubAppMinter` runs.
 
 *The mint is in-container, at the point of use — never sealed.* `GithubAppMinter` and
@@ -267,7 +267,7 @@ The scion `GithubAppWebhookScenario` is grow-sown at coordinate `ghapp-webhook`.
 URL — through its `WebhookReconcileInput` (a `@SeedContract("runbook")` wire-record whose single
 `@Amendment(Amendment.FUNNEL)` component the host fills). Only the host holds the URL: the MagicDNS
 leaf is the shared `PacWebhookFunnel.LEAF` constant, but the tailnet suffix is host-config appended by
-Tailscale at runtime — never on the in-container synthesis context — so `seed-master` builds
+Tailscale at runtime — never on the in-container synthesis context — so `seed-outcluster` builds
 `PacWebhookFunnel(tailnet).url()` and sows it as the `FUNNEL` amendment. The amend door
 (`GithubAppWebhookAmendReflector`) binds that neutral role onto the input field; the runbook handler
 (`GithubAppWebhookRunbookHandler`) decodes the reconciled trigger and plays the scenario. Absence of
@@ -292,7 +292,7 @@ repo webhooks, retiring the App webhook) is the pending step.
 flowchart LR
   CEL[("cellar<br/>GithubAppCredentials (SEALED)")]
   SEC[(".secrets<br/>github.webhook.secret")]
-  subgraph SM["seed-master (host)"]
+  subgraph SM["seed-outcluster (host)"]
     URL["PacWebhookFunnel(tailnet).url()<br/>https://&lt;leaf&gt;.&lt;tailnet&gt;"]
   end
   subgraph OSGI["ghapp-webhook scion (in-container)"]
@@ -403,7 +403,7 @@ human ceremony is host-side, out of the pulumi-driven grow.
   "is the PEM sealed / anchored", not "does the App exist".
 * *No loopback, by GitHub's design.* App creation is gated behind `SameSite` session cookies a
   cross-site loopback POST cannot carry; the pre-filled top-level-GET form is the only working path.
-* *Declaration out of the grow.* Because `seed-master` runs under `pulumi up` (console captured by the
+* *Declaration out of the grow.* Because `seed-outcluster` runs under `pulumi up` (console captured by the
   gRPC engine), the browser ceremony lives in the standalone `ghapp` CLI on the real console — the
   grow only rehydrates.
 * *One key, scoped short tokens.* No per-cluster keys (generating App keys is UI-only). Isolation is

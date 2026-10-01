@@ -82,8 +82,8 @@ public @interface Amendment {
   /**
    * How the render resolves its facet against the branch HEAD — the CLI verb intent (seeded wins /
    * HEAD wins / HEAD overlaid). The sower fills it; the manifests synthesis reads it. Unamended, it
-   * falls to the manifests scion's default (grow: the seeded facet wins), so seed-master's grow is
-   * unchanged and only the {@code manifests-cli} update/edit verbs opt into following HEAD.
+   * falls to the manifests scion's default (grow: the seeded facet wins), so seed-outcluster's grow
+   * is unchanged and only the {@code manifests-cli} update/edit verbs opt into following HEAD.
    */
   String RENDER_MODE = "render-mode";
 
@@ -101,10 +101,10 @@ public @interface Amendment {
   /**
    * The host-world part of the CAPN provider's incus identity — the fields only the host can read:
    * the incus remote {@code serverAddress} (BootstrapConfig) and the capn-provider {@code
-   * clientCert} (a bundled seed-master classpath resource). The incus-identity seal scion fills the
-   * remaining field (the client KEY) itself from {@code .secrets} — off this wire — and seals the
-   * assembled {@code IncusIdentityMaterial}, which {@code ClusterApiWorkloadManifestsUnit} renders
-   * as the {@code <host>-incus-identity} Secret CAPN authenticates to incus with.
+   * clientCert} (a bundled seed-outcluster classpath resource). The incus-identity seal scion fills
+   * the remaining field (the client KEY) itself from {@code .secrets} — off this wire — and seals
+   * the assembled {@code IncusIdentityMaterial}, which {@code ClusterApiWorkloadManifestsUnit}
+   * renders as the {@code <host>-incus-identity} Secret CAPN authenticates to incus with.
    *
    * <p>A {@code serverCert} used to ride here too, read from the operator's {@code
    * ~/.config/incus/servercerts/*.crt} so CAPN could pin the listener's leaf. It is gone with the

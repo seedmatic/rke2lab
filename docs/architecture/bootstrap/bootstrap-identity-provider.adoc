@@ -9,11 +9,11 @@ This document explains the bootstrap identity provider pattern, how to use it in
 The bootstrap identity provider is a **thread-local context** that supplies cluster and infrastructure identity to manifest units during synthesis. It prevents parameter proliferation and ensures consistent identity access across all manifest units.
 
 [IMPORTANT]
-.Re-baselined — the request is assembled IN-CONTAINER by the manifests scion, not by seed-master
+.Re-baselined — the request is assembled IN-CONTAINER by the manifests scion, not by seed-outcluster
 ====
 This doc's *unit-facing* contract is accurate and current — `BootstrapIdentity`'s fields,
 `ManifestSynthesisContext.current()`, and `AbstractManifestsUnit` all verify against the code. What
-changed is WHERE the `ManifestSynthesisRequest` is built. NO `seed-master` code assembles the request or
+changed is WHERE the `ManifestSynthesisRequest` is built. NO `seed-outcluster` code assembles the request or
 reads `capn-client.crt` / `.secrets` / `~/.config/incus/` any more, and there is no
 `IncusIdentityMaterialAssembler` (removed). The request is assembled in the in-container
 `ManifestSynthesisScenario` scion (`manifests-bdd`): its `the_manifests_are_synthesized` step builds
@@ -21,7 +21,7 @@ reads `capn-client.crt` / `.secrets` / `~/.config/incus/` any more, and there is
 activation facet (`ManifestsRunbookInput`, whose `identity()` carries the `BootstrapIdentity`) and calls
 `synthesize(request)`. The `withIncusIdentity(...)` request method still exists but is NEVER called, so
 `incusIdentity()` is empty — the CAPN-Secret material path is defined-not-wired. Read the "host world"
-diagrams and the seed-master "synthesis entry" / setup Step 3 / troubleshooting below as the scion's job
+diagrams and the seed-outcluster "synthesis entry" / setup Step 3 / troubleshooting below as the scion's job
 (and, for the operator setup, as committed material rather than live host-file reads).
 ====
 
@@ -234,7 +234,7 @@ public final class IncusIdentitySecretManifestsUnit extends AbstractManifestsUni
       return;
     }
 
-    // Render the <cluster>-incus-identity Secret from the material seed-master handed over.
+    // Render the <cluster>-incus-identity Secret from the material seed-outcluster handed over.
     // (base64-encode the raw PEM/address blobs at render time — a Secret encoding concern)
     new ApiObject(scope, "secret-incus-identity", /* Secret props from material.orElseThrow() */ ...);
   }
@@ -322,7 +322,7 @@ The certificate's PUBLIC half carries no secret, so it travels as a fleet fact o
 already consumes from rke2lab (`lib.networkBlueprint`, `lib.dataplan`):
 
 * rke2lab publishes it as `lib.capnProviderCert` (read from
-  `exec/seed-master/src/main/resources/incus/capn-client.crt`, Step 3 below);
+  `exec/seed-outcluster/src/main/resources/incus/capn-client.crt`, Step 3 below);
 * ndh reads it through `catalog.incus.trustedClients` — the same nature as `catalog.caches`, named
   public trust material — and `modules/nixos/incus.d/ensure-incus-trust.sh` re-asserts it after every
   `incus.service` start, probing the fingerprint first so it is idempotent.
@@ -334,12 +334,12 @@ POST of an already-trusted fingerprint would fail the unit at every boot but the
 
 === Step 3: Store Certificate in the host application resources
 
-Copy the public certificate to seed-master's resources (the host world):
+Copy the public certificate to seed-outcluster's resources (the host world):
 
 [source,bash]
 ----
 cp capn-client.crt \
-    exec/seed-master/src/main/resources/incus/capn-client.crt
+    exec/seed-outcluster/src/main/resources/incus/capn-client.crt
 ----
 
 The `capn-provider` identity is the Incus trust material the in-cluster CAPN provider authenticates
@@ -433,7 +433,7 @@ sequenceDiagram
 === Entry Point: the in-container ManifestSynthesisScenario scion
 
 The `ManifestSynthesisScenario` scion (`manifests-bdd`) builds the `ManifestSynthesisRequest` in-container,
-from the activation facet — NOT seed-master, and no host filesystem read. Its
+from the activation facet — NOT seed-outcluster, and no host filesystem read. Its
 `the_manifests_are_synthesized` step:
 
 [source,java]
@@ -567,10 +567,10 @@ the material path is re-wired it will read in the in-container scion, not host-s
 **Symptom**: `IllegalStateException: Client certificate resource not found: /incus/capn-client.crt`
 
 **Cause**: This was raised by the former host-side `IncusIdentityMaterialAssembler` (now removed) when
-the certificate was missing from seed-master's resources. It does not occur today.
+the certificate was missing from seed-outcluster's resources. It does not occur today.
 
 **Fix**: keep the certificate committed at
-`exec/seed-master/src/main/resources/incus/capn-client.crt` — that path is what `lib.capnProviderCert`
+`exec/seed-outcluster/src/main/resources/incus/capn-client.crt` — that path is what `lib.capnProviderCert`
 reads, so ndh's trust assertion (Step 2) depends on it.
 
 === "incus.capn.clientKey not found in .secrets"

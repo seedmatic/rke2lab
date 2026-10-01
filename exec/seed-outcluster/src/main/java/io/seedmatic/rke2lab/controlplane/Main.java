@@ -56,7 +56,8 @@ public final class Main {
 
   public static void main(String[] args) {
     // Operator subcommand: drive the out-of-band GitHub App declaration ceremony (create / install
-    // / seed .secrets). Kept OUT of the grow because seed-master runs under pulumi up, whose gRPC
+    // / seed .secrets). Kept OUT of the grow because seed-outcluster runs under pulumi up, whose
+    // gRPC
     // engine captures the console — so this runs before the Pulumi envelope, on the real console.
     if (args.length > 0 && "ghapp".equals(args[0])) {
       GithubAppCli.run(args);
@@ -68,7 +69,8 @@ public final class Main {
     // writes (printStackTrace) AND the early host logs before pax boots (JUL's default
     // ConsoleHandler
     // writes to System.err, now this file). Once pax is up its logback drains everything to
-    // .local.d/seed-master.log. seed-master is headless (Pulumi reads the engine gRPC channel, not
+    // .local.d/seed-outcluster.log. seed-outcluster is headless (Pulumi reads the engine gRPC
+    // channel, not
     // stdout), so nothing consumes the console and there is nothing to restore — but unlike the
     // former /dev/null sink, sending it to a file PRESERVES the early diagnostics.
     redirectRawConsoleToBootFile();
@@ -242,9 +244,9 @@ public final class Main {
   /**
    * Redirect {@code System.out}/{@code err} to a dedicated boot file (truncated at startup). A file
    * on disk never blocks on a full console pipe, so raw-stream writes during boot cannot deadlock
-   * the FelixStartLevel thread under a remote debugger. Not restored: seed-master is headless (see
-   * the call site), so nothing reads the console; and unlike the former {@code nullOutputStream}
-   * sink, a file preserves the early diagnostics until pax's logback takes over.
+   * the FelixStartLevel thread under a remote debugger. Not restored: seed-outcluster is headless
+   * (see the call site), so nothing reads the console; and unlike the former {@code
+   * nullOutputStream} sink, a file preserves the early diagnostics until pax's logback takes over.
    */
   private static void redirectRawConsoleToBootFile() {
     try {
@@ -254,13 +256,13 @@ public final class Main {
           new PrintStream(Files.newOutputStream(bootLog), true, StandardCharsets.UTF_8);
       System.setOut(bootFile);
       System.setErr(bootFile);
-      // Same policy at the logback level: seed-master is headless under Pulumi, so SUPPRESS the
+      // Same policy at the logback level: seed-outcluster is headless under Pulumi, so SUPPRESS the
       // logback console appender PaxLogbackConfigurer adds by default (a standalone CLI keeps it,
       // to
-      // narrate live). Property literal (seed-master does not depend on the pax fragment) —
+      // narrate live). Property literal (seed-outcluster does not depend on the pax fragment) —
       // PaxLogbackConfigurer.CONSOLE_PROPERTY. Without this the console appender would just
       // duplicate
-      // into this redirected boot file, beside logback's own .local.d/seed-master.log.
+      // into this redirected boot file, beside logback's own .local.d/seed-outcluster.log.
       System.setProperty("rke2lab.log.console", "false");
     } catch (IOException ex) {
       throw new UncheckedIOException("failed to redirect the raw console to the boot file", ex);

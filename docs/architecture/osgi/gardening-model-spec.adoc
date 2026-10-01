@@ -276,7 +276,7 @@ several cellars — the model does not forbid it, it simply is not one gardening
 
 *Different gardening VERSIONS realise the same role over different media.* "One cellar per gardening" is
 about count within one gardening; it does not tie the cellar to one medium across gardenings. The
-seed-master gardening conserves over the Pulumi backend; the cluster gardening will conserve over a
+seed-outcluster gardening conserves over the Pulumi backend; the cluster gardening will conserve over a
 git-oriented storage — two versions, two cellar realisations of the ONE role, each single within its own
 gardening. So a realisation doc must name WHICH gardening it serves; it must never present itself as
 "the cellar" (§ <<descend>>).
@@ -303,18 +303,18 @@ Each role is INCARNATED by a realisation; the realisation adds the *how*, never 
 
 | CELLAR
 | the commissioner's conservation organ — *one role, MANY realisations, one per gardening version.* The
-  seed-master gardening realises it over the *Pulumi backend* (`store`/`fetch`/`neighbours`, laid into the
+  seed-outcluster gardening realises it over the *Pulumi backend* (`store`/`fetch`/`neighbours`, laid into the
   framework at boot, opaque by coordinate slug). The cluster gardening will realise the SAME role over a
   *git-oriented storage*. The role (and its opacity, its one-per-gardening rule) is the model's; the
   medium is the realisation's.
-| link:host-cellar-realisation-spec.adoc[host Cellar realisation] (the Pulumi realisation, for seed-master)
+| link:host-cellar-realisation-spec.adoc[host Cellar realisation] (the Pulumi realisation, for seed-outcluster)
 
 | SOILS
 | the *domain handlers* — each domain contributes a `SeedHandler` per coordinate it grows.
 | link:seed-broker-spec.adoc#contribution-and-opacity[seed-broker spec — contribution]
 
 | COMMISSIONER / TOOLS
-| the *host* (`pulumi-edge` + `seed-master`) — wants, launches (`pulumi up`), conserves via the cellar;
+| the *host* (`pulumi-edge` + `seed-outcluster`) — wants, launches (`pulumi up`), conserves via the cellar;
   carries requests + harvests speaking only gardening.
 | link:seed-spec.adoc[seed spec — orchestration]
 |===
@@ -333,4 +333,4 @@ gardener = one cellar*; the framework identity is the seed-broker realisation of
 * link:seed-gardening-lexicon.adoc[The gardening lexicon] — the full FR-EN vocabulary this model draws
   from; its Actors table is the roles above, said in French.
 * link:seed-spec.adoc[The seed — orchestration architecture] — where the commissioner sows the first seed
-  and the germination cascade runs (seed-master specific).
+  and the germination cascade runs (seed-outcluster specific).

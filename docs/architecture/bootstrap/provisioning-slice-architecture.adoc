@@ -36,7 +36,7 @@ The two-black-box-frontiers founding rule below still holds — it is the invari
 The seeding sits between two frontiers, and the whole migration obeys one rule:
 **our internal restructuring must be invisible at both edges.**
 
-* **Upward — the Pulumi frontier (the commissioner).** `seed-master` crosses it to
+* **Upward — the Pulumi frontier (the commissioner).** `seed-outcluster` crosses it to
   hand Pulumi the resources and the checksums; that we keep. But the Pulumi engine
   must never see that we reorganised the inside (host/OSGi split, scions,
   gardening). It sees its resources + a checksum string, nothing more. It is
@@ -78,7 +78,7 @@ boundary the gardening model draws:
   *around* the program, host-side: `Main` itself runs *inside* `Pulumi.run(...)`.
   It therefore **stays host** (it cannot enter Felix — a scion in the OSGi
   container has no engine around it). It is the commissioner's own gesture, kept
-  in `seed-master`.
+  in `seed-outcluster`.
 
 * **The materialization** — writing onto the master the files its downstream
   consumers read (cloud-init seed, systemd units, k8s manifests, rke2 config, the
@@ -99,7 +99,7 @@ top-down demolition removed ahead of its replacement, so the work-list is explic
 flowchart TB
   op["operator's Pulumi config<br/>(manifests.publish.*, incus.*)"]
 
-  subgraph host["HOST realm — seed-master, inside Pulumi.run(...)"]
+  subgraph host["HOST realm — seed-outcluster, inside Pulumi.run(...)"]
     decl["resource declarations<br/>Project·Network·Profile·Image·Instance"]
     engine["Pulumi engine<br/>resolves the graph, talks gRPC"]
     payload["activation payload<br/>(host-neutral booleans: mesh=false…)"]
@@ -336,7 +336,7 @@ the replacement scions existed. The result is seven open deltas:
   worth its own delta: it is the physical realisation of the host-tree the instance
   mounts, and its two halves are the BootstrapPaths split (host-view source + layout
   target).
-| host (`seed-master`) — restore, reads `HostPathCatalog` (incus-core) + `asHostView`
+| host (`seed-outcluster`) — restore, reads `HostPathCatalog` (incus-core) + `asHostView`
 
 | 9
 | **the PROMOTION** — `HostAssetRootLifecycle` → a new `HostTreePromoter`: the no-op
@@ -651,7 +651,7 @@ THE CLUSTER, an entirely separate in-cluster delivery channel.
 ----
 flowchart LR
   OP["Operator activation facet"]
-  RUN["seed-master PREPARE"]
+  RUN["seed-outcluster PREPARE"]
   SYS["Bootstrap host-asset materialization"]
   INST["master srv host"]
   OP --> RUN --> SYS --> INST

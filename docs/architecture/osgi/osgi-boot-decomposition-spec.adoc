@@ -338,7 +338,7 @@ Each step is a GREEN commit; squash-merge into `design/pre-integration`, never `
   makes `BootPlanner.plan(...)` throw naming the package + owning bundle.
 * *Both executors green through the shared launcher:* `HostSeamEmbeddedFelixTest`, `EmbeddedBundlesBootTest`,
   and the testkit SCR / extender / doctor / jGiven proofs, via
-  `./mvnw -pl :seed-master,:manifests-cli,:netplan-cli,:bench-tests,:doctor-core-test,:doctor-contract-test,:jgiven-testkit -am clean package -Dmaven.build.cache.skipCache=true -DskipTests=false`;
+  `./mvnw -pl :seed-outcluster,:manifests-cli,:netplan-cli,:bench-tests,:doctor-core-test,:doctor-contract-test,:jgiven-testkit -am clean package -Dmaven.build.cache.skipCache=true -DskipTests=false`;
   *count* surefire reports (memory `build-verification-gotchas` — a green build with no `Tests run:` line
   means skipped).
 * *Behavioural proof unchanged:* a real `pulumi preview` from the repo root boots Felix in the Pulumi

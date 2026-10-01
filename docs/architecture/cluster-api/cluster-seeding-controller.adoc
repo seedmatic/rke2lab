@@ -2,7 +2,7 @@
 :toc: left
 :toclevels: 3
 
-The in-cluster twin of `seed-master`. Where `seed-master` seeds a cluster from
+The in-cluster twin of `seed-outcluster`. Where `seed-outcluster` seeds a cluster from
 the *host* (Pulumi/nix, out-of-band), `seed-incluster` is the *in-cluster*
 reconciler that brings CAPI's view of the fleet into being and keeps it true —
 **by adopting the clusters that are already running, not by re-provisioning
@@ -408,7 +408,7 @@ CAPI probes the workload apiserver for us.
 is what the reflector NOTES into `PoolReflection`).
 |===
 
-This is the "thin controller / rich intention" principle: `seed-master` (SSOT
+This is the "thin controller / rich intention" principle: `seed-outcluster` (SSOT
 `ClusterNetworkBlueprint`) fills the `ClusterIntention` with concrete values;
 the controller only *materialises* (templates) the CR-set and owns it — **zero
 addressing logic in Go** (that would duplicate the Java blueprint → drift).
@@ -500,7 +500,7 @@ DELIVERED, per the relationship:
 |===
 | node | relationship | delivery
 
-| **mgmt / root** | self-managed | **git-fetch** — `install-rke2-config` from its OWN branch (the pre-join wall forces git; `seed-master` poses the read token). The root is the fixpoint.
+| **mgmt / root** | self-managed | **git-fetch** — `install-rke2-config` from its OWN branch (the pre-join wall forces git; `seed-outcluster` poses the read token). The root is the fixpoint.
 | **workload** | managed (CAPRKE2) | **bootstrap-inject** — `seed-incluster` (in the mgmt) READS the visible k8s config + stuffs it into the CAPRKE2 `RKE2Config` (cloud-init). No git-fetch, NO read token on the workload node.
 |===
 
@@ -540,7 +540,7 @@ come from the workload's own Flux; the manager delivers it, above.
 === The read token — self-path only
 
 Only the **git-fetch** (self) path needs a `contents:read` token in cloud-init: the root/mgmt
-node fetches its OWN branch, and `seed-master` poses the token via the cellar→devlxd seam
+node fetches its OWN branch, and `seed-outcluster` poses the token via the cellar→devlxd seam
 (`fileNodeGithubToken`, which fires ONLY for the STANDALONE root — a workload render skips it).
 A **managed workload** node needs NO read token — it never git-fetches; `seed-incluster` reads
 the config in-cluster and injects it into the bootstrap. Any token is ephemeral, least-privilege,
@@ -596,7 +596,7 @@ management plane lives*, not "in every cluster so it manages itself".
   parent mgmt; it does **not** run seed-incluster (that would be a second adopter
   of the same cluster).
 * **Only the ROOT self-adopts — because it is the ONLY out-of-band boot.** The
-  root (`bioskop-mgmt`) is the single cluster `seed-master` seeds STANDALONE;
+  root (`bioskop-mgmt`) is the single cluster `seed-outcluster` seeds STANDALONE;
   nothing above it can adopt it, so it self-adopts in-cluster. Every non-root
   cluster (workload OR sub-plane) is **born in-cluster** by its parent's
   seed-incluster and adopted by that parent → never self-adopts. See
@@ -652,7 +652,7 @@ one. Under tier B, each plane targets at most ONE non-local remote at a time:
 [IMPORTANT]
 .Real federation — a sub-plane is BORN in-cluster, not standalone-seeded
 ====
-The federation crux: **`nikopol-mgmt` is NOT bootstrapped by `seed-master`
+The federation crux: **`nikopol-mgmt` is NOT bootstrapped by `seed-outcluster`
 (the STANDALONE, out-of-band boot). It is PROVISIONED in-cluster by
 `bioskop-mgmt`'s seed-incluster** — the same provision-then-adopt funnel, its
 single mgmt node born via CAPN on `nikopol-nixos`'s remote Incus, then adopted.
@@ -664,7 +664,7 @@ created. A non-root plane has a CAPI *above* it (its parent), so the creator
 (`bioskop-mgmt`'s CAPI) differs from the created (`nikopol-mgmt`'s CAPI); no
 paradox. Hence the exact mapping onto the <<naming,enclosure axis>>:
 
-* **`STANDALONE` = the ROOT, and it alone** — `seed-master` seeds `bioskop-mgmt`
+* **`STANDALONE` = the ROOT, and it alone** — `seed-outcluster` seeds `bioskop-mgmt`
   out-of-band. The one irreducible nix floor; it births exactly ONE cluster, ever.
 * **`IN_CLUSTER` = everything else, recursively** — `seed-incluster` births +
   adopts every descendant: workloads (leaves) AND sub-management-planes. The
@@ -760,7 +760,7 @@ plane (runs seed-incluster), green = a leaf (runs none).
 [mermaid,cluster-seeding-federation-lineage,svg]
 ----
 graph TB
-  sm["seed-master · STANDALONE<br/>the ONE out-of-band nix boot"]:::floor
+  sm["seed-outcluster · STANDALONE<br/>the ONE out-of-band nix boot"]:::floor
   subgraph ROOT["ROOT tier"]
     b["bioskop-mgmt<br/>seed-incluster · SELF-adopts"]:::plane
   end
@@ -783,7 +783,7 @@ graph TB
 ----
 
 *Heavy arrow* = the single cross-host hop (birth a sub-plane's node on a remote
-Incus). Everything else is local; `seed-master` touches only the root.
+Incus). Everything else is local; `seed-outcluster` touches only the root.
 
 === Figure 2 — Federated bootstrap: outside-in, level-triggered
 
@@ -793,7 +793,7 @@ only adopt-first reconciles firing as their inputs come to exist.
 [mermaid,cluster-seeding-federation-sequence,svg]
 ----
 sequenceDiagram
-  participant SM as seed-master (STANDALONE)
+  participant SM as seed-outcluster (STANDALONE)
   participant B as bioskop-mgmt · seed-incluster
   participant RX as nikopol-nixos Incus (remote)
   participant N as nikopol-mgmt · seed-incluster
@@ -885,7 +885,7 @@ decrypts. So the cross-host trust does NOT need a new secure channel — that fr
 was overstated. Two consequences:
 
 * *The transport exists.* The material rides the already-shared sops-encrypted git
-  + the existing rke2lab → ndh flow (the dataplan seed-master owns, pulled into
+  + the existing rke2lab → ndh flow (the dataplan seed-outcluster owns, pulled into
   ndh's `catalog.datasets`). The remaining work is **placement + wiring**, not
   building a channel.
 * *Most of the material is PUBLIC.* Incus trust is by **cert fingerprint**: ndh
@@ -1257,7 +1257,7 @@ Both clusters render the **same intent** (`ClusterIntention` + a control-node
 `ClusterApiCrRenderer`); they differ only by `kind`, pet count, and a local vs
 remote endpoint. The residual asymmetry is *self vs managed*, not the CR shape:
 
-* **mgmt (self)** — seed-master bootstraps the mgmt intent out-of-band, and
+* **mgmt (self)** — seed-outcluster bootstraps the mgmt intent out-of-band, and
   seed-incluster runs *inside* the cluster it describes, so its control plane is
   necessarily up when the controller reconciles → it always ADOPTS, never
   greenfields (existence holds by construction). Its `ClusterAdoption` carries the
@@ -1781,14 +1781,14 @@ applies to `WRKLD` alone.
 It rides on the manifests facet for the same reason `incusTargets` and `rootIncusHost` do — that
 facet is recorded on the branch VERBATIM, so an in-cluster re-render replays the same shape. Put in
 `rke2lab:cluster:` it would not travel at all, the in-cluster render having no Pulumi stack. And
-because the whole subtree is contributed verbatim, adding the key needed no plumbing in seed-master.
+because the whole subtree is contributed verbatim, adding the key needed no plumbing in seed-outcluster.
 
 Absent ⟹ `ha`, which is what the constant did, so a branch recorded before the field renders
 identically.
 
 ==== Why `rootHost` is DECLARED, not inferred
 
-The root is the plane `seed-master` seeds out-of-band — the single `STANDALONE` boot, the one cluster
+The root is the plane `seed-outcluster` seeds out-of-band — the single `STANDALONE` boot, the one cluster
 that adopts itself. Nothing in a host list reveals it, and every way of inferring it is a viewpoint
 waiting to disagree with itself:
 
@@ -1900,7 +1900,7 @@ Intentions are NOT broadcast across the fleet — each branch carries a narrow s
 Both delegate to the same `ClusterApiCrRenderer`, which is why the two copies are byte-identical
 apart from the `io.seedmatic.rke2lab/package` annotation (diffed 2026-09-30: that one line).
 
-★ **But they agree by CONSTRUCTION, not by enforcement** — one derivation, one seed-master run, one
+★ **But they agree by CONSTRUCTION, not by enforcement** — one derivation, one seed-outcluster run, one
 source commit. Nothing checks it. The moment a sub-plane's in-cluster render runs from a DIFFERENT
 commit than its parent's, the copies can drift, silently. That is not hypothetical: it already
 happened once, and cost a whole debugging session — the parent's copy stated
@@ -2232,7 +2232,7 @@ the clean recreate at our layer is the Intention/`workloadTargets` gesture.
 ----
 graph TB
   OP["«person»<br/>Operator"]
-  subgraph git["manifests/&lt;host&gt;-mgmt (git, rendered by seed-master)"]
+  subgraph git["manifests/&lt;host&gt;-mgmt (git, rendered by seed-outcluster)"]
     intent["ClusterIntention — cluster intent<br/>CIDRs + VIP + remote + identity + kind"]:::code
     pintent["PoolIntention (control-node)<br/>pet roster + image + versions + role"]:::code
   end
@@ -2281,7 +2281,7 @@ absent (`providerID` not found). Destroying a present node loses its etcd.
 | All nodes are named pets from the blueprint, adopted by `providerID` — the
 only shape that survives a cold-start (random names leak, see <<all-pets>>).
 | Compute addressing (CIDRs, VIP, providerID) in the Go controller.
-| `seed-master` fills the `ClusterIntention` from the `ClusterNetworkBlueprint`
+| `seed-outcluster` fills the `ClusterIntention` from the `ClusterNetworkBlueprint`
 SSOT; the controller only templates + owns. Go-side addressing duplicates the
 blueprint → drift.
 | Run a home-grown health probe in the controller.
@@ -2333,7 +2333,7 @@ files) opposite `IN_CLUSTER`. `HOST` rejected (collides with the Incus/nixos
 host everywhere: `/srv/host`, `HostPathCatalog`, the `host/` module).
 | `rke2-adoption-controller` | `seed-incluster` | It no longer only "adopts" —
 it provisions + adopts + re-adopts. Named by *locality* (the axis that
-distinguishes it from `seed-master`); `seed-cluster` rejected (collides with
+distinguishes it from `seed-outcluster`); `seed-cluster` rejected (collides with
 `ClusterSeedScenario`).
 | group `adoption.seedmatic.io` | `cluster.seedmatic.io` | Named by the *domain*
 (cluster lifecycle: `ClusterIntention` + `ClusterAdoption` + future cluster
@@ -2342,7 +2342,7 @@ near-immutable), no `seed…seedmatic` stutter, and a direct parallel of CAPI's
 own `cluster.x-k8s.io` (fitting our mirror role).
 |===
 
-`seed-master` is **kept** — the flagship module, huge blast radius; "master"
+`seed-outcluster` is **kept** — the flagship module, huge blast radius; "master"
 carries its primacy as the primary out-of-band seeder.
 
 [[open-items]]
@@ -2418,7 +2418,7 @@ carries its primacy as the primary out-of-band seeder.
   self-heal; it never drives the Machine lifecycle. (Supersedes the REVERTED adopt-shape probe →
   provision-shape flip, which raced CAPRKE2 — see the plan's PIVOT note.)
 . **The `LXCMachineTemplate` must replicate the instance NETWORK, not just the root disk (C7 — now
-  on greenfield's CRITICAL PATH).** `seed-master`'s `InstanceGrow` attaches TWO NICs per instance:
+  on greenfield's CRITICAL PATH).** `seed-outcluster`'s `InstanceGrow` attaches TWO NICs per instance:
   the **`vmnet-<role>`** NIC (the internal cluster network — DHCP-reserved IP, the `node-ip`) AND a
   **LAN** interface (public / internet reach — `vmnet` alone does NOT route to the public network).
   The `rke2lab` profile provides the root disk but NOT the networks. The template the controller

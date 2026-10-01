@@ -6,7 +6,7 @@ import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-/** Shared seed-master logger with Pulumi verbosity-aware level mapping. */
+/** Shared seed-outcluster logger with Pulumi verbosity-aware level mapping. */
 public final class SeedLog {
 
   @FunctionalInterface

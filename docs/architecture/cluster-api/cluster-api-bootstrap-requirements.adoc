@@ -347,7 +347,7 @@ kubectl get controlplaneprovider rke2 -n caprke2-system
    - **Answer**: Keep enabled, lightweight operator
 
 3. **Age key generation automation?**
-   - Manual vs automated in seed-master
+   - Manual vs automated in seed-outcluster
    - **Answer**: Keep manual (one-time setup, documented)
 
 == Success Criteria

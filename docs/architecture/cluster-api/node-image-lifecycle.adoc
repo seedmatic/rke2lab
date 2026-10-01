@@ -55,7 +55,7 @@ converged toward.
 [mermaid,node-image-publish-flow,svg]
 ----
 flowchart LR
-  subgraph HOST["seed-master — the PRODUCER"]
+  subgraph HOST["seed-outcluster — the PRODUCER"]
     BUILD["nix build node-base<br/>(the grow)"]
     CONTRACT["NodeRuntimeContract.nodeBase()<br/>★ the ONE definition"]
     AMEND["IMAGE_STATE amendment<br/>(JSON, over the membrane)"]
@@ -203,7 +203,7 @@ coexist in incus for the duration. That calls for a generation increment on the
 alias plus a floating alias for humans.
 
 ★ *A bump is a TRANSIENT STATE of the cluster* — which settles the ownership:
-`seed-master` PRODUCES images and never decides who runs them; the campaign is
+`seed-outcluster` PRODUCES images and never decides who runs them; the campaign is
 PLAYED in-cluster.
 
 [mermaid,node-image-generation-ownership,svg]

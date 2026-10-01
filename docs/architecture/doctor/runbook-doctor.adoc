@@ -3,7 +3,7 @@
 :toclevels: 3
 
 *Date:* 2026-06-05 (landed in `docs/architecture/doctor/` 2026-06-07) +
-*Status:* ✅ Increments A–E shipped (originally in pre-OSGi `seed-master`), and the whole doctor has
+*Status:* ✅ Increments A–E shipped (originally in pre-OSGi `seed-outcluster`), and the whole doctor has
 since **migrated into the OSGi world** — `doctor-contract` (the records + coordinates),
 `doctor-core` (the authority + reader + registry), `doctor-spi` (the clinician/specialist SPI), the
 `scenario-engine` (runbook play + graft), and per-domain specialists. The referral round-trip is now
@@ -22,7 +22,7 @@ OSGi ones.
 |*Runbook* |the deliverable artifact — a rendered `.adoc` DAG of the scenarios played during a provisioning, with results and (on failure) diagnosis + remediation. Dynamic, on-demand.
 |*Readiness checkpoint* |the mechanism — an _intermediate_ controlled passage (a sas between provisioning steps) that plays a Given/When/Then scenario, decides stop-vs-degraded, and feeds the runbook. In the OSGi as-built it is a jGiven readiness scenario played by the `scenario-engine`; the stop-vs-degraded verdict is folded by `DefaultReadinessAuthority` (the pre-OSGi form was `SystemdAdapterStage`).
 |*Entry gate* |preconditions checked _before_ the domain crossings proceed — the worktree crossing's `GatePolicy` (clean worktree; flake coherence is a planned worktree-domain check), enforced OSGi-side inside the first (worktree) crossing. A different species of door: the front door, not the intermediate landing.
-|*Doctor* |the diagnosis engine the patient consults: Generalist → Specialists → Prescription → RemediationPlan. *Direction (Increment E):* a *generic, pluggable module* (used beyond seed-master), with `Doctor` a supertype of `Generalist`/`Specialist`. See Increment E and its open tensions.
+|*Doctor* |the diagnosis engine the patient consults: Generalist → Specialists → Prescription → RemediationPlan. *Direction (Increment E):* a *generic, pluggable module* (used beyond seed-outcluster), with `Doctor` a supertype of `Generalist`/`Specialist`. See Increment E and its open tensions.
 |*Patient* |(Increment E direction) the *Pulumi stack* (`org/project/stack`, e.g. `bioskop/dev`) — a persistent identity. Several patients = several stacks (dev/prod/clusters). A checkpoint is NOT the patient; the patient self-observes _via_ its checkpoints.
 |*Visit* |(Increment E direction) one `pulumi up`/`preview` run, carrying its *admission context* = the runtime context (git commit/branch, preview-vs-up mode, call parameters = the Pulumi stack config incl. `simulate`, timestamp).
 |*Symptom* |(exists, unchanged) the typed complaint the patient *raises about its own state* while self-observing — the routing key the Generalist uses, never parsed from prose. A consultation carries a *set* of them (0..n).
@@ -753,7 +753,7 @@ Think global (this design), deliver incremental. Each increment ships green.
 [NOTE]
 .OSGi re-baseline — read the increment narrative through this mapping
 ====
-Increments A–E below are the *original delivery history*, and they shipped in pre-OSGi `seed-master`.
+Increments A–E below are the *original delivery history*, and they shipped in pre-OSGi `seed-outcluster`.
 That code has since **migrated into the OSGi world**; the design (the DAG runbook, the four parts,
 the doctor, the layered medical record) is unchanged, but the pre-OSGi type names in the DONE bullets
 map onto the shipped OSGi ones. Read the bullets through this table:
@@ -820,7 +820,7 @@ Build the runbook mechanism on the *existing* systemd-adapter checkpoint.
   checkpoint today, so there are no edges to draw until checkpoint #2 lands.
 * *Green:* the systemd-adapter scenario records into the shared model and renders (pass or
   fail); a `preview.simulate` entry produces a FAILED node without touching infra; a forced
-  CRITICAL failure still renders the runbook. 19/19 seed-master tests pass.
+  CRITICAL failure still renders the runbook. 19/19 seed-outcluster tests pass.
 
 === Increment B — Doctor (diagnosis + prescription on failure) — DONE
 
@@ -845,7 +845,7 @@ Build the runbook mechanism on the *existing* systemd-adapter checkpoint.
   sections (vs. the inline log) — that needs the shared report-node model that arrives with
   checkpoint #2's DAG, the same place the Increment A edge work was deferred to.
 * *Green:* `DoctorTest` (routing, no-treatment, empty-plan, observation round-trip) + the
-  retyped scenario/runbook tests; 24/24 seed-master tests pass.
+  retyped scenario/runbook tests; 24/24 seed-outcluster tests pass.
 
 === Increment C — Checkpoint #2 (cluster-readiness) nested — DONE (DSL-first)
 
@@ -869,7 +869,7 @@ Build the runbook mechanism on the *existing* systemd-adapter checkpoint.
   `SystemdAdapterStage` already does.
 * *Green:* `NestedRunbookTest` — the cluster scenario renders with the systemd-adapter
   dependency nested; an ordered fake incident on the api-ready phase produces a targeted
-  FAILED runbook and the doctor diagnoses the phase's symptom. 41/41 seed-master tests pass.
+  FAILED runbook and the doctor diagnoses the phase's symptom. 41/41 seed-outcluster tests pass.
 
 ==== Still open after C (the two converged deferrals)
 
@@ -908,7 +908,7 @@ scenarios*). Previously it ran the procedural `verify()` lazily inside a Pulumi
   `ClusterReadinessProjectionTest` pins the contract.
 * *Nested dependency without double-probe.* The nested systemd-adapter step replays from the
   already-captured launch summary (reconstructed as a `Observation`), not a second live probe.
-* *Green:* 30/30 seed-master tests (cluster-symptom routing + kebab parse + projection
+* *Green:* 30/30 seed-outcluster tests (cluster-symptom routing + kebab parse + projection
   contract added). `pulumi preview` now shows BOTH scenarios in the runbook; on `pulumi up`
   the cluster phases are checked live and the `VerificationResult` outputs are unchanged.
 
@@ -989,10 +989,10 @@ symptom today; the `Set<Symptom>` shape is ready for more when an independent pa
 ==== The Doctor is a generic, pluggable module (design module-ready now; extract later)
 
 The user's call: the Doctor must be *an actor of the system — a generic module plugged into
-seed-master, reusable in other contexts*. This settles the long-open question recorded in
+seed-outcluster, reusable in other contexts*. This settles the long-open question recorded in
 link:../../../.claude/memory/config-restructuring-state.md[config-restructuring-state] /
 link:../../../.claude/memory/domain-registry-abstraction.md[domain-registry-abstraction]: the doctor
-core is a *neutral module*, not seed-master-bound. Rule of three is reached — (1) runbook
+core is a *neutral module*, not seed-outcluster-bound. Rule of three is reached — (1) runbook
 checkpoints, (2) config missing-input remediation (config's "Increment 2", the doctor's first
 non-runbook use case), (3) future contexts.
 

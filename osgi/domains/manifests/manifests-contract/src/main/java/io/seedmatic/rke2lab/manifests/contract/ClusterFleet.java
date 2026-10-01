@@ -39,14 +39,15 @@ import java.util.Set;
  *
  * <h2>Why the root is DECLARED and not inferred</h2>
  *
- * <p>The root is the plane {@code seed-master} seeds out-of-band — the single {@code STANDALONE}
- * boot, the one cluster that adopts itself. Nothing in a host list reveals it, and every way of
- * inferring it is a viewpoint waiting to disagree with itself: taking the first entry makes yaml
- * order load-bearing, and deriving it from who is rendering makes an in-cluster re-render compute a
- * DIFFERENT owned set than the operator's render of the same branch — Flux would then prune the
- * children it had just applied. So {@code rootHost} is recorded ONCE by the grow (from {@code
- * rke2lab:cluster.host}, which by definition names the out-of-band-seeded cluster) and travels on
- * the branch with the rest of the facet, exactly as {@code network.fabricBridgeParent} does.
+ * <p>The root is the plane {@code seed-outcluster} seeds out-of-band — the single {@code
+ * STANDALONE} boot, the one cluster that adopts itself. Nothing in a host list reveals it, and
+ * every way of inferring it is a viewpoint waiting to disagree with itself: taking the first entry
+ * makes yaml order load-bearing, and deriving it from who is rendering makes an in-cluster
+ * re-render compute a DIFFERENT owned set than the operator's render of the same branch — Flux
+ * would then prune the children it had just applied. So {@code rootHost} is recorded ONCE by the
+ * grow (from {@code rke2lab:cluster.host}, which by definition names the out-of-band-seeded
+ * cluster) and travels on the branch with the rest of the facet, exactly as {@code
+ * network.fabricBridgeParent} does.
  *
  * <p>This is also what un-sterilises a sub-plane: the child's recorded facet keeps the FULL host
  * list, so {@code nikopol-mgmt}'s own render derives {@code [nikopol-wrkld]} where it used to
@@ -65,7 +66,7 @@ public record ClusterFleet(
         workloadControlPlane != null ? workloadControlPlane : ControlPlaneShape.HA;
     if (rootHost == null || rootHost.isBlank()) {
       throw new IllegalArgumentException(
-          "the fleet needs its ROOT host — the plane seed-master seeds out-of-band. Absent from"
+          "the fleet needs its ROOT host — the plane seed-outcluster seeds out-of-band. Absent from"
               + " both the sown amendment and the branch's recorded facet; re-render from the HOST"
               + " once to seed it.");
     }

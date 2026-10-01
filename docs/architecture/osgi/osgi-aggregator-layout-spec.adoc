@@ -21,7 +21,7 @@ confirmed.
    `launcher`; renamed to `framework-launcher` (2026-07-05) when the sibling `engine` →
    `scenario-engine` rename made both leaf names domain-specific rather than generic — the
    directory is `osgi/runtime/framework-launcher/`, artifactId `framework-launcher`, package
-   `io.seedmatic.rke2lab.osgi.runtime.framework`, and the 3 exec consumers (seed-master,
+   `io.seedmatic.rke2lab.osgi.runtime.framework`, and the 3 exec consumers (seed-outcluster,
    manifests-cli, netplan-cli) depend on `framework-launcher`.
 
 2. **jGiven lives in its OWN bundle `osgi/runtime/jgiven-wrap` — never folded into scenario-engine**.
@@ -327,7 +327,7 @@ flowchart LR
   before["AVANT : osgi/runtime  (artifactId=runtime)"]:::plumbing
   after["APRÈS : osgi/runtime/runtime-host  (artifactId=runtime-host)"]:::plumbing
   before --> after
-  after --> dep1["exec/seed-master  → dep runtime-host"]:::host
+  after --> dep1["exec/seed-outcluster  → dep runtime-host"]:::host
   after --> dep2["exec/manifests-cli → dep runtime-host"]:::host
   after --> dep3["exec/netplan-cli  → dep runtime-host"]:::host
   classDef plumbing fill:#e7eef9,stroke:#1f6feb;
@@ -339,7 +339,7 @@ Impact borné (vérifié par grep sur `<artifactId>runtime</artifactId>`) :
 * `osgi/runtime/launcher/pom.xml` — `<artifactId>` `runtime` → `launcher`,
   `<name>` `osgi/runtime` → `osgi/runtime/launcher`, `relativePath` du
   parent +1 cran (`../../build-parent` → `../../../build-parent`).
-* **3 consommateurs** mettent à jour leur `<dependency>` : `exec/seed-master`,
+* **3 consommateurs** mettent à jour leur `<dependency>` : `exec/seed-outcluster`,
   `exec/manifests-cli`, `exec/netplan-cli`.
 * Sélecteur CLI : `-pl :runtime` → `-pl :launcher` (artifactId non préfixé,
   per CLAUDE.md).
@@ -443,7 +443,7 @@ Empreinte du renommage (mesurée — c'est une spec, non exécutée) : au-delà 
 dossier, le package `io.seedmatic.rke2lab.gateway.port` → `…world.gateway.port`
 (8 types : `Document`, `Coordinate`, `Domain`, `Action`, `SymptomKind`,
 `ReadinessAuthority`, `GatewayCatalog`→`SeedBrokerCatalog`, `package-info`) et
-~11 fichiers consommateurs (doctor-core/-port/-test, exec/seed-master) suivent le
+~11 fichiers consommateurs (doctor-core/-port/-test, exec/seed-outcluster) suivent le
 nom retenu. Le `<artifactId>` `gateway-port`→`world-gateway` (l'agrégateur
 `gateway` est supprimé, le bundle remonte d'un cran) ; ses consommateurs Maven
 déclarent une `<dependency>` sur le nouvel artifactId. Sélecteur CLI :

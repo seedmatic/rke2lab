@@ -328,7 +328,7 @@ public class StagingExecutionStrategy implements MojosExecutionStrategy {
     // fact — the staging closure MATERIALISES it only where a flat class references it (the demand
     // switch, DualRealmFlatDemand → StagingClosure.compute). "Flat copy present ⟺ flat consumer
     // present" now holds by construction, per (carrier, exec-assembly) pair, so a carrier consumed
-    // flat by one exec (manifests-cli) and OSGi-only by another (seed-master) is each handled
+    // flat by one exec (manifests-cli) and OSGi-only by another (seed-outcluster) is each handled
     // right,
     // and there is nothing left for a gate to catch.
 

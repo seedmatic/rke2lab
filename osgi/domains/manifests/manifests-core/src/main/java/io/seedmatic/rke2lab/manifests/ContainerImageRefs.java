@@ -31,7 +31,9 @@ import java.nio.charset.StandardCharsets;
  */
 public final class ContainerImageRefs {
 
-  /** Staged by {@code nix run .#stage-image-refs} (and by {@code seedMasterJar} for a release). */
+  /**
+   * Staged by {@code nix run .#stage-image-refs} (and by {@code seedOutclusterJar} for a release).
+   */
   private static final String CARRIER_REF_RESOURCE = "/image-refs/flox-carrier";
 
   private static final String FLOX_CONTROLLER_REF_RESOURCE = "/image-refs/flox-controller";
@@ -70,7 +72,7 @@ public final class ContainerImageRefs {
             "missing staged image ref "
                 + resource
                 + " — the build stages it from the flake (`nix run .#stage-image-refs`, or"
-                + " seedMasterJar for a release). It cannot be defaulted: the tag is derived from"
+                + " seedOutclusterJar for a release). It cannot be defaulted: the tag is derived from"
                 + " image content, so a guessed value would name an image no node holds.");
       }
       return new String(in.readAllBytes(), StandardCharsets.UTF_8).strip();

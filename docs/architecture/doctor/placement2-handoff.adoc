@@ -33,9 +33,9 @@ fixtures fused into the `-test` fragment). Read the historical names below throu
 |===
 
 *PLACEMENT 2 COMPLETE.* Working tree clean at `fcee305a`. Build green: `-pl :doctor-port,:doctor-core,
-:doctor-testkit,:seed-master -am clean package -DskipTests=false -Dmaven.build.cache.skipCache=true` →
+:doctor-testkit,:seed-outcluster -am clean package -DskipTests=false -Dmaven.build.cache.skipCache=true` →
 BUILD SUCCESS (19 modules), *254 tests / 0 failures / 0 errors / 1 skipped* (18 doctor-port + 9
-doctor-core + 27 seed-master surefire reports — no test lost across the whole increment). Proven:
+doctor-core + 27 seed-outcluster surefire reports — no test lost across the whole increment). Proven:
 all 8 actors are `final class`/`record` with no `public`; zero actor is imported anywhere outside
 `io.seedmatic.rke2lab.doctor` (compiler-enforced membrane). doctor is now symmetric with
 manifests/netplan — consumers cross a pure port, the impl evolves freely behind a sealed internal edge.
@@ -56,7 +56,7 @@ test-fragment chantier dissolves. Nothing else open.
   façade — `Doctor.consultingService(Patient, MedicalRecordRegistry, InterventionLedgerWriter,
   List<Specialist> hostSpecialists, Consumer)`, port-only signature, news up the actors + the standard
   Network+Cluster roster internally and returns the contract.
-* *seed-master*: `DoctorAssembly` (host, `controlplane.bdd`) supplies the host impls and runs the
+* *seed-outcluster*: `DoctorAssembly` (host, `controlplane.bdd`) supplies the host impls and runs the
   drift-at-reconstruction review through the contract; `BootstrapPipeline` lost
   `bindMedicalRecord`/`currentPatient`/`reviewDriftAtReconstruction` + 5 actor imports; `PipelineState`
   holds a `ConsultingService`; the stages + `ResourceManager` + `ResourceCreationPipeline` take
@@ -82,7 +82,7 @@ that classification is wrong:
 
 [cols="2,3,3",options="header"]
 |===
-| Reader | Shape | Production (non-test) consumers in seed-master
+| Reader | Shape | Production (non-test) consumers in seed-outcluster
 
 | `MedicalRecordReader`
 | `(SnapshotSource) → MedicalRecord`; references NO actor (port-only in/out)
@@ -102,8 +102,8 @@ that classification is wrong:
 |===
 
 All four take port types and return port types, touch no hidden actor, and three are used by host
-*production* classes that stay in seed-master (they read Pulumi outputs / the file backend). If commit
-3 drops `public` from them, seed-master stops compiling — they are consumed cross-module by design.
+*production* classes that stay in seed-outcluster (they read Pulumi outputs / the file backend). If commit
+3 drops `public` from them, seed-outcluster stops compiling — they are consumed cross-module by design.
 
 *They are read-edges, the read-side twins of `SnapshotSource` / `InterventionLedgerWriter`, not
 implementation actors.* So the real list of hideable actors is *8, not 12*: `Generalist`,
@@ -120,7 +120,7 @@ inlining them behind a core façade (they have legitimate independent host calle
 *Decision (design space, signed off): confirmed.* Execute as written below:
 
 * ~29 value-type tests → `doctor-port/src/test`; ~17 model-actor tests → `doctor-core/src/test`; ~6
-  host tests stay in seed-master.
+  host tests stay in seed-outcluster.
 * `ReferralReplies` (port-only, used by 12 tests spanning both target modules) → new `doctor-testkit`
   module (`src/main/java`, consumed `scope=test`), per `shared-test-fixtures-module`. The other 3
   fixtures are single-consumer/host-only → stay.
@@ -152,12 +152,12 @@ cycle is at Maven build time; a fragment acts at framework runtime, too late.
 
 *The decision (option B, signed off).* `ReferralReplies` lives alone in `doctor-testkit` (which
 depends on `doctor-port` — no return edge, no cycle), consumed `scope=test` by doctor-core and
-seed-master. The *5 value-type tests that use it stay in seed-master (HOST)* instead of descending to
+seed-outcluster. The *5 value-type tests that use it stay in seed-outcluster (HOST)* instead of descending to
 `doctor-port/src/test`: `MedicalRecordTest`, `ConsultationReportSerializationTest`,
 `ConsultationReportExpectationTest`, `DoctorRecordsTest`, `MedicalRecordEfficacyConfoundedTest`. The
 ~19 value-type tests with no `ReferralReplies` dependency DO descend to `doctor-port/src/test`.
 
-*The debt.* Those 5 tests cover port-level value types but physically sit in seed-master — not where
+*The debt.* Those 5 tests cover port-level value types but physically sit in seed-outcluster — not where
 their subject lives. Zero duplication, zero masking; it is a placement compromise forced by the
 bare-JVM test model. *It resolves for free when the test-fragment chantier lands* (memory
 `osgi-testkit-framework-injection-idea`): as fragments sharing the bundle classloader, the fixture is
@@ -183,7 +183,7 @@ doctor-port), then *commit 3* (drop `public` from the 8 actors).
 Final: 25 PORT + 10 CORE + 13 HOST + 1 TESTKIT + 3 FIXTURE-stay = 52.
 PORT tests → doctor-port/src/test (package io.seedmatic.rke2lab.doctor.port).
 CORE tests → doctor-core/src/test (package io.seedmatic.rke2lab.doctor — MUST, for commit-3 white-box).
-HOST tests stay in seed-master. The 4 readers → doctor-port/src/main (read-edges).
+HOST tests stay in seed-outcluster. The 4 readers → doctor-port/src/main (read-edges).
 ReferralReplies + a new prescribing FakeSpecialist (schema-self-describing) → doctor-testkit/src/main.
 New DbusTcpSpecialistTest (host) covers DbusTcp's real ADAPTER_UNIT/RESTART_UNIT behaviour,
 previously only exercised de-facto by DoctorScenarioTest.

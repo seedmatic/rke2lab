@@ -12,7 +12,7 @@
   <artifactId>host-runtime</artifactId>
   <name>host/host-runtime</name>
   <description>Host-flat runtime facts and the ambient-source realisations that project them —
-    shared by every exe that boots the framework (seed-master's grow, the manifests CLI). Holds
+    shared by every exe that boots the framework (seed-outcluster's grow, the manifests CLI). Holds
     ExecutionEnclosure (the container FACT: OPERATOR vs IN_CLUSTER, a sibling of RunMode but
     orthogonal to it), and the host realisations of the seed-broker SecretsGateway seam
     (DotSecretsGateway over .secrets, TailscaleOauthClientGateway over ndh's provisioned OAuth

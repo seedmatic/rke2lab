@@ -36,8 +36,8 @@ import org.slf4j.LoggerFactory;
  * the planes are the species.
  *
  * <p>Each {@code export} verb drives {@link PlanCliScenario} on the embedded JUnit launcher — the
- * SAME BDD-as-engine machinery {@code seed-master} and {@code manifests-cli} use. The scenario sows
- * the plane's coordinate through the broker; that grows the domain scion in-container ({@code
+ * SAME BDD-as-engine machinery {@code seed-outcluster} and {@code manifests-cli} use. The scenario
+ * sows the plane's coordinate through the broker; that grows the domain scion in-container ({@code
  * NetplanBlueprintScenario} for {@code network}, {@code DataplanScenario} for {@code dataset}),
  * where the {@code type=contract} bundle record (which the flat host cannot reference) is
  * reachable. The scion writes the plane's export file into a SOIL temp dir; this CLI reads that

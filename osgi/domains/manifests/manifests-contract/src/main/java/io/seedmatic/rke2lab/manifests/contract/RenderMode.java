@@ -4,14 +4,14 @@ import java.util.Map;
 
 /**
  * How the manifests render resolves its effective facet against the branch HEAD, and the guard the
- * asking CLI verb carries. The AMONT twin of a verb intent: the sower (seed-master's grow or the
- * {@code manifests-cli}) fills it so the in-container synthesis knows whether the SEEDED facet is
- * authoritative, whether the recorded HEAD facet wins, or whether HEAD is OVERLAID with a sparse
+ * asking CLI verb carries. The AMONT twin of a verb intent: the sower (seed-outcluster's grow or
+ * the {@code manifests-cli}) fills it so the in-container synthesis knows whether the SEEDED facet
+ * is authoritative, whether the recorded HEAD facet wins, or whether HEAD is OVERLAID with a sparse
  * set of operator overrides — without the host learning how the synthesis reads a branch.
  *
  * <ul>
  *   <li>{@link Verb#GROW} — the seeded facet is authoritative (the grow's Pulumi stack is the
- *       SSOT); no guard. The DEFAULT when unamended, so seed-master keeps applying its facet
+ *       SSOT); no guard. The DEFAULT when unamended, so seed-outcluster keeps applying its facet
  *       unchanged.
  *   <li>{@link Verb#INIT} — the seeded facet is authoritative, but the branch MUST be new (no
  *       recorded HEAD facet): guards against silently resetting an existing branch to the CLI args.

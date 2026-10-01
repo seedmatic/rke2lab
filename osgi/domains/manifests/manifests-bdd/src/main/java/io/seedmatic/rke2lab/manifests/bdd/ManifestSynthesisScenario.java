@@ -1647,7 +1647,7 @@ public class ManifestSynthesisScenario
     }
 
     // The RKE2 config installer, written at the branch root so the branch is a self-installing
-    // flake: the SELF/root control-plane node (grown standalone by seed-master) runs `nix run
+    // flake: the SELF/root control-plane node (grown standalone by seed-outcluster) runs `nix run
     // <this-branch>#install-rke2-config` at boot; the app globs THIS branch tree for the
     // RKE2_CONFIG-annotated ConfigMaps (RuntimeRke2ConfigManifestsUnit renders them as normal
     // Flux-applied ConfigMaps) and extracts each `.data` into /etc/rancher/rke2/config.yaml.d.
@@ -1686,7 +1686,7 @@ public class ManifestSynthesisScenario
           description = "rke2lab RKE2 config installer — extracts the RKE2_CONFIG ConfigMaps of \
         THIS node's cluster (namespace rke2lab-<cluster>, derived from the hostname) from this \
         management branch into /etc/rancher/rke2/config.yaml.d. Run at boot by the self/root \
-        control-plane node (seed-master): nix run <this-branch>#install-rke2-config.";
+        control-plane node (seed-outcluster): nix run <this-branch>#install-rke2-config.";
 
           # Pinned to the node-base's own nixpkgs rev (injected at render from the source
           # flake.lock) so the installer's yq-go is a store cache-hit on the node — no cold fetch.

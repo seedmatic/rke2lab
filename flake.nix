@@ -1,11 +1,11 @@
 {
   description = "RKE2 lab infrastructure and network blueprints";
 
-  # The seed-master build reuses the host `~/.m2` (resolved via getEnv "HOME")
+  # The seed-outcluster build reuses the host `~/.m2` (resolved via getEnv "HOME")
   # to reach private GitHub Packages deps without plumbing a token into the
   # sandbox, so its eval is necessarily impure. Declare that here — like
   # extra-substituters, nixConfig is applied before outputs are evaluated, so
-  # `nix build .#seed-master` works without a manual `--impure`. This only takes
+  # `nix build .#seed-outcluster` works without a manual `--impure`. This only takes
   # effect when rke2lab is the TOP-LEVEL flake; when consumed as an input (e.g.
   # nix-darwin-home reading `lib.networkBlueprint`), it is ignored and that pure
   # path never forces the impure getEnv. First use prompts to trust the config
@@ -200,7 +200,7 @@
       # INCREMENTAL. The maven-build-cache hash is stable across nix builds ONLY once volatile
       # absolute paths are excluded from it (see .mvn/maven-build-cache-config.xml — the compiler
       # compilerArgs exclusion). Empty ⇒ a fresh tmpfs primary each build (the pure default: the
-      # nix store already caches the jar per-src, so seed-master/CI need nothing more).
+      # nix store already caches the jar per-src, so seed-outcluster/CI need nothing more).
       buildCache = "${builtins.getEnv "MAVEN_BUILD_CACHE"}";
 
       # The io.seedmatic closure the `.mvn/extensions.xml` core extension needs at
@@ -302,7 +302,7 @@
       # module needed at mvn STARTUP (before any reactor build) — a chicken-egg — so it is built
       # WITHOUT itself (rm .mvn/extensions.xml) and installed into $out, a maven-repo store path.
       # Every downstream reactor build (`mavenHostPrelude`) then SEEDS the closure from this ONE
-      # store path — so the operator standalone (seed-master's build) and the in-cluster render
+      # store path — so the operator standalone (seed-outcluster's build) and the in-cluster render
       # replay the identical bootstrap, zero per-mode duplication.
       #
       # NO GH_TOKEN, deliberately, and this is a CACHING property rather than a tidiness one. The
@@ -391,7 +391,7 @@
       # The dataplan (ZFS dataset layout) export — the `dataset` plane. The scion writes
       # dataplan.json (already JSON), so the CLI emits it raw; no yq conversion needed. The
       # REGEN artifact for the checked-in ./dataplan.json, the storage twin of
-      # networkBlueprintJson; seed-master's DataplanLayout stays the source of truth.
+      # networkBlueprintJson; seed-outcluster's DataplanLayout stays the source of truth.
       dataplanJsonFor = pkgs:
         let planJar = planJarFor pkgs;
         in pkgs.runCommand "dataplan.json" { buildInputs = [ pkgs.jdk25 ]; } ''
@@ -420,7 +420,7 @@
       # The consumed dataplan is PURE committed data too — the ZFS dataset layout read from
       # the checked-in dataplan.json (regen: `nix build .#dataplanJson && cp result
       # dataplan.json && commit`). ndh pulls this via `lib.dataplan` and unions it into
-      # catalog.datasets; seed-master's DataplanLayout is the source of truth.
+      # catalog.datasets; seed-outcluster's DataplanLayout is the source of truth.
       dataplanData = builtins.fromJSON (builtins.readFile ./dataplan.json);
 
       # Regeneration only (NOT on the consumed data path): the jar-built YAML on the
@@ -463,9 +463,9 @@
 
         planJar = planJarFor pkgs;
 
-        # Build the seed-master bootstrap app (and the manifests jar it embeds)
+        # Build the seed-outcluster bootstrap app (and the manifests jar it embeds)
         # as a single reactor build, so the deployable artifact Pulumi runs comes
-        # from the immutable store rather than a mutable target/. seed-master
+        # from the immutable store rather than a mutable target/. seed-outcluster
         # depends on manifests, netplan, systemd-contract and sdks/incus, so the
         # whole reactor is built once from the parent pom. Mirrors netplanJar's
         # Maven-in-nix pattern (shared `mavenHostPrelude` — full rationale there);
@@ -520,7 +520,7 @@
         # mavenToolchain, the CRD staging, the `mvnHost` prelude, the spotless shfmt pin)
         # captured ONCE, parameterized by the mvn module selector and the exec jars to
         # install. Every store-built exe resolves deps + stages CRDs + gates spotless
-        # identically — so seed-master (whole reactor) and manifests-cli (the render exe)
+        # identically — so seed-outcluster (whole reactor) and manifests-cli (the render exe)
         # come from the SAME build logic, no drift.
         buildReactorExe = { pname, mvnArgs ? "", jars }: pkgs.stdenv.mkDerivation {
           name = "rke2lab-${pname}";
@@ -558,21 +558,21 @@
           '';
         };
 
-        # The seed-master bootstrap app + the manifests jar it embeds, as one whole-reactor
-        # build (seed-master pulls manifests/netplan/systemd/incus, so the reactor builds
+        # The seed-outcluster bootstrap app + the manifests jar it embeds, as one whole-reactor
+        # build (seed-outcluster pulls manifests/netplan/systemd/incus, so the reactor builds
         # once from the parent pom) — the deployable artifact Pulumi runs from the immutable
         # store. mvnArgs defaults to "" (the exact whole-reactor `clean package` it always ran).
-        seedMasterJar = buildReactorExe {
-          pname = "seed-master";
+        seedOutclusterJar = buildReactorExe {
+          pname = "seed-outcluster";
           jars = [
-            { glob = "exec/seed-master/target/seed-master-*-exec.jar"; name = "seed-master.jar"; }
+            { glob = "exec/seed-outcluster/target/seed-outcluster-*-exec.jar"; name = "seed-outcluster.jar"; }
             { glob = "exec/manifests-cli/target/manifests-cli-*-exec.jar"; name = "manifests.jar"; }
           ];
         };
 
         # The manifests-cli render exe alone — a lean `-pl :manifests-cli -am` build the
         # `render-manifests` app runs (`nix build .#manifests-cli` → run the jar), mirroring
-        # deploy/seed-master. Same shared closure, so CRD staging + spotless gate are
+        # deploy/seed-outcluster. Same shared closure, so CRD staging + spotless gate are
         # identical; the resulting fat jar is self-contained (CRDs baked in) so running it
         # needs no maven cache, bootstrap or CRD staging at runtime.
         manifestsCliJar = buildReactorExe {
@@ -649,7 +649,7 @@
 
         # The flox-controller CRD as a store path (single-sourced from the flake —
         # controller-gen output, never vendored). Staged onto the manifest-synthesis
-        # classpath (crds/ resource) by seedMasterJar for release and by
+        # classpath (crds/ resource) by seedOutclusterJar for release and by
         # `nix run .#stage-flox-controller-crd` for the dev loop.
         floxControllerCrds = (flox-controller.packages.${system} or { }).flox-controller-crds or null;
 
@@ -760,7 +760,7 @@
         toolchainPackages = mavenToolchain pkgs;
 
         # Cluster GROW: `nix run .#grow -- <stack>`. Runs `pulumi up` against
-        # the STORE-built seed-master jar instead of the mutable Maven target the
+        # the STORE-built seed-outcluster jar instead of the mutable Maven target the
         # dev loop uses. A Pulumi project is more than Pulumi.yaml — the stack
         # config (Pulumi.<stack>.yaml, committed) and stack state
         # (.pulumi-state/, the local backend) plus the flox PULUMI_* env all live
@@ -773,7 +773,7 @@
         # Deterministic, self-contained: every dependency pulumi needs to run is
         # a nix build input (runtimeInputs) — NOT inherited from the flox env
         # (`nix run` doesn't propagate the caller's PATH anyway). pulumi itself,
-        # a JRE to run the seed-master jar, and the incus client the provider
+        # a JRE to run the seed-outcluster jar, and the incus client the provider
         # shells out to. The PULUMI_* vars are set here too, mirroring the flox
         # env's [vars]: local file:// backend under the repo, empty passphrase.
         # Mint a short-lived (~1h) GitHub App INSTALLATION token from the one org-owned App's
@@ -906,12 +906,12 @@ USAGE
             # Maven-in-nix cache knob — SAME model as `.#render-manifests`: M2_REPO is the ONE knob
             # (the read-only tail with the released private deps), and the persistent maven-build-cache
             # is DERIVED beside it (its parent) unless MAVEN_BUILD_CACHE is set explicitly. Both are
-            # read IMPURELY (getEnv) by the inner `nix build .#seed-master`, so exporting them here
+            # read IMPURELY (getEnv) by the inner `nix build .#seed-outcluster`, so exporting them here
             # makes that build INCREMENTAL instead of a cold tmpfs primary every `nix run .#grow`.
             : "''${M2_REPO:?set M2_REPO to your maven repository, e.g. \$HOME/.m2/repository}"
             export MAVEN_BUILD_CACHE="''${MAVEN_BUILD_CACHE:-$(dirname "$M2_REPO")}"
 
-            # The inner `nix build .#seed-master` is a SEPARATE child nix process — flags on the
+            # The inner `nix build .#seed-outcluster` is a SEPARATE child nix process — flags on the
             # OUTER `nix run` (e.g. `nix run .#grow -L …`) go to building THIS wrapper, not it. So it
             # always gets `-L` (surface the build log), plus whatever the shared NIX_FLAGS env adds,
             # e.g. `NIX_FLAGS='--rebuild -Lvv' nix run .#grow -- dev up`. Same var across every app.
@@ -939,8 +939,8 @@ USAGE
               fi
             fi
 
-            echo "==> building seed-master from the store" >&2
-            jar="$(nix build .#seed-master "''${nixFlags[@]}" --no-link --print-out-paths)/share/java/seed-master.jar"
+            echo "==> building seed-outcluster from the store" >&2
+            jar="$(nix build .#seed-outcluster "''${nixFlags[@]}" --no-link --print-out-paths)/share/java/seed-outcluster.jar"
             [ -f "$jar" ] || { echo "error: store jar not found at $jar" >&2; exit 1; }
 
             # Swap Pulumi.yaml's binary to the store jar for the duration; always
@@ -1009,7 +1009,7 @@ USAGE
             # Build the manifests-cli exe from the store — the shared reactor derivation
             # stages the CRDs, resolves deps + gates spotless, so the fat jar is
             # self-contained (no runtime maven cache, bootstrap or CRD staging). Mirrors
-            # `grow`'s `nix build .#seed-master`. The build is IMPURE (mvnHost reads M2_REPO) —
+            # `grow`'s `nix build .#seed-outcluster`. The build is IMPURE (mvnHost reads M2_REPO) —
             # the caller sets it (in-cluster: the maven-cache PVC). GH_TOKEN is no longer read by
             # the build, only by the fetches and the push around it. The inner build is a SEPARATE child nix process, so it always
             # gets `-L` (surface the build log) plus the shared NIX_FLAGS env (e.g.
@@ -1062,7 +1062,7 @@ USAGE
             # signed ff-push manifests/<cluster>. cluster/node are trailing key=value args
             # (discoverable in `update` help); RKE2LAB_SIGNING_KEY + RKE2LAB_PUSH_TOKEN come from the
             # caller's environment (the Tekton step / the operator). A first render of a cluster is
-            # the grow's job (seed-master), not this wrapper.
+            # the grow's job (seed-outcluster), not this wrapper.
             java -jar "$jar" update cluster="$cluster" node="$node" "$@"
           '';
         };
@@ -1153,8 +1153,8 @@ USAGE
       };
       in {
         packages = {
-          inherit planJar networkBlueprintYaml networkBlueprintJson dataplanJson seedMasterJar;
-          seed-master = seedMasterJar;
+          inherit planJar networkBlueprintYaml networkBlueprintJson dataplanJson seedOutclusterJar;
+          seed-outcluster = seedOutclusterJar;
           manifests-cli = manifestsCliJar;
           # Exposed so the bootstrap closure can be BUILT and INSPECTED on its own — it is otherwise
           # only interpolated into two other build phases, which makes it impossible to measure
@@ -1198,7 +1198,7 @@ USAGE
         apps.grow = {
           type = "app";
           program = "${growApp}/bin/rke2lab-grow";
-          meta.description = "Grow the cluster: build the seed-master jar and run pulumi preview/up against it";
+          meta.description = "Grow the cluster: build the seed-outcluster jar and run pulumi preview/up against it";
         };
 
         apps.render-manifests = {
@@ -1208,7 +1208,7 @@ USAGE
         };
 
         # Standalone: `GH_TOKEN=$(nix run .#mint-gh-app-token) …` — mint a packages:read GitHub
-        # App token from .secrets. No longer needed by `nix build .#seed-master` itself (the reactor
+        # App token from .secrets. No longer needed by `nix build .#seed-outcluster` itself (the reactor
         # resolves from public sources); it is for the flake-input fetches and the push.
         apps.mint-gh-app-token = {
           type = "app";
@@ -1232,7 +1232,7 @@ USAGE
 
         # Regenerate the committed dataplan.json from the plan jar (`dataset` plane). The storage
         # twin of regen-blueprint: `nix run .#regen-dataplan` on a jar-capable host, then ndh pulls
-        # the refreshed layout via `lib.dataplan`. seed-master's DataplanLayout stays the truth.
+        # the refreshed layout via `lib.dataplan`. seed-outcluster's DataplanLayout stays the truth.
         apps.regen-dataplan = {
           type = "app";
           program = toString (pkgs.writeShellScript "regen-dataplan" ''
@@ -1245,7 +1245,7 @@ USAGE
 
         # Stage the flox-controller CRD (single-sourced from the flox-controller flake)
         # onto the manifest-synthesis classpath for the DEV loop (`./mvnw -pl :manifests`).
-        # Release builds stage it inside seedMasterJar. The staged crds/ dir is
+        # Release builds stage it inside seedOutclusterJar. The staged crds/ dir is
         # gitignored — controller-gen stays the single source, never a committed copy.
         apps.stage-flox-controller-crd = {
           type = "app";
@@ -1263,7 +1263,7 @@ USAGE
 
         # Stage the ClusterAdoption CRD (single-sourced from the seed-incluster
         # flake) onto the manifest-synthesis classpath for the DEV loop. Release builds stage
-        # it inside seedMasterJar. The staged crds/ dir is gitignored — controller-gen stays
+        # it inside seedOutclusterJar. The staged crds/ dir is gitignored — controller-gen stays
         # the single source, never a committed copy.
         apps.stage-seed-incluster-crd = {
           type = "app";
@@ -1279,7 +1279,7 @@ USAGE
         };
 
         # Stage the two baked images' RepoTags onto the manifest-synthesis classpath at
-        # /image-refs/ for the DEV loop (release builds stage them inside seedMasterJar). Both tags
+        # /image-refs/ for the DEV loop (release builds stage them inside seedOutclusterJar). Both tags
         # are derived from image content, so the synthesis READS them here — there is no literal
         # anywhere that could still be right after a rebuild.
         apps.stage-image-refs = {
@@ -1299,7 +1299,7 @@ USAGE
 
         # Stage the seed-incluster ClusterRole (single-sourced from the flake's +kubebuilder:rbac
         # markers) onto the manifest-synthesis classpath at /rbac/ for the DEV loop. Release builds
-        # stage it inside seedMasterJar. The staged rbac/ dir is gitignored — controller-gen stays
+        # stage it inside seedOutclusterJar. The staged rbac/ dir is gitignored — controller-gen stays
         # the single source, never a committed copy.
         apps.stage-seed-incluster-rbac = {
           type = "app";
@@ -1314,7 +1314,7 @@ USAGE
         };
 
         # Stage the flox-controller ClusterRole (single-sourced from the flake's +kubebuilder:rbac
-        # markers) at /rbac/flox-controller/ for the DEV loop; release builds stage it in seedMasterJar.
+        # markers) at /rbac/flox-controller/ for the DEV loop; release builds stage it in seedOutclusterJar.
         apps.stage-flox-controller-rbac = {
           type = "app";
           program = toString (pkgs.writeShellScript "stage-flox-controller-rbac" ''
@@ -1411,7 +1411,7 @@ USAGE
       lib = {
         inherit networkBlueprint;
         # The ZFS dataset layout ndh pulls into catalog.datasets (the dataplan — storage twin
-        # of networkBlueprint). Pure committed data, system-independent; seed-master's
+        # of networkBlueprint). Pure committed data, system-independent; seed-outcluster's
         # DataplanLayout is the source of truth, materialised into ./dataplan.json at regen.
         dataplan = dataplanData;
         # Raw YAML store path for inspection (the pinned, canonical build).

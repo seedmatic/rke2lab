@@ -68,7 +68,7 @@ public record ManifestSynthesisRequest(
     bootstrapIdentity = bootstrapIdentity == null ? BootstrapIdentity.unknown() : bootstrapIdentity;
     // No blank-version fallback: an absent ComponentVersions is incomplete state, not a valid empty
     // default — a blank version renders an unresolvable upstream path (e.g. release-.yaml). The
-    // builder supplies ComponentVersions.defaults(); the engine (seed-master) overlays Pulumi
+    // builder supplies ComponentVersions.defaults(); the engine (seed-outcluster) overlays Pulumi
     // config
     // on top. Required by construction, so a version-less request cannot exist.
     componentVersions =

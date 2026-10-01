@@ -35,11 +35,11 @@ import java.util.Optional;
  *   <li>{@link Amendment#IDENTITY} — {@link #identity} carries the cluster/node identity (see the
  *       {@code Identity} note below).
  *   <li>{@link Amendment#RENDER_MODE} — {@link #renderMode} is the render verb intent (seeded wins
- *       / HEAD wins / HEAD overlaid). {@link Optional#empty()} when unamended — seed-master's grow
- *       never sows it, so the scion reads {@code GROW} (its Pulumi facet stays authoritative); only
- *       the {@code manifests-cli} update/edit verbs sow it. Optional (not a compact-ctor default)
- *       so the amend door does not make it mandatory — an unsown mode is legitimately absent,
- *       exactly as for {@code SOIL}/{@code IDENTITY}.
+ *       / HEAD wins / HEAD overlaid). {@link Optional#empty()} when unamended — seed-outcluster's
+ *       grow never sows it, so the scion reads {@code GROW} (its Pulumi facet stays authoritative);
+ *       only the {@code manifests-cli} update/edit verbs sow it. Optional (not a compact-ctor
+ *       default) so the amend door does not make it mandatory — an unsown mode is legitimately
+ *       absent, exactly as for {@code SOIL}/{@code IDENTITY}.
  *   <li>{@link Amendment#IMAGE_STATE} — {@link #image} is the built node-base image's identity
  *       (alias, content fingerprint, build checksum, incus project/remote, baked RKE2 version) the
  *       incus scion COMPUTES from the freshly-built artifacts and forwards; the synthesis pins the
@@ -203,7 +203,7 @@ public record ManifestsRunbookInput(
                       new IllegalStateException(
                           "this facet declares incusTargets "
                               + incusTargets
-                              + " but no rootIncusHost — the plane seed-master seeds out-of-band"
+                              + " but no rootIncusHost — the plane seed-outcluster seeds out-of-band"
                               + " cannot be inferred, and guessing it would make an in-cluster"
                               + " re-render own a DIFFERENT set than the operator's render of the"
                               + " same branch. Re-render from the HOST once to seed it.")),

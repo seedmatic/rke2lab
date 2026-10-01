@@ -27,7 +27,7 @@ import org.slf4j.LoggerFactory;
  * <domain>/<package>/<order>-<kind>-<name>.yml}.
  *
  * <p>Replaces the old {@code bin/explode-manifests.sh} that used {@code yq} — the synth itself runs
- * in seed-master at pulumi-up time now, and we don't want a {@code yq} runtime dep.
+ * in seed-outcluster at pulumi-up time now, and we don't want a {@code yq} runtime dep.
  *
  * <p>Domain and package come from {@code io.seedmatic.rke2lab/domain} and {@code
  * io.seedmatic.rke2lab/package} annotations stamped by domain code; defaults match the old script
@@ -70,7 +70,7 @@ public final class DefaultManifestExplodeService implements ManifestExplodeServi
     }
 
     // Note: we do NOT wipe target here. The caller may have other content under
-    // it (e.g. host/ assets in seed-master's manifestsRoot) that must survive.
+    // it (e.g. host/ assets in seed-outcluster's manifestsRoot) that must survive.
     // Callers are responsible for clearing stale per-resource files before
     // invoking explode.
     Files.createDirectories(target);

@@ -18,7 +18,7 @@ cluster the management cluster greenfields. "The master it bootstrapped" below m
 node* `seed-mgmt` seeds; CAPI greenfields the workload clusters' own nodes.
 ====
 
-The seed-master must reach the live cluster's kube-apiserver to verify readiness. The result this
+The seed-outcluster must reach the live cluster's kube-apiserver to verify readiness. The result this
 document fixes as the target: **the operator's machine holds a valid admin kubeconfig for a cluster
 the instant that cluster is grown — built entirely on the host, from material the operator already
 trusts, and stable across destroy/recreate of the node.** No runtime fetch, no `kubectl` shelling,
@@ -197,7 +197,7 @@ a systemd unit did not).
 material, discriminated by `local-config`:
 
 * **The operator kubeconfig** — endpoint the node's mDNS name (`<cluster>-<node>.local`), the endpoint
-  seed-master reaches the management node it seeded over. Carried in a `local-config` Secret so the
+  seed-outcluster reaches the management node it seeded over. Carried in a `local-config` Secret so the
   exploder lands it as a hidden dotfile RKE2 never applies; it is meant for host-side consumption (the
   readiness probe's kubeconfig). Until that sink is wired (below), this dotfile is redundant with the
   host runbook's own render of the same kubeconfig to `kubeconfigRef` — the render the synthesis path
@@ -207,7 +207,7 @@ material, discriminated by `local-config`:
   (data key `value`, type `cluster.x-k8s.io/secret`, `cluster.x-k8s.io/cluster-name` label) that
   CAPI reads in-cluster to seed the OTHER nodes (further control-plane + workers). It lives in the
   cluster's own namespace (`<cluster>`, CAPI's one-namespace-per-managed-cluster convention),
-  materialized alongside the (future) `Cluster` CR. seed-master itself seeds only the *management*
+  materialized alongside the (future) `Cluster` CR. seed-outcluster itself seeds only the *management*
   node; CAPI (in the management cluster) greenfield-creates each workload cluster's own nodes
   (master + peers + workers).
 
@@ -428,7 +428,7 @@ only the TLS side.
 == Workload clusters — the same root, delivered as CAPRKE2 BYO-CA secrets (C2)
 
 The management node gets its CA as a sops bundle its own `sops-nix` lays under `server/tls/`. A
-*workload* cluster is different: `seed-master` never grows its nodes — CAPI/CAPRKE2 greenfield them
+*workload* cluster is different: `seed-outcluster` never grows its nodes — CAPI/CAPRKE2 greenfield them
 in the management cluster. So the workload's deterministic CA is delivered the way CAPRKE2 already
 delivers a bring-your-own CA: as four Kubernetes Secrets it looks up *by name* in the cluster's
 namespace, whose cert/key it then writes into each node's `server/tls/` through the node's cloud-init

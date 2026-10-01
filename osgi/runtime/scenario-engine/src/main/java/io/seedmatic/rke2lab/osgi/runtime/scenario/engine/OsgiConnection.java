@@ -128,8 +128,9 @@ public interface OsgiConnection extends AutoCloseable {
    * As {@link #embedded()}, but with the boot's two operator knobs threaded from the launcher: the
    * framework's own log verbosity ({@code level} — the {@code logging:level} knob, so a failed
    * resolve explains WHICH requirement could not be wired) and the boot log's file ({@code logFile}
-   * — so each exec keeps its own trace instead of a shared {@code seed-master.log}). Either empty ⇒
-   * the Felix default for that knob. The one entry point {@code BaseWorldExtension} boots through.
+   * — so each exec keeps its own trace instead of a shared {@code seed-outcluster.log}). Either
+   * empty ⇒ the Felix default for that knob. The one entry point {@code BaseWorldExtension} boots
+   * through.
    */
   static OsgiConnection embedded(Optional<LogLevel> level, Optional<String> logFile) {
     final FrameworkLaunch.Embedded preset =

@@ -16,7 +16,7 @@ OSGi (the `ghapp`→`auth`→`manifests` scion graph, driven through the
 `seed.broker.port` membrane); the executables are thin HOSTS that sow the SAME
 coordinates:
 
-* *Grow* (`seed-master`) — the FIRST render+push, host-side, inside the Pulumi
+* *Grow* (`seed-outcluster`) — the FIRST render+push, host-side, inside the Pulumi
   envelope. It must be host-side: at bootstrap there is no cluster, no Flux, no
   branch to pull.
 * *Operator publish* (`manifests publish` CLI) — a standalone render+push, minus

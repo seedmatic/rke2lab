@@ -76,12 +76,12 @@ regroupement (vers `foundation/`/`runtime/`/`domains/`, + `ssh-to-age-edge` à p
 sûrs : les faire en PREMIER, build vérifié vert, comme un palier stable. Les **3 renommages** viennent
 APRÈS, en pas séparés et vérifiables un à un :
    - `runtime`→`runtime-host` : artifactId + `<name>` + relativePath, et la `<dependency>` dans 3
-     consommateurs (`exec/seed-master`, `exec/manifests-cli`, `exec/netplan-cli`). Sélecteur
+     consommateurs (`exec/seed-outcluster`, `exec/manifests-cli`, `exec/netplan-cli`). Sélecteur
      `-pl :runtime`→`-pl :runtime-host`.
    - `gateway`→`world-gateway` : l'agrégateur `gateway/` est SUPPRIMÉ (singleton réduit), le bundle
      `gateway-port` remonte d'un cran en `foundation/world-gateway` (le suffixe `-port` tombe du nom de
      MODULE, mais le bundle reste `type=seam` et son PACKAGE garde `…port` → `io.seedmatic.rke2lab.world.gateway.port`).
-     ~11 fichiers consommateurs (doctor-core/-port/-test, exec/seed-master) + `GatewayCatalog`→`WorldGatewayCatalog`.
+     ~11 fichiers consommateurs (doctor-core/-port/-test, exec/seed-outcluster) + `GatewayCatalog`→`WorldGatewayCatalog`.
    - `jgiven`→`pipeline` : ce n'est PAS un simple `git mv`. `pipeline` devient un sous-agrégateur qui
      ABSORBE le wrap (il embarque/exporte les packages `com.tngtech.jgiven.*`, un seul exporteur,
      anti-split — vraie chirurgie bnd, cf. le modèle `cdk8s-carrier-flat-jar-pattern`) ;

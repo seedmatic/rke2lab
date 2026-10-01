@@ -31,11 +31,11 @@ import java.util.stream.Stream;
 /**
  * The {@code ghapp} operator CLI — the standalone driver of the one org-owned GitHub App's
  * declaration ceremony, run as a subcommand of {@link io.seedmatic.rke2lab.controlplane.Main}
- * BEFORE the Pulumi envelope. It lives OUTSIDE the grow on purpose: {@code seed-master} runs under
- * {@code pulumi up}, whose gRPC engine captures the console and makes a mid-run browser/prompt
- * unusable, so the whole human ceremony (which GitHub gates behind a browser) is driven here on the
- * real console instead. The in-container {@code GithubAppScenario} only rehydrates what this CLI
- * has sealed into {@code .secrets}.
+ * BEFORE the Pulumi envelope. It lives OUTSIDE the grow on purpose: {@code seed-outcluster} runs
+ * under {@code pulumi up}, whose gRPC engine captures the console and makes a mid-run
+ * browser/prompt unusable, so the whole human ceremony (which GitHub gates behind a browser) is
+ * driven here on the real console instead. The in-container {@code GithubAppScenario} only
+ * rehydrates what this CLI has sealed into {@code .secrets}.
  *
  * <p>Subcommands:
  *

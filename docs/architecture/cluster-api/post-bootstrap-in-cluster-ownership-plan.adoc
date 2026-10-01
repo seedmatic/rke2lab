@@ -20,7 +20,7 @@ NOTE: The "no Flux in the management cluster" stance is revised, and now LIVE (v
 the management cluster runs its OWN Flux against `manifests/bioskop-mgmt` — GitRepository Ready and all
 four layers (crds→foundation→operators→workloads) reconciling on the live cluster, exactly like a
 workload. So the "one architecture for every cluster" target is reached for the delivery loop; the
-near-term "seed-master consumes the `-mgmt` branch" framing is superseded (seed-master only nix-seeds
+near-term "seed-outcluster consumes the `-mgmt` branch" framing is superseded (seed-outcluster only nix-seeds
 the node + bootstrap set; Flux-in-mgmt owns reconciliation thereafter). CAPI/CAPN/CAPRKE2 staying
 management-only is unchanged. (Whether Flux runs inside a `gitops` vCluster vs directly in `flux-system`
 is a separate packaging question, not yet settled.)

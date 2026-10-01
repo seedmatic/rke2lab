@@ -7,7 +7,7 @@
 The cluster's ZFS *dataset layout* — the tree a node needs so that a cluster can
 be grown on it (the ephemeral per-node datasets that back containerd + the
 openebs-zfs `pvc-*` volumes, and the *persist* datasets that must outlive a
-cold-start) — is defined once in rke2lab's `seed-master` and consumed identically
+cold-start) — is defined once in rke2lab's `seed-outcluster` and consumed identically
 by *three* parties:
 
 * *nix-darwin-home* (ndh), which materialises the datasets on the host `tank` pool
@@ -79,7 +79,7 @@ cluster name.
 [mermaid]
 ....
 flowchart TB
-  SM["seed-master\ndataplan SSOT (Java)"]:::src
+  SM["seed-outcluster\ndataplan SSOT (Java)"]:::src
   DJ["nix build .#dataplanJson\n-> dataplan.json (checked-in)"]:::gen
   LIB["lib.dataplan\n(fromJSON . readFile, anti-IFD)"]:::gen
   CAT[("ndh catalog.datasets\ncontributor-merge (checkMerge)")]:::data
@@ -105,7 +105,7 @@ flowchart TB
 |===
 | Legend | Meaning
 
-| blue   | the source of truth (seed-master)
+| blue   | the source of truth (seed-outcluster)
 | green  | the generated, checked-in projection + flake export
 | yellow | ndh catalog data (merged from contributors)
 | orange | host-side materialisation (disko, containerd mount)
@@ -132,7 +132,7 @@ Mirrors the netplan split-ownership exactly — each repo owns the fact that is
   props, post-mount hooks).
 
 | The cluster dataset *layout* under `tank/rke2lab/*` (ephemeral + persist)
-| *rke2lab seed-master* — a cluster need, provided to ndh like the netplan.
+| *rke2lab seed-outcluster* — a cluster need, provided to ndh like the netplan.
 |===
 
 == The root rename: `rke2` -> `rke2lab`
@@ -140,7 +140,7 @@ Mirrors the netplan split-ownership exactly — each repo owns the fact that is
 The layout root moves from `tank/rke2/*` to `tank/rke2lab/*`. `rke2` names the
 Kubernetes distro; the datasets belong to *rke2lab* (the project that owns the
 layout), so the root must name the owner, not the technology — the same reasoning
-that makes seed-master the SSOT. This is a greenfield rename: because etcd is
+that makes seed-outcluster the SSOT. This is a greenfield rename: because etcd is
 wiped and the tree is re-grown each cold-start, and because the *persist* tier
 does not exist yet, there is nothing precious under the old `tank/rke2`. The
 cutover is a one-off `zfs destroy -r tank/rke2` at the first grow on the new root.
@@ -176,7 +176,7 @@ The twin of the netplan *segment* shape. Each entry is:
 
 The dataplan is consumed as a *checked-in* `dataplan.json`, read purely
 (`builtins.fromJSON (builtins.readFile ./dataplan.json)`) and surfaced as a flat,
-system-independent `lib.dataplan`. seed-master regenerates it via `nix build
+system-independent `lib.dataplan`. seed-outcluster regenerates it via `nix build
 .#dataplanJson`.
 
 This is the *committed-projection* option that
@@ -226,7 +226,7 @@ names what must survive, the node name names what must not.
 
 *rke2lab side (do first):*
 
-. Author the dataplan SSOT in `seed-master` (a typed layout model — NOT in the
+. Author the dataplan SSOT in `seed-outcluster` (a typed layout model — NOT in the
   netplan/network domain; a dataset is a storage concern, decompose by nature).
 . Add `nix build .#dataplanJson` -> checked-in `dataplan.json` -> flat
   `lib.dataplan` (mirror `networkBlueprintJson` / `lib.networkBlueprint`).
@@ -447,7 +447,7 @@ scheduling half only.
 
 == Open questions
 
-. *Producer emit mechanism*: how seed-master emits `dataplan.json` — a CLI verb
+. *Producer emit mechanism*: how seed-outcluster emits `dataplan.json` — a CLI verb
   (like the netplan `yamlExport`, which drives an in-container scion), or a
   simpler host-flat export since the layout is *declared*, not derived from a
   bundle-only contract type. To settle at implementation.

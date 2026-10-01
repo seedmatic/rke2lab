@@ -31,9 +31,9 @@ import org.junit.jupiter.api.Test;
  * GitHub App's {@link GithubAppCredentials} available to this run. It is a *pure rehydrate*: it
  * does NOT declare the App. Declaration (create the App from GitHub's pre-filled form, generate the
  * key, install it, resolve the installation id, write {@code .secrets}) is an OUT-OF-BAND operator
- * ceremony driven by the standalone {@code ghapp} CLI ({@code seed-master}'s subcommand) — kept out
- * of the grow precisely because {@code seed-master} runs under {@code pulumi up}, whose gRPC engine
- * captures the console and makes a mid-run browser/prompt unusable.
+ * ceremony driven by the standalone {@code ghapp} CLI ({@code seed-outcluster}'s subcommand) — kept
+ * out of the grow precisely because {@code seed-outcluster} runs under {@code pulumi up}, whose
+ * gRPC engine captures the console and makes a mid-run browser/prompt unusable.
  *
  * <p>Two branches, never a browser, never a hard fail here:
  *

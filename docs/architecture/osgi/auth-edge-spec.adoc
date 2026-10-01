@@ -19,7 +19,7 @@ or rides its verb (→ port). Reading an environment variable is not a contact �
 
 == The contact today — inlined in the host launch-secrets updater
 
-`IncusResourceBootstrap.LaunchSecretsUpdater` (seed-master) upserts two credentials into the
+`IncusResourceBootstrap.LaunchSecretsUpdater` (seed-outcluster) upserts two credentials into the
 launch-secrets YAML: a GitHub token and a FloxHub token. Each is resolved by a two-step precedence —
 first an environment variable (`GITHUB_TOKEN`/`GH_TOKEN`, `FLOXHUB_TOKEN`/`FLOX_TOKEN`/`FLOX_AUTH_TOKEN`),
 then, failing that, by *asking the provider's CLI*: `gh auth token` / `flox auth token`, run through a
@@ -53,7 +53,7 @@ crosses no frontier.
   `GithubWriterTokenMint` by delegating to the ghapp `GithubAppMinter` (the JWT-signing GitHub contact);
   it is `cultivating`-gated, so it activates only when the minter is present. `GithubReaderTokenMintEdge`
   is its least-privilege twin — same delegation, `TokenScope.READER` (`contents:read`).
-* *seed-master* (host): the updater keeps the env-var precedence and the YAML upsert;
+* *seed-outcluster* (host): the updater keeps the env-var precedence and the YAML upsert;
   `ensureLaunchSecretsToken` resolves `AuthTokenContact` from the registry
   (`singleSpiProvider(AuthTokenContact.class)` on the already-held `BootedFramework`) and passes it into
   `LaunchSecretsUpdater.ensureTokensPresent`. The host `captureCommandOutput` is gone.

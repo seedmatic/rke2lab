@@ -12,17 +12,17 @@ push `manifests/<cluster>` **in-cluster**, without a grow.
 
 Three lanes, one operation:
 
-* *Grow* (seed-master) — the FIRST render+push, host-side. It MUST be host-side: at bootstrap there
+* *Grow* (seed-outcluster) — the FIRST render+push, host-side. It MUST be host-side: at bootstrap there
   is no cluster, no Tekton, no webhook, and Flux needs the branch to pull.
 * *Downstream* (Flux webhook) — the rendered branch changes → reconcile.
 * *Upstream* (THIS doc) — the source changes → re-render → push the rendered branch → downstream fires.
 
 The render+push OPERATION is not owned by any executable — it lives in OSGi (the
-`ghapp`→`auth`→`manifests` scion graph, driven through the `seed.broker.port` membrane). seed-master
+`ghapp`→`auth`→`manifests` scion graph, driven through the `seed.broker.port` membrane). seed-outcluster
 and the `manifests publish` CLI are thin HOSTS that sow the SAME coordinates, differing only by
 envelope (Pulumi grow vs standalone CLI). The upstream lane runs `manifests publish` inside a
 Tekton PipelineRun — no standing renderer workload (staleness-free: it builds from the source it
-renders; the first render stays seed-master's, Tekton maintains).
+renders; the first render stays seed-outcluster's, Tekton maintains).
 
 *Why Pipelines-as-Code (PaC), not raw Triggers or a bespoke renderer Deployment:* PaC is Tekton's
 GitHub-App-native CI — it handles the webhook, matches PipelineRuns from the repo's `.tekton/`, and
@@ -667,7 +667,7 @@ OUTPUT branch) and Flux reconciling it — never match `on-target-branch`, so th
 The feedback loop is cut at the trigger; a render, even when it touches the Pipeline, cannot cause
 another render. What remains is the ordinary GitOps self-management loop (Flux-manages-Flux):
 
-* *The grow bootstraps it.* seed-master renders EVERYTHING host-side at bootstrap (the Pipeline, the
+* *The grow bootstraps it.* seed-outcluster renders EVERYTHING host-side at bootstrap (the Pipeline, the
   PaC config, the manifests) and pushes; Flux applies it; PaC + the in-cluster Pipeline exist. The
   first turn needs no Tekton.
 * *It converges with a one-run lag.* A change to the Pipeline (or the PaC config) is rendered →
@@ -741,7 +741,7 @@ updates the recorded `source` and lands a real commit recording how the branch m
 
 WHETHER the seeded facet or the recorded HEAD facet is authoritative is the sower's intent, carried
 as `RenderMode` (the `render-mode` amendment on `ManifestsRunbookInput`). Its default is `GROW`,
-UNAMENDED — seed-master's grow keeps applying its Pulumi facet unchanged, so the contract addition is
+UNAMENDED — seed-outcluster's grow keeps applying its Pulumi facet unchanged, so the contract addition is
 invisible to the grow; only the `manifests-cli` delivery verbs opt into following HEAD.
 
 [cols="1,3,2",options="header"]
@@ -774,7 +774,7 @@ hidden knob: the branch manifest IS the render config, so changing it is the who
 ....
 flowchart TB
   Stack["Pulumi stack — rke2lab:manifests (authored SSOT)"]
-  Grow["grow / seed-master — reads facet, FacetContributor"]
+  Grow["grow / seed-outcluster — reads facet, FacetContributor"]
   Man["root manifest.yaml in manifests/cluster — source + facet"]
   Run["in-cluster render — git show manifest.yaml at branch HEAD"]
   Stack --> Grow

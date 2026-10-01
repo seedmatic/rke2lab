@@ -819,7 +819,7 @@ public class ClusterSeedScenario
                       ServerManifestsBundle.class)
                   .map(ServerManifestsBundle::manifests),
               // The manifests branch the node fetches its rke2 config from at boot (nix run
-              // <branch>#install-rke2-config); seed-master rendered+pushed it just before this
+              // <branch>#install-rke2-config); seed-outcluster rendered+pushed it just before this
               // grow.
               Optional.of("manifests/" + config.clusterName()),
               // The node's FRESH contents:read github token, minted at the render by the synthesis

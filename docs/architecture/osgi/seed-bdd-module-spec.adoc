@@ -7,7 +7,7 @@
 *Status:* being implemented (2026-07-12). `seed-bdd` is the FOUNDATION module holding the gardening spine
 common to every seed exec — the host runbook stages spoken in the gardening register (`Cellar`
 fetch/store, the sow-and-graft caller) plus the open `Gardening` the GIVEN carries. An exec
-(`seed-master`, and the seed execs after it) adds only its OWN root composition: which scions, in what
+(`seed-outcluster`, and the seed execs after it) adds only its OWN root composition: which scions, in what
 order. It realises the host half of link:../bdd/bdd.adoc#clusterseed-scenario-map[the ClusterSeed scenario
 map] atop link:gardening-model-spec.adoc[the gardening model]. Opening the gardening is NOT a WHEN — the
 map's GIVEN is "I have access to the open gardening", so the driver opens the `Gardening` instance and
@@ -21,7 +21,7 @@ The target host runbook is uniform: every root step is EITHER pure-host gardenin
 OR a *sow-and-graft caller* (sow a domain scenario toward the gardening, graft its scion). The
 STAGES that speak these gestures are the same for every seed exec; only the COMPOSITION — the phase order,
 which scion each step sows — is exec-specific. So the stages are common (`seed-bdd`), the composition is
-the exec's (`seed-master` writes its `ClusterSeedScenario`, a later exec writes its own).
+the exec's (`seed-outcluster` writes its `ClusterSeedScenario`, a later exec writes its own).
 
 [cols="1,2",options="header"]
 |===
@@ -29,7 +29,7 @@ the exec's (`seed-master` writes its `ClusterSeedScenario`, a later exec writes 
 | *common* | the gardening stages (`Cellar` fetch/store, the sow-and-graft caller, the world
 opening + the seeding harness) — **`osgi/foundation/seed-bdd`**
 | *per-exec* | `Main` + the concrete root scenario (the phase chain: worktree survey → … → outputs) — the exec
-module (**`seed-master`**, …)
+module (**`seed-outcluster`**, …)
 |===
 
 == Placement and consumption — under osgi/, consumed FLAT by the host
@@ -154,7 +154,7 @@ classDiagram
 
 == The root scenario — a per-exec composition on the common stages
 
-`seed-master`'s `ClusterSeedScenario` is the concrete instance: pure-host `Cellar.fetch` opening (read the
+`seed-outcluster`'s `ClusterSeedScenario` is the concrete instance: pure-host `Cellar.fetch` opening (read the
 parcel's state — where we start from), nine sow-and-graft crossings (worktree · bbox · cluster-pki · ghapp ·
 replicator-secrets · ghapp-webhook · incus-provision · systemd · cluster — the dependency chain whose
 terminal fruit is *the cluster answers ready*) interleaved with the host-flat beats (the GROW, the operator

@@ -96,7 +96,7 @@ flowchart LR
   (`ctx.export`), because that is the only channel `StackReference` reads. The per-node
   `consultationReport` (shipped recadrage) is *untouched* — it stays the runbook read-side source; the
   top-level `medicalRecord` is *additive*, a different role.
-* *Mono-process, seed-master only.* No wrapper, no FIFO, no config-mode handoff. All inside the
+* *Mono-process, seed-outcluster only.* No wrapper, no FIFO, no config-mode handoff. All inside the
   existing program.
 
 *Working state vs. archive — two cycles, flush at the end (the user's refinement).* The run's
@@ -626,7 +626,7 @@ the history to start accumulating them.
 
 === The architectural choice — RESOLVED toward the external wrapper
 
-The Automation API drives Pulumi *from the outside*, whereas today *seed-master IS the Pulumi program*
+The Automation API drives Pulumi *from the outside*, whereas today *seed-outcluster IS the Pulumi program*
 (launched *by* `pulumi`). Two ways to read the longitudinal record were on the table:
 
 * *Inception (self-inspection)* — the running program inspects its *own* stack mid-run. *Rejected:* the
@@ -636,7 +636,7 @@ The Automation API drives Pulumi *from the outside*, whereas today *seed-master 
   `createOrSelectStack` local-source.
 
 So "where does the doctor read the record" is resolved: *the wrapper builds it off-lock and hands it to
-seed-master as input* (config-driven stream/file). Adjacent to
+seed-outcluster as input* (config-driven stream/file). Adjacent to
 link:pulumi-doctor-integration.adoc[pulumi-doctor-integration] (where the doctor sits relative to the
 Pulumi lifecycle) — the wrapper is now that answer too.
 
@@ -664,7 +664,7 @@ per-node directly).
 
 . *Bump the BOM to `com.pulumi:pulumi` 1.28.0* (done this session — see <<the-solution>>) and confirm
   `com.pulumi.automation.LocalWorkspace` resolves on the build classpath.
-. Prototype, read-only: a small main that `createOrSelectStack(stack, workDir=seed-master/)` then
+. Prototype, read-only: a small main that `createOrSelectStack(stack, workDir=seed-outcluster/)` then
   `exportStack().deployment()`, navigating the opaque map to print this run's per-node
   `consultationReport`s out of the dev state (after a real `up`, not a preview). *Prove* it end-to-end.
 . Prototype the *wrapper lifecycle* (<<the-solution>>): off-lock `exportStack` before/after, FIFO
@@ -678,22 +678,22 @@ per-node directly).
 
 == Key files (entry points)
 
-* `seed-master/.../pipeline/stages/SystemdAdapterStage.java` — the injected-probe seam; `dryRun`
+* `seed-outcluster/.../pipeline/stages/SystemdAdapterStage.java` — the injected-probe seam; `dryRun`
   gating (`preview && simulated.isEmpty()`); `deferredPreview`; the `sink` that flows the observed
   dossier to top-level.
-* `seed-master/.../pipeline/stages/ClusterReadinessStage.java` — the gate: `nestedSystemdAdapterProbe`
+* `seed-outcluster/.../pipeline/stages/ClusterReadinessStage.java` — the gate: `nestedSystemdAdapterProbe`
   re-emits the captured upstream dossier; `the_systemd_adapter_dependency_is_satisfied` is the gate
   step the what-if opens; preview defer path.
-* `seed-master/.../bdd/Generalist.java` — `consult(...)` + `routeBySymptom` (the hard-coded `switch` to
+* `seed-outcluster/.../bdd/Generalist.java` — `consult(...)` + `routeBySymptom` (the hard-coded `switch` to
   delete) + `synthesize`.
-* `seed-master/.../bdd/Specialist.java`, `DbusTcpSpecialist.java` — `domain()` + `diagnose(...)`; where
+* `seed-outcluster/.../bdd/Specialist.java`, `DbusTcpSpecialist.java` — `domain()` + `diagnose(...)`; where
   `treats() : Set<Symptom>` would live.
-* `seed-master/.../bdd/Prescription.java` — where the `expected-state` (the closed-loop hinge) attaches.
-* `seed-master/.../bdd/Checkpoint.java` — identity only (slug + resourceName + scenarioTitle), 2 linear
+* `seed-outcluster/.../bdd/Prescription.java` — where the `expected-state` (the closed-loop hinge) attaches.
+* `seed-outcluster/.../bdd/Checkpoint.java` — identity only (slug + resourceName + scenarioTitle), 2 linear
   nodes today; topology is NOT here (it is on the resources' `dependsOn`).
-* `seed-master/.../pipeline/OutputBuilder.java` — top-level outputs; `systemdAdapterLaunchSummary` and
+* `seed-outcluster/.../pipeline/OutputBuilder.java` — top-level outputs; `systemdAdapterLaunchSummary` and
   the readiness outputs already carry the *observed* dossier.
-* `seed-master/.../bdd/RunbookRenderer.java` — the JGiven write-then-reconsume (`runbook.json` →
+* `seed-outcluster/.../bdd/RunbookRenderer.java` — the JGiven write-then-reconsume (`runbook.json` →
   AsciiDoc); an *internal* throwaway artifact, not a stack output.
 
 [#rules-engine-correlation]

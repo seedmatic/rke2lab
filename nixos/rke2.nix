@@ -130,7 +130,7 @@
     '';
   };
 
-  # rke2lab.target — the node's substrate-ready signal the seed-master systemd adapter probes as its
+  # rke2lab.target — the node's substrate-ready signal the seed-outcluster systemd adapter probes as its
   # mandatory target. It aggregates exactly the rke2lab units that remain on this homogeneous node:
   # identity resolved (devlxd → node.env + hostname), the zfs snapshotter dataset mounted, and
   # rke2-server started. `wants` (weak) so the target still activates for the probe to read even if a

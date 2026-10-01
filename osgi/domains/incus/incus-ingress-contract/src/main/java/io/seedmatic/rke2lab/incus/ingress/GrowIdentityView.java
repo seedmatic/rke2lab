@@ -20,7 +20,7 @@ package io.seedmatic.rke2lab.incus.ingress;
  * <p>The per-cluster rke2 config (dual-stack CIDRs, apiserver tls-san incl. the VIP, node-ip, …) is
  * NOT delivered here: it is rendered onto the {@code manifests/<cluster>} branch by {@code
  * RuntimeRke2ConfigManifestsUnit} and installed at boot by {@code nix run
- * <branch>#install-rke2-config} — the same delivery for a standalone (seed-master) and an
+ * <branch>#install-rke2-config} — the same delivery for a standalone (seed-outcluster) and an
  * in-cluster (CAPRKE2) node. This view carries only the four per-node identity scalars.
  */
 public record GrowIdentityView(String nodeRef, String nodeHostname, String nodeKind, int nodeId) {}

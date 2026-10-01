@@ -22,7 +22,7 @@ package io.seedmatic.rke2lab.manifests.contract.profiles;
  *
  * <p>Add new fields here as Stage B / multi-cluster work surfaces them (cluster fqdn, region, peer
  * cluster set, etc.). The default instance backs unit tests and ephemeral synth runs that don't go
- * through seed-master.
+ * through seed-outcluster.
  */
 public record BootstrapIdentity(
     String clusterName,
@@ -37,7 +37,7 @@ public record BootstrapIdentity(
     String nodeHostname,
     String nodeFabricFqdn) {
 
-  /** Sentinel used when seed-master hasn't supplied identity (tests, ephemeral runs). */
+  /** Sentinel used when seed-outcluster hasn't supplied identity (tests, ephemeral runs). */
   public static final String UNKNOWN = "unknown";
 
   private static final BootstrapIdentity DEFAULT = builder().build();

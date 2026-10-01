@@ -324,7 +324,7 @@ if (BootstrapIdentity.UNKNOWN.equals(clusterName)) {
 
 link:../../../osgi/domains/manifests/manifests-core/src/main/java/io/seedmatic/rke2lab/manifests/units/clusterapi/IncusIdentitySecretManifestsUnit.java[IncusIdentitySecretManifestsUnit]
 renders the `<cluster>-incus-identity` Secret in `capn-system` from the
-`IncusIdentityMaterial` seed-master assembled host-side and handed across on the
+`IncusIdentityMaterial` seed-outcluster assembled host-side and handed across on the
 request — the unit never reads a host file or classpath resource itself. It guards
 on `BootstrapIdentity.UNKNOWN` **and** on the material being absent. See
 link:../../../osgi/domains/manifests/manifests-core/src/main/java/io/seedmatic/rke2lab/manifests/units/clusterapi/package-info.java[units/clusterapi/package-info.java] for the domain overview.
@@ -609,7 +609,7 @@ grep -A 3 "^remotes:" ~/.config/incus/config.yml
 
 # Verify BootstrapConfig loads the remote name
 grep "incusDefaultRemote" \
-  exec/seed-master/src/main/java/io/seedmatic/rke2lab/controlplane/config/BootstrapConfig.java
+  exec/seed-outcluster/src/main/java/io/seedmatic/rke2lab/controlplane/config/BootstrapConfig.java
 ----
 
 **In manifest units**, resolve identity off the synthesis context and use `incusRemoteName()` not `clusterName()`:

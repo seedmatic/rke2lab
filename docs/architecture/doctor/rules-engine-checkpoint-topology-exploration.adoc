@@ -418,17 +418,17 @@ counterfactual replay propagates along.
 
 == Key files (entry points, grounded this session)
 
-* `seed-master/.../pipeline/BootstrapPipeline.java` — Java call order (encoding ①); the duplicated
+* `seed-outcluster/.../pipeline/BootstrapPipeline.java` — Java call order (encoding ①); the duplicated
   `new Generalist(...)` at the systemd and resources topics (Redundancy B).
-* `seed-master/.../bdd/ClusterReadinessScenario.java` — the `@NestedSteps` replay (encoding ② of the
+* `seed-outcluster/.../bdd/ClusterReadinessScenario.java` — the `@NestedSteps` replay (encoding ② of the
   edge; the propagation that already exists).
-* `seed-master/.../resources/ResourceCreationPipeline.java` — `withReadiness()` wires the mirror
+* `seed-outcluster/.../resources/ResourceCreationPipeline.java` — `withReadiness()` wires the mirror
   `dependsOn` edge (encoding ③); the _"thin graph mirror … No verification runs here"_ comments.
-* `seed-master/.../bdd/Checkpoint.java` — SSOT for identity; the explicit _"never topology"_ stance
+* `seed-outcluster/.../bdd/Checkpoint.java` — SSOT for identity; the explicit _"never topology"_ stance
   Option ① would reverse.
-* `seed-master/.../bdd/Generalist.java` — `routeBySymptom` switch (Redundancy B); the _"no
+* `seed-outcluster/.../bdd/Generalist.java` — `routeBySymptom` switch (Redundancy B); the _"no
   inference"_ stance Option ③ would reverse.
-* `seed-master/.../bdd/Specialist.java` + `DbusTcpSpecialist.java` — already carry `domain()` + the
+* `seed-outcluster/.../bdd/Specialist.java` + `DbusTcpSpecialist.java` — already carry `domain()` + the
   symptom guard Option ② would surface as `treats(...)`.
 
 == Relationship to other subjects

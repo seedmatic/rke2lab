@@ -33,7 +33,7 @@ import software.constructs.Construct;
  * ownerReference.uid} pointing at the {@code RKE2ControlPlane}, and that UID is assigned by the API
  * server at creation — unknowable to a GitOps render. So the CR-set is materialised IN-CLUSTER by
  * the controller (it reads the UID, closes the paused init-race, marks bootstrap done), and
- * seed-master's job here narrows to delivering the DECLARATIVE intent + the sealed material.
+ * seed-outcluster's job here narrows to delivering the DECLARATIVE intent + the sealed material.
  *
  * <p>The recipe is derived, not configured: the VIP + pod/service CIDRs come from the mgmt
  * cluster's {@link ClusterNetworkBlueprint} (keyed by {@link

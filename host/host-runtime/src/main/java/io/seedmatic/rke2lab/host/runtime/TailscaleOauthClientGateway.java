@@ -21,8 +21,8 @@ import java.util.Optional;
  * ({@code tskey-client-…}), and materialises it via sops-nix. sops only lands it under {@code
  * /run/secrets} (a root-traversed tmpfs the seed process / an automounted container can't reach),
  * so ndh's {@code userSecretMirror} copies it to a persistent, user-owned file at {@code
- * ~/.local/share/ndh/tailnet.tailscale.client}. rke2lab holds NO tailscale creds; seed-master reads
- * that user path here (resolved against {@code user.home} — the operator hosts have different
+ * ~/.local/share/ndh/tailnet.tailscale.client}. rke2lab holds NO tailscale creds; seed-outcluster
+ * reads that user path here (resolved against {@code user.home} — the operator hosts have different
  * homes).
  *
  * <p>The file is a bare scalar {@code tskey-client-<CLIENT_ID>-<rest>}. This gateway derives the

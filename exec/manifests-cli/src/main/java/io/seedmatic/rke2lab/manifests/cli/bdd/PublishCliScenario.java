@@ -43,7 +43,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
  * the manifests into the SOIL and commits + pushes the rendered {@code manifests/<cluster>} branch,
  * reusing the SAME in-container delivery {@code ManifestSynthesisScenario} the grow drives. It is
  * NOT a new operation — the render+push lives in OSGi; this host just sows the same broker
- * coordinates the grow does, minus the Pulumi envelope (see the seed-master {@code
+ * coordinates the grow does, minus the Pulumi envelope (see the seed-outcluster {@code
  * ClusterSeedScenario} auth sub-graph).
  *
  * <p>Two sows in order, sharing the run's transactional {@link ScenarioCellar} and {@link Parcel}
