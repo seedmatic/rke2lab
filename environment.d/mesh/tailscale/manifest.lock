@@ -25,17 +25,17 @@
     {
       "attr_path": "bash",
       "broken": false,
-      "derivation": "/nix/store/879z19a2yzs5yw03qzs5wi4k1c1r3mnf-bash-interactive-5.3p15.drv",
+      "derivation": "/nix/store/lng6x2q3j8ilsc76xkd6w027jskqblih-bash-interactive-5.3p15.drv",
       "description": "GNU Bourne-Again Shell, the de facto standard shell on Linux (for interactive use)",
       "install_id": "bash",
       "license": "GPL-3.0-or-later",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=7a0f122f5090cf4c2ade2a13a0e229d4e19ba71f",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b4fd65b198c599cbe814fcb9f42d25d021595ec9",
       "name": "bash-interactive-5.3p15",
       "pname": "bash",
-      "rev": "7a0f122f5090cf4c2ade2a13a0e229d4e19ba71f",
-      "rev_count": 1080855,
-      "rev_date": "2026-09-28T06:58:16Z",
-      "scrape_date": "2026-09-29T05:29:59.870202Z",
+      "rev": "b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "rev_count": 1082427,
+      "rev_date": "2026-09-29T13:38:46Z",
+      "scrape_date": "2026-10-01T05:38:36.095894Z",
       "stabilities": [
         "unstable"
       ],
@@ -43,17 +43,15 @@
       "version": "5.3p15",
       "outputs_to_install": [
         "man",
-        "out",
-        "out",
         "out"
       ],
       "outputs": {
-        "debug": "/nix/store/0pm2mzvhhprhjlgk6n4w8gm73nc4v8za-bash-interactive-5.3p15-debug",
-        "dev": "/nix/store/jidi55d4j3zilx6kaa2ml4yrxb18j2vc-bash-interactive-5.3p15-dev",
-        "doc": "/nix/store/dpw8vkncvqnh0h3rihg924ycq6mk217b-bash-interactive-5.3p15-doc",
-        "info": "/nix/store/2w76drikf47dcdpwnwa31i1n190fr367-bash-interactive-5.3p15-info",
-        "man": "/nix/store/fxgmbf925hzlljn7pgpxpb4hxn5x8x61-bash-interactive-5.3p15-man",
-        "out": "/nix/store/z9nkwcylvgcrn4dvvd91jp8blv3mx38v-bash-interactive-5.3p15"
+        "debug": "/nix/store/ibzrdbzm31azyk9jv2sqk1wz90svp64c-bash-interactive-5.3p15-debug",
+        "dev": "/nix/store/2ssiw3jmlpf03cdrlf4df2qwpxska7xn-bash-interactive-5.3p15-dev",
+        "doc": "/nix/store/zmirimd60fc2bdh1nlghi044k7y1qnfn-bash-interactive-5.3p15-doc",
+        "info": "/nix/store/p15v5l88lvcgl4i71w1bz0vkw6gy6wgx-bash-interactive-5.3p15-info",
+        "man": "/nix/store/fabgday1m9ahl9pxx2dvmn22mxcc5ik2-bash-interactive-5.3p15-man",
+        "out": "/nix/store/wgxz9zr5a70v52nkqinbarf56f1c5jsi-bash-interactive-5.3p15"
       },
       "system": "aarch64-linux",
       "group": "toplevel",
@@ -62,33 +60,29 @@
     {
       "attr_path": "coreutils",
       "broken": false,
-      "derivation": "/nix/store/n3iypm4ki73vrsh89qw060w6rfjii2nk-coreutils-9.11.drv",
+      "derivation": "/nix/store/k9fn8scgs59zjpi78n24qlzyb4wlmkw5-coreutils-9.11.drv",
       "description": "GNU Core Utilities",
       "install_id": "coreutils",
       "license": "GPL-3.0-or-later",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=7a0f122f5090cf4c2ade2a13a0e229d4e19ba71f",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b4fd65b198c599cbe814fcb9f42d25d021595ec9",
       "name": "coreutils-9.11",
       "pname": "coreutils",
-      "rev": "7a0f122f5090cf4c2ade2a13a0e229d4e19ba71f",
-      "rev_count": 1080855,
-      "rev_date": "2026-09-28T06:58:16Z",
-      "scrape_date": "2026-09-29T05:30:00.469919Z",
+      "rev": "b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "rev_count": 1082427,
+      "rev_date": "2026-09-29T13:38:46Z",
+      "scrape_date": "2026-10-01T05:38:36.696308Z",
       "stabilities": [
         "unstable"
       ],
       "unfree": false,
       "version": "9.11",
       "outputs_to_install": [
-        "out",
-        "out",
-        "out",
-        "out",
         "out"
       ],
       "outputs": {
-        "debug": "/nix/store/rwzh44p1vhl01mpcz9r3kf62mr0p8x8l-coreutils-9.11-debug",
-        "info": "/nix/store/5wf4py5d0632n54hbglbjv5k92b4s5ic-coreutils-9.11-info",
-        "out": "/nix/store/p7xdvcvl4aw7m229qzlq601aq0w0nb9n-coreutils-9.11"
+        "debug": "/nix/store/zf1kvml4h5wk3n22h17fnqvyzm1cjnbc-coreutils-9.11-debug",
+        "info": "/nix/store/982a6ix3bby4pqw5gqs9lhzbkay0h19z-coreutils-9.11-info",
+        "out": "/nix/store/dq1apsyiah48nmc4n45dpwc33k887hdn-coreutils-9.11"
       },
       "system": "aarch64-linux",
       "group": "toplevel",
@@ -96,7 +90,7 @@
     },
     {
       "install_id": "tailscale",
-      "locked-url": "path:/private/var/lib/git/seedmatic/rke2lab.d/flox-catalogue?lastModified=1790714361&narHash=sha256-4usTbh05x5kusXkmR5r/eGeBg8eozh2RL%2B88luqUKr8%3D",
+      "locked-url": "path:/private/var/lib/git/seedmatic/rke2lab.d/flox-catalogue?lastModified=1790865445&narHash=sha256-IBaHLs5Opb3e6nSFDwZB6So6/ruAJYBtADMhO7oIfmM%3D",
       "flake-description": "Flox runtime env catalog: per-workload packages (kdns, tailscale) the flox-nri-plugin injects. The plugin itself now lives in github:seedmatic/flox-nri-plugin (consumed as the flox-runtime input of the rke2lab flake).",
       "locked-flake-attr-path": "packages.aarch64-linux.tailscale",
       "derivation": "/nix/store/5yx6lsn6s3d16zj5d0bdc2fcj1w4ibf9-tailscale.drv",
