@@ -2,6 +2,7 @@ package io.seedmatic.rke2lab.manifests;
 
 import io.seedmatic.rke2lab.manifests.contract.SshToAgeConverter;
 import io.seedmatic.rke2lab.manifests.contract.profiles.SopsAgeMaterial;
+import io.seedmatic.rke2lab.ndh.contract.NdhKeystoreCatalog;
 import io.seedmatic.rke2lab.ndh.contract.NdhKeystoreReader;
 import io.seedmatic.rke2lab.seed.broker.port.EnclosureGate;
 import java.util.Optional;
@@ -26,7 +27,7 @@ final class SopsAgeMaterialResolver {
   private static final Logger LOG = LoggerFactory.getLogger(SopsAgeMaterialResolver.class);
 
   /** The ndh SSH key entry Flux's sops-age identity is derived from. */
-  private static final String CLUSTER_SSH_KEY = "rke2-cluster";
+  private static final String CLUSTER_SSH_KEY = NdhKeystoreCatalog.CLUSTER_SSH_KEY.entryName();
 
   private final SshToAgeConverter converter;
   private final NdhKeystoreReader keystore;

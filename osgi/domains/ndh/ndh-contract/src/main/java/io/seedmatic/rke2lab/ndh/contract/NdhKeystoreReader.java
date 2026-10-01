@@ -3,10 +3,12 @@ package io.seedmatic.rke2lab.ndh.contract;
 /**
  * The one seam for reading the operator's ndh key inventory ({@code .ndh-ssh.d/keys.yaml}) — the
  * rke2lab ↔ nix-darwin-home boundary. A pure point of contact: it navigates the structured YAML and
- * returns fields by authority / key NAME; the names ({@code mammoth-skate-tls}, {@code
- * rke2-cluster}) are each consumer's semantic choice, but HOW the inventory is opened and read is
- * single-sourced behind this seam (realised by {@code ndh-core}). Consumed by manifests-core (the
- * rke2-cluster age key) and cluster-pki-core (the mammoth-skate-tls root + rke2-cluster).
+ * returns fields by authority / key NAME. This interface stays name-generic — it knows HOW the
+ * inventory is opened, not which entries matter (realised by {@code ndh-core}) — and the entries
+ * that DO matter are named once in {@link NdhKeystoreCatalog}, which every caller reads. They were
+ * each consumer's own literal until a third consumer wanted the TLS root: two authorities whose
+ * names read like one is a suffix of the other, spelled in six places, is how two spellings come to
+ * disagree.
  *
  * <p>{@link #present()} is the fail-soft gate (an ephemeral run has no key-store); the accessors
  * are fail-fast (a present-but-malformed store, or a missing field, raises — a defect to surface).
