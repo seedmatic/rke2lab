@@ -224,9 +224,13 @@ func TestVerifyDetectsReorderedEditorFile(t *testing.T) {
 	}
 }
 
-// Measured: an include declared by eight environments named a directory that was never
-// committed in any revision — and nothing failed, because the lock masks the composition
-// until `flox include upgrade`. Only an executed check finds it.
+// The verified behaviour, and the only claim this test rests on: a LIVE include naming a path
+// that does not exist stays masked until `flox include upgrade`, so activation keeps
+// succeeding and nothing reports it. Only an executed check finds it.
+//
+// (An earlier comment here cited "declared by eight environments, never committed". That
+// measurement was retracted — those lines are commented templates — and the atlas records the
+// retraction.)
 func TestVerifyReportsDanglingInclude(t *testing.T) {
 	m, err := Parse([]byte(validManifest))
 	if err != nil {
@@ -416,5 +420,36 @@ func TestVerifyInputsExcludesTheOnDiskEditorFile(t *testing.T) {
 	}
 	if problems := Verify(m, l, principal); !problemsContain(problems, "folder 0 is not the principal") {
 		t.Errorf("verify must still report the drift, got %v", problems)
+	}
+}
+
+// An include names an ENVIRONMENT, not merely a directory. Accepting any existing directory
+// let `verify` report healthy while the include could not resolve to anything flox can
+// compose — a gap in the assertion, which is the one thing it must not have.
+func TestVerifyReportsIncludeTargetThatIsNotAnEnvironment(t *testing.T) {
+	m, err := Parse([]byte(validManifest))
+	if err != nil {
+		t.Fatal(err)
+	}
+	l, principal := seat(t, m.All()...)
+	bare := filepath.Join(t.TempDir(), "just-a-directory")
+	if err := os.MkdirAll(bare, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeEnv(t, principal, "[include]\nenvironments = [ { dir = \""+bare+"\" } ]\n")
+	if problems := Verify(m, l, principal); !problemsContain(problems, "include target is not an environment") {
+		t.Errorf("expected a non-environment include target to be reported, got %v", problems)
+	}
+}
+
+// A declared worktree, by contrast, need not be an environment at all — most are not.
+func TestVerifyAcceptsWorktreesWithoutAnEnvironment(t *testing.T) {
+	m, err := Parse([]byte(validManifest))
+	if err != nil {
+		t.Fatal(err)
+	}
+	l, principal := seat(t, m.All()...)
+	if problems := Verify(m, l, principal); len(problems) != 0 {
+		t.Errorf("a worktree with no flox manifest is not a problem, got %v", problems)
 	}
 }

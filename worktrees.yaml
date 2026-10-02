@@ -11,15 +11,21 @@
 
 version: 1
 
-# Derived at run time from the principal worktree, never written here:
-#   storeRoot, org   -- from the principal's own location
-#   branch           -- from git, for every entry
+# Derived at run time from the ANCHOR -- any declared worktree the command is run from or
+# pointed at, not necessarily the principal:
+#   storeRoot   from the anchor's own location, never written here
+#   org         also derived from it, AND compared with the declaration below
+#   branch      from git, for every entry, never written here
 # The layout is the function that places a worktree:  {storeRoot}/{org}/{repo}.d/{slot}
+#
+# `org` is therefore the one root that is both derived and declared. The declaration makes the
+# manifest readable on its own, and `checkOrg` makes it falsifiable: without that comparison
+# the field would be decorative, since every generated path uses the derived value.
 org: seedmatic
 
-# The principal worktree: folder 0 of the editor file, and the anchor the roots derive from.
-# The generator ASSERTS that this pair matches the worktree it is run from — a manifest that
-# disagrees with the disk is a defect, not a default.
+# The principal worktree: folder 0 of the editor file, and the slot the two outputs belong to.
+# It need NOT be where the command runs -- the roots derive identically from any declared
+# worktree -- but it must exist on disk, and so must every entry below.
 principal:
   repo: rke2lab
   slot: develop

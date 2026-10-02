@@ -57,11 +57,16 @@
             inherit version;
             src = pkgs.lib.cleanSource ./.;
 
-            # ONE dependency, and that is deliberate. The sibling controller's flake documents
-            # at length how a single TEST-ONLY dependency slipped through a green local build
-            # and broke delivery on the node, because nix generates a vendor dir from this hash
-            # while `go test` locally runs in module mode. So: stdlib everywhere, yaml.v3 for
-            # the manifest, and NOTHING for the tests.
+            # TWO runtime dependencies, and no more: `yaml.v3` for the manifest and
+            # `BurntSushi/toml` for the flox environment manifests. The second was added
+            # deliberately — a regex over raw TOML read a commented template as a declaration
+            # and produced false positives that blocked generation, so parsing is the assertion
+            # rather than a detail.
+            #
+            # NOTHING for the tests, and that part is not stylistic: the sibling controller's
+            # flake documents at length how a single TEST-ONLY dependency slipped through a
+            # green local build and broke delivery on the node, because nix generates a vendor
+            # dir from this hash while `go test` locally runs in module mode.
             #
             # Regenerate after any go.mod change: set this to `pkgs.lib.fakeHash`, run
             # `nix build`, paste the hash nix reports.

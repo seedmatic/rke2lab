@@ -182,7 +182,7 @@ flowchart TB
 
 | `toolingPath`
 | a tool points at it by path
-| `memory`, `flox-catalogue`
+| `memory`, `flox-catalog`
 
 | `publicationBranch`
 | the tree **writes** it for a remote consumer

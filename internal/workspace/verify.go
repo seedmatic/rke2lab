@@ -244,7 +244,10 @@ func checkIncludes(m *Manifest, l Layout) []Problem {
 	var out []Problem
 	seen := map[string]bool{}
 	for _, c := range m.All() {
-		out = append(out, walkIncludes(l.Dir(c), c.String(), seen)...)
+		// A declared worktree need not be a flox environment at all, so the top-level scan is
+		// optional. An INCLUDE target is different: it was named as an environment, and a
+		// directory holding no manifest cannot serve as one.
+		out = append(out, walkEnv(l.Dir(c), c.String(), seen, false)...)
 	}
 	return out
 }
@@ -264,9 +267,16 @@ func envManifest(dir string) string {
 	return ""
 }
 
-func walkIncludes(dir, origin string, seen map[string]bool) []Problem {
+func walkEnv(dir, origin string, seen map[string]bool, required bool) []Problem {
 	manifest := envManifest(dir)
 	if manifest == "" {
+		if required {
+			return []Problem{{
+				Check:   "include target is not an environment",
+				Culprit: origin,
+				Detail:  fmt.Sprintf("%s holds no flox manifest", dir),
+			}}
+		}
 		return nil
 	}
 	// Key on the CANONICAL path. A lexical key is defeated by a directory symlink pointing at
@@ -309,7 +319,7 @@ func walkIncludes(dir, origin string, seen map[string]bool) []Problem {
 			})
 			continue
 		}
-		out = append(out, walkIncludes(target, fmt.Sprintf("%s -> %s", origin, raw), seen)...)
+		out = append(out, walkEnv(target, fmt.Sprintf("%s -> %s", origin, raw), seen, true)...)
 	}
 	return out
 }
