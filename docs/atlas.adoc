@@ -207,6 +207,40 @@ they carry `derivation` and `outputs` and so **realise without re-resolving**. A
 provenance URL inside such a lock blocks a *re-lock*, not a realisation. That measurement is
 also what proves activation needs no registry.
 
+== Proof that the generated registry redirects — measured 2026-10-02
+
+Not assumed. With the generated registry in `NIX_CONFIG`, nix lists the entries and resolves
+an indirect reference to a local worktree:
+
+[source]
+----
+$ nix registry list
+global flake:rke2lab        git+file:///…/rke2lab.d/develop
+global flake:seed-incluster git+file:///…/rke2lab.d/seed-incluster
+global flake:claude-hub     git+file:///…/claude-hub.d/main
+
+$ nix flake metadata flake:claude-hub --json
+resolvedUrl : git+file:///…/claude-hub.d/main
+locked.ref  : refs/heads/main
+locked.rev  : 1d2788e7ca12
+path        : /nix/store/9w7z7m2x3i…-source
+----
+
+Three things are established by that, and each was a design claim before it was a
+measurement:
+
+* a registry entry whose target is **`git+file:`** is accepted — the type does not have to be
+  `path:`, which is what lets the redirect consult git instead of copying the tree;
+* nix reads the **seated branch and its revision by itself** (`refs/heads/main`, a `rev`), so
+  the branch genuinely does not have to be declared anywhere;
+* the redirect materialises a store path, so it resolves for real rather than merely parsing.
+
+★ And one thing the same run revealed, which belongs to the next increment: nix still wanted
+to fetch that flake's own input from **github**, because its `flake.nix` names it by an
+explicit URL and a registry does not redirect those. That is the live confirmation that
+converting inputs to indirect refs is genuinely required — the registry alone does not reach
+them — and therefore that the two increments are ordered, not merely sequenced.
+
 == The delta, and who closes each part
 
 [cols="2,1,2"]
