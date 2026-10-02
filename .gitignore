@@ -2,3 +2,9 @@
 # ${FLOX_ENV_PROJECT}. The edited truth is the YAML beside it, which stays relative.
 # Committing this file would bake one machine's layout into the source of truth.
 /registry.json
+
+# Go build artifacts. The binary is produced by the flake; nothing built is committed.
+/workspace-bin
+/*.test
+/result
+/result-*
