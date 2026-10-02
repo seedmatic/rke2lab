@@ -1,0 +1,206 @@
+# The workspace manifest — one declaration, two generated outputs.
+#
+# See docs/workspace-manifest-spec.adoc. In one line: this file enumerates the worktrees a
+# seat materialises, plus the bindings a tool cannot infer. It carries NO path, NO branch and
+# NO stack membership — each of those changes without this file changing, so each is read at
+# the moment it is needed.
+#
+# Comments here are load-bearing. The defect this file exists to remove was a pin that named a
+# branch and rotted in silence; the `why` of a binding is what lets the next reader tell a
+# deliberate choice from an accident.
+
+version: 1
+
+# Derived at run time from the ANCHOR -- any declared worktree the command is run from or
+# pointed at, not necessarily the principal:
+#   storeRoot   from the anchor's own location, never written here
+#   org         also derived from it, AND compared with the declaration below
+#   branch      from git, for every entry, never written here
+# The layout is the function that places a worktree:  {storeRoot}/{org}/{repo}.d/{slot}
+#
+# `org` is therefore the one root that is both derived and declared. The declaration makes the
+# manifest readable on its own, and `checkOrg` makes it falsifiable: without that comparison
+# the field would be decorative, since every generated path uses the derived value.
+org: seedmatic
+
+# The principal worktree: folder 0 of the editor file, and the slot the two outputs belong to.
+# It need NOT be where the command runs -- the roots derive identically from any declared
+# worktree -- but it must exist on disk, and so must every entry below.
+principal:
+  repo: rke2lab
+  slot: develop
+
+# ---------------------------------------------------------------------------------------------
+# The worktrees.
+#
+# `genre` records WHY an entry is in the workspace. Four genres, three inbound (the tree
+# consumes them) and one outbound (the tree writes it). Direction decides editor membership:
+# an inbound entry appears in the window, an outbound one does not.
+#
+# A `slot` is the name of a BASE BRANCH that has a worktree. The branch actually seated there
+# is the tip of the work rooted on that base — equal to the base when nothing is in flight —
+# and it is read from git, never declared.
+# ---------------------------------------------------------------------------------------------
+worktrees:
+  # -- same repository as the principal -------------------------------------------------------
+
+  - repo: rke2lab
+    slot: memory
+    genre: toolingPath
+    why: >-
+      Claude's auto-memory. Referenced by an ABSOLUTE path in .claude/settings.local.json,
+      which is itself an artifact of materialising this workspace. A grep finds it poorly,
+      hence the declaration.
+
+  - repo: rke2lab
+    slot: workspace
+    genre: toolingPath
+    why: >-
+      The home of this manifest. It is the one slot that nothing in the tree referenced before
+      the generator existed, so the generator is what brings it into the workspace.
+
+  - repo: rke2lab
+    slot: seed-incluster
+    genre: flakeInput
+    why: >-
+      Consumed as the `seed-incluster` input. The same repository on another base, which is
+      why the unit of this manifest is (repo, slot) and not the repository.
+
+  - repo: rke2lab
+    slot: flox-catalog
+    genre: toolingPath
+    why: >-
+      Reconciled by nix/relock.sh, which walks this branch's environments. Renamed from `flox-catalogue` on 2026-10-02. Also the second
+      home of the flox environments, delivered in-cluster by FloxCatalog rather than by a
+      subtree -- see the atlas.
+
+  # -- other repositories ---------------------------------------------------------------------
+  #
+  # Declaration order is the order of the generated folder list, so it is kept equal to the
+  # order the editor file already had. That is not cosmetic: it makes the generated file
+  # byte-identical to the live one, which is the strongest non-regression evidence available
+  # for this increment.
+
+  - repo: flox-nri-plugin
+    slot: develop
+    genre: flakeInput
+    why: >-
+      Consumed under the local id `flox-runtime` -- one of the three cases where the input id
+      is not the repository name.
+
+  - repo: flox-controller
+    slot: develop
+    genre: flakeInput
+    why: Consumed under the matching id.
+
+  - repo: ndh
+    slot: develop
+    genre: flakeInput
+    why: >-
+      A mutual edge: ndh also inputs rke2lab, and the back-reference is bound to the ROOT by a
+      reciprocal empty follows. That binding is the consumer's, so the registry never resolves
+      it and cannot disturb it.
+
+  - repo: nix-flake-commons
+    slot: develop
+    genre: flakeInput
+    why: >-
+      The sink: an input of all six first-party flakes, and itself depending on no seedmatic
+      repository. Consumed under the LOCAL id `flake-commons`, which differs from the
+      repository name -- a local id and a registry id are independent.
+
+  - repo: nnh
+    slot: main
+    genre: flakeInput
+    why: >-
+      NOT an input of the principal. It reaches this workspace at DEPTH 2, through ndh. It is
+      here because the closure is transitive, not by favour -- the detail an earlier reading of
+      this workspace got wrong.
+
+  - repo: claude-hub
+    slot: main
+    genre: subtreeUpstream
+    why: >-
+      Vendored into the tree at .claude/hub AND present as its own worktree. Not redundant: the
+      vendored copy serves consumption, the worktree serves authoring. It is the only subtree in
+      this perimeter that stayed current -- the two without an upstream worktree froze in the
+      same week and were forgotten.
+
+  - repo: fleet
+    slot: main
+    genre: subtreeUpstream
+    why: >-
+      Authoring upstream of the shared flox environments. The principal now VENDORS them at
+      .flox-envs.d and includes them from inside its own tree, so this entry is here for the
+      same reason claude-hub is: the vendored copy serves consumption, this worktree serves
+      authoring. `fleet` has no flake.nix, so it has no registry binding.
+      ⚠️ Two states to know, both measured on 2026-10-02 and both recorded in the atlas: the
+      neighbour ndh has NOT been migrated and still includes four absolute paths that do not
+      exist, and the two parent-directory symlinks that the old reach used are now orphaned
+      leftovers.
+
+# No `publicationBranch` entry yet, and that absence is deliberate.
+#
+# The per-cluster render worktrees still live in a gitignored scratch directory of the
+# multi-module root rather than in the layout. A manifest states what IS: declaring the target
+# slot here would make `verify` fail on a gap that belongs to another increment. The entry
+# appears when the relocation lands -- the atlas carries the delta meanwhile.
+
+# ---------------------------------------------------------------------------------------------
+# The ref bindings: which local slot serves an indirect flake reference.
+#
+# This is the one thing nothing in the tree can answer, and it is exactly a registry entry. A
+# consumer writes `flake:<id>`; the generated registry resolves that id to a local worktree.
+#
+# ★ The target is `git+file:`, never `path:`. Measured: `path:` does not consult git and copies
+# the tree as it is -- 2 700 MB for the principal against 25 MB, including a directory that
+# changes on every render, so a fresh hash every time. `git+file:` consults git, reads the
+# seated branch by itself, and records a verifiable rev. The absolute path it carries is
+# harmless HERE, because the registry is generated and never committed.
+#
+# ⚠️ And the branch is ERASED by this redirection: `flake:rke2lab` yields whatever the develop
+# slot currently carries, not the branch a remote ref would have named. That is the deliberate
+# trade -- the dev loop wants immediacy -- and it means a local build is NEVER evidence of
+# reproducibility.
+# ---------------------------------------------------------------------------------------------
+registry:
+  - id: rke2lab
+    repo: rke2lab
+    slot: develop
+    why: >-
+      Serves every reference to this repository, including the ones that name `main` or a branch
+      whose work has already merged. Those refs stop rotting because they stop naming a branch.
+
+  - id: seed-incluster
+    repo: rke2lab
+    slot: seed-incluster
+    why: The second live id for this repository, and the reason (repo, slot) is the unit.
+
+  - id: ndh
+    repo: ndh
+    slot: develop
+
+  - id: nnh
+    repo: nnh
+    slot: main
+
+  - id: nix-flake-commons
+    repo: nix-flake-commons
+    slot: develop
+    why: >-
+      The consumer keeps its local id `flake-commons` and points it here:
+      inputs.flake-commons.url = "flake:nix-flake-commons". No input has to be renamed.
+
+  - id: flox-nri-plugin
+    repo: flox-nri-plugin
+    slot: develop
+    why: Same shape -- the consumer's local id stays `flox-runtime`.
+
+  - id: flox-controller
+    repo: flox-controller
+    slot: develop
+
+  - id: claude-hub
+    repo: claude-hub
+    slot: main
+    why: An input of ndh, not of the principal. Bound here so the whole closure resolves locally.

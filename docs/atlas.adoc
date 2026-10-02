@@ -1,0 +1,365 @@
+= Workspace atlas — measured state, target, and the delta
+:toc: left
+:toclevels: 3
+
+== How to read this
+
+This atlas records the **delta between the code as measured and the vision as specified**. It
+is deliberately dated: every figure and every number was read from the tree or from git on
+**2026-10-02**, with the command that established it. The specification states what *should*
+hold — link:workspace-manifest-spec.adoc[the workspace manifest spec]; this document states
+what *does*, so the distance between the two is visible rather than assumed.
+
+When a line here stops matching reality, the atlas is the file to correct — not the spec.
+
+== Figure 1 — before: two artifacts, maintained by hand
+
+[mermaid,atlas-before,svg]
+----
+flowchart TB
+    OP["a human, twice"]
+    CWS["editor file<br/>13 entries for 12 folders<br/>1 duplicate, 3 wrong labels"]
+    PINS["flake and flox refs<br/>18 to a default branch<br/>9 to a merged branch"]
+    SYM["symlink in the PARENT dir<br/>reaches the shared envs"]
+    ABS["4 absolute paths<br/>in a neighbour repo<br/>all dead"]
+
+    OP --> CWS
+    OP --> PINS
+    OP --> SYM
+    OP --> ABS
+----
+
+Nothing connected those four. Each was edited on its own, and none of them was checked.
+
+=== What that cost, measured
+
+[cols="2,3"]
+|===
+| Fact | Measurement
+
+| the dev toolchain was built from a stale line
+| 4 refs pinned to a revision **612 commits behind**, dated August 27
+
+| three refs named a branch whose work had landed
+| `feature/viewpoint-separation` is an **ancestor of every live branch**, last commit
+  2026-10-02
+
+| the editor file had drifted
+| **13 entries for 12 distinct folders**; 3 of 13 labels used `.git` or no suffix where the
+  convention is `.d`.
+  ✅ **Repaired by hand on 2026-10-02**, after this measurement: the duplicate is gone and all
+  12 labels now use `.d`. ★ Keep the measurement — it is *why* this file must become generated.
+  The duplicate arose from two correct edits meeting: one hand inserted the entry after
+  `memory`, another after `flox-catalogue`. Neither was wrong alone. A generated artifact makes
+  that collision **inexpressible**, which no amount of care achieves on a hand-held file.
+
+| one organisation rename was missed
+| 1 ref still names the former organisation, in a documentation file
+
+| a hand-maintained editor file drifts again
+| **within hours** of being repaired: a branch was renamed `flox-catalogue` ⟶ `flox-catalog`,
+  and the live file still named the old slot — pointing at a directory that no longer exists.
+  The verifier reported it; nothing else did
+
+| a neighbour's environment included four dead paths
+| and it does **not** fail — `flox activate` returns success, because the lock masks the
+  composition until `flox include upgrade`
+
+| the published envs branch had frozen
+| last touched **2025-12-14**, **20 real commits** behind, **9 whole environments missing**
+|===
+
+★ The last two lines are the heart of it. The defect is not that things break — it is that
+they **do not**. A lock freezes a composition, so a declaration pointing at nothing keeps
+working until somebody asks it to re-resolve.
+
+== Figure 2 — after: one declaration, two outputs, one verifier
+
+[mermaid,atlas-after,svg]
+----
+flowchart TB
+    MAN["manifest<br/>enumerated, relative, commented"]
+    MAT["materialisation step"]
+    REG["registry.json<br/>absolute, never committed"]
+    CWS["editor file<br/>same set, folder 0 asserted"]
+    HOOK["activation hook<br/>verifies, fails hard"]
+
+    MAN --> MAT
+    MAT --> REG
+    MAT --> CWS
+    MAN --> HOOK
+    HOOK -->|names the culprit| FAIL["refused activation"]
+----
+
+== Figure 3 — the shared environments: delivery before and after
+
+[mermaid,atlas-envs,svg]
+----
+flowchart LR
+    subgraph BEFORE["before — reached by location"]
+        B1["envs live in a subdirectory<br/>of another repo's main branch"]
+        B2["seat A: symlink in the PARENT dir"]
+        B3["seat B: 4 absolute paths, dead"]
+        B4["a published branch nobody imports<br/>frozen, 9 envs missing"]
+        B1 --> B2
+        B1 --> B3
+        B1 -.->|split never replayed| B4
+    end
+
+    subgraph AFTER["after — vendored, authored upstream"]
+        A1["envs branch at its own root<br/>with its own worktree"]
+        A2["vendored as a subtree in each consumer"]
+        A3["include becomes a path INSIDE the tree"]
+        A1 -->|sync| A2
+        A2 --> A3
+    end
+----
+
+The target removes the dependency on a worktree's **parent directory**, which was the
+constraint dictating where a worktree may live. It follows the one subtree in this perimeter
+that stayed current: vendored for consumption, authored in its own worktree.
+
+⚠️ **Not safe to execute in the order it reads.** The published branch is missing nine
+environments, three of which the seat actually includes. It must be re-split from the live
+subdirectory *before* any consumer imports it, or the import breaks the seat on its first
+activation.
+
+=== ★ Partially landed on 2026-10-02 — and the rot survived it
+
+Measured while this increment was being written:
+
+[cols="1,2"]
+|===
+| the principal
+| **migrated**. The environments are vendored in its own tree at `.flox-envs.d` — 81 tracked
+  files — and the includes read `./.flox-envs.d/{env}`. The dependency on the parent directory
+  is gone.
+
+| the neighbour
+| **not migrated**. It still includes four absolute paths that do not exist, and still returns
+  success, because the lock masks the composition.
+
+| the two parent-directory symlinks
+| **still present**, now orphaned leftovers of the old reach.
+
+| the render worktrees
+| **still** in the gitignored scratch directory — four of them.
+|===
+
+=== ❌ A claim this atlas carried, and had to retract
+
+An earlier revision stated that `../common` was "declared by eight environments and never
+committed in any revision", and that claim was put forward as the headline justification for
+the verifier. **It was false**, and the way it was reached is worth recording because it is the
+same defect twice over:
+
+* the line in those environments is `#  { dir = "../common" }` — a **commented template**;
+  and in one more, `common` is a `[profile]` key that merely shares the name;
+* it was established by grepping for the text without checking whether the line was active,
+  and then relayed between two sessions as a fact;
+* the first verifier repeated the mistake in code — a regex over the raw manifest text cannot
+  tell a declaration from a comment — and produced three confident false positives, which
+  **blocked materialisation for a reason that did not exist**.
+
+The remedy was to parse the TOML and walk only the include array, plus the test that was
+missing: a commented include must produce no problem. ★ The lesson is the one this document
+keeps restating, now with the atlas itself as the example: **a measurement that was never
+taken is indistinguishable, in prose, from one that was.** Marking which is which is the whole
+discipline.
+
+What survives as justification, re-verified line by line: the neighbour's four includes are
+**active**, uncommented, and their paths do not exist — and activation still succeeds, because
+the lock masks the composition. That is a real invisible defect, and vendoring did not touch
+it.
+
+== Figure 4 — the outbound branch is a bus
+
+[mermaid,atlas-bus,svg]
+----
+flowchart LR
+    P1["producer 1 — out-cluster renderer"]
+    P2["producer 2 — in-cluster reflector"]
+    BR["branch manifests/{cluster}<br/>git-only, never in etcd"]
+    C1["consumer — Flux in-cluster"]
+    WC["local worktree<br/>one producer's working copy"]
+
+    P1 --> WC
+    WC --> BR
+    P2 --> BR
+    BR --> C1
+----
+
+Measured: two producers write that branch — the renderer commits and pushes it, and the
+in-cluster reflector marshals onto it — for one remote consumer. The local worktree is
+therefore **one producer's working copy**, and its location is part of no contract.
+
+Today those worktrees are nested in a gitignored scratch directory of the multi-module root.
+The target places them in the layout like every other worktree. The argument is **uniformity
+and lifecycle**, not cleanliness: a worktree belongs at `{repo}.d/{slot}`, and the code
+already carries a comment about a stale nested worktree holding a branch after a remote
+rename.
+
+== Figure 5 — the same pattern already exists in the cluster
+
+[mermaid,atlas-symmetry,svg]
+----
+flowchart LR
+    subgraph LOCAL["local — what the manifest builds"]
+        L1["flake:{id}"]
+        L2["registry.json"]
+        L3["a local worktree"]
+        L1 --> L2 --> L3
+    end
+
+    subgraph CLUSTER["in-cluster — what already runs"]
+        C1["floxcatalog:{name}#{output}"]
+        C2["controller rewrites it"]
+        C3["a concrete nix ref"]
+        C1 --> C2 --> C3
+    end
+----
+
+An environment in the cluster references a catalogue **by name**, and a controller rewrites
+that name into a concrete ref. That is the same indirection the registry provides locally.
+The workspace is therefore not inventing a mechanism — it is giving the seat the one the
+cluster already has.
+
+★ A consequence worth keeping: the cluster's locks are committed **deliberately**, because
+they carry `derivation` and `outputs` and so **realise without re-resolving**. A stale
+provenance URL inside such a lock blocks a *re-lock*, not a realisation. That measurement is
+also what proves activation needs no registry.
+
+== Proof that the generated registry redirects — measured 2026-10-02
+
+Not assumed. With the generated registry in `NIX_CONFIG`, nix lists the entries and resolves
+an indirect reference to a local worktree:
+
+[source]
+----
+$ nix registry list
+global flake:rke2lab        git+file:///…/rke2lab.d/develop
+global flake:seed-incluster git+file:///…/rke2lab.d/seed-incluster
+global flake:claude-hub     git+file:///…/claude-hub.d/main
+
+$ nix flake metadata flake:claude-hub --json
+resolvedUrl : git+file:///…/claude-hub.d/main
+locked.ref  : refs/heads/main
+locked.rev  : 1d2788e7ca12
+path        : /nix/store/9w7z7m2x3i…-source
+----
+
+Three things are established by that, and each was a design claim before it was a
+measurement:
+
+* a registry entry whose target is **`git+file:`** is accepted — the type does not have to be
+  `path:`, which is what lets the redirect consult git instead of copying the tree;
+* nix reads the **seated branch and its revision by itself** (`refs/heads/main`, a `rev`), so
+  the branch genuinely does not have to be declared anywhere;
+* the redirect materialises a store path, so it resolves for real rather than merely parsing.
+
+★ And one thing the same run revealed, which belongs to the next increment: nix still wanted
+to fetch that flake's own input from **github**, because its `flake.nix` names it by an
+explicit URL and a registry does not redirect those. That is the live confirmation that
+converting inputs to indirect refs is genuinely required — the registry alone does not reach
+them — and therefore that the two increments are ordered, not merely sequenced.
+
+== The delta, and who closes each part
+
+[cols="2,1,2"]
+|===
+| Gap | Lives in | Closed by
+
+| no single declaration of the worktrees
+| this branch
+| **this increment** — the manifest
+
+| the two artifacts are hand-maintained and drift
+| this branch
+| **this increment** — the generator
+
+| nothing checks that an entry exists or an include resolves
+| this branch
+| **this increment** — the assertions
+
+| refs name branches instead of local worktrees
+| the code branches
+| the stack — convert inputs to indirect refs, self-refs to `git+file:`
+
+| three refs name a branch that has merged
+| the code branches
+| the stack
+
+| one ref names the former organisation
+| the code branches
+| the stack
+
+| the shared envs are reached by location
+| another repository plus two consumers
+| the stack — re-split first, then vendor
+
+| the render worktrees sit outside the layout
+| the code branches
+| the stack
+
+| the envs live in two homes with two mechanisms
+| open question
+| not scheduled — a structural decision, not a naming one
+|===
+
+=== Deliberately deferred
+
+[cols="1,3"]
+|===
+| deriving the closure instead of enumerating it
+| The list of worktrees *could* be computed from the principal's references — flake inputs,
+  subtree prefixes, tool paths — and the depth-2 case (`nnh` through `ndh`) shows the closure
+  is transitive. The decision is to **enumerate, statically, for now**. The door stays open;
+  nothing is built against it.
+
+| the name of the envs branch
+| Naming it after the tool would close that namespace for every future branch, because git
+  refuses a ref that is both a file and a directory.
+|===
+
+== Deviations from the handoff that produced this work
+
+Recorded because the handoff is scratch and this file is not:
+
+[cols="1,2,2"]
+|===
+| | The handoff states | Measurement shows
+
+| 1
+| one repository is "an input of nobody, an editor folder only"
+| it is an input of a neighbour, and reaches the window **transitively**, at depth 2
+
+| 2
+| "the DAG", "the DAG closure"
+| the **declared** graph has mutual edges — two repositories each naming the other. The
+  **evaluated** graph terminates because a back-reference is bound to the **root** by a
+  reciprocal empty follows, which is a fixpoint and **not** a removed edge. That is the graph
+  the registry populates, and it is why the registry cannot disturb a mutual edge. See the
+  specification, *Why the registry does not disturb a mutual edge*
+
+| 3
+| the editor file has 12 folders
+| it had **13 entries**, one folder duplicated — the handoff's count was of *folders*, not of
+  *entries*. ✅ Repaired on 2026-10-02, so the file now holds 12 entries for 12 folders with
+  uniform labels. The non-regression assertion is therefore the simple one again — **same set
+  of slots, same folder 0** — and no intended diff has to be carved out for it
+
+| 4
+| the sink repository is an input of 5 of 6
+| of **6**
+
+| 5
+| the generator runs in the activation hook
+| it **cannot** produce the registry there — the environment builds before the hook runs. The
+  materialisation step produces; the hook verifies
+|===
+
+== Related Documentation
+
+* link:workspace-manifest-spec.adoc[Workspace manifest spec] — what should hold, and why
+* link:../README.md[Branch README] — why this branch exists, and why neither output can be the
+  source

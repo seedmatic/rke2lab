@@ -1,0 +1,467 @@
+= The workspace manifest — specification
+:toc: left
+:toclevels: 3
+
+== Overview
+
+A **workspace** is the set of git worktrees a seat needs in order to work: the repository
+you are editing plus every repository it depends on, materialised side by side on one disk.
+Until now that set existed only as two hand-maintained artifacts — an editor file and a set
+of flake pins — which could and did drift apart.
+
+This document specifies the **manifest**: one declaration, carried on the orphan `workspace`
+branch, from which both artifacts are generated.
+
+=== The problem it solves
+
+Measured on 2026-10-02:
+
+* the dev toolchain (`jdk25`, `maven`, `shfmt`, `shellcheck`) was pinned to a repository
+  revision from **August 27 — 612 commits behind**. Nothing failed; the dev loop simply used
+  binaries built from a stale line;
+* three further refs named `feature/viewpoint-separation`, a branch whose work had already
+  **merged into every live branch**;
+* the editor file listed **13 folder entries for 12 distinct folders** — one was duplicated —
+  and three entries spelled their label with the wrong suffix convention;
+* a neighbouring repository's environment included four paths that **no longer exist**, and
+  did not fail: its lock masked them entirely.
+
+Every one of those is the same defect: **a declaration that names something which has moved,
+merged or vanished, and nothing says so.** A pin that names a branch rots silently, and there
+is no command-line override for a flox flake ref — the manifest is the only lever.
+
+=== What the manifest is, and is not
+
+[cols="1,3"]
+|===
+| It **is** | one enumerated list of the worktrees a seat materialises, plus the bindings a
+  tool cannot infer, plus a comment per entry explaining why that worktree is there.
+
+| It is **not** | a lock, a path list, a branch list, or a description of the pull-request
+  topology. Each of those changes without the manifest changing, so each of them is read at
+  the moment it is needed.
+|===
+
+== The model
+
+[mermaid,ws-spec-context,svg]
+----
+flowchart LR
+    MAN["Manifest<br/>enumerated, relative, commented<br/>on the workspace branch"]
+    MATERIALISE["Materialisation step<br/>produces"]
+    VERIFY["Activation hook<br/>verifies only"]
+    REG["registry.json<br/>absolute, never committed"]
+    CWS["{seat}.code-workspace<br/>at its existing location"]
+
+    MAN --> MATERIALISE
+    MATERIALISE --> REG
+    MATERIALISE --> CWS
+    MAN --> VERIFY
+----
+
+=== EditorWorkspace
+
+An **EditorWorkspace** is a **principal worktree** plus the worktrees of its DAG. It is the
+*concept*; the `.code-workspace` file is its *rendering*, and one of the two generated
+outputs.
+
+One manifest describes one workspace, which is materialised **many times** — once per seat,
+once per devpod. Nothing absolute is therefore ever committed.
+
+=== Slot and Worktree
+
+[cols="1,3"]
+|===
+| **Slot**
+| A coordinate: the name of a **base branch that has a worktree**. Stable by construction,
+  because a base is long-lived.
+
+| **Worktree**
+| What is *seated* in the slot: the **tip** of the work rooted on that base — equal to the
+  base itself when nothing is in flight.
+
+| **Identity**
+| `(repo, slot)`. Neither half suffices: one repository occupies several slots, and the
+  branch a slot carries moves.
+|===
+
+The decoupling is deliberate and measured: the slot `develop` of this repository carries
+`feature/claude-session-guards`, and the slot `workspace` carries `feature/ssot-manifest`.
+A slot is a **stack seat** — the branch it holds advances with a stack of pull requests.
+
+=== The layout is a function
+
+[source]
+----
+{storeRoot}/{org}/{repo}.d/{slot}
+
+storeRoot + org   derived from the principal worktree
+repo, slot        declared
+branch            NEVER declared — read from git
+----
+
+A worktree's location is therefore computed, not stored. Two consequences:
+
+* adding a repository means adding `repo` + `slot`, never a path;
+* the same manifest resolves on either seat and inside a devpod, because the roots are
+  derived from wherever the principal happens to live.
+
+== What is declared, and what is not
+
+[quote]
+____
+**Declare only what cannot be discovered.**
+____
+
+The principle is the repository's own, stated in `flake.nix` about lock propagation: a lock
+*"says who I consume, never who consumes me"*, so the consumer list is **declared rather than
+discovered**; and a repository's own orphan branches are *"discovered via `git worktree list`,
+never hard-coded paths"*.
+
+Applied here, and at this stage the list of worktrees does **not** discover itself — it is
+enumerated:
+
+.Declared
+. **the worktrees**: `repo`, `slot`, relative position;
+. **the ref bindings**: which local slot serves `github:{org}/{repo}/{branch}`. Nothing in the
+  tree answers this, and it is exactly a registry entry;
+. **the genre** of each entry, as a comment: why this worktree is in the workspace.
+
+.Not declared
+* **paths** — the layout derives them;
+* **branches** — git holds them, and a declared branch would pin a moving target;
+* **stack membership** — a remote fact (see below);
+* **`editorFolder` / `role`** — a consequence of the entry's genre, not a field;
+* **the vendored-envs target** — vendored as a subtree at `.flox-envs.d`, so it is a prefix in the tree,
+  discoverable exactly like `.claude/hub`.
+
+=== Why stack membership is never declared
+
+A branch becomes a stack node because a pull request **elsewhere** targets it — nothing moves
+on disk. Measured: `develop` is simultaneously the head of one pull request and the base of
+another. `gh stack view` reads that topology; the manifest never states it.
+
+=== Reference genres
+
+Four genres. Their **direction** is load-bearing — inbound or outbound decides editor
+membership, through nothing else — while the genre itself carries the reason an entry is in
+the workspace. What a genre no longer does is DISCOVER an entry: the list is enumerated, so a
+genre explains rather than computes, apart from that one direction bit.
+
+[mermaid,ws-spec-genres,svg]
+----
+flowchart TB
+    P["PRINCIPAL"]
+
+    subgraph IN["INBOUND — in the window"]
+        G1["flakeInput"]
+        G2["subtreeUpstream"]
+        G3["toolingPath"]
+    end
+
+    subgraph OUT["OUTBOUND — not in the window"]
+        G4["publicationBranch"]
+    end
+
+    P --> IN
+    P ==> OUT
+----
+
+[cols="1,2,2"]
+|===
+| Genre | Meaning | Examples
+
+| `flakeInput`
+| the principal's flake consumes it
+| `nix-flake-commons`, `flox-nri-plugin`, `flox-controller`, `ndh`, `seed-incluster`; `nnh`
+  arrives through `ndh`
+
+| `subtreeUpstream`
+| vendored into the tree, authored in its own worktree
+| `claude-hub` at `.claude/hub`; the flox envs at `.flox-envs.d`
+
+| `toolingPath`
+| a tool points at it by path
+| `memory`, `flox-catalog`
+
+| `publicationBranch`
+| the tree **writes** it for a remote consumer
+| `manifests/{cluster}`
+|===
+
+==== An upstream keeps its own worktree
+
+A vendored subtree and an upstream worktree are not redundant: **the vendored copy serves
+consumption, the worktree serves authoring**. `claude-hub` has both, and is the only subtree
+in this perimeter that stayed current; the two that had no upstream worktree froze in the
+same week and were forgotten.
+
+==== The outbound genre is a bus, not a slot
+
+[mermaid,ws-spec-bus,svg]
+----
+flowchart LR
+    P1["producer 1 — out-cluster renderer"]
+    P2["producer 2 — in-cluster reflector"]
+    BR["branch manifests/{cluster}<br/>git-only, never in etcd"]
+    C1["consumer — Flux in-cluster"]
+
+    P1 --> BR
+    P2 --> BR
+    BR --> C1
+----
+
+Two writers, one remote reader, and no "tip of work rooted on a base": the **branch is the
+artifact**. A local worktree on it is merely one producer's working copy, so its location is
+part of no contract.
+
+This yields an asymmetry worth stating: for an **inbound** slot the branch is *discovered* in
+git; for this **outbound** branch the name is *derived from the cluster* and is a **contract**
+with the consumer.
+
+== The reference invariant
+
+[quote]
+____
+**A reference to oneself is `git+file:` to one's own worktree.**
+
+**A reference to another repository is an indirect ref, resolved by the registry.**
+____
+
+One form per genre, no exception, and **no condition on the state of the tree**.
+
+=== Why `git+file:` and not a relative `path:`
+
+Both forms are accepted by `install.{pkg}.flake`, and both resolve to an **absolute** path at
+lock time — so portability does not separate them. These measurements do:
+
+[cols="1,2,2"]
+|===
+| | `git+file:` to the worktree | relative `path:`
+
+| copied into the store
+| **25 MB** — it consults git, so only tracked files; `.local.d`, `target`, `.flox/run` and
+  `.claude/projects` are all absent
+| **2 700 MB** — it ignores git and copies the tree as it is, including a 652 MB directory
+  that changes on every render, so a fresh hash every time
+
+| the branch
+| read **by itself**, as `?ref=refs/heads/{branch}&rev={sha}`
+| not expressed
+
+| work in progress
+| **seen** for tracked files, even uncommitted; a **new** file must be `git add`-ed first
+| seen
+
+| what the lock records
+| a **`rev`** — a verifiable git coordinate
+| `lastModified` + `narHash`, which do not say where the tree came from
+|===
+
+❌ **Do not make the choice conditional on tree size or cleanliness.** Cleanliness is a
+*state*, not a guaranteed property: one build directory appears and a `path:` ref would
+silently carry it, which is the very class of defect this manifest exists to remove. The
+repository's uniformity rule forbids two variants without an essential reason, and this
+reason was contingent.
+
+=== Why the registry does not disturb a mutual edge
+
+The repository graph contains mutual edges — two repositories each naming the other. They are
+resolved natively by a **reciprocal empty follows** on the back-reference. The code calls this
+*the cut idiom*, and that name is misleading in a way this specification must state, because
+the same word is used for two different things elsewhere.
+
+==== `follows = ""` is follows-ROOT, not removal
+
+[IMPORTANT]
+====
+`follows = ""` means **follow the ROOT flake** — an empty lock path, rendered in the lock as
+`"inputs": { "{self}": [] }`. It is a **fixpoint**, and it does **not** nullify or remove the
+input.
+
+The root re-injects *itself* into its dependency's back-reference, so **both flakes see each
+other's real, complete outputs**. Empirically validated on 2026-08-17 against real nix: both
+directions resolve to real cross-data, and the lock writes and terminates.
+====
+
+That changes the reason, not the conclusion:
+
+* the back-reference **is** resolved — to the root, locally;
+* so nothing is fetched for it, and the **registry is never consulted** for that edge;
+* so the registry **cannot redirect it**: the consumer has already bound it to the root by its
+  own declaration.
+
+The only hard limit is a genuine **value cycle** (A's value from B's value from A's value),
+which yields infinite recursion and which no mechanism resolves. The invariant that keeps the
+graph sound is therefore: *the piece an owner pulls from a contributor must not itself read
+back the owner's merged output* — keep the contributed piece self-contained.
+
+==== Propagation and resolution are different questions
+
+The code branches carry `docs/architecture/patterns/flake-lock-propagation.adoc`, which treats
+the same mutual edge and reaches an apparently opposite conclusion:
+
+[quote]
+____
+❌ Declaring a cycle edge "cut" to make propagation terminate.
+✅ Guard each hop by derivation impact; the cycle then terminates by itself and no edge is
+special.
+____
+
+There is no disagreement — the two documents answer different questions, and only the shared
+word suggests otherwise:
+
+[cols="1,2,2"]
+|===
+| | that document | this specification
+
+| question
+| does a **bump propagate** for ever around the cycle?
+| can the **registry redirect** a back-reference?
+
+| answer
+| no — a hop whose derivations do not move commits nothing, so the chain dies. A cycle
+  terminates iff at least one direction is value-sensitive
+| no — the back-reference is already bound to the root, so the registry is never consulted for
+  it
+
+| what "cut" means there
+| declaring an edge special to force termination — **unnecessary**, the guard removes the need
+| the reciprocal empty follows — which is **follows-root**, present for lock
+  **de-duplication** (one shared instance instead of two), not for termination
+|===
+
+★ The measured detail that reconciles them is in the consumer's own comment: the reciprocal
+empty follows exists so that a neighbour's back-reference *"follows THIS root"*, keeping one
+shared closure in the lock rather than two. Emptying the edge is a **side effect of
+de-duplication**, never a termination mechanism. This specification's property therefore does
+not depend on any decision about propagation, and that document's ❌ does not reach it.
+
+NOTE: The cross-reference above is given as a repository path rather than a `link:`, because
+that document lives on the code branches while this one lives on an orphan branch, and no
+convention yet exists for a link between the two trees.
+
+== The two outputs
+
+[cols="1,2,2"]
+|===
+| | `registry.json` | `{seat}.code-workspace`
+
+| consumer
+| nix — resolves `flake:{id}` to a local worktree
+| the editor — which folders the window shows
+
+| form
+| **absolute** paths, derived from the principal
+| paths **relative to its own location**
+
+| committed?
+| **never** — it is machine-specific
+| yes, and it **keeps its current location and name**
+|===
+
+The editor file is deliberately *not* moved onto this branch: every relative path would gain
+a `../`, and the session guard looks for it at `$(dirname $root)/$(basename $root).code-workspace`
+— a check it cannot perform counts as a failure, so moving the file would make the guard
+complain at every session start.
+
+=== When the registry is required
+
+Only at **lock time** (`flox install`, `flox upgrade`, `flox include upgrade`) — a deliberate
+act, run from a shell where `NIX_CONFIG` can be set.
+
+Activation does **not** need it: measured, a committed lock carries `derivation` and `outputs`,
+so it **realises without re-evaluating**. A fresh workspace therefore activates with no
+registry, and the materialisation step is not a precondition of activation.
+
+❌ **Do not generate the registry from the activation hook.** If the registry were a product
+of activation, it would arrive too late for the environment build that needs it — a circular
+dependency. ✅ **Generate it in the materialisation step; let the hook verify only.**
+
+== Assertions
+
+A static list that nobody checks rots exactly like a pin — the same defect, merely relocated.
+The generator therefore **asserts**, and fails **hard**, naming the culprit.
+
+[cols="1,3"]
+|===
+| every entry exists | a declared slot absent from disk fails
+| every include resolves | a dangling include fails
+| folder 0 | the first folder must remain the principal — a tested assertion
+| derived labels | a folder's label is derived from its path, never written by hand
+|===
+
+[source]
+----
+$ workspace verify
+  dangling include: ndh/develop -> /var/lib/git/…/flox/lima — not found
+  dangling include: ndh/develop -> /var/lib/git/…/flox/nix  — not found
+  override a dangling include with SEED_ALLOW_DANGLING_INCLUDES=1
+FATAL: 4 failed assertion(s)
+----
+
+The escape hatch is deliberate and **traced**: the default refuses, an emergency can proceed,
+and the override is visible in shell history and logged as a warning.
+
+=== Why a comment is not enough
+
+The repository already contains the proof. One neighbouring flake carries a comment
+describing this exact pathology in its own words — an input that followed a branch *"long
+after that branch was retired"*, with `nix flake update` *"advancing along a dead line …
+silently"* — and the line immediately below it names a branch that has since merged
+everywhere.
+
+[quote]
+____
+The same mistake recurred **at the same place, under its own written warning**. A comment
+that describes the trap does not prevent falling into it. **Only an executed assertion
+does.**
+____
+
+❌ A warning at activation is not sufficient either: a repeated warning becomes noise that
+stops being read, which is precisely how a dangling include survived unnoticed. ✅ Fail, name
+the culprit, and offer one traced override.
+
+=== Why the assertion matters more than it looks
+
+A dangling include does **not** break activation. Measured: the environment of a neighbouring
+repository has four includes pointing at paths that do not exist, and `flox activate` returns
+success — the lock masks them completely. flox freezes a composition until
+`flox include upgrade` is run explicitly, so the defect is **invisible rather than broken**.
+
+That is the whole argument: nothing in the normal loop ever re-resolves an include, so
+nothing ever reports it.
+
+== Troubleshooting
+
+[cols="1,2,2"]
+|===
+| Symptom | Cause | Fix
+
+| `cannot fetch input 'path:../a' because it uses a relative path`
+| a registry entry holds a relative path
+| the registry must hold absolute paths; only the manifest is relative
+
+| nix fetches from the network although a local worktree exists
+| the input is still an explicit `github:` URL — a registry does not redirect those
+| convert the input to `flake:{id}`
+
+| a flake path containing a symlink is rejected
+| nix refuses symlinks in a flake path, and on macOS `/tmp` *is* a symlink
+| use `/private/tmp`
+
+| the toolchain is stale but nothing fails
+| a ref names a branch, and the lock froze an old revision of it
+| the ref must be local (`git+file:`) or indirect; then re-lock
+
+| an include points at a path that does not exist, and activation still succeeds
+| the lock masks the composition until `flox include upgrade`
+| the assertion above is what surfaces it
+|===
+
+== Related Documentation
+
+* link:atlas.adoc[Workspace atlas] — the measured current state, the target, and the delta
+  between them
+* link:../README.md[Branch README] — why this branch exists and why the two outputs cannot be
+  the source
