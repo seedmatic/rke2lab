@@ -65,7 +65,7 @@
             #
             # Regenerate after any go.mod change: set this to `pkgs.lib.fakeHash`, run
             # `nix build`, paste the hash nix reports.
-            vendorHash = "sha256-g+yaVIx4jxpAQ/+WrGKxhVeliYx7nLQe/zsGpxV4Fn4=";
+            vendorHash = "sha256-2SXAu1fxiRbuMOKOoB8OVzTmtR3Os423j80En+SHnzU=";
 
             subPackages = [ "cmd/workspace" ];
             env.CGO_ENABLED = 0;

@@ -1,10 +1,13 @@
 package workspace
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
+	"strings"
+
+	"github.com/BurntSushi/toml"
 )
 
 // DanglingIncludeOverride lets an emergency proceed past a dangling include. The default
@@ -32,30 +35,55 @@ func (p Problem) String() string {
 // A static list that nobody checks rots exactly like the pins it replaces: same defect, merely
 // relocated. These are therefore not optional niceties — they are the reason the manifest is
 // worth having.
-func Verify(m *Manifest, l Layout, principalDir string) []Problem {
+func Verify(m *Manifest, l Layout, anchorDir string) []Problem {
 	var out []Problem
-	out = append(out, checkPrincipal(m, principalDir)...)
+	out = append(out, checkAnchor(m, anchorDir)...)
+	out = append(out, checkOrg(m, l)...)
 	out = append(out, checkWorktreesExist(m, l)...)
 	out = append(out, checkFolderZero(m, l)...)
 	out = append(out, checkIncludes(m, l)...)
 	return out
 }
 
-// checkPrincipal compares what the manifest declares with what the disk says. The declaration
-// is a claim about the world and is checked like one.
-func checkPrincipal(m *Manifest, principalDir string) []Problem {
-	_, onDisk, err := DeriveLayout(principalDir)
-	if err != nil {
-		return []Problem{{Check: "principal", Culprit: principalDir, Detail: err.Error()}}
-	}
-	if onDisk != m.Principal {
+// checkOrg compares the declared org with the one derived from the principal's location.
+//
+// Without this the field would be decorative: every generated path uses the DERIVED org, so a
+// typo in the manifest would validate and change nothing — a declaration that cannot be wrong
+// because nothing reads it, which is the shape of defect this tool exists to remove.
+func checkOrg(m *Manifest, l Layout) []Problem {
+	if m.Org != l.Org {
 		return []Problem{{
-			Check:   "principal",
-			Culprit: m.Principal.String(),
-			Detail:  fmt.Sprintf("the worktree on disk is %s", onDisk),
+			Check:   "org mismatch",
+			Culprit: m.Org,
+			Detail:  fmt.Sprintf("the principal sits under %q", l.Org),
 		}}
 	}
 	return nil
+}
+
+// checkAnchor establishes that the directory the roots were derived from really belongs to the
+// workspace this manifest describes.
+//
+// It deliberately does NOT require being run from the principal. The tool is useful from any
+// slot — materialising from the slot that carries the manifest is the obvious case — and the
+// roots derive identically from any of them. What would be wrong is deriving them from a
+// directory the manifest never declares: the layout would then place every worktree under some
+// unrelated tree, and every path would be confidently wrong.
+func checkAnchor(m *Manifest, anchorDir string) []Problem {
+	_, onDisk, err := DeriveLayout(anchorDir)
+	if err != nil {
+		return []Problem{{Check: "anchor", Culprit: anchorDir, Detail: err.Error()}}
+	}
+	for _, c := range m.All() {
+		if c == onDisk {
+			return nil
+		}
+	}
+	return []Problem{{
+		Check:   "anchor is outside the declared workspace",
+		Culprit: onDisk.String(),
+		Detail:  fmt.Sprintf("%s is not a declared worktree, so the derived roots cannot be trusted", anchorDir),
+	}}
 }
 
 func checkWorktreesExist(m *Manifest, l Layout) []Problem {
@@ -69,34 +97,107 @@ func checkWorktreesExist(m *Manifest, l Layout) []Problem {
 		case !info.IsDir():
 			out = append(out, Problem{Check: "worktree not a directory", Culprit: c.String(), Detail: dir})
 		default:
-			// A directory that is not a checkout would satisfy a naive existence test while
-			// resolving to nothing a flake ref could read.
-			if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
-				out = append(out, Problem{Check: "not a git worktree", Culprit: c.String(), Detail: dir})
+			if p := checkCheckout(c, dir); p != nil {
+				out = append(out, *p)
 			}
 		}
 	}
 	return out
 }
 
-func checkFolderZero(m *Manifest, l Layout) []Problem {
-	folders := EditorFolders(m, l)
-	want := l.FolderPath(m.Principal, m.Principal)
-	if len(folders) == 0 || folders[0] != want {
-		got := "(none)"
-		if len(folders) > 0 {
-			got = folders[0]
+// checkCheckout establishes that a directory is a usable checkout, not merely one carrying
+// something named `.git`.
+//
+// A linked worktree keeps a `.git` FILE holding `gitdir: <path>`, and that target can be
+// removed while the file stays — in which case a bare existence test passes and the generated
+// `git+file:` reference fails later, far from here.
+func checkCheckout(c Coord, dir string) *Problem {
+	gitPath := filepath.Join(dir, ".git")
+	info, err := os.Stat(gitPath)
+	if err != nil {
+		return &Problem{Check: "not a git worktree", Culprit: c.String(), Detail: dir}
+	}
+	if info.IsDir() {
+		return nil
+	}
+	body, err := os.ReadFile(gitPath)
+	if err != nil {
+		return &Problem{Check: "gitfile unreadable", Culprit: c.String(), Detail: gitPath}
+	}
+	target := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(string(body)), "gitdir:"))
+	if target == "" {
+		return &Problem{Check: "gitfile carries no gitdir", Culprit: c.String(), Detail: gitPath}
+	}
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(dir, target)
+	}
+	if _, err := os.Stat(target); err != nil {
+		return &Problem{
+			Check:   "gitdir target missing",
+			Culprit: c.String(),
+			Detail:  fmt.Sprintf("%s points at %s", gitPath, target),
 		}
+	}
+	return nil
+}
+
+// checkFolderZero reads the CANONICAL editor file and checks its first folder.
+//
+// Asserting the freshly computed list instead would be vacuous: the generator always prepends
+// the principal, so the check could never fail — and the failure mode it claims to catch is
+// precisely the file ON DISK being reordered by hand or by another tool.
+func checkFolderZero(m *Manifest, l Layout) []Problem {
+	path := l.EditorFile(m.Principal)
+	body, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		// Nothing to regress yet; materialisation will create it.
+		return nil
+	}
+	if err != nil {
+		return []Problem{{Check: "editor file unreadable", Culprit: path, Detail: err.Error()}}
+	}
+
+	var doc struct {
+		Folders []struct {
+			Path string `json:"path"`
+		} `json:"folders"`
+	}
+	if err := json.Unmarshal(body, &doc); err != nil {
+		return []Problem{{Check: "editor file unparseable", Culprit: path, Detail: err.Error()}}
+	}
+
+	want := l.FolderPath(m.Principal, m.Principal)
+	got := "(none)"
+	if len(doc.Folders) > 0 {
+		got = doc.Folders[0].Path
+	}
+	if got != want {
 		return []Problem{{
 			Check:   "folder 0 is not the principal",
 			Culprit: got,
-			Detail:  "the editor derives the session config home from it, so a reorder breaks session history",
+			Detail: fmt.Sprintf(
+				"%s should start with %q — the editor derives the session config home from it, "+
+					"so a reorder breaks session history", path, want),
 		}}
 	}
 	return nil
 }
 
-var includeDir = regexp.MustCompile(`(?m)\bdir\s*=\s*["']([^"']+)["']`)
+// floxManifest is the narrow slice of a flox environment manifest this tool reads. The rest of
+// the document is deliberately ignored, but it is still PARSED as TOML rather than scanned:
+//
+// a regex over the raw text cannot tell a declaration from a COMMENTED TEMPLATE, and the
+// environments in this very workspace ship one — `#  { dir = "../common" }` — plus a `[profile]`
+// key that merely happens to be named `common`. Matching those produced three confident false
+// positives, which is the same defect this tool exists to remove: answering something instead
+// of saying what one cannot read.
+type floxManifest struct {
+	Include struct {
+		Environments []struct {
+			Dir string `toml:"dir"`
+		} `toml:"environments"`
+	} `toml:"include"`
+}
 
 // checkIncludes walks the flox include graph of every declared worktree.
 //
@@ -138,14 +239,19 @@ func walkIncludes(dir, origin string, seen map[string]bool) []Problem {
 	}
 	seen[manifest] = true
 
-	body, err := os.ReadFile(manifest)
-	if err != nil {
-		return []Problem{{Check: "env manifest unreadable", Culprit: origin, Detail: err.Error()}}
+	var parsed floxManifest
+	if _, err := toml.DecodeFile(manifest, &parsed); err != nil {
+		// Refusing to read is reported, never skipped: a manifest this tool cannot parse is a
+		// gap in the assertion, and a silent gap is what it is here to prevent.
+		return []Problem{{Check: "env manifest unparseable", Culprit: origin, Detail: err.Error()}}
 	}
 
 	var out []Problem
-	for _, match := range includeDir.FindAllStringSubmatch(string(body), -1) {
-		raw := match[1]
+	for _, inc := range parsed.Include.Environments {
+		raw := inc.Dir
+		if raw == "" {
+			continue
+		}
 		// Include paths resolve against the environment's project directory, which is the
 		// worktree — one level above .flox — not against the manifest's own directory.
 		target := raw

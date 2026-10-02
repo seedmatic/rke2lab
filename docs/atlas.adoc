@@ -56,8 +56,10 @@ Nothing connected those four. Each was edited on its own, and none of them was c
 | one organisation rename was missed
 | 1 ref still names the former organisation, in a documentation file
 
-| a shared environment include pointed nowhere
-| `../common` is declared by **8 environments** and was **never committed in any revision**
+| a hand-maintained editor file drifts again
+| **within hours** of being repaired: a branch was renamed `flox-catalogue` ⟶ `flox-catalog`,
+  and the live file still named the old slot — pointing at a directory that no longer exists.
+  The verifier reported it; nothing else did
 
 | a neighbour's environment included four dead paths
 | and it does **not** fail — `flox activate` returns success, because the lock masks the
@@ -144,11 +146,31 @@ Measured while this increment was being written:
 | **still** in the gitignored scratch directory — four of them.
 |===
 
-★★ And the finding that matters most, because it was predicted and then observed: the include
-declared by eight environments and **never committed in any revision is still dangling after
-the migration**. Vendoring changed where the environments live; it did not make anything
-re-resolve an include. That is the measured proof that the defect is not about paths, and the
-reason the generated verifier — not the vendoring — is what closes this gap.
+=== ❌ A claim this atlas carried, and had to retract
+
+An earlier revision stated that `../common` was "declared by eight environments and never
+committed in any revision", and that claim was put forward as the headline justification for
+the verifier. **It was false**, and the way it was reached is worth recording because it is the
+same defect twice over:
+
+* the line in those environments is `#  { dir = "../common" }` — a **commented template**;
+  and in one more, `common` is a `[profile]` key that merely shares the name;
+* it was established by grepping for the text without checking whether the line was active,
+  and then relayed between two sessions as a fact;
+* the first verifier repeated the mistake in code — a regex over the raw manifest text cannot
+  tell a declaration from a comment — and produced three confident false positives, which
+  **blocked materialisation for a reason that did not exist**.
+
+The remedy was to parse the TOML and walk only the include array, plus the test that was
+missing: a commented include must produce no problem. ★ The lesson is the one this document
+keeps restating, now with the atlas itself as the example: **a measurement that was never
+taken is indistinguishable, in prose, from one that was.** Marking which is which is the whole
+discipline.
+
+What survives as justification, re-verified line by line: the neighbour's four includes are
+**active**, uncommented, and their paths do not exist — and activation still succeeds, because
+the lock masks the composition. That is a real invisible defect, and vendoring did not touch
+it.
 
 == Figure 4 — the outbound branch is a bus
 

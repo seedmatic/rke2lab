@@ -2,8 +2,12 @@ package workspace
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -45,6 +49,31 @@ type Coord struct {
 func (c Coord) String() string { return c.Repo + "/" + c.Slot }
 
 func (c Coord) complete() bool { return c.Repo != "" && c.Slot != "" }
+
+// segment refuses anything that is not a single, clean path component.
+//
+// Both halves of a Coord are interpolated into paths the generator WRITES, so a slot of
+// `../other` would escape the repo dir, and aliases such as `x/../develop` would let two
+// distinct Coord values resolve to the same directory — defeating the layout and the
+// duplicate check at once.
+func segment(kind, v string) error {
+	switch {
+	case v == "", v == "." || v == "..":
+		return fmt.Errorf("%s %q is not a path segment", kind, v)
+	case strings.ContainsRune(v, '/'), strings.ContainsRune(v, filepath.Separator):
+		return fmt.Errorf("%s %q must be a single path segment", kind, v)
+	case v != filepath.Clean(v):
+		return fmt.Errorf("%s %q is not a clean path segment", kind, v)
+	}
+	return nil
+}
+
+func (c Coord) validate() error {
+	if err := segment("repo", c.Repo); err != nil {
+		return err
+	}
+	return segment("slot", c.Slot)
+}
 
 type Worktree struct {
 	Coord `yaml:",inline"`
@@ -89,6 +118,15 @@ func Parse(b []byte) (*Manifest, error) {
 	if err := dec.Decode(&m); err != nil {
 		return nil, err
 	}
+	// A second YAML document would be silently ignored otherwise, so a valid manifest followed
+	// by `---` and anything at all would pass a parser that advertises strictness.
+	var extra yaml.Node
+	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
+		if err != nil {
+			return nil, fmt.Errorf("trailing content after the manifest: %w", err)
+		}
+		return nil, fmt.Errorf("the manifest must be a single YAML document")
+	}
 	if err := m.validate(); err != nil {
 		return nil, err
 	}
@@ -105,11 +143,17 @@ func (m *Manifest) validate() error {
 	if !m.Principal.complete() {
 		return fmt.Errorf("principal needs both repo and slot")
 	}
+	if err := m.Principal.validate(); err != nil {
+		return fmt.Errorf("principal: %w", err)
+	}
 
 	seen := map[Coord]bool{}
 	for i, w := range m.Worktrees {
 		if !w.complete() {
 			return fmt.Errorf("worktrees[%d]: needs both repo and slot", i)
+		}
+		if err := w.validate(); err != nil {
+			return fmt.Errorf("worktrees[%d]: %w", i, err)
 		}
 		if !w.Genre.Known() {
 			return fmt.Errorf("worktrees[%d] (%s): unknown genre %q", i, w.Coord, w.Genre)
@@ -136,6 +180,9 @@ func (m *Manifest) validate() error {
 		ids[b.ID] = true
 		if !b.complete() {
 			return fmt.Errorf("registry[%d] (%s): needs both repo and slot", i, b.ID)
+		}
+		if err := b.validate(); err != nil {
+			return fmt.Errorf("registry[%d] (%s): %w", i, b.ID, err)
 		}
 		// A binding to a worktree nobody declared would resolve to a directory the workspace
 		// never materialises.

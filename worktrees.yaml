@@ -61,10 +61,10 @@ worktrees:
       why the unit of this manifest is (repo, slot) and not the repository.
 
   - repo: rke2lab
-    slot: flox-catalogue
+    slot: flox-catalog
     genre: toolingPath
     why: >-
-      Reconciled by nix/relock.sh, which walks this branch's environments. Also the second
+      Reconciled by nix/relock.sh, which walks this branch's environments. Renamed from `flox-catalogue` on 2026-10-02. Also the second
       home of the flox environments, delivered in-cluster by FloxCatalog rather than by a
       subtree -- see the atlas.
 

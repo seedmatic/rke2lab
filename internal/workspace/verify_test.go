@@ -19,8 +19,14 @@ func seat(t *testing.T, coords ...Coord) (Layout, string) {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		// A real linked worktree carries .git as a FILE, not a directory.
-		if err := os.WriteFile(filepath.Join(dir, ".git"), []byte("gitdir: /elsewhere\n"), 0o644); err != nil {
+		// A real linked worktree carries .git as a FILE holding `gitdir: <path>`, and that
+		// target has to exist for the checkout to be usable.
+		gitdir := filepath.Join(root, ".bare", c.Repo, c.Slot)
+		if err := os.MkdirAll(gitdir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		body := []byte("gitdir: " + gitdir + "\n")
+		if err := os.WriteFile(filepath.Join(dir, ".git"), body, 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -77,17 +83,144 @@ func TestVerifyReportsDirectoryThatIsNotAWorktree(t *testing.T) {
 	}
 }
 
-// A manifest that disagrees with the disk is a defect, not a default.
-func TestVerifyReportsPrincipalMismatch(t *testing.T) {
+// Running from a slot that is not the principal is LEGITIMATE: the roots derive identically
+// from any declared worktree, and materialising from the slot that carries the manifest is the
+// obvious case. Requiring the principal would make `nix run` fail from its own directory.
+func TestVerifyAcceptsAnyDeclaredAnchor(t *testing.T) {
 	m, err := Parse([]byte(validManifest))
 	if err != nil {
 		t.Fatal(err)
 	}
 	l, _ := seat(t, m.All()...)
-	// Run it from a slot that is not the declared principal.
 	problems := Verify(m, l, l.Dir(Coord{Repo: "rke2lab", Slot: "memory"}))
-	if !problemsContain(problems, "principal") {
-		t.Errorf("expected a principal mismatch to be reported, got %v", problems)
+	if problemsContain(problems, "anchor is outside the declared workspace") {
+		t.Errorf("a declared non-principal slot must be a valid anchor, got %v", problems)
+	}
+}
+
+// Deriving the roots from a directory the manifest never declares would place every worktree
+// under an unrelated tree, and every path would be confidently wrong.
+func TestVerifyRejectsAnchorOutsideTheWorkspace(t *testing.T) {
+	m, err := Parse([]byte(validManifest))
+	if err != nil {
+		t.Fatal(err)
+	}
+	l, _ := seat(t, m.All()...)
+	stray := l.Dir(Coord{Repo: "stranger", Slot: "main"})
+	if err := os.MkdirAll(stray, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if problems := Verify(m, l, stray); !problemsContain(problems, "anchor is outside the declared workspace") {
+		t.Errorf("expected a stray anchor to be reported, got %v", problems)
+	}
+}
+
+// The declared org is compared with the derived one, otherwise the field would be decorative:
+// every generated path uses the derived value, so a typo would validate and change nothing.
+func TestVerifyReportsOrgMismatch(t *testing.T) {
+	m, err := Parse([]byte(validManifest))
+	if err != nil {
+		t.Fatal(err)
+	}
+	l, principal := seat(t, m.All()...)
+	m.Org = "not-the-org-on-disk"
+	if problems := Verify(m, l, principal); !problemsContain(problems, "org mismatch") {
+		t.Errorf("expected an org mismatch to be reported, got %v", problems)
+	}
+}
+
+// ★ THE TEST THAT WAS MISSING, and the defect it covers was live in the tree: the shared
+// environments ship a COMMENTED template line `#  { dir = "../common" }`. A regex over the raw
+// text read it as a declaration and produced three confident false positives, which blocked
+// materialisation for a reason that did not exist.
+func TestVerifyIgnoresCommentedIncludes(t *testing.T) {
+	m, err := Parse([]byte(validManifest))
+	if err != nil {
+		t.Fatal(err)
+	}
+	l, principal := seat(t, m.All()...)
+	writeEnv(t, principal, `# A template, kept as documentation:
+# [include]
+# environments = [
+#     { dir = "../common" }
+# ]
+
+[profile]
+  common = """
+  echo not an include
+  """
+`)
+	if problems := Verify(m, l, principal); len(problems) != 0 {
+		t.Errorf("a commented include and a profile key named common are not includes, got %v", problems)
+	}
+}
+
+// A live include may carry a trailing comment, and the array may span several lines — neither
+// is a reason to miss it, and neither is expressible with a line-oriented scan.
+func TestVerifyReadsLiveIncludesAcrossLinesAndComments(t *testing.T) {
+	m, err := Parse([]byte(validManifest))
+	if err != nil {
+		t.Fatal(err)
+	}
+	l, principal := seat(t, m.All()...)
+	writeEnv(t, principal, `[include]
+environments = [
+  # the jdk toolchain
+  { dir = "../missing-one" }, # trailing comment
+  { dir = "../missing-two" },
+]
+`)
+	problems := Verify(m, l, principal)
+	if got := len(problems); got != 2 {
+		t.Errorf("expected both live includes to be reported, got %d: %v", got, problems)
+	}
+}
+
+// A manifest this tool cannot parse is a GAP in the assertion, so it is reported rather than
+// skipped.
+func TestVerifyReportsUnparseableEnvManifest(t *testing.T) {
+	m, err := Parse([]byte(validManifest))
+	if err != nil {
+		t.Fatal(err)
+	}
+	l, principal := seat(t, m.All()...)
+	writeEnv(t, principal, "[include\nthis is not toml\n")
+	if problems := Verify(m, l, principal); !problemsContain(problems, "env manifest unparseable") {
+		t.Errorf("expected an unparseable manifest to be reported, got %v", problems)
+	}
+}
+
+// A linked worktree whose gitdir target was removed passes a bare existence test while the
+// generated git+file: reference fails later, far from here.
+func TestVerifyReportsMissingGitdirTarget(t *testing.T) {
+	m, err := Parse([]byte(validManifest))
+	if err != nil {
+		t.Fatal(err)
+	}
+	l, principal := seat(t, m.All()...)
+	dir := l.Dir(Coord{Repo: "ndh", Slot: "develop"})
+	if err := os.WriteFile(filepath.Join(dir, ".git"), []byte("gitdir: /nowhere/at/all\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if problems := Verify(m, l, principal); !problemsContain(problems, "gitdir target missing") {
+		t.Errorf("expected a dangling gitdir to be reported, got %v", problems)
+	}
+}
+
+// The folder-0 invariant is about the file ON DISK. Asserting the freshly computed list would
+// be vacuous, since the generator always prepends the principal.
+func TestVerifyDetectsReorderedEditorFile(t *testing.T) {
+	m, err := Parse([]byte(validManifest))
+	if err != nil {
+		t.Fatal(err)
+	}
+	l, principal := seat(t, m.All()...)
+	reordered := `{"folders":[{"name":"x","path":"memory"},{"name":"y","path":"develop"}]}`
+	if err := os.WriteFile(l.EditorFile(m.Principal), []byte(reordered), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if problems := Verify(m, l, principal); !problemsContain(problems, "folder 0 is not the principal") {
+		t.Errorf("expected a reordered editor file to be reported, got %v", problems)
 	}
 }
 

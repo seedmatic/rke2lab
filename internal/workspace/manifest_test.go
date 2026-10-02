@@ -197,3 +197,46 @@ func TestAllIncludesPrincipal(t *testing.T) {
 		t.Errorf("all[0] = %v, want the principal", all[0])
 	}
 }
+
+// Both halves of a Coord are interpolated into paths the generator WRITES, so a slot that is
+// not a single clean segment either escapes the repo dir or lets two distinct Coord values
+// resolve to the same directory — defeating the layout and the duplicate check at once.
+func TestParseRefusesCoordsThatAreNotPathSegments(t *testing.T) {
+	for _, slot := range []string{"../other", "x/../develop", "a/b", ".", "..", "./develop"} {
+		manifest := `
+version: 1
+org: seedmatic
+principal:
+  repo: rke2lab
+  slot: develop
+worktrees:
+  - repo: rke2lab
+    slot: "` + slot + `"
+    genre: toolingPath
+`
+		if _, err := Parse([]byte(manifest)); err == nil {
+			t.Errorf("slot %q should be refused", slot)
+		}
+	}
+	for _, repo := range []string{"../rke2lab", "a/b", ".."} {
+		manifest := `
+version: 1
+org: seedmatic
+principal:
+  repo: "` + repo + `"
+  slot: develop
+`
+		if _, err := Parse([]byte(manifest)); err == nil {
+			t.Errorf("repo %q should be refused", repo)
+		}
+	}
+}
+
+// A parser that advertises strictness must not silently ignore a second document: a valid
+// manifest followed by `---` and anything at all would otherwise pass.
+func TestParseRefusesTrailingDocument(t *testing.T) {
+	trailing := validManifest + "\n---\nanything: at all\n"
+	if _, err := Parse([]byte(trailing)); err == nil {
+		t.Fatal("expected a trailing YAML document to be refused")
+	}
+}

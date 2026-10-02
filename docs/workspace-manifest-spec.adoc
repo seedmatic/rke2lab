@@ -143,8 +143,10 @@ another. `gh stack view` reads that topology; the manifest never states it.
 
 === Reference genres
 
-Four genres, and they are **documentary** — they explain an entry, they do not drive a
-computation.
+Four genres. Their **direction** is load-bearing — inbound or outbound decides editor
+membership, through nothing else — while the genre itself carries the reason an entry is in
+the workspace. What a genre no longer does is DISCOVER an entry: the list is enumerated, so a
+genre explains rather than computes, apart from that one direction bit.
 
 [mermaid,ws-spec-genres,svg]
 ----
@@ -391,12 +393,11 @@ The generator therefore **asserts**, and fails **hard**, naming the culprit.
 
 [source]
 ----
-$ flox activate
-FATAL: dangling include
-  jdk -> ../common   NOT FOUND
-  declared by 8 environments, never committed
-  override: SEED_ALLOW_DANGLING_INCLUDES=1
-activation refused
+$ workspace verify
+  dangling include: ndh/develop -> /var/lib/git/…/flox/lima — not found
+  dangling include: ndh/develop -> /var/lib/git/…/flox/nix  — not found
+  override a dangling include with SEED_ALLOW_DANGLING_INCLUDES=1
+FATAL: 4 failed assertion(s)
 ----
 
 The escape hatch is deliberate and **traced**: the default refuses, an emergency can proceed,

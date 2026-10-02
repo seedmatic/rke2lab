@@ -40,8 +40,8 @@ commands:
   version       print the version
 
 flags (both commands):
-  -manifest PATH    the manifest (default: worktrees.yaml beside the principal's workspace slot)
-  -principal DIR    the principal worktree (default: the current directory)
+  -manifest PATH    the manifest (default: worktrees.yaml in the workspace slot)
+  -anchor DIR       any DECLARED worktree, used to derive the roots (default: the current directory)
   -registry PATH    where to write the registry (default: <principal>/.local.d/registry.json)
   -editor PATH      where to write the editor file (default: its canonical location)
   -dry-run          print what would be written instead of writing it
@@ -56,7 +56,7 @@ func run(args []string) error {
 
 	fs := flag.NewFlagSet(cmd, flag.ContinueOnError)
 	manifestPath := fs.String("manifest", "", "path to the manifest")
-	principalDir := fs.String("principal", "", "the principal worktree")
+	anchorDir := fs.String("anchor", "", "any declared worktree, used to derive the roots")
 	registryPath := fs.String("registry", "", "where to write the registry")
 	editorPath := fs.String("editor", "", "where to write the editor file")
 	dryRun := fs.Bool("dry-run", false, "print instead of writing")
@@ -74,11 +74,11 @@ func run(args []string) error {
 		return fmt.Errorf("unknown command %q\n\n%s", cmd, usage())
 	}
 
-	principal, err := resolvePrincipal(*principalDir)
+	anchor, err := resolveAnchor(*anchorDir)
 	if err != nil {
 		return err
 	}
-	layout, onDisk, err := workspace.DeriveLayout(principal)
+	layout, onDisk, err := workspace.DeriveLayout(anchor)
 	if err != nil {
 		return err
 	}
@@ -88,20 +88,19 @@ func run(args []string) error {
 	}
 
 	if cmd == "verify" {
-		return verify(m, layout, principal)
+		return verify(m, layout, anchor)
 	}
 	return materialize(materializeOpts{
 		manifest:     m,
 		layout:       layout,
-		principalDir: principal,
-		onDisk:       onDisk,
+		anchorDir:    anchor,
 		registryPath: *registryPath,
 		editorPath:   *editorPath,
 		dryRun:       *dryRun,
 	})
 }
 
-func resolvePrincipal(flagValue string) (string, error) {
+func resolveAnchor(flagValue string) (string, error) {
 	if flagValue != "" {
 		return filepath.Abs(flagValue)
 	}
@@ -145,26 +144,29 @@ func verify(m *workspace.Manifest, l workspace.Layout, principal string) error {
 type materializeOpts struct {
 	manifest     *workspace.Manifest
 	layout       workspace.Layout
-	principalDir string
-	onDisk       workspace.Coord
+	anchorDir    string
 	registryPath string
 	editorPath   string
 	dryRun       bool
 }
 
 func materialize(o materializeOpts) error {
-	m, l, principal := o.manifest, o.layout, o.principalDir
+	m, l, anchor := o.manifest, o.layout, o.anchorDir
 	registryPath, dryRun := o.registryPath, o.dryRun
 
 	// Materialising a workspace whose declaration disagrees with the disk would write a
 	// registry pointing at directories that are not there.
-	if problems := workspace.Verify(m, l, principal); len(problems) > 0 {
+	if problems := workspace.Verify(m, l, anchor); len(problems) > 0 {
 		for _, p := range problems {
 			fmt.Fprintln(os.Stderr, "  "+p.String())
 		}
 		if !(workspace.OnlyDangling(problems) && os.Getenv(workspace.DanglingIncludeOverride) == "1") {
 			return fmt.Errorf("refusing to materialise: %d failed assertion(s)", len(problems))
 		}
+		// Proceeding past a failed assertion is reported here exactly as `verify` reports it,
+		// so an automated log cannot confuse a deliberate bypass with a clean run.
+		fmt.Fprintf(os.Stderr, "WARN: materialising past %d dangling include(s) via %s\n",
+			len(problems), workspace.DanglingIncludeOverride)
 	}
 
 	registry, err := workspace.RegistryJSON(m, l)
@@ -174,13 +176,13 @@ func materialize(o materializeOpts) error {
 	// The canonical file is always the one READ, so the keys it carries beyond `folders` are
 	// preserved. `-editor` only redirects where the result is written, which is what makes a
 	// faithful comparison against the live file possible.
-	existing, err := os.ReadFile(l.EditorFile(o.onDisk))
+	existing, err := os.ReadFile(l.EditorFile(m.Principal))
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
 	editorFile := o.editorPath
 	if editorFile == "" {
-		editorFile = l.EditorFile(o.onDisk)
+		editorFile = l.EditorFile(m.Principal)
 	}
 	editor, err := workspace.EditorWorkspace(m, l, existing)
 	if err != nil {
@@ -188,7 +190,7 @@ func materialize(o materializeOpts) error {
 	}
 
 	if registryPath == "" {
-		registryPath = filepath.Join(principal, ".local.d", "registry.json")
+		registryPath = filepath.Join(l.Dir(m.Principal), ".local.d", "registry.json")
 	}
 
 	if dryRun {
