@@ -146,7 +146,7 @@ flowchart TB
   end
 
   subgraph rke2["rke2lab synth (operator machine)"]
-    envd["flox-catalogue branch — flake at ROOT (catalog SOURCE)<br/>env catalog (kdns, mesh, ...)"]:::code
+    envd["flox-catalog branch — flake at ROOT (catalog SOURCE)<br/>env catalog (kdns, mesh, ...)"]:::code
     unit["FloxEnvManifestsUnit (CDK8s)<br/>renders one FloxEnv CR per env"]:::code
     bumper["env-bumper CLI<br/>bump pins + re-lock (committed)"]:::code
     bumper --> envd --> unit
@@ -279,7 +279,7 @@ above — a *package set* versus a *capability*:
 
 | What it is | A declarative, locked _package set_ (`manifest.lock`) | An imperative _infra capability_
 | Delivered as | Read-only store paths, symlink-farmed at activation | Pod-spec mutation (PVC) + overlay-upper redirect + runtime posture
-| Defined in | A flox catalogue manifest | Typed, reviewed controller code (webhook + NRI plugin)
+| Defined in | A flox catalog manifest | Typed, reviewed controller code (webhook + NRI plugin)
 | Right for | Reproducible tool/library sets a container _consumes_ | A writable build store + the nix runtime a container _drives_
 |===
 
@@ -433,7 +433,7 @@ flowchart TB
 
 The `git-sops` FloxEnv (`FloxEnvManifestsUnit.gitSopsManifest`) carries git + sops + yq-go +
 the ndh `git-sops-filter` package (the SSOT filter definition, re-exported through the
-catalogue flake). The package SHIPS the filter's include file at `$FLOX_ENV/sops`, but
+catalog flake). The package SHIPS the filter's include file at `$FLOX_ENV/sops`, but
 installing the package is not enough — git must be told to *use* it. The env therefore emits
 a `manifest` `[hook.on-activate]` that registers the include GLOBALLY:
 
@@ -498,7 +498,7 @@ packages) splits into two, wired through the `nix-flake-commons` aggregator:
 | `flox-nri-plugin`, `flox-nri-plugin-debug`, `flox-runtime-scripts`
 | rke2lab flake input `flox-runtime` (URL repointed from `path:./…/runtime/flox`)
 
-| rke2lab `flox-catalogue` branch — a flake at the branch ROOT
+| rke2lab `flox-catalog` branch — a flake at the branch ROOT
 | the env catalog — `kdns`, `headplane`, `headscale`, `tailscale` (+`-debug`)
 | `FloxRuntimeAssets` / the NRI plugin injects these into opted-in pods
 |===
@@ -709,17 +709,17 @@ rke2lab-agnostic; this section covers only how rke2lab INTEGRATES it.
 
 * *Synthesis* — a `FloxEnvManifestsUnit` (CDK8s) emits the workload `FloxEnv` CRs (kdns
   for networking, plus the headscale/tailscale/headplane mesh family, per debug flavor),
-  each installing its package from the catalog via a `floxcatalog:catalogue#<output>`
+  each installing its package from the catalog via a `floxcatalog:catalog#<output>`
   install ref; its `folder` is the GC-root category the plugin keys on. A
   `FloxCatalogManifestsUnit` publishes that catalog: the catalog is a nix flake maintained
-  directly at the ROOT of a dedicated `flox-catalogue` git branch, exposed to the cluster as
+  directly at the ROOT of a dedicated `flox-catalog` git branch, exposed to the cluster as
   a Flux `GitRepository` (tracking that branch) + a `FloxCatalog` CR the controller resolves.
   Flux applies them in an early layer.
 * *Delivery* — rke2lab consumes `flox-controller` (and `flox-nri-plugin`) as flake
   inputs (`…/develop`, green-gated) and bakes their images into the node-base image
   (foundation); the controller then reconciles the CRs onto each node.
 * *Bumps* — the operator bumps env versions by bumping the flake pins at the ROOT of the
-  `flox-catalogue` branch, re-locking the flake, and pushing the branch; the
+  `flox-catalog` branch, re-locking the flake, and pushing the branch; the
   controller resolves each CR's `floxcatalog:` ref against it and never re-locks.
 
 [[node-config-contribution]]
@@ -902,7 +902,7 @@ already present in the real store the overlay lowers from.
   aggregator-following inputs; repoint rke2lab's `flox-runtime.url` from `path:`
   to `github:seedmatic/flox-nri-plugin`; stop shipping the Go source as Java
   resources in manifests-core. The env catalog moves to a flake maintained directly at the
-  ROOT of the dedicated `flox-catalogue` branch.
+  ROOT of the dedicated `flox-catalog` branch.
 . *Part 1 (scripts to store)* is the foundation: it establishes the immutable-vs-
   mutable split cleanly and removes the loose-file delivery model.
 . *Part 2 (builder)* builds on a store-resolved world and reuses the split — but

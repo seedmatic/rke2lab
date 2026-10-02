@@ -1,0 +1,118 @@
+---
+name: flox-envs-subtree-sync
+description: >-
+  Use when syncing the flox environment tree vendored at `.flox-envs.d/` — pulling
+  fleet's latest envs down into this repo, or republishing fleet's `flox-subtree`
+  branch after editing the envs. Triggers on "sync the flox envs", "update
+  .flox-envs.d", "pull the flox subtree", "republish flox-subtree", a seat that
+  fails to activate with "manifest and lockfile are out of sync", or an env that is
+  missing from `.flox-envs.d` but present in fleet. Encodes the direction of truth
+  (fleet's working copy is the source, the branch is a derived split), the
+  mandatory re-lock after every pull, and the two-step verification.
+---
+
+# Sync the vendored flox env tree
+
+`.flox-envs.d/` is a squashed git subtree of **fleet**'s `flox-subtree` branch. The
+seat's `[include]` entries point into it (`./.flox-envs.d/<env>`), so the envs travel
+with the checkout instead of being reached through a path outside it.
+
+## The direction of truth — get this right or you destroy envs
+
+```
+fleet  main:flox            ← the LIVING copy. Edits land here.
+         │  git subtree split  (make flox-publish)
+         ▼
+fleet  origin/flox-subtree  ← a DERIVED split. Never edit it directly.
+         │  git subtree pull
+         ▼
+rke2lab .flox-envs.d/       ← the vendored copy. Never edit it directly.
+```
+
+Edits go in `fleet/flox/<env>/`, **never** in `.flox-envs.d/` and **never** on the
+`flox-subtree` branch. A local edit under `.flox-envs.d/` is lost at the next pull.
+
+⛔ **Why this is stated so loudly:** for nine months `fleet`'s Makefile had only a
+`pull`, no way to publish. So edits went into the working copy, the branch froze
+(2025-12-14 against a tree from 2026-09-29), and `make flox-update` became
+**destructive** — it would pull the stale source over the living copy and drop 8 envs,
+3 of them included by this seat. A subtree without a named procedure freezes: both of
+fleet's froze the same week, and the only live one in this perimeter is the one with a
+skill. That is what this file is for.
+
+## Pull the envs down (the common case)
+
+Run from this repo's worktree root:
+
+```bash
+git remote add fleet https://github.com/seedmatic/fleet.git   # once per clone
+git subtree pull --prefix=.flox-envs.d fleet flox-subtree --squash
+nix run .#lock-flox-envs                                      # MANDATORY, see below
+```
+
+### The re-lock is not optional
+
+fleet ignores `*/.flox/env/manifest.lock`, so **the locks never travel**. A lock is
+what makes an env includable, so freshly vendored envs make the seat refuse to
+activate:
+
+```
+✘ ERROR: failed to fetch environment './.flox-envs.d/asciidoc':
+  cannot include environment since its manifest and lockfile are out of sync
+```
+
+`nix run .#lock-flox-envs` walks the seat's include graph (and each env's own
+`../<env>` includes, dependency-first) and locks whatever has no lock. The locks stay
+gitignored on purpose: fleet publishes manifests, each checkout realises its own lock.
+The error above, after a pull, always means this step was skipped.
+
+## Republish the branch (only after editing envs in fleet)
+
+In fleet's worktree, with `flox/` committed:
+
+```bash
+make flox-publish      # re-split + push with --force-with-lease
+```
+
+It re-splits `main:flox` and force-pushes, because the branch is derived: a re-split
+rewrites it and cannot fast-forward. The lease is what still refuses to clobber a
+push that arrived since the fetch.
+
+⚠️ The first republication (2026-10-02) had **disjoint** histories — the branch had
+frozen and been reconciled by an unrelated local commit — so the force was total. Check
+that the result is what you meant:
+
+```bash
+diff <(git ls-tree --name-only origin/flox-subtree) <(git ls-tree --name-only main:flox)
+```
+
+Empty output is the pass. Then pull it down here.
+
+## Verify — and know why the obvious check is worthless alone
+
+```bash
+flox activate -- true          # must exit 0
+flox include upgrade           # must report "No included environments have changes"
+```
+
+★ **The first proves nothing by itself.** ndh passes `flox activate -- true` today with
+**four dead absolute include paths**, because its lock froze the composition and masks
+them entirely. The gate is the second command: a pending include is the only signal
+that a path stopped resolving. Freezing is a property of *includes*, not of paths —
+nothing ever re-resolves one until you ask.
+
+## Measured gotchas, so nobody re-derives them
+
+- **`common` is not an include.** Thirteen envs mention it, and it looks alarming, but
+  in `jdk`/`pulumi`/`shell` it is a **commented-out** template line
+  (`#     { dir = "../common" }`) and in `asciidoc` it is the `[profile] common` script
+  key — a different thing entirely. There is no `../common` to resolve. Don't chase it.
+- **Six envs ship without a lock** (`darwin`, `dns-tools`, `docker`, `editor`,
+  `gnumake`, `spacelift`) because nobody has activated them. No consumer seat includes
+  them, so `lock-flox-envs` never touches them.
+- **fleet's internal includes are all relative** (`../keyhole`, `../xdg`, …), which is
+  what makes the tree relocatable at all. If one ever becomes absolute, vendoring
+  breaks and the lock will hide it — see the verification note above.
+- **Never check `flox-subtree` out inside `fleet.d/main`.** It carries the envs at its
+  ROOT, with no `flox/` directory, so the checkout would remove `fleet/flox` and break
+  every consumer reaching it. Use a dedicated worktree.

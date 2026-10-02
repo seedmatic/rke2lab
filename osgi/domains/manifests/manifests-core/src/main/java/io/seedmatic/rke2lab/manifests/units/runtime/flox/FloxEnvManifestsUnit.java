@@ -30,7 +30,7 @@ import software.constructs.Construct;
  * RenderPipelineManifestsUnit}).
  *
  * <p>Each env installs its workload package from the {@link FloxCatalogManifestsUnit} catalog via a
- * {@code floxcatalog:catalogue#<output>} ref (resolved same-namespace, both live in {@code
+ * {@code floxcatalog:catalog#<output>} ref (resolved same-namespace, both live in {@code
  * rke2lab-system}). The env's {@code folder} is the GC-root category the NRI plugin keys on ({@code
  * <base>/networking/kdns}) — a node-side path segment, not a k8s namespace.
  *
@@ -159,7 +159,7 @@ public final class FloxEnvManifestsUnit extends AbstractManifestsUnit {
     // exec,
     // so the env carries ONLY the workload package (like kdns-prod); no debug flavor. Installed
     // from
-    // the catalog via floxcatalog:catalogue#seed-incluster.
+    // the catalog via floxcatalog:catalog#seed-incluster.
     createEnv(
         scope, resolver, "seed-incluster", FloxEnvFolder.CLUSTER_API, seedInclusterManifest());
   }
@@ -335,11 +335,9 @@ public final class FloxEnvManifestsUnit extends AbstractManifestsUnit {
     install.put("yq-go", catalogAll("yq-go"));
   }
 
-  /**
-   * A flake install resolved against the FloxCatalog artifact ({@code floxcatalog:catalogue#…}).
-   */
+  /** A flake install resolved against the FloxCatalog artifact ({@code floxcatalog:catalog#…}). */
   private Map<String, Object> flakeRef(final String output) {
-    return Map.of("flake", "floxcatalog:catalogue#" + output);
+    return Map.of("flake", "floxcatalog:catalog#" + output);
   }
 
   /** A catalog install pulling a package's default output. */

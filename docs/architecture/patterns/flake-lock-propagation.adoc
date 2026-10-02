@@ -29,7 +29,7 @@ flowchart LR
   SIC["rke2lab@seed-incluster<br/>a BRANCH of rke2lab"]
   RKE["rke2lab<br/>feature/viewpoint-separation"]
   NDH["ndh<br/>develop"]
-  CAT["rke2lab@flox-catalogue<br/>a BRANCH of rke2lab"]
+  CAT["rke2lab@flox-catalog<br/>a BRANCH of rke2lab"]
 
   FC --> RKE
   NRI --> RKE
@@ -55,7 +55,7 @@ a pure upstream (consumed, consumes nothing of ours).
 
 Two facts shape everything below:
 
-. **`seed-incluster` and `flox-catalogue` are orphan BRANCHES of rke2lab**, not separate repos. So
+. **`seed-incluster` and `flox-catalog` are orphan BRANCHES of rke2lab**, not separate repos. So
   rke2lab editing their locks is rke2lab editing its own.
 . **`rke2lab` and `ndh` are mutual inputs** — rke2lab pins `ndh@develop` (for `manage-tailnet` and
   the re-exported Incus tooling), and ndh pins `rke2lab@feature/viewpoint-separation` (for the
@@ -83,7 +83,7 @@ This is the single-owner rule applied to locks, and it draws the line cleanly:
 | rke2lab
 | they are its inputs
 
-| the `seed-incluster` and `flox-catalogue` branch locks
+| the `seed-incluster` and `flox-catalog` branch locks
 | rke2lab
 | they are its own branches — not a foreign repo
 
@@ -93,7 +93,7 @@ This is the single-owner rule applied to locks, and it draws the line cleanly:
 |===
 
 ★ This *validates* the current `update-flox-envs` scope — it touches the `seed-incluster` and
-`flox-catalogue` locks, which are rke2lab's own branches, so it is within its rights. It is wrong
+`flox-catalog` locks, which are rke2lab's own branches, so it is within its rights. It is wrong
 only about what one would be tempted to ADD to it: the `ndh <- rke2lab plans` edge belongs to an app
 in ndh, not here.
 
@@ -104,7 +104,7 @@ A cycle looks fatal if you think in revisions: bump ndh's `rke2lab` pin and ndh 
 rke2lab should then pin, which gives rke2lab a new rev, which ndh should pin… no fixed point.
 
 There is one — in **derivation** space, not revision space. The rule already exists in this fleet, in
-the catalogue's `lock-envs`:
+the catalog's `lock-envs`:
 
 [source,bash]
 ----
@@ -194,7 +194,7 @@ own lock. Three ways, none yet chosen:
 
 | **(a) declared in each repo** — "my consumers: […]"
 | explicit, and CONSISTENT with the model: in a design where each repo owns its lock, each should own
-  the list of those it notifies. The list is tiny (rke2lab → ndh + its catalogue branch; ndh →
+  the list of those it notifies. The list is tiny (rke2lab → ndh + its catalog branch; ndh →
   rke2lab)
 | duplicated across N repos
 
@@ -214,7 +214,7 @@ local loop.
 [[today-app]]
 == What `update-flox-envs` covers, and the two defects fixed on 2026-09-30
 
-Its three hops are `rke2lab@seed-incluster -> rke2lab -> flox-catalogue`. Audited against
+Its three hops are `rke2lab@seed-incluster -> rke2lab -> flox-catalog`. Audited against
 <<measured-graph>>:
 
 [cols="2,1,2",options="header"]
@@ -222,12 +222,12 @@ Its three hops are `rke2lab@seed-incluster -> rke2lab -> flox-catalogue`. Audite
 | Edge | Covered | Note
 
 | `rke2lab@seed-incluster -> rke2lab` | ✅ | hop 2
-| `rke2lab -> flox-catalogue` | ✅ | hop 3
+| `rke2lab -> flox-catalog` | ✅ | hop 3
 | `flox-nri-plugin`, `flox-controller` -> `rke2lab` | ❌ | rke2lab's OWN lock — legitimately ours, and missing
 | `flake-commons` -> everything | ❌ | likewise
 | `ndh -> rke2lab` | ❌ | rke2lab's own lock — ours
 | `rke2lab -> ndh` | ❌ | **not ours** — belongs to an app in ndh (<<ownership>>)
-| `ndh -> flox-catalogue` | ❌ | the catalogue's lock is ours; the bump is ours
+| `ndh -> flox-catalog` | ❌ | the catalog's lock is ours; the bump is ours
 |===
 
 Two defects of the same family were fixed the same day — both *silent skips*, where a hop reports
@@ -235,12 +235,12 @@ success while pinning something stale:
 
 . **rke2lab was pushed only when the `seed-incluster` pin moved.** Any other commit (a feature, a
   doc) left HEAD unpushed, and hop 3 then resolved `github:seedmatic/rke2lab/<branch>` to an OLDER
-  rev while reporting a clean bump. Measured: the catalogue sat at `9ccd89923` while HEAD was
+  rev while reporting a clean bump. Measured: the catalog sat at `9ccd89923` while HEAD was
   `fec07de85`. The app already STATED the invariant — "the chain is push-gated … each hop must push
   before the next resolves it" — and enforced it only for the hop that happened to change a lock.
   Now rke2lab is pushed unconditionally.
 . **The landing was reported, never asserted.** `nix flake update` resolves the branch as the remote
-  currently answers it, so a lagging push, a stale `--refresh` cache or a catalogue tracking a
+  currently answers it, so a lagging push, a stale `--refresh` cache or a catalog tracking a
   different branch all ended quietly on a rev that is not what the run built. The last act now
   PROVES the revision arrived, and fails loud naming the cause.
 
@@ -282,7 +282,7 @@ annotation:
 |===
 
 ⚠️ Avoid **`propagate`**: the word is taken and carries a bad association here —
-`propagateRelock` in flox-controller is recorded as the regression that stamped every catalogue
+`propagateRelock` in flox-controller is recorded as the regression that stamped every catalog
 revision as a total relock.
 
 ⏸️ `reconcile-locks` is the more accurate alternative (it converges, it is guarded, and it echoes the

@@ -403,7 +403,7 @@ What used to be a *sequence the control-node decided* (produce a systemd fact �
 doctor) becomes a *data dependency inside the contribution*: the cluster's mediator reads the systemd
 node-fact itself and produces the `Observation`. Sequencing dissolves into wiring; only the temporal
 poll remains in the executable. (The edge species this still produces — *sondes* that
-observe→snapshot→fact→consult, versus *portes* that convert with no persisted fact — are catalogued in
+observe→snapshot→fact→consult, versus *portes* that convert with no persisted fact — are catalogd in
 link:frontier-playability-model.adoc[the frontier-playability model].)
 
 [[the-contribution-role]]

@@ -65,8 +65,8 @@ import software.constructs.Construct;
  * Deployment runs the minimal flox carrier ({@code FloxDebugPolicy.prodImage()}) and the {@code
  * cluster-api/seed-incluster} flox env ({@link
  * io.seedmatic.rke2lab.manifests.units.runtime.flox.FloxEnvManifestsUnit}, sourced from the
- * flox-catalogue as {@code floxcatalog:catalogue#seed-incluster}) puts the binary on PATH via the
- * flox NRI plugin — the {@code environment.<c>} annotation on the pod template opts in.
+ * flox-catalog as {@code floxcatalog:catalog#seed-incluster}) puts the binary on PATH via the flox
+ * NRI plugin — the {@code environment.<c>} annotation on the pod template opts in.
  */
 public final class SeedInclusterManifestsUnit extends AbstractManifestsUnit {
 

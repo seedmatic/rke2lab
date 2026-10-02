@@ -737,18 +737,18 @@ Immutable configuration objects the runtime units build their pod specs from.
 | `FloxCatalogManifestsUnit`
 | The `AbstractManifestsUnit` binding the flox-controller's nix-flake catalog to a Flux source. The
   workload flox packages (kdns, headscale, …) live in a nix flake maintained directly at the ROOT of a
-  dedicated `flox-catalogue` branch (NOT the per-cluster rendered `manifests/<slug>` branch). It emits a
+  dedicated `flox-catalog` branch (NOT the per-cluster rendered `manifests/<slug>` branch). It emits a
   `GitRepository` tracking that branch
   (same repo + GitHub App auth) so Flux exposes the flake as an in-cluster tarball artifact, and a
-  `FloxCatalog` (`catalogue`) whose `sourceRef` points at it — the controller resolves
-  `floxcatalog:rke2lab-system/catalogue#<output>` install refs against it. On the `operators` layer
+  `FloxCatalog` (`catalog`) whose `sourceRef` points at it — the controller resolves
+  `floxcatalog:rke2lab-system/catalog#<output>` install refs against it. On the `operators` layer
   (Ready before workload `FloxEnv`s resolve their flake refs).
 
 | `FloxEnvManifestsUnit`
 | The `AbstractManifestsUnit` emitting the workload `FloxEnv` CRs the flox-controller realises on
   each node (kdns for networking, plus the headscale/tailscale/headplane mesh family).
   Each env installs its package from the `FloxCatalogManifestsUnit` catalog via a
-  `floxcatalog:catalogue#<output>` ref (same namespace, `rke2lab-system`); its `folder` is the GC-root
+  `floxcatalog:catalog#<output>` ref (same namespace, `rke2lab-system`); its `folder` is the GC-root
   category the NRI plugin keys on (`<base>/networking/kdns`). Flavor is a single logical env switched
   by the networking debug toggle (`FloxDebugPolicy.networkingEnabled`): prod ships stripped `#kdns`,
   debug ships delve-wrapped `#kdns-debug`. On the `workloads` layer (after the catalog on

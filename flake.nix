@@ -727,7 +727,7 @@
         # controller binary + the ClusterAdoption CRD store path. The OCI image is NO
         # LONGER re-exported or baked — the controller rides the flox runtime (the
         # cluster-api/seed-incluster flox env installs the binary from the
-        # flox-catalogue), so only the binary + CRD are needed here. Same darwin-eval guard.
+        # flox-catalog), so only the binary + CRD are needed here. Same darwin-eval guard.
         seedInclusterPackages =
           let seedPkgs = seed-incluster.packages.${system} or { };
           in (if seedPkgs ? seed-incluster
@@ -1103,7 +1103,7 @@ USAGE
       # another repo's working state. See
       # docs/architecture/patterns/flake-lock-propagation.adoc § who-consumes-me.
       #
-      # rke2lab's own orphan branches (seed-incluster, flox-catalogue) are NOT listed: they
+      # rke2lab's own orphan branches (seed-incluster, flox-catalog) are NOT listed: they
       # are ours, handled in-tree below, not asked by request.
       relockConsumers = [ "github:seedmatic/ndh" ];
 
@@ -1111,7 +1111,7 @@ USAGE
       #
       # The rule (docs/architecture/patterns/flake-lock-propagation.adoc): bumping an input is
       # editing YOUR lock; making someone pin YOU is THEIR act. So this touches rke2lab's own
-      # artifacts and its own orphan BRANCHES' (seed-incluster, flox-catalogue — branches of this
+      # artifacts and its own orphan BRANCHES' (seed-incluster, flox-catalog — branches of this
       # repo, discovered via `git worktree list`, never hard-coded paths), and crosses a repo
       # boundary only as a REQUEST (`--downstream` runs the consumer's own `relock`).
       #
@@ -1148,7 +1148,7 @@ USAGE
         # Pushed BEFORE inputs resolve: a `github:` input sees only what is pushed.
         pushFirstBranch = "seed-incluster";
         # The branch that pins rke2lab and carries the flox envs.
-        catalogueBranch = "flox-catalogue";
+        catalogBranch = "flox-catalog";
         selfPinName = "rke2lab";
       };
       in {
@@ -1373,7 +1373,7 @@ USAGE
         apps.relock = {
           type = "app";
           program = "${relockApp}/bin/relock";
-          meta.description = "Reconcile THIS repo's locks: bump each input, DROP any bump that moves no exported derivation, push, then pin+re-lock the flox-catalogue branch. --downstream requests each declared consumer's own relock";
+          meta.description = "Reconcile THIS repo's locks: bump each input, DROP any bump that moves no exported derivation, push, then pin+re-lock the flox-catalog branch. --downstream requests each declared consumer's own relock";
         };
 
         # Anti-drift gate: fail if the committed JSON diverges from the jar output

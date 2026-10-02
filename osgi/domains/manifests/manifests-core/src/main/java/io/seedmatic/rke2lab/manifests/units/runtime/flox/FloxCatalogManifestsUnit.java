@@ -18,16 +18,16 @@ import software.constructs.Construct;
 /**
  * Binds the flox-controller's nix-flake catalog to a Flux source. The workload flox packages (kdns,
  * headscale, …) are defined in a flake maintained at the ROOT of a dedicated {@value
- * #CATALOGUE_BRANCH} branch (NOT the per-cluster rendered {@code manifests/<slug>} branch, which
+ * #CATALOG_BRANCH} branch (NOT the per-cluster rendered {@code manifests/<slug>} branch, which
  * carries only synthesised manifests). This unit emits:
  *
  * <ul>
- *   <li>a dedicated {@code GitRepository} tracking {@value #CATALOGUE_BRANCH} (same repo + GitHub
- *       App auth as the rendered-branch source), so Flux exposes it as an in-cluster tarball
- *       artifact at the exact reconciled commit — zero github fetch / token on the node side;
+ *   <li>a dedicated {@code GitRepository} tracking {@value #CATALOG_BRANCH} (same repo + GitHub App
+ *       auth as the rendered-branch source), so Flux exposes it as an in-cluster tarball artifact
+ *       at the exact reconciled commit — zero github fetch / token on the node side;
  *   <li>a {@code FloxCatalog} "{@value #FLOX_CATALOG_NAME}" whose {@code sourceRef} points at that
  *       {@code GitRepository}. The controller reads the artifact and resolves {@code
- *       floxcatalog:rke2lab-system/catalogue#<output>} install refs to {@code
+ *       floxcatalog:rke2lab-system/catalog#<output>} install refs to {@code
  *       tarball+http://…#<output>}.
  * </ul>
  *
@@ -44,17 +44,15 @@ public final class FloxCatalogManifestsUnit extends AbstractManifestsUnit {
   /**
    * Dedicated branch carrying the catalog flake at its root (maintained directly on the branch).
    */
-  public static final String CATALOGUE_BRANCH = "flox-catalogue";
+  public static final String CATALOG_BRANCH = "flox-catalog";
+
+  /** The single catalog FloxCatalog, referenced as {@code floxcatalog:rke2lab-system/catalog#…}. */
+  public static final String FLOX_CATALOG_NAME = "catalog";
 
   /**
-   * The single catalog FloxCatalog, referenced as {@code floxcatalog:rke2lab-system/catalogue#…}.
+   * The Flux GitRepository tracking {@link #CATALOG_BRANCH}; the Receiver reconciles it on push.
    */
-  public static final String FLOX_CATALOG_NAME = "catalogue";
-
-  /**
-   * The Flux GitRepository tracking {@link #CATALOGUE_BRANCH}; the Receiver reconciles it on push.
-   */
-  public static final String GIT_REPOSITORY_NAME = "flox-catalogue";
+  public static final String GIT_REPOSITORY_NAME = "flox-catalog";
 
   private static final String REPO_URL = "https://github.com/seedmatic/rke2lab.git";
   private static final String APP_AUTH_SECRET = "githubapp";
@@ -83,7 +81,7 @@ public final class FloxCatalogManifestsUnit extends AbstractManifestsUnit {
     final ApiObject gitRepo =
         new ApiObject(
             scope,
-            "gitrepository-flox-catalogue",
+            "gitrepository-flox-catalog",
             ApiObjectProps.builder()
                 .apiVersion("source.toolkit.fluxcd.io/v1")
                 .kind("GitRepository")
@@ -103,14 +101,14 @@ public final class FloxCatalogManifestsUnit extends AbstractManifestsUnit {
             Map.of(
                 // 10m, matching the rendered-branch source: the github Receiver lists BOTH
                 // GitRepositories in its resources (FluxReceiverManifestsUnit), so one webhook
-                // delivery reconciles this catalogue too and the interval is only the fallback.
+                // delivery reconciles this catalog too and the interval is only the fallback.
                 // Relaxing one source and leaving this one at 5m would keep polling the same repo.
                 "interval",
                 "10m",
                 "url",
                 REPO_URL,
                 "ref",
-                Map.of("branch", CATALOGUE_BRANCH),
+                Map.of("branch", CATALOG_BRANCH),
                 // GitHub App auth REQUIRES provider=github (source-controller rejects App-data
                 // secrets otherwise) — same lane as the rendered-branch GitRepository.
                 "provider",
@@ -126,7 +124,7 @@ public final class FloxCatalogManifestsUnit extends AbstractManifestsUnit {
     final ApiObject floxCatalog =
         new ApiObject(
             scope,
-            "floxcatalog-catalogue",
+            "floxcatalog-catalog",
             ApiObjectProps.builder()
                 .apiVersion("flox.seedmatic.io/v1alpha1")
                 .kind("FloxCatalog")
