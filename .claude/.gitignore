@@ -27,7 +27,7 @@ telemetry/
 /checkpoint-*.md
 
 # Diagram preview scratch — overwritten every query, never committed
-claude-preview.adoc
+claude-preview*.adoc
 # Design brainstorm scratch — working notes for a session, never committed
 claude-brainstorm-*.adoc
 # Any whiteboard, whatever it is named. The two patterns above only caught the names WE
