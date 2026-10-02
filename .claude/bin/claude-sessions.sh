@@ -93,8 +93,16 @@ cmd_list() {
   fi
   local f n=0 dir slug from id
   # ls -t: most recently written first — the session you just lost is at the top.
-  # shellcheck disable=SC2045 # transcript names are UUIDs: no spaces, no glob characters
-  for f in $(ls -t "$projects"/*/*.jsonl 2>/dev/null); do
+  #
+  # ★ Read whole LINES. A command substitution word-splits, so a worktree path containing a
+  # space turned one transcript into several bogus rows, with `du` and `date` erroring and the
+  # command still exiting 0. The earlier `# shellcheck disable=SC2045` justified itself with
+  # "transcript names are UUIDs: no spaces" — true of the FILENAMES, false of the PATH they sit
+  # in, which is the part a user chooses. A disable whose reason does not cover the actual risk
+  # is worse than the warning. The residual limit is a newline inside the path, which `ls`
+  # cannot express either way.
+  while IFS= read -r f; do
+    [[ -n "$f" ]] || continue
     n=$((n + 1))
     dir=${f%/*}
     slug=${dir##*/}
@@ -109,7 +117,9 @@ cmd_list() {
       "$(date -r "$f" '+%m-%d %H:%M')" \
       "$from" \
       "$(first_prompt "$f")"
-  done
+    # Process substitution, not a pipe: a pipe would run the loop in a subshell and `n` would
+    # come back to zero, so an empty listing would be indistinguishable from a full one.
+  done < <(ls -t "$projects"/*/*.jsonl 2>/dev/null)
   ((n > 0)) || {
     echo "no transcript under $projects" >&2
     return 1
@@ -197,20 +207,36 @@ cmd_relink() {
     return 1
   }
 
-  mkdir -p "$here"
+  mkdir -p "$here" || {
+    echo "cannot create $here" >&2
+    return 1
+  }
   # Move entry by entry so an existing target directory is merged, not clobbered.
-  local e t
+  #
+  # ★ A failed move must be FATAL to the exit status. There is no `set -e` here, and the earlier
+  # `mv … && moved=$((moved+1))` only suppressed the counter: a permission error, an I/O error or
+  # a full disk produced a PARTIAL repair, a reassuring "moved N" and exit 0. For a recovery tool
+  # that is the worst possible failure mode — it tells you your history is safe while half of it
+  # is somewhere else.
+  local e t failed=0
   for e in "$src"/* "$src"/.[!.]*; do
     [[ -e "$e" ]] || continue
-    t="$here/$(basename "$e")"
+    t="$here/${e##*/}"
     if [[ -e "$t" ]]; then
-      echo "  SKIP $(basename "$e") — already present at the current name"
+      echo "  SKIP ${e##*/} — already present at the current name"
+    elif mv "$e" "$t"; then
+      moved=$((moved + 1))
     else
-      mv "$e" "$t" && moved=$((moved + 1))
+      echo "  FAILED to move ${e##*/}" >&2
+      failed=$((failed + 1))
     fi
   done
-  rmdir "$src" 2>/dev/null && echo "  removed the empty $(basename "$src")"
-  echo "moved $moved entr(ies) into $(basename "$here")"
+  rmdir "$src" 2>/dev/null && echo "  removed the empty ${src##*/}"
+  echo "moved $moved entr(ies) into ${here##*/}"
+  ((failed == 0)) || {
+    echo "$failed entr(ies) could NOT be moved: the repair is PARTIAL and $src still holds them." >&2
+    return 1
+  }
 }
 
 case "${1:-list}" in

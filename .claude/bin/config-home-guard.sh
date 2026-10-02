@@ -112,9 +112,9 @@ if ((${#problems[@]} > 0)); then
     IFS='; '
     echo "${problems[*]}"
   )"
-  # Escape for JSON. The message carries PATHS, and a backslash or a double quote in one
-  # would make the payload invalid — so the cry would be swallowed in exactly the situation
-  # where it is the only thing standing between the user and a lost session.
-  msg=${msg//\\/\\\\}
-  printf '{"systemMessage": "%s"}\n' "${msg//\"/\\\"}"
+  # ★ The JSON is BUILT by yq, never assembled by hand. The first attempt escaped `"` and `\`
+  # and still broke on a newline — and this payload carries PATHS, which a user chooses. A
+  # malformed payload swallows the cry in precisely the case where it is the only warning there
+  # is, so the rule is absolute: delegate the encoding to something that knows the format.
+  MSG="$msg" yq -n -o json -I0 '{"systemMessage": strenv(MSG)}'
 fi

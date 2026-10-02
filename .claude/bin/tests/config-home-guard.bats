@@ -72,3 +72,17 @@ setup() { setup_fake_seat; }
   [ -n "$output" ]
   printf '%s' "$output" | yq -p json '.systemMessage' >/dev/null
 }
+
+# Round 3 of the review called the hand-rolled escaping incomplete, and it was: it covered `"`
+# and `\` and still broke on a newline. The encoding is now built by yq instead of assembled,
+# which is why this case passes without a third escape rule being added.
+@test "the cry stays valid JSON when the path contains a newline" {
+  run env CLAUDE_CONFIG_DIR="$(printf '/tmp/with\nnewline')" bash "$BIN/config-home-guard.sh" </dev/null
+  [ -n "$output" ]
+  printf '%s' "$output" | yq -p json '.systemMessage' >/dev/null
+}
+
+@test "the payload is a single line, as a hook stream expects" {
+  run env -u CLAUDE_CONFIG_DIR bash "$BIN/config-home-guard.sh" </dev/null
+  [ "${#lines[@]}" -eq 1 ]
+}

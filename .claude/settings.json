@@ -6,8 +6,7 @@
     ],
     "additionalDirectories": [
       "/Volumes/git-bare-store",
-      "/Volumes/git-worktree-store",
-      "/private/var/lib/git"
+      "/Volumes/git-worktree-store"
     ]
   },
   "model": "opus[1m]",

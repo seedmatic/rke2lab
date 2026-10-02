@@ -16,15 +16,19 @@ encode() { printf '%s' "$1" | sed 's/[^a-zA-Z0-9]/-/g'; }
 # A seat is a worktree-shaped directory: a .claude/hub (what the wrapper's guard looks for), a
 # .claude/projects/<slug>, and a .code-workspace sitting ONE LEVEL ABOVE it, as in the real
 # layout.
+#
+# Takes an optional directory NAME, so a test can ask for a path containing a space — the shape
+# that turned one transcript into several bogus rows.
 setup_fake_seat() {
-  SEAT="$BATS_TEST_TMPDIR/seat"
+  local name="${1:-seat}"
+  SEAT="$BATS_TEST_TMPDIR/$name"
   mkdir -p "$SEAT/.claude/hub"
   SLUG="$(encode "$SEAT")"
   PROJECTS="$SEAT/.claude/projects"
   HERE="$PROJECTS/$SLUG"
   mkdir -p "$HERE"
-  WS="$BATS_TEST_TMPDIR/seat.code-workspace"
-  printf '{ "folders": [ { "path": "seat" } ], "settings": {} }\n' >"$WS"
+  WS="$BATS_TEST_TMPDIR/$name.code-workspace"
+  printf '{ "folders": [ { "path": "%s" } ], "settings": {} }\n' "$name" >"$WS"
   export CLAUDE_PROJECT_DIR="$SEAT"
   export CLAUDE_CONFIG_DIR="$SEAT/.claude"
 }

@@ -244,8 +244,9 @@ flox activate -- bats .claude/bin/tests/
 flake ref, since nothing couples a test runner to a reactor version the way spotless couples
 `shfmt`.
 
-Twenty cases, and **every one is a regression for a defect that actually happened** on
-2026-10-02 rather than a hypothetical:
+**Every case is a regression for a defect that actually happened** on 2026-10-02 rather than a
+hypothetical. The count is deliberately not written here — `bats` prints it, and a number in
+prose only ever goes stale (it already did once, at the third review round):
 
 - a multi-line harness block leaking its second line as "the user's question";
 - `relink --apply` reading the projects directory from `CLAUDE_CONFIG_DIR`, so a misrouted

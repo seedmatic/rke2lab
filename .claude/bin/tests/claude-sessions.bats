@@ -103,6 +103,32 @@ setup() { setup_fake_seat; }
   [ -f "$PROJECTS/-some-other-project/eeeeeeee-1111-2222-3333-444444444444.jsonl" ]
 }
 
+# Copilot, round 3: `for f in $(ls -t …)` word-splits, so a worktree path with a space turned one
+# transcript into several bogus rows — du and date erroring, exit status still 0.
+@test "a worktree path containing a space yields one row per transcript" {
+  setup_fake_seat "seat with space"
+  write_transcript_with_reminder "$HERE/aaaaaaaa-1111-2222-3333-444444444444.jsonl" "une seule ligne attendue"
+  run bash "$BIN/claude-sessions.sh"
+  [ "$status" -eq 0 ]
+  [ "${#lines[@]}" -eq 1 ]
+  [[ "${lines[0]}" == *"une seule ligne attendue"* ]]
+  [[ "$output" != *"No such file"* ]]
+}
+
+# Copilot, round 3, high severity: there is no `set -e`, and `mv … && moved=…` only suppressed
+# the counter — so a partial repair exited 0 with a reassuring "moved N". For a recovery tool
+# that is the worst failure mode: it says the history is safe while half of it is elsewhere.
+@test "a move that cannot be performed fails loudly instead of claiming success" {
+  mkdir -p "$HERE-manifests"
+  : >"$HERE-manifests/dddddddd-1111-2222-3333-444444444444.jsonl"
+  chmod 500 "$HERE"
+  run bash "$BIN/claude-sessions.sh" relink "$SLUG-manifests" --apply
+  chmod 700 "$HERE"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"FAILED to move"* ]]
+  [[ "$output" == *"PARTIAL"* ]]
+}
+
 @test "a real unknown flag is still rejected" {
   run bash "$BIN/claude-sessions.sh" relink --bogus
   [ "$status" -eq 2 ]
