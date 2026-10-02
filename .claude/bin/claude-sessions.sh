@@ -13,9 +13,14 @@
 #      handoff; `relink` does it instead.
 #
 # Usage:
-#   claude-sessions.sh [list]            # one line per session, most recently written first
-#   claude-sessions.sh relink            # report orphaned transcript directories (dry run)
-#   claude-sessions.sh relink --apply    # move them under this worktree's current name
+#   claude-sessions.sh [list]                      # every session of this worktree, newest first
+#   claude-sessions.sh relink                      # list candidate directories (always a dry run)
+#   claude-sessions.sh relink <candidate> --apply  # move THAT ONE under this worktree's name
+#
+# `relink --apply` refuses without a named candidate, by design: a directory under another slug
+# may be a live session started from a subdirectory of this worktree, not a moved one. Hence
+# "candidate" and never "orphan" — the tool cannot tell them apart, so it does not pretend to.
+# `list`, for the same reason, shows them all and marks where each was started.
 set -uo pipefail
 
 root="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
@@ -33,7 +38,8 @@ encode() { printf '%s' "$1" | sed 's/[^a-zA-Z0-9]/-/g'; }
 # possibility instead of guarding it: every directory under a worktree's own config home
 # belongs to that worktree.
 projects="$root/.claude/projects"
-here="$projects/$(encode "$root")"
+rootslug="$(encode "$root")"
+here="$projects/$rootslug"
 
 # Said once, to stderr, because it changes what `list` can possibly show.
 if [[ -n "${CLAUDE_CONFIG_DIR:-}" ]] &&
@@ -71,22 +77,43 @@ first_prompt() {
   printf '%s' "${p:-<nothing said in the first 600 lines>}"
 }
 
+# ★ Scans EVERY directory under this worktree's projects/, not just the root slug.
+#
+# A session started in a subdirectory — say `<worktree>/manifests` — is keyed on that cwd and so
+# gets its own slug, while the config home still comes from the git root and is therefore shared.
+# It is a session of this worktree by any reading, and the whole point of this command is to find
+# the one you lost; listing only the root slug would hide it at the moment it is wanted. The
+# sorting is global across directories, because "newest first" is only useful if it is true of
+# the whole set.
 cmd_list() {
-  if [[ ! -d "$here" ]]; then
-    echo "no transcript directory for this worktree at $here" >&2
-    echo "(if the worktree was moved, try: $(basename "$0") relink)" >&2
+  if [[ ! -d "$projects" ]]; then
+    echo "no projects directory under this worktree at $projects" >&2
+    echo "(if the worktree was moved, try: ${0##*/} relink)" >&2
     return 1
   fi
-  local f
+  local f n=0 dir slug from id
   # ls -t: most recently written first — the session you just lost is at the top.
   # shellcheck disable=SC2045 # transcript names are UUIDs: no spaces, no glob characters
-  for f in $(ls -t "$here"/*.jsonl 2>/dev/null); do
-    printf '%-36s %6s  %s  %s\n' \
-      "$(basename "$f" .jsonl)" \
+  for f in $(ls -t "$projects"/*/*.jsonl 2>/dev/null); do
+    n=$((n + 1))
+    dir=${f%/*}
+    slug=${dir##*/}
+    # Where it was started, when that is not the worktree root — the only way to tell two
+    # otherwise identical-looking sessions apart.
+    from=""
+    [[ "$dir" == "$here" ]] || from="[${slug#"$rootslug"-}] "
+    id=${f##*/}
+    printf '%-36s %6s  %s  %s%s\n' \
+      "${id%.jsonl}" \
       "$(du -h "$f" | cut -f1)" \
       "$(date -r "$f" '+%m-%d %H:%M')" \
+      "$from" \
       "$(first_prompt "$f")"
   done
+  ((n > 0)) || {
+    echo "no transcript under $projects" >&2
+    return 1
+  }
 }
 
 # ★ A directory that is not this worktree's slug is a CANDIDATE, never certainly an orphan —

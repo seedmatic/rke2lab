@@ -24,6 +24,35 @@ setup() { setup_fake_seat; }
   [[ "$output" == *"une question en chaine nue"* ]]
 }
 
+# Copilot, round 2: list scanned only the root slug, so a session started in a subdirectory of
+# this worktree — which shares this config home and is a session of this worktree by any
+# reading — was invisible at the exact moment the command is wanted.
+@test "list shows a session started from a subdirectory, and says where" {
+  mkdir -p "$HERE-manifests"
+  write_transcript_with_reminder "$HERE-manifests/dddddddd-1111-2222-3333-444444444444.jsonl" "question depuis manifests"
+  write_transcript_with_reminder "$HERE/aaaaaaaa-1111-2222-3333-444444444444.jsonl" "question depuis la racine"
+  run bash "$BIN/claude-sessions.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"question depuis manifests"* ]]
+  [[ "$output" == *"question depuis la racine"* ]]
+  [[ "$output" == *"[manifests]"* ]]
+}
+
+@test "list sorts across directories, not within each one" {
+  mkdir -p "$HERE-manifests"
+  write_transcript_with_reminder "$HERE/aaaaaaaa-1111-2222-3333-444444444444.jsonl" "la plus ancienne"
+  sleep 1
+  write_transcript_with_reminder "$HERE-manifests/dddddddd-1111-2222-3333-444444444444.jsonl" "la plus recente"
+  run bash "$BIN/claude-sessions.sh"
+  [[ "${lines[0]}" == *"la plus recente"* ]]
+}
+
+@test "a root-slug session carries no origin marker" {
+  write_transcript_with_reminder "$HERE/aaaaaaaa-1111-2222-3333-444444444444.jsonl" "depuis la racine"
+  run bash "$BIN/claude-sessions.sh"
+  [[ "$output" != *"["* ]]
+}
+
 @test "list says so rather than lying when a transcript holds nothing said" {
   printf '{"type":"assistant","message":{"content":[{"type":"text","text":"moi, pas lui"}]}}\n' \
     >"$HERE/cccccccc-1111-2222-3333-444444444444.jsonl"

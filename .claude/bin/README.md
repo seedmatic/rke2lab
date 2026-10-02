@@ -210,14 +210,24 @@ ndh flake-lock bump and a home-manager switch — so the assertion lives here in
 ### `claude-sessions.sh` — manual command
 
 ```bash
-.claude/bin/claude-sessions.sh              # one line per session, most recently written first
-.claude/bin/claude-sessions.sh relink       # report orphaned transcript dirs (dry run)
-.claude/bin/claude-sessions.sh relink --apply
+.claude/bin/claude-sessions.sh                          # every session, newest first
+.claude/bin/claude-sessions.sh relink                   # list candidates (always a dry run)
+.claude/bin/claude-sessions.sh relink <candidate> --apply   # move THAT ONE
 ```
 
 `list` prints session id, size, last write, and **the first thing the user actually asked** —
 the only thing that identifies a session when you are hunting for the one that carried a role.
 Without it, that hunt means grepping .jsonl files of 0.4 MB to 117 MB by hand.
+
+It scans **every** transcript directory under this worktree's `projects/`, sorted together, not
+just the root slug: a session started in a subdirectory is keyed on that cwd and gets its own
+slug while sharing this config home, so it is a session of this worktree and listing only the
+root would hide it at the moment it is wanted. Such a line is marked with where it was started,
+e.g. `[manifests]`.
+
+`relink --apply` **refuses without a named candidate**, and the output says "candidate" rather
+than "orphan" on purpose: a directory under another slug may be one of those live subdirectory
+sessions rather than a moved worktree, and the tool cannot tell them apart.
 
 `relink` repairs the other failure: transcripts live in a directory named after the *encoded
 cwd*, so moving or renaming the worktree orphans them until that name is changed. It names its
