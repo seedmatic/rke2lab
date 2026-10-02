@@ -19,7 +19,7 @@ All Maven commands must run through flox: `flox activate -- ./mvnw ...`
 ./mvnw clean install
 
 # Build specific module (use unprefixed artifact ID from module directory name)
-./mvnw -pl :seed-master clean install
+./mvnw -pl :seed-outcluster clean install
 ./mvnw -pl :manifests clean package
 
 # Run tests
@@ -34,7 +34,7 @@ All Maven commands must run through flox: `flox activate -- ./mvnw ...`
 
 ## Project structure
 
-- `seed-master/` - Main bootstrap orchestration and Pulumi control plane
+- `seed-outcluster/` - Main bootstrap orchestration and Pulumi control plane
 - `manifests/` - Kubernetes manifest units (CDK8s-based, 27+ units)
 - `systemd-port/` - Systemd unit abstractions and contracts (hexagonal port)
 - `cdk8s-systemd/` - CDK8s integration for systemd units
@@ -55,8 +55,8 @@ All Maven commands must run through flox: `flox activate -- ./mvnw ...`
 
 ## Build & module layout
 
-- Maven multi-module project. CLI selectors use the unprefixed module name: `./mvnw -pl :seed-master` (not `:rke2lab-seed-master`).
-- **Never install project artifacts to the local repo** (`~/.m2`). Inter-module dependencies must always resolve through the **reactor**, from each module's `target/` — so a module build always uses `-am` (also-make) to build its siblings from source: `./mvnw -pl :seed-master -am …`. A bare `-pl :seed-master` resolves siblings from installed/stale jars and fails (e.g. `NodeEnvContributor` not found). Do not `mvn install` to work around it.
+- Maven multi-module project. CLI selectors use the unprefixed module name: `./mvnw -pl :seed-outcluster` (not `:rke2lab-seed-outcluster`).
+- **Never install project artifacts to the local repo** (`~/.m2`). Inter-module dependencies must always resolve through the **reactor**, from each module's `target/` — so a module build always uses `-am` (also-make) to build its siblings from source: `./mvnw -pl :seed-outcluster -am …`. A bare `-pl :seed-outcluster` resolves siblings from installed/stale jars and fails (e.g. `NodeEnvContributor` not found). Do not `mvn install` to work around it.
 - Tests are skipped by default (root `.mvn` config). To actually execute them, pass `-DskipTests=false`. A build that prints `BUILD SUCCESS` with no `Tests run:` line means they were skipped, not passed.
 - Group ids are nested under `io.seedmatic.rke2lab` (and `io.seedmatic.rke2lab.sdks` for the `sdks/` tree). Artifact ids match the directory name.
 - `<name>` in each pom is the relative directory path from the repo root.
@@ -67,7 +67,7 @@ All Maven commands must run through flox: `flox activate -- ./mvnw ...`
 The seeding pipeline is expressed as **jGiven scenarios run by the embedded JUnit
 Platform launcher** — the same jGiven + JUnit machinery we use to *test* rke2lab,
 reused as the runtime engine (dogfooding / re-entrance; no richer model-level
-alternative). The OSGi world owns the pipeline; the host (`seed-master` +
+alternative). The OSGi world owns the pipeline; the host (`seed-outcluster` +
 `pulumi-edge`) boots the framework (`FrameworkLaunch.embedded().launch()`), injects
 the `RunMode` fact + Pulumi context, and renders/writes (`RunMode` selects a
 `PreviewExecutor` for preview — rendering decoupled from execution).
@@ -226,7 +226,7 @@ manifestDomain.put("clusterApi", policy.isEnabled("clusterApi")); // ❌ Mismatc
 - Hardcoding `"clusterApi"` creates a mismatch → silent failure
 
 **Enforcement**:
-- Grep in code review: `! grep -r 'isEnabled("' manifests/src/ seed-master/src/`
+- Grep in code review: `! grep -r 'isEnabled("' manifests/src/ seed-outcluster/src/`
 - When adding a new domain, add the accessor method to `ManifestDomainCatalog` first
 - See `docs/architecture/manifests/manifest-domain-catalog-pattern.adoc` for full pattern documentation
 

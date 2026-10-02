@@ -9,6 +9,7 @@ import io.seedmatic.rke2lab.manifests.contract.profiles.IncusIdentityMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ManagementClusterCaMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.OperatorPkiMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ReplicatorSourceSecretsMaterial;
+import io.seedmatic.rke2lab.manifests.contract.profiles.TlsAuthorityCaMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.WorkloadBootstrapBundlesMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.WorkloadClusterCasMaterial;
 import io.seedmatic.rke2lab.manifests.ingress.ComponentVersions;
@@ -18,7 +19,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
-import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -31,15 +31,25 @@ public record ManifestSynthesisRequest(
     BootstrapIdentity bootstrapIdentity,
     ComponentVersions componentVersions,
     Optional<ImageState> imageState,
+    /*
+     * The bridge every node's fabric NIC attaches to — an OPERATOR declaration from the host's
+     * rke2lab:network: concern, which the render cannot derive (unlike the vmnet bridge, which follows
+     * the cluster's role and comes from the blueprint). EMPTY when unamended, never a blank string:
+     * absence belongs to the type, so no consumer has to recognise a present-but-meaningless value.
+     * {@link ManifestSynthesisContext#fabricBridgeParent()} is the one place it becomes an error, and
+     * only for a render that actually poses devices — a survey that never asks never fails.
+     */
+    Optional<String> fabricBridgeParent,
     Optional<IncusIdentityMaterial> incusIdentity,
     Optional<OperatorPkiMaterial> operatorPki,
     Optional<GithubAppMaterial> githubApp,
     Optional<ReplicatorSourceSecretsMaterial> replicatorSources,
     Optional<ClusterIssuerCaMaterial> clusterIssuerCa,
+    Optional<TlsAuthorityCaMaterial> tlsAuthorityCa,
     Optional<WorkloadClusterCasMaterial> workloadCas,
     Optional<ManagementClusterCaMaterial> managementCas,
     Optional<WorkloadBootstrapBundlesMaterial> workloadBootstrapBundles,
-    List<WorkloadTarget> workloadTargets)
+    Optional<ClusterFleet> clusterFleet)
     implements ManifestDomainPolicyAware {
 
   private static final String ENABLED_DOMAINS_PROPERTY = "rke2lab.manifests.policy.enabledDomains";
@@ -58,25 +68,29 @@ public record ManifestSynthesisRequest(
     bootstrapIdentity = bootstrapIdentity == null ? BootstrapIdentity.unknown() : bootstrapIdentity;
     // No blank-version fallback: an absent ComponentVersions is incomplete state, not a valid empty
     // default — a blank version renders an unresolvable upstream path (e.g. release-.yaml). The
-    // builder supplies ComponentVersions.defaults(); the engine (seed-master) overlays Pulumi
+    // builder supplies ComponentVersions.defaults(); the engine (seed-outcluster) overlays Pulumi
     // config
     // on top. Required by construction, so a version-less request cannot exist.
     componentVersions =
         Objects.requireNonNull(
             componentVersions, "componentVersions is required (no blank-version default)");
     imageState = imageState == null ? Optional.empty() : imageState;
+    fabricBridgeParent = fabricBridgeParent == null ? Optional.empty() : fabricBridgeParent;
     incusIdentity = incusIdentity == null ? Optional.empty() : incusIdentity;
     operatorPki = operatorPki == null ? Optional.empty() : operatorPki;
     githubApp = githubApp == null ? Optional.empty() : githubApp;
     replicatorSources = replicatorSources == null ? Optional.empty() : replicatorSources;
     clusterIssuerCa = clusterIssuerCa == null ? Optional.empty() : clusterIssuerCa;
+    tlsAuthorityCa = tlsAuthorityCa == null ? Optional.empty() : tlsAuthorityCa;
     workloadCas = workloadCas == null ? Optional.empty() : workloadCas;
     managementCas = managementCas == null ? Optional.empty() : managementCas;
     workloadBootstrapBundles =
         workloadBootstrapBundles == null ? Optional.empty() : workloadBootstrapBundles;
-    // The workload clusters this (management) render must emit CAPI CRs for — empty on a mgmt-only
-    // or standalone run. Coalesced to an empty immutable list so a slice-less request never NPEs.
-    workloadTargets = workloadTargets != null ? List.copyOf(workloadTargets) : List.of();
+    // The declared fleet this render derives its CHILDREN from — empty on a bare survey, the
+    // standalone CLI, and on a per-child pass (a parent lays down the child's branch as a
+    // bootstrap;
+    // the child's own render adds ITS children). Coalesced so a slice-less request never NPEs.
+    clusterFleet = clusterFleet != null ? clusterFleet : Optional.empty();
   }
 
   public static Builder builder(Path synthOutdir, Path synthManifestFile) {
@@ -91,15 +105,17 @@ public record ManifestSynthesisRequest(
         .bootstrapIdentity(bootstrapIdentity)
         .componentVersions(componentVersions)
         .imageState(imageState)
+        .fabricBridgeParent(fabricBridgeParent)
         .incusIdentity(incusIdentity)
         .operatorPki(operatorPki)
         .githubApp(githubApp)
         .replicatorSources(replicatorSources)
         .clusterIssuerCa(clusterIssuerCa)
+        .tlsAuthorityCa(tlsAuthorityCa)
         .workloadCas(workloadCas)
         .managementCas(managementCas)
         .workloadBootstrapBundles(workloadBootstrapBundles)
-        .workloadTargets(workloadTargets);
+        .clusterFleet(clusterFleet);
   }
 
   // Immutable transformations: each returns a new request with one slice replaced. They delegate to
@@ -143,6 +159,10 @@ public record ManifestSynthesisRequest(
 
   public ManifestSynthesisRequest withClusterIssuerCa(ClusterIssuerCaMaterial material) {
     return toBuilder().clusterIssuerCa(Optional.of(material)).build();
+  }
+
+  public ManifestSynthesisRequest withTlsAuthorityCa(TlsAuthorityCaMaterial material) {
+    return toBuilder().tlsAuthorityCa(Optional.of(material)).build();
   }
 
   public ManifestSynthesisRequest withWorkloadCas(WorkloadClusterCasMaterial material) {
@@ -218,15 +238,17 @@ public record ManifestSynthesisRequest(
     private BootstrapIdentity bootstrapIdentity = BootstrapIdentity.unknown();
     private ComponentVersions componentVersions = ComponentVersions.defaults();
     private Optional<ImageState> imageState = Optional.empty();
+    private Optional<String> fabricBridgeParent = Optional.empty();
     private Optional<IncusIdentityMaterial> incusIdentity = Optional.empty();
     private Optional<OperatorPkiMaterial> operatorPki = Optional.empty();
     private Optional<GithubAppMaterial> githubApp = Optional.empty();
     private Optional<ReplicatorSourceSecretsMaterial> replicatorSources = Optional.empty();
     private Optional<ClusterIssuerCaMaterial> clusterIssuerCa = Optional.empty();
+    private Optional<TlsAuthorityCaMaterial> tlsAuthorityCa = Optional.empty();
     private Optional<WorkloadClusterCasMaterial> workloadCas = Optional.empty();
     private Optional<ManagementClusterCaMaterial> managementCas = Optional.empty();
     private Optional<WorkloadBootstrapBundlesMaterial> workloadBootstrapBundles = Optional.empty();
-    private List<WorkloadTarget> workloadTargets = List.of();
+    private Optional<ClusterFleet> clusterFleet = Optional.empty();
 
     private Builder(Path synthOutdir, Path synthManifestFile) {
       this.synthOutdir = synthOutdir;
@@ -240,6 +262,11 @@ public record ManifestSynthesisRequest(
 
     public Builder floxDebugPolicy(final FloxDebugPolicy v) {
       this.floxDebugPolicy = v;
+      return this;
+    }
+
+    public Builder fabricBridgeParent(final Optional<String> v) {
+      this.fabricBridgeParent = v;
       return this;
     }
 
@@ -283,6 +310,11 @@ public record ManifestSynthesisRequest(
       return this;
     }
 
+    public Builder tlsAuthorityCa(final Optional<TlsAuthorityCaMaterial> v) {
+      this.tlsAuthorityCa = v;
+      return this;
+    }
+
     public Builder workloadCas(final Optional<WorkloadClusterCasMaterial> v) {
       this.workloadCas = v;
       return this;
@@ -298,8 +330,8 @@ public record ManifestSynthesisRequest(
       return this;
     }
 
-    public Builder workloadTargets(final List<WorkloadTarget> v) {
-      this.workloadTargets = v;
+    public Builder clusterFleet(final Optional<ClusterFleet> v) {
+      this.clusterFleet = v;
       return this;
     }
 
@@ -312,15 +344,17 @@ public record ManifestSynthesisRequest(
           bootstrapIdentity,
           componentVersions,
           imageState,
+          fabricBridgeParent,
           incusIdentity,
           operatorPki,
           githubApp,
           replicatorSources,
           clusterIssuerCa,
+          tlsAuthorityCa,
           workloadCas,
           managementCas,
           workloadBootstrapBundles,
-          workloadTargets);
+          clusterFleet);
     }
   }
 

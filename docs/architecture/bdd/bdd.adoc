@@ -28,7 +28,7 @@ commit `39fe4d8a`) for anyone tracing the history.
 
 *Ownership (unchanged by the turn):* the pipeline — scenarios, engine, AND the bootstrap *reasoning*
 — is owned by the *OSGi world*. jGiven is already an OSGi bundle (`jgiven-wrap`), the JUnit launcher
-already runs inside embedded Felix (`InContainerJUnitRunner`). The *host* (`exec/seed-master` +
+already runs inside embedded Felix (`InContainerJUnitRunner`). The *host* (`exec/seed-outcluster` +
 `pulumi-edge`) is a *consumer*: it boots the framework, injects the launch context (the `RunMode`
 fact, the Pulumi output sink), and renders/writes what the OSGi world produces.
 ====
@@ -53,7 +53,7 @@ fact, the Pulumi output sink), and renders/writes what the OSGi world produces.
   *plus* a build-time ASM DAG gate (topological: every `required` has a `guaranteed` upstream) — a
   `StagingGate` sibling of `SYNTHESIS_PATTERN`.
 * *Migration:* legibility cleanup of the spec network FIRST (this pass), then ClusterSeed-vertical —
-  one pipeline at a time into `seed-master`, the other six coexisting on the former model meanwhile.
+  one pipeline at a time into `seed-outcluster`, the other six coexisting on the former model meanwhile.
 ====
 
 == Where the pipeline sits in rke2lab — set the scene before the model
@@ -103,7 +103,7 @@ link:../atlas/seed.adoc[seed orchestration L1].
 flowchart TB
   op(["Operator"]):::person
   subgraph host["host space — actualises over Pulumi (exec/)"]
-    seed["seed-master<br/>boots the framework, injects RunMode + Pulumi ctx, renders/writes"]:::hostc
+    seed["seed-outcluster<br/>boots the framework, injects RunMode + Pulumi ctx, renders/writes"]:::hostc
     edge["pulumi-edge<br/>RunMode source · stack sink · output registry"]:::hostc
   end
   subgraph osgi["OSGi world — describes + reasons (pure, no Pulumi/gRPC)"]
@@ -182,7 +182,7 @@ despite it. The circularity is not a blind spot here; it is a stress test.
 the pipeline does. Inclusion is judged by operator-need, not by "is it a phase". This survives the
 turn unchanged — it is why the seeding must narrate at all.*
 
-The reason any of this matters. The runbook does not exist to *narrate the pipeline*. seed-master is
+The reason any of this matters. The runbook does not exist to *narrate the pipeline*. seed-outcluster is
 only one piece — the cluster bootstrap — of a larger system the operator runs. The runbook is the
 projection of *the operator's mental model of the whole system*, and the inclusion criterion for what
 it renders is not "is it a pipeline phase?" but *"does the operator need it to understand and act on

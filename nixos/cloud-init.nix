@@ -1,6 +1,6 @@
 # rke2lab cloud-init datasource shim — the guest-side bridge that lets `services.cloud-init` consume
 # the incus-provided `cloud-init.user-data` on a CONTAINER node-base. This is the foundation of the
-# uniform bootstrap channel: both seed-master (standalone mgmt grow) and CAPN/CAPRKE2 (in-cluster
+# uniform bootstrap channel: both seed-outcluster (standalone mgmt grow) and CAPN/CAPRKE2 (in-cluster
 # workload grow) deliver via `cloud-init.user-data`, and this module is what makes the guest read it.
 #
 # Why a shim (not stock cloud-init): cloud-init's LXD datasource hardcodes /dev/lxd/sock and has no

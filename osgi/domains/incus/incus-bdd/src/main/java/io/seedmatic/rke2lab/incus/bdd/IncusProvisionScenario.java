@@ -1,5 +1,6 @@
 package io.seedmatic.rke2lab.incus.bdd;
 
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.tngtech.jgiven.Stage;
@@ -35,6 +36,7 @@ import io.seedmatic.rke2lab.incus.ingress.GrowImageView;
 import io.seedmatic.rke2lab.incus.ingress.GrowNetworkView;
 import io.seedmatic.rke2lab.incus.ingress.IncusGrowCoordinate;
 import io.seedmatic.rke2lab.incus.ingress.InstanceGrowPlan;
+import io.seedmatic.rke2lab.incus.ingress.NodeRuntimeContract;
 import io.seedmatic.rke2lab.incus.ingress.SplitImageFingerprint;
 import io.seedmatic.rke2lab.netplan.contract.ClusterNetworkBlueprint;
 import io.seedmatic.rke2lab.netplan.contract.NetplanSynthesisService;
@@ -274,9 +276,9 @@ public class IncusProvisionScenario
   /**
    * The image-build request the scion drives. When both amendments are present (a live cultivating
    * run) it is derived from them: the incus daemon lives only on the remote {@code builderHost}
-   * ({@code bioskop-nixos}), so from the seed-master host the edge streams the nix build over ssh
-   * (nix alone resolves on the Mac, but no local daemon to import into). The workspace it {@code
-   * cd}s into is the worktree root rebased onto the automount view ({@code
+   * ({@code bioskop-nixos}), so from the seed-outcluster host the edge streams the nix build over
+   * ssh (nix alone resolves on the Mac, but no local daemon to import into). The workspace it
+   * {@code cd}s into is the worktree root rebased onto the automount view ({@code
    * BootstrapPaths.asAutomountView}, e.g. {@code /net/bioskop.local/private/ …}), the SAME view the
    * Mac reads the artifacts back through. The artifact dir is that root's OWN subpath, so it rides
    * as a path RELATIVE to the workspace and the recipe joins the two — no second translation; the
@@ -564,6 +566,19 @@ public class IncusProvisionScenario
       node.put("incusProject", facet.incusProject());
       node.put("incusRemoteAddress", "https://" + incusRemoteHost + ":8443");
       node.put("rke2Version", rke2Version);
+      // The runtime contract an instance of this image needs, from its ONE definition. Forwarded so
+      // the rendered NodeImage CR carries it and the in-cluster controller poses it on
+      // LXCMachine.spec.config — where instance config WINS over the profile the host stamps, which
+      // is why a second literal there had drifted and lost the modules cilium needs.
+      final NodeRuntimeContract runtime = NodeRuntimeContract.nodeBase();
+      final ObjectNode runtimeNode = node.putObject("runtime");
+      final ArrayNode modules = runtimeNode.putArray("kernelModules");
+      runtime.kernelModules().forEach(modules::add);
+      runtimeNode.put("rawLxc", runtime.rawLxc());
+      runtimeNode.put("privileged", runtime.privileged());
+      runtimeNode.put("nesting", runtime.nesting());
+      runtimeNode.put("interceptBpf", runtime.interceptBpf());
+      runtimeNode.put("interceptBpfDevices", runtime.interceptBpfDevices());
       return Optional.of(node);
     }
 

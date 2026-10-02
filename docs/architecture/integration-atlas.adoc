@@ -126,7 +126,7 @@ These words are used precisely throughout the atlas and specs; this is the gloss
   two-spaces frame above stays exactly right.
 * *world* — a RUNTIME classloader region: the OSGi world (bundle classloaders, no gRPC) vs the HOST
   world (one flat classloader, holds gRPC). Same osgi/host line as the spaces, seen at runtime.
-* *`exec/` MATERIALISES the system* — an `exec/` module (`seed-master`) embeds both worlds into one
+* *`exec/` MATERIALISES the system* — an `exec/` module (`seed-outcluster`) embeds both worlds into one
   launchable artifact: the OSGi bundles (describe) + the host adapters (actualise), composed into a
   self-contained jar that boots Felix inside `Pulumi.run` (the R4 view — link:atlas/runtime.adoc[runtime L1]). That is the role the
   terminology was missing: osgi *describes*, host *actualises*, `exec/` *materialises*.

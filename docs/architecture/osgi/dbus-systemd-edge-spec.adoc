@@ -23,7 +23,7 @@ what the whole flow is meant to be — the reference the rest of the document re
 
 Each node carries its *domain* (systemd / doctor / manifests / control-plane / external) and its
 *role* by color (edge blue, port pink, domain-core green, control-plane/host green-outline, external
-grey). `seed-master` is a *control-plane application* — that is its nature, not a module; it
+grey). `seed-outcluster` is a *control-plane application* — that is its nature, not a module; it
 orchestrates and *consults* the doctor domain, it is not itself a domain.
 
 [mermaid]
@@ -32,7 +32,7 @@ flowchart LR
   world["EXTERNAL<br/>systemd on the master node"]
   edge["systemd domain — EDGE<br/>dbus-systemd-edge, the contact, OSGi"]
   sport["systemd domain — PORT<br/>systemd-contract, the membrane"]
-  host["control-plane — HOST<br/>seed-master readiness gate"]
+  host["control-plane — HOST<br/>seed-outcluster readiness gate"]
   dport["doctor domain — PORT<br/>doctor-contract, Observation, Symptom"]
   doctor["doctor domain — CORE<br/>the specialist, Specialty SYSTEMD"]
   edge -->|reads| world
@@ -67,11 +67,11 @@ the executable mediates" step is withdrawn.
 One frame holds all the problems below together. *Knowledge runs strictly downward, never up.* Each
 domain is pure in its *upward ignorance*: Pulumi does not know it provisions RKE2; the doctor does not
 know it lives in a provisioning system; systemd does not know a doctor auscultates it. None of them
-knows it belongs to a control-node. The dependency graph proves it — `seed-master` depends on every
+knows it belongs to a control-node. The dependency graph proves it — `seed-outcluster` depends on every
 domain (`doctor-*`, `systemd-contract`, `manifests-*`, `pulumi-edge`, …); *no domain depends on
-`seed-master`*.
+`seed-outcluster`*.
 
-So the one place that knows *both* `doctor` and `systemd` is the *control-node* (`seed-master`) — and
+So the one place that knows *both* `doctor` and `systemd` is the *control-node* (`seed-outcluster`) — and
 that is exactly why it, and only it, can mediate between facets. But it mediates *through their ports*
 (it knows them all), *never through their internals* (it reasons in none). `DoctorAssembly` is the
 proof: it wires impls onto ports, it diagnoses nothing and speaks no dbus.
@@ -79,7 +79,7 @@ proof: it wires impls onto ports, it diagnoses nothing and speaks no dbus.
 [mermaid]
 ....
 flowchart TB
-  node["control-node — seed-master<br/>knows ALL facets, mediates by PORTS"]
+  node["control-node — seed-outcluster<br/>knows ALL facets, mediates by PORTS"]
   doctor["doctor domain — pure, upward-blind"]
   systemd["systemd domain — pure, upward-blind"]
   manifests["manifests domain — pure, upward-blind"]
@@ -104,7 +104,7 @@ domain*.
 
 == Problem 1 — the edge is stranded, and wrongly called host
 
-`DbusSystemdProbe` lives in `seed-master/controlplane/readiness`. The dbus contact is therefore
+`DbusSystemdProbe` lives in `seed-outcluster/controlplane/readiness`. The dbus contact is therefore
 *invisible as an edge*, and an import of `BootstrapConfig` nails it to the host world. The frontier
 doc even labels dbus "irreducibly host (native deps, ServiceLoader)".
 
@@ -131,7 +131,7 @@ flowchart TB
 [mermaid]
 ....
 flowchart TB
-  host["control-plane — HOST<br/>seed-master readiness gate"]
+  host["control-plane — HOST<br/>seed-outcluster readiness gate"]
   sport["systemd domain — PORT<br/>systemd-contract, SystemdRuntimeProbe contract"]
   edge["systemd domain — EDGE, OSGi bundle<br/>dbus-systemd-edge, embeds dbus-java + transport-tcp + java-systemd"]
   host -->|awaitService, not the impl| sport
@@ -375,7 +375,7 @@ This is a *legitimate asymmetry* with pulumi, not an inconsistency: pulumi is *n
 "align on pulumi when unsure" rule is a safety net for the undecided; here the domain question has a
 real answer, so the net does not apply. (`systemd-contract`'s stale module description — "shared by
 cdk8s-systemd and the synthesis layer" — should be corrected to name the runtime-status + unit-vocab
-role; nobody but seed-master readiness imports it today.)
+role; nobody but seed-outcluster readiness imports it today.)
 
 == What stays open (a choice, not a problem)
 

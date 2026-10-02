@@ -115,12 +115,12 @@
       <!-- rke2lab inter-module versions (project lifecycle) -->
       <dependency>
         <groupId>io.seedmatic.rke2lab</groupId>
-        <artifactId>seed-master</artifactId>
+        <artifactId>seed-outcluster</artifactId>
         <version>${rke2lab.version}</version>
       </dependency>
       <dependency>
         <groupId>io.seedmatic.rke2lab</groupId>
-        <artifactId>seed-master</artifactId>
+        <artifactId>seed-outcluster</artifactId>
         <version>${rke2lab.version}</version>
         <classifier>exec</classifier>
       </dependency>
@@ -618,7 +618,7 @@
     behaviour-as-documentation (unit/component tests written as Given/When/Then),
     and Mockito for interaction verification / multi-method collaborator doubles.
     Declared once here so every module gets them without redeclaring; versions
-    come from the imported BOM (spring-boot-dependencies + jgiven). seed-master
+    come from the imported BOM (spring-boot-dependencies + jgiven). seed-outcluster
     additionally depends on jgiven-core in MAIN scope — it plays scenarios in
     production to emit the runbook.
   -->
@@ -751,13 +751,13 @@
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-shade-plugin</artifactId>
           <version>${maven.shade.plugin.version}</version>
-          <!-- Shared exec-jar shade across the three exec/ entrypoints (seed-master,
+          <!-- Shared exec-jar shade across the three exec/ entrypoints (seed-outcluster,
                netplan-cli, manifests-cli): the flags and the artifact filter are
                identical, so they live here. Each module supplies only its own
                <transformers> (mainClass differs per module; the CLIs add a logback
-               IncludeResourceTransformer, seed-master adds Add-Opens) — those merge
+               IncludeResourceTransformer, seed-outcluster adds Add-Opens) — those merge
                onto this managed execution by the implicit 'default' execution id.
-               The logback.xml exclude is a harmless no-op for seed-master (it bundles
+               The logback.xml exclude is a harmless no-op for seed-outcluster (it bundles
                none), so the filter is safe to share. -->
           <executions>
             <execution>

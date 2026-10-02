@@ -122,7 +122,7 @@ class StagingClosureTest {
 
   @Test
   void aDirectlyDeclaredThirdPartyIsARealmLibraryEvenWhenNoDomainImportsIt() {
-    // gson: seed-master declares it a DIRECT compile dep (com.pulumi needs it host-flat at
+    // gson: seed-outcluster declares it a DIRECT compile dep (com.pulumi needs it host-flat at
     // startup), and an edge's client pulls it into the staging closure — but no domain
     // Import-Package: com.google.gson, so the import-signal alone would exclude it from flat. The
     // direct declaration IS the developer's keep-flat intent, so gson must be staged AND flat.

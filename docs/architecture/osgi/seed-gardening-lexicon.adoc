@@ -140,7 +140,7 @@ FR-EN reserve it draws from.
 | gants de jardinage | gardening gloves | (réserve)
 | tondeuse | lawnmower | (réserve)
 | débroussailleuse | string trimmer | (réserve)
-| outils | tools | **le host / l'edge** — l'outillage + le canal du jardinier (`pulumi-edge`, seed-master)
+| outils | tools | **le host / l'edge** — l'outillage + le canal du jardinier (`pulumi-edge`, seed-outcluster)
 |===
 
 == Protection et climat

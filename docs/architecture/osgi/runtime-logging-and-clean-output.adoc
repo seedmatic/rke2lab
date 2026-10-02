@@ -8,7 +8,7 @@ of the boot's noise leaking onto it._
 
 == Overview
 
-Every exec (`seed-master`, `manifests-cli`, `netplan-cli`) boots an embedded Felix and drains
+Every exec (`seed-outcluster`, `manifests-cli`, `netplan-cli`) boots an embedded Felix and drains
 all logging — host JUL, Felix's own trace, the OSGi `LogService` — into ONE logback context
 that `pax-logging-logback` owns. Two problems shape this file:
 

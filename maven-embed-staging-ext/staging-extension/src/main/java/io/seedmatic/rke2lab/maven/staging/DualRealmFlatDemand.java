@@ -13,7 +13,7 @@ import java.util.Set;
  * dual-realm carrier was kept flat with no flat consumer — but "consumed flat" is a property of the
  * ({@code carrier}, {@code exec-assembly}) pair, not of the carrier alone: {@code
  * manifests-ingress-contract} is consumed flat by {@code manifests-cli} (the version bumper) yet
- * only OSGi-side by {@code seed-master}. A per-carrier gate on a per-consumer fact fires in the
+ * only OSGi-side by {@code seed-outcluster}. A per-carrier gate on a per-consumer fact fires in the
  * wrong assembly, and a carrier cannot know at its own build time which future host applications
  * will consume it flat. So instead of ERRORING on an unused flat copy, the staging strategy simply
  * does not materialise it: the flat copy exists IFF a flat class references the carrier, by

@@ -14,6 +14,7 @@ import io.seedmatic.rke2lab.clusterpki.contract.WorkloadClusterCas;
 import io.seedmatic.rke2lab.clusterpki.core.internal.ClusterCaGenerator;
 import io.seedmatic.rke2lab.clusterpki.core.internal.SopsRecipients;
 import io.seedmatic.rke2lab.manifests.contract.SshToAgeConverter;
+import io.seedmatic.rke2lab.ndh.contract.NdhKeystoreCatalog;
 import io.seedmatic.rke2lab.ndh.contract.NdhKeystoreReader;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -49,13 +50,6 @@ import java.util.stream.Collectors;
  */
 public final class ClusterSeal {
 
-  /**
-   * The ndh inventory entries cluster-pki roots the CA on / derives the cluster age identity from.
-   */
-  private static final String TLS_AUTHORITY = "mammoth-skate-tls";
-
-  private static final String CLUSTER_SSH_KEY = "rke2-cluster";
-
   private final NdhKeystoreReader keystore;
   private final SshToAgeConverter sshToAge;
   private final SopsEncryptor encryptor;
@@ -74,12 +68,13 @@ public final class ClusterSeal {
     final ClusterCaGenerator generator = new ClusterCaGenerator();
     final ClusterCaGenerator.ClusterCaSet caSet =
         generator.generate(
-            keystore.authorityCert(TLS_AUTHORITY),
-            keystore.authorityPrivate(TLS_AUTHORITY),
+            keystore.authorityCert(NdhKeystoreCatalog.TLS_AUTHORITY.entryName()),
+            keystore.authorityPrivate(NdhKeystoreCatalog.TLS_AUTHORITY.entryName()),
             timestamp);
     final LinkedHashMap<String, String> bundle = caSet.nodeBundle();
     final String sealed = encryptor.encryptYaml(renderYaml(bundle), recipients);
-    final String ageIdentity = sshToAge.toAgeKey(keystore.sshPrivate(CLUSTER_SSH_KEY));
+    final String ageIdentity =
+        sshToAge.toAgeKey(keystore.sshPrivate(NdhKeystoreCatalog.CLUSTER_SSH_KEY.entryName()));
 
     // The operator's admin creds: an admin clientAuth leaf minted from the client-ca just
     // generated,
@@ -125,8 +120,8 @@ public final class ClusterSeal {
     if (clusterNames.isEmpty()) {
       return new WorkloadClusterCas(List.of());
     }
-    final String rootCert = keystore.authorityCert(TLS_AUTHORITY);
-    final String rootKey = keystore.authorityPrivate(TLS_AUTHORITY);
+    final String rootCert = keystore.authorityCert(NdhKeystoreCatalog.TLS_AUTHORITY.entryName());
+    final String rootKey = keystore.authorityPrivate(NdhKeystoreCatalog.TLS_AUTHORITY.entryName());
     final Map<String, WorkloadClusterCas.Entry> kept =
         existing.map(WorkloadClusterCas::entries).orElseGet(List::of).stream()
             .collect(

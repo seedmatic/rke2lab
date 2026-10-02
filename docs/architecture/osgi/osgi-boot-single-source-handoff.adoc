@@ -9,7 +9,7 @@ Removes the hand-list of embedded model bundles — the "boot trap" flagged in
 link:../patterns/port-edge-domain-ownership.adoc[Port, edge, domain — told apart]. The embedded model
 bundles are now DISCOVERED at boot by scanning `META-INF/bundles/` for a self-declared OSGi
 capability, not named in Java at ~8 scattered sites. Build GREEN on the reactor
-(`./mvnw -pl :seed-master,:manifests-cli,:netplan-cli -am clean package
+(`./mvnw -pl :seed-outcluster,:manifests-cli,:netplan-cli -am clean package
 -Dmaven.build.cache.skipCache=true -DskipTests=false`).
 
 This is the prerequisite for `ssh-to-age-edge` (the first NEW embedded bundle): with the trap still in
@@ -114,7 +114,7 @@ now zero Java literals.
 
 * *embedded* — `embeddedBootStack()`, used by the three exec entrypoints and their
   `EmbeddedBundlesBootTest`: every jar comes from `META-INF/bundles/`.
-* *classpath* — `HostSeamEmbeddedFelixTest` in seed-master: the model bundle is located on the reactor
+* *classpath* — `HostSeamEmbeddedFelixTest` in seed-outcluster: the model bundle is located on the reactor
   classpath (an exploded `target/classes`) via `OsgiRuntime.locateOnClasspath(...)` +
   `bundle(Path)`, NOT from `META-INF/bundles/`.
 
@@ -145,7 +145,7 @@ named; the embedded topology installs solely what the scan discovered. The two n
   `listEmbeddedJarNames()`; the scan gated to the embedded topology in `boot()`; removed the
   `embeddedBundle(String)` builder verb and the `embeddedBundleNames` field; refreshed Javadoc.
 * `osgi/runtime/.../SeedRuntime.java` — `bootingEmbedded()` is now no-arg; dropped `modelBundleJars`.
-* `exec/{seed-master,manifests-cli,netplan-cli}` — the three `bootingEmbedded()` call sites and the
+* `exec/{seed-outcluster,manifests-cli,netplan-cli}` — the three `bootingEmbedded()` call sites and the
   three `EmbeddedBundlesBootTest` boots dropped their model-bundle literal.
 
 == Related Documentation

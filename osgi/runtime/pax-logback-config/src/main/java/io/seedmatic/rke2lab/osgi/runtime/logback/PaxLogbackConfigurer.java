@@ -97,9 +97,9 @@ public final class PaxLogbackConfigurer {
    * all the way into the committed {@code network-blueprint.json}. The JSON export was luckier only
    * by accident: a stray line there breaks the parse outright.
    *
-   * <p>Suppressed entirely when {@code -Drke2lab.log.console=false}: that is seed-master's case,
-   * where a native console write wedges the boot under a remote debugger. (Stream pollution is no
-   * longer a reason to suppress — stderr already answers it.)
+   * <p>Suppressed entirely when {@code -Drke2lab.log.console=false}: that is seed-outcluster's
+   * case, where a native console write wedges the boot under a remote debugger. (Stream pollution
+   * is no longer a reason to suppress — stderr already answers it.)
    *
    * <p>This runs POST-{@code framework.start()}, past the boot-sensitive window the FILE-only
    * bootstrap XML guards, so the appender is safe to add here. Idempotent name so a

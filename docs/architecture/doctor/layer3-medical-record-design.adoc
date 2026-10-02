@@ -27,7 +27,7 @@ per checkpoint. What migrated is *where the delta is filed*:
 * The pre-OSGi types this doc names — `OutputBuilder`, `VerificationResult`, `ClusterReadinessResource`
   / `SystemdAdapterResource`, `ResourceCreationPipeline` — do NOT exist in the OSGi build; the readiness
   verdict is `ReadinessVerdict` folded by `DefaultReadinessAuthority`, and the host Pulumi bind lives in
-  `pulumi-edge`. The seed-master source links below are pre-OSGi and no longer resolve.
+  `pulumi-edge`. The seed-outcluster source links below are pre-OSGi and no longer resolve.
 ====
 
 == The problem, as previously framed
@@ -38,7 +38,7 @@ plans included — into the stack outputs* for "100% faithful reconstruction fro
 a new additive top-level `medicalRecord` output key.
 
 That framing carried a *hard problem*: the *phantom diff*. `OutputBuilder` deliberately omits
-`timestamp` (link:../../../seed-master/src/main/java/io/seedmatic/rke2lab/controlplane/pipeline/OutputBuilder.java[OutputBuilder.java]
+`timestamp` (link:../../../seed-outcluster/src/main/java/io/seedmatic/rke2lab/controlplane/pipeline/OutputBuilder.java[OutputBuilder.java]
 lines 37-46) because "it would change every run and produce phantom output diffs on no-op pulumi
 up". A full record carries admission (timestamp, git) → re-introduces exactly that phantom diff. The
 parade (exclude the timestamp) tensions with "100% faithful".
@@ -111,7 +111,7 @@ state*. Today it is NOT:
 
 * The two checkpoint resources are *siblings* under a common parent — both receive
   `bootstrapResult.readinessDependency()` as their `dependsOn`
-  (link:../../../seed-master/src/main/java/io/seedmatic/rke2lab/controlplane/resources/ResourceCreationPipeline.java[ResourceCreationPipeline.java]
+  (link:../../../seed-outcluster/src/main/java/io/seedmatic/rke2lab/controlplane/resources/ResourceCreationPipeline.java[ResourceCreationPipeline.java]
   lines 120, 131). The cluster resource does NOT depend on the systemd-adapter resource.
 * The cluster→systemd-adapter edge lives only in the *BDD nesting* (`@NestedSteps` /
   `.depending_on_systemd_adapter(...)`).

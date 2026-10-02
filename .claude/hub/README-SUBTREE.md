@@ -7,7 +7,9 @@ changes and publish them (sync up).
 
 ## Mental model (who owns what)
 
-- **Source of truth** = the `claude-hub` repo's **origin** (`github.com/nxmatic/claude-hub`).
+- **Source of truth** = the `claude-hub` repo's **origin** (`github.com/seedmatic/claude-hub`
+  — moved from the `nxmatic` org; GitHub still redirects, so stale remotes keep working and
+  hide the staleness until the redirect is withdrawn. Repointed everywhere 2026-09-29).
   Everything converges there.
 - **`<repo>/.claude/hub/`** (the subtree, e.g. in `rke2lab.d/main`) is where you normally **edit**
   hub content during a work session. Edits here are published *up* to the hub origin via

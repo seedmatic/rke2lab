@@ -54,7 +54,8 @@ public final class CultivatingNixosImageBuilder implements ImageBuilder {
     // distrobuilder run always rebuilt from scratch; nix does not, and keying a cache on the build
     // script's hash alone would serve a STALE image whenever only the committed sources changed.)
     //
-    // Build through the operator's OWN nix channel: when nix resolves locally (the seed-master host
+    // Build through the operator's OWN nix channel: when nix resolves locally (the seed-outcluster
+    // host
     // — the Mac — has it), run the script HERE. nix offloads the aarch64-linux build to its
     // configured remote builder. The script is now a pure ARTIFACT producer — it does NOT touch
     // incus; importing the built image is the incus PROVIDER's job (the host GROW declares an Image

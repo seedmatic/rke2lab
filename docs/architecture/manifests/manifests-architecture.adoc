@@ -225,7 +225,7 @@ graph TB
     Problem["<b>Challenge:</b><br/>Bootstrap a Kubernetes cluster in Incus containers<br/>with proper lifecycle management"]
 
     K8sManifests["Kubernetes Manifests<br/>(HelmChartConfig, ConfigMaps, Secrets)"]
-    Bootstrap["Bootstrap Orchestration<br/>(seed-master)"]
+    Bootstrap["Bootstrap Orchestration<br/>(seed-outcluster)"]
 
     R1["R1: Synthesize K8s manifests<br/>programmatically (CDK8s)"]
     R3["R3: Deliver to server/manifests<br/>(RKE2 auto-applies)"]
@@ -326,7 +326,7 @@ consumes the result, never serialising YAML nor reaching into the synthesis inte
 [mermaid]
 ----
 graph LR
-    subgraph host["flat host (seed-master)"]
+    subgraph host["flat host (seed-outcluster)"]
       H["bootstrap / resource stages"]
     end
     subgraph port["manifests-contract (SPIs + value types)"]
@@ -401,7 +401,7 @@ graph LR
 [mermaid]
 ----
 sequenceDiagram
-    participant Boot as IncusResourceBootstrap (seed-master)
+    participant Boot as IncusResourceBootstrap (seed-outcluster)
     participant Svc as DefaultManifestSynthesisService
     participant Ctx as ManifestSynthesisContext
     participant App as cdk8s App
@@ -627,8 +627,8 @@ cross-domain ordering.
 | The cluster domain — `ClusterRuntimeNamespaceManifestsUnit` (runtime namespace setup).
 
 | `ClusterApiDomainRegistrar`
-| The cluster-api domain — Incus-identity Secret, image-state ConfigMap, the CAPI operator and the
-  cluster kubeconfig units.
+| The cluster-api domain — Incus-identity Secret, the `NodeImage` describing the realised node-base,
+  the CAPI operator and the cluster kubeconfig units.
 
 | `NetworkingDomainRegistrar`
 | The networking domain — Cilium (config + advanced), Envoy Gateway, KDNS units; depends on the
@@ -728,7 +728,7 @@ Immutable configuration objects the runtime units build their pod specs from.
   (`ClusterRuntimeNamespaceManifestsUnit`) so it exists before this operators-layer SA/DaemonSet —
   a namespace that later layers depend on belongs early (else operators↔workloads deadlock). The CRD is single-sourced from the flox-controller flake (its `controller-gen`
   output, exposed as `flox-controller-crds` and staged onto the synthesis classpath under `/crds/` by
-  `seedMasterJar` / `nix run .#stage-flox-controller-crd`) and emitted verbatim via
+  `seedOutclusterJar` / `nix run .#stage-flox-controller-crd`) and emitted verbatim via
   `UpstreamYamlInclusion` — never re-modelled or vendored. The DaemonSet runs the baked
   `io.seedmatic.flox-controller` image (`FloxDebugPolicy#floxControllerImage`, `IfNotPresent`) on
   nodes labelled `flox.seedmatic.io/enabled` (`ManifestAnnotation#NODE_FLOX_RUNTIME_LABEL`), mounting

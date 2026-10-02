@@ -19,7 +19,7 @@
 
   <!--
     Kept in src/main/java (not a bundle): this is host-world infrastructure consumed flat by the
-    exec entrypoints (seed-master today, the CLIs later), the same shape as osgi/testkit serving the
+    exec entrypoints (seed-outcluster today, the CLIs later), the same shape as osgi/testkit serving the
     tests. It boots Felix, so felix.framework + osgi.core are compile deps; felix.scr is a compile
     dep so the runtime can locate its jar to install it as the DS extender bundle.
   -->

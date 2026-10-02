@@ -16,6 +16,8 @@ import com.tngtech.jgiven.impl.Scenario;
 import io.seedmatic.rke2lab.auth.contract.GithubReaderTokenMint;
 import io.seedmatic.rke2lab.auth.contract.GithubWriterTokenMint;
 import io.seedmatic.rke2lab.manifests.bdd.versions.GitBotIdentities;
+import io.seedmatic.rke2lab.manifests.contract.ClusterCoordinate;
+import io.seedmatic.rke2lab.manifests.contract.ClusterFleet;
 import io.seedmatic.rke2lab.manifests.contract.ClusterRole;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainPolicy;
@@ -25,7 +27,6 @@ import io.seedmatic.rke2lab.manifests.contract.ManifestSynthesisService;
 import io.seedmatic.rke2lab.manifests.contract.ManifestsRunbookInput;
 import io.seedmatic.rke2lab.manifests.contract.NodeBootstrapArtifact;
 import io.seedmatic.rke2lab.manifests.contract.RenderMode;
-import io.seedmatic.rke2lab.manifests.contract.WorkloadTarget;
 import io.seedmatic.rke2lab.manifests.contract.profiles.BootstrapIdentity;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ClusterIssuerCaMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.FloxDebugPolicy;
@@ -35,12 +36,14 @@ import io.seedmatic.rke2lab.manifests.contract.profiles.IncusIdentityMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ManagementClusterCaMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.OperatorPkiMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ReplicatorSourceSecretsMaterial;
+import io.seedmatic.rke2lab.manifests.contract.profiles.TlsAuthorityCaMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.WorkloadBootstrapBundlesMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.WorkloadClusterCasMaterial;
 import io.seedmatic.rke2lab.manifests.ingress.NodeGithubToken;
 import io.seedmatic.rke2lab.manifests.ingress.NodeGithubTokenCoordinate;
 import io.seedmatic.rke2lab.manifests.ingress.ServerManifestsBundle;
 import io.seedmatic.rke2lab.manifests.ingress.ServerManifestsCoordinate;
+import io.seedmatic.rke2lab.ndh.contract.NdhKeystoreCatalog;
 import io.seedmatic.rke2lab.ndh.contract.NdhKeystoreReader;
 import io.seedmatic.rke2lab.netplan.contract.ClusterNetworkBlueprint;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.CellarReceiver;
@@ -50,6 +53,7 @@ import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.ScenarioCella
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.ScenarioInputSeed;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.ScenarioPlayer;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.SeedScenario;
+import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
 import io.seedmatic.rke2lab.seed.broker.port.EnclosureGate;
 import io.seedmatic.rke2lab.seed.broker.port.Parcel;
 import io.seedmatic.rke2lab.seed.broker.port.Persistence;
@@ -65,7 +69,10 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
@@ -91,7 +98,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
  * the layers the role publishes — invisible at the master frontier.
  *
  * <p>A run plays <strong>N+1 passes</strong>, not one: a {@link ClusterRole#WRKLD} pass per {@link
- * WorkloadTarget} — each onto that target's own {@code manifests/<cluster>} branch — and then the
+ * ClusterCoordinate} — each onto that child's own {@code manifests/<cluster>} branch — and then the
  * managing pass, which consumes what those carved ({@link WorkloadBootstrapBundlesMaterial}) to
  * render each target's {@code <cluster>-server-manifests} Secret. A cluster being born cannot
  * render its own first branch (no Tekton, no Flux, and no pod at all until its CNI is configured —
@@ -320,7 +327,7 @@ public class ManifestSynthesisScenario
         ReplicatorSourceSecretsMaterial.class);
   }
 
-  private static final String TAILNET_AUTHORITY = "mammoth-skate";
+  private static final String TAILNET_AUTHORITY = NdhKeystoreCatalog.TAILNET_AUTHORITY.entryName();
 
   // The tailnet authority DOMAIN (the key-store's authorities.mammoth-skate.domain). IN_CLUSTER the
   // sops key-store is unreadable, so the bot identity takes this constant — the same deployment
@@ -364,9 +371,21 @@ public class ManifestSynthesisScenario
   // Tolerant of unknown keys: a branch recorded before the publish facet was removed still carries
   // a `publish:` sub-map under `facet:`; the domain set is now role-derived, so that key is stale
   // and ignored rather than failing the replay decode.
+  // UNTYPED only: this parses the recorded yaml into a tree. Turning that tree into a wire record
+  // is
+  // the CODEC's job, because decoding one is a SET of rules — Optional via Jdk8Module, seam enums,
+  // Instant, unknown keys tolerated — and a hand-configured mapper is one more place to get them
+  // wrong. Measured 2026-09-28: it was, the moment a sub-facet component became Optional
+  // (`Optional<NetworkFacet> not supported by default: add Module jackson-datatype-jdk8`).
+  // SeedCodec's
+  // own javadoc names this reader among what it supersedes: its tolerance is "the contract the
+  // hand-rolled *Reader classes had".
   private static final YAMLMapper FACET_READER =
       (YAMLMapper)
           new YAMLMapper().configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+
+  /** The ONE set of wire-record decoding rules — never a bare mapper. */
+  private static final SeedCodec CODEC = new SeedCodec();
 
   // The name the Then records the facet under at the branch root (Then.RENDER_FACET_FILE).
   private static final String RENDERED_FACET_FILE = "manifest.yaml";
@@ -396,20 +415,23 @@ public class ManifestSynthesisScenario
     final RenderMode.Verb verb = mode.verb();
     final Optional<String> headManifest =
         rendered.flatMap(worktree -> worktree.readAtHead(RENDERED_FACET_FILE));
-    final Optional<ManifestsRunbookInput.Facets> head = headManifest.flatMap(this::recordedFacets);
-    // The node-base ImageState the last grow recorded at HEAD: replayed into a steady-state UPDATE
-    // /EDIT render because the incus scion (the live IMAGE_STATE amendment) runs ONLY at the grow —
-    // without this the in-cluster render is ImageState-blind and empties the image-pinned CR set.
-    final Optional<ImageState> recordedImage = headManifest.flatMap(this::recordedImage);
+    // EXISTENCE only — deliberately not a decode. The guards below ask whether the branch already
+    // records a facet, which is a question about the FILE, and answering it by decoding made a GROW
+    // hostage to a recording it is about to overwrite: measured 2026-09-28, a branch carrying a
+    // value
+    // the rules now reject (a blank bridge parent) refused the very grow that would have replaced
+    // it.
+    // The same trap, one field over, as the ImageState note below — which is why this is separated.
+    final boolean headRecordsFacet = headManifest.filter(this::recordsFacet).isPresent();
     switch (verb) {
       case INIT -> {
-        if (head.isPresent()) {
+        if (headRecordsFacet) {
           throw new IllegalStateException(
               "init: manifests/<cluster> already has a recorded facet — use update or edit");
         }
       }
       case UPDATE, EDIT -> {
-        if (head.isEmpty()) {
+        if (!headRecordsFacet) {
           throw new IllegalStateException(
               verb.name().toLowerCase(java.util.Locale.ROOT)
                   + ": manifests/<cluster> has no recorded facet yet — use init");
@@ -419,30 +441,78 @@ public class ManifestSynthesisScenario
         // No guard: the grow's facet is the SSOT, applied whether the branch is new or not.
       }
     }
+    // The node-base ImageState the last grow recorded at HEAD is replayed into a steady-state
+    // UPDATE/EDIT render, because the incus scion (the live IMAGE_STATE amendment) runs ONLY at the
+    // grow — without it the in-cluster render is ImageState-blind and would empty the image-pinned
+    // CR set.
+    //
+    // ★ Decoded INSIDE the arms that use it, never before the switch. A GROW carries a live
+    // ImageState and overwrites the recording, so it must not be held hostage by one it is about to
+    // replace: read eagerly, an undecodable HEAD (a recording predating a field this ImageState
+    // requires) refused the very grow that would have healed it. Measured 2026-09-28 on a cold
+    // start.
     return switch (verb) {
       case GROW, INIT -> seeded;
-      case UPDATE -> withDebug(seeded, head.orElseThrow(), recordedImage);
-      case EDIT -> withDebug(seeded, overlay(head.orElseThrow(), mode.overrides()), recordedImage);
+      case UPDATE ->
+          withDebug(
+              seeded,
+              headManifest.flatMap(this::recordedFacets).orElseThrow(),
+              headManifest.flatMap(this::recordedImage));
+      case EDIT ->
+          withDebug(
+              seeded,
+              overlay(headManifest.flatMap(this::recordedFacets).orElseThrow(), mode.overrides()),
+              headManifest.flatMap(this::recordedImage));
     };
   }
 
   /**
-   * A copy of {@code seeded} taking debug + workloadTargets from {@code facets} (HEAD), keeping
-   * only the seeded {@code delivery}. Rationale: debug/workloadTargets are GROW-recorded
-   * coordinates (the CLI's facet never sets workloadTargets — it comes from the grow's Pulumi
-   * config), so HEAD wins; only {@code delivery} is verb-carried (the CLI's push intent). An
-   * earlier version took workloadTargets from {@code seeded} and a steady-state render — whose
-   * seeded facet has none — stripped them off the recorded manifest, emptying the workload CR set.
-   * The domain set is no longer replayed here: it is a function of the cluster ROLE (see {@link
-   * ClusterRole}), derived fresh from the identity on every render.
+   * A copy of {@code seeded} taking debug + the fleet from {@code facets} (HEAD), keeping only the
+   * seeded {@code delivery}. Rationale: debug/incusTargets are GROW-recorded coordinates (the CLI's
+   * facet never sets incusTargets — it comes from the grow's Pulumi config), so HEAD wins; only
+   * {@code delivery} is verb-carried (the CLI's push intent). An earlier version took the targets
+   * from {@code seeded} and a steady-state render — whose seeded facet has none — stripped them off
+   * the recorded manifest, emptying the workload CR set. The domain set is no longer replayed here:
+   * it is a function of the cluster ROLE (see {@link ClusterRole}), derived fresh from the identity
+   * on every render.
    */
   private ManifestsRunbookInput withDebug(
       ManifestsRunbookInput seeded,
       ManifestsRunbookInput.Facets facets,
       Optional<ImageState> recordedImage) {
+    // ★ Assembled through the BUILDER, by NAME. The positional constructor swapped
+    // rootIncusHost with workloadControlPlane here — both are Optional<String>, so it compiled
+    // silently and the in-cluster render died on `unknown control-plane shape 'bioskop'` (measured
+    // 2026-09-30). Two adjacent same-typed components make a positional call a trap that no
+    // compiler can catch, which is exactly the case the builder discipline exists for.
+    final ManifestsRunbookInput.Facets.Builder merged =
+        ManifestsRunbookInput.Facets.builder()
+            // HEAD wins for debug/incusTargets: they are GROW-recorded coordinates (the CLI's facet
+            // never sets incusTargets — it comes from the grow's Pulumi config). Only `delivery` is
+            // verb-carried, so it is the seeded one.
+            .debug(facets.debug())
+            .delivery(seeded.facets().delivery())
+            .incusTargets(facets.incusTargets());
+    // The three optional coordinates below share ONE rule — HEAD wins, the SOWER is the fallback —
+    // because each was added after branches already existed: a branch recorded before the field
+    // falls back to what the sower declares, and a sower that declares one is never overridden.
+    // Left ABSENT when neither has it, so the record's own default applies rather than a value
+    // invented here.
+    facets
+        .rootIncusHost()
+        .or(() -> seeded.facets().rootIncusHost())
+        .ifPresent(merged::rootIncusHost);
+    facets
+        .workloadControlPlane()
+        .or(() -> seeded.facets().workloadControlPlane())
+        .ifPresent(merged::workloadControlPlane);
+    // The fabric bridge is likewise GROW-recorded. An earlier version took the SEEDED value on the
+    // premise that "a branch does not record it" — true only while the sower was a host. The
+    // in-cluster render has no host to declare it, so recording it is what makes that render
+    // possible at all.
+    facets.network().or(() -> seeded.facets().network()).ifPresent(merged::network);
     return new ManifestsRunbookInput(
-        new ManifestsRunbookInput.Facets(
-            facets.debug(), seeded.facets().delivery(), facets.workloadTargets()),
+        merged.build(),
         seeded.materializationRoot(),
         seeded.identity(),
         seeded.renderMode(),
@@ -459,12 +529,15 @@ public class ManifestSynthesisScenario
    */
   private ManifestsRunbookInput.Facets overlay(
       ManifestsRunbookInput.Facets base, java.util.Map<String, Boolean> overrides) {
-    final ObjectNode json = FACET_READER.valueToTree(base);
+    // Both ends through the CODEC, so the round-trip obeys ONE set of rules: a bare mapper here
+    // would
+    // drop an Optional sub-facet on the way out and fail to read it back on the way in.
+    final ObjectNode json = FACET_READER.valueToTree(CODEC.toMap(base));
     overrides.forEach((path, value) -> setBooleanAtPath(json, path, value));
     try {
-      return FACET_READER.treeToValue(json, ManifestsRunbookInput.Facets.class);
-    } catch (IOException ex) {
-      throw new UncheckedIOException("cannot overlay the edit facet: " + overrides, ex);
+      return CODEC.fromMap(json, ManifestsRunbookInput.Facets.class);
+    } catch (IllegalArgumentException ex) {
+      throw new IllegalStateException("cannot overlay the edit facet: " + overrides, ex);
     }
   }
 
@@ -479,18 +552,55 @@ public class ManifestSynthesisScenario
   }
 
   /**
-   * Decode the {@code facet} sub-tree of a recorded {@code manifest.yaml}; empty if
-   * absent/unreadable.
+   * Decode the {@code facet} sub-tree of a recorded {@code manifest.yaml} — THREE-valued, like
+   * {@link #recordedImage}: empty only when nothing was recorded, and a refusal when something was
+   * but this build cannot read it.
+   *
+   * <p>⚠️ It used to answer empty for both. That is the two-valued probe this repo has now paid for
+   * twice: a sub-facet whose constructor rejects its recorded value (a blank bridge parent, say)
+   * surfaces as a {@code JsonProcessingException} — an {@code IOException} — so "undecodable"
+   * collapsed into "absent", and the render would then drop the recorded debug AND the fleet with
+   * it, emptying the workload CR set on a branch that was merely too old. Absence is legitimate;
+   * unreadability is a bug that must not be answered with a plausible empty.
    */
-  private Optional<ManifestsRunbookInput.Facets> recordedFacets(String manifestYaml) {
+  /**
+   * Does this recording carry a {@code facet:} at all — asked WITHOUT decoding it. The verb guards
+   * need existence, not a value, and conflating the two is what let a recording the current rules
+   * reject refuse a GROW that was about to overwrite it.
+   */
+  private boolean recordsFacet(String manifestYaml) {
     try {
       final JsonNode facet = FACET_READER.readTree(manifestYaml).path("facet");
-      if (facet.isMissingNode() || facet.isNull()) {
-        return Optional.empty();
-      }
-      return Optional.of(FACET_READER.treeToValue(facet, ManifestsRunbookInput.Facets.class));
-    } catch (IOException ex) {
+      return !facet.isMissingNode() && !facet.isNull();
+    } catch (IOException unreadableContext) {
+      throw new IllegalStateException(
+          "the render context recorded at HEAD is unreadable, so whether it records a facet cannot be"
+              + " decided; refusing to guess",
+          unreadableContext);
+    }
+  }
+
+  private Optional<ManifestsRunbookInput.Facets> recordedFacets(String manifestYaml) {
+    final JsonNode facet;
+    try {
+      facet = FACET_READER.readTree(manifestYaml).path("facet");
+    } catch (IOException unreadableContext) {
+      throw new IllegalStateException(
+          "the render context recorded at HEAD is unreadable, so the facet it records cannot be"
+              + " replayed; refusing to render as though the branch carried no policy",
+          unreadableContext);
+    }
+    if (facet.isMissingNode() || facet.isNull()) {
       return Optional.empty();
+    }
+    try {
+      return Optional.of(CODEC.fromMap(facet, ManifestsRunbookInput.Facets.class));
+    } catch (IllegalArgumentException undecodable) {
+      throw new IllegalStateException(
+          "HEAD records a facet this build cannot decode (a recording that predates a field this"
+              + " Facets requires, or a value it now rejects); refusing to render as though the"
+              + " branch carried no policy",
+          undecodable);
     }
   }
 
@@ -502,15 +612,44 @@ public class ManifestSynthesisScenario
    * no image).
    */
   private Optional<ImageState> recordedImage(String manifestYaml) {
+    final JsonNode image;
     try {
-      final JsonNode image = FACET_READER.readTree(manifestYaml).path("image");
-      if (image.isMissingNode() || image.isNull()) {
-        return Optional.empty();
-      }
-      return Optional.of(FACET_READER.treeToValue(image, ImageState.class));
-    } catch (IOException ex) {
+      image = FACET_READER.readTree(manifestYaml).path("image");
+    } catch (IOException unreadableContext) {
+      throw new IllegalStateException(
+          "the render context recorded at HEAD is unreadable, so the image it records cannot be"
+              + " replayed; refusing to render as though the cluster had none",
+          unreadableContext);
+    }
+    // ABSENT — no image was ever recorded here (a branch older than this field, or a grow that
+    // built none). The only legitimate empty: there is nothing to replay.
+    if (image.isMissingNode() || image.isNull()) {
       return Optional.empty();
     }
+    try {
+      return Optional.of(CODEC.fromMap(image, ImageState.class));
+    } catch (IllegalArgumentException undecodable) {
+      throw new IllegalStateException(
+          "HEAD records an image this build cannot decode (a recording that predates a field this"
+              + " ImageState requires, or a shape change); refusing to render as though the cluster"
+              + " had no image",
+          undecodable);
+    }
+  }
+
+  /**
+   * The fabric bridge, PASSED THROUGH as an Optional rather than resolved here. Its absence becomes
+   * an error in {@link ManifestSynthesisContext#fabricBridgeParent()}, when a unit actually poses
+   * devices — resolving it at this point failed renders that never needed it, the surveyed
+   * materialiser among them.
+   *
+   * <p>Only the FABRIC bridge is recorded, and the asymmetry with vmnet is not an oversight: a
+   * bare-metal has ONE fabric bridge shared by every cluster it hosts, while the vmnet bridge is
+   * per-cluster — and a manager's branch renders the pools of SEVERAL clusters, so there is no
+   * single vmnet value at this scope. The blueprint derives that one per cluster instead.
+   */
+  private static Optional<String> fabricBridgeParent(ManifestsRunbookInput input) {
+    return input.network().map(ManifestsRunbookInput.NetworkFacet::fabricBridgeParent);
   }
 
   /**
@@ -679,6 +818,7 @@ public class ManifestSynthesisScenario
       Optional<GithubAppMaterial> githubApp,
       Optional<ReplicatorSourceSecretsMaterial> replicatorSources,
       Optional<ClusterIssuerCaMaterial> clusterIssuerCa,
+      Optional<TlsAuthorityCaMaterial> tlsAuthorityCa,
       Optional<WorkloadClusterCasMaterial> workloadCas,
       Optional<ManagementClusterCaMaterial> managementCas,
       Optional<IncusIdentityMaterial> incusIdentity) {}
@@ -694,7 +834,19 @@ public class ManifestSynthesisScenario
       BootstrapIdentity identity,
       Path root,
       Optional<ImageState> image,
-      List<WorkloadTarget> targets,
+      // The bridge every node's fabric NIC attaches to — the operator's rke2lab:network:
+      // declaration,
+      // carried because the render poses the devices and cannot derive this one (the vmnet bridge
+      // it
+      // derives from the cluster's role).
+      Optional<String> fabricBridgeParent,
+      // The declared fleet, from which the render DERIVES the children it owns. Empty on a
+      // per-child
+      // pass: a parent lays the child's branch down as a bootstrap, and the child's own render is
+      // what adds ITS children (the alternative — the parent rendering its grandchildren — would
+      // put
+      // a CR-set on a plane whose cluster-pki never sealed that cluster's CAs).
+      Optional<ClusterFleet> fleet,
       Optional<WorkloadBootstrapBundlesMaterial> bundles) {}
 
   /**
@@ -702,7 +854,7 @@ public class ManifestSynthesisScenario
    * manifests/<cluster>} branch, and the plan that seals it. Prepared by the scenario (which owns
    * the delivery seam) and played by the WHEN (which owns the synthesis).
    */
-  private record TargetPass(WorkloadTarget target, LinkedWorktree worktree, Delivery delivery) {}
+  private record TargetPass(ClusterCoordinate child, LinkedWorktree worktree, Delivery delivery) {}
 
   /**
    * The cluster-pki seal's {@code admin-credentials} cellar case, addressed by its NEUTRAL wire
@@ -778,12 +930,18 @@ public class ManifestSynthesisScenario
     // § per-target-pass).
     final List<TargetPass> workloadPasses = prepareWorkloadPasses(effective, rendered, delivery);
     given().the_activation_facet(effective);
+    final Optional<ClusterIssuerCaMaterial> issuerCa = revealClusterIssuerCa();
     final Materials materials =
         new Materials(
             revealOperatorPki(),
             revealGithubApp(),
             revealReplicatorSources(),
-            revealClusterIssuerCa(),
+            issuerCa,
+            // DERIVED, not revealed a second time: the fleet's trust anchor is the root our own
+            // issuer chain ends at, so one reveal feeds both and the two cannot disagree. This is
+            // also what makes it available IN_CLUSTER, where the ndh key-store — the obvious source
+            // — is unreachable.
+            issuerCa.map(m -> TlsAuthorityCaMaterial.rootOf(m.caCertChainPem())),
             revealWorkloadCas(),
             revealManagementCas(),
             revealIncusIdentity());
@@ -833,13 +991,48 @@ public class ManifestSynthesisScenario
    * <p>Not closed, for the same reason the managing worktree is not — and {@code prepare} is
    * idempotent, so a re-run starts clean while the last render stays inspectable on disk.
    */
+  /**
+   * The branches this render WRITES — the TRANSITIVE closure of the owner rule ({@link
+   * ClusterFleet#renderedBy}), not one level of it.
+   *
+   * <p>★ The two questions are not the same. Writing a branch needs no reachability — it is a git
+   * push — where DRIVING a cluster's machines does, and that is what {@code ownedBy} answers for
+   * the CR-emitting units. Conflating them is what left a sub-plane's workload undeclarable: the
+   * walk stopped one level short, so {@code nikopol-wrkld}'s branch was never produced, its
+   * bootstrap bundle never carved, and its control-node pool waited for a Secret nobody would
+   * write.
+   *
+   * <p>Note what that one level was NOT: a reachability limit. Seen from nikopol one level already
+   * suffices — {@code ownedBy(nikopol-mgmt) = [nikopol-wrkld]}, and nikopol's own render carves
+   * that bundle onto its own branch. What is missing is that nikopol never RENDERS, and the closure
+   * is what lets the root do it in its place.
+   *
+   * <p>Empty when no fleet is declared (a bare survey / the standalone CLI) or when the render has
+   * no identity: a pass that does not know WHICH cluster it renders for cannot know what that
+   * cluster owns, and answering "all of them" there is precisely the viewpoint error the derivation
+   * removes.
+   */
+  private static List<ClusterCoordinate> renderedChildren(final ManifestsRunbookInput effective) {
+    final Optional<ClusterFleet> fleet = effective.facets().clusterFleet();
+    if (fleet.isEmpty()) {
+      return List.of();
+    }
+    return effective
+        .identity()
+        .map(identity -> fleet.orElseThrow().renderedBy(identity.clusterName()))
+        .orElseGet(List::of);
+  }
+
   private List<TargetPass> prepareWorkloadPasses(
       ManifestsRunbookInput effective,
       Optional<LinkedWorktree> rendered,
       Optional<Delivery> delivery) {
-    if (rendered.isEmpty()
-        || delivery.isEmpty()
-        || effective.facets().workloadTargets().isEmpty()) {
+    // DEEPEST-FIRST. `renderedBy` is breadth-first, so parents precede children; reversing it puts
+    // every child before the pass that ADOPTS it, which is what lets a bundle exist by the time its
+    // adopter renders. On a tree that reversal IS a post-order, and the adopter relation is a tree.
+    final List<ClusterCoordinate> children = new ArrayList<>(renderedChildren(effective));
+    Collections.reverse(children);
+    if (rendered.isEmpty() || delivery.isEmpty() || children.isEmpty()) {
       return List.of();
     }
     final Path renderRoot = rendered.orElseThrow().path().getParent();
@@ -849,12 +1042,12 @@ public class ManifestSynthesisScenario
     final RenderedBranch branch = renderedBranch.orElseThrow();
     final Delivery plan = delivery.orElseThrow();
     final List<TargetPass> passes = new ArrayList<>();
-    for (final WorkloadTarget target : effective.facets().workloadTargets()) {
-      final String cluster = target.clusterName();
+    for (final ClusterCoordinate child : children) {
+      final String cluster = child.clusterName();
       final Path soil = renderRoot.resolve(cluster).resolve(cluster + "-" + FIRST_CONTROL_NODE);
       passes.add(
           new TargetPass(
-              target,
+              child,
               branch.prepare(soil, BRANCH_PREFIX + cluster),
               plan.forBranchOf(renderCommitMessage(cluster))));
     }
@@ -1120,50 +1313,127 @@ public class ManifestSynthesisScenario
      */
     public When the_workload_targets_are_rendered(
         @Hidden List<TargetPass> passes, @Hidden Materials materials) {
-      final List<WorkloadBootstrapBundlesMaterial.Entry> carved = new ArrayList<>();
+      // Carved bundles, keyed by the cluster they belong to, so each can be ROUTED to the pass of
+      // whoever adopts it. The passes arrive DEEPEST-FIRST, so a child's bundle is already in here
+      // by
+      // the time the pass of its adopter runs.
+      final Map<String, String> carvedByCluster = new LinkedHashMap<>();
       for (final TargetPass pass : passes) {
-        final String cluster = pass.target().clusterName();
+        final String cluster = pass.child().clusterName();
         final Path root = pass.worktree().path();
         synthesize(
             new Pass(
-                // The TARGET's own role, not WRKLD. This was hardcoded, which was right only while
+                // The CHILD's own role, not WRKLD. This was hardcoded, which was right only while
                 // every child was a workload: measured 2026-09-27, nikopol-mgmt's branch came out
                 // with no cluster-api at all — no flux/, no crds/, no operators/ for it — because
                 // the WRKLD policy makes Cluster API MGMT-exclusive-and-therefore-absent. A
                 // management cluster birthed by another one could then never self-adopt, which is
-                // the whole second half of model B. `ofToken` fails loudly on a role it cannot
-                // read, unlike `of`, whose catch-all would have answered MGMT for a typo.
-                ClusterRole.ofToken(pass.target().role()).domainPolicy(CATALOG),
+                // the whole second half of model B. The role now arrives TYPED on the coordinate,
+                // parsed once and loudly where the fleet was decoded.
+                pass.child().role().domainPolicy(CATALOG),
                 BootstrapIdentity.builder()
                     .clusterName(cluster)
                     .nodeName(FIRST_CONTROL_NODE)
                     .build(),
                 root,
                 facet.image(),
-                List.of(),
-                Optional.empty()),
+                fabricBridgeParent(facet),
+                // The SAME fleet as the managing pass — NOT empty. Every plane carries the same
+                // federation view and derives its ROLE from its POSITION in it, so a child's branch
+                // must show the whole fleet: its own intention (which needs the fleet to name its
+                // adopter) and the children IT owns.
+                //
+                // ⚠️ Empty here made the child's OWN intention VANISH the moment the adopter became
+                // required — measured 2026-09-30: manifests/nikopol-mgmt came out with no
+                // ClusterIntention at all. It was a leftover of the earlier reading, where a parent
+                // deliberately rendered no grandchild. Under a shared view that reading is wrong:
+                // whoever renders, the result must be IDENTICAL, which is what makes the two copies
+                // of a sub-plane's intention agree by construction instead of by coincidence.
+                facet.facets().clusterFleet(),
+                // The bundles THIS child adopts — carved by the passes below it, which ran first
+                // because the closure is walked deepest-first. Empty for a workload (it adopts
+                // nobody) and for a sub-plane whose own child carved nothing.
+                //
+                // ⚠️ This was hardcoded empty, which was right only while a child was always a
+                // leaf.
+                // A child that is itself a MANAGEMENT plane adopts its host's workload, and its
+                // branch is the ONLY place that workload's `<cluster>-server-manifests` belongs —
+                // the Secret its control-node pool waits for.
+                bundlesAdoptedBy(cluster, carvedByCluster)),
             materials);
-        // The branch records the facet that produced it — MINUS the targets, since it manages none
-        // —
-        // so a later steady-state render of THIS branch replays its own policy, never the
-        // manager's.
-        recordRenderFacet(
-            root,
-            new ManifestsRunbookInput.Facets(
-                facet.facets().debug(), facet.facets().delivery(), List.of()),
-            facet.image());
+        // The branch records the facet that produced it, INCLUDING the full fleet, so a later
+        // steady-state render of THIS branch derives the children IT owns.
+        //
+        // ⚠️ This used to record an empty target list, reasoned as "MINUS the targets, since it
+        // manages none". That held only while every child was a workload. Since a child can be a
+        // management plane (model B), the empty list is what made manifests/nikopol-mgmt
+        // structurally CHILDLESS — measured 2026-09-30: its cluster-api-workload package contained
+        // nothing but the group ConfigMap, so nikopol-wrkld could never be declared. The fleet is
+        // host-agnostic and the owner rule does the narrowing, so propagating it verbatim is both
+        // simpler and correct.
+        // Through the BUILDER, like the merge in withDebug — the two sites that assemble a Facets
+        // must not stand in two different forms, or the positional trap that swapped
+        // rootIncusHost/workloadControlPlane there survives here for the next reader.
+        final ManifestsRunbookInput.Facets.Builder childFacets =
+            ManifestsRunbookInput.Facets.builder()
+                .debug(facet.facets().debug())
+                .delivery(facet.facets().delivery())
+                .incusTargets(facet.facets().incusTargets());
+        facet.facets().rootIncusHost().ifPresent(childFacets::rootIncusHost);
+        facet.facets().workloadControlPlane().ifPresent(childFacets::workloadControlPlane);
+        // The network rides along: a CHILD branch renders in-cluster too, and its own render has no
+        // host to declare the fabric parent either. Dropping it here would leave exactly the hole
+        // that broke the manager's render, one branch further down.
+        facet.network().ifPresent(childFacets::network);
+        recordRenderFacet(root, childFacets.build(), facet.image());
         recordSopsPolicy(root);
         recordInstallConfigFlake(root);
         pass.delivery().seal(pass.worktree());
-        carvedBundle(root)
-            .ifPresent(
-                yaml -> carved.add(new WorkloadBootstrapBundlesMaterial.Entry(cluster, yaml)));
+        carvedBundle(root).ifPresent(yaml -> carvedByCluster.put(cluster, yaml));
       }
+      // The managing pass renders the bundles of the children the RENDERER adopts — NOT every
+      // bundle
+      // carved. Handing it all of them is what put a grandchild's `<cluster>-server-manifests` (a
+      // CA
+      // private key) on the root's branch instead of its adopter's, and left the adopter's branch
+      // without the one Secret its pool waits for.
       this.workloadBundles =
-          carved.isEmpty()
-              ? Optional.empty()
-              : Optional.of(new WorkloadBootstrapBundlesMaterial(carved));
+          facet
+              .identity()
+              .map(ManifestsRunbookInput.Identity::clusterName)
+              .flatMap(renderer -> bundlesAdoptedBy(renderer, carvedByCluster));
       return self();
+    }
+
+    /**
+     * The carved bundles whose cluster is ADOPTED by {@code adopter} — the routing that replaced
+     * "hand every bundle to the managing pass".
+     *
+     * <p>★ This is "material follows the adopter" stated correctly. The rule was implemented as
+     * "only the adopter RENDERS it", which is the easy way to guarantee it and the reason a
+     * grandchild could not be declared at all. What the rule actually demands is that the
+     * material's PLACEMENT follow the adopter — whoever renders. Same guarantee, without pruning
+     * the render.
+     *
+     * <p>Empty rather than an empty material: absent and present-but-empty are different facts
+     * downstream, and only one of them means "this pass adopts nobody".
+     */
+    private Optional<WorkloadBootstrapBundlesMaterial> bundlesAdoptedBy(
+        final String adopter, final Map<String, String> carvedByCluster) {
+      final Optional<ClusterFleet> fleet = facet.facets().clusterFleet();
+      if (fleet.isEmpty() || carvedByCluster.isEmpty()) {
+        return Optional.empty();
+      }
+      final List<WorkloadBootstrapBundlesMaterial.Entry> mine =
+          carvedByCluster.entrySet().stream()
+              .filter(entry -> fleet.orElseThrow().adopterOf(entry.getKey()).equals(adopter))
+              .map(
+                  entry ->
+                      new WorkloadBootstrapBundlesMaterial.Entry(entry.getKey(), entry.getValue()))
+              .toList();
+      return mine.isEmpty()
+          ? Optional.empty()
+          : Optional.of(new WorkloadBootstrapBundlesMaterial(mine));
     }
 
     /**
@@ -1193,7 +1463,7 @@ public class ManifestSynthesisScenario
       final Path root = rendered.map(LinkedWorktree::path).orElseGet(this::freshTempDir);
       // The managing pass runs LAST, after the per-target ones, because it consumes what they
       // carve:
-      // its workloadTargets are the DIFFERENT clusters whose CAPI CR set lands on
+      // its OWNED CHILDREN are the DIFFERENT clusters whose CAPI CR set lands on
       // manifests/<host>-mgmt (model B — the CRs live where CAPI runs), and workloadBundles are
       // those
       // same clusters' bootstrap bundles, rendered here as their <cluster>-server-manifests
@@ -1205,7 +1475,8 @@ public class ManifestSynthesisScenario
                   identity(),
                   root,
                   facet.image(),
-                  facet.facets().workloadTargets(),
+                  fabricBridgeParent(facet),
+                  facet.facets().clusterFleet(),
                   workloadBundles),
               materials);
       // Record the facet that produced this tree at the branch ROOT, so the branch is
@@ -1273,7 +1544,8 @@ public class ManifestSynthesisScenario
               // ConfigMap and the workload CR units pin the image fingerprint + RKE2 version from
               // it.
               .imageState(pass.image())
-              .workloadTargets(pass.targets())
+              .fabricBridgeParent(pass.fabricBridgeParent())
+              .clusterFleet(pass.fleet())
               .workloadBootstrapBundles(pass.bundles())
               // The materials revealed from the cellar, each empty on a bare survey / a
               // secret-blind
@@ -1283,6 +1555,7 @@ public class ManifestSynthesisScenario
               .githubApp(materials.githubApp())
               .replicatorSources(materials.replicatorSources())
               .clusterIssuerCa(materials.clusterIssuerCa())
+              .tlsAuthorityCa(materials.tlsAuthorityCa())
               .workloadCas(materials.workloadCas())
               .managementCas(materials.managementCas())
               .incusIdentity(materials.incusIdentity())
@@ -1374,7 +1647,7 @@ public class ManifestSynthesisScenario
     }
 
     // The RKE2 config installer, written at the branch root so the branch is a self-installing
-    // flake: the SELF/root control-plane node (grown standalone by seed-master) runs `nix run
+    // flake: the SELF/root control-plane node (grown standalone by seed-outcluster) runs `nix run
     // <this-branch>#install-rke2-config` at boot; the app globs THIS branch tree for the
     // RKE2_CONFIG-annotated ConfigMaps (RuntimeRke2ConfigManifestsUnit renders them as normal
     // Flux-applied ConfigMaps) and extracts each `.data` into /etc/rancher/rke2/config.yaml.d.
@@ -1413,7 +1686,7 @@ public class ManifestSynthesisScenario
           description = "rke2lab RKE2 config installer — extracts the RKE2_CONFIG ConfigMaps of \
         THIS node's cluster (namespace rke2lab-<cluster>, derived from the hostname) from this \
         management branch into /etc/rancher/rke2/config.yaml.d. Run at boot by the self/root \
-        control-plane node (seed-master): nix run <this-branch>#install-rke2-config.";
+        control-plane node (seed-outcluster): nix run <this-branch>#install-rke2-config.";
 
           # Pinned to the node-base's own nixpkgs rev (injected at render from the source
           # flake.lock) so the installer's yq-go is a store cache-hit on the node — no cold fetch.

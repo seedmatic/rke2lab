@@ -84,6 +84,72 @@ Before considering architecture work complete:
 - [ ] Bidirectional cross-references to related docs
 - [ ] `docs/README.adoc` updated with the new document
 - [ ] Troubleshooting section with common errors
+- [ ] **Validated** — `asciidoctor` clean and every Mermaid block parses (below)
+
+## Validating before you commit
+
+Both CLIs come from the **fleet's shared `asciidoc` env** (`.flox.d/asciidoc`, included by
+this repo's manifest since 2026-09-29) — `asciidoctor-with-extensions` and `mermaid-cli`.
+Nothing here renders docs for publication; it is a *syntax gate*, because a malformed
+table or a Mermaid parse error is invisible until a human opens the file.
+
+```bash
+# 1. AsciiDoc structure: malformed tables, unclosed blocks, dangling xrefs.
+#    Silence = clean.
+flox activate -- asciidoctor -o /dev/null docs/architecture/<area>/<doc>.adoc
+
+# 2. Mermaid: extract each [mermaid] block and parse it.
+flox activate -- mmdc -i block.mmd -o /tmp/out.svg
+```
+
+No setup is needed for `mmdc`: it drives a headless browser via puppeteer, and the
+`asciidoc` env's `on-activate` hook points `PUPPETEER_EXECUTABLE_PATH` at whatever
+`chrome-headless-shell` is cached under `~/.cache/puppeteer` (nixpkgs ships no chromium
+for aarch64-darwin, and puppeteer otherwise aborts naming a version it never downloaded).
+If `mmdc` complains it cannot find chrome, nothing is cached — that is the one case
+needing `npx puppeteer browsers install chrome-headless-shell`.
+
+⚠️ **`asciidoctor` does NOT validate Mermaid.** Without the diagram extension a
+`[mermaid]` block is just a listing, so it passes while the figure is broken. The two
+checks are independent — run both.
+
+### ❌ Never put `&lt;placeholder&gt;` in a Mermaid diagram
+
+Measured 2026-09-29: Mermaid decodes HTML entities *before* parsing, so `&gt;` becomes
+a `>` that reads as an arrow token — a parse error, and quoting the label does not help.
+Three figures in `docs/` were silently broken this way.
+
+```
+❌ participant G as git (manifests/&lt;cluster&gt;)   → Parse error on line 4
+✅ participant G as git (manifests/{cluster})
+```
+
+Parentheses are fine; only the entities break. Use `{name}` for placeholders.
+
+### The four Mermaid traps measured on 2026-09-29
+
+A sweep of all 170 `[mermaid]` blocks in `docs/` found **six broken figures** — including
+one in this skill's own reference doc. Four distinct causes, all silent:
+
+| Trap | ❌ Breaks | ✅ Write instead |
+|---|---|---|
+| HTML entity placeholder | `participant G as git (manifests/&lt;cluster&gt;)` | `participant G as git (manifests/{cluster})` |
+| bare `;` anywhere in a sequence line | `Note over S: a (gated; reads) b` | `Note over S: a (gated — reads) b` (or the `#59;` escape) |
+| `()` in an EDGE label | `Units -->\|reads via current()\| Context` | `Units -->\|"reads via current()"\| Context` |
+| `()` in a `subgraph` label | `subgraph AFTER[After — k8s (FloxEnv CRD)]` | `subgraph AFTER["After — k8s (FloxEnv CRD)"]` |
+
+The rule behind all four: **quote any label carrying punctuation**, and never let a `;`
+or a decoded `>` reach the parser. Parentheses in a *node* label (`X["a (b)"]`) and in
+sequence *message* text are fine — it is edge and subgraph labels that need the quotes.
+
+### Also caught by the `asciidoctor` gate
+
+* A `|` inside a table cell — even within backticks — is read as a **cell separator**, so
+  asciidoctor silently DROPS cells (`dropping cells from incomplete row`). Escape it:
+  `` `git show … \| yq .facet` ``.
+* A closing `====` joined to the following paragraph (`==== The RunbookEnvelope keeps …`)
+  becomes a level-4 *heading*, so the admonition never closes and swallows the prose after
+  it. Both were live in `docs/` and invisible until the gate ran.
 
 ## Why this matters
 

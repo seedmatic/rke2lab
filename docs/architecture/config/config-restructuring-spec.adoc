@@ -11,7 +11,7 @@ missing-input remediation expressed through the doctor pattern.
 ====
 The core is BUILT: `ConfigLoader`, the immutable `Rke2labConfig` DTO, and `InfraDomain` (the six
 domains, each self-loading its `InfraConfigFragment` via a polymorphic `contribute(loader)`) exist in
-`exec/seed-master/.../config/`. What shipped is the CLOSED form (an enum), not the open registrar
+`exec/seed-outcluster/.../config/`. What shipped is the CLOSED form (an enum), not the open registrar
 interface this spec's diagrams still draw — see § <<open-registrar-p2p>> for why, and when that opens.
 ====
 
@@ -616,7 +616,7 @@ KEEPS most of the design's value — per-domain self-load, decoupled assembly (`
 hand-list), logic encapsulated per value — and loses ONLY the OPEN axis: adding a domain edits the
 central enum rather than dropping in a new file/bundle.
 
-For the current CENTRALIZED bootstrap (seed-master orchestrates six fixed structural infra domains)
+For the current CENTRALIZED bootstrap (seed-outcluster orchestrates six fixed structural infra domains)
 the enum is the sound, idiomatic choice — the open registrar would be speculative. The registrar
 becomes REQUIRED in the DISTRIBUTED peer-to-peer mode: when the system is a mesh of unitrepo peers that
 extend their capabilities dynamically — contributing a domain as a bundle to answer a new need — a
@@ -669,7 +669,7 @@ variation axes.
 
 == Appendix: the shipped shape
 
-Under `seed-master/.../controlplane/config/`: `Rke2labConfig` (the immutable DTO), `ConfigLoader`,
+Under `seed-outcluster/.../controlplane/config/`: `Rke2labConfig` (the immutable DTO), `ConfigLoader`,
 `MissingRequiredConfiguration`, `InfraDomainCatalog`, `InfraConfigFragment` (sealed), and `InfraDomain`
 — the polymorphic enum whose six values (`INCUS`, `IMAGE`, `NETWORK`, `WORKTREE`, `SYSTEMD`, `HOST`)
 each self-load their fragment via `contribute(ConfigLoader)`; the DTO is assembled by iterating

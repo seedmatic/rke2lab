@@ -43,7 +43,7 @@ not enough, and neither is "lives in the incus package".
 
 === The contact today — inlined in the host readiness gate
 
-`SeedSystemdAdapterEndpointGate` (seed-master) waited on two axes: the dbus runtime status (already an
+`SeedSystemdAdapterEndpointGate` (seed-outcluster) waited on two axes: the dbus runtime status (already an
 OSGi service, `SystemdRuntimeProbe`) and *instance reachability* — running `ssh … incus exec <node> --
 true` to check a launched Incus instance answers. The second was still host I/O: a `ProcessBuilder`
 inlined in the gate, marked `@Transitional(to="incus-edge")` precisely because it awaited this
@@ -69,7 +69,7 @@ back to vision and now belongs to the post-grow VERIFY beat (§ the scenarios). 
 
 === The contact today — inlined in the host image provider
 
-`PulumiIncusImageProvider` (seed-master) ensures the seed image exists. Most of it is host
+`PulumiIncusImageProvider` (seed-outcluster) ensures the seed image exists. Most of it is host
 orchestration that stays: the `getImagePlain` reuse lookup, the `com.pulumi.incus.Image` resource it
 schedules, the artifact-directory resolution across NFS mirror candidates, the `.image.checksum.sha256`
 cache marker, and the NixOS path translation. (The distrobuilder-config materialisation is NO LONGER
@@ -100,7 +100,7 @@ recipe script as a classpath resource.
 * *the host* keeps the Pulumi `Image` resource, the reuse lookup, the artifact cache, and the path
   translation — shipped as `InstanceGrow` in `host/pulumi/incus-ingress` (§ the GROW enablement), which
   composes `ImageBuilder` from the registry and calls `build` only when a rebuild is needed. (The former
-  seed-master `PulumiIncusImageProvider` is gone.)
+  seed-outcluster `PulumiIncusImageProvider` is gone.)
 
 ==== The recipe is edge-owned end to end (nix substrate)
 
@@ -243,13 +243,13 @@ identity view) it stores at `INSTANCE_GROW_PLAN`. The plan is a flat record in a
 dual-realm module `incus-ingress-contract` (the host face of the incus contract — flat value records only,
 no logic; the first `type=dual-realm` of a domain). The contract also carries `IngressConfig` — the flat
 config the host fills to actualise (incus project/remote + node/profile/bridge names) — so the actualiser
-reads ONE authoritative vocabulary and names no seed-master type. The GROW between reconcile and verify is
+reads ONE authoritative vocabulary and names no seed-outcluster type. The GROW between reconcile and verify is
 pure-host (`com.pulumi` + provider invokes only — it fetches the plan and actualises, computes nothing of
 the domain), NOT a scion; the import-lookup it keeps is a provider invoke, not ssh. Its actualiser
 (`InstanceGrow` + `IncusProviderContext` + `IncusImportLookup`) lives in the host module `incus-ingress`
 (`host/pulumi/`, package `io.seedmatic.rke2lab.controlplane.incus`): the run fetches the plan and DELEGATES
 the grow to it, filling an `IngressConfig` from its `BootstrapConfig` — no `com.pulumi.incus` in
-seed-master itself. The probe pulls out to a VERIFY beat (post-grow). See link:host-cellar-realisation-spec.adoc#the-grow-anatomy[host-cellar §
+seed-outcluster itself. The probe pulls out to a VERIFY beat (post-grow). See link:host-cellar-realisation-spec.adoc#the-grow-anatomy[host-cellar §
 the-grow-anatomy] (the scion-projects/host-actualises rule + the plan) and
 link:../bootstrap/provisioning-slice-architecture.adoc[provisioning-slice] §deltas.
 

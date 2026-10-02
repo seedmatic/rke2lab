@@ -11,13 +11,10 @@ import com.pulumi.incus.Instance;
 import com.pulumi.incus.InstanceArgs;
 import com.pulumi.incus.Network;
 import com.pulumi.incus.NetworkArgs;
-import com.pulumi.incus.Profile;
-import com.pulumi.incus.ProfileArgs;
 import com.pulumi.incus.Project;
 import com.pulumi.incus.ProjectArgs;
 import com.pulumi.incus.inputs.ImageSourceFileArgs;
 import com.pulumi.incus.inputs.InstanceDeviceArgs;
-import com.pulumi.incus.inputs.ProfileDeviceArgs;
 import com.pulumi.resources.CustomResourceOptions;
 import com.pulumi.resources.Resource;
 import io.seedmatic.rke2lab.incus.ingress.GrowIdentityView;
@@ -25,10 +22,20 @@ import io.seedmatic.rke2lab.incus.ingress.GrowImageView;
 import io.seedmatic.rke2lab.incus.ingress.GrowNetworkView;
 import io.seedmatic.rke2lab.incus.ingress.IngressConfig;
 import io.seedmatic.rke2lab.incus.ingress.InstanceGrowPlan;
+import io.seedmatic.rke2lab.incus.ingress.NodeDeviceSet;
+import io.seedmatic.rke2lab.incus.ingress.NodeRuntimeContract;
 import io.seedmatic.rke2lab.incus.ingress.SplitImageFingerprint;
+import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.GeneralSecurityException;
+import java.security.MessageDigest;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -45,18 +52,11 @@ import java.util.function.Consumer;
  * the node's config, so there are no host disk mounts and no cloud-init seed.
  *
  * <p>Instance-passing: it holds the run's {@link IngressConfig} (the ingress vocabulary the run
- * fills — it names no seed-master type), the {@link IncusProviderContext} it builds once, the
+ * fills — it names no seed-outcluster type), the {@link IncusProviderContext} it builds once, the
  * {@link IncusImportLookup} riding that context's invoke options, and a log sink. Its one act is
  * {@link #grow(InstanceGrowPlan)}.
  */
 public final class InstanceGrow {
-
-  /**
-   * The common node profile name — a FIXED convention (the twin of the {@code node-base} image
-   * alias), hardcoded on both sides of the Java/Go boundary: here for the standalone grow, and as a
-   * literal in seed-incluster's {@code lxcMachineSpec} for CAPN. It is NOT a per-deployment knob.
-   */
-  private static final String NODE_BASE_PROFILE = "node-base";
 
   /** The trust-store entry name for the in-cluster CAPN provider's identity. */
   private static final String CAPN_TRUST_ENTRY = "capn-provider";
@@ -92,19 +92,14 @@ public final class InstanceGrow {
     final Project project = ensureProject();
     ensureCapnTrust();
     ensureNetworks(project, plan.network());
-    // The instance's profiles, in incus precedence order (LAST wins): the grown cluster's
-    // node-<cluster> (vmnet0) then node-base (root+config+zfs+fabric0). Each is an Output so the
-    // instance dependsOn BOTH profiles — ordered profile-before-instance.
-    final Output<String> nodeClusterProfile = ensureNodeProfiles(project, plan.network());
-    final Output<String> nodeBaseProfile = ensureProfile(project);
+    // NO profiles. A profile carried only config + devices, and the instance now poses BOTH inline
+    // from the very definitions the render publishes for CAPN nodes — NodeRuntimeContract and
+    // NodeDeviceSet. One fewer Incus object per cluster, no `node-<cluster>` naming convention
+    // derived on both sides of the Java/Go boundary, and no profile-vs-instance precedence to
+    // reason
+    // about: both paths now assert the contract at instance level.
     final Output<String> imageFingerprint = ensureImage(plan.image(), project);
-    final Instance instance =
-        createInstance(
-            plan,
-            project,
-            List.of(nodeClusterProfile, nodeBaseProfile),
-            imageFingerprint,
-            material);
+    final Instance instance = createInstance(plan, project, imageFingerprint, material);
     poseNodeBaseAliasAndGcImages(imageFingerprint, instance);
   }
 
@@ -151,21 +146,94 @@ public final class InstanceGrow {
       log.accept("incus capn trust: no capn-provider certificate in the ingress config; skipping");
       return;
     }
+    // Adopt BY OMISSION when the daemon already trusts this exact certificate — the same discipline
+    // as ensureImage / ensureNetwork, and this was the ONE resource here that had
+    // neither it nor an importId.
+    //
+    // ⚠️ Its javadoc above accepted a loud one-time collision, on the premise that a pre-existing
+    // entry means an operator added one by hand to a virgin host. That premise no longer holds: the
+    // trust store is DAEMON state and outlives the Pulumi stack, so a cold start on a FRESH stack
+    // meets the entry a previous run created — every time, not rarely. Measured 2026-09-28: the
+    // stack held 18 resources and no Certificate while the daemon was trusting one, and the grow
+    // died on "Certificate already in trust store". `pulumi refresh` cannot close that gap — it
+    // reconciles resources already IN the state and never discovers ones absent from it, which is
+    // why `seed-project` (which DOES importId) was adopted and this alone was not.
+    //
+    // Addressed by CONTENT: a rotated certificate has a different fingerprint, so it reads as
+    // absent
+    // and is created. Nothing has to be corrected in place, and no entry has to be renamed.
+    final String fingerprint = certificateFingerprint(pem);
+    if (importLookup.certificateTrusted(fingerprint)) {
+      log.accept(
+          "incus capn trust: the daemon already trusts "
+              + fingerprint
+              + "; adopting by omission (no Certificate declared)");
+      return;
+    }
     final CustomResourceOptions options =
         CustomResourceOptions.builder()
             .provider(providerContext.provider())
             .retainOnDelete(true)
             .build();
 
+    // ★ RESTRICTED, scoped to this run's project — least privilege, and checked against incus 7.4's
+    // own authorisation driver (internal/server/auth/driver_tls.go) rather than hoped for, because
+    // an
+    // over-restricted identity fails as an opaque 403 at the first reconcile:
+    //
+    //   * `ObjectTypeServer` + `CanView` is granted to a restricted certificate, which is what
+    //     targeting a member needs — `GET /1.0/cluster` and `/1.0/cluster/members` are exactly that
+    //     entitlement (api_cluster.go). The `CanEdit` half, which would let it reshape the cluster,
+    //     is refused.
+    //   * instances, volumes and networks resolve by PROJECT, and this project is the one listed.
+    //   * images are readable by explicit inheritance from `default`, so a node-base living there
+    //     stays visible.
+    //   * storage POOLS grant `CanView` only — enough, since the pool is ndh's to create, never
+    // ours.
+    //
+    // ★ And the property that makes this a boundary rather than a convention:
+    // `ObjectTypeCertificate`
+    // grants a restricted certificate `CanView` ALONE. CAPN therefore cannot enrol a certificate at
+    // all — it can never widen its own trust. That asymmetry is the point of registering it from
+    // HERE:
+    // seed-outcluster holds the operator's unrestricted identity, so it is the only party that CAN
+    // grant,
+    // and what it grants cannot grant further.
+    //
+    // ⚠️ Left unrestricted, this entry is full incus admin for a pod. That is what a hand-added
+    // entry
+    // gives you, and it is why this is declared rather than remembered.
     new Certificate(
         "seed-capn-provider-trust",
         CertificateArgs.builder()
             .name(CAPN_TRUST_ENTRY)
             .type("client")
             .certificate(pem)
+            .restricted(true)
+            .projects(List.of(config.incusProject()))
             .description("rke2lab: the in-cluster CAPN provider's identity")
             .build(),
         options);
+  }
+
+  /**
+   * How incus names a trust entry: the hex sha256 of the certificate's DER encoding. Parsed through
+   * {@code CertificateFactory} rather than by stripping the PEM armour by hand, so a stray newline
+   * or a bundle with trailing whitespace cannot yield a fingerprint that silently matches nothing.
+   */
+  private static String certificateFingerprint(String pem) {
+    try {
+      final var certificate =
+          (X509Certificate)
+              CertificateFactory.getInstance("X.509")
+                  .generateCertificate(
+                      new ByteArrayInputStream(pem.getBytes(StandardCharsets.UTF_8)));
+      return HexFormat.of()
+          .formatHex(MessageDigest.getInstance("SHA-256").digest(certificate.getEncoded()));
+    } catch (GeneralSecurityException ex) {
+      throw new IllegalStateException(
+          "the capn-provider certificate in the ingress config is not a readable X.509 PEM", ex);
+    }
   }
 
   /**
@@ -184,9 +252,9 @@ public final class InstanceGrow {
    * Ensure one vmnet bridge from its resolved config. Skips the canonical host-provided LAN bridge
    * and any bridge the provider reports UNMANAGED (a provider invoke, not ssh).
    *
-   * <p>DECLARED, always — never adopted by omission, the same correction {@link #ensureProfile}
-   * took on 2026-09-21 for the same reason. The guard this replaces ("an already-existing vmnet
-   * bridge is adopted, not re-declared, its config is host-owned") made the bridge config
+   * <p>DECLARED, always — never adopted by omission, the same correction the (now deleted) node
+   * profiles took on 2026-09-21 for the same reason. The guard this replaces ("an already-existing
+   * vmnet bridge is adopted, not re-declared, its config is host-owned") made the bridge config
    * WRITE-ONCE: the two live bridges were absent from Pulumi state entirely, so `pulumi preview`
    * planned no network at all and every {@code ipv4.*}/{@code ipv6.*}/{@code raw.dnsmasq} change
    * since their creation reached nothing. It cost a full investigation: {@code raw.dnsmasq} needed
@@ -195,10 +263,11 @@ public final class InstanceGrow {
    *
    * <p>{@code config} is therefore NOT ignored — reconciling it is the point. The ignored keys are
    * the ones whose diff would be SPURIOUS rather than real: the provider reads {@code project} back
-   * null (and it is ForceNew), and {@link #ensureProfile} beside this records the same class for
-   * {@code devices}, modelled as an ordered list that churns. Ignoring them suppresses a phantom
-   * replacement, never a genuine change. Recreating a bridge is NOT what that list guards against —
-   * the operator has ruled (2026-09-23) that a recreate is fine, the instances being re-growable.
+   * null (and it is ForceNew), and the provider models {@code devices} as an ordered list that
+   * churns — the defect that made the node profiles impossible to correct, and one reason they are
+   * gone. Ignoring them suppresses a phantom replacement, never a genuine change. Recreating a
+   * bridge is NOT what that list guards against — the operator has ruled (2026-09-23) that a
+   * recreate is fine, the instances being re-growable.
    *
    * <p>⚠️ MIGRATION, once: a bridge in the daemon but not in state fails the create loudly with
    * "already exists". The straight path is to DELETE the instances and then the bridges, and let
@@ -242,244 +311,6 @@ public final class InstanceGrow {
         options);
   }
 
-  private Output<String> ensureProfile(Resource projectDependency) {
-    // DECLARED, always — never adopted by omission. Skipping the declaration when the daemon
-    // already
-    // holds the profile is what made its config write-once, and worse: Pulumi creates it once, the
-    // daemon then has it, so the NEXT run skips it and the resource leaves state entirely
-    // (`delete[retain]`, demonstrated 2026-09-21). The guard caused the very state loss it existed
-    // to work around, and a nodeProfileConfig() change reached nothing until someone deleted the
-    // profile by hand — which is how six kernel modules cilium needs on an nftables-only host sat
-    // missing from the live profile while the code had them, invisible until a host reboot.
-    //
-    // Declared and in state, it simply DIFFS, so `config` is NOT ignored: reconciling it is the
-    // point. No `.importId()` either — that is a separate defect: on a resource Pulumi already
-    // holds, the import declaration plans a replacement with no property diff ("+-8 to replace",
-    // `project: {<nil>} => {<nil>}`, "previously-imported resources that still specify an ID may
-    // not
-    // be replaced"), and provider 1.2.0 does not fix that read-back. `devices` stays ignored (the
-    // provider models it as an ordered list, which churns) and so does `project` (read back null,
-    // and ForceNew).
-    //
-    // The remaining cost, accepted: a profile in the daemon but NOT in state — a state loss, or one
-    // an operator made by hand — fails the create loudly with "already exists". Loud and rare beats
-    // silently unmanaged.
-    //
-    // ⚠️⚠️ AND THE COST OF IGNORING `devices`, which bit TWICE on 2026-09-24 and is worth stating
-    // once: this resource can CREATE a profile's devices and can never CORRECT them. Any change to
-    // the device set — a NIC's parent bridge, a NIC's NAME — reaches an existing profile only if an
-    // operator DELETES it first, and the profile cannot be deleted while an instance references it.
-    // So the sequence is: delete the instance, delete the profile, `up --refresh`.
-    //
-    // First bite: `lan-br` → `fabric-br`, where a `up` silently left the old parent. Second, worse
-    // because it fails at START rather than drifting: renaming the NIC itself to `fabric0` gave the
-    // instance BOTH devices — `fabric0` inline from the standalone path, `lan0` frozen in the
-    // profile
-    // — and incus refused them on one network:
-    //
-    //   Failed start validation for device "fabric0": Instance DNS name conflict between
-    //   "fabric0" and "lan0" because both are connected to same network
-    //
-    // ★ Do NOT "fix" this by dropping `devices` from the list. It is ignored because the provider
-    // models it as an ordered list read back in a different order, so declaring it would churn on
-    // every run. The principled fix is the opposite direction — make the profile's NAME a function
-    // of its device set, so a device change is a NEW profile rather than an update a reconciler
-    // cannot perform. That costs propagating the name into the PoolIntention / LXCMachineTemplate
-    // (CAPN references `profiles: [node-base, node-<cluster>]`), which is why it is named here and
-    // not done here.
-    final CustomResourceOptions options =
-        CustomResourceOptions.builder()
-            .provider(providerContext.provider())
-            .retainOnDelete(true)
-            .dependsOn(List.of(projectDependency))
-            .ignoreChanges(List.of("name", "project", "devices", "description"))
-            .build();
-
-    // The common node profile: root disk + the privileged-container config + kmsg/zfs unix-char +
-    // fabric0 (the NIC on the canonical, cluster-INVARIANT fabric bridge — ndh's per-bare-metal
-    // segment, shared by every cluster on that machine, so it belongs here ONCE, not duplicated
-    // per node-<cluster>). The device is named for the TIER it attaches to, on both sides of the
-    // container boundary — it was `lan0` while it sat on the home LAN. The only per-cluster
-    // NIC is
-    // vmnet0, which rides the node-<cluster> profile. fabric0 is dynamic (no hwaddr) — the
-    // standalone
-    // instance overrides it with a deterministic hwaddr via its own inline device. Both standalone
-    // and CAPN reference this profile, so the node config is single-sourced here.
-    final Profile profile =
-        new Profile(
-            "seed-node-base-profile",
-            ProfileArgs.builder()
-                .name(NODE_BASE_PROFILE)
-                .project(config.incusProject())
-                .config(nodeProfileConfig())
-                .devices(
-                    List.of(
-                        profileDevice("root", "disk", Map.of("path", "/", "pool", "default")),
-                        profileUnixChar("kmsg.dev", "/dev/kmsg", "/dev/kmsg"),
-                        profileUnixChar("zfs.dev", "/dev/zfs", "/dev/zfs"),
-                        profileNic("fabric0", "fabric0", "bridged", config.fabricBridgeParent())))
-                .build(),
-            options);
-
-    return profile.name();
-  }
-
-  /**
-   * The privileged-container config the {@code node} profile carries — the CAPN default kernel set
-   * MINUS the legacy iptables trio the nftables-only kernel-6.18 substrate dropped
-   * (ip_tables/ip6_tables/iptable_raw FATAL modprobe), PLUS what cilium needs given that choice:
-   * xfrm_user for its route reconciler, and nft_compat with the xt_* extensions so its iptables-nft
-   * rules can be installed at all. Single source for standalone + CAPN nodes.
-   */
-  private Map<String, String> nodeProfileConfig() {
-    final Map<String, String> config = new LinkedHashMap<>();
-    config.put(
-        "raw.lxc",
-        String.join(
-            "\n",
-            "lxc.mount.auto = proc:rw sys:rw cgroup:rw",
-            "lxc.apparmor.profile = unconfined",
-            "lxc.cap.drop ="));
-    config.put("security.privileged", "true");
-    config.put("security.nesting", "true");
-    config.put("security.syscalls.intercept.bpf", "true");
-    config.put("security.syscalls.intercept.bpf.devices", "true");
-    // The cilium block below is what a nftables-only substrate has to give back, and every entry
-    // was
-    // established by loading it and watching the agent, not by guessing.
-    //
-    // xfrm_user: the agent's route reconciler calls safenetlink.NewHandle(nil), and a handle with
-    // no
-    // family list opens a socket for EVERY supported family — NETLINK_ROUTE, NETLINK_XFRM,
-    // NETLINK_NETFILTER.  Without it the XFRM socket returns EPROTONOSUPPORT and the start hook
-    // dies
-    // with "protocol not supported", so the agent never runs at all.
-    //
-    // nft_compat + the xt_* extensions: cilium ships iptables v1.8.8 with the nf_tables backend,
-    // and
-    // that backend realises `-m mark`, `-m comment`, `-j CT`, `-j TPROXY` through nft_compat.  With
-    // nft_compat absent every such rule fails ("Extension mark revision 0 not supported"), the
-    // agent's iptables reconciliation loop stays Degraded, and only 10 of its 34 rules land.  The
-    // consequence is subtle and total: the missing rules are the ones that stamp MARK_MAGIC_HOST on
-    // host-originated traffic, so inherit_identity_from_host() (bpf/lib/identity.h) falls to its
-    // else-branch and returns WORLD_ID — and resolve_srcid_ipv4() (bpf/bpf_host.c) then
-    // DELIBERATELY
-    // refuses to promote it back, because under ingress SNAT a world packet also carries the host's
-    // source IP.  So every host→pod packet is `world-ipv4`, and any pod carrying a policy denies
-    // the
-    // kubelet's health probes: flux's controllers sat 0/1 forever while the ipcache and the policy
-    // map both said `reserved:host` with zero packets matched.  Loading these took the rule count
-    // 10 → 34 and flux to 1/1.
-    //
-    // xt_comment/xt_conntrack are in the same rules; they happen to be live on bioskop-nixos from
-    // its own configuration, and are named here so the node does not depend on that.
-    //
-    // This belongs HERE rather than in the hypervisor's NixOS config (ndh carried an orphan
-    // modules/nixos/cilium-kernel-modules.nix that nothing imported, and that listed ip_set/xt_set
-    // —
-    // everything except what mattered): a kernel need of rke2lab's nodes is rke2lab's to declare,
-    // and stated here it travels with the profile to whatever host runs the container, including a
-    // CAPN-grown node on another machine.  A container cannot modprobe for itself in any case: it
-    // has neither kernel nor module tree, so incus doing it on the host is the only mechanism there
-    // is.
-    config.put(
-        "linux.kernel_modules",
-        String.join(
-            ",",
-            "ip_vs",
-            "ip_vs_rr",
-            "ip_vs_wrr",
-            "ip_vs_sh",
-            "netlink_diag",
-            "nf_nat",
-            "overlay",
-            "br_netfilter",
-            "xt_socket",
-            "xfrm_user",
-            "nft_compat",
-            "xt_mark",
-            "xt_CT",
-            "xt_TPROXY",
-            "xt_comment",
-            "xt_conntrack"));
-    return config;
-  }
-
-  /**
-   * Ensure the per-cluster {@code node-<cluster>} profile for every cluster the addressing plan
-   * carves, FLEET-WIDE — not merely the ones co-located here. A profile is a cluster-wide incus
-   * object, so the one a birthed cluster needs must exist even when its bridge lives on another
-   * member: measured 2026-09-27, CAPN refused nikopol-mgmt with "Requested profile
-   * node-nikopol-mgmt doesn't exist". Bridges stay co-located ({@link #ensureNetworks}) — widening
-   * THAT set would create a bridge on the wrong host, and collide, the name being role-scoped. —
-   * the NIC-bearing profile CAPN references ({@code profiles: [node, node-<cluster>]}) so a
-   * greenfield node gets its two interfaces: {@code fabric0} on the canonical fabric bridge and
-   * {@code vmnet0} on the cluster's vmnet bridge. Both NICs are DYNAMIC (no hwaddr): incus
-   * generates a per-instance MAC and the vmnet bridge's {@code ipv4.dhcp.ranges} hands out an IP —
-   * no reservation (avahi/mDNS is IP-agnostic). The standalone node does NOT use this profile: it
-   * attaches its own per-instance NICs with the blueprint's deterministic hwaddrs. An
-   * already-existing profile is adopted by omission (its config is host-owned), mirroring {@link
-   * #ensureProfile}.
-   */
-  private Output<String> ensureNodeProfiles(Resource projectDependency, GrowNetworkView view) {
-    Output<String> grownClusterProfile = null;
-    for (final var entry : view.profiledClusters().entrySet()) {
-      final Output<String> profile =
-          ensureNodeProfile(entry.getKey(), entry.getValue(), projectDependency);
-      // Matched on the CLUSTER NAME, never on the bridge: a bridge name is ROLE-scoped
-      // (`vmnet-mgmt`), so every mgmt cluster in the fleet shares one. The old bridge match was
-      // unambiguous only while this set was co-located — widening it to the fleet made the LAST
-      // entry win, and the profiles being byte-identical today is exactly what would have hidden
-      // that. Returned as an Output so the instance dependsOn it (profile before instance).
-      if (entry.getKey().equals(view.grownCluster())) {
-        grownClusterProfile = profile;
-      }
-    }
-    if (grownClusterProfile == null) {
-      throw new IllegalStateException(
-          "no node profile was ensured for the grown cluster " + view.grownCluster());
-    }
-    return grownClusterProfile;
-  }
-
-  private Output<String> ensureNodeProfile(
-      String cluster, String bridgeName, Resource projectDependency) {
-    final String profileName = "node-" + cluster;
-    // Declared always, like node-base above — same reasons, same ignore set.
-    final CustomResourceOptions options =
-        CustomResourceOptions.builder()
-            .provider(providerContext.provider())
-            .retainOnDelete(true)
-            .dependsOn(List.of(projectDependency))
-            .ignoreChanges(List.of("name", "project", "devices", "description"))
-            .build();
-
-    return new Profile(
-            "seed-node-profile-" + cluster,
-            ProfileArgs.builder()
-                .name(profileName)
-                .project(config.incusProject())
-                .devices(List.of(profileNic("vmnet0", "vmnet0", "bridged", bridgeName)))
-                .build(),
-            options)
-        .name();
-  }
-
-  private ProfileDeviceArgs profileNic(String name, String ifName, String nictype, String parent) {
-    // No hwaddr → incus assigns a per-instance MAC (dynamic); the vmnet bridge's dhcp range gives
-    // the IP.
-    return profileDevice(name, "nic", Map.of("name", ifName, "nictype", nictype, "parent", parent));
-  }
-
-  private ProfileDeviceArgs profileUnixChar(String name, String source, String path) {
-    return profileDevice(name, "unix-char", Map.of("source", source, "path", path));
-  }
-
-  private ProfileDeviceArgs profileDevice(
-      String name, String type, Map<String, String> properties) {
-    return ProfileDeviceArgs.builder().name(name).type(type).properties(properties).build();
-  }
-
   /**
    * Declare the seed image as a provider {@code Image} resource sourcing the edge-built artifacts,
    * and return its fingerprint {@link Output} for the instance. The edge {@code ImageBuilder} now
@@ -501,16 +332,62 @@ public final class InstanceGrow {
    * leaked old images once the replaced instance no longer clones them.
    */
   private Output<String> ensureImage(GrowImageView view, Resource projectDependency) {
+    final Path metadata = Path.of(view.metadataPath());
+    final Path rootfs = Path.of(view.dataPath());
+    // ★ NO ARTEFACTS IS NOT NO IMAGE. A surveying run is handed the SurveyingImageBuilder, which
+    // plans the build and shells nothing, so the two files never appear — but the image itself is
+    // still identifiable, because the DAEMON holds the one a previous grow posed the node-base
+    // alias
+    // on. A fresh worktree empties the Pulumi stack, not the daemon.
+    //
+    // ⚠️ Measured 2026-09-28 on a fresh worktree: computing the fingerprint from the files as the
+    // FIRST act died on NoSuchFileException before declaring anything. It had only ever appeared to
+    // work because earlier REAL runs left incus.tar.xz + rootfs.squashfs lying in the old
+    // checkout's
+    // .local.d — the step was reading leftovers, not state.
+    //
+    // So resolve, never invent and never silently skip: an invented fingerprint would make a
+    // preview
+    // claim an image that does not exist, and dropping the instance would make a survey describe a
+    // cluster nobody asked for. If no source answers, that IS an error and it says which sources
+    // were
+    // tried (see host-cellar-realisation-spec: the cellar is the DESIGNED third source, and
+    // reaching
+    // it from here is the unwired part of that spec — named in the message rather than faked).
+    if (!Files.isRegularFile(metadata) || !Files.isRegularFile(rootfs)) {
+      final String recovered =
+          importLookup
+              .nodeBaseFingerprint(config.incusProject())
+              .orElseThrow(
+                  () ->
+                      new IllegalStateException(
+                          "no node-base image can be identified: no built artifacts at "
+                              + metadata
+                              + " + "
+                              + rootfs
+                              + " (a surveying run builds none) and the daemon holds no '"
+                              + IncusImportLookup.NODE_BASE_ALIAS
+                              + "' alias in project "
+                              + config.incusProject()
+                              + ". Mint it with a live grow, or fetch the image harvest from the"
+                              + " cellar once that path is wired."));
+      log.accept(
+          "incus image ensure: no built artifacts — recovered the image from the daemon's "
+              + IncusImportLookup.NODE_BASE_ALIAS
+              + " alias ("
+              + recovered
+              + "); adopting by omission");
+      return Output.of(recovered);
+    }
     // Content-addressed: incus derives a SPLIT image's fingerprint as sha256(metadata.tar.xz ++
     // rootfs.squashfs), metadata first (verified against the live daemon). Compute it host-side to
     // decide whether the daemon already holds this exact content before deciding to upload.
-    final String fingerprint =
-        SplitImageFingerprint.of(Path.of(view.metadataPath()), Path.of(view.dataPath()));
+    final String fingerprint = SplitImageFingerprint.of(metadata, rootfs);
     // Adopt BY OMISSION when the daemon already holds it (a prior run, or the retired CLI-import
     // era): reference the fingerprint, declare NO Image — re-uploading identical bytes is rejected
     // as
     // a duplicate. Self-healing against an out-of-graph image, and idempotent (an unchanged build
-    // hashes to the same fingerprint), mirroring ensureProfile/ensureNetwork's adopt-by-omission.
+    // hashes to the same fingerprint), mirroring ensureNetwork's adopt-by-omission.
     if (importLookup.imageExists(fingerprint, config.incusProject())) {
       return Output.of(fingerprint);
     }
@@ -540,13 +417,14 @@ public final class InstanceGrow {
   private Instance createInstance(
       InstanceGrowPlan plan,
       Resource projectDependency,
-      List<Output<String>> profileNames,
       Output<String> imageFingerprint,
       NodeBootstrapMaterial material) {
-    // The privileged-container config (raw.lxc, security.*, kernel_modules) rides the `node`
-    // profile
-    // (single source for standalone + CAPN); the instance carries only per-node state below.
-    final Map<String, String> instanceConfig = new LinkedHashMap<>();
+    // The privileged-container config (raw.lxc, security.*, kernel_modules) is posed HERE, at
+    // instance level, from the one definition both paths read — the same NodeRuntimeContract the
+    // render publishes so CAPN poses it on LXCMachine.spec.config. It used to ride the `node-base`
+    // profile.
+    final Map<String, String> instanceConfig =
+        new LinkedHashMap<>(NodeRuntimeContract.nodeBase().toIncusConfig());
     // The image-build checksum arms replaceOnChanges — a rebuilt node-base image (new fingerprint,
     // new checksum) recreates the instance onto it. A host-side trigger, never read by the guest.
     instanceConfig.put("user.rke2lab.imageBuildChecksum", plan.image().buildChecksum());
@@ -589,11 +467,6 @@ public final class InstanceGrow {
             .name(plan.identity().nodeHostname())
             .project(config.incusProject())
             .image(imageFingerprint)
-            // [node-<cluster>, node-base] — same set + order as the CAPN lxcMachineSpec (node-base
-            // LAST = precedence). Output.all threads BOTH profiles' create-dependencies. The
-            // instance's own inline NICs (deterministic hwaddr, below) override the profiles'
-            // dynamic fabric0/vmnet0, so the standalone keeps its reservation.
-            .profiles(Output.all(profileNames))
             .config(configWithFingerprint)
             .running(true)
             .devices(seedInstanceDevices(plan))
@@ -799,17 +672,28 @@ public final class InstanceGrow {
    */
   private List<InstanceDeviceArgs> seedInstanceDevices(InstanceGrowPlan plan) {
     final GrowNetworkView network = plan.network();
-    return List.of(
-        nic("fabric0", network.fabricHwaddr(), "fabric0", "bridged", config.fabricBridgeParent()),
-        nic("vmnet0", network.wanHwaddr(), "vmnet0", "bridged", network.nodeBridgeName()));
-  }
-
-  private InstanceDeviceArgs nic(
-      String name, String hwaddr, String ifName, String nictype, String parent) {
-    return InstanceDeviceArgs.builder()
-        .name(name)
-        .type("nic")
-        .properties(Map.of("hwaddr", hwaddr, "name", ifName, "nictype", nictype, "parent", parent))
-        .build();
+    final Map<String, String> hwaddrByDevice =
+        Map.of("fabric0", network.fabricHwaddr(), "vmnet0", network.wanHwaddr());
+    final List<InstanceDeviceArgs> devices = new ArrayList<>();
+    for (final NodeDeviceSet.Device device :
+        NodeDeviceSet.forCluster(config.fabricBridgeParent(), network.nodeBridgeName()).devices()) {
+      final Map<String, String> properties = new LinkedHashMap<>(device.properties());
+      // The standalone master is the ONE node whose NICs carry the blueprint's DETERMINISTIC
+      // hwaddr:
+      // its dnsmasq reservation is what makes its name resolve. A CAPN-provisioned node takes a
+      // dynamic MAC and its address from the bridge's ipv4.dhcp.ranges, so the published set leaves
+      // hwaddr out and only this path adds it.
+      final String hwaddr = hwaddrByDevice.get(device.name());
+      if (hwaddr != null) {
+        properties.put("hwaddr", hwaddr);
+      }
+      devices.add(
+          InstanceDeviceArgs.builder()
+              .name(device.name())
+              .type(device.type())
+              .properties(properties)
+              .build());
+    }
+    return List.copyOf(devices);
   }
 }

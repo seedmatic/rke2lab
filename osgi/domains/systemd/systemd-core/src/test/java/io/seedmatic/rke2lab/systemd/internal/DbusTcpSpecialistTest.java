@@ -50,7 +50,8 @@ class DbusTcpSpecialistTest {
         Observation.failed(
             Symptom.CONNECTION_REFUSED,
             "dbus refused",
-            Map.of("adapterHost", "10.0.0.7", "adapterPort", "55555", "nodeName", "seed-master"));
+            Map.of(
+                "adapterHost", "10.0.0.7", "adapterPort", "55555", "nodeName", "seed-outcluster"));
     final Referral referral = TestReferrals.of(Symptom.CONNECTION_REFUSED, observation);
 
     final Assessment assessment = specialist.assess(referral);
@@ -70,7 +71,7 @@ class DbusTcpSpecialistTest {
     // re-spelling the format here.
     final String humanHint = prescription.humanHint();
     assertEquals(
-        DbusTcpSpecialist.restartUnitCommand("seed-master", DbusTcpSpecialist.ADAPTER_UNIT),
+        DbusTcpSpecialist.restartUnitCommand("seed-outcluster", DbusTcpSpecialist.ADAPTER_UNIT),
         humanHint,
         "the hint is the helper's format with the node taken from the observation");
     assertFalse(

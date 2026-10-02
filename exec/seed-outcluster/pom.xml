@@ -1,0 +1,745 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- @codebase -->
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>io.seedmatic.rke2lab</groupId>
+    <artifactId>build-parent</artifactId>
+    <version>0.0.0</version>
+    <relativePath>../../build-parent/pom.xml</relativePath>
+  </parent>
+
+  <artifactId>seed-outcluster</artifactId>
+  <version>0.0.0-SNAPSHOT</version>
+  <name>exec/seed-outcluster</name>
+  <description>Main bootstrap orchestration and Pulumi control plane: the shaded entry point
+    (controlplane.Main) that drives provisioning and hosts the level-0 node wiring.</description>
+
+  <dependencies>
+    <dependency>
+      <groupId>com.pulumi</groupId>
+      <artifactId>pulumi</artifactId>
+      <exclusions>
+        <exclusion>
+          <groupId>com.google.api.grpc</groupId>
+          <artifactId>proto-google-common-protos</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+    <!-- byte-buddy at compile scope for PulumiRunnerThrottleAgent (the Launcher-Agent-Class that
+         throttles pulumi-java's DefaultRunner busy-poll). Already flat-shaded into the uber-jar via
+         jGiven's closure; declared here so the agent + its Advice compile. Version from the BOM
+         (spring-boot-dependencies, the same byte-buddy jGiven uses). -->
+    <dependency>
+      <groupId>net.bytebuddy</groupId>
+      <artifactId>byte-buddy</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.grpc</groupId>
+      <artifactId>grpc-netty</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.grpc</groupId>
+      <artifactId>grpc-census</artifactId>
+    </dependency>
+    <!-- The incus ingress contract: the InstanceGrowPlan the scion projects (the run fetches it and
+         delegates the grow), the IngressConfig the run fills, and BootstrapPaths (dual-realm, flat
+         host-side). -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>incus-ingress-contract</artifactId>
+    </dependency>
+    <!-- The cluster-pki dual-realm contract: the host GROW beat fetches ClusterCaBundle +
+         ClusterAgeKey (via ClusterPkiCoordinate) and poses them on the instance's devlxd config —
+         compile scope, the flat host copy the seal scion's OSGi copy is the twin of. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>cluster-pki-contract</artifactId>
+    </dependency>
+    <!-- The Pulumi actualiser of the ingress flow: the run delegates the instance grow to
+         InstanceGrow here, filling an IngressConfig from its BootstrapConfig — no com.pulumi.incus in
+         seed-outcluster itself any more. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>incus-ingress</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>pulumi-edge</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>pulumi-edge-testkit</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!-- host-runtime: the ExecutionEnclosure FACT + the SecretsGateway realisations the grow
+         registers into the framework (moved out of this module's config package so the Pulumi-free
+         manifests CLI can share the same container-to-source mapping). -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>host-runtime</artifactId>
+    </dependency>
+    <!-- Runtime-scope: the host compiles only against the -port types; unitrepo-core is needed at
+         run time (and on the test classpath the host-seam test locates it as a bundle). WI-C will
+         embed it intact as an OSGi bundle. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>unitrepo-core</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <!-- felix.resolver is the org.osgi.service.resolver.Resolver PROVIDER: its bundle activator
+         registers the service that manifests-core's @Reference Resolver binds. unitrepo-core keeps
+         it test-scope (it consumes only the interface), so seed-outcluster declares it directly —
+         runtime scope puts it on the host-seam test classpath today and makes it embeddable in WI-C.
+         Same osgi.core:5.0.0 exclusion (it would shadow osgi.core 8.0.0 and break framework.init()). -->
+    <dependency>
+      <groupId>org.apache.felix</groupId>
+      <artifactId>org.apache.felix.resolver</artifactId>
+      <scope>runtime</scope>
+      <exclusions>
+        <exclusion>
+          <groupId>org.osgi</groupId>
+          <artifactId>org.osgi.core</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>manifests-contract</artifactId>
+    </dependency>
+    <!-- The dual-realm host face of the manifests contract: the GROW fetches the node-side bootstrap
+         set (ServerManifestsCoordinate / ServerManifestsBundle) and poses it on devlxd. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>manifests-ingress-contract</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>framework-launcher</artifactId>
+    </dependency>
+    <!-- Runtime-engine infra the host reaches directly in src/main: it boots Felix flat
+         (felix.framework), drives the JUnit Platform (junit-platform-engine/launcher), and plays
+         scenarios through the launcher core (junit-launcher). Compile — this is the playable's
+         runtime, not a test tool; they arrive transitively today but are used first-hand here. -->
+    <dependency>
+      <groupId>org.apache.felix</groupId>
+      <artifactId>org.apache.felix.framework</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>junit-launcher</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.platform</groupId>
+      <artifactId>junit-platform-engine</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.platform</groupId>
+      <artifactId>junit-platform-launcher</artifactId>
+    </dependency>
+    <!-- The runbook renderer names jackson annotations directly on its serialized model. -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-annotations</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>junit-testkit</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!-- The neutral launcher core + the OSGi connection contract (JUnitLauncherCore,
+         OsgiConnection): runtime code now — HostSeeder/PreflightStage/IncusStage in src/main reach
+         OsgiConnection to attach the phases to the world. The dogfooding promotion (parallel to
+         jgiven-junit5): the launcher is the runtime engine, not a test tool. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>scenario-engine</artifactId>
+    </dependency>
+    <!-- jGiven-in-OSGi, dual-realm. jGiven runs in BOTH realms: FLAT (shaded into the uber-jar) for
+         the host ROOT scenario, and as a BUNDLE in-framework for the in-container scions — scenario-
+         engine's exported .container package hard-imports com.tngtech.jgiven.junit5 (the @SeedScenario
+         socle's JGivenExtension), so the bundle must resolve it in-framework or every scion fails to
+         wire (the live-boot gap the in-container testkit hides by calling installBundles(WRAP_BSN)).
+         Declaring the wrap DIRECTLY here is the realm-library signal (StagingClosure.isRealmLibrary):
+         a directly-declared third-party bundle is staged as a bundle AND kept host-flat — exactly
+         gson's treatment. runtime scope: the host names no jGiven type of its own; the raw jgiven-core
+         /jgiven-junit5 jars (pulled compile for the flat root) stay flat, the wrap carries the OSGi
+         headers the bundle realm needs. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>jgiven-wrap</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <!-- The model bundle: embedded INTACT under META-INF/bundles and installed by OsgiRuntime, NOT
+         flattened into the uber-jar (excluded from the shade). runtime scope MACHINE-ENFORCES path
+         2: seed-outcluster's main + tests compile only against -port + OsgiRuntime, never against a
+         manifests-core impl type (the realgraph fixture that once forced compile scope is gone). The
+         stage-embedded-bundles execution still resolves the reactor artifact at runtime. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>manifests-core</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <!-- The cdk8s carrier bundle: embedded INTACT under META-INF/bundles, the Fragment-Host the
+         systemd-cdk8s-manifests fragment attaches to (it exports io.seedmatic.rke2lab.systemd.cdk8s,
+         which manifests-core imports). manifests-core depends on it as provided (non-transitive), so
+         the staging closure never reaches it transitively — it must be declared here, exactly as the
+         manifests-cli exec module declares it. Without it the fragment stages host-less and
+         manifests-core fails to resolve. runtime scope: seed-outcluster compiles against flat cdk8s for
+         its own host rendering, never against this OSGi carrier. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>manifests-cdk8s</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <!-- The ssh-to-age edge: embedded INTACT + installed by OsgiRuntime, NOT flattened (excluded
+         from the shade). runtime scope — seed-outcluster never compiles against the edge impl;
+         manifests-core's @Reference SshToAgeConverter binds it from the registry. Mandatory
+         reference, so the edge MUST be embedded or ManifestSynthesisService never publishes. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>ssh-to-age-edge</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <!-- The sops edge: embedded INTACT under META-INF/bundles and installed by OsgiRuntime. runtime
+         scope — seed-outcluster never compiles against the edge impl; the cluster-pki seal scion resolves
+         SopsEncryptor from the registry (mandatory @OsgiService). MUST be embedded or the seal never
+         seals. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>sops-edge</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <!-- The dbus-systemd edge: embedded INTACT under META-INF/bundles and installed by OsgiRuntime,
+         NOT flattened into the uber-jar. runtime scope — seed-outcluster never compiles against the edge
+         impl; the readiness pipeline resolves SystemdRuntimeProbe from the registry (awaitService).
+         The edge MUST be embedded or the runtime-status probe never publishes. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>dbus-systemd-edge</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <!-- The cluster edge: embedded INTACT under META-INF/bundles and installed by OsgiRuntime, NOT
+         flattened into the uber-jar. runtime scope — seed-outcluster never compiles against the edge impl;
+         the readiness probe resolves ClusterReadinessContact from the registry (awaitService). The
+         edge MUST be embedded or the kubectl contact never publishes. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>cluster-edge</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <!-- The incus edge: embedded INTACT under META-INF/bundles and installed by OsgiRuntime, NOT
+         flattened into the uber-jar. runtime scope — seed-outcluster never compiles against the edge impl.
+         Publishes BOTH incus contacts: the readiness gate resolves IncusInstanceContact and
+         PulumiIncusImageProvider resolves ImageBuilder, each from the registry (awaitService). The edge
+         carries the remote image-build recipe as a bundle resource. MUST be embedded or the contacts
+         never publish. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>incus-edge</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <!-- netplan-core: the @Component DefaultNetplanSynthesisService publishing
+    NetplanSynthesisService.
+         The incus-provision scion's network-view beat resolves it via @OsgiService (require); without
+         this bundle staged, the registry holds only the netplan CONTRACT and the scion's before-phase
+         fails ("the scenario produced no outcome"). runtime scope — seed-outcluster never compiles against
+         it; it is embedded INTACT under META-INF/bundles like the edges, its SCR component publishing
+         the service. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>netplan-core</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <!-- worktree-core: the @Component JgitWorktree publishing the Worktree service. The worktree
+         SOIL (worktree-bdd) resolves it via @OsgiService (require) and compiles only against the
+         worktree CONTRACT, so — exactly like netplan-core — the impl bundle is NOT transitive and
+         must be staged here; without it the registry holds only the worktree contract and the soil's
+         before-phase fails ("no Worktree in the registry for @OsgiService field 'worktree'").
+         runtime scope; embedded INTACT under META-INF/bundles, its SCR component publishing the
+         service. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>worktree-core</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <!-- ndh-core: the @Component DefaultNdhKeystoreReader publishing NdhKeystoreReader — the single
+         reader of the operator key inventory. Both manifests-core (SopsAgeMaterialResolver, mandatory
+         @Reference) and the cluster-pki seal scion (@OsgiService) resolve it from the registry, so
+         like netplan-core/worktree-core the impl bundle is NOT transitive and must be staged here.
+         runtime scope; embedded INTACT under META-INF/bundles, its SCR component publishing the
+         service. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>ndh-core</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <!-- BouncyCastle: the CA-hierarchy provider cluster-pki-core imports (org.bouncycastle.*). It is
+         provided-scope THERE (not transitive), so the assembler declares it here — a first-class
+         OSGi bundle (1.85 BSN + headers) staged INTACT and installed by OsgiRuntime, satisfying
+         cluster-pki-core's imports so the bundle resolves. runtime scope; version from the
+         bc-jdk18on-bom. Without it the framework fails to boot (cluster-pki-core unresolved). -->
+    <dependency>
+      <groupId>org.bouncycastle</groupId>
+      <artifactId>bcprov-jdk18on</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.bouncycastle</groupId>
+      <artifactId>bcpkix-jdk18on</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.bouncycastle</groupId>
+      <artifactId>bcutil-jdk18on</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <!-- fabric8 Kubernetes client, as the single wrap bundle: cluster-edge imports io.fabric8.*
+         provided-scope (not transitive), so the assembler stages fabric8-wrap here. fabric8's core
+         jars carry NO OSGi headers and its model jars split-package io.fabric8.kubernetes.api.builder
+         (17x), so they cannot be staged as separate bundles (unlike BouncyCastle) — fabric8-wrap
+         embeds the whole closure lib:=true and exports io.fabric8.* once, dissolving the split. It
+         pulls snakeyaml-engine (the kubeconfig parser) transitively, staged as its own bundle;
+         jackson + BouncyCastle it imports are already staged. Without the wrap the framework boots
+         but cluster-edge is unresolved and the readiness contact never publishes. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>fabric8-wrap</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <!-- The domain SCION bundles (*-bdd): each carries the @Component SeedHandler that GROWS its
+         runbook coordinate — WorktreeRunbookHandler serves RunbookCoordinate("worktree") (the first
+         crossing), and so on for incus (provision + reconcile), manifests (sub-sown by incus),
+         systemd, cluster. The broker
+         resolves a grower by coordinate from the registry when the root sows a crossing; without the
+         scion bundle staged + its SCR component active, DefaultSeedBroker.sow throws "no SeedHandler
+         serves coordinate". runtime scope — seed-outcluster never compiles against a scion; it speaks
+         only the neutral RunbookCoordinate through the broker membrane. embed;type=model, so each is
+         staged INTACT under META-INF/bundles like the edges. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>worktree-bdd</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>incus-bdd</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>manifests-bdd</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>systemd-bdd</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>cluster-bdd</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>cluster-pki-bdd</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <!-- The ghapp scion + its token-minter edge: embedded like the cluster-pki scion so the
+         broker has a "ghapp" handler and the minter @Component publishes. ghapp-contract rides in
+         transitively via the scion's import closure. runtime scope — seed-outcluster never compiles
+         against them; it sows the neutral RunbookCoordinate("ghapp") through the broker. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>ghapp-bdd</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>ghapp-edge</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <!-- The auth edge: embedded INTACT under META-INF/bundles and installed by OsgiRuntime, NOT
+         flattened into the uber-jar. runtime scope — seed-outcluster never compiles against the edge impl.
+         It publishes TWO @Components: CliAuthTokenContact (the launch-secrets updater resolves
+         AuthTokenContact from the registry for the FloxHub token) and GithubWriterTokenMintEdge (the
+         on-demand push-token mint the manifests synthesis reveals a fresh WRITER token through — it
+         @References ghapp's GithubAppMinter, embedded above). MUST be embedded or neither publishes. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>auth-edge</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <!-- Domain contracts/edges are GONE from the host: seed-outcluster speaks ONLY seed (the broker
+         membrane below). The staging code that still names cluster/systemd/incus/netplan/auth/doctor
+         types is migrating onto the broker in the scenario-rewrite chantier; until then it does not
+         compile against these — by design, the host no longer imports a domain vocabulary. -->
+    <!-- Governance annotations: the controlplane package-info poses REALM_BOUNDARY=WARN so the
+         staging gate lists the flat-realm doctor.contract references during the Plan 2 migration
+         (build-time only, not runtime behaviour). -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>domain-annotations</artifactId>
+    </dependency>
+    <!-- The seed-broker seam: Document + SeedBroker. The stage sows a checkpoint Document through
+         the broker and reads the verdict's action, instead of reasoning on Severity. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>seed-broker-port</artifactId>
+    </dependency>
+    <!-- The common gardening spine: the host runbook stages ClusterSeedScenario composes
+    (preflight,
+         Cellar fetch/store, sow-and-graft) + the open Gardening the GIVEN bootstraps + the SessionSeed
+         bootstrap channel. Consumed FLAT (seed-bdd's host-side base package is not exported). -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>seed-bdd</artifactId>
+    </dependency>
+    <!-- The document codec: JSON (de)serialization + validation for Document payloads. Shaded flat
+         into the host classpath (binding to the host's flat jackson). The SAME source is nested into
+         doctor-core's Bundle-ClassPath OSGi-side, binding to the bundle's jackson — one source, two
+         realm-specific copies, no codec type crosses the seam. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>seed-broker-codec</artifactId>
+    </dependency>
+    <!-- The seed-broker mechanism (embed type=runtime): the DefaultSeedBroker @Component that
+         collects every SeedHandler by DS and dispatches by coordinate. RUNTIME scope like an
+         embedded model bundle — seed-outcluster's code never references DefaultSeedBroker (it resolves
+         the SeedBroker seam via awaitService); the bundle is staged under META-INF/bundles and
+         installed by OsgiRuntime so SCR publishes the door in-container. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>seed-broker-runtime</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <!-- The pax-logging-logback fragment (embed type=model) carrying the logback policy in Java. On
+         the graph so the staging closure stages it under META-INF/bundles; at boot it attaches to
+         pax-logging-logback and the launcher invokes its PaxLogbackConfigurer reflectively. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>pax-logback-config</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.google.code.findbugs</groupId>
+      <artifactId>jsr305</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.google.code.gson</groupId>
+      <artifactId>gson</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.dataformat</groupId>
+      <artifactId>jackson-dataformat-yaml</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.datatype</groupId>
+      <artifactId>jackson-datatype-jdk8</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.cdk8s</groupId>
+      <artifactId>cdk8s</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>software.constructs</groupId>
+      <artifactId>constructs</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-api</artifactId>
+    </dependency>
+    <!-- Host slf4j binds to java.util.logging (slf4j-jdk14): the inverted flow routes ALL host logs
+         onto the JDK JUL bus, which pax-logging-api's JdkHandler drains into pax-logging-logback (the
+         single sink, OSGi-side). The host owns NO logback backend / LoggerContext of its own. -->
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-jdk14</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.eclipse.jgit</groupId>
+      <artifactId>org.eclipse.jgit</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.tngtech.jgiven</groupId>
+      <artifactId>jgiven-core</artifactId>
+    </dependency>
+    <!-- jgiven-junit5 (JGivenExtension) is runtime code here: ClusterSeedScenario (src/main)
+         declares it as a class-level @ExtendWith, so the extension is a compile dep, not test-only.
+         Same dogfooding promotion as scenario-engine. -->
+    <dependency>
+      <groupId>com.tngtech.jgiven</groupId>
+      <artifactId>jgiven-junit5</artifactId>
+    </dependency>
+    <!-- The Jupiter extension API is runtime code here: HostFactsSeeder (src/main) is a
+         TestInstancePostProcessor the scenario declares, so the extension SPI is a compile dep,
+         not test-only. Mirrors scenario-engine's dogfooding promotion. -->
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter-api</artifactId>
+    </dependency>
+    <!-- The Jupiter engine is runtime code here too: the ClusterSeedTopic driver (src/main) hands
+         JupiterTestEngine.class to JUnitLauncherCore to play ClusterSeedScenario — the seeding is
+         the launcher running jGiven scenarios, so the engine is a compile dep, not test-only. The
+         final leg of the same dogfooding promotion. -->
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter-engine</artifactId>
+    </dependency>
+    <!-- junit-jupiter-params staged as a bundle (runtime scope): jgiven-junit5 references
+         org.junit.jupiter.params.{aggregator,provider,support} in its bytecode, so the jgiven-wrap
+         bundle imports them MANDATORY — and no other staged bundle exports them (api + engine do
+         not). We never run a @ParameterizedTest, but the import must still resolve in-framework or
+         jgiven-wrap fails, cascading to scenario-engine + seed-bdd. The in-container testkit serves
+         these flat via systemPackages; the live boot has no such list, so we stage the params bundle
+         to satisfy the wire bundle-to-bundle. runtime scope: seed-outcluster names no params type. -->
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter-params</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.osgi</groupId>
+      <artifactId>osgi.core</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!-- The org.osgi.service.log API (LogLevel) — the currency of the framework log-level knob. The
+         SLIM spec artifact (log packages ALONE), compile+runtime on the host's flat JCL: it carries
+         NO org.osgi.framework.*, so unlike osgi.core (kept test-scope above) it cannot duplicate the
+         framework classes felix.framework provides and break framework.init(). The host reads the
+         knob (BootstrapConfig.logLevel) and threads it to the boot; the OSGi realm gets the same API
+         from osgi.core, and the two realms never share a classpath (broker-mediated). -->
+    <dependency>
+      <groupId>org.osgi</groupId>
+      <artifactId>org.osgi.service.log</artifactId>
+    </dependency>
+    <!-- Declarative Services on the test classpath: felix.scr + the DS-runtime API trio it wires
+    to,
+         so the in-container SystemdAdapterStageTest can start SCR (withScr()) and have it activate
+         the fragment-contributed @Components. Not inherited (seed-outcluster uses bundle-parent, not
+         bundle-test-parent). -->
+    <dependency>
+      <groupId>org.apache.felix</groupId>
+      <artifactId>org.apache.felix.scr</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.osgi</groupId>
+      <artifactId>org.osgi.service.component</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.osgi</groupId>
+      <artifactId>org.osgi.util.promise</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.osgi</groupId>
+      <artifactId>org.osgi.util.function</artifactId>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- test module dependencies -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>manifests-core-test</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>incus-bdd-test</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>cluster-bdd-test</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>manifests-bdd-test</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>systemd-bdd-test</artifactId>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <resources>
+      <resource>
+        <directory>${project.basedir}/src/main/resources</directory>
+      </resource>
+      <resource>
+        <directory>${project.build.directory}/generated-resources</directory>
+      </resource>
+    </resources>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <!-- The jGiven test closure (byte-buddy add-opens, TCP fork-node, per-module
+             jgiven.report.dir) is inherited from build-parent's managed surefire — shared by every
+             module that plays a scenario. The exec-runtime Add-Opens for `java -jar` lives in the
+             shade manifest below (a distinct, exec-only concern). -->
+      </plugin>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>build-helper-maven-plugin</artifactId>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-antrun-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>copy-incus-assets-into-generated-resources</id>
+            <goals>
+              <goal>run</goal>
+            </goals>
+            <phase>generate-resources</phase>
+            <configuration>
+              <target>
+                <mkdir dir="${project.build.directory}/generated-resources/META-INF/io.seedmatic/rke2lab/controlplane/incus/assets"/>
+                <copy overwrite="true" todir="${project.build.directory}/generated-resources/META-INF/io.seedmatic/rke2lab/controlplane/incus/assets">
+                  <fileset dir="${maven.multiModuleProjectDirectory}/assets/incus" erroronmissingdir="false"/>
+                </copy>
+                <mkdir dir="${project.build.directory}/generated-resources/META-INF/io.seedmatic/rke2lab/controlplane/incus"/>
+                <copy overwrite="true" todir="${project.build.directory}/generated-resources/META-INF/io.seedmatic/rke2lab/controlplane/incus">
+                  <fileset dir="${project.basedir}/src/main/resources/incus"/>
+                </copy>
+              </target>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-shade-plugin</artifactId>
+        <!-- Flags + artifact filter inherited from build-parent's managed shade
+             execution; only the per-module transformer is declared here. -->
+        <executions>
+          <execution>
+            <goals>
+              <goal>shade</goal>
+            </goals>
+            <phase>package</phase>
+            <configuration>
+              <!-- The shade excludes (the jars staged as bundles, kept OUT of the flat uber-jar)
+              are
+                   DERIVED and injected by the osgi-staging-extension from what the bundles declare —
+                   no hand-list here. The empty artifactSet is the seam the extension fills; see
+                   StagingExecutionStrategy. -->
+              <artifactSet>
+                <excludes/>
+              </artifactSet>
+              <transformers>
+                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                  <mainClass>io.seedmatic.rke2lab.controlplane.Main</mainClass>
+                  <manifestEntries>
+                    <!-- JGiven generates stage subclasses via byte-buddy, whose reflective class
+                         injector needs java.lang opened under JDK module encapsulation. Honored
+                         when Pulumi launches the exec jar with `java -jar`. -->
+                    <Add-Opens>java.base/java.lang</Add-Opens>
+                    <!-- Executable-jar agent (JDK 9+): the JVM runs its agentmain before Main,
+                         handing it Instrumentation — no -javaagent flag, no self-attach. It
+                         throttles pulumi-java's DefaultRunner busy-poll. See
+                         PulumiRunnerThrottleAgent. -->
+                    <Launcher-Agent-Class>io.seedmatic.rke2lab.controlplane.PulumiRunnerThrottleAgent</Launcher-Agent-Class>
+                  </manifestEntries>
+                </transformer>
+              </transformers>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <configuration>
+          <mainClass>io.seedmatic.rke2lab.controlplane.Main</mainClass>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <executions>
+          <!-- Stage the designed-for-OSGi jars INTACT under META-INF/bundles (a <resource> root, so
+               they land in the uber-jar AND on the test classpath). OsgiRuntime.embedded* extracts
+               them at boot and installs them by file: URL. The artifactItems are DERIVED and injected
+               by the osgi-staging-extension (the same closure that fills the shade excludes above),
+               so the staged set and the shade-excluded set are single-sourced — no hand-list, no
+               drift. destFileName is set by the extension to <artifactId>.jar. -->
+          <execution>
+            <id>stage-embedded-bundles</id>
+            <goals>
+              <goal>copy</goal>
+            </goals>
+            <phase>generate-resources</phase>
+            <configuration>
+              <!-- Same m2e gate as unpack-manifests-bundle: the IDE incremental builder runs this
+                   mojo without a full reactor package, so the reactor jar isn't built yet (MDEP-187).
+                   The CLI reactor packages manifests-core before seed-outcluster, so it stages fine. -->
+              <skip>${rke2lab.staging.skip}</skip>
+              <outputDirectory>${project.build.directory}/generated-resources/META-INF/bundles</outputDirectory>
+              <overWriteReleases>true</overWriteReleases>
+              <overWriteSnapshots>true</overWriteSnapshots>
+              <artifactItems/>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+
+  <profiles>
+    <profile>
+      <id>m2e</id>
+      <activation>
+        <property>
+          <name>m2e.version</name>
+        </property>
+      </activation>
+      <properties>
+        <rke2lab.staging.skip>true</rke2lab.staging.skip>
+      </properties>
+    </profile>
+    <!-- The OSGi bench proofs are a precondition of THIS integration: seed-outcluster's whole runtime
+         rides the same embedded-Felix seams the bench exercises (SCR activation, extender resolve,
+         fragment contribution, start-level order, the multi-recipient cellar). Depending on
+         bench-tests pulls it into every `-pl :seed-outcluster -am` reactor, so a bench regression fails
+         a feature integration here instead of rotting silently until someone runs the bench by hand
+         — the debt that let the jspecify/@NullMarked gap slip through.
+
+         Activation is by the ABSENCE of skipBench, NOT <activeByDefault>: an activeByDefault profile
+         is silently switched off as soon as any -P is passed, and this project always builds with
+         -Pall-worlds,claude. The property-negation form stays on regardless of -P; opt out with
+         -DskipBench. -->
+    <profile>
+      <id>bench</id>
+      <activation>
+        <property>
+          <name>!skipBench</name>
+        </property>
+      </activation>
+      <dependencies>
+        <dependency>
+          <groupId>io.seedmatic.rke2lab</groupId>
+          <artifactId>bench-tests</artifactId>
+          <scope>test</scope>
+        </dependency>
+      </dependencies>
+    </profile>
+  </profiles>
+</project>

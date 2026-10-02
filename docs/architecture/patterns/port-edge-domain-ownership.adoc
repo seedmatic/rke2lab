@@ -180,7 +180,7 @@ classloader each role's classes live — and that difference is the one we keep 
 rediscovering the hard way (a split class, a silent `ClassCastException` across the host seam). This
 section pins it down so it stays pinned.
 
-The host (`seed-master` and the two CLIs) runs *flat, outside OSGi* on the JVM application classloader
+The host (`seed-outcluster` and the two CLIs) runs *flat, outside OSGi* on the JVM application classloader
 (JCL). It boots an embedded Felix and speaks to it across ONE membrane — the seed-broker seam. It
 exchanges services across it — e.g. it publishes `RunGate` / `OpaqueCellar` / `SeedEnvelope` and awaits the
 `SeedBroker`, all `seed-broker-port` types. For that typed handoff to work (no reflection, no
@@ -214,7 +214,7 @@ importers off the seam, install the bundle, wire it bundle-to-bundle.
 
 *Nuance the bbox case taught — a host import is not a reason to KEEP the seam.* The rule "shed when
 zero host files import it" read backwards during the migration: `bbox` still had host importers (in
-the DEFERRED `exec/seed-master` — e.g. `BboxStage` resolving `BboxReconciler` host-side, and the
+the DEFERRED `exec/seed-outcluster` — e.g. `BboxStage` resolving `BboxReconciler` host-side, and the
 `doctor.contract` leak where `SystemdAdapterStage`/`ClusterReadinessStage` consult `ConsultingService`
 directly). Those host imports ARE the leak the migration removes, not a licence to keep the seam:
 the host must speak only gardening, so a host file naming a domain contract is a bug to delete, not a
@@ -370,8 +370,8 @@ mediation is *distributed*, not central. The dbus spec's keystone section is sup
 Start from the same true premise — *knowledge runs strictly downward.* Each domain is pure in its
 *upward ignorance*: it does not know which application embeds it (Pulumi does not know it provisions
 RKE2; the doctor does not know it lives in a provisioning system; systemd does not know a doctor
-auscultates it). The dependency graph enforces this — `seed-master` depends on *every* domain; *no
-domain depends on `seed-master`*.
+auscultates it). The dependency graph enforces this — `seed-outcluster` depends on *every* domain; *no
+domain depends on `seed-outcluster`*.
 
 The old conclusion was that the control-node, being the only thing that sees two facets, *must* be the
 mediator. But that confused two different controls under one word:
@@ -702,7 +702,7 @@ flowchart TB
   class world w;
 ....
 
-What does *not* move makes the cut legible. The executable (`seed-master`) keeps only *time* — the
+What does *not* move makes the cut legible. The executable (`seed-outcluster`) keeps only *time* — the
 `SeedNodeBootstrapWatcher` retry/timeout poll, preview/dry-run, the Pulumi-resource wrapping, the
 runbook renderer. The kubeconfig file-poll (`java.nio`, a local file) and the systemd phase-0 gate stay
 host too: they orchestrate, they do not *contact* the cluster. Only the kubectl contact is the edge.

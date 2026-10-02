@@ -5,7 +5,7 @@
 [NOTE]
 ====
 The design of the SEED subsystem — the orchestration that provisions the management cluster (the
-`seed-master` program, whose `controlplane` package is being redistributed into sub-modules). This spec
+`seed-outcluster` program, whose `controlplane` package is being redistributed into sub-modules). This spec
 carries the seed's ARCHITECTURE in prose: who owns what across the host↔OSGi seam, why the OSGi world is
 detached-by-design with the embedded exec as a special case, and the migration roadmap. Its sibling
 documents: link:../bdd/bdd.adoc[the BDD-as-engine pattern] (the engine the seed is expressed on — a
@@ -23,11 +23,11 @@ The pipeline is *owned by the OSGi world*; the host is a consumer. Two facts of 
 there: jGiven is already an OSGi bundle (`jgiven-wrap`, with an in-container testkit), and the JUnit
 launcher already runs inside embedded Felix (`InContainerJUnitRunner` drives `LauncherFactory` under
 the testkit). The bootstrap reasoning — the scenarios, the doctor consult, the readiness verification,
-the runbook — is *target-state OSGi*; it is only *stranded* in `exec/seed-master` today.
+the runbook — is *target-state OSGi*; it is only *stranded* in `exec/seed-outcluster` today.
 
 [cols="1,2,2",options="header"]
 |===
-| | *OSGi world* (owner) | *host* (`exec/seed-master` + `pulumi-edge`, consumer)
+| | *OSGi world* (owner) | *host* (`exec/seed-outcluster` + `pulumi-edge`, consumer)
 | role | the brain — reasons about the bootstrap | thin launcher + the Pulumi edge
 | holds | the scenarios, the jGiven session + engine, the launcher, the doctor, readiness, the
   `ReportModel` runbook | framework boot (already OSGi via `BootPipeline`), the *source* of `RunMode`,
@@ -82,7 +82,7 @@ link:seed-broker-spec.adoc[the seed-broker design]).
 
 == The OSGi world is detached by design — embedded exec is a special case
 
-*Lead: the general case is a detached OSGi world (remote); seed-master's embedded exec merely folds the
+*Lead: the general case is a detached OSGi world (remote); seed-outcluster's embedded exec merely folds the
 seam in-process. The launcher is one more consumer of the R4 boot seam. Pulumi belongs to the
 embedded/bootstrap host only, not the world.*
 
@@ -113,12 +113,12 @@ coupling that gives the state-DAG + the execution nesting. The live boot seam is
 
 [cols="1,2,2",options="header"]
 |===
-| | *seed-master (bootstrap)* | *seed in-cluster (other uses)*
+| | *seed-outcluster (bootstrap)* | *seed in-cluster (other uses)*
 | mode | *embedded exec* — boots OSGi in-process | *detached workloads* — OSGi as a separate workload, remote
 | why this mode | it *precedes* the cluster: there is no cluster yet to deploy a workload into, so it
   must embed and amorce OSGi itself — *this* is why it owns the amorce paradox | the cluster already
   exists; the OSGi world runs as a workload, accessed remotely — nothing needs to amorce it in-process
-| Pulumi edge (`RunMode`, stack sink) | *yes* — seed-master *creates* the infra via Pulumi, so
+| Pulumi edge (`RunMode`, stack sink) | *yes* — seed-outcluster *creates* the infra via Pulumi, so
   `Deployment.isDryRun()` is a fact only here | *no* — a workload runs *inside* the already-created
   cluster; it has no `RunMode`
 |===
@@ -160,22 +160,22 @@ frontier IS the seam* — no live jGiven object ever sits on the export thread.
 == Migration — the unit is a DOMAIN, not a pipeline
 
 *The method (revised 2026-07-09): the migration unit is a DOMAIN, not a pipeline. The old
-"one-pipeline-at-a-time, fold its phases into seed-master" plan was written before the seed-broker
+"one-pipeline-at-a-time, fold its phases into seed-outcluster" plan was written before the seed-broker
 realization; two scans (controlplane + manifests-core) invalidated its hypotheses — the destination is
-the DOMAINS, not seed-master, and the seed's host pipeline does not fold, it DISSOLVES into a cascade
+the DOMAINS, not seed-outcluster, and the seed's host pipeline does not fold, it DISSOLVES into a cascade
 of broker `sow` calls into per-domain sub-scenarios.*
 
 === Why the unit changed
 
-The controlplane scan found seed-master holds ~10 classes of pure domain reasoning stranded host-side,
+The controlplane scan found seed-outcluster holds ~10 classes of pure domain reasoning stranded host-side,
 whose real home is a domain's OSGi `-core` (e.g. `ClusterBootstrapReadinessVerifier`→cluster,
 `SeedSystemdAdapterEndpointGate`→systemd, `BboxReconciliationOrchestrator`→bbox). So "migrate a
-pipeline" is the wrong verb: there is nothing to re-host into seed-master. Per domain, the migration is
+pipeline" is the wrong verb: there is nothing to re-host into seed-outcluster. Per domain, the migration is
 a triptych:
 
 . *Re-dispatch* — its host-stranded reasoning descends to its `-core` (Pulumi-blind, so legal in OSGi).
 . *Scenario* — its scenario lives in its `-bdd`, played IN-CONTAINER (the bloom).
-. *Host* — seed-master keeps ONLY the Pulumi-irreducible (`*Resource`, the edge) + a broker `sow` and a
+. *Host* — seed-outcluster keeps ONLY the Pulumi-irreducible (`*Resource`, the edge) + a broker `sow` and a
   graft. The host stage becomes a *sowing post* toward the domain bloom, not a place the logic lives.
 
 The seed's root scenario stays host (Pulumi sows the first seed = launches it); its phases that need a

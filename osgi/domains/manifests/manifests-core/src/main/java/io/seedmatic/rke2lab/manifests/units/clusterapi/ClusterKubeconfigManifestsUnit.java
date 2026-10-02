@@ -27,8 +27,8 @@ import software.constructs.Construct;
  *
  * <ul>
  *   <li><b>The operator kubeconfig</b> — endpoint = the node's deterministic mDNS name ({@code
- *       <cluster>-<node>.local}), the endpoint seed-master reaches the master over. Carried in a
- *       {@code local-config} Secret so the exploder lands it as a hidden dotfile RKE2 never
+ *       <cluster>-<node>.local}), the endpoint seed-outcluster reaches the master over. Carried in
+ *       a {@code local-config} Secret so the exploder lands it as a hidden dotfile RKE2 never
  *       applies; the manifests scion reads it host-side and writes it to {@code kubeconfigRef} (the
  *       readiness probe's kubeconfig). The kpt-convention twin of the incus NoCloud cloud-config
  *       seed.
@@ -36,9 +36,9 @@ import software.constructs.Construct;
  *       endpoint new nodes join over. The canonical Cluster API {@code <cluster>-kubeconfig} Secret
  *       (data key {@code value}, type {@code cluster.x-k8s.io/secret}, {@code
  *       cluster.x-k8s.io/cluster-name} label) that CAPI reads in-cluster to seed the OTHER nodes
- *       (further control-plane + workers); seed-master itself only bootstraps the master control
- *       node. A real credential, so it rides the NODE_BOOTSTRAP lane (with its namespace) — seeded
- *       node-side over devlxd at the grow, NEVER on the reconciled branch: a secret-blind
+ *       (further control-plane + workers); seed-outcluster itself only bootstraps the master
+ *       control node. A real credential, so it rides the NODE_BOOTSTRAP lane (with its namespace) —
+ *       seeded node-side over devlxd at the grow, NEVER on the reconciled branch: a secret-blind
  *       in-cluster render early-returns here (no material), which would otherwise STRIP a
  *       branch-rendered Secret and leave CAPI without its kubeconfig. The operator-kubeconfig above
  *       needs no such lane — it is consumed host-side at the grow, never a cluster resource.

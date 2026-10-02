@@ -12,17 +12,17 @@ push `manifests/<cluster>` **in-cluster**, without a grow.
 
 Three lanes, one operation:
 
-* *Grow* (seed-master) — the FIRST render+push, host-side. It MUST be host-side: at bootstrap there
+* *Grow* (seed-outcluster) — the FIRST render+push, host-side. It MUST be host-side: at bootstrap there
   is no cluster, no Tekton, no webhook, and Flux needs the branch to pull.
 * *Downstream* (Flux webhook) — the rendered branch changes → reconcile.
 * *Upstream* (THIS doc) — the source changes → re-render → push the rendered branch → downstream fires.
 
 The render+push OPERATION is not owned by any executable — it lives in OSGi (the
-`ghapp`→`auth`→`manifests` scion graph, driven through the `seed.broker.port` membrane). seed-master
+`ghapp`→`auth`→`manifests` scion graph, driven through the `seed.broker.port` membrane). seed-outcluster
 and the `manifests publish` CLI are thin HOSTS that sow the SAME coordinates, differing only by
 envelope (Pulumi grow vs standalone CLI). The upstream lane runs `manifests publish` inside a
 Tekton PipelineRun — no standing renderer workload (staleness-free: it builds from the source it
-renders; the first render stays seed-master's, Tekton maintains).
+renders; the first render stays seed-outcluster's, Tekton maintains).
 
 *Why Pipelines-as-Code (PaC), not raw Triggers or a bespoke renderer Deployment:* PaC is Tekton's
 GitHub-App-native CI — it handles the webhook, matches PipelineRuns from the repo's `.tekton/`, and
@@ -667,7 +667,7 @@ OUTPUT branch) and Flux reconciling it — never match `on-target-branch`, so th
 The feedback loop is cut at the trigger; a render, even when it touches the Pipeline, cannot cause
 another render. What remains is the ordinary GitOps self-management loop (Flux-manages-Flux):
 
-* *The grow bootstraps it.* seed-master renders EVERYTHING host-side at bootstrap (the Pipeline, the
+* *The grow bootstraps it.* seed-outcluster renders EVERYTHING host-side at bootstrap (the Pipeline, the
   PaC config, the manifests) and pushes; Flux applies it; PaC + the in-cluster Pipeline exist. The
   first turn needs no Tekton.
 * *It converges with a one-run lag.* A change to the Pipeline (or the PaC config) is rendered →
@@ -741,7 +741,7 @@ updates the recorded `source` and lands a real commit recording how the branch m
 
 WHETHER the seeded facet or the recorded HEAD facet is authoritative is the sower's intent, carried
 as `RenderMode` (the `render-mode` amendment on `ManifestsRunbookInput`). Its default is `GROW`,
-UNAMENDED — seed-master's grow keeps applying its Pulumi facet unchanged, so the contract addition is
+UNAMENDED — seed-outcluster's grow keeps applying its Pulumi facet unchanged, so the contract addition is
 invisible to the grow; only the `manifests-cli` delivery verbs opt into following HEAD.
 
 [cols="1,3,2",options="header"]
@@ -774,7 +774,7 @@ hidden knob: the branch manifest IS the render config, so changing it is the who
 ....
 flowchart TB
   Stack["Pulumi stack — rke2lab:manifests (authored SSOT)"]
-  Grow["grow / seed-master — reads facet, FacetContributor"]
+  Grow["grow / seed-outcluster — reads facet, FacetContributor"]
   Man["root manifest.yaml in manifests/cluster — source + facet"]
   Run["in-cluster render — git show manifest.yaml at branch HEAD"]
   Stack --> Grow
@@ -825,9 +825,565 @@ FloxEnv flavor is `FloxEnvFolder=cicd`.
 == Which revision, which branch
 
 PaC fetches the *pushed commit* (`@R`) and matches `on-target-branch` — the branch the cluster was
-grown from (the source-of-truth branch: `feature/nixos-node-substrate` today, `main` at term). The
+grown from (the source-of-truth branch: `feature/viewpoint-separation` today, `main` at term). The
 `.tekton/` PipelineRun must exist on that branch. The rendered revision is thus the triggering push's
 commit — determinism + consistency with what an operator would render.
+
+⚠️ *The trigger is single-valued, and a stale value fails silently.* Exactly one source branch may
+win, because every render publishes to the shared `manifests/<cluster>` branches. So the branch name
+is a literal that must be maintained — and on 2026-09-28 it was found still naming
+`feature/nixos-node-substrate`, weeks after that branch was retired: pushes matched nothing, *no*
+`PipelineRun` was created, and there was no error to notice. The symptom surfaced elsewhere entirely
+(a newly rendered `tls-san` that never reached any cluster), which is the shape to watch for. The
+same fact is encoded a second time as ndh's `rke2lab` flake input URL and had rotted identically;
+when this branch is superseded, both move together.
+
+[[webhook-delivery]]
+== Fleet render delivery — the ROOT is the fleet's event source (📐 2026-09-30)
+
+A sub-plane on an ITINERANT host cannot be a webhook destination. This section records the
+measurement that proved it, and what follows from it.
+
+[IMPORTANT]
+.Read the ORDER of this section — its middle is superseded by its end
+====
+Three things are settled and stable:
+
+. the root is the fleet's **single event source** — a GitHub App has one webhook URL, and the root is
+  the only position GitHub can be sure to reach;
+. the fan-out target list is a **derivation** of `ClusterFleet`, never fleet topology stored in
+  GitHub's settings;
+. the returning plane must not **catch up** (<<return-to-service>>).
+
+What is SUPERSEDED is the *mechanism* below — a reconciler that POKES each sub-plane's PaC. (3) turned
+out to condemn it: the poke orders the returning plane to render, which is the destructive act, at its
+most fragile moment. The successor is a fleet-SCOPED render, at the end of this section. ⚠️ Do not
+build the poke; the measurement and the asymmetry that motivated it are what remain worth reading.
+====
+
+=== The measurement
+
+`nikopol-mgmt` had no `PipelineRun` at all, while GitHub reported a successful delivery — and every
+component on the cluster was healthy, which is what made it confusing:
+
+[cols="2,3",options="header"]
+|===
+| Checked | Found
+
+| the successful delivery
+| it targeted `nikopol-mgmt-flux-webhook`, the **Flux** receiver. A Flux receiver reconciles a
+  `GitRepository`; it never creates a `PipelineRun`. Right door for Flux, wrong door for a render.
+
+| PaC on the sub-plane
+| controller + watcher + webhook all `Running`
+
+| its `Repository` CR
+| correct — `cluster=nikopol-mgmt`, `pipelinerun_provenance: source`
+
+| its funnel `nikopol-mgmt-pipelines-webhook`
+| **up and public** — HTTP 200, TLS verified
+
+| its PaC controller log
+| **silent since start** — no event had EVER reached it
+|===
+
+The cause is structural: **a GitHub App has exactly ONE webhook URL**, and `GithubAppCli` builds it
+as `PacWebhookFunnel(DEFAULT_CLUSTER, DEFAULT_TAILNET)` — the ROOT's funnel, by construction. The
+four repository-level webhooks that did exist all targeted `*-flux-webhook`, one per cluster, and
+were provisioned BY HAND. The sub-plane's PaC funnel was built, certificated, and wired to nothing.
+
+=== The asymmetry between the two doors
+
+This sets how much each door is worth defending, and it is the fact to remember:
+
+[cols="1,2,2",options="header"]
+|===
+| Door | What the webhook is for | If an event is lost
+
+| Flux receiver
+| the steady-state trigger — and `spec.interval` (relaxed 1m → `10m` *because* the receiver landed;
+  `FluxReceiverManifestsUnit` states this itself) is its FALLBACK
+| ≤ one interval of latency. **Nothing is lost** — the interval converges.
+
+| PaC
+| the **only** trigger. No interval, no poll, nothing to catch up
+| the render **never happens**, permanently.
+|===
+
+★ The asymmetry is about LOSS, not about which mechanism drives. Both doors are event-driven in
+steady state; only one has a floor underneath it. That is the whole design brief for the fan-out
+below — give PaC the floor Flux already has, and the event stops being load-bearing.
+
+⚠️ And GitHub does **not** retry a failed webhook delivery — it is fire-and-forget (hence the manual
+*Redeliver* button). Repeated failures also risk GitHub disabling the hook. So pointing a webhook
+straight at a host that is offline part of the time silently loses renders, and that is why the
+obvious wiring — one repo webhook per cluster — is REJECTED here rather than adopted.
+
+=== The decided shape — the PARENT reconciles its sub-planes' render freshness
+
+Not a proxy, and in the end not a relay either: a reconciler of the same shape as every other
+controller here — desired state, observed state, an action that closes the gap.
+
+[cols="1,3",options="header"]
+|===
+| | 
+
+| DESIRED
+| every sub-plane's branch is rendered at the source branch HEAD
+
+| OBSERVED
+| each `manifests/<cluster>` branch records the facet that produced it, including `source.sha` and
+  `dirty` (<<render-config>>). Verified 2026-09-30: both branches at `9ccd89923`, `dirty: false`,
+  equal to the source head — an in-sync fleet makes the loop do nothing.
+
+| ACTION
+| trigger that plane's render — a POST to its PaC funnel
+
+| WAKE-UP
+| the event the ROOT ALREADY RECEIVED. The App's one webhook lands on the root, PaC creates the
+  root's own render `PipelineRun` in `rke2lab-system`, and that object CARRIES the source sha — so
+  the fleet's event source is an in-cluster watch, not a network hop.
+
+| FLOOR
+| an interval. Bounds the LOSS (the wake-up bounds the latency), which is what gives PaC the
+  guarantee Flux already had.
+|===
+
+★ Those last two rows are the correction of 2026-09-30, and they are the reason this section is
+about the ROOT and not about polling: *the cluster the GitHub App points at forwards the events to
+the fleet*. That was the decision all along; an earlier draft of this table collapsed it into "the
+source head changed" and lost the word EVENT, which made the design look like a poller.
+
+What stays rejected is only the TRANSPORT that phrase invites — a verbatim HTTP relay, which needs a
+server, a second public funnel door, signature re-emission and a durable retry queue. None of that is
+needed, because the event does not have to arrive at the child in the shape it arrived at the root:
+
+[cols="1,3",options="header"]
+|===
+| |
+
+| what is FORWARDED
+| the *fact* that the source moved, re-derived. The child is poked; it reads git itself.
+
+| what is NOT forwarded
+| the payload, its signature, its headers. Nothing of GitHub's wire format crosses the root.
+|===
+
+And the two rows compose rather than compete — the same pairing the <<_the_asymmetry_between_the_two_doors,asymmetry table>> describes one level down:
+
+* the WAKE-UP makes a push reach the whole fleet at once, so latency is a hop and not an interval;
+* the FLOOR makes a LOST wake-up cost latency instead of a render. GitHub does not retry, and an
+  itinerant host may be away exactly when the push lands — so without the floor the fan-out inherits
+  the very defect that made one-webhook-per-cluster unacceptable.
+
+⚠️ So the floor is not a fallback to drop once the watch works. It is the half of the design that
+makes an itinerant sub-plane safe, and the watch is the half that makes it fast.
+
+[mermaid,pac-fleet-render-reconciler,svg]
+----
+flowchart TB
+  GH[("git — seedmatic/rke2lab<br/>source HEAD + one branch per plane")]
+  APP{{"GitHub App — ONE webhook URL<br/>points at the ROOT, by construction"}}
+
+  subgraph PARENT["the ROOT plane — the fleet's event source, always reachable"]
+    PACR["PaC (root)<br/>creates the root's own render PipelineRun"]
+    REC["seed-incluster reconciler<br/>STATELESS — watch + interval"]
+  end
+
+  subgraph SUB["a SUB-plane — itinerant, may be offline"]
+    PACS["PaC — renders its own branch"]
+  end
+
+  APP -->|"push event"| PACR
+  PACR -.->|"WAKE-UP: in-cluster watch<br/>the run CARRIES the source sha"| REC
+  GH -.->|"FLOOR: each child's recorded source.sha"| REC
+  REC -->|"behind ? poke the DERIVED funnel url<br/>re-derived, NOT the payload"| PACS
+  PACS -->|"renders, advances its own source.sha"| GH
+
+  classDef ok fill:#e6f4ea,stroke:#137333,color:#111
+  classDef rec fill:#e8f0fe,stroke:#1a73e8,color:#111
+  classDef obs fill:#f3e8fd,stroke:#8430ce,color:#111
+  classDef ext fill:#fce8e6,stroke:#c5221f,color:#111
+  class PACS,PACR ok
+  class REC rec
+  class GH obs
+  class APP ext
+  style PARENT fill:#f7fdf9,stroke:#137333,stroke-dasharray:4
+  style SUB fill:#fffdf5,stroke:#f9ab00,stroke-dasharray:4
+----
+
+★ Read the figure for what does NOT cross a network: the App's event enters ONCE, and its trip to the
+fleet is an in-cluster watch plus a derived poke. The root is the event source for the fleet precisely
+because it is the only plane GitHub can be sure to reach.
+
+=== The SCOPE is the hierarchy — `ownedBy` filtered to the planes
+
+A parent reconciles exactly the children that RENDER, which is the children that are planes:
+
+[source,text]
+----
+ownedBy(bioskop-mgmt) = [bioskop-wrkld (WRKLD), nikopol-mgmt (MGMT)]  -> filter MGMT -> [nikopol-mgmt]
+ownedBy(nikopol-mgmt) = [nikopol-wrkld (WRKLD)]                       -> filter MGMT -> []
+----
+
+A workload child drops out by ROLE, needing no special case: it runs no PaC and owns no branch of
+intentions. The recursion terminates on its own and generalises to N tiers — each plane pokes only
+the sub-planes it birthed, the same hierarchy as adoption.
+
+=== Where it lives — `seed-incluster`, because it already IS this relation
+
+[cols="1,3",options="header"]
+|===
+| Reason | 
+
+| the responsibility is ALREADY there
+| `PoolReflection` is the parent writing into its CHILD's branch what it observes of that child.
+  Render freshness is the parent ensuring its child's branch is CURRENT. Same responsibility, other
+  artifact — not a CI/CD concern bolted onto a CAPI controller.
+
+| the plumbing is already there
+| `reflector_git.go` drives go-git at BOTH ends (clone + commit) against these very branches, with
+  the `contents:write` App token already mounted.
+
+| the loop is already there
+| a controller-runtime reconciler, with the parent/child relation as its subject.
+
+| the fan-out needs no config
+| every door is `https://<cluster>-<leaf>.<tailnet>` — `Funnel.hostname()` is `<cluster>-<leaf>` and
+  `FunnelLeaf` holds exactly `pipelines-webhook` and `flux-webhook`. Crossed with the declared fleet
+  (`ClusterFleet`, see `cluster-seeding-controller.adoc` § `cluster-set-derives-from-hosts`), the
+  target list is a pure derivation. ★ A dividend of the fleet becoming declared.
+|===
+
+Stateless by construction: a failed POST is retried by the next pass, so the loop IS the durability
+and git stays the only state. And the loop terminates because a successful render always rewrites
+`manifest.yaml` — the recorded `source.sha` is IN it — so the observed state always advances and a
+no-change render cannot leave a plane looking permanently behind. (The sha is redundantly in the
+branch's HEAD commit message, `render <cluster> manifests @ <sha>`, the cheaper read.)
+
+⚠️ `dirty: true` must NOT count as in sync, or a local render from an uncommitted tree would suppress
+the real one.
+
+=== What this DELETES
+
+Worth more for what it removes than for what it adds:
+
+* **The four hand-provisioned Flux webhooks.** Reached by derivation instead, and Flux's own
+  `interval` already made them accelerators rather than requirements.
+* **`RepoWebhookConfig`, `GithubRepoWebhookConfigurer`, `GithubRepoWebhookConfigurerEdge`** —
+  written, never called, and now never to be. They exist for the per-cluster repo webhook this design
+  rejects; keeping them would be dead code preserved for an abandoned plan.
+* **`administration=write`** in the App's requested permissions (`GithubAppCli`), whose only purpose
+  is managing repo webhooks.
+
+So GitHub keeps exactly ONE webhook — the App's, on the root — and the repo carries no fleet topology
+in its settings.
+
+=== Rejected
+
+❌ **One repository webhook per cluster.** The obvious wiring. GitHub does not retry, so a push
+landing while an itinerant host is away is a render lost for good, with auto-disable as a further
+risk. It also puts fleet topology into GitHub settings where nothing in this repo can see it drift —
+the four hand-made hooks being the proof.
+
+❌ **Replicating the webhook PAYLOAD** (an HTTP relay forwarding it verbatim, with its signature).
+Needs a server, a second public funnel door and a durable queue — to deliver bytes the child does not
+need, since it reads git itself. ⚠️ Not to be confused with forwarding the EVENT, which is the
+decided design: what is rejected is the TRANSPORT, never the topology — see the WAKE-UP row above.
+
+❌ **A catch-up poller inside each plane.** Splits detection from emission across two hosts and puts
+the fleet view where the fleet is not declared. Detection needs the fleet and a git read; both are
+the parent's.
+
+📐 **The render's SCOPE becomes the fleet** — the root renders the transitive closure of `ownedBy`,
+so a sub-plane needs no PaC at all. Recorded here as the successor to everything above, because the
+reason this was deferred no longer holds. See <<return-to-service>>.
+
+The cost is small and already half-paid: `prepareWorkloadPasses` goes ONE level
+(`ownedChildren(self)`), so `ownedBy(nikopol-mgmt) = [nikopol-wrkld]` is never reached and its
+bootstrap bundle never carved — which is exactly why that pool waits today. The closure terminates on
+its own (a workload owns nothing).
+
+[[rendered-by]]
+==== The closure is `ClusterFleet.renderedBy` — ✅ landed and switched on
+
+The contract is in place and tested (`ClusterFleetTest`): breadth-first from the renderer, itself
+excluded, each level host-local first. Two questions that look alike are kept apart —
+
+[cols="1,2",options="header"]
+|===
+| Method | Question it answers
+
+| `ownedBy`
+| whose machines do I DRIVE? ONE level, because a plane's CAPI reaches only its own children's Incus
+  engine. Unchanged, and still what the CR-emitting units ask.
+
+| `renderedBy`
+| whose branch do I WRITE? The CLOSURE, because writing a branch needs no reachability — it is a git
+  push.
+|===
+
+Switching the scope alone would have MISPLACED material — every carved bootstrap bundle was handed to
+the MANAGING pass, so a grandchild's bundle would have rendered `<grandchild>-server-manifests` (a CA
+private key) onto the ROOT's branch instead of its adopter's, while still leaving the adopter's branch
+without the one Secret its pool waits for. So three things landed together:
+
+. the scope is the closure;
+. passes are walked DEEPEST-FIRST — `renderedBy` is breadth-first, so reversing it puts every child
+  before the pass that adopts it, which on a tree IS a post-order;
+. each bundle is routed to the pass of the cluster that ADOPTS it — "material follows the adopter"
+  restated correctly: the material's PLACEMENT follows the adopter, whoever renders it. The rule had
+  been implemented as "only the adopter RENDERS it", which is the easy way to guarantee it and exactly
+  why a grandchild could not be declared at all.
+
+Which makes the walk do this, and the last two rows are the fix:
+
+[cols="1,2,2",options="header"]
+|===
+| Order | Pass | Bundles it receives
+
+| 1 | `nikopol-wrkld` | none (a workload adopts nobody) — carves its own
+| 2 | `nikopol-mgmt` | `nikopol-wrkld`'s ⟶ renders `nikopol-wrkld-server-manifests` **on its own
+  branch**, which is the Secret the pool was waiting for
+| 3 | `bioskop-wrkld` | none — carves its own
+| 4 | the MANAGING pass | `bioskop-wrkld`'s ONLY. `nikopol-wrkld`'s is filtered out, because the root
+  does not adopt it
+|===
+
+★ Note what the one-level walk was NOT: a reachability limit. Seen from nikopol, one level already
+suffices — `ownedBy(nikopol-mgmt) = [nikopol-wrkld]`, and nikopol's own render carves that bundle onto
+its own branch. What was missing is that nikopol never RENDERS. The closure is what lets the root do
+it in nikopol's place, which is the whole point of <<return-to-service>>.
+
+★ And one property is recorded as a test because asserting its opposite is the tempting mistake, made
+here first: the closures OVERLAP. `nikopol-wrkld` is in the root's and in `nikopol-mgmt`'s, and
+`manifests/nikopol-mgmt` already has two writers today (the root as a child pass, nikopol as its own
+managing pass). That is not a collision to remove — it is the uniform view, and DETERMINISM is what
+makes it safe, not exclusivity. ✅ Verified 2026-09-30 that no host-local state blocks it: the
+child pass already receives the PARENT's `ImageState` (`facet.image()`), and `recordedImage` replays
+the one the last grow graved at HEAD — and `ImageState` is a CONTENT identity (`imageFingerprint`,
+`rke2Version`), the same on every Incus member, not a location.
+
+The deferral said it "re-centralises rendering in the root". Under a uniform federation view that
+reading is wrong: the root is not a centre, it is the **position that is always up**. The code already
+asserts the invariant that makes this safe —
+
+[quote,ManifestSynthesisScenario, the child facet]
+whoever renders, the result must be IDENTICAL, which is what makes the two copies of a sub-plane's
+intention agree by construction instead of by coincidence.
+
+[[return-to-service]]
+=== ★ The hazard is RETURN-TO-SERVICE, not the outage
+
+The decisive argument, and it is not availability — it is that **a plane coming back online must not
+catch up**. This is the greenfield defect one layer up: a `pet` pool may never greenfield from an
+inconclusive read, because *absent* and *I cannot tell yet* look alike on return
+(`pooladoption_controller.go` § `resolveRoster`). A plane that returns, reads "not rendered", and
+concludes "I render" commits the same error.
+
+⚠️ And be precise about WHY re-rendering is destructive, because the obvious answer is wrong. The
+render IS deterministic — `ClusterSeal.sealWorkloadCas` is additive and idempotent, and a cluster
+already in the seal *keeps* its CA, "never re-minted — a re-mint would rotate every workload cert".
+The random mint happens ONCE, the first time a cluster appears in the declared fleet. What makes the
+render deterministic is therefore the PERSISTED SEAL, and that seal is **host-side**
+(`ClusterPkiCoordinate`: "sealed host-side once per cluster"). So a second renderer does not mint
+*differently* — it mints because it has no `existing` to keep. The constraint is the seal's
+LOCALITY, not the render's nature.
+
+[cols="1,2,1",options="header"]
+|===
+| Shape | What the returning plane does | Verdict
+
+| a POKE from the parent
+| it is TOLD it is behind, so it renders — the heaviest, most fragile act (clone, reactor build, cold
+  nix store) ordered at the worst moment
+| ❌ the poke IS the hazard
+
+| fleet-scoped render, ONE renderer
+| nothing. Its branch is already current, rendered in its absence; it only APPLIES
+| ✅ safe by construction — it holds no declarative authority to misuse
+
+| fleet-scoped render, ANY renderer
+| it renders too, minting FRESH CAs over the valid ones. Not latency — corruption
+| ⚠️ needs both guards below
+|===
+
+So return-to-service is a pure apply, and the expensive half of the work was done by a plane that was
+up all along. ⏸️ Making the render REDUNDANT (any plane may render, which is what a uniform view
+naturally wants) needs TWO conditions, not one:
+
+. the SEAL must be reachable from the rendering position — it is host-side today, so a second plane
+  has nothing to keep. This is a question about where the seal STORE lives, not about the render;
+. the push must be guarded by IMPACT — identical tree ⟹ no commit. The same drv comparison
+  `relock` uses (link:../patterns/flake-lock-propagation.adoc[flake-lock-propagation] §
+  `termination`). Without it a returning renderer REWRITES instead of converging.
+
+★ Condition 2 is needed for CONVERGENCE between two renderers. It is tempting to also call it a
+determinism detector — "a deterministic render commits nothing on a re-run" — and that was WRONG on
+this branch for a reason worth knowing, now fixed one layer down. See <<render-determinism>>.
+
+[[render-determinism]]
+=== The render was deterministic; its CARRIER was not (audited + fixed 2026-09-30)
+
+Audited because "every render rewrites every Secret" looks like a non-deterministic renderer. It was
+not the renderer. The law worth holding is narrower than byte-stability:
+
+[IMPORTANT]
+====
+**The render must be deterministic in WHAT THE CLUSTER APPLIES** — on the projection, not on the
+bytes. The producer already complied. The DELIVERY did not, and that was a real defect.
+====
+
+What was measured, on `manifests/bioskop-mgmt` (183 commits):
+
+[cols="2,3",options="header"]
+|===
+| Checked | Found
+
+| the render logic
+| ✅ clean — no clock, no randomness anywhere under `osgi/domains/manifests/`
+
+| the workload CAs
+| ✅ deterministic by PERSISTENCE — `sealWorkloadCas` is additive and a known cluster keeps its CA,
+  "never re-minted — a re-mint would rotate every workload cert"
+
+| `NodeImage.spec.buildChecksum`
+| moves when `fingerprint` does not — but it is a digest of INPUTS (revision-sensitive by design, so
+  stable for a given source) and the field's own doc states "no controller compares it today"
+
+| every rendered Secret
+| ⚠️ churned on EVERY render — sampled renders read `369 insertions(+), 369 deletions(-)` with nothing
+  changed. **Root-caused and fixed**, below
+|===
+
+==== The root cause was ONE line, and the guard already existed
+
+The git-sops **clean filter** already refuses to re-encrypt unchanged content: it decrypts `HEAD`,
+compares, and re-emits the OLD ciphertext on a match. It never fired.
+
+Its two sides were in two SPELLINGS of the same document — `git::sops decrypt` pipes through
+`yq eval .`, so the HEAD side was yq output while the input side was whatever the producer wrote. The
+whole difference was a leading `---` the renderer emits and sops's own output does not. **26 of 29**
+encrypted manifests differed by nothing else.
+
+That miss is never cheap: sops takes a fresh AES-GCM IV, a fresh ephemeral age key per recipient and a
+`lastmodified` stamp on every encryption, so each re-encryption is unconditionally a new blob — ~370
+lines of incompressible ciphertext per render, which git cannot delta-compress.
+
+Fixed in ndh (`04b778d5`) by projecting BOTH sides through one canonical form — the discipline
+`lock-envs` already applies with `jq -S`:
+
+[cols="1,2",options="header"]
+|===
+| Step | Why
+
+| `--no-doc`
+| drops the document separator — the actual difference
+
+| `sort_keys(..)`
+| makes key order irrelevant, so no producer's emission style can decide "changed"
+
+| project for the COMPARISON only
+| what gets encrypted is still the caller's input verbatim; no formatting is rewritten behind a
+  producer's back
+
+| an input that does not project compares UNEQUAL
+| staging the OLD blob for NEW content is the one outcome worse than churn — a silent loss
+|===
+
+⚠️ `yq eval .` is NOT a canonicaliser — it faithfully preserves whether the input carried a separator,
+so normalising one side through it fixes nothing (verified: 0 of 29 matched). The first attempt did
+exactly that and was measured wrong before being believed.
+
+Verified three ways against the store's own layout: an identical re-render keeps the SAME blob; the
+same content with reordered keys keeps the SAME blob; a changed value still produces a NEW blob.
+
+==== Why it was worth fixing — and why the reason is NOT runtime
+
+Stated plainly because two tempting justifications are false:
+
+* ❌ *runtime consequence* — there is none. Flux applies the DECRYPTED content, so an identical
+  plaintext yields no apiserver update, hence no watch event, hence nothing downstream restarts.
+* ❌ *the render pipeline pays for the history* — it should not: the SOURCE fetch is already
+  `--depth 1` (`RenderPipelineManifestsUnit`), and the RENDERED BRANCH fetch is not
+  (`GitCli` — `git fetch origin +<ref>:<ref>`). History is never read to render, so shallow-fetching
+  the branch is correct independently of this fix.
+* ✅ what it really buys: **diff legibility** (a human can see what a render changed), a branch that
+  stops growing ~28 incompressible blobs per render, and — decisively — condition 2 above
+  ARRIVING FOR FREE. Blob-level idempotence is exactly what a second renderer needs in order to
+  converge instead of rewrite.
+
+⚠️ Open, found during the audit and NOT fixed: the git-sops **textconv is dead code**. The dispatcher's
+`textconv` arm redirects stdin from the file and then falls through to `exit 1`, where every other arm
+re-execs. So it returns nothing, with no diagnostic, for every format — and git silently falls back to
+the raw blob. Consequence: `git diff` never shows plaintext for a sops file anywhere in the fleet,
+which is why nobody noticed. The `diff.sops-yaml.textconv` driver IS registered in git config; the
+generated `.gitattributes` also sets only `filter=`, leaving `diff:` unspecified.
+
+★ The lesson is the one this document keeps re-learning, now in the carrier rather than the producer:
+**a comparison must project BOTH sides, or it is not a comparison.** The guard was written, correct in
+intent, and inert for the want of one `yq` invocation on the other side.
+
+What a sub-plane keeps either way is worth naming: **autonomy of reconciliation** — offline it cannot
+receive a new declaration (it cannot reach git either), but it keeps enforcing the last artifact its
+source-controller fetched, so it does not regress. Only **autonomy of declaration** moves, and the
+argument that it never belonged to a sub-plane is strong: declaring needs the source, which needs the
+network.
+
+⚠️ Until the redundant form lands, a root that is down means nothing is declared anywhere. Acceptable
+only while the root is the non-itinerant position — which is a property of today's fleet, not of the
+model.
+
+[[derived-materials]]
+=== A material may be DERIVED, and one now is (📐 2026-10-01)
+
+Every other synth-time material is *revealed* — the seal files it, the cellar carries it, the render
+opens it. `TlsAuthorityCaMaterial` is the first that is *derived* inside the render, and the reason is
+the realm asymmetry this whole spec is about.
+
+The value is the fleet's TLS authority certificate, which the CAPN provider must trust now that its
+identity Secret no longer pins the Incus listener's leaf (see
+link:deterministic-cluster-access.adoc#capn-trusts-by-ca[CAPN trusts the listener by CA]). Its obvious
+source is the ndh key-store — and *IN_CLUSTER the key-store is unreachable*, which is exactly the
+condition the in-cluster render runs under, and the in-cluster render is the steady state. A key-store
+read would have given the operator's render a CA and the cluster's render none.
+
+So `ManifestSynthesisScenario` derives it from `ClusterIssuerCaMaterial.caCertChainPem` — the last
+certificate of a chain the seal assembles as `chainPem(issuerCa, intermediate, root)`, whose root IS
+that key-store entry.
+
+[IMPORTANT]
+====
+⚠️ *And that did NOT make it available in both realms, which was the whole point of deriving it.*
+Measured 2026-10-01: `CLUSTER_ISSUER_CA` is sealed by the cluster-pki seal, which runs on the HOST, and
+the in-cluster render does not see host-sealed cases. `INCUS_IDENTITY` *is* visible in-cluster — because
+its seal scion runs IN-CONTAINER. So the dividing line is not "cellar-borne versus not", it is *which
+realm SEALED it*, and this derivation simply moved the host-only dependency one hop without removing it.
+
+The consequence is recorded in
+link:deterministic-cluster-access.adoc#capn-trusts-by-ca[the guard that had to go]: the material is
+genuinely absent in-cluster, so what depends on it must ride the NODE_BOOTSTRAP lane, and nothing may
+assert its presence at render time.
+====
+
+* ✅ *Ask which REALM SEALED a case, not whether it is in the cellar.* Both of these are cellar cases;
+  only one of them crosses into the cluster.
+* ❌ *Do not derive a value in order to dodge a realm split* without checking that the source actually
+  crosses. One reveal is only one value if both realms can perform it.
+* ⚠️ *An absent material must make a render emit LESS, never FAIL* — and if emitting less would prune
+  something, the thing belongs on the bootstrap lane instead.
+
+This is the same lesson as <<render-determinism>> one level up, and it bit in the same shape: the
+question is never "can this render produce bytes", it is "does what it produces mean the same thing
+from either viewpoint" — including when one viewpoint can see less.
+
+=== Open
+
+* The reconcile interval — a latency-versus-churn trade, not a correctness question: the loop
+  converges at any interval. Bounded below by the shared nix/maven cache PVC each render warms.
+* How the parent AUTHENTICATES its poke to the child's PaC: sign a synthetic push with the shared
+  `webhook.secret` (identical across clusters — measured 2026-09-30, same sha256, and both hold the
+  same App id + private key), or use PaC's `/incoming` endpoint, which exists for external triggers.
 
 == Anti-patterns
 
@@ -880,7 +1436,7 @@ commit — determinism + consistency with what an operator would render.
   non-default layer produces no push
 | The render did not read the recorded facet — it fell back to the `publish` CLI's hardcoded default
   (which differs from the grow's stack facet). Confirm the root `manifest.yaml` exists on
-  `manifests/<cluster>` at HEAD (`git show manifests/<cluster>:manifest.yaml | yq .facet`) and that the
+  `manifests/<cluster>` at HEAD (`git show manifests/<cluster>:manifest.yaml \| yq .facet`) and that the
   render reads it (no drift-override param forcing a different source). A branch grown before this landed
   has no recorded manifest → one re-grow writes it. See <<render-config>>.
 | The `publish` step's render narration is invisible in the PipelineRun logs (only the Felix boot

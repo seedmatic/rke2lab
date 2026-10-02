@@ -21,7 +21,7 @@
     classpaths, so the one-module-two-artifacts route would leave the IDE red. A plain main artifact
     of a workspace project resolves cleanly. The fixture writes the on-disk history/checkpoint pair
     once, reused by the edge's own tests (StackHandleTest, StackHandleSnapshotSourceTest) and by the
-    doctor-reconstruction tests in seed-master that read live Pulumi state.
+    doctor-reconstruction tests in seed-outcluster that read live Pulumi state.
 
     It depends on pulumi-edge ONLY for PulumiBackendLayout (the single source of truth for
     the .pulumi/history/<project>/<stack> on-disk convention), so the fixture writes into the exact

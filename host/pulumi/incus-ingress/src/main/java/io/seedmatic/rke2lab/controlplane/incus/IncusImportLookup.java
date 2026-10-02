@@ -2,6 +2,7 @@ package io.seedmatic.rke2lab.controlplane.incus;
 
 import com.pulumi.deployment.Deployment;
 import com.pulumi.incus.IncusFunctions;
+import com.pulumi.incus.inputs.GetCertificatePlainArgs;
 import com.pulumi.incus.inputs.GetImagePlainArgs;
 import com.pulumi.incus.inputs.GetNetworkPlainArgs;
 import com.pulumi.incus.inputs.GetProjectPlainArgs;
@@ -101,13 +102,21 @@ public final class IncusImportLookup {
    * create path, both correct. A miss throws, caught as absent.
    */
   public boolean imageExists(String fingerprint, String incusProject) {
+    return nodeBaseFingerprint(incusProject).filter(fingerprint::equals).isPresent();
+  }
+
+  /**
+   * The content fingerprint the stable {@link #NODE_BASE_ALIAS} currently resolves to, or empty
+   * when the daemon holds no such alias (a virgin daemon, or one where no grow ever completed).
+   *
+   * <p>It is the DAEMON as a source of image identity, which matters when the local artifacts are
+   * gone: a fresh worktree has an empty Pulumi stack but the daemon still holds the image a
+   * previous grow posed this alias on, so the identity is recoverable without rebuilding. {@link
+   * #imageExists} is this same lookup plus a comparison — one lookup implementation, two questions.
+   */
+  public Optional<String> nodeBaseFingerprint(String incusProject) {
     log.accept(
-        "incus lookup getImage: start alias="
-            + NODE_BASE_ALIAS
-            + " fingerprint="
-            + fingerprint
-            + " project="
-            + incusProject);
+        "incus lookup getImage: start alias=" + NODE_BASE_ALIAS + " project=" + incusProject);
     try {
       final var image =
           IncusFunctions.getImagePlain(
@@ -115,9 +124,40 @@ public final class IncusImportLookup {
                   context.invokeOptions())
               .orTimeout(invokeTimeoutSeconds(), TimeUnit.SECONDS)
               .join();
-      return image != null && fingerprint.equals(image.fingerprint());
+      return image == null ? Optional.empty() : Optional.ofNullable(image.fingerprint());
     } catch (Exception ex) {
       log.accept("incus lookup getImage: absent (" + summarizeLookupFailure(ex) + ")");
+      return Optional.empty();
+    }
+  }
+
+  /**
+   * Whether the daemon's trust store already holds THIS certificate, addressed by its content
+   * {@code fingerprint} (sha256 of the DER, which is how incus names a trust entry).
+   *
+   * <p>The trust store is DAEMON state and outlives any Pulumi stack, so a cold start on a FRESH
+   * stack meets the entry a previous run created. {@code pulumi refresh} cannot help: it reconciles
+   * resources already IN the state and never discovers ones absent from it — which is why the GROW
+   * has to ask. (Measured 2026-09-28: the stack held 18 resources and no {@code Certificate}, while
+   * the daemon was trusting one.)
+   *
+   * <p>★ By FINGERPRINT rather than by entry name, and the provider's data source forces the better
+   * question: "does the daemon already trust this exact certificate", not "is there an entry
+   * wearing this label". So a ROTATED certificate reads as absent and gets created, with no entry
+   * to rename and nothing to correct in place.
+   */
+  public boolean certificateTrusted(String fingerprint) {
+    log.accept("incus lookup getCertificate: start fingerprint=" + fingerprint);
+    try {
+      final var certificate =
+          IncusFunctions.getCertificatePlain(
+                  GetCertificatePlainArgs.builder().fingerprint(fingerprint).build(),
+                  context.invokeOptions())
+              .orTimeout(invokeTimeoutSeconds(), TimeUnit.SECONDS)
+              .join();
+      return certificate != null;
+    } catch (Exception ex) {
+      log.accept("incus lookup getCertificate: absent (" + summarizeLookupFailure(ex) + ")");
       return false;
     }
   }

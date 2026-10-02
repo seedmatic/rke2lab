@@ -274,7 +274,7 @@ link:../cluster-api/pac-in-cluster-render-spec.adoc[the PaC in-cluster render sp
 flowchart LR
   Op["the OPERATION<br/>ghapp -> auth -> manifests<br/>(OSGi scions, one thing)"]
   subgraph hosts ["the HOSTS that sow it"]
-    Grow["grow / seed-master<br/>1st render+push (Pulumi envelope)"]
+    Grow["grow / seed-outcluster<br/>1st render+push (Pulumi envelope)"]
     Pub["manifests publish<br/>operator standalone CLI"]
     PaC["in-cluster PaC PipelineRun<br/>on source push"]
   end

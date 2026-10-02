@@ -6,6 +6,7 @@ import com.exceptionfactory.jagged.framework.stream.StandardDecryptingChannelFac
 import com.exceptionfactory.jagged.framework.stream.StandardEncryptingChannelFactory;
 import com.exceptionfactory.jagged.ssh.SshEd25519RecipientStanzaReaderFactory;
 import com.exceptionfactory.jagged.ssh.SshEd25519RecipientStanzaWriterFactory;
+import io.seedmatic.rke2lab.ndh.contract.NdhKeystoreCatalog;
 import io.seedmatic.rke2lab.ndh.contract.NdhKeystoreReader;
 import io.seedmatic.rke2lab.seed.broker.port.CellarCipher;
 import java.io.ByteArrayInputStream;
@@ -54,7 +55,7 @@ import org.osgi.service.component.annotations.Reference;
 public final class AgeCellarCipher implements CellarCipher {
 
   /** The ndh inventory entry the cellar seals to / reveals with — its single source of trust. */
-  static final String CLUSTER_KEY = "rke2-cluster";
+  static final String CLUSTER_KEY = NdhKeystoreCatalog.CLUSTER_SSH_KEY.entryName();
 
   private static final String MARK = "cellar:age:v1:";
 

@@ -82,15 +82,15 @@ public @interface Amendment {
   /**
    * How the render resolves its facet against the branch HEAD — the CLI verb intent (seeded wins /
    * HEAD wins / HEAD overlaid). The sower fills it; the manifests synthesis reads it. Unamended, it
-   * falls to the manifests scion's default (grow: the seeded facet wins), so seed-master's grow is
-   * unchanged and only the {@code manifests-cli} update/edit verbs opt into following HEAD.
+   * falls to the manifests scion's default (grow: the seeded facet wins), so seed-outcluster's grow
+   * is unchanged and only the {@code manifests-cli} update/edit verbs opt into following HEAD.
    */
   String RENDER_MODE = "render-mode";
 
   /**
    * The workload clusters this grow must pre-seed a deterministic CA for — the flat list of CAPI
    * {@code Cluster} names ({@code <host>-<role>}, e.g. {@code bioskop-wrkld}) the management
-   * cluster will greenfield. Only the host holds it (it is the same {@code workloadTargets} the
+   * cluster will greenfield. Only the host holds it (it is the same {@code incusTargets} the
    * manifests facet carries, read from {@code BootstrapConfig}); the cluster-pki seal scion fills
    * it to mint — additively, once per cluster, rooted at {@code mammoth-skate} (sibling of the mgmt
    * CA) — the four CAPRKE2 BYO-CA sets ({@code <cluster>-{ca,cca,etcd,peer-etcd}}). Empty on a
@@ -99,13 +99,17 @@ public @interface Amendment {
   String WORKLOAD_TARGETS = "workload-targets";
 
   /**
-   * The host-world part of the CAPN provider's incus identity — the three fields only the host can
-   * read: the incus remote {@code serverAddress} (BootstrapConfig), the {@code serverCert} (the
-   * operator's {@code ~/.config/incus/servercerts/*.crt}), and the capn-provider {@code clientCert}
-   * (a bundled seed-master classpath resource). The incus-identity seal scion fills the fourth
-   * field (the client KEY) itself from {@code .secrets} — off this wire — and seals the assembled
-   * {@code IncusIdentityMaterial}, which {@code ClusterApiWorkloadManifestsUnit} renders as the
-   * {@code <host>-incus-identity} Secret CAPN authenticates to incus with.
+   * The host-world part of the CAPN provider's incus identity — the fields only the host can read:
+   * the incus remote {@code serverAddress} (BootstrapConfig) and the capn-provider {@code
+   * clientCert} (a bundled seed-outcluster classpath resource). The incus-identity seal scion fills
+   * the remaining field (the client KEY) itself from {@code .secrets} — off this wire — and seals
+   * the assembled {@code IncusIdentityMaterial}, which {@code ClusterApiWorkloadManifestsUnit}
+   * renders as the {@code <host>-incus-identity} Secret CAPN authenticates to incus with.
+   *
+   * <p>A {@code serverCert} used to ride here too, read from the operator's {@code
+   * ~/.config/incus/servercerts/*.crt} so CAPN could pin the listener's leaf. It is gone with the
+   * pin: the listener is trusted by CA now, so that host-side file is no longer an input to
+   * anything.
    */
   String INCUS_IDENTITY = "incus-identity";
 

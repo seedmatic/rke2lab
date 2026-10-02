@@ -274,7 +274,7 @@ public final class RenderPipelineManifestsUnit extends AbstractManifestsUnit {
                       "name",
                       "clone",
                       "image",
-                      ManifestSynthesisContext.current().floxDebugPolicy().prodImage(),
+                      ManifestSynthesisContext.current().containerImages().carrier(),
                       "script",
                       """
                       #!/bin/sh
@@ -385,14 +385,14 @@ public final class RenderPipelineManifestsUnit extends AbstractManifestsUnit {
                       // stock base. The toolchain (nix + the git-sops env) arrives via flox NRI
                       // injection onto this container; no JDK/nix baked into the image.
                       "image",
-                      ManifestSynthesisContext.current().floxDebugPolicy().prodImage(),
+                      ManifestSynthesisContext.current().containerImages().carrier(),
                       "workingDir",
                       "$(workspaces.source.path)",
                       "script",
                       """
                       #!/usr/bin/env bash
                       set -euxo pipefail
-                      : "The publish narrates live to stdout: it runs STANDALONE (not seed-master under Pulumi), so PaxLogbackConfigurer keeps its console appender on and the render/delivery logs land in this container's logs"
+                      : "The publish narrates live to stdout: it runs STANDALONE (not seed-outcluster under Pulumi), so PaxLogbackConfigurer keeps its console appender on and the render/delivery logs land in this container's logs"
                       GIT_AUTH_DIR="$(workspaces.basic-auth.path)"
                       : "PaC mints the App token into the git_auth secret's git-provider-token key; read it RAW (not scraped from the .git-credentials URL) into RKE2LAB_PUSH_TOKEN for the ff-push (the scion reveals it in-container, ManifestSynthesisScenario.revealGithubToken) + nix + maven. Backticks, not the dollar-paren form, so Tekton does not claim the substitution as one of its own vars"
                       : "The same App token authenticates .mvn/settings.xml to GitHub Packages (the env.GH_TOKEN placeholder) so the reactor resolves the private seedmatic release java-systemd. Requires the App to carry packages:read"
@@ -450,7 +450,7 @@ public final class RenderPipelineManifestsUnit extends AbstractManifestsUnit {
         "volumeMounts",
         cacheMount(),
         "image",
-        ManifestSynthesisContext.current().floxDebugPolicy().prodImage(),
+        ManifestSynthesisContext.current().containerImages().carrier(),
         "script",
         """
         #!/usr/bin/env bash
@@ -522,7 +522,7 @@ public final class RenderPipelineManifestsUnit extends AbstractManifestsUnit {
         "volumeMounts",
         cacheMount(),
         "image",
-        ManifestSynthesisContext.current().floxDebugPolicy().prodImage(),
+        ManifestSynthesisContext.current().containerImages().carrier(),
         "script",
         """
         #!/usr/bin/env bash

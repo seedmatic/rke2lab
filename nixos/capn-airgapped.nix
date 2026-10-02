@@ -5,7 +5,7 @@
 # binary — CAPRKE2 then only writes /etc/rancher/rke2/config.yaml (join token + server URL, which
 # MERGES with the node-base's config.yaml.d drop-ins) and enable/start rke2-server (the nix unit).
 #
-# Only CAPRKE2-provisioned WORKLOAD nodes invoke this; the seed-master-grown mgmt master never does
+# Only CAPRKE2-provisioned WORKLOAD nodes invoke this; the seed-outcluster-grown mgmt master never does
 # (harmless there — homogeneous image). See ClusterApiWorkloadManifestsUnit (RKE2ControlPlane /
 # RKE2ConfigTemplate airGapped=true) and docs/architecture/cluster-api/.
 { pkgs, ... }:

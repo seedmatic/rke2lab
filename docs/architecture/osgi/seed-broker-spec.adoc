@@ -72,7 +72,7 @@ adds:
   collected by Declarative Services (`DefaultSeedBroker`), routing by coordinate, the world-crossing
   hidden behind the door. Transversal know-how, owns no plot; the client requests, the broker acts (REST).
 * the other roles are realised ELSEWHERE and only referenced here: the *COMMISSIONER* + *TOOLS* = the host
-  (`pulumi-edge`, `seed-master` — wants, launches `pulumi up`, conserves, carries requests speaking only
+  (`pulumi-edge`, `seed-outcluster` — wants, launches `pulumi up`, conserves, carries requests speaking only
   gardening); the *SOILS* = the DOMAINS (doctor, cluster — each a `SeedHandler`); the *CELLAR* = the host
   conservation organ (§ <<the-neutral-crud-port-is-a-cellar>>, realised at
   link:host-cellar-realisation-spec.adoc[host Cellar realisation]).
@@ -80,11 +80,11 @@ adds:
 The load-bearing goal of the host migration follows from the roles: *the host speaks only gardening; all
 logic that speaks a domain migrates into that domain* (§ <<remaining-migration>>).
 
-=== The germination cascade — why the crossing is NOT symmetric (seed-master)
+=== The germination cascade — why the crossing is NOT symmetric (seed-outcluster)
 
 The client sees one door; the flow BEHIND it is directional, and worth naming because it settles a
 tempting-but-wrong idea (that the broker routes freely to a host-side OR an OSGi-side handler,
-symmetrically). For seed-master it does not. The seed has ONE origin and germinates in a cascade:
+symmetrically). For seed-outcluster it does not. The seed has ONE origin and germinates in a cascade:
 
 [mermaid]
 ....
@@ -121,7 +121,7 @@ misses:
   bloom owns what it grows, the host owns the seed's birth.
 
 So the broker-gardener has, in principle, several parcels (host, OSGi, tomorrow remote) — but for
-seed-master the seed is NOT freely routable to either: it is born host-side (Pulumi hands it over) and
+seed-outcluster the seed is NOT freely routable to either: it is born host-side (Pulumi hands it over) and
 only its offspring reach OSGi. Symmetry considered, rejected, and here is why.
 
 == The mental model: REST, in our embedded model
@@ -1698,7 +1698,7 @@ turns; the debunked framings are recorded so they are not re-attempted:
 
 . *UNIVERSAL, injected per scenario.* Each scenario (host root AND scion) has its OWN local
   `ScenarioCellar`, backed by its OWN `ReportModel` (`scenario-engine` is DUAL-REALM — depended on by
-  `exec/seed-master` and by the domain bundles — so the type lives there, names `ReportModel`, and each
+  `exec/seed-outcluster` and by the domain bundles — so the type lives there, names `ReportModel`, and each
   realm holds its copy; no seam for the cellar). `store` posts the codec-encoded envelope as a `Tag` on the
   model (the within-run write set); `fetch`/`neighbours` delegate to the durable backend directly. The
   cellar is INJECTED by the extension into a scenario field — NOT resolved from the registry (that
@@ -1822,8 +1822,8 @@ tags `store` already posted during the body; the verdict comes from JUnit, not j
 
 ===== The three neutral channels the extension reads — role, identity, write-set
 
-The extension lives in `scenario-engine` (runtime); `SeedRun` lives in `exec/seed-master` (the host world,
-where `Main` runs). The module direction is `seed-master → scenario-engine`, NEVER the reverse — so the
+The extension lives in `scenario-engine` (runtime); `SeedRun` lives in `exec/seed-outcluster` (the host world,
+where `Main` runs). The module direction is `seed-outcluster → scenario-engine`, NEVER the reverse — so the
 extension CANNOT read `SeedRun` (it does not know the type, and `SeedRun` is host-flat, it does not cross
 the launcher membrane into a scion anyway). That is WHY the transaction context reaches the extension as
 THREE NEUTRAL channels (each a flat JDK value in the launcher session store, each with a launcher-side
@@ -1851,7 +1851,7 @@ THREE NEUTRAL channels (each a flat JDK value in the launcher session store, eac
 [mermaid]
 ....
 flowchart TB
-  subgraph host["exec/seed-master (host world)"]
+  subgraph host["exec/seed-outcluster (host world)"]
     main["Main mints UUID → SeedRun"]
     run["SeedRun (host-flat, does NOT cross)"]
     main --> run
@@ -2242,7 +2242,7 @@ migrated. What remains, tracked as a worklist the `REALM_BOUNDARY` gate surfaces
   module no longer compiles against the migrated seam. The doctor READ/WRITE ports they implement ALREADY
   speak `SeedEnvelope` opaque; only the host impls lag. Nature of the fix: the read frontier reads stored
   envelopes back as opaque SEEDS and transports them (no `VisitWire` built host-side); the write frontier
-  (`SystemdAdapterResource` in seed-master, which decodes `Consultation.class`) files the graft
+  (`SystemdAdapterResource` in seed-outcluster, which decodes `Consultation.class`) files the graft
   coordinates the plant advertises (§ <<hateoas-the-plant-advertises>>), never decoding.
 * *The offline dump* (`MedicalRecordDump`) opens Felix when it needs the broker — booting OSGi for a dump
   is acceptable (user), so it goes uniform with `RecordInterventionCommand`: no host-pure
@@ -2270,7 +2270,7 @@ migrated. What remains, tracked as a worklist the `REALM_BOUNDARY` gate surfaces
 
 The order is worklist-driven: the gate lists the exact flat-realm classes referencing bundle-only
 types; each commit shrinks the list; the coordinate schemas land beside their domain's mapper with a
-round-trip unit test. This is the same "finish the surface" pass paused alongside the seed-master
+round-trip unit test. This is the same "finish the surface" pass paused alongside the seed-outcluster
 provisioning rework.
 
 [[open-extensibility-chantier]]
@@ -2279,7 +2279,7 @@ provisioning rework.
 [NOTE]
 ====
 This is FUTURE, not dead. The per-domain roster ("multiplexor") is an OPEN-extensibility design the
-*distributed peer-to-peer mode requires*: while the system is centralized bootstrap (seed-master
+*distributed peer-to-peer mode requires*: while the system is centralized bootstrap (seed-outcluster
 orchestrates) the closed form below is fine, but the moment the system becomes a mesh of unitrepo peers
 that contribute domains dynamically (as bundles, per new need — the unitrepo thesis), the roster becomes
 necessary. It is a PRIORITY chantier right after the behavior-driven pipelines land (cluster, the second
@@ -2366,7 +2366,7 @@ The module is named `world-gateway` in code, framed first as a generic organ. Th
 (`Document`, `Coordinate`, `WireEnum`, `DocumentContract`) with provisioning vocabulary (`Checkpoint`,
 `ReadinessCheckpoint`, `ReadinessVerdict`, `Consultation`, `Patient`, `SymptomKind`). It is already a
 provisioning broker wearing a generic name. The conceived name is **`seed-broker`** — honest about what
-it is: the whole system is `seed-master` (la graine); the broker is the organ that sows.
+it is: the whole system is `seed-outcluster` (la graine); the broker is the organ that sows.
 
 The two layers are real but NOT split into modules now (rule-of-three; no abstraction at N=1): the
 neutral transport (`Document`/`coordinate`/`handle`) and the seed-specific coordinate catalog live in

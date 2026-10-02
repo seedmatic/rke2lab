@@ -1,9 +1,9 @@
-# How the operator's world reaches a node: dbus-over-TCP for the seed-master systemd adapter, and
+# How the operator's world reaches a node: dbus-over-TCP for the seed-outcluster systemd adapter, and
 # mDNS advertisement so <cluster>-<node>.local resolves. Both are baked on EVERY node (the substrate
 # is homogeneous), replacing the former rke2lab-dbus-tcp-system-bus.sh host script.
 { pkgs, ... }:
 {
-  # dbus-over-TCP for the seed-master systemd adapter. The adapter opens an anonymous-SASL DBus
+  # dbus-over-TCP for the seed-outcluster systemd adapter. The adapter opens an anonymous-SASL DBus
   # connection to a node's system bus over TCP (port 12434) to read live unit state. FULLY
   # DECLARATIVE — no runtime node.env gate, no dbus restart. Two pieces:
   #   1. the anonymous-allow policy;

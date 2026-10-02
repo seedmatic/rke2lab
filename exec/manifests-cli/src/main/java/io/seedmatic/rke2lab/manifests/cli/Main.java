@@ -39,10 +39,10 @@ import org.slf4j.LoggerFactory;
 
 /**
  * The manifests CLI north-adapter. The {@code synthesize} verb drives {@link ManifestsCliScenario}
- * on the embedded JUnit launcher — the SAME BDD-as-engine machinery {@code seed-master} uses, minus
- * the Pulumi envelope. The scenario opens the gardening and sows the {@code manifests} coordinate
- * through the broker; that grows {@code ManifestSynthesisScenario} in-container, where its
- * {@code @OsgiService ManifestSynthesisService} resolves bundle-side.
+ * on the embedded JUnit launcher — the SAME BDD-as-engine machinery {@code seed-outcluster} uses,
+ * minus the Pulumi envelope. The scenario opens the gardening and sows the {@code manifests}
+ * coordinate through the broker; that grows {@code ManifestSynthesisScenario} in-container, where
+ * its {@code @OsgiService ManifestSynthesisService} resolves bundle-side.
  *
  * <p>It does NOT {@code awaitService(ManifestSynthesisService.class)} from the host: that class
  * lives in the non-seam {@code manifests-contract} bundle, so the flat host copy never matches the
@@ -364,7 +364,8 @@ public final class Main {
     @Override
     public void run() {
       // Drive the host-side ManifestsCliScenario on the embedded launcher — the SAME BDD engine
-      // seed-master uses. The scenario opens the gardening (boots the staged bundles + resolves the
+      // seed-outcluster uses. The scenario opens the gardening (boots the staged bundles + resolves
+      // the
       // broker) and sows the manifests coordinate; the broker grows ManifestSynthesisScenario
       // in-container, materialising into the SOIL this run carries. No host-typed awaitService.
       final String txId = UUID.randomUUID().toString();

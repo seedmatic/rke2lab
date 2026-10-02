@@ -39,7 +39,7 @@
 
     <!-- fabric8 Kubernetes client: the typed door to kube-apiserver. provided — it carries its own
          Bundle-SymbolicName + OSGi headers (like BouncyCastle), so io.fabric8.* becomes a plain
-         Import-Package computed from the bytecode, and seed-master stages the bundle closure INTACT
+         Import-Package computed from the bytecode, and seed-outcluster stages the bundle closure INTACT
          at runtime. NOT embedded. kubernetes-httpclient-jdk gives the JDK-HttpClient backend, wired
          explicitly (KubernetesClientBuilder#withHttpClientFactory) so no cross-bundle ServiceLoader
          lookup is needed. -->

@@ -31,7 +31,7 @@ link:incus-edge-spec.adoc[incus-edge] or link:auth-edge-spec.adoc[auth-edge].
 == The contact today — inlined, duplicated, library types on the host
 
 The bbox contact (open a session to the Bouygues Bbox router, diff+apply DHCP reservations) lived in
-`seed-master`, duplicated across two paths: `BboxReconcilerComponent.reconcileStandalone` and the
+`seed-outcluster`, duplicated across two paths: `BboxReconcilerComponent.reconcileStandalone` and the
 Pulumi `BboxReservationsResource`. Both did `BboxApiClient.open` + `ReservationReconciler.apply(row,
 mode)`. Five host files imported `io.seedmatic.bbox.*` — the library's `Action`/`RowOutcome`/
 `DesiredReservation` types were spread across the host, including into the Pulumi resource graph
@@ -55,7 +55,7 @@ mode)`. Five host files imported `io.seedmatic.bbox.*` — the library's `Action
   ** `SurveyingBboxReconciler` (`rke2lab.gardening=surveying`) contacts the router ZERO times: it
      projects each request's `WOULD_CREATE` — the honest upper bound (a survey cannot read the live
      table, so never a fabricated MATCHING). Real production code, not a fake.
-* *seed-master* (host): purified off `io.seedmatic.bbox.*` — it builds `BboxReservationRequest`s from
+* *seed-outcluster* (host): purified off `io.seedmatic.bbox.*` — it builds `BboxReservationRequest`s from
   the blueprint, calls the reconciler resolved from the registry, and projects `BboxRowOutcome`s into
   its counts and Pulumi resource graph. The library types no longer live host-side.
 

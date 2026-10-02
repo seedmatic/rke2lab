@@ -27,7 +27,7 @@ import org.slf4j.LoggerFactory;
  * <domain>/<package>/<order>-<kind>-<name>.yml}.
  *
  * <p>Replaces the old {@code bin/explode-manifests.sh} that used {@code yq} — the synth itself runs
- * in seed-master at pulumi-up time now, and we don't want a {@code yq} runtime dep.
+ * in seed-outcluster at pulumi-up time now, and we don't want a {@code yq} runtime dep.
  *
  * <p>Domain and package come from {@code io.seedmatic.rke2lab/domain} and {@code
  * io.seedmatic.rke2lab/package} annotations stamped by domain code; defaults match the old script
@@ -70,7 +70,7 @@ public final class DefaultManifestExplodeService implements ManifestExplodeServi
     }
 
     // Note: we do NOT wipe target here. The caller may have other content under
-    // it (e.g. host/ assets in seed-master's manifestsRoot) that must survive.
+    // it (e.g. host/ assets in seed-outcluster's manifestsRoot) that must survive.
     // Callers are responsible for clearing stale per-resource files before
     // invoking explode.
     Files.createDirectories(target);
@@ -148,8 +148,14 @@ public final class DefaultManifestExplodeService implements ManifestExplodeServi
         # Rendered Secrets are sops-filtered: their data/stringData commit ENCRYPTED (never
         # plaintext), decrypted by Flux (sops-age) on reconcile. The recorded .sops.yaml names the
         # fields + recipients; only the irreducible bootstrap seed still rides the node-bootstrap lane.
-        **/*-secret-*.yml filter=sops-yaml
-        **/.secret-*.yml filter=sops-yaml
+        #
+        # `diff=` is what makes a RENDER REVIEWABLE. Without it `git diff` compares ciphertext, and
+        # AES-GCM takes a fresh IV per encryption, so every Secret always looks changed and never says
+        # what moved — which is how a render's real change hides among 28 walls of base64. The
+        # sops-yaml textconv renders each blob decrypted instead; with no key it exits non-zero and git
+        # falls back to the raw blob, so a missing key costs legibility and never truthfulness.
+        **/*-secret-*.yml filter=sops-yaml diff=sops-yaml
+        **/.secret-*.yml filter=sops-yaml diff=sops-yaml
         """);
   }
 

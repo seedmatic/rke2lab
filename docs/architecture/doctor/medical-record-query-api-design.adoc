@@ -129,12 +129,12 @@ field; nothing orders by it. This is the single most load-bearing correction bet
 as-built — and the reason the on-disk coupling is documented so explicitly below.
 ====
 
-== Placement: a reusable top-level module, a neutral doctor interface, wired in seed-master
+== Placement: a reusable top-level module, a neutral doctor interface, wired in seed-outcluster
 
-Other modules will be Pulumi-based too (`seed-master` today, future `seed-*`). The capability to
+Other modules will be Pulumi-based too (`seed-outcluster` today, future `seed-*`). The capability to
 *read a stack's own state and history in-process* — and to *re-provide the missing versioned export*
 over checkpoints — is generic and has *no doctor notion*. It must be a *shared module*, not buried in
-seed-master, so every seed-* reuses it.
+seed-outcluster, so every seed-* reuses it.
 
 *It is NOT under `sdks/`.* In this repo (and in Pulumi's own vocabulary) an `sdks/*` module is a
 *generated provider SDK* — `sdks/incus` is package `com.pulumi.incus` with resource classes

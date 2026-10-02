@@ -16,7 +16,7 @@ The doctor core is a *generic module* (reused in config and elsewhere), yet the 
 the Pulumi state* and "each medical record's DAG must be reconstructable from the states". Those
 reconcile only if the Pulumi-ness lives in a *specialization*, never in the core. To choose the
 shape of that specialization we must be precise about Pulumi's two entity worlds — the
-*application* world (what our seed-master code touches) and the *provider* world (what a plugin
+*application* world (what our seed-outcluster code touches) and the *provider* world (what a plugin
 touches). The fork at the end (ComponentResource vs Provider) hangs entirely on this distinction.
 
 == 1. C4 Container view — the Pulumi system at deploy time
@@ -31,7 +31,7 @@ flowchart TB
         DEP["Deployment engine<br/>desired vs actual,<br/>drives providers"]
     end
 
-    subgraph HOST["Language Host — runs OUR program (Java / seed-master)"]
+    subgraph HOST["Language Host — runs OUR program (Java / seed-outcluster)"]
         APP["The application<br/>registers Resources,<br/>builds Outputs"]
     end
 
@@ -51,7 +51,7 @@ flowchart TB
     DEP -->|writes / reads| STATE
 ----
 
-*The load-bearing fact:* our code (seed-master) runs *inside the Language Host*. It *never writes
+*The load-bearing fact:* our code (seed-outcluster) runs *inside the Language Host*. It *never writes
 state directly* — it *declares* resources to the Resource Monitor; the *engine* writes state; the
 *providers* talk to the real world. So "persist into the state" has exactly two routes: a
 *ComponentResource* (`registerOutputs`) or a *CustomResource backed by a provider* (CRUD).
@@ -181,7 +181,7 @@ flowchart LR
         REP["ConsultationReport<br/>(today's Observation + the plan)"]
     end
 
-    subgraph SEED["seed-master — the Pulumi adapter"]
+    subgraph SEED["seed-outcluster — the Pulumi adapter"]
         A["Option A (CHOSEN): ComponentResource<br/>registerOutputs(report) + dependsOn<br/>output-carrier, NOT provisioned; doctor stays app logic"]
         B["Option B (REJECTED): CustomResource + provider<br/>re-observe already in-program; no managed external state;<br/>heavy Java plugin for ~no gain"]
     end

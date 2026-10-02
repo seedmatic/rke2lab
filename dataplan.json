@@ -31,6 +31,12 @@
       "mountpoint" : "legacy"
     }
   }, {
+    "path" : "rke2lab/mgmt/persist/maven-cache",
+    "type" : "zfs_fs",
+    "options" : {
+      "mountpoint" : "legacy"
+    }
+  }, {
     "path" : "rke2lab/wrkld",
     "type" : "zfs_fs",
     "options" : { }
@@ -52,6 +58,12 @@
     "options" : { }
   }, {
     "path" : "rke2lab/wrkld/persist/funnel-cert",
+    "type" : "zfs_fs",
+    "options" : {
+      "mountpoint" : "legacy"
+    }
+  }, {
+    "path" : "rke2lab/wrkld/persist/maven-cache",
     "type" : "zfs_fs",
     "options" : {
       "mountpoint" : "legacy"

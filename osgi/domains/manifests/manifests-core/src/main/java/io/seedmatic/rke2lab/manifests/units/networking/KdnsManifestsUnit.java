@@ -258,7 +258,7 @@ public final class KdnsManifestsUnit extends AbstractManifestsUnit {
 
     LinkedHashMap<String, Object> kdnsContainer = new LinkedHashMap<>();
     kdnsContainer.put("name", "kdns");
-    kdnsContainer.put("image", debugPolicy.prodImage());
+    kdnsContainer.put("image", ManifestSynthesisContext.current().containerImages().carrier());
     kdnsContainer.put("imagePullPolicy", "IfNotPresent");
     kdnsContainer.put("command", List.of("kdns"));
     kdnsContainer.put(

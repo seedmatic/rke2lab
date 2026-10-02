@@ -32,7 +32,7 @@ map:
 
 * 5 value-type tests (`MedicalRecordTest`, `ConsultationReportSerializationTest`,
   `ConsultationReportExpectationTest`, `DoctorRecordsTest`, `MedicalRecordEfficacyConfoundedTest`)
-  were *parked in `exec/seed-master` HOST* — they belong to `doctor-port`, but the flat classpath
+  were *parked in `exec/seed-outcluster` HOST* — they belong to `doctor-port`, but the flat classpath
   could not give a model test a home in the OSGi module.
 * The shared fixtures (`ReferralReplies`, `FakeSpecialist`) lived in a separate `doctor-testkit`
   module — created *only* to dodge the flat classpath — which produced a `doctor-port ↔
@@ -184,13 +184,13 @@ public static List<String> run() throws InterruptedException {
 [source,bash]
 ----
 flox activate -- ./mvnw \
-  -pl :doctor-port,:doctor-core,:doctor-port-test,:doctor-core-test,:seed-master -am \
+  -pl :doctor-port,:doctor-core,:doctor-port-test,:doctor-core-test,:seed-outcluster -am \
   clean package -Dmaven.build.cache.skipCache=true -DskipTests=false
 ----
 
-`package`, not `test` — seed-master's `stage-embedded-bundles` needs `package` (MDEP-187). BUILD
+`package`, not `test` — seed-outcluster's `stage-embedded-bundles` needs `package` (MDEP-187). BUILD
 SUCCESS; surefire totals: doctor-port 109, *doctor-port-test 34* (in-container), *doctor-core-test 29*
-(8 white-box actors + jGiven scenarios in-container), seed-master 82, jgiven-testkit guard 2 — *0
+(8 white-box actors + jGiven scenarios in-container), seed-outcluster 82, jgiven-testkit guard 2 — *0
 failures, 0 errors*. Zero value-type test parked in HOST; `doctor-core/src/test` empty; the
 `doctor-testkit` module gone; the `doctor-port ↔ doctor-testkit` cycle dissolved.
 

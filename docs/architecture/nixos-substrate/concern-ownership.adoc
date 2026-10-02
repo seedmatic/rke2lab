@@ -79,11 +79,11 @@ hand-script. It reaches each instance over *devlxd* (`user.rke2lab.*` keys), rea
 `nixos/identity.nix`. The former `RKE2LAB_MANIFESTS_PUBLISH_*` env→symlink flags are re-plumbed to
 Flux Kustomizations enabled/disabled on the rendered branch.
 
-== The ZFS dataset layout is a dataplan, owned by seed-master
+== The ZFS dataset layout is a dataplan, owned by seed-outcluster
 
 The *layout* of the cluster's ZFS datasets is no longer a static literal in ndh's
 `zfs-disko-config.nix`. It is a *cluster need*, so its single source of truth is
-rke2lab `seed-master`, provided to ndh as a *dataplan* — the storage twin of the
+rke2lab `seed-outcluster`, provided to ndh as a *dataplan* — the storage twin of the
 netplan blueprint (see link:../patterns/dataplan-single-source.adoc[Dataplan
 SSOT]). ndh pulls `lib.dataplan` over the flake edge, merges it into
 `catalog.datasets`, and materialises it; the root is `tank/rke2lab` (owner, not

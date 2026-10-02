@@ -6,8 +6,6 @@
  * <ul>
  *   <li>{@link io.seedmatic.rke2lab.manifests.units.clusterapi.ClusterApiOperatorManifestsUnit} —
  *       the Cluster API operator plus core/infrastructure/control-plane providers.
- *   <li>{@link io.seedmatic.rke2lab.manifests.units.clusterapi.ImageStateConfigMapManifestsUnit} —
- *       the Stage A → Stage B control-node image identity, surfaced as a ConfigMap.
  *   <li>{@link io.seedmatic.rke2lab.manifests.units.clusterapi.ClusterKubeconfigManifestsUnit} —
  *       the operator + CAPI kubeconfigs for the management cluster.
  *   <li>{@link io.seedmatic.rke2lab.manifests.units.clusterapi.ClusterApiWorkloadManifestsUnit} —

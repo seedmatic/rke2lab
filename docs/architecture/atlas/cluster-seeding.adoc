@@ -115,12 +115,45 @@ flowchart LR
   bootstrap); only `IN_CLUSTER` managed clusters — observed by their managing plane — are
   reflector-eligible. So determinism is unconditional exactly where it can be.
 
+. ⚠️ *But "self" is TWO cases, and this boundary only covers one* (measured 2026-09-29).
+  The canonical fallback — a self cluster adopts its declared seed, never greenfields — is sound
+  only for a plane **born of a host `grow`**, where the declaration is what named the instance.
+  A `kind: management` **sub-plane is born of its PARENT**, greenfield, so CAPRKE2 named it: its
+  own controller then hunts a declared name that will never exist. `nikopol-mgmt` is measured
+  stuck at `Adopting / present=∅ / totalPets=1` in its own view while its parent reports it
+  `Adopted`. So the real axis is not *root vs managed* but **grow-born vs parent-born**, and
+  `self ∧ parent-born` is a combination this boundary did not anticipate — it will recur for every
+  sub-plane. The fix keeps the boundary's spirit (never greenfield a management plane) and drops
+  only its unstated premise: a running plane can OBSERVE its own roster (etcd member pods on the
+  local apiserver) instead of trusting the seed — etcd for self, git for children, each available
+  where the other is not. See
+  link:../cluster-api/cluster-seeding-controller.adoc#declaration-triad[the declaration triad].
+
+. ⚠️ *And the reflection oversteps: it records the COUNT as well as the NAMES* (measured
+  2026-09-29). The RCP is sized `len(roster)` on BOTH paths, so after the first life the desired
+  replica count comes from the OBSERVED roster — a closed loop the intent cannot open.
+  `bioskop-wrkld` declares three pets and is pinned at `replicas: 1` forever. `git == reality`
+  therefore holds in a degenerate sense here: reality wins by *overwriting the intent*, which is
+  the opposite of determinism. The reflection's job is identity (re-match a survivor by
+  `providerID`); the count belongs to the intention.
+
 Conclusion: *the reflector comes FIRST — it produces the `PoolReflection` whose PRESENCE is the
 adopt-vs-greenfield switch, turning a conditionally-deterministic model into an unconditionally-
 deterministic one (`git == reality`). The controller OBSERVES and NOTES; CAPI/CAPN/CAPRKE2 own the
 Machine lifecycle.* Status: DESIGNED — the 2×2 + adopt are shipped; the reverted greenfield "flip" is
 superseded; the reflector + the presence switch + greenfield-as-observe are the coded residue. See
 link:../cluster-api/cluster-seeding-controller.adoc#reflector[the reflector spec].
+
+[NOTE]
+.Status update — measured 2026-09-29
+====
+The reflector is **live**, not residue: `bioskop-wrkld` is adopted by its *observed* name
+(`bioskop-wrkld-control-plane-gtcqg`), which only the presence switch + a written reflection can
+produce. What the run surfaced instead are the two holes in verdict points 5 and 6 — `self ∧
+parent-born`, and the reflection sizing the RCP. Both are DESIGNED, not built:
+link:../cluster-api/cluster-seeding-controller.adoc#declaration-triad[the declaration triad] carries
+the plan (observe the self roster first, then move the count into the intention).
+====
 
 == Related documentation
 

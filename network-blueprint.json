@@ -393,6 +393,11 @@
       "asn": 64512,
       "hosts": [
         {
+          "name": "mgmt-vip.bioskop",
+          "ip": "10.80.7.10",
+          "ip6": "fd96:6924:3693:30:0:0:a50:70a"
+        },
+        {
           "name": "bioskop-mgmt-master",
           "mac": "10:66:6a:4c:00:00",
           "ip": "172.16.1.3"
@@ -426,7 +431,13 @@
       "cidr": "172.16.2.0/26",
       "name": "bioskop-wrkld-fabric",
       "asn": 64513,
-      "hosts": []
+      "hosts": [
+        {
+          "name": "wrkld-vip.bioskop",
+          "ip": "10.80.15.10",
+          "ip6": "fd96:6924:3693:130:0:0:a50:f0a"
+        }
+      ]
     },
     {
       "cidr": "172.16.2.64/26",
@@ -487,6 +498,11 @@
       "asn": 64514,
       "hosts": [
         {
+          "name": "mgmt-vip.nikopol",
+          "ip": "10.80.23.10",
+          "ip6": "fd96:6924:3693:230:0:0:a50:170a"
+        },
+        {
           "name": "nikopol-mgmt-master",
           "mac": "10:66:6a:4c:02:00",
           "ip": "172.16.17.3"
@@ -520,7 +536,13 @@
       "cidr": "172.16.18.0/26",
       "name": "nikopol-wrkld-fabric",
       "asn": 64515,
-      "hosts": []
+      "hosts": [
+        {
+          "name": "wrkld-vip.nikopol",
+          "ip": "10.80.31.10",
+          "ip6": "fd96:6924:3693:330:0:0:a50:1f0a"
+        }
+      ]
     },
     {
       "cidr": "172.16.18.64/26",
@@ -614,5 +636,19 @@
     "bioskop": 0,
     "nikopol": 1,
     "test": 2
+  },
+  "hostFacts": {
+    "bioskop": {
+      "hostname": "bioskop-nixos",
+      "fabricFqdn": "nixos.bioskop"
+    },
+    "nikopol": {
+      "hostname": "nikopol-nixos",
+      "fabricFqdn": "nixos.nikopol"
+    },
+    "test": {
+      "hostname": "test-nixos",
+      "fabricFqdn": "nixos.test"
+    }
   }
 }

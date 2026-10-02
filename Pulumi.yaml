@@ -4,10 +4,10 @@ runtime:
   options:
     # Dev inner loop: Pulumi runs the Maven build output, so `mvn package`
     # (or the reactor) -> `pulumi up` is the fast edit/test cycle. The flake
-    # also builds this jar as a store output (`nix build .#seed-master`) for
+    # also builds this jar as a store output (`nix build .#seed-outcluster`) for
     # release/deploy; that store path is consumed by the deploy path, not wired
     # here as a bare `result/` symlink (which any `nix build` would clobber).
-    binary: exec/seed-master/target~nxmatic/seed-master-0.0.0-SNAPSHOT-exec.jar
+    binary: exec/seed-outcluster/target~nxmatic/seed-outcluster-0.0.0-SNAPSHOT-exec.jar
 description: Pulumi-based provisioning control plane for RK2Lab management cluster bootstrap
 packages:
   incus:
