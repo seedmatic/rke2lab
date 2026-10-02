@@ -113,7 +113,7 @@ flowchart LR
     end
 ----
 
-The target removes the dependency on a worktree's **parent directory**, which is today the
+The target removes the dependency on a worktree's **parent directory**, which was the
 constraint dictating where a worktree may live. It follows the one subtree in this perimeter
 that stayed current: vendored for consumption, authored in its own worktree.
 
@@ -121,6 +121,34 @@ that stayed current: vendored for consumption, authored in its own worktree.
 environments, three of which the seat actually includes. It must be re-split from the live
 subdirectory *before* any consumer imports it, or the import breaks the seat on its first
 activation.
+
+=== ★ Partially landed on 2026-10-02 — and the rot survived it
+
+Measured while this increment was being written:
+
+[cols="1,2"]
+|===
+| the principal
+| **migrated**. The environments are vendored in its own tree at `.flox-envs.d` — 81 tracked
+  files — and the includes read `./.flox-envs.d/{env}`. The dependency on the parent directory
+  is gone.
+
+| the neighbour
+| **not migrated**. It still includes four absolute paths that do not exist, and still returns
+  success, because the lock masks the composition.
+
+| the two parent-directory symlinks
+| **still present**, now orphaned leftovers of the old reach.
+
+| the render worktrees
+| **still** in the gitignored scratch directory — four of them.
+|===
+
+★★ And the finding that matters most, because it was predicted and then observed: the include
+declared by eight environments and **never committed in any revision is still dangling after
+the migration**. Vendoring changed where the environments live; it did not make anything
+re-resolve an include. That is the measured proof that the defect is not about paths, and the
+reason the generated verifier — not the vendoring — is what closes this gap.
 
 == Figure 4 — the outbound branch is a bus
 

@@ -132,7 +132,7 @@ enumerated:
 * **branches** — git holds them, and a declared branch would pin a moving target;
 * **stack membership** — a remote fact (see below);
 * **`editorFolder` / `role`** — a consequence of the entry's genre, not a field;
-* **the `.flox.d` target** — vendored as a subtree, so it is a prefix in the tree,
+* **the vendored-envs target** — vendored as a subtree at `.flox-envs.d`, so it is a prefix in the tree,
   discoverable exactly like `.claude/hub`.
 
 === Why stack membership is never declared
@@ -176,7 +176,7 @@ flowchart TB
 
 | `subtreeUpstream`
 | vendored into the tree, authored in its own worktree
-| `claude-hub` at `.claude/hub`; the flox envs at `.flox.d`
+| `claude-hub` at `.claude/hub`; the flox envs at `.flox-envs.d`
 
 | `toolingPath`
 | a tool points at it by path
