@@ -27,7 +27,7 @@
     # pinning ndh independently. That keeps the host (path A, rke2lab's
     # services.tailscale) and the mesh (path B, tailscale-prod below) on the
     # exact same ndh rev → the same tailscale fork build, no drift. rke2lab
-    # doesn't take this catalog as an input (it references the flox-catalogue
+    # doesn't take this catalog as an input (it references the flox-catalog
     # branch at runtime via the FloxCatalog), and the ndh<->rke2lab edge is
     # already cut in rke2lab (ndh.inputs.rke2lab.follows = ""), so no cycle.
     # This ref names the branch the PROPAGATION READS FROM — the active chantier's branch, not a
@@ -198,7 +198,7 @@
         text = ''
           root="environment.d"
           if [[ ! -d "$root" ]]; then
-            echo "run from the flox-catalogue repo root (no ./$root here)" >&2
+            echo "run from the flox-catalog repo root (no ./$root here)" >&2
             exit 1
           fi
           if [[ "$#" -gt 0 ]]; then
@@ -275,7 +275,7 @@
 
         # The CI render toolchain the flox NRI plugin injects into the Tekton
         # render-publish step (the cicd/maven FloxEnv references these via
-        # floxcatalog:catalogue#jdk25 / #maven / #shfmt / #shellcheck). Straight
+        # floxcatalog:catalog#jdk25 / #maven / #shfmt / #shellcheck). Straight
         # from nixpkgs — the SAME attributes the rke2lab build toolchain uses
         # (mavenToolchain in the root flake), and both flakes follow
         # flake-commons/nixpkgs, so the in-cluster `clean verify` runs the
@@ -301,7 +301,7 @@
         # Re-exported from the seed-incluster flake (rke2lab orphan
         # branch): the in-cluster controller BINARY — NOT the `-image` OCI output
         # the node-base baking used. The cluster-api/seed-incluster
-        # FloxEnv installs it via floxcatalog:catalogue#seed-incluster so
+        # FloxEnv installs it via floxcatalog:catalog#seed-incluster so
         # the flox carrier runs it from PATH, replacing the baked image.
         # aarch64-linux for the node; darwin rides along for local parity.
         seed-incluster =
