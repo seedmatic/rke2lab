@@ -330,3 +330,91 @@ func writeEnv(t *testing.T, dir, body string) {
 		t.Fatal(err)
 	}
 }
+
+// Stripping an absent `gitdir:` prefix would leave the whole line as the target, so a `.git`
+// file containing nothing but an existing path would be accepted on that path's existence.
+func TestVerifyRejectsGitfileWithoutHeader(t *testing.T) {
+	m, err := Parse([]byte(validManifest))
+	if err != nil {
+		t.Fatal(err)
+	}
+	l, principal := seat(t, m.All()...)
+	dir := l.Dir(Coord{Repo: "ndh", Slot: "develop"})
+	if err := os.WriteFile(filepath.Join(dir, ".git"), []byte(t.TempDir()+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if problems := Verify(m, l, principal); !problemsContain(problems, "gitfile is not a gitdir pointer") {
+		t.Errorf("expected a headerless gitfile to be reported, got %v", problems)
+	}
+}
+
+// A git directory is a directory; a regular file there is an unusable checkout.
+func TestVerifyRejectsGitdirTargetThatIsAFile(t *testing.T) {
+	m, err := Parse([]byte(validManifest))
+	if err != nil {
+		t.Fatal(err)
+	}
+	l, principal := seat(t, m.All()...)
+	target := filepath.Join(t.TempDir(), "not-a-dir")
+	if err := os.WriteFile(target, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dir := l.Dir(Coord{Repo: "ndh", Slot: "develop"})
+	if err := os.WriteFile(filepath.Join(dir, ".git"), []byte("gitdir: "+target+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if problems := Verify(m, l, principal); !problemsContain(problems, "gitdir target is not a directory") {
+		t.Errorf("expected a file gitdir target to be reported, got %v", problems)
+	}
+}
+
+// A lexical cycle guard is defeated by a directory symlink pointing at its own parent: the same
+// manifest then appears under ever-deeper paths, each of which exists and none of which
+// repeats, so the walk recurses until the stack is exhausted.
+func TestVerifyIncludeWalkTerminatesOnASymlinkLoop(t *testing.T) {
+	m, err := Parse([]byte(validManifest))
+	if err != nil {
+		t.Fatal(err)
+	}
+	l, principal := seat(t, m.All()...)
+
+	envRoot := filepath.Join(t.TempDir(), "envs")
+	if err := os.MkdirAll(envRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// `loop` points back at the directory that contains it.
+	if err := os.Symlink(envRoot, filepath.Join(envRoot, "loop")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	writeEnv(t, envRoot, "[include]\nenvironments = [ { dir = \"./loop\" } ]\n")
+	writeEnv(t, principal, "[include]\nenvironments = [ { dir = \""+envRoot+"\" } ]\n")
+
+	done := make(chan []Problem, 1)
+	go func() { done <- Verify(m, l, principal) }()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the include walk did not terminate on a symlink loop")
+	}
+}
+
+// ★ The split that lets the generator repair the drift it exists to replace: the folder-0
+// assertion reads the editor file ON DISK, so materialisation must not run it — otherwise a
+// reordered file makes the generator refuse instead of rewriting it.
+func TestVerifyInputsExcludesTheOnDiskEditorFile(t *testing.T) {
+	m, err := Parse([]byte(validManifest))
+	if err != nil {
+		t.Fatal(err)
+	}
+	l, principal := seat(t, m.All()...)
+	reordered := `{"folders":[{"name":"x","path":"memory"},{"name":"y","path":"develop"}]}`
+	if err := os.WriteFile(l.EditorFile(m.Principal), []byte(reordered), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if problems := VerifyInputs(m, l, principal); len(problems) != 0 {
+		t.Errorf("inputs are sound, so materialisation must proceed; got %v", problems)
+	}
+	if problems := Verify(m, l, principal); !problemsContain(problems, "folder 0 is not the principal") {
+		t.Errorf("verify must still report the drift, got %v", problems)
+	}
+}

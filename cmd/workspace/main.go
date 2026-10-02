@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/seedmatic/workspace/internal/workspace"
 )
@@ -82,7 +83,11 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
-	m, err := workspace.Load(resolveManifest(*manifestPath, layout, onDisk.Repo))
+	manifest, err := resolveManifest(*manifestPath, layout, anchor, onDisk.Repo)
+	if err != nil {
+		return err
+	}
+	m, err := workspace.Load(manifest)
 	if err != nil {
 		return err
 	}
@@ -107,17 +112,48 @@ func resolveAnchor(flagValue string) (string, error) {
 	return os.Getwd()
 }
 
-// manifestSlot is the slot whose worktree carries this manifest — the orphan branch this
-// binary is built from.
+// manifestSlot is the slot whose worktree carries the manifest — the orphan branch this binary
+// is built from.
 const manifestSlot = "workspace"
 
-// resolveManifest defaults to the manifest's home: the `workspace` slot of the principal's own
-// repository, located through the same layout function as everything else.
-func resolveManifest(flagValue string, l workspace.Layout, repo string) string {
+const manifestName = "worktrees.yaml"
+
+// resolveManifest finds the manifest WITHOUT assuming it lives in the anchor's repository.
+//
+// The anchor may be any declared worktree, so deriving the manifest path from its repository
+// would look for `ndh.d/workspace/worktrees.yaml` when run from ndh — a path that does not
+// exist. The candidates are therefore, in order: the anchor itself (the case when the command
+// runs from the slot that carries the manifest), then the anchor repository's workspace slot,
+// then every `*.d/workspace/` under the org. The last is what makes it anchor-independent, and
+// ambiguity is reported rather than guessed.
+func resolveManifest(flagValue string, l workspace.Layout, anchor string, repo string) (string, error) {
 	if flagValue != "" {
-		return flagValue
+		return flagValue, nil
 	}
-	return filepath.Join(l.Dir(workspace.Coord{Repo: repo, Slot: manifestSlot}), "worktrees.yaml")
+	for _, c := range []string{
+		filepath.Join(anchor, manifestName),
+		filepath.Join(l.Dir(workspace.Coord{Repo: repo, Slot: manifestSlot}), manifestName),
+	} {
+		if _, err := os.Stat(c); err == nil {
+			return c, nil
+		}
+	}
+
+	found, err := filepath.Glob(filepath.Join(l.StoreRoot, l.Org, "*.d", manifestSlot, manifestName))
+	if err != nil {
+		return "", err
+	}
+	switch len(found) {
+	case 1:
+		return found[0], nil
+	case 0:
+		return "", fmt.Errorf(
+			"no %s found in %s, nor in any %s/*.d/%s — pass -manifest",
+			manifestName, anchor, l.Org, manifestSlot)
+	default:
+		return "", fmt.Errorf(
+			"several manifests found (%s) — pass -manifest to choose", strings.Join(found, ", "))
+	}
 }
 
 func verify(m *workspace.Manifest, l workspace.Layout, principal string) error {
@@ -156,7 +192,7 @@ func materialize(o materializeOpts) error {
 
 	// Materialising a workspace whose declaration disagrees with the disk would write a
 	// registry pointing at directories that are not there.
-	if problems := workspace.Verify(m, l, anchor); len(problems) > 0 {
+	if problems := workspace.VerifyInputs(m, l, anchor); len(problems) > 0 {
 		for _, p := range problems {
 			fmt.Fprintln(os.Stderr, "  "+p.String())
 		}

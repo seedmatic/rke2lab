@@ -36,11 +36,24 @@ func (p Problem) String() string {
 // relocated. These are therefore not optional niceties — they are the reason the manifest is
 // worth having.
 func Verify(m *Manifest, l Layout, anchorDir string) []Problem {
+	out := VerifyInputs(m, l, anchorDir)
+	return append(out, checkFolderZero(m, l)...)
+}
+
+// VerifyInputs runs only the assertions about the manifest and the worktrees it names — the
+// INPUTS of generation.
+//
+// Materialisation uses this set rather than the full one, and the distinction is load-bearing:
+// the folder-0 check reads the editor file ON DISK, so including it here would make the
+// generator refuse to run against a reordered file — unable to repair the exact drift it
+// exists to replace. Assertions about the OUTPUT belong to `verify`, which reports; assertions
+// about the INPUT belong to both, because generating from a false declaration is worse than
+// not generating.
+func VerifyInputs(m *Manifest, l Layout, anchorDir string) []Problem {
 	var out []Problem
 	out = append(out, checkAnchor(m, anchorDir)...)
 	out = append(out, checkOrg(m, l)...)
 	out = append(out, checkWorktreesExist(m, l)...)
-	out = append(out, checkFolderZero(m, l)...)
 	out = append(out, checkIncludes(m, l)...)
 	return out
 }
@@ -124,16 +137,38 @@ func checkCheckout(c Coord, dir string) *Problem {
 	if err != nil {
 		return &Problem{Check: "gitfile unreadable", Culprit: c.String(), Detail: gitPath}
 	}
-	target := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(string(body)), "gitdir:"))
+	// The header is REQUIRED, not merely trimmed: stripping an absent prefix would leave the
+	// whole line as the target, so a `.git` file containing nothing but `/tmp` would be
+	// accepted on the strength of /tmp existing.
+	line := strings.TrimSpace(string(body))
+	rest, ok := strings.CutPrefix(line, "gitdir:")
+	if !ok {
+		return &Problem{
+			Check:   "gitfile is not a gitdir pointer",
+			Culprit: c.String(),
+			Detail:  fmt.Sprintf("%s does not start with 'gitdir:'", gitPath),
+		}
+	}
+	target := strings.TrimSpace(rest)
 	if target == "" {
 		return &Problem{Check: "gitfile carries no gitdir", Culprit: c.String(), Detail: gitPath}
 	}
 	if !filepath.IsAbs(target) {
 		target = filepath.Join(dir, target)
 	}
-	if _, err := os.Stat(target); err != nil {
+	info, err = os.Stat(target)
+	if err != nil {
 		return &Problem{
 			Check:   "gitdir target missing",
+			Culprit: c.String(),
+			Detail:  fmt.Sprintf("%s points at %s", gitPath, target),
+		}
+	}
+	// A git directory is a directory. Accepting a regular file here would report an unusable
+	// checkout as healthy.
+	if !info.IsDir() {
+		return &Problem{
+			Check:   "gitdir target is not a directory",
 			Culprit: c.String(),
 			Detail:  fmt.Sprintf("%s points at %s", gitPath, target),
 		}
@@ -234,10 +269,18 @@ func walkIncludes(dir, origin string, seen map[string]bool) []Problem {
 	if manifest == "" {
 		return nil
 	}
-	if seen[manifest] {
+	// Key on the CANONICAL path. A lexical key is defeated by a directory symlink pointing at
+	// its own parent: the same manifest then appears as `link/.flox/…`, `link/link/.flox/…`
+	// and so on — every path exists, none repeats, and the walk recurses until the stack is
+	// exhausted.
+	key := manifest
+	if resolved, err := filepath.EvalSymlinks(manifest); err == nil {
+		key = resolved
+	}
+	if seen[key] {
 		return nil
 	}
-	seen[manifest] = true
+	seen[key] = true
 
 	var parsed floxManifest
 	if _, err := toml.DecodeFile(manifest, &parsed); err != nil {
