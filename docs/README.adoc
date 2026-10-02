@@ -145,6 +145,30 @@ implemented; the medical-model extensions are Design Only. All docs live in `arc
 * link:guides/troubleshooting-workflow.adoc[Troubleshooting Workflow] - Common debugging patterns
 * link:guides/diagram-preview-kroki.adoc[Diagram Preview with a Local Kroki] - Rendering Mermaid/PlantUML in the VSCode preview via a local Kroki on the `nerd-nixos` Docker context (`.dev/kroki`)
 
+== Workspace & worktrees
+
+⚠️ *These two documents live on the orphan `workspace` branch, not in this tree.* The manifest they
+specify describes the workspace itself — the set of worktrees a seat materialises — so it cannot sit
+inside one of its own folders. Locally they are the `workspace` folder of the editor workspace.
+
+They are cited as **branch-qualified paths, deliberately not as links**. A relative `link:` resolves
+to nothing across an orphan boundary, and a `blob/<branch>/…` URL is a reference that can rot — it
+did, while this very section was being written: the URL named a branch that did not yet carry the
+file, `asciidoctor` reported no problem, and only `git cat-file -e <ref>:<path>` showed it was dead.
+A citation that cannot be checked should not pretend to be a link. No convention exists yet for a
+checkable link across the two trees; when one is written, this is the place to revisit.
+
+* `docs/workspace-manifest-spec.adoc` *on the `workspace` branch* (⚠️ design only) - One declaration, from which both the nix registry and the editor file are generated. The model (`EditorWorkspace` / `Slot` / identity `(repo, slot)`), the layout as a *function* rather than data, what is declared and — more usefully — what deliberately is **not**, the reference invariant (a self-reference is `git+file:` to its own worktree; anything else is an indirect ref through the registry), and the assertions that make a static list fail loudly instead of rotting
+* `docs/atlas.adoc` *on the `workspace` branch* - The measured distance between that specification and the tree, dated, with the command behind every number. Read it for *what is*, the spec for *what should be*; when a line stops matching reality the atlas is the file to correct
+
+★ Read alongside link:architecture/patterns/flake-lock-propagation.adoc[Flake Lock Propagation]: the
+two overlap on the `rke2lab ⇄ ndh` cycle but answer **different** questions, and the word "cut"
+means something different in each. That document is about the termination of a *bump propagation* —
+and rightly refuses to declare an edge cut as the mechanism. The workspace spec is about *resolution*
+by nix: an input emptied with `follows = ""` is never resolved, so a registry cannot resurrect it.
+The emptying there is a side effect of lock deduplication, not a termination device — which is
+precisely why the two positions do not conflict.
+
 == Implementation Plans
 
 * link:architecture/cluster-api/cluster-workload-completion-plan.adoc[Cluster Workload Completion Plan] (📋 live worklist) - The phase-level roadmap to finish cluster bring-up under the management/workload separation. Management track DONE (validated 2026-08-25); Phase 2.B (greenfield the first workload) mechanism SETTLED (GitOps-in-mgmt — workload CAPI CRs on the `-mgmt` branch, reconciled by the mgmt cluster's Flux). The granular engineering backlog lives in the working plan `.claude/workload-grow-foundations-plan.md`.
