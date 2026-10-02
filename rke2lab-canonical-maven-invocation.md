@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 0b18b1f3-3eda-496a-865d-1fbc722b0d30
-  modified: 2026-09-25T15:59:06.648Z
+  modified: 2026-10-02T09:50:39.471Z
 ---
 
 ```
@@ -61,5 +61,35 @@ explicitement sur le fait qu'un `-P` les désactive (le profil `bench` s'arme pa
 répertoire : ça produit une **autre configuration de build**.
 
 Et `package` ne suffit pas — c'est `verify` qui exerce la porte dans sa forme attendue.
+
+## Amendement 2026-10-02 — `-DskipBench`, et pourquoi `-Pall-worlds` est un geste OPÉRATEUR
+
+Deux ajouts décidés avec l'utilisateur en vérifiant `main` après le réalignement git-flow
+([[gitflow-realign-pr-per-increment]]) :
+
+- **`-DskipBench`** — `osgi/runtime/bench/bench-tests` fait échouer la construction sur
+  `PaxLoggingJulCaptureTest.jdkJavaUtilLoggingIsCapturedByPaxAndNeverHitsTheConsole` : le puits
+  logback reste **vide** (`(file: )`), rien n'est drainé du bus `java.util.logging`. L'utilisateur
+  le dit *flaky* ; mesuré, il échoue **2/2 à l'identique** sur ce siège — donc reproductible ici,
+  pas intermittent. Décision : **ignoré par défaut**, réparé dans une session dédiée.
+  ★ Conséquence qui compte plus que le test : sans ce drapeau, `exec/seed-outcluster` est
+  **`SKIPPED`** derrière l'échec, donc *jamais vérifié*.
+  ⚠️ Le drapeau seul est invisible — l'ignorance doit devenir un **marquage déclaré dans le code**
+  (incrément `fix/`), sinon c'est le smell « importé, `enable = false`, jamais signalé ».
+- **`-Pall-worlds` ne doit PAS être lancé par moi avec `-DskipTests=false`** : il vide
+  `surefire.excludedGroups`, dont le défaut exclut `live | spike`, donc il exécuterait les tests
+  `live` qui touchent le système provisionné. C'est un geste **opérateur**. Pour une barrière de
+  revue, prendre `-Pclaude` seul : il désactive les `activeByDefault` comme le fait
+  `-Pall-worlds,claude`, sans réarmer les groupes `live`.
+
+Donc la barrière de revue (il n'y a **aucune CI**, cf. [[gitflow-realign-pr-per-increment]]) est :
+
+```bash
+LOG="$TMPDIR/rke2lab-verify.log"   # cf. [[command-output-to-stable-file-not-tail]]
+flox activate -- ./mvnw clean verify -Pclaude -DskipBench \
+  -Dmaven.build.cache.skipCache=false -DskipTests=false -B > "$LOG" 2>&1
+echo "MVN_EXIT=$?" >> "$LOG"       # sinon le code rapporté est celui du dernier echo
+grep -E 'BUILD (SUCCESS|FAILURE)' "$LOG"
+```
 
 See [[common-d-is-a-directory-wide-nix-input]].
