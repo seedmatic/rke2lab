@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: c2c2a472-f982-468d-98de-1b23bbf4e274
-  modified: 2026-10-02T09:06:31.662Z
+  modified: 2026-10-02T10:45:06.455Z
 ---
 
 Soirée du **2026-09-27**. Quatre conclusions fausses, dont trois corrigées par l'utilisateur. Elles
@@ -70,5 +70,12 @@ n'est pas déjà prouvé égal autrement (ici : les fichiers trackés l'étaient
    d'inférer d'un bail ou d'une adresse proche.
 5. ★ Quand l'utilisateur dit « va voir dans la codebase » ou « regarde en root », **c'est la réponse** :
    j'ai produit trois révisions successives d'un commentaire ndh à force de déduire au lieu de lire.
+6. ★ **« Une autre session/fenêtre est vivante » se mesure avec `ps`, pas avec un `mtime`.** Le
+   2026-10-02 j'ai attribué un fichier modifié à une fenêtre concurrente parce que sa transcription
+   avait été écrite 9 minutes plus tôt — l'utilisateur a demandé « il n'y a que toi ici non ? », et
+   la mesure lui a donné raison : un seul processus Claude. Le fichier était deux espaces de fin
+   laissés par un *trim on save*. Un horodatage prouve qu'une chose a eu lieu, jamais qu'elle a
+   encore lieu.
 
 See [[nix-store-and-etc-can-both-lie]] [[cold-start-2026-09-27-nikopol-mgmt]]
+[[claude-memory-cascade-state]]
