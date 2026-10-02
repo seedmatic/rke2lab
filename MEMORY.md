@@ -2,7 +2,11 @@
 
 Project memory for rke2lab. Cross-cutting facts (profile, conventions, principles)
 + cross-repo chantiers live in the **hub** ([[hub:MEMORY]] at
-`/private/var/lib/git/nxmatic/claude-hub.d/main`), auto-loaded as session root.
+`/Volumes/git-worktree-store/seedmatic/claude-hub.d/main`), auto-loaded as session root.
+★ Moved there on 2026-10-02 with the étage-0 migration — the old
+`/private/var/lib/git/nxmatic/claude-hub.d/main` is frozen reference, and the local org
+dir disagreed with the remote anyway (`origin` is `seedmatic/claude-hub`, not `nxmatic`).
+See [[etage0-bare-worktree-migration]].
 
 Links: `[[name]]` = rke2lab-local, `[[hub:name]]` = hub. The edge IS the
 coordinate — it resolves without consulting any index (see
