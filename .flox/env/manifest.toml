@@ -12,6 +12,10 @@ pulumictl.pkg-path = "pulumictl"
 cdk8s-cli.pkg-path = "cdk8s-cli"
 dasel.pkg-path = "dasel"
 graphviz.pkg-path = "graphviz"
+## bats: suites de tests pour les scripts shell de .claude/bin (gardes de session).
+## Entrée de catalogue simple — PAS un ref de flake : rien ne couple bats à une version du
+## réacteur, contrairement à shfmt que spotless vérifie.
+bats.pkg-path = "bats"
 ## incus client, for both the Darwin shells (where we run `incus exec master`) and the Linux
 ## NixOS VM. DEFINED IN ndh, which owns the incus daemon's NixOS modules and the operator's trust
 ## to it; the flake ref below is rke2lab RE-EXPORTING it. Why a client-only build at all, and why

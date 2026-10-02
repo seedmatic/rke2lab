@@ -51,14 +51,20 @@ fi
 # `with` statement NORMALISES the string into the list shape and a single path then reads both.
 # No branching, one extraction. Taking only "text" blocks also skips tool results, instead of
 # joining them into blanks.
+#
+# ★ The tag filter runs inside yq, on whole BLOCKS, and that placement is the point. Filtering
+# line by line downstream only drops a reminder's FIRST line: a multi-line block leaks its
+# second line through, and the listing then reports injected harness text as the user's
+# question. A block either starts with a tag and is discarded whole, or it does not and its
+# first line is genuinely theirs.
 first_prompt() {
   local p
   p="$(head -n 600 "$1" 2>/dev/null |
     yq --no-doc -p json 'select(.type == "user")
           | with(.message.content | select(tag == "!!str"); . = [{"type": "text", "text": .}])
-          | .message.content[] | select(.type == "text") | .text' 2>/dev/null |
+          | .message.content[] | select(.type == "text") | .text
+          | select(test("^\s*<(system-reminder|ide_opened_file|ide_selection|command-name|local-command|user-prompt)") | not)' 2>/dev/null |
     sed 's/^[[:space:]]*//' |
-    grep -vE '^<(system-reminder|ide_|command-name|local-command|user-prompt)' |
     grep -vE '^(Caveat:|\[Request interrupted)' |
     grep -vE '^[-=_*#[:space:]]*$' |
     head -1 | cut -c1-72)"
@@ -83,47 +89,111 @@ cmd_list() {
   done
 }
 
+# ★ A directory that is not this worktree's slug is a CANDIDATE, never certainly an orphan —
+# and that distinction is why --apply has to be told which one to move.
+#
+# The transcript directory is keyed on the session's own cwd, while the config home comes from
+# the GIT ROOT of that cwd. So a perfectly live session started in `<worktree>/manifests` lands
+# in this very config home under its own slug. An earlier version called every such directory
+# orphaned and moved them all: it would have merged two distinct sessions' histories into one
+# name, silently. Reporting candidates is harmless; moving one is not, so the move names its
+# source and moves nothing else.
 cmd_relink() {
-  local apply="${1:-}" d n moved=0
+  local apply=no src="" a d n moved=0 found=0
+  # ★ Only a DOUBLE dash marks a flag here. Every slug begins with a single "-", because the
+  # encoded path begins with "/" — so treating "-*" as a flag rejects every legitimate argument
+  # this command takes. Measured the hard way: `relink <slug> --apply` answered
+  # "unknown flag: -Volumes-...".
+  for a in "$@"; do
+    case "$a" in
+    --apply) apply=yes ;;
+    --*)
+      echo "unknown flag: $a" >&2
+      return 2
+      ;;
+    *) src="$a" ;;
+    esac
+  done
+
   [[ -d "$projects" ]] || {
     echo "no $projects — nothing to relink" >&2
     return 1
   }
+
   for d in "$projects"/*/; do
     d="${d%/}"
     [[ -d "$d" ]] || continue
     [[ "$d" != "$here" ]] || continue
     n="$(find "$d" -maxdepth 1 -name '*.jsonl' | wc -l | tr -d ' ')"
     [[ "$n" != 0 ]] || continue
-    echo "orphaned: $(basename "$d")  ($n transcript(s))"
-    if [[ "$apply" == "--apply" ]]; then
-      mkdir -p "$here"
-      # Move entry by entry so an existing target directory is merged, not clobbered.
-      local e t
-      for e in "$d"/* "$d"/.[!.]*; do
-        [[ -e "$e" ]] || continue
-        t="$here/$(basename "$e")"
-        if [[ -e "$t" ]]; then
-          echo "  SKIP $(basename "$e") — already present at the current name"
-        else
-          mv "$e" "$t" && moved=$((moved + 1))
-        fi
-      done
-      rmdir "$d" 2>/dev/null && echo "  removed the empty $(basename "$d")"
+    found=$((found + 1))
+    echo "candidate: $(basename "$d")  ($n transcript(s))"
+  done
+
+  ((found > 0)) || {
+    echo "no candidate — every transcript here is already under this worktree's name"
+    return 0
+  }
+
+  if [[ "$apply" == no ]]; then
+    echo
+    echo "dry run. To move ONE of them under $(basename "$here"):"
+    echo "  $(basename "$0") relink <candidate> --apply"
+    echo "First make sure it is a moved worktree and not a live session started from a"
+    echo "subdirectory of this one — both live here, under different names."
+    return 0
+  fi
+
+  [[ -n "$src" ]] || {
+    echo "refusing: --apply needs the candidate to move, named explicitly." >&2
+    echo "A candidate above may be a LIVE session started from a subdirectory of this worktree;" >&2
+    echo "moving it would merge two distinct sessions' histories under one name." >&2
+    return 2
+  }
+
+  # ★ Parameter expansion, NOT basename. Every slug begins with "-", which basename reads as an
+  # option: it printed nothing, `src` silently became the projects directory itself, and the
+  # move below then walked every sibling in it — relocating a live transcript directory into
+  # another one. Measured, not imagined. `${v##*/}` has no option parsing to be fooled by.
+  local name=${src##*/}
+  [[ -n "$name" && "$name" != "." && "$name" != ".." ]] || {
+    echo "not a usable candidate name: '$src'" >&2
+    return 2
+  }
+  src="$projects/$name"
+  [[ -d "$src" ]] || {
+    echo "no such candidate: $name" >&2
+    return 1
+  }
+  [[ "$src" != "$here" ]] || {
+    echo "that is already this worktree's own directory — nothing to do" >&2
+    return 1
+  }
+
+  mkdir -p "$here"
+  # Move entry by entry so an existing target directory is merged, not clobbered.
+  local e t
+  for e in "$src"/* "$src"/.[!.]*; do
+    [[ -e "$e" ]] || continue
+    t="$here/$(basename "$e")"
+    if [[ -e "$t" ]]; then
+      echo "  SKIP $(basename "$e") — already present at the current name"
+    else
+      mv "$e" "$t" && moved=$((moved + 1))
     fi
   done
-  if [[ "$apply" == "--apply" ]]; then
-    echo "moved $moved entr(ies) into $(basename "$here")"
-  else
-    echo "dry run — re-run with --apply to move them into $(basename "$here")"
-  fi
+  rmdir "$src" 2>/dev/null && echo "  removed the empty $(basename "$src")"
+  echo "moved $moved entr(ies) into $(basename "$here")"
 }
 
 case "${1:-list}" in
 list) cmd_list ;;
-relink) cmd_relink "${2:-}" ;;
+relink)
+  shift
+  cmd_relink "$@"
+  ;;
 *)
-  echo "usage: $(basename "$0") [list|relink [--apply]]" >&2
+  echo "usage: $(basename "$0") [list | relink [<candidate>] [--apply]]" >&2
   exit 2
   ;;
 esac

@@ -220,7 +220,35 @@ the only thing that identifies a session when you are hunting for the one that c
 Without it, that hunt means grepping .jsonl files of 0.4 MB to 117 MB by hand.
 
 `relink` repairs the other failure: transcripts live in a directory named after the *encoded
-cwd*, so moving or renaming the worktree orphans them until that name is changed.
+cwd*, so moving or renaming the worktree orphans them until that name is changed. It names its
+source explicitly: a directory under another slug may be a live session started from a
+subdirectory of this worktree, so moving it blindly would merge two histories.
+
+### Tests
+
+```bash
+flox activate -- bats .claude/bin/tests/
+```
+
+`bats` is pinned in `.flox/env/manifest.toml` as a plain catalog entry — deliberately not a
+flake ref, since nothing couples a test runner to a reactor version the way spotless couples
+`shfmt`.
+
+Twenty cases, and **every one is a regression for a defect that actually happened** on
+2026-10-02 rather than a hypothetical:
+
+- a multi-line harness block leaking its second line as "the user's question";
+- `relink --apply` reading the projects directory from `CLAUDE_CONFIG_DIR`, so a misrouted
+  session would have absorbed every other project's transcripts;
+- a slug beginning with `-` being parsed as a flag, and `basename` reading it as an option and
+  printing nothing — which made the move walk the whole projects directory and relocate a live
+  transcript directory;
+- an unreadable workspace file counting as a healthy verdict;
+- an unescaped quote in a path making the warning invalid JSON, so the cry was swallowed.
+
+Every test runs against a fake seat under the per-test temp dir. That is not politeness: a
+suite that exercised `relink --apply` against the real `.claude/projects` could destroy the
+history it exists to protect.
 
 ## Related Documentation
 

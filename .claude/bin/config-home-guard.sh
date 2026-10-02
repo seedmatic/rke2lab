@@ -57,8 +57,18 @@ fi
   problems+=("$root/.claude/hub is MISSING — the claudeProcessWrapper guard needs it to set CLAUDE_CONFIG_DIR at all")
 # The unwritten invariant: the extension launches with the workspace's FIRST folder as cwd, and
 # the .code-workspace is generated, so a reorder is cheap to make and invisible to notice.
-[[ -z "$first" || "$first_ok" == yes ]] ||
+#
+# ★ "Cannot check" is a PROBLEM, not a pass. An earlier version skipped this test whenever the
+# folder could not be read, so the guard printed `[no] workspace folder 0 <unknown>` and still
+# returned "healthy" — committing the exact sin it was written to catch: answering something
+# smaller instead of saying it could not answer.
+if [[ ! -f "$ws" ]]; then
+  problems+=("no $(basename "$ws") beside this worktree — the folder-0 invariant the config home rests on CANNOT be checked")
+elif [[ -z "$first" ]]; then
+  problems+=("$(basename "$ws") is there but folder 0 could not be read (malformed, or yq missing) — the invariant the config home rests on CANNOT be checked")
+elif [[ "$first_ok" == no ]]; then
   problems+=("the first folder of $(basename "$ws") is '$first', not this worktree — a new window would resolve its config home elsewhere")
+fi
 
 if [[ "${1:-}" == "explain" ]]; then
   echo "config home — measured now, not remembered"
