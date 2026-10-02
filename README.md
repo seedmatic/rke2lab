@@ -13,6 +13,17 @@ them at `<store>/seedmatic/rke2lab.d/workspace` and is listed in the `.code-work
 2. **The devpod specifications** — what a devpod is made of, derived from that same declaration
    rather than restated.
 
+### Documentation
+
+- [`docs/workspace-manifest-spec.adoc`](docs/workspace-manifest-spec.adoc) — the
+  specification: what the manifest declares, what it deliberately does not, the reference
+  invariant, the two outputs, and the assertions.
+- [`docs/atlas.adoc`](docs/atlas.adoc) — the atlas: the measured state, the target, and the
+  delta between them, with who closes each part.
+
+`docs/` is intentionally flat. Everything on this branch is one subject, so a per-area tree
+would separate nothing; a new subject — the devpod specifications below — is one more file.
+
 ### One source, two generated outputs
 
 The same list answers two questions that were previously maintained by hand and could drift apart:
