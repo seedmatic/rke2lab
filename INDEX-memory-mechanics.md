@@ -5,7 +5,7 @@ One line per entry (~200 chars); detail lives in the linked file.
 
 ## Memory / workspace mechanics (rke2lab-local; cross-cutting in hub)
 
-- [Claude memory cascade state](claude-memory-cascade-state.md) — reference: 3-tier cascade worktree→hub→home + clean-split. **★ DEFECT RESOLVED (2026-08-14):** memory is pinned per-worktree via `autoMemoryDirectory` (absolute path in settings.local.json) — no slug, no symlink; `link-memory.sh` deleted. See [[hub:claude-auto-memory-mechanics]].
+- [Claude memory cascade state](claude-memory-cascade-state.md) — reference: 3-tier cascade worktree→hub→home + config-home. **★ CORRIGÉ 2026-10-02 : le clean-split n'est PLUS ce qui tourne** — le wrapper claude-hub est revenu, pose `CLAUDE_CONFIG_DIR` depuis la racine git du cwd, gardé par `.claude/hub` : **1 des 7 dossiers** du workspace y satisfait et la retombée vers `~/.claude` est SILENCIEUSE (gardes posés dans `.claude/bin/`). See [[hub:claude-auto-memory-mechanics]] [[running-session-keeps-its-resolved-memory-path]].
 - [JDT.LS heap in generated workspaces](jdtls-heap-workspace-generation.md) — **★ DEFECT+FIX:** folder-scoped `.vscode` -Xmx wins over `.code-workspace` → effective heap was the lower; set both ≥8G in lock-step. See [[claude-memory-cascade-state]].
 - [Worktree-provisioning handoff](worktree-provisioning-handoff.md) — **★ HANDOFF:** 3 worktree provisioning gaps fixed manually, must be automated (worktree:dir repoint; sops re-smudge; per-worktree Pulumi backend, stack named after branch slug). See [[sops-worktree-smudge-noise]] [[pulumi-stack-per-worktree-backlog]].
 - [Pulumi stack per worktree (BACKLOG)](pulumi-stack-per-worktree-backlog.md) — flox PULUMI_BACKEND_URL project-relative → each worktree empty state; real dev only in main.

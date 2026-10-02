@@ -1,9 +1,11 @@
 ---
 name: claude-memory-cascade-state
-description: "Reference — how Claude's file-memory is wired in this repo (three-tier cascade + clean-split config-home) and the hard-won facts about Claude's file model. Chantier SHIPPED to origin/main (4f24c65d + f744bf52)."
+description: "Reference — how Claude's file-memory and config-home are wired in this repo, and the hard-won facts about Claude's file model. ★ Corrected 2026-10-02: the clean-split is gone, the claude-hub WRAPPER sets CLAUDE_CONFIG_DIR, and only 1 of the workspace's 7 folders satisfies its guard."
 metadata:
   node_type: memory
   type: reference
+  originSessionId: 7cfc7caf-f565-414c-9bdd-a69b03f9151b
+  modified: 2026-10-02T10:38:34.598Z
 ---
 
 **Shipped.** The three-tier Claude file-memory cascade landed on `origin/main`
@@ -19,15 +21,42 @@ reference for how it works; it is no longer an active chantier.
 - Reading = root index `<wt>/.claude/memory/MEMORY.md` + scoped links `[[hub:name]]` / `[[home:name]]`.
   Location of a note IS its scope.
 
-**Config-home wiring (clean-split — the CURRENT model):** config-home is set PER-WORKSPACE in the
-`.code-workspace`, NOT via a global wrapper (the old `claude-config-home-wrapper.sh` was deleted).
-`claudeCode.claudeProcessWrapper: ""` (empty=falsy=disabled) + `claudeCode.environmentVariables:
-[{name:CLAUDE_CONFIG_DIR, value:<abs>/.claude}]`. So config-home = `<worktree>/.claude` (NOT
-`.claude/hub`). Env vars are injected verbatim (`String(value)`, NO `${workspaceFolder}` substitution
-→ path must be absolute; fine since host-specific + known at generation). Effects: runtime
-(`projects/`, `sessions/`, …) lands under `.claude` (gitignored via `.claude/.gitignore`);
-`.claude/hub` is SINGLE-role (subtree content only); memory is pinned to the tracked
-`<wt>/.claude/memory` via `autoMemoryDirectory` in `settings.local.json` (no symlink).
+**★ Config-home wiring — ne le lis PLUS ici, demande-le au système.** La description
+« clean-split » qui tenait cette place (wrapper désactivé, config-home posé par
+`claudeCode.environmentVariables`) était **fausse depuis des mois** : re-mesuré le 2026-10-02, le
+wrapper claude-hub est revenu et `claudeCode.environmentVariables` est **absent** du
+`.code-workspace`. La cause de la dérive est la forme de cette note : elle enregistrait une
+**décision**, pas une mesure, et rien ne la revérifiait.
+
+Donc l'autorité n'est plus de la prose :
+
+- **`.claude/bin/config-home-guard.sh explain`** — dit quel mécanisme est **en force**, lu sur le
+  système vivant, à la demande. C'est la réponse à « qui a raison ».
+- le même script **sans argument** est un hook `SessionStart` : muet quand tout va bien, il
+  **crie** si le config-home est mal routé — sinon l'historique part dans `~/.claude` en silence,
+  et `/resume` ne le proposera jamais depuis le workspace (« j'ai perdu ma conversation »).
+- `.claude/bin/claude-sessions.sh` — liste les sessions du worktree avec leur **première vraie
+  question** ; `relink` répare le répertoire de transcriptions après un `mv` de worktree.
+- la prose de référence, celle qui voyage avec le code : **`.claude/bin/README.md`**.
+
+Le seul chiffre à retenir : **1 des 7 dossiers** du `.code-workspace` satisfait la garde du
+wrapper (`<racine git du cwd>/.claude/hub`), donc tout repose sur le **cwd de lancement** — le
+premier dossier de la liste. Corrigé dans le dépôt et non en amont, parce que toucher au wrapper
+coûte un commit claude-hub + un push **sortant** + un bump du lock d'ndh + un switch
+home-manager.
+
+Vrai dans les deux modèles, et c'est ce qui n'a pas bougé : le runtime (`projects/`, `sessions/`…)
+atterrit sous `.claude` (gitignoré via `.claude/.gitignore`), `.claude/hub` n'a qu'un rôle — le
+contenu du subtree — et la destination reste `<worktree>/.claude`.
+
+⚠️ Line 36 below is also superseded: memory no longer lives at `<wt>/.claude/memory` but in the
+**orphan `memory` branch worktree** — see [[running-session-keeps-its-resolved-memory-path]].
+
+Superseded description, kept for the reading of older commits: config-home set PER-WORKSPACE in
+the `.code-workspace` with `claudeCode.claudeProcessWrapper: ""` (empty=falsy=disabled) +
+`claudeCode.environmentVariables: [{name:CLAUDE_CONFIG_DIR, value:<abs>/.claude}]`. Effects that
+STILL hold either way: runtime (`projects/`, `sessions/`, …) lands under `.claude` (gitignored via
+`.claude/.gitignore`), and `.claude/hub` is SINGLE-role (subtree content only).
 
 **How tier-1 memory is wired — `autoMemoryDirectory` (since 2026-08-14, supersedes the symlink):**
 the subtree gives `.claude/hub/memory/` (tier-2), but Claude's auto-memory defaults to a DIFFERENT
