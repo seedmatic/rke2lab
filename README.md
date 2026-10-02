@@ -6,11 +6,34 @@ them at `<store>/seedmatic/rke2lab.d/workspace` and is listed in the `.code-work
 
 ## What it carries
 
-1. **The input SSOT** — one declaration, in YAML, of how every flake input of the seedmatic DAG
-   (`rke2lab`, `ndh`, `nnh`, `nix-flake-commons`, `flox-nri-plugin`, `flox-controller`, …) resolves
-   to a local worktree instead of a GitHub URL.
-2. **The devpod specifications** — what a devpod is made of, derived from the `.code-workspace`
+1. **The SSOT** — one YAML declaration of the DAG's worktrees, in **relative** form: which
+   repository, which checkout, where it sits relative to the others. Every input of the seedmatic
+   DAG (`rke2lab`, `ndh`, `nnh`, `nix-flake-commons`, `flox-nri-plugin`, `flox-controller`, `fleet`)
+   appears once, and only here.
+2. **The devpod specifications** — what a devpod is made of, derived from that same declaration
    rather than restated.
+
+### One source, two generated outputs
+
+The same list answers two questions that were previously maintained by hand and could drift apart:
+
+| Output | Consumer | Why it cannot be the source |
+| --- | --- | --- |
+| `registry.json` | **nix** — resolves `flake:<id>` to a local worktree | a registry rejects relative paths, so it must hold absolute ones |
+| `develop.code-workspace` | **the editor** — which folders the window shows | its paths are relative *to its own location*, which is one level above the worktrees |
+
+Both are therefore **artifacts**, generated from the relative YAML at activation and never
+committed. The payoff is that a workspace stops being something each seat recreates by hand: the
+same declaration reproduces it on either Darwin seat and inside a devpod.
+
+⚠️ The editor file keeps its current location and name. It is **not** moved into this branch, for
+two measured reasons: every relative path would gain a `../`, and `config-home-guard.sh` looks for
+it at `$(dirname $root)/$(basename $root).code-workspace` — since a check it cannot perform now
+counts as a failure, moving the file would make the guard shout at every session start.
+
+★ Its **first folder must stay the seat's own worktree**: the editor extension launches with that
+folder as cwd, and the config home is derived from it. A generator that reorders the list silently
+breaks session history. That invariant belongs in the generator, not in a comment.
 
 ## Why it exists: locks pinned revisions nobody chose
 
