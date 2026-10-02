@@ -102,17 +102,31 @@
         devShells.default = pkgs.mkShell {
           packages = [ pkgs.go pkgs.gopls pkgs.gotools ];
 
-          # ⚠️ `go test` and `go run` build their binary under $TMPDIR and exec it from there.
-          # Measured on this seat (2026-10-02): TMPDIR is a tmpfs from which exec is refused, so
-          # both die with a bare `signal: killed` and no further output — which reads like a
-          # crash in the code under test and is not. Compiling the binary into the tree first
-          # sidesteps it entirely:
+          # ⚠️ A binary LINKED IN PLACE on this seat's $TMPDIR is SIGKILLed when exec'd, so
+          # `go test` and `go run` — which link into $TMPDIR and exec immediately — die with a
+          # bare `signal: killed` and no further output. That reads exactly like a crash in the
+          # code under test, and it is not: setting GOTMPDIR to any normal filesystem fixes it,
+          # which is what this shell does.
           #
+          # Measured 2026-10-02, and the three cases are what pin the mechanism down:
+          #
+          #   linked directly on $TMPDIR, run there  -> exit 137 (SIGKILL)
+          #   that SAME file copied off $TMPDIR      -> runs
+          #   linked elsewhere, copied onto $TMPDIR  -> runs
+          #
+          # So it is neither the filesystem (executing FROM it is fine) nor the binary (the same
+          # bytes run elsewhere). It is the combination: the Go linker applies the ad-hoc
+          # signature IN PLACE, and on this filesystem the signature state the kernel sees at
+          # exec does not match, so AMFI kills the process. `cp` writes a fresh file in one
+          # pass, which is why a copy is unaffected.
+          #
+          # The fallback, if GOTMPDIR is ever not honoured: link the test binary into the tree
+          # and run it yourself —
           #   go test -c -o ./ws.test ./internal/workspace && ./ws.test -test.v
-          #
-          # Overriding TMPDIR to a path on a normal filesystem works too.
           shellHook = ''
-            echo "workspace ${version} — go test -c -o ./ws.test ./internal/workspace && ./ws.test"
+            export GOTMPDIR="$PWD/.gotmp"
+            mkdir -p "$GOTMPDIR"
+            echo "workspace ${version} — GOTMPDIR=$GOTMPDIR (a binary linked on \$TMPDIR is SIGKILLed here)"
           '';
         };
 
