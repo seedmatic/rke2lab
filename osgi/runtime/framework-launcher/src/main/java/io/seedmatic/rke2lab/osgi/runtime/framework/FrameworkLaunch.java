@@ -52,8 +52,8 @@ public final class FrameworkLaunch {
   /**
    * The prod preset writing the framework log to {@code logFile} instead of the shared {@link
    * LaunchConfig#DEFAULT_LOG_FILE} — so each exec-jar keeps its own boot trace ({@code
-   * manifests-cli.log}, {@code netplan-cli.log}), never a single {@code seed-master.log} they all
-   * clobber. The name is the whole relative path the caller chooses.
+   * manifests-cli.log}, {@code netplan-cli.log}), never a single {@code seed-outcluster.log} they
+   * all clobber. The name is the whole relative path the caller chooses.
    */
   public static Embedded embedded(String logFile) {
     return new Embedded(Optional.empty(), Optional.of(logFile));

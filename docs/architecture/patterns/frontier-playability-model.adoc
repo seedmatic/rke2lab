@@ -185,7 +185,7 @@ extraction merged so far closed the EXTERNAL face only; this closes the internal
 
 == Edge inventory (2026-06-21, reverse-engineered from the reactor)
 
-Seven distinct edges, six targets. Almost all live in `exec/seed-master` (host world today), not yet
+Seven distinct edges, six targets. Almost all live in `exec/seed-outcluster` (host world today), not yet
 extracted into `<target>-edge` modules — that extraction is the "realise the edges" work, one increment
 per target.
 

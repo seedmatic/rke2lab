@@ -44,7 +44,7 @@ collapses the two copies into one. This increment stops collapsing them.
 .Embedded vs remote — both isolate, the proof differs
 ====
 In the *embedded* topology (host + framework in one JVM), the framework enforces isolation through
-separate bundle classloaders: `doctor-core` sees a different `ObjectMapper.class` than `seed-master`.
+separate bundle classloaders: `doctor-core` sees a different `ObjectMapper.class` than `seed-outcluster`.
 The proof is the in-container suite (`-Pall-worlds`): were a jackson type to cross the seam, two
 distinct `Class` objects would meet and raise `LinkageError` / `ClassCastException` in-container —
 the failure `DuplicateRealmClass`'s javadoc names. In the *remote* topology (the capstone — host and
@@ -193,7 +193,7 @@ derived rule. Derivation first; hand-list only if the evidence forces it.
 * *Model bundles that import jackson:* exactly two — `doctor-core` (`jackson-core` + `databind`) and
   `manifests-core` (those plus `jackson-dataformat-yaml` + `snakeyaml`). No `edge`, no `record`, no
   `seam` imports jackson.
-* *Host side:* `seed-master` declares jackson compile-scope (shades flat — its own codec). The other
+* *Host side:* `seed-outcluster` declares jackson compile-scope (shades flat — its own codec). The other
   two exec entrypoints (`netplan-cli`, `manifests-cli`) share the build-parent shade config;
   `manifests-cli` embeds `manifests-core` so the staged-bundle jackson must resolve for it too.
 * *Seam purity holds today:* the sole seam, seed-broker-port, does not import jackson — the derived

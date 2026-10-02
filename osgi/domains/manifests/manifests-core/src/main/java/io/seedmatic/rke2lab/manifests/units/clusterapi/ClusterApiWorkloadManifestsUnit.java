@@ -1,11 +1,13 @@
 package io.seedmatic.rke2lab.manifests.units.clusterapi;
 
+import io.seedmatic.rke2lab.incus.ingress.NodeDeviceSet;
 import io.seedmatic.rke2lab.manifests.AbstractManifestsUnit;
 import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
 import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
+import io.seedmatic.rke2lab.manifests.contract.ClusterCoordinate;
 import io.seedmatic.rke2lab.manifests.contract.ClusterRole;
+import io.seedmatic.rke2lab.manifests.contract.ControlPlaneShape;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
-import io.seedmatic.rke2lab.manifests.contract.WorkloadTarget;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ImageState;
 import io.seedmatic.rke2lab.manifests.contract.profiles.IncusIdentityMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.WorkloadClusterCasMaterial;
@@ -18,11 +20,18 @@ import software.constructs.Construct;
 
 /**
  * Renders the {@code ClusterIntention} + {@code PoolIntention} intent (the 2×2 decomposition) for
- * each WORKLOAD cluster onto the MANAGEMENT cluster's own branch ({@code manifests/<host>-mgmt}) —
- * model B: the CRs live where CAPI runs, so the management cluster's Flux applies them and the
- * in-cluster {@code seed-incluster} controller reconciles them adopt-first into a DIFFERENT cluster
- * ({@code <host>-wrkld}). There is no imperative {@code kubectl apply} and no {@code -wrkld}-branch
- * CRs (that branch carries only the workload's own app stack).
+ * every cluster this plane OWNS — its CHILDREN — onto its own branch ({@code
+ * manifests/<host>-mgmt}): model B, the CRs live where CAPI runs, so this cluster's Flux applies
+ * them and the in-cluster {@code seed-incluster} controller reconciles them adopt-first into a
+ * DIFFERENT cluster. There is no imperative {@code kubectl apply} and no {@code -wrkld}-branch CRs
+ * (that branch carries only the workload's own app stack).
+ *
+ * <p>⚠️ "Workload" in this class's name is a LEFTOVER, and the same lie {@code workloadTargets}
+ * carried: a child can be a MANAGEMENT cluster ({@code nikopol-mgmt}, birthed by {@code
+ * bioskop-mgmt}), and this unit renders it — switching shape on {@link ClusterCoordinate#role()}.
+ * The name is due to follow; {@link #OUTPUT_DIR} is NOT, because {@code cluster-api-workload} is
+ * the path already written into every rendered branch and into Flux's kustomizations, so renaming
+ * it would make Flux prune and recreate the whole package.
  *
  * <p>This unit no longer renders the raw CAPI CR-set (Cluster/LXCCluster/RKE2ControlPlane/
  * MachineDeployment). That set is materialised IN-CLUSTER by {@code seed-incluster} from the {@code
@@ -32,23 +41,23 @@ import software.constructs.Construct;
  * unit's job narrows to the DECLARATIVE recipe + the credentials the controller expands the CR-set
  * from.
  *
- * <p>The render subject stays {@link ManifestSynthesisContext#bootstrapIdentity()} (the management
- * cluster); the workload clusters ride beside it as {@link
- * ManifestSynthesisContext#workloadTargets()} (the manifests-facet sub-facet). For each target this
- * unit derives that cluster's whole {@link ClusterNetworkBlueprint} from its {@link
- * WorkloadTarget#clusterName()} — pod/service CIDRs, the kube-vip VIP — pins the image to {@link
- * ImageState#imageFingerprint()} and the RKE2 version to {@link ImageState#rke2Version()} (the
- * node-base identity the incus scion forwarded), and lists the control-plane pets ({@code master +
- * peer1 + peer2} = 3 etcd members; peer3 dropped for workloads — a workload is NOT the full
- * CANONICAL 4-server topology). Workers are a follow-up (none listed yet).
+ * <p>The render subject stays {@link ManifestSynthesisContext#bootstrapIdentity()} (this plane);
+ * its children ride beside it as {@link ManifestSynthesisContext#ownedChildren()} — DERIVED by the
+ * owner rule from the declared fleet, never enumerated. For each child this unit derives that
+ * cluster's whole {@link ClusterNetworkBlueprint} from its {@link ClusterCoordinate#clusterName()}
+ * — pod/service CIDRs, the kube-vip VIP — pins the image to {@link ImageState#imageFingerprint()}
+ * and the RKE2 version to {@link ImageState#rke2Version()} (the node-base identity the incus scion
+ * forwarded), and lists the control-plane pets ({@code master + peer1 + peer2} = 3 etcd members for
+ * a workload; peer3 dropped — a workload is NOT the full CANONICAL 4-server topology — and ONE for
+ * a management child). Workers are a follow-up (none listed yet).
  *
- * <p>No-op when there are no targets (a mgmt-only / standalone run) or when no {@link ImageState}
- * is bound (a secret-blind in-cluster render / a bare survey): without the image fingerprint the
- * recipe would pin a non-existent image, so — like {@link ImageStateConfigMapManifestsUnit} — the
- * unit renders nothing rather than a misleading placeholder.
+ * <p>No-op when this plane owns no child (a workload cluster, a bare survey, the standalone CLI) or
+ * when no {@link ImageState} is bound (a secret-blind in-cluster render): without the realised
+ * image the recipe would reference a {@code NodeImage} that describes nothing, so the unit renders
+ * nothing rather than a misleading placeholder.
  *
  * <p>The per-remote CAPN identity Secret {@code <host>-incus-identity} (foundation 5), the four
- * CAPRKE2 BYO-CA Secrets and the target's {@code <cluster>-server-manifests} bootstrap bundle are
+ * CAPRKE2 BYO-CA Secrets and the child's {@code <cluster>-server-manifests} bootstrap bundle are
  * rendered HERE ON THE BRANCH via the shared {@link ClusterApiCrRenderer} (the SAME collaborator
  * {@link ClusterApiManagementManifestsUnit} uses), sops-encrypted, when their material is present
  * (a secret-full render). One {@code rke2lab} incus project (foundation 4 dropped — instance names
@@ -74,7 +83,6 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
   // 2026-09-27 a child can be a management cluster itself (model B: bioskop-mgmt births
   // nikopol-mgmt, which then self-adopts). Leaving these as workload constants would have grown a
   // three-node nikopol-mgmt announcing itself as a workload — right name, wrong shape.
-  private static final int WORKLOAD_CONTROL_PLANE_REPLICAS = 3;
 
   private static final int MANAGEMENT_CONTROL_PLANE_REPLICAS = 1;
 
@@ -99,30 +107,46 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
   @Override
   protected void doSynthesize(final Construct scope, final ManifestsUnitContext context) {
     final ManifestSynthesisContext synth = ManifestSynthesisContext.current();
-    final List<WorkloadTarget> targets = synth.workloadTargets();
+    // EVERY cluster the fleet declares except the SUBJECT, whose own intention is the management
+    // unit's. Not `ownedChildren()`: the federation view is UNIFORM, so a plane's branch carries
+    // the
+    // declaration for the whole fleet and the plane simply does not ACT on what it does not adopt
+    // (the controller gates on `adoptedBy`). Material still follows the adopter — see renderChild.
+    final String subject = synth.bootstrapIdentity().clusterName();
+    final List<ClusterCoordinate> others =
+        synth.fleetClusters().stream().filter(c -> !c.clusterName().equals(subject)).toList();
     final Optional<ImageState> maybeImage = synth.imageState();
-    if (targets.isEmpty() || maybeImage.isEmpty()) {
+    if (others.isEmpty() || maybeImage.isEmpty()) {
       return;
     }
     final ImageState image = maybeImage.orElseThrow();
-    for (final WorkloadTarget target : targets) {
-      renderTarget(scope, target, image);
+    for (final ClusterCoordinate other : others) {
+      renderChild(scope, other, image, subject);
     }
   }
 
-  private void renderTarget(
-      final Construct scope, final WorkloadTarget target, final ImageState image) {
-    final String cluster = target.clusterName();
-    // ★ The DECLARED role, read off the target rather than re-parsed from the composed name: a
-    // target carries its role as a FIELD, so `ClusterRole.of(cluster)` would be a round-trip. Both
-    // now FAIL on anything they cannot read — the catch-all that used to answer MGMT is what let
-    // the
+  private void renderChild(
+      final Construct scope,
+      final ClusterCoordinate child,
+      final ImageState image,
+      final String subject) {
+    final String cluster = child.clusterName();
+    // ★ The role is read off the coordinate, already TYPED: it was parsed once, loudly, where the
+    // fleet was decoded. Re-parsing it from the composed name here would be a round-trip through
+    // `ClusterRole.of`, whose catch-all answers MGMT for anything it cannot read — what let the
     // netplan projection pass hosts as cluster names and lose half the clusters in silence.
-    final ClusterRole role = ClusterRole.ofToken(target.role());
+    final ClusterRole role = child.role();
+    // A management cluster is ONE control node by construction; a workload takes the DECLARED shape
+    // (`single` | `ha`), which replaces a hardcoded 3. The shape is a word rather than a number
+    // because 1 and 3 are not arbitrary points on a scale — see ControlPlaneShape.
     final int controlPlaneReplicas =
         switch (role) {
           case MGMT -> MANAGEMENT_CONTROL_PLANE_REPLICAS;
-          case WRKLD -> WORKLOAD_CONTROL_PLANE_REPLICAS;
+          case WRKLD ->
+              ManifestSynthesisContext.current()
+                  .workloadControlPlane()
+                  .orElse(ControlPlaneShape.HA)
+                  .replicas();
         };
     // The federated role recorded on the ClusterIntention — the SAME vocabulary the mgmt unit uses
     // for its self-adoption, so a birthed management cluster is indistinguishable from one that
@@ -132,6 +156,13 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
           case MGMT -> "management";
           case WRKLD -> "workload";
         };
+    // The child's single adopter — DERIVED, not assumed to be this plane: the derivation is the one
+    // place that rule lives, and ClusterFleetTest pins that it cannot disagree with ownedBy.
+    final Optional<String> maybeAdopter = ManifestSynthesisContext.current().adopterOf(cluster);
+    if (maybeAdopter.isEmpty()) {
+      return;
+    }
+    final String adoptedBy = maybeAdopter.orElseThrow();
     final ClusterNetworkBlueprint blueprint =
         ClusterNetworkBlueprint.builder()
             .cluster(cluster)
@@ -144,24 +175,45 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
     // one
     // `rke2lab` project (instance names are globally unique via the blueprint), so the Secret is
     // keyed by the host (bioskop, nikopol). Rendered below, in THIS namespace.
-    final String identitySecret = target.host() + "-incus-identity";
-    // CAPI/CAPRKE2 want the k8s version with a leading `v`; the nix-emitted rke2Version has none
-    // (e.g. `1.34.8+rke2r2`) — prefix it iff absent.
-    final String rke2Version =
-        image.rke2Version().startsWith("v") ? image.rke2Version() : "v" + image.rke2Version();
-    // The workload's Incus remote — its host's engine (bioskop-nixos / nikopol-nixos). Intent
-    // value;
-    // the controller/CAPN authenticate from the identity Secret (which also carries `server`).
+    final String identitySecret = child.host() + "-incus-identity";
+    // ★ The endpoint belongs to the READER, not to the cluster being described — the one field on
+    // this CR that is genuinely POSITIONAL. Incus is CLUSTERED (measured 2026-09-30: bioskop-nixos
+    // database-leader and nikopol-nixos database-client, both ONLINE, one cluster), so a client
+    // talks
+    // to ANY member it can reach and `spec.target` decides PLACEMENT. Reaching the target member
+    // directly is neither required nor possible: from bioskop's cluster nixos.nikopol
+    // (172.16.16.1) times out, while nixos.bioskop (172.16.0.1) is open, and the mirror from
+    // nikopol's.
+    //
+    // ⚠️ So this is derived from the RENDER SUBJECT — the cluster whose branch this is, hence whose
+    // plane will reconcile it — and NOT from the child. Deriving it from the child is a mistake I
+    // made and measured: it sent bioskop's CAPN to 172.16.16.1:8443 on every LXCCluster reconcile
+    // for nikopol-mgmt, and its birth stalled at `0/1 present, 1 pending`. The original code passed
+    // "" here and fell back to the identity Secret's `server` (the local engine, since the local
+    // host minted it) — which was RIGHT for a parent's copy, and wrong only for a sub-plane's own
+    // copy, because that Secret was minted by the parent and copied verbatim.
     //
     // The fabric FQDN, not the bare host name: CAPN dials this from a POD, and a pod resolves
-    // through CoreDNS — where the bare name reached the vmnet bridge's dnsmasq, which answered it
-    // from the host's /etc/hosts (127.0.0.2). CAPN then dialled its own :8443 diagnostics port and
-    // reported "certificate is valid for localhost". Derived on the TARGET's cluster name, so a
-    // target on another bare-metal needs no special case — one form, every audience. See
-    // ClusterNetworkBlueprint.NamePlan.
-    final String remoteEndpoint = "https://" + blueprint.names().nixosFabricFqdn() + ":8443";
+    // through
+    // CoreDNS — where the bare name reached the vmnet bridge's dnsmasq, which answered from the
+    // host's /etc/hosts (127.0.0.2), so CAPN dialled its own :8443 and reported "certificate is
+    // valid
+    // for localhost". See ClusterNetworkBlueprint.NamePlan.
+    final String remoteEndpoint =
+        "https://"
+            + ClusterNetworkBlueprint.builder()
+                .cluster(subject)
+                .node("master")
+                .deriveRecipeModel()
+                .build()
+                .names()
+                .nixosFabricFqdn()
+            + ":8443";
 
     final ApiObject namespaceObject = renderer.namespace(scope, cluster, namespace, packageProfile);
+    // The realised image, described to the cluster that boots on it — the pool references it by
+    // name.
+    renderer.nodeImage(scope, cluster, namespace, image, packageProfile, namespaceObject);
     // The 2×2 intent: ONE cluster-level ClusterIntention + N pool-level PoolIntention (here just
     // the
     // control-node pool; worker pools are a follow-up). Both are Flux-owned and Flux-pruned;
@@ -180,6 +232,7 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
             List.of(blueprint.serviceCidr()),
             remoteEndpoint,
             identitySecret,
+            adoptedBy,
             packageProfile,
             namespaceObject);
     final List<String> pets =
@@ -193,10 +246,15 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
         namespace,
         vip,
         APISERVER_PORT,
-        rke2Version,
-        image.imageFingerprint(),
+        image.rke2Version(),
+        ClusterApiCrRenderer.nodeImageName(cluster, image),
+        NodeDeviceSet.forCluster(
+                ManifestSynthesisContext.current().fabricBridgeParent(),
+                blueprint.vmnetBridgeName())
+            .toCapnSpecs(),
         pets,
-        blueprint.names().nixosHost(),
+        blueprint.names().incusMember(),
+        adoptedBy,
         packageProfile,
         clusterIntention);
 
@@ -207,6 +265,14 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
     // node
     // instead of self-generating). A secret-blind render must not run steady-state, else it pushes
     // them empty and Flux prunes the populated ones.
+    // ⚠️ MATERIAL follows the ADOPTER, unlike the declaration above which is uniform. A plane holds
+    // credentials only for what it adopts: carrying a cluster's CA or admin credential where it has
+    // no business acting is how a child's branch came to hold its PARENT's CA and then its parent's
+    // admin certificate, each rendered from a run-scoped material onto a subject that was not the
+    // run's cluster (instances 5 and 6 of the viewpoint family).
+    if (!ManifestSynthesisContext.current().adopts(cluster)) {
+      return;
+    }
     final Optional<IncusIdentityMaterial> identity =
         ManifestSynthesisContext.current().incusIdentity();
     final Optional<WorkloadClusterCasMaterial.Entry> workloadCa =
@@ -220,6 +286,7 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
                 identitySecret,
                 material,
                 image.incusProject(),
+                remoteEndpoint,
                 packageProfile,
                 namespaceObject));
     workloadCa.ifPresent(

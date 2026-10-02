@@ -104,6 +104,16 @@
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>netplan-contract</artifactId>
     </dependency>
+
+    <!-- The incus ingress CONTRACT: a node is an Incus container, so the render names the device set
+         a node carries (NodeDeviceSet) rather than restating it. A DECLARED cross-domain edge — the
+         repo's CrossDomainRule requires the domain to own such an edge instead of it appearing as a
+         silent unit-level import. The leaf is shared with the host grow, which poses the same devices
+         on the standalone master, so there is ONE definition of what a node is attached to. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>incus-ingress-contract</artifactId>
+    </dependency>
     <!-- The dataplan layout SSOT: OpenebsZfsManifestsUnit names its StorageClass pools + the static
          persist PV from DataplanLayout (tank/rke2lab/*), never a hardcoded ZFS path. -->
     <dependency>
@@ -233,7 +243,7 @@
                 <!-- Pass THIS build's profile-specific dir (target~claude / target~nxmatic / target)
                      so the CRDs land where build-helper embeds from; Maven resolves the property
                      before sh sees it. -->
-                <argument>nix run .#stage-flox-controller-crd -- "${project.build.directory}/generated-resources/crds" &amp;&amp; nix run .#stage-seed-incluster-crd -- "${project.build.directory}/generated-resources/crds" &amp;&amp; nix run .#stage-seed-incluster-rbac -- "${project.build.directory}/generated-resources/rbac" &amp;&amp; nix run .#stage-flox-controller-rbac -- "${project.build.directory}/generated-resources/rbac"</argument>
+                <argument>nix run .#stage-flox-controller-crd -- "${project.build.directory}/generated-resources/crds" &amp;&amp; nix run .#stage-seed-incluster-crd -- "${project.build.directory}/generated-resources/crds" &amp;&amp; nix run .#stage-seed-incluster-rbac -- "${project.build.directory}/generated-resources/rbac" &amp;&amp; nix run .#stage-flox-controller-rbac -- "${project.build.directory}/generated-resources/rbac" &amp;&amp; nix run .#stage-image-refs -- "${project.build.directory}/generated-resources/image-refs"</argument>
               </arguments>
             </configuration>
           </execution>
@@ -260,6 +270,13 @@
                 <resource>
                   <directory>${project.build.directory}/generated-resources/rbac</directory>
                   <targetPath>rbac</targetPath>
+                </resource>
+                <!-- The baked images' RepoTags. Both tags are derived from image CONTENT, so the
+                     synthesis reads them from here rather than carrying a literal that a rebuild
+                     would silently invalidate. -->
+                <resource>
+                  <directory>${project.build.directory}/generated-resources/image-refs</directory>
+                  <targetPath>image-refs</targetPath>
                 </resource>
               </resources>
             </configuration>

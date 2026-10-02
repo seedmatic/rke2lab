@@ -7,8 +7,8 @@
 *Status:* SHIPPED on `feature/pulumi-edge` (2026-06-21), integrable into `design/pre-integration`.
 The first concrete realisation of an *external edge* per the
 link:../patterns/frontier-playability-model.adoc[frontier-playability model]. Build GREEN on the
-full reactor (`./mvnw -pl :seed-master -am clean package -Dmaven.build.cache.skipCache=true
--DskipTests=false`): `pulumi-edge` 29 tests, `pulumi-edge-testkit` 10, `seed-master` 68 (1 skipped =
+full reactor (`./mvnw -pl :seed-outcluster -am clean package -Dmaven.build.cache.skipCache=true
+-DskipTests=false`): `pulumi-edge` 29 tests, `pulumi-edge-testkit` 10, `seed-outcluster` 68 (1 skipped =
 `@Tag` excluded `*LiveTest`), `doctor-contract-test` 34 — 0 failures, 0 errors.
 
 This doc is the *reference template* the five remaining edges (dbus-systemd, incus, cluster,
@@ -22,7 +22,7 @@ happened to Pulumi".
 (`com.pulumi.automation` reads) and the Automation API (`LocalWorkspace.up()` writes), mutualised
 across all domains. Before this work the Pulumi contact existed "in spirit, scattered": the read face
 lived in `host/pulumi-automation-ext`, while the write face (`PulumiInterventionLedgerWriter`) was
-*stranded* in `exec/seed-master/.../controlplane/bdd/` — an impl of a doctor port living inside a
+*stranded* in `exec/seed-outcluster/.../controlplane/bdd/` — an impl of a doctor port living inside a
 consumer module. This consolidates both faces into one named edge.
 
 The name follows the model's reserved vocabulary: an external edge is named `<target>-edge`, never by
@@ -84,16 +84,16 @@ What lives in `host/pulumi-edge` (package `io.seedmatic.rke2lab.pulumi.edge`):
 
 The cut is "does this type *touch the Pulumi target*, or merely *consume the port*?":
 
-* `DoctorAssembly` *stays in seed-master* — it is the host-side *wiring* that picks impls
+* `DoctorAssembly` *stays in seed-outcluster* — it is the host-side *wiring* that picks impls
   (`new PulumiInterventionLedgerWriter(...)` vs a no-op) and reads the current `Patient` from
   `Deployment.getInstance()`. It touches `com.pulumi.deployment` but its job is assembly, not the
   edge contact. Wiring belongs to the executable, not the edge.
-* `MedicalRecordDump` *stays in seed-master* — a `main()` CLI tool that *consumes* the edge
+* `MedicalRecordDump` *stays in seed-outcluster* — a `main()` CLI tool that *consumes* the edge
   (`StackHandleSnapshotSource`) to dump a record as YAML. A consumer of the edge, not part of it.
 * The `controlplane.bdd` doctor types (`ClusterReadinessProbe`, `DbusTcpSpecialist`, the scenarios)
   never reach Pulumi — they stay.
 
-Consumers depend on `doctor-contract` only; *nothing in seed-master imports `pulumi-edge` types except as
+Consumers depend on `doctor-contract` only; *nothing in seed-outcluster imports `pulumi-edge` types except as
 explicit wiring in `DoctorAssembly`/`RecordInterventionCommand`/`MedicalRecordDump`*. The membrane held:
 no caller changed behaviour, only its `import` line moved from `controlplane.bdd.*` to
 `pulumi.edge.*`.
@@ -154,7 +154,7 @@ pure mechanic tests that need nothing but the edge + its port.
 | Edge | World | Playable? | Status
 
 | *pulumi-edge* | host | no | *EXTRACTED (this work)* — the template
-| dbus-systemd-edge | host | no | scattered in seed-master; not yet extracted
+| dbus-systemd-edge | host | no | scattered in seed-outcluster; not yet extracted
 | incus-edge | host (→osgi candidate) | yes | scattered; not yet extracted
 | cluster-edge | host (→osgi candidate) | yes | scattered; not yet extracted
 | host-filesystem-edge | host (→osgi candidate) | yes | scattered; not yet extracted

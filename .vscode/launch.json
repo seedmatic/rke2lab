@@ -15,7 +15,7 @@
             "type": "java",
             "name": "Attach to Pulumi RKE2Lab",
             "request": "attach",
-            "projectName": "seed-master",
+            "projectName": "seed-outcluster",
             "hostName": "localhost",
             "port": "8000"
         },
@@ -49,10 +49,10 @@
             "type": "java",
             "name": "Debug DbusTcpSpike",
             "request": "launch",
-            "projectName": "rke2lab-seed-master",
+            "projectName": "rke2lab-seed-outcluster",
             "mainClass": "io.seedmatic.rke2lab.controlplane.DbusTcpSpike",
             "args": "${input:dbusTcpSpikeArgs}",
-            "cwd": "${workspaceFolder:rke2lab}/exec/seed-master",
+            "cwd": "${workspaceFolder:rke2lab}/exec/seed-outcluster",
             "console": "internalConsole",
             "stopOnEntry": false,
             "vmArgs": "-Dorg.slf4j.simpleLogger.defaultLogLevel=info -Dorg.slf4j.simpleLogger.log.org.freedesktop.dbus=trace -Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss.SSS"
@@ -61,10 +61,10 @@
             "type": "java",
             "name": "Launch DbusTcpSpike (JDWP suspend, attach later)",
             "request": "launch",
-            "projectName": "rke2lab-seed-master",
+            "projectName": "rke2lab-seed-outcluster",
             "mainClass": "io.seedmatic.rke2lab.controlplane.DbusTcpSpike",
             "args": "${input:dbusTcpSpikeArgs}",
-            "cwd": "${workspaceFolder:rke2lab}/exec/seed-master",
+            "cwd": "${workspaceFolder:rke2lab}/exec/seed-outcluster",
             "console": "internalConsole",
             "vmArgs": "-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=*:5006 -Dorg.slf4j.simpleLogger.defaultLogLevel=info -Dorg.slf4j.simpleLogger.log.org.freedesktop.dbus=trace"
         },
@@ -72,7 +72,7 @@
             "type": "java",
             "name": "Attach to DbusTcpSpike (JDWP :5006)",
             "request": "attach",
-            "projectName": "rke2lab-seed-master",
+            "projectName": "rke2lab-seed-outcluster",
             "hostName": "localhost",
             "port": 5006
         },

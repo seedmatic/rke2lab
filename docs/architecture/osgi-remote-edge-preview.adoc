@@ -117,7 +117,7 @@ flowchart LR
     m1["Felix resolu une fois reste vivant"]
     m2["JVM separee plus de classloader partage"]
     m3["hot-swap bundles sans rebuild exec"]
-    m4["seed-master netplan manifests memes services"]
+    m4["seed-outcluster netplan manifests memes services"]
   end
   b1 --> m1
   b2 --> m2
@@ -451,8 +451,8 @@ d'habitude : JDK 25 a un cout, l'ecosysteme suit avec retard.
 
 == RECADRAGE -- deux faces du monde OSGi : embedded bootstrap vs workload cluster
 
-Decision utilisateur : seed-master RESTE en OSGi embedded ; dans la version cluster, le monde OSGi est
-DEMARRE comme un workload k8s. Le pourquoi est imparable : seed-master bootstrappe le cluster -> au
+Decision utilisateur : seed-outcluster RESTE en OSGi embedded ; dans la version cluster, le monde OSGi est
+DEMARRE comme un workload k8s. Le pourquoi est imparable : seed-outcluster bootstrappe le cluster -> au
 moment ou il tourne il n'y a pas encore de cluster pour heberger un pod, donc embedded obligatoire
 (chicken and egg). Une fois le cluster vivant, le monde OSGi peut etre un workload long-lived.
 
@@ -461,8 +461,8 @@ moment ou il tourne il n'y a pas encore de cluster pour heberger un pod, donc em
 [mermaid]
 ....
 flowchart TB
-  subgraph "face bootstrap seed-master"
-    sm["seed-master exec Pulumi"]
+  subgraph "face bootstrap seed-outcluster"
+    sm["seed-outcluster exec Pulumi"]
     smf["Felix embedded in process"]
     smc["awaitService rend un @Component LOCAL"]
     sm --> smf --> smc
@@ -488,7 +488,7 @@ flowchart TB
 
 === Figure 15 -- la question qui decide si RSA ECF est meme NECESSAIRE
 
-Si seed-master reste embedded, seed-master n'utilise JAMAIS RSA (composant local). Donc RSA ne sert que
+Si seed-outcluster reste embedded, seed-outcluster n'utilise JAMAIS RSA (composant local). Donc RSA ne sert que
 dans la face cluster -- ET seulement si quelque chose HORS du pod OSGi consomme ses services. La vraie
 question : qui consomme le monde OSGi in-cluster ?
 
@@ -503,7 +503,7 @@ flowchart TB
 
 === Lecture honnete
 
-* *Le risque de sunk-cost* : on a passe la session a instruire ECF RSA. Mais la decision seed-master =
+* *Le risque de sunk-cost* : on a passe la session a instruire ECF RSA. Mais la decision seed-outcluster =
   embedded peut signifier que RSA n'est PAS necessaire du tout -- la separation Host OSGi que tu
   cherchais serait obtenue par la frontiere du POD (deploiement), pas par les remote services dans un
   host. Il faut le verifier, pas le presumer.
@@ -718,7 +718,7 @@ est une NOUVELLE face : le monde de bootstrap cloné en face cluster. Meme sourc
 flowchart TB
   src["une source le monde osgi + le host"]
   subgraph "face bootstrap unit 1"
-    boot["seed-master exec host + OSGi embarques un JVM sur le noeud seed"]
+    boot["seed-outcluster exec host + OSGi embarques un JVM sur le noeud seed"]
   end
   subgraph "face cluster unit 2"
     hw["host transpose en workload pod orchestrateur"]
@@ -849,14 +849,14 @@ flowchart TB
 [mermaid]
 ....
 flowchart LR
-  sm["seed-master JVM host"]
+  sm["seed-outcluster JVM host"]
   osgi["monde OSGi seconde JVM sous-processus meme noeud seed"]
   sm -->|lance et supervise| osgi
   sm -->|transport local loopback TCP ou socket unix| osgi
   note["ECF 3.16.5 a ajoute un transport unix-domain-socket ideal ici"]
 ....
 
-Correction : j'avais dit "seed-master embedded n'utilise jamais RSA". FAUX pour ce moteur -- une JVM
+Correction : j'avais dit "seed-outcluster embedded n'utilise jamais RSA". FAUX pour ce moteur -- une JVM
 separee n'est pas un pod, c'est un sous-processus ; RSA ECF paie DES le bootstrap, transport local.
 
 === Figure 28 -- embedded avait 3 points sur un spectre, meme seam partout
@@ -898,8 +898,8 @@ CHOIX : lecture A (daemon persistant + hot-swap).
 == TOPOLOGIE CONCRETE -- le daemon OSGi comme endpoint, calque sur incus
 
 Cristallisation utilisateur : le monde OSGi = un ENDPOINT PERSISTANT sur le host NixOS bioskop-nixos
-(exactement ou incus tourne deja) ; seed-master s'execute sur bioskop ; au lancement d'une commande
-Pulumi, seed-master se connecte a l'endpoint ET le met a jour (hot-swap). L'analogie incus est EXACTE,
+(exactement ou incus tourne deja) ; seed-outcluster s'execute sur bioskop ; au lancement d'une commande
+Pulumi, seed-outcluster se connecte a l'endpoint ET le met a jour (hot-swap). L'analogie incus est EXACTE,
 pas approximative : meme hote, meme LAN, meme forme client-daemon -- et le moule de code existe deja
 (sdks/incus).
 
@@ -909,7 +909,7 @@ pas approximative : meme hote, meme LAN, meme forme client-daemon -- et le moule
 ....
 flowchart LR
   subgraph "bioskop machine d'operation"
-    sm["seed-master commande pulumi"]
+    sm["seed-outcluster commande pulumi"]
     incussdk["incus API client SDK deja la"]
     rsaclient["RSA ECF client le nouveau SDK"]
     sm --> incussdk
@@ -940,28 +940,28 @@ flowchart LR
 
 === Figure 31 -- la question ouverte : COMMENT le hot-swap arrive sur l'endpoint
 
-Le meme split control vs donnee que la federation, applique a "seed-master met a jour le daemon".
+Le meme split control vs donnee que la federation, applique a "seed-outcluster met a jour le daemon".
 
 [mermaid]
 ....
 flowchart TB
   q{"comment les nouveaux bundles arrivent sur le daemon distant"}
-  q -->|push| push["seed-master ENVOIE les bundles a jour vers l'endpoint puis install refresh"]
-  q -->|pull| pull["seed-master dit au daemon de TIRER depuis un repository unitrepo le daemon fetch"]
+  q -->|push| push["seed-outcluster ENVOIE les bundles a jour vers l'endpoint puis install refresh"]
+  q -->|pull| pull["seed-outcluster dit au daemon de TIRER depuis un repository unitrepo le daemon fetch"]
   push --> note1["simple direct le client porte les bundles"]
   pull --> note2["rejoint le modele federation repository + clone reutilisable in-cluster"]
 ....
 
 CHOIX PULL : le daemon tire depuis le repository -> UNE seule brique (repository + resolver + pull)
-sert PARTOUT : bioskop-nixos aujourd'hui, pods demain. seed-master DESIGNE la version, le daemon TIRE.
+sert PARTOUT : bioskop-nixos aujourd'hui, pods demain. seed-outcluster DESIGNE la version, le daemon TIRE.
 Convergence des trois moteurs en un mecanisme.
 
 == LADDER DE-RISKING -- version simple ops MAINTENANT vs POC cluster AVANT le cluster
 
-Insight utilisateur : deux versions, deux ROLES distincts. La simple SUFFIT a seed-master ; la riche est
+Insight utilisateur : deux versions, deux ROLES distincts. La simple SUFFIT a seed-outcluster ; la riche est
 le vrai PROOF OF CONCEPT qui pre-valide le modele du cluster.
 
-* *SIMPLE (mode operationnel seed-master, maintenant)* : l'operateur build -> obtient les bundles
+* *SIMPLE (mode operationnel seed-outcluster, maintenant)* : l'operateur build -> obtient les bundles
   impactes -> RELANCE un daemon a jour SUR BIOSKOP (co-localise) -> execute pulumi sur le systeme a jour.
   Pas de hot-swap (relance), pas de PULL (le build fournit), pas d'endpoint distant. MAIS livre DEJA le
   gain principal : hygiene classpath. Co-localise -> transport unix-domain-socket.
@@ -1005,7 +1005,7 @@ flowchart TB
   unix-socket), donc A->B est un changement de TOPOLOGIE, pas une reecriture (Figure 28, same contract
   N topologies).
 * *Nuance superviseur* : in-cluster = k8s ; sur bioskop-nixos (phase B) = NixOS systemd comme incus ;
-  co-localise bioskop (phase A) = lance par seed-master lui-meme. Trois superviseurs, un seul seam.
+  co-localise bioskop (phase A) = lance par seed-outcluster lui-meme. Trois superviseurs, un seul seam.
 
 == Figure 10 -- les trois options reelles, reformulees
 

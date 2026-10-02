@@ -16,7 +16,7 @@ OSGi (the `ghapp`→`auth`→`manifests` scion graph, driven through the
 `seed.broker.port` membrane); the executables are thin HOSTS that sow the SAME
 coordinates:
 
-* *Grow* (`seed-master`) — the FIRST render+push, host-side, inside the Pulumi
+* *Grow* (`seed-outcluster`) — the FIRST render+push, host-side, inside the Pulumi
   envelope. It must be host-side: at bootstrap there is no cluster, no Flux, no
   branch to pull.
 * *Operator publish* (`manifests publish` CLI) — a standalone render+push, minus
@@ -268,8 +268,10 @@ flox activate -- ./exec/manifests-cli/... synthesize -Drke2lab.manifests.outdir=
 == Staged (post-cluster) resources
 
 Some resources need data only available AFTER Pulumi provider resources exist
-(e.g. the Cluster API `image-state` ConfigMap needs the `incus.Image`
-fingerprint), while synthesis runs before those Outputs resolve. Such units defer
+(e.g. the Cluster API `NodeImage` needs the built image's fingerprint — see
+link:../cluster-api/node-image-lifecycle.adoc[Node image lifecycle], where it now arrives as the
+`IMAGE_STATE` amendment rather than a provider round trip), while synthesis runs
+before those Outputs resolve. Such units defer
 their synthesis to the provider stage via `Output.applyValue`, then flow through
 the SAME explode→deliver→reconcile pipeline — there is no separate on-node
 `staged/` install path any more; a deferred unit's resources land in the tree and

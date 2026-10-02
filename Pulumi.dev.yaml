@@ -39,7 +39,7 @@ config:
   rke2lab:manifests:
     # The WHOLE rke2lab:manifests subtree is contributed verbatim as the manifests FACET amendment
     # (FacetContributor in ClusterSeedScenario → ManifestsAmendReflector → ManifestsRunbookInput
-    # .facets), so debug / delivery / workloadTargets all reach the synthesis scion. Which manifest
+    # .facets), so debug / delivery / incusTargets all reach the synthesis scion. Which manifest
     # domains render is NOT configured here — it follows the cluster ROLE (ClusterRole, from the
     # clusterName): mgmt gets cluster-api + base, wrkld gets the app stack (mesh, cicd), never both.
     debug:
@@ -55,15 +55,23 @@ config:
     # LOCAL until armed; set "false" to return to a local-only render (then push by hand).
     delivery:
       push: "true"
-    # The workload clusters this management render emits CAPI CRs for (model B — the CRs live on
-    # manifests/<host>-mgmt where CAPI runs). clusterName = <host>-<role>; the CR-set unit derives
-    # each target's blueprint + pins the node-base image. Only rendered at an operator grow (needs
-    # the incus scion's ImageState).
-    workloadTargets:
-      - host: bioskop
-        role: wrkld
-      - host: nikopol
-        role: mgmt
+    # The Incus HOSTS the fleet spans — and that is the whole declaration. ClusterRole is a closed
+    # two-value enum, so these two lines already name four clusters (<host>-mgmt, <host>-wrkld);
+    # enumerating {host, role} pairs was redundant. Which of them a given render emits CAPI CRs for
+    # is DERIVED by the owner rule (ClusterFleet.ownedBy): a plane owns its own host's workload plus,
+    # if it is the root, the other hosts' management planes — never a workload across a host, which
+    # it could not reach. Model B: the CRs live on manifests/<host>-mgmt, where CAPI runs.
+    # The root plane is NOT written here — the grow records it from rke2lab:cluster.host.
+    # Only rendered at an operator grow (needs the incus scion's ImageState).
+    incusTargets:
+      - bioskop
+      - nikopol
+    # The control-plane shape every WORKLOAD cluster takes. A WORD, not a number: `ha` is THREE
+    # because three is the smallest etcd quorum that survives losing one — two would be strictly
+    # worse than one (both members needed for quorum, so double the failure surface for no gain) and
+    # four buys nothing over three. A MANAGEMENT cluster is not configurable: it is one control node
+    # by construction. Absent = ha, which is what the hardcoded constant did.
+    workloadControlPlane: single # single | ha
   rke2lab:policy:
     network:
       lan:

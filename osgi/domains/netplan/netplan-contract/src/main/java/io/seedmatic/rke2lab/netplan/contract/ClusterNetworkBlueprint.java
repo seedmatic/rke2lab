@@ -361,9 +361,35 @@ public record ClusterNetworkBlueprint(
             // cluster). The operator-facing authority is config's rke2lab:cluster:remoteIncus; this
             // is the netplan-domain mirror derived from the same bare host.
             hostOf(clusterName) + "-nixos",
+            // The INCUS CLUSTER MEMBER — the bare host, WITHOUT the -nixos suffix. A pool's
+            // `spec.target` states this for placement, and `incusTargets` lists exactly these.
+            //
+            // ★ Split out of nixosHost rather than renamed, because that one field was serving TWO
+            // concepts: the NixOS HOSTNAME (which systemd/dbus resolve to reach the host, and which
+            // must KEEP its suffix — `nikopol` is already the name of the RDP host, a different
+            // machine) and the incus MEMBER name. `incus cluster rename` makes a member's name
+            // independent of the OS hostname, which is what allows the two to differ at all.
+            //
+            // ⚠️ Ordering: the live members must be renamed BEFORE a render states this, or
+            // `target:`
+            // names a member that does not exist and placement fails.
+            hostOf(clusterName),
             // Same zone as nodeFabricFqdn above — the bare-metal's OWN dnsmasq serves both, so the
             // infra host and its instances answer from one authority.
-            "nixos." + hostOf(clusterName)));
+            "nixos." + hostOf(clusterName),
+            // The CLUSTER's endpoint, in the same zone. It names what every audience actually
+            // dials, which no per-node name can: a node name is only predictable for a PET cluster
+            // (fabricMacIsPredictable), while a cattle cluster's control plane is created by CAPI
+            // under a generated name — so a cert built on the canonical roster vouches for nodes
+            // that will never exist and misses the one that does.
+            // `<role>-vip.<host>`, not `<cluster>-vip.<host>`: a cluster name IS `<host>-<role>`,
+            // so
+            // spelling the host in the label repeats what the zone already says — the same stutter
+            // `nixos.<host>` avoids by not being `<host>-nixos.<host>`. Inside a bare-metal's zone
+            // a
+            // cluster is identified by its ROLE, which is unique there (one mgmt + one wrkld), and
+            // the role is DERIVED rather than split off the name.
+            ClusterRole.of(clusterName).token() + "-vip." + hostOf(clusterName)));
   }
 
   /** Stable ref/id for contract exports. */
@@ -665,9 +691,32 @@ public record ClusterNetworkBlueprint(
    * <p>The record beside it in ndh: a {@code host-record} for {@code nixos.<host>} on the
    * bare-metal's own bridge, next to the {@code vzhost.<host>} already there ({@code
    * catalog/default.nix}, the {@code <domain>-baremetal-net} segment).
+   *
+   * <p>{@code vipFabricFqdn} is the CLUSTER's endpoint name, and it exists because a cluster had no
+   * name at all — only an address. Measured 2026-09-28: the operator's kubeconfig carried THREE
+   * context forms for one cluster ({@code <cluster>}, {@code <cluster>-fabric-name}, {@code
+   * <cluster>-vip}) because each vantage point had to pick its own mechanism, and two of the three
+   * dial a bare address. A per-NODE name cannot close that: it is predictable only for a pet
+   * cluster ({@link #fabricMacIsPredictable}), so the apiserver SAN set built from the canonical
+   * roster vouched for six nodes a cattle cluster never creates while missing the CAPI-generated
+   * one it does. The VIP is the one thing every audience dials and the one thing whose name is
+   * knowable before any node exists.
+   *
+   * <p>Why the same zone rather than a name of its own. The zone is served by the bare-metal that
+   * owns the network and forwarded by every peer's dnsmasq, and it is the only authority measured
+   * to answer identically from all three vantage points — the operator's Mac, a bare-metal, and a
+   * POD (the audience that matters, since the in-cluster probes are what dial the endpoint). A
+   * {@code host-record} asserts a name→address pair without regard to the segment's own cidr, which
+   * is already how {@code vzhost.<host>} is published at an address outside the segment carrying
+   * it.
    */
   public record NamePlan(
-      String nodeHostname, String nodeFabricFqdn, String nixosHost, String nixosFabricFqdn) {}
+      String nodeHostname,
+      String nodeFabricFqdn,
+      String nixosHost,
+      String incusMember,
+      String nixosFabricFqdn,
+      String vipFabricFqdn) {}
 
   /**
    * Canonical cluster topology: 1 master, 3 control nodes (peers), 2 worker nodes.

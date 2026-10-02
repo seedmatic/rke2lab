@@ -343,7 +343,7 @@ public final class FunnelCertRestoreManifestsUnit extends AbstractManifestsUnit 
                 funnel.stateSecret(),
                 NAMESPACE,
                 funnel.hostname());
-    final String floxImage = ManifestSynthesisContext.current().floxDebugPolicy().prodImage();
+    final String floxImage = ManifestSynthesisContext.current().containerImages().carrier();
     final ApiObject jobObject =
         new ApiObject(
             scope,

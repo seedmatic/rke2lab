@@ -69,7 +69,7 @@
          org.yaml:snakeyaml the rest of the project uses — fabric8's kubernetes-client-api binds
          org.snakeyaml:snakeyaml-engine, a first-class OSGi bundle (BSN org.snakeyaml.engine). It is
          the only NOT-yet-staged transitive the fabric8 wrap needs (jackson + BouncyCastle are
-         already staged); declared here so the wrap can pin it and seed-master stage it. -->
+         already staged); declared here so the wrap can pin it and seed-outcluster stage it. -->
     <snakeyaml-engine.version>3.1.1</snakeyaml-engine.version>
     <!-- victools 5.x migrated to jackson 3 (tools.jackson.* package); the project is on jackson 2
          (${jackson.version}), so the 4.x line is the ceiling — 5.0.0 makes generateSchema return a
@@ -126,7 +126,7 @@
     <osgi.util.function.version>1.2.0</osgi.util.function.version>
     <!--
       The org.osgi.service.log API (LogLevel + Logger). Felix's system bundle does NOT export it and
-      osgi.core carries it only where osgi.core is on-classpath; the host exec (seed-master) is flat
+      osgi.core carries it only where osgi.core is on-classpath; the host exec (seed-outcluster) is flat
       and keeps osgi.core test-scoped (it would duplicate org.osgi.framework.* on the runtime JCL and
       break framework.init()). So the host names LogLevel through this SLIM spec artifact — the log
       packages ALONE, no framework classes — as the currency of the framework log-level knob.
@@ -155,7 +155,7 @@
       </dependency>
       <!-- fabric8 Kubernetes client BOM: manages kubernetes-client + kubernetes-client-api + the
            kubernetes-model-* set + the httpclient backends in step; consumers declare the artifacts
-           version-less. cluster-edge compiles against it (provided), seed-master stages the closure
+           version-less. cluster-edge compiles against it (provided), seed-outcluster stages the closure
            (runtime) — the BouncyCastle staging pattern, for a first-class OSGi bundle graph. -->
       <dependency>
         <groupId>io.fabric8</groupId>
@@ -165,7 +165,7 @@
         <scope>import</scope>
       </dependency>
       <!-- The kubeconfig YAML parser fabric8 binds (not managed by the fabric8 BOM). The wrap
-           declares it compile so seed-master stages it as its own bundle. -->
+           declares it compile so seed-outcluster stages it as its own bundle. -->
       <dependency>
         <groupId>org.snakeyaml</groupId>
         <artifactId>snakeyaml-engine</artifactId>

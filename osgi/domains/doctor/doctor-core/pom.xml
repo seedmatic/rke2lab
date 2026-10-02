@@ -13,7 +13,7 @@
   <name>osgi/domains/doctor/doctor-core</name>
   <description>The doctor diagnostic model: the pure operator-runbook types (symptom, observation,
     assessment, prescription, remediation plan, medical record, health system, the specialists and
-    the clinical-access model) lifted from exec/seed-master into the OSGi world. Consumes the
+    the clinical-access model) lifted from exec/seed-outcluster into the OSGi world. Consumes the
     doctor-contract observation seam; the host implements it (DIP). Zero pulumi — the rendering engine and
     the live-observation adapters stay host.</description>
 
@@ -36,7 +36,7 @@
     </dependency>
     <!-- The gateway document codec: a dual-realm library bundle (embed; type=dual-realm). doctor-core
          IMPORTS its package (bnd emits Import-Package from the DocumentCodec usage), binding to the
-         OSGi jackson. The SAME bundle is kept flat in seed-master's uber-jar, binding the host
+         OSGi jackson. The SAME bundle is kept flat in seed-outcluster's uber-jar, binding the host
          jackson — one source, two realm copies, jackson's own treatment. -->
     <dependency>
       <groupId>io.seedmatic.rke2lab</groupId>

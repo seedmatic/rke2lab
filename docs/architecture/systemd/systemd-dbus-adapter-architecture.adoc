@@ -5,8 +5,8 @@
 == Overview
 
 The systemd adapter is how the bootstrap gate learns the master node's systemd
-state. It is an *OSGi edge* that runs *seed-master-side* (in the OSGi world inside
-`seed-master` and the CLIs) and opens a *dbus-over-TCP* connection TO the node. It
+state. It is an *OSGi edge* that runs *seed-outcluster-side* (in the OSGi world inside
+`seed-outcluster` and the CLIs) and opens a *dbus-over-TCP* connection TO the node. It
 is NOT a service that runs on the node.
 
 * `DbusSystemdProbe` (bundle `dbus-systemd-edge`) is the single door toward
@@ -38,7 +38,7 @@ link:../osgi/dbus-systemd-edge-spec.adoc[the dbus-systemd-edge spec].
 
 == Runtime placement and ownership
 
-* *The edge is seed-master-side, OSGi.* `DbusSystemdProbe` lives in the OSGi world
+* *The edge is seed-outcluster-side, OSGi.* `DbusSystemdProbe` lives in the OSGi world
   (`dbus-systemd-edge`), embedding the dbus-java stack as nested jars on its own
   `Bundle-ClassPath` so the transport `ServiceLoader` discovers `TcpTransportProvider`
   inside one classloader. Only Pulumi stays irreducibly host; this was the first
@@ -46,7 +46,7 @@ link:../osgi/dbus-systemd-edge-spec.adoc[the dbus-systemd-edge spec].
 * *systemd introspection is local to the node.* The node runs the dbus-TCP system
   bus; the edge reaches it over TCP. Knowledge runs downward: the systemd domain
   does not know a doctor auscultates it, nor that it belongs to a control-node.
-* *The control-node (`seed-master`) mediates by PORTS.* It is the one place that
+* *The control-node (`seed-outcluster`) mediates by PORTS.* It is the one place that
   knows BOTH `systemd` and `doctor`, so it makes the systemd domain speak (edge →
   `systemd-contract`) and — on a symptom — the domain itself consults the doctor
   through the neutral port; the host reaps only a coarse verdict.
@@ -58,7 +58,7 @@ Review question: are system boundaries and actors correct?
 [mermaid]
 ....
 flowchart LR
-  host["control-plane — HOST<br/>seed-master readiness gate"]
+  host["control-plane — HOST<br/>seed-outcluster readiness gate"]
   edge["systemd domain — EDGE (OSGi)<br/>DbusSystemdProbe, dbus-over-TCP client"]
   port["systemd domain — PORT<br/>systemd-contract (SystemdRuntimeProbe)"]
   bus["node — dbus-over-TCP system bus<br/>rke2lab-dbus-tcp-system-bus.service"]
@@ -84,7 +84,7 @@ Review question: are module boundaries and responsibilities clear?
 [mermaid]
 ....
 flowchart TB
-  subgraph proc["seed-master exec-jar (one process)"]
+  subgraph proc["seed-outcluster exec-jar (one process)"]
     seam["HOST — readiness gate"]:::host
     subgraph osgi["OSGi world"]
       edge["dbus-systemd-edge<br/>DbusSystemdProbe"]:::e
@@ -137,7 +137,7 @@ Review question: does runtime behavior and error handling match expectations?
 [mermaid]
 ....
 sequenceDiagram
-  participant Gate as seed-master readiness gate
+  participant Gate as seed-outcluster readiness gate
   participant Probe as DbusSystemdProbe (edge)
   participant Await as ReadinessAwait
   participant Dbus as org.freedesktop.systemd1 (over TCP)

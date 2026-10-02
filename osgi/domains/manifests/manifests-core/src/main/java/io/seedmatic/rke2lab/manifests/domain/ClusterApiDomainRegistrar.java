@@ -8,7 +8,6 @@ import io.seedmatic.rke2lab.manifests.units.clusterapi.ClusterApiManagementManif
 import io.seedmatic.rke2lab.manifests.units.clusterapi.ClusterApiOperatorManifestsUnit;
 import io.seedmatic.rke2lab.manifests.units.clusterapi.ClusterApiWorkloadManifestsUnit;
 import io.seedmatic.rke2lab.manifests.units.clusterapi.ClusterKubeconfigManifestsUnit;
-import io.seedmatic.rke2lab.manifests.units.clusterapi.ImageStateConfigMapManifestsUnit;
 import java.util.List;
 import org.osgi.service.component.annotations.Component;
 
@@ -25,7 +24,6 @@ public final class ClusterApiDomainRegistrar implements ManifestsDomainRegistrar
         ManifestDomainCatalog.CLUSTER_API,
         List.of(ManifestDomainCatalog.PLATFORM),
         List.of(
-            new ImageStateConfigMapManifestsUnit(),
             new ClusterApiOperatorManifestsUnit(),
             new ClusterKubeconfigManifestsUnit(),
             new ClusterApiManagementManifestsUnit(renderer),

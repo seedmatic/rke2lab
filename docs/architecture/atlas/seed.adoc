@@ -11,7 +11,7 @@ _L0 shows how this subsystem integrates with the others and the value that emerg
 The seed's orchestration, host-side — historically "the control-plane / host-pipeline" (three names,
 one thing: the process that orchestrates the seed and runs `pulumi preview`/`up`, deciding what crosses
 the system's two boundaries). Named `seed` here by its stable NATURE, not its transitional host
-(`seed-master`'s `controlplane` package is being redistributed into sub-modules). Folds in the
+(`seed-outcluster`'s `controlplane` package is being redistributed into sub-modules). Folds in the
 link:../bdd/bdd.adoc[BDD-as-engine design of record (OSGi-owned)], and carries the null-safety
 governance note.
 
@@ -23,7 +23,7 @@ services the host calls; see link:../osgi/controlplane-to-osgi-migration-spec.ad
 host). The seeding itself is expressed as BDD-as-engine — jGiven scenarios on the JUnit launcher
 (link:../bdd/bdd.adoc[design of record], GO); the fluent `during/then` grammar it was first
 built on is gone (its engine dissolved into manifests-core's internal synthesis, the boot into
-`FrameworkLaunch`). What remains is wiring seed-master's own live pipeline onto the shipped socle — the
+`FrameworkLaunch`). What remains is wiring seed-outcluster's own live pipeline onto the shipped socle — the
 ClusterSeed vertical, tracked below as the residue, not an avant→après evolution.
 ====
 
@@ -128,7 +128,7 @@ discovery record is link:../osgi/bdd-pipeline-poc-design.adoc[the bdd-pipeline P
 learnings E1–E10). The engine-lifecycle socle SHIPPED
 (link:../osgi/engine-lifecycle-spec.adoc[engine-lifecycle-spec]): the launcher, connection, lever,
 disciplines and a green connected `BulletproofPipeline` are live in `osgi/runtime/scenario-engine`. What
-remains is the ClusterSeed vertical (increment 2) that wires seed-master's own live pipeline onto that
+remains is the ClusterSeed vertical (increment 2) that wires seed-outcluster's own live pipeline onto that
 socle.
 
 The fluent `during/then` grammar the seeding was first built on is gone from the codebase — its engine
@@ -248,7 +248,7 @@ pipeline remains on the former Topic/State model — it is deleted from the code
 export runs in-container as the netplan scion (`netplan-bdd`) and the CLI drives it through the broker
 (see link:../osgi/netplan-bdd-spec.adoc[netplan-bdd-spec]). Both CLI execs (manifests-cli, netplan-cli)
 now DRIVE a host-flat jGiven scenario that sows through the broker — the same BDD-as-engine machinery
-seed-master uses — never a host-resolved typed domain service.
+seed-outcluster uses — never a host-resolved typed domain service.
 
 === The go/no-go gate — closed; the socle shipped
 
@@ -270,7 +270,7 @@ task — a further `StagingGate` on the existing ASM+`@GovernedBy` mould). The b
 .Governance note — the build-time laws (staging extension) + the null-safety javac gate
 ====
 The host doesn't only orchestrate at runtime; it is also where the build-time governance is enforced,
-because `seed-master` is the module that shades+stages the exec-jar and its dependency closure. Two
+because `seed-outcluster` is the module that shades+stages the exec-jar and its dependency closure. Two
 sibling enforcement families, cross-cutting rather than subsystems of their own:
 
 *Staging-extension laws (eight `StagingGate`s, ASM over staged bytecode, committed `0299913a`+):* each
@@ -283,14 +283,14 @@ discipline this view is written under); `INSTANCE_DISCIPLINE` (no exported `publ
 helper — ERROR, debt cleared); `REALM_BOUNDARY` (a class stays in its host/OSGi realm — ERROR, locked
 by 2C); `DUPLICATE_REALM_CLASS` (no class *accidentally* duplicated across realms — the jackson bug;
 exemptions derived from the seam surface); `REALM_WIRING_INTEGRITY` (the assembled
-`seed-master` `-exec.jar` boots in-JVM — every staged bundle resolves, flat + bundle exports disjoint —
+`seed-outcluster` `-exec.jar` boots in-JVM — every staged bundle resolves, flat + bundle exports disjoint —
 the only *runtime* law, an embedded-boot smoke test); `SYNTHESIS_PATTERN` (a manifests synthesis phase
 `implements Phase.Execution` and pushes through its `Sink`). The former `DUAL_REALM_JUSTIFIED` gate
 was *retired*: whether a `type=dual-realm` carrier is kept flat is a property of the (carrier,
 exec-assembly) pair, not of the carrier — so it is no longer gated but *decided* per assembly by the
 staging strategy (`DualRealmFlatDemand`), which keeps the flat copy only where a flat class
 references it (`manifests-ingress-contract` is flat in `manifests-cli`, folded OSGi-only in
-`seed-master`), else folds it OSGi-only like a `type=contract`. See
+`seed-outcluster`), else folds it OSGi-only like a `type=contract`. See
 link:../osgi/staging-gates-governance-spec.adoc[staging-gates governance].
 
 *Null-safety (2G, a javac gate — NOT a staging law):* JSpecify `@NullMarked` now covers doctor,
@@ -329,12 +329,12 @@ sequenceDiagram
   L->>S: play — a post-processor sets SeedRun before GIVEN
   Note over S: GIVEN bootstraps (narrated) — consumes the connection, does NOT open it
   S->>S: registerService(RunGate/OpaqueCellar/Parcel) — the RUN layer, from SeedRun
-  Note over S: WHEN (13) — worktree(survey→facts, entry gate) · fetch · bbox(network reservations) · cluster-pki(CA seal) · ghapp(register) · replicator-secrets(seal) · ghapp-webhook(reconcile) · incus-provision · host GROW (gated on a live deployment; reads cold/warm Growth, files GrowOutcome on the TRANSIENT bus) · kubeconfig · readiness budget tuned to growth (WARM⇒fail-fast, COLD⇒patient) · systemd + cluster (AWAIT convergence; TOLERATING sows, aggregated) — THEN store→tag, then the closing gate fails the run if any crossing FAILED
+  Note over S: WHEN (13) — worktree(survey→facts, entry gate) · fetch · bbox(network reservations) · cluster-pki(CA seal) · ghapp(register) · replicator-secrets(seal) · ghapp-webhook(reconcile) · incus-provision · host GROW (gated on a live deployment — reads cold/warm Growth, files GrowOutcome on the TRANSIENT bus) · kubeconfig · readiness budget tuned to growth (WARM⇒fail-fast, COLD⇒patient) · systemd + cluster (AWAIT convergence — TOLERATING sows, aggregated) — THEN store→tag, then the closing gate fails the run if any crossing FAILED
   S->>Sc: broker.sow(RunbookCoordinate(soil), txId + writeSetOf(trunk)) — the ALLER sense
   Note over Sc: scion CE poses the write-set as Entry(inherited=true), scion reads own>inherited>durable
   Sc->>Sc: scion CE AfterTestExecution — STRIP the inherited before the front-door serializes
   Sc-->>S: runbook JSON → ScenarioGraft grafts it (scion's OWN tags fold into the trunk)
-  CE->>CE: AfterTestExecution — ROLE=ROOT ⇒ drain trunk tags → OpaqueCellar (pass OR fail; TRANSIENT evicted)
+  CE->>CE: AfterTestExecution — ROLE=ROOT ⇒ drain trunk tags → OpaqueCellar (pass OR fail — TRANSIENT evicted)
   WE->>WE: afterAll — close the connection (ownsLifecycle)
 ----
 
@@ -421,7 +421,7 @@ concrete scenario instance those capabilities play.
 === Diagram R — the host realisation: from a fluent monolith to a gardening skeleton
 
 The host-side realisation of the target: `pulumi-edge` back in the build (the `Cellar` role realised —
-link:../osgi/host-cellar-realisation-spec.adoc[host Cellar realisation]), and `seed-master` reduced to
+link:../osgi/host-cellar-realisation-spec.adoc[host Cellar realisation]), and `seed-outcluster` reduced to
 the load-bearing skeleton the scenario map rebuilds on. The links this diagram ties: the
 link:../osgi/gardening-model-spec.adoc[gardening model] (roles), the
 link:../bdd/bdd.adoc#clusterseed-scenario-map[scenario map] (the ~13 steps), and the
@@ -431,7 +431,7 @@ link:../osgi/controlplane-to-osgi-migration-spec.adoc[migration spec] (host reac
 ----
 flowchart TB
   subgraph BEFORE[Before — the fluent host monolith]
-    b1["seed-master controlplane<br/>~95 files: pipeline/Topic grammar,<br/>host-side bbox/incus/systemd/readiness metier,<br/>IncusResourceBootstrap fuses graph + contacts + manifests"]
+    b1["seed-outcluster controlplane<br/>~95 files: pipeline/Topic grammar,<br/>host-side bbox/incus/systemd/readiness metier,<br/>IncusResourceBootstrap fuses graph + contacts + manifests"]
   end
   subgraph AFTER[After — gardening skeleton + door]
     a1["host runbook: gardening only<br/>Cellar.fetch · sow-and-graft callers (the worktree survey enforces the entry gate) · Cellar.store<br/>(the cellar bookends, between them cultivated fresh)"]
@@ -485,7 +485,9 @@ transactional]). What this PRESERVES, checked against the model:
   realised, the drain must reconstruct causality from the AMENDMENT graph (as this atlas already mandates —
   "read CAUSALLY from the amendment graph, not the runbook position"), NOT from fold order — a constraint
   the drain implementation must honour then. This is the one point tag+drain adds to the model.
-==== The `RunbookEnvelope` keeps `(runbook, consultations)`: consultations cross because the host
+====
+
+The `RunbookEnvelope` keeps `(runbook, consultations)`: consultations cross because the host
 GRAFTS them into the runbook; the harvest does not cross because its destination is the cellar, not the runbook.
 Two natures follow: RESOURCES (graph nodes + the `dependsOn` edge, read CAUSALLY from the amendment graph, not
 the runbook position) and top-level OUTPUTS (a PROJECTION of the resources — the read façade, host, no métier).
@@ -694,7 +696,7 @@ link:../osgi/host-cellar-realisation-spec.adoc#host-tree-provisioning[host-cella
 
 CAUTION: *CORRECTION — the host tree belongs to INCUS, and the "host GROW" box is
 OSGi-side, not host-flat.* The first preview proved the host-entry CRUD cannot sit in a host-flat
-reader: `HostTreeHead` (flat, in `seed-master`) decoded `Host*Entry` from `manifests-contract` (a
+reader: `HostTreeHead` (flat, in `seed-outcluster`) decoded `Host*Entry` from `manifests-contract` (a
 `type=contract`, bundle-only bundle) — a realm leak that is a `NoClassDefFoundError` at runtime, the
 same anti-pattern as the former `EntryGatePolicyEnforcer → ManifestUpdateGate` leak (since removed). And the OWNER is incus, not
 manifests: the host tree (`host.N.staging.d` entire) is what the INCUS INSTANCE MOUNTS — incus picks

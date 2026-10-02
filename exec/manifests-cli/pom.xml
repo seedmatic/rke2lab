@@ -15,7 +15,7 @@
   <name>exec/manifests-cli</name>
   <description>Manifests CLI: the executable north-adapter that drives the manifests core
     (osgi/manifests/manifests-core) for ad-hoc synthesis (`java -jar … synthesize`). Boots an
-    embedded Felix from the bundles staged in its -exec jar (the same boot seam as seed-master) and
+    embedded Felix from the bundles staged in its -exec jar (the same boot seam as seed-outcluster) and
     reads ManifestSynthesisService from the registry — no flat ServiceLoader.</description>
 
   <dependencies>
@@ -74,7 +74,7 @@
     </dependency>
 
     <!-- BDD-as-engine: the CLI drives ManifestsCliScenario on the embedded JUnit launcher (the same
-         machinery seed-master uses), sowing the `manifests` coordinate through the broker instead of
+         machinery seed-outcluster uses), sowing the `manifests` coordinate through the broker instead of
          resolving a typed domain service host-side. -->
     <!-- The launcher engine + OSGi connection contract (JUnitLauncherCore transits via this): the
          host scenario reaches OsgiConnection/SeedRuntime/ScenarioCellar/RunRole/TxIdSeed here. -->
@@ -163,7 +163,7 @@
     <!-- bouncycastle on the FLAT host classpath so BootPlanner can system-export the packages
          ghapp-edge's GithubAppMinter imports (JWT signing from the App's RSA private-key PEM):
          org.bouncycastle.{asn1.pkcs, jce.provider, openssl, openssl.jcajce}. Without them the boot
-         fails deriving system.packages.extra (ghapp-edge unresolved) — the same reason seed-master
+         fails deriving system.packages.extra (ghapp-edge unresolved) — the same reason seed-outcluster
          carries them for cluster-pki-core. runtime scope: the host never compiles against bc. -->
     <dependency>
       <groupId>org.bouncycastle</groupId>
@@ -228,7 +228,7 @@
     </dependency>
     <!-- junit-jupiter-params staged as a bundle (runtime): jgiven-junit5 imports the params packages
          MANDATORY in its bytecode, so the wire must resolve in-framework though we run no
-         @ParameterizedTest. Same treatment as seed-master. -->
+         @ParameterizedTest. Same treatment as seed-outcluster. -->
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter-params</artifactId>
@@ -243,7 +243,7 @@
          framework log-level knob's currency, so the host flat classpath must carry it or the boot
          hits NoClassDefFoundError. The SLIM spec artifact (log packages ALONE — no
          org.osgi.framework.*), so it cannot shadow the framework classes felix.framework provides.
-         Same declaration seed-master carries. -->
+         Same declaration seed-outcluster carries. -->
     <dependency>
       <groupId>org.osgi</groupId>
       <artifactId>org.osgi.service.log</artifactId>

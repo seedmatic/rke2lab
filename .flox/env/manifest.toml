@@ -28,7 +28,16 @@ graphviz.pkg-path = "graphviz"
 ## it merged — the opposite of what a lock is for here. The branch must be PUSHED for this to
 ## resolve. Bumping: `flox upgrade incus-client`. At merge, all three of these refs drop the branch
 ## together.
-incus-client.flake = "github:seedmatic/rke2lab/feature/nixos-node-substrate#incus-client"
+##
+## ⚠️ This pin ROTS SILENTLY, and it did: all three tracked `feature/nixos-node-substrate` long after
+## that branch was retired, so the dev loop kept resolving tools built from a dead line while the work
+## lived elsewhere — no error, just the wrong binary (measured 2026-09-29; ndh's flake.nix carries the
+## same lesson for its own rke2lab input, where a `nix flake update` was advancing along that dead
+## branch). There is NO command-line override for a flox flake ref — `flox activate` takes only
+## --dir/--reference/--mode/--generation and `flox upgrade` takes no ref — so unlike a nix flake input
+## (`--override-input`), the manifest is the ONLY lever. Which is why the rename must land HERE, in the
+## same change as the branch it names.
+incus-client.flake = "github:seedmatic/rke2lab/feature/viewpoint-separation#incus-client"
 
 ## Maven-build toolchain consumed from the rke2lab flake, which is the single
 ## source of truth (see `mavenToolchain` / `devShells.default` in flake.nix).
@@ -46,15 +55,17 @@ maven.flake = "github:seedmatic/rke2lab#maven"
 shfmt.flake = "github:seedmatic/rke2lab#shfmt"
 shellcheck.flake = "github:seedmatic/rke2lab#shellcheck"
 claude-code.pkg-path = "claude-code"
-flux9s.flake = "github:seedmatic/rke2lab/feature/nixos-node-substrate#flux9s"
+flux9s.flake = "github:seedmatic/rke2lab/feature/viewpoint-separation#flux9s"
 # ndh's manage-tailnet on PATH, so the incus GROW's local.Command prunes stale
 # tailscale devices on a plain `pulumi up` (not only via `nix run .#deploy`).
 # darwin-only: ndh exposes the package for aarch64-darwin (the operator host) alone.
-manage-tailnet.flake = "github:seedmatic/rke2lab/feature/nixos-node-substrate#manage-tailnet"
+manage-tailnet.flake = "github:seedmatic/rke2lab/feature/viewpoint-separation#manage-tailnet"
 manage-tailnet.systems = ["aarch64-darwin"]
 k9s.pkg-path = "k9s"
 tektoncd-cli.pkg-path = "tektoncd-cli"
 clusterctl.pkg-path = "clusterctl"
+flox-mcp-server.pkg-path = "flox/flox-mcp-server"
+flox-mcp-server.pkg-group = "flox-mcp-server"
 
 
 ## Environment Variables ---------------------------------------------
@@ -113,6 +124,11 @@ on-activate = """
 ## ------------------------------------------------------------------
 [include]
   environments = [
+    ## The docs toolchain: asciidoctor-with-extensions + mermaid-cli, and the profile hook
+    ## that points puppeteer at a cached headless shell. Included rather than restated here
+    ## — the fleet env is where a SHARED toolchain lives, and `docs/` is rendered from more
+    ## repos than this one. The doc-standards skill's validation gate depends on it.
+    { dir = "../.flox.d/asciidoc" },
     { dir = "../.flox.d/git" },
     { dir = "../.flox.d/jdk" },
     { dir = "../.flox.d/k8s" },

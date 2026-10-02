@@ -46,7 +46,7 @@ class ManifestsShapeReflectorTest {
     assertEquals("object", schema.path("type").asText());
     // Option A: the FACET is ONE composite 'facets' component at top level (the whole
     // rke2lab:manifests: subtree the host contributes verbatim, bound to one field); the yaml
-    // concern keys (debug, delivery, workloadTargets) live under it.
+    // concern keys (debug, delivery, incusTargets) live under it.
     assertTrue(
         schema.path("properties").has("facets"), "schema must name the composite 'facets' concern");
     assertTrue(reaped.payload().contains("debug"), "schema must name the 'debug' concern");

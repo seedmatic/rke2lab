@@ -1,4 +1,4 @@
-= Host Cellar realisation — the PULUMI cellar for seed-master (one of several gardening versions)
+= Host Cellar realisation — the PULUMI cellar for seed-outcluster (one of several gardening versions)
 :toc: left
 :toclevels: 3
 
@@ -8,9 +8,9 @@
 durable Pulumi backend and is published into Felix by `registerService(OpaqueCellar.class, …)` at the
 GIVEN of `ClusterSeedScenario`; the OSGi consumers resolve the cellar and reach it (§
 <<every-scion-contributes>>). This spec realises the *CELLAR role* of
-link:gardening-model-spec.adoc[the gardening model] over the Pulumi backend, *for the seed-master
+link:gardening-model-spec.adoc[the gardening model] over the Pulumi backend, *for the seed-outcluster
 gardening* — the *how*, not the model (the model owns the roles, the multiplicity rule, the opacity; this
-doc does not re-derive them). It is one realisation of the cellar role among several: the seed-master
+doc does not re-derive them). It is one realisation of the cellar role among several: the seed-outcluster
 gardening conserves over Pulumi (this doc); the *cluster gardening will conserve over a git-oriented
 storage* — a separate realisation of the SAME role, not covered here. So this is "the Pulumi cellar",
 never "the cellar". It is the sibling of link:seed-broker-spec.adoc[the seed-broker spec] (which realises
@@ -54,7 +54,7 @@ map + open questions there are closed.
 
 == Why this is the first step (how we got here)
 
-Attacking the host top-down (`Main` → `ApplicationPipeline` → …) the build stops BELOW seed-master, in
+Attacking the host top-down (`Main` → `ApplicationPipeline` → …) the build stops BELOW seed-outcluster, in
 `pulumi-edge`, on `package io.seedmatic.rke2lab.doctor.port does not exist` /
 `io.seedmatic.rke2lab.doctor.records does not exist`. Those packages were de-seamed into
 `doctor.contract` (records fused, the `-port` seam dissolved). Three `pulumi-edge` classes still import
@@ -1006,7 +1006,7 @@ gain a delta patch would buy).
 The publish/validate/mount split above (and the "two reads, two writers" § earlier) said the HOST at
 grow reads the head and writes `HostLiveEntry`/`HostDriftEntry`, with `HostTreeHead` folding the
 timeline *host-side*. Playing the first preview PROVED that wrong: `HostTreeHead` lived flat in
-`seed-master` and decoded `HostStagingEntry`/`HostLiveEntry`/`HostDriftEntry` — types in
+`seed-outcluster` and decoded `HostStagingEntry`/`HostLiveEntry`/`HostDriftEntry` — types in
 `manifests-contract`, a `type=contract` bundle (staged, NOT flat). A flat class touching a bundle-only
 contract type is a REALM leak; at runtime it is a `NoClassDefFoundError`. It is the SAME anti-pattern
 as the former host-flat `EntryGatePolicyEnforcer → ManifestUpdateGate` leak (since removed) — host-flat
@@ -1059,7 +1059,7 @@ the instance grow stay DISTINCT — `prepare` will gain its own steps (cross-run
 aggregation) and diverge; the shared trio shape is today's coincidence, not an invariant.
 
 *What this deletes.* `HostTreeHead`, `HostSlotSelector`, `HostTreeDiffer`, `HostTreeDelta`,
-`HostTreeDeltaRenderer` in `seed-master` (host-flat, the I6a/b/c code) + `HostTreeChecksummer` in
+`HostTreeDeltaRenderer` in `seed-outcluster` (host-flat, the I6a/b/c code) + `HostTreeChecksummer` in
 `manifests-core` — all moved into `incus-core`. The host keeps ONLY the Pulumi bind (mount
 `host.live.d` into the instance, I6e) — no domain vocabulary crosses to the flat realm. The
 REALM_BOUNDARY gate (fixed the same day to see `type=contract`, not only `type=domain`) now WARNs on
@@ -1072,7 +1072,7 @@ writes the drift" is superseded by this: read OSGi-side (an incus scenario), the
 ==== BootstrapPaths — the WHOLE topology is computed OSGi-side (the realm criterion, not the resource one)
 
 The inversion ("incus chooses the slot, then hands the SOIL") forces a decision on `BootstrapPaths`
-(the 17-root provisioning topology, `seed-master`). An earlier draft split it BY ROLE (layout → incus,
+(the 17-root provisioning topology, `seed-outcluster`). An earlier draft split it BY ROLE (layout → incus,
 host-view stays), on the belief that `fromLocalWorktree` (the DARWIN-local view, where the Mac writes)
 and `pathOn` (the NFS DARWIN→NIXOS translation) were host-IRREDUCIBLE. *That belief used the wrong
 criterion.* The host↔OSGi boundary is a CLASSLOADER REALM (which TYPES you may name), NOT a resource
@@ -1350,7 +1350,7 @@ verify -Dmaven.build.cache.skipCache=true -DskipTests=false` (NEVER `install`; c
 . *Compile `pulumi-edge` green.* This is the milestone: the doctor-frontier host impl exists, the dead
   doctor.port/records imports are gone.
 
-. *Then re-run the seed-master compile* to surface the NEXT wall (bbox.port, FrameworkLaunchPipeline,
+. *Then re-run the seed-outcluster compile* to surface the NEXT wall (bbox.port, FrameworkLaunchPipeline,
   the fluent `pipeline.*`) — the top-down march resumes from a compiling `pulumi-edge`.
 
 NOTE: STEP 2 (register the Cellar into Felix at boot) and the domain-by-domain BDD migration (the

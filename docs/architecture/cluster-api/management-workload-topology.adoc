@@ -139,7 +139,7 @@ the management plane.
 * *Placement*: one `-mgmt` per bare-metal (`bioskop-mgmt`, `nikopol-mgmt`), plus each host's
   `-wrkld`. `bioskop-mgmt` is the sedentary one and the one that seeds; `nikopol-nixos` is
   <<itinerant,itinerant>>.
-* *Cold start vs intention*: `bioskop-mgmt` is cold-started by `seed-master` (`Pulumi.dev.yaml` seeds
+* *Cold start vs intention*: `bioskop-mgmt` is cold-started by `seed-outcluster` (`Pulumi.dev.yaml` seeds
   `host: bioskop` / `role: mgmt` — the identity atoms; there is no `cluster` key). Every other cluster,
   `nikopol-mgmt` included, is born from a *declared intention* rendered by the management cluster.
 
@@ -756,7 +756,7 @@ sequenceDiagram
     actor Op as Operator
     participant Pulumi as Pulumi (bootstrap)
     participant Incus
-    participant Render as seed-master render
+    participant Render as seed-outcluster render
     participant CAPN as CAPI/CAPN (in-cluster)
     Op->>Pulumi: cold-start (destroy + recreate)
     Note over Incus: workload VMs SURVIVE (autonomous)<br/>mgmt etcd is wiped
@@ -846,7 +846,7 @@ Caveats that gate it:
   managed" covers the k8s/LXC layer only; there is always an operator base under it.
 * *Grow-then-adopt, not grow-eliminated.* Cold start still needs the management master to EXIST before CAPI
   can own it — Pulumi/nix births it (the nix floor), then the render adopts the k8s/LXC layer on top. This
-  does NOT introduce an ephemeral bootstrap and does NOT relocate the seed-master role: Pulumi stays the
+  does NOT introduce an ephemeral bootstrap and does NOT relocate the seed-outcluster role: Pulumi stays the
   bootstrap exactly as before, adoption just completes the handoff to in-cluster CAPI afterwards.
 
 [[operating-model]]
@@ -944,10 +944,10 @@ link:../osgi/seed-broker-spec.adoc#in-cluster-cellar-asset[seed-broker-spec — 
 [[seeding-management]]
 == Seeding the management cluster
 
-The management cluster's single control node is always *nix-seeded* by seed-master — CAPI cannot
+The management cluster's single control node is always *nix-seeded* by seed-outcluster — CAPI cannot
 create the cluster that runs CAPI (a chicken-and-egg), so the management tier is the one place the
-seed-master path stays load-bearing. In this model seed-master *is* the management-cluster seeder:
-`seed-master` becomes `seed-mgmt` in effect — it seeds the cluster that holds the *global vision*
+seed-outcluster path stays load-bearing. In this model seed-outcluster *is* the management-cluster seeder:
+`seed-outcluster` becomes `seed-mgmt` in effect — it seeds the cluster that holds the *global vision*
 (the CAPI resources for every workload), not "the master node of a cluster" (a leftover of the
 dual-role model).
 
@@ -993,7 +993,7 @@ pinned to the bare-metal the operator happened to run `pulumi up` on.
 == Materialization consequences
 
 NOTE: The concrete *delivery* of these materialized sets — per-cluster rendered branches
-`manifests/<host>-<role>` (history-preserving fast-forward push), consumed by `seed-master` (`-mgmt`) and CAPI/CAPN
+`manifests/<host>-<role>` (history-preserving fast-forward push), consumed by `seed-outcluster` (`-mgmt`) and CAPI/CAPN
 (`-wrkld`) — is specified in link:manifests-rendered-branches.adoc[Manifests Rendered Branches]. The
 `gitops/workloads/…` path model described elsewhere is superseded by that branch-per-cluster model.
 
@@ -1009,7 +1009,7 @@ This topology changes three materialization surfaces:
 . *Disko — per-host, across two bare-metals.* `nix-darwin-home`'s `zfs-disko-config.nix` is
   currently a single-cluster, hand-listed tree (`rke2/control-nodes/{master,peer1,peer2,peer3}/containerd`,
   `mountpoint=legacy`; the guest *mounts* it, it does not create it). It stops being a static
-  literal: the layout becomes a *dataplan* owned by rke2lab `seed-master` and pulled into ndh's
+  literal: the layout becomes a *dataplan* owned by rke2lab `seed-outcluster` and pulled into ndh's
   `catalog.datasets`, materialised per host (see
   link:../patterns/dataplan-single-source.adoc[Dataplan SSOT]). The root renames `rke2` -> `rke2lab`
   (owner, not the distro); the tree gains a cluster dimension (`rke2lab/<cluster>/<node>/containerd`)

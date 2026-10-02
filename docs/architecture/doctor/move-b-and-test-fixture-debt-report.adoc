@@ -33,14 +33,14 @@ the original plan drew.
   the 5 readers, the 2 specialists)
 
 | Tests moved
-| **0** — all 52 files under `exec/seed-master/src/test/.../controlplane/bdd` stayed put
+| **0** — all 52 files under `exec/seed-outcluster/src/test/.../controlplane/bdd` stayed put
 
 | Shared test fixtures inventoried during Move A
 | **0** — never looked at
 |===
 
-So `doctor-port` and `doctor-core` ship today with **empty `src/test`**, while seed-master's test
-tree holds the tests for types that no longer live in seed-master.
+So `doctor-port` and `doctor-core` ship today with **empty `src/test`**, while seed-outcluster's test
+tree holds the tests for types that no longer live in seed-outcluster.
 
 == The production internal edge — the uncontested part of Move B
 
@@ -96,7 +96,7 @@ The 52 bdd test files fall into four families, by what they actually test:
   `MedicalRecordDumpTest`, `PulumiInterventionLedgerWriterLiveTest`, `RecordInterventionCommandTest`,
   the systemd/cluster `Scenario` tests
 | ~6
-| stay in seed-master — they test seed-master's own classes
+| stay in seed-outcluster — they test seed-outcluster's own classes
 
 | *Fixtures* (no `@Test`): `ReferralReplies`, `FakeClusterReadinessProbes`,
   `FakeSystemdAdapterProbes`, `GrpcChannelNoiseCapture`
@@ -204,24 +204,24 @@ re-litigation; the implementation fork the plan left open is now closed.
 * *`DoctorAssembly`* (host) supplies only host impls: `LiveMedicalRecordRegistry`,
   `PulumiInterventionLedgerWriter` (or a no-op), `DbusTcpSpecialist`, the patient — and runs the
   drift-at-reconstruction review THROUGH the contract.
-* *Consequence (deliberate)*: seed-master imports ZERO actor from commit 1 onward — this is what
+* *Consequence (deliberate)*: seed-outcluster imports ZERO actor from commit 1 onward — this is what
   makes commit 3 mechanical.
 * *commit-3 mechanism = package-private, NOT bnd `Export-Package` narrowing.* The caveat below is
   right: bnd governs OSGi resolution, not the Maven compile classpath. So commit 3 drops `public`
   from the 12 actors (all in the one package `io.seedmatic.rke2lab.doctor`); the Java compiler then
-  forbids importing them from seed-master (another module) at BOTH compile and OSGi level, while the
+  forbids importing them from seed-outcluster (another module) at BOTH compile and OSGi level, while the
   co-located doctor-core tests (relocated in commit 2) still see them white-box. No ArchUnit, no
   api/impl split. `Doctor` stays the only public assembly type; the concrete `Generalist` it returns
   becomes package-private ("public interface, package-private impl"). This is exactly why 3 depends
   strictly on 2.
 
 The "HealthSystem.admit direct" alternative is rejected: it would leave HealthSystem / DriftSpecialist
-/ the two specialists imported by seed-master, breaking commit 3.
+/ the two specialists imported by seed-outcluster, breaking commit 3.
 
 [discrete]
 ==== Historical: the conflict that drove the decision
 
-The Placement-2 plan's verified-facts say `DoctorAssembly` (which lives in seed-master, i.e. OUTSIDE
+The Placement-2 plan's verified-facts say `DoctorAssembly` (which lives in seed-outcluster, i.e. OUTSIDE
 the doctor-core bundle) calls `HealthSystem.admit(Patient, MedicalRecordRegistry, List<Specialist>,
 DriftSpecialist)` and therefore does `new NetworkSpecialist()`, `new ClusterSpecialist()`,
 `new DriftSpecialist(...)`.
@@ -244,7 +244,7 @@ pushing it into doctor-core would re-couple the core to BootstrapConfig, which t
   Generalist/HealthSystem INTERNALLY and returns the `Generalist` (which implements the contract).
   `DoctorAssembly` supplies only the host impls (`LiveMedicalRecordRegistry`,
   `PulumiInterventionLedgerWriter`/no-op, `DbusTcpSpecialist`, the patient).
-| seed-master imports ZERO actor from commit 1 onward — more than commit 1 targeted, and exactly what
+| seed-outcluster imports ZERO actor from commit 1 onward — more than commit 1 targeted, and exactly what
   makes commit 3 mechanically possible without re-touching production code. Drift-at-reconstruction
   review then runs entirely THROUGH the contract (`recordForCurrentPatient()` +
   `reviewOpenProblems(record, ledger)`); host just loads the ledger via `InterventionLedgerSource`.
@@ -254,7 +254,7 @@ pushing it into doctor-core would re-couple the core to BootstrapConfig, which t
 | `DoctorAssembly` calls `HealthSystem.admit` + `new Network/ClusterSpecialist` + `new DriftSpecialist`,
   to the letter of the verified-facts.
 | Closer to today's code, but commit 3 CANNOT hide HealthSystem / DriftSpecialist / the two specialists
-  — they stay imported by seed-master. Breaks the 3 ⟶ 2 ⟶ B-prod chain at (3).
+  — they stay imported by seed-outcluster. Breaks the 3 ⟶ 2 ⟶ B-prod chain at (3).
 |===
 
 Sub-question (rides on the above): *the specialist roster*. Network+Cluster are parameter-free. Either
@@ -265,9 +265,9 @@ config-bound `DbusTcpSpecialist` (keeps Network/Cluster hideable in commit 3) �
 
 === A caveat for commit 3 (flagged now, not solved here)
 
-doctor-core is a Maven *compile* dependency of seed-master. A narrowed bnd `Export-Package` governs OSGi
+doctor-core is a Maven *compile* dependency of seed-outcluster. A narrowed bnd `Export-Package` governs OSGi
 resolution BETWEEN bundles, not the Maven compile classpath. Making the actors truly unimportable from
-seed-master's compiler likely needs an api/impl split or an ArchUnit rule, not bnd alone. To be scoped in
+seed-outcluster's compiler likely needs an api/impl split or an ArchUnit rule, not bnd alone. To be scoped in
 commit 3 — but the `Doctor` façade above is the prerequisite under any mechanism.
 
 == RESOLVED — commit 1 (B-prod) fine breakdown
@@ -279,7 +279,7 @@ Validated by reading every call site; ready to implement once the fork above is 
 *doctor-core*: `Generalist implements ConsultingService` (signatures already identical, the 4
 methods already public); + `Doctor` assembly façade (if the façade option is chosen).
 
-*seed-master production* (target: zero doctor-core actor import):
+*seed-outcluster production* (target: zero doctor-core actor import):
 
 * `controlplane/bdd/DoctorAssembly.java` (NEW) — absorbs `bindMedicalRecord` + `currentPatient` +
   `reviewDriftAtReconstruction` from `BootstrapPipeline`; supplies host impls; returns a
@@ -292,7 +292,7 @@ methods already public); + `Doctor` assembly façade (if the façade option is c
 * `resources/{ResourceManager,ResourceCreationPipeline}.java` — `Generalist` param → contract
   (pass-through).
 
-*seed-master tests touched by the move (minimum; the bulk relocates in commit 2)*:
+*seed-outcluster tests touched by the move (minimum; the bulk relocates in commit 2)*:
 
 * `DriftReviewWiringTest` + `DriftReviewReconstructionLiveTest` — rewire from `HealthSystem.admit` +
   `BootstrapPipeline.reviewDriftAtReconstruction` onto `DoctorAssembly`'s injection seam; lose their
@@ -301,10 +301,10 @@ methods already public); + `Doctor` assembly façade (if the façade option is c
   implements ConsultingService` it stays assignable and compiles unchanged in commit 1 (it
   relocates in commit 2). Left as-is.
 
-*commit 1 verification*: `flox activate -- ./mvnw -pl :doctor-core,:doctor-port,:seed-master -am clean
+*commit 1 verification*: `flox activate -- ./mvnw -pl :doctor-core,:doctor-port,:seed-outcluster -am clean
 package -Dmaven.build.cache.skipCache=true -DskipTests=false` + count surefire reports; grep proves zero
 `import io.seedmatic.rke2lab.doctor.{HealthSystem,Generalist,DriftSpecialist,ClusterSpecialist,
-NetworkSpecialist,ClinicalAccess,GrantPolicy,Grant}` in `seed-master/src/main`.
+NetworkSpecialist,ClinicalAccess,GrantPolicy,Grant}` in `seed-outcluster/src/main`.
 
 == Related
 

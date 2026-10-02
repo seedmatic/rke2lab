@@ -30,8 +30,8 @@ import software.constructs.Construct;
  * Renders the RKE2 boot config ({@code config.yaml.d} fragments) for a MANAGEMENT render — the
  * management cluster serves the config of everything it manages. It emits fragments for the SUBJECT
  * (only when the subject is itself a management cluster — a workload's config lives on its
- * manager's branch, not its own) PLUS every {@link ManifestSynthesisContext#workloadTargets()
- * workload target}. A workload render produces nothing here.
+ * manager's branch, not its own) PLUS every {@link ManifestSynthesisContext#ownedChildren() owned
+ * child}. A workload render produces nothing here.
  *
  * <p>The fragments are the CONTROL-PLANE pool's config: the only consumers of these branch
  * fragments are control-plane nodes. Workers are bootstrap-injected by CAPRKE2 (their config rides
@@ -66,14 +66,14 @@ public final class RuntimeRke2ConfigManifestsUnit extends AbstractManifestsUnit 
   protected void doSynthesize(final Construct scope, final ManifestsUnitContext context) {
     final ManifestSynthesisContext synth = ManifestSynthesisContext.current();
     // The clusters this management render serves config for: the subject IFF it is a management
-    // cluster (a workload's config lives on its manager's branch), plus every workload target.
+    // cluster (a workload's config lives on its manager's branch), plus every child it OWNS.
     final Set<String> clusters = new LinkedHashSet<>();
     final String subject =
         synth.bootstrapIdentity().clusterNameOrDefault(DefaultNodeEnvContext.DEFAULT_CLUSTER_NAME);
     if (ClusterRole.of(subject) == ClusterRole.MGMT) {
       clusters.add(subject);
     }
-    synth.workloadTargets().forEach(target -> clusters.add(target.clusterName()));
+    synth.ownedChildren().forEach(child -> clusters.add(child.clusterName()));
     clusters.forEach(cluster -> renderControlNodeConfig(scope, cluster));
   }
 
@@ -171,21 +171,23 @@ public final class RuntimeRke2ConfigManifestsUnit extends AbstractManifestsUnit 
 
   /**
    * The cert's SAN set, a cluster-wide SUPERSET valid for every control-plane node regardless of
-   * which one this render's node is: the VIP (kube-vip binds the apiserver here; CAPI's
-   * clustercache dials it), every canonical node's fabric FQDN (rke2 auto-adds the bare hostname
-   * but NOT the FQDN), the node-network gateway, and the loopback set. rke2 auto-adds each node's
-   * own IP.
+   * which one this render's node is: the VIP as an address AND as a name ({@link
+   * ClusterNetworkBlueprint.NamePlan#vipFabricFqdn}), the node-network gateway, the loopback set,
+   * and — only for a PET cluster — each canonical node's fabric address and FQDN. rke2 auto-adds
+   * each node's own IP and bare hostname, but not the FQDN.
    *
    * <p>The VIP is what almost everything dials — the deterministic entry is the management
    * cluster's fixed address, and from there each cluster is reached by ITS VIP and its nodes are
-   * read off its own API. The FQDN covers the one step that precedes all of that: first contact
-   * with a node before any cluster answers. It replaces an mDNS {@code .local} name, which could
-   * only ever have been resolved by an asker on the same L2 as the node — no longer true once a
-   * node lives in the fabric.
+   * read off its own API. Until 2026-09-28 the VIP was in here as an ADDRESS ONLY, which is why the
+   * endpoint could not be named: a cert cannot vouch for a name it does not carry, so {@code
+   * controlPlaneEndpoint} had to stay an IP and every audience invented its own context form. The
+   * name is what lets that collapse to one.
    *
-   * <p>The node's fabric address joins them only when a reservation can bind to it ({@code
-   * fabricMacIsPredictable}). For a cattle cluster it would be a SAN for an address nothing ever
-   * answers on — which is what the previous per-node LAN address was, for every workload node.
+   * <p>The per-node entries ride {@code fabricMacIsPredictable} together, because both the address
+   * and the name only exist where a reservation binds them. A cattle cluster gets neither: its
+   * control plane is created by CAPI under a generated name, so these would be SANs for things
+   * nothing answers on — which is what the previous per-node LAN address was, for every workload
+   * node.
    */
   private static List<Object> tlsSanSuperset(
       final String cluster, final ClusterNetworkBlueprint blueprint) {
@@ -195,14 +197,29 @@ public final class RuntimeRke2ConfigManifestsUnit extends AbstractManifestsUnit 
     sans.add("0.0.0.0");
     sans.add("127.0.0.1");
     sans.add(blueprint.vip().vipHostInetaddr().getHostAddress());
+    // The endpoint's NAME beside its address — the cluster's one form, valid whatever creates its
+    // nodes.
+    sans.add(blueprint.names().vipFabricFqdn());
     sans.add(blueprint.nodeNetwork().nodeGatewayInetaddr().getHostAddress());
     if (blueprint.fabricMacIsPredictable()) {
       sans.add(blueprint.fabric().hostInetaddr().getHostAddress());
-    }
-    for (final String node : ClusterNetworkBlueprint.CANONICAL_NODE_NAMES) {
-      final ClusterNetworkBlueprint per =
-          ClusterNetworkBlueprint.builder().cluster(cluster).node(node).deriveRecipeModel().build();
-      sans.add(per.names().nodeFabricFqdn());
+      // The per-node FQDNs ride the SAME predicate as the fabric address, and for the same reason:
+      // a name is only in the zone if something binds it there. A pet cluster's nodes are pinned by
+      // MAC reservation under exactly these names; a cattle cluster's control plane is created by
+      // CAPI under a generated name (`<cluster>-control-plane-<rand>`), so the canonical roster
+      // named six nodes that never exist and missed the one that does — measured 2026-09-28, where
+      // `bioskop-wrkld-master.bioskop` was NXDOMAIN while the live node answered under its
+      // generated name. Such a cluster is reached by `vipFabricFqdn` above, which is why dropping
+      // these costs it nothing.
+      for (final String node : ClusterNetworkBlueprint.CANONICAL_NODE_NAMES) {
+        final ClusterNetworkBlueprint per =
+            ClusterNetworkBlueprint.builder()
+                .cluster(cluster)
+                .node(node)
+                .deriveRecipeModel()
+                .build();
+        sans.add(per.names().nodeFabricFqdn());
+      }
     }
     return List.copyOf(sans);
   }

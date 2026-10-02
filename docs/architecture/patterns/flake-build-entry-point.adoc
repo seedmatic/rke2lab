@@ -8,14 +8,14 @@
 [NOTE]
 ====
 *Status:* IMPLEMENTED. The design below is substantially in the code — top-level `flake.nix`
-exposes `.#seed-master`, `.#manifests-cli` (the manifests exec jar), `.#flox-nri-plugin` (+`-debug`),
+exposes `.#seed-outcluster`, `.#manifests-cli` (the manifests exec jar), `.#flox-nri-plugin` (+`-debug`),
 `.#dataplanJson`, and the `.#deploy` app. What remains "design" here is the transition prose, not the
 shape.
 ====
 
 This design makes the top-level `flake.nix` the authoritative *deploy/release*
 build entry point for rke2lab, with Maven kept as the *developer inner loop*.
-The deployable artifacts — the seed-master bootstrap jar, the manifests jar, and
+The deployable artifacts — the seed-outcluster bootstrap jar, the manifests jar, and
 the flox NRI plugin — become flake outputs built into `/nix/store`, so what runs
 is content-addressed, reproducible, and identical across machines.
 
@@ -27,7 +27,7 @@ configured linux-builder moves that failure left.
 
 === Scope and non-goals
 
-* *In scope*: flake outputs for `seed-master`, `manifests`, `flox-nri-plugin`
+* *In scope*: flake outputs for `seed-outcluster`, `manifests`, `flox-nri-plugin`
   (+`-debug`); Pulumi binary resolution from a store-built artifact; the
   developer-vs-deploy role split.
 * *Out of scope*: relocating where the bootstrap *runs*. Pulumi continues to run
@@ -43,7 +43,7 @@ output (`nix eval .#netplanJar.name` -> `"rke2lab-netplan"`). `networkBlueprintY
 then runs that jar to generate YAML consumed by nix-darwin-home. So "Maven runs
 inside nix, artifact comes from the store" is established here, not novel.
 
-Outputs today (implemented): `[ seed-master, manifests-cli, flox-nri-plugin (+-debug), dataplanJson,
+Outputs today (implemented): `[ seed-outcluster, manifests-cli, flox-nri-plugin (+-debug), dataplanJson,
 incus-client, planJar, networkBlueprintYaml, networkBlueprintJson ]`, plus the `.#deploy` app.
 
 Two enabling facts are already true:
@@ -76,7 +76,7 @@ is the right entry point and a raw Maven goal is not.
 | Reproducibility | "works on my machine" risk | pinned, content-addressed
 | Cross-compile plugin | impossible on darwin | natural (routes to linux-builder)
 | Deploy artifact | `target/*.jar` (mutable, can be stale) | store path (immutable, is-what-ran)
-| Entry command | `./mvnw -pl :seed-master` | `nix build .#seed-master`
+| Entry command | `./mvnw -pl :seed-outcluster` | `nix build .#seed-outcluster`
 |===
 
 The split mirrors what netplan already does: `./mvnw -pl :netplan` for dev,
@@ -91,21 +91,21 @@ deployable artifacts.
 
 | `.#netplanJar` | netplan jar | exists (Maven-in-nix)
 | `.#manifests` | manifests exec jar | *new* — Maven-in-nix (reactor build)
-| `.#seed-master` | bootstrap exec jar | *new* — Maven-in-nix (reactor build)
+| `.#seed-outcluster` | bootstrap exec jar | *new* — Maven-in-nix (reactor build)
 | `.#flox-nri-plugin` (+`-debug`) | NRI plugin, aarch64-linux | re-export from the `flox-runtime` fork input (`github:seedmatic/flox-nri-plugin/develop`); cross-built via linux-builder
 |===
 
-=== seed-master / manifests: build the reactor, not the module
+=== seed-outcluster / manifests: build the reactor, not the module
 
-`seed-master` depends on `manifests`, `netplan`, `systemd-contract`; `manifests`
+`seed-outcluster` depends on `manifests`, `netplan`, `systemd-contract`; `manifests`
 depends on others in turn. Rather than `netplanJar`'s piecewise
-`install-file` + per-module build, the seed-master/manifests outputs should run
+`install-file` + per-module build, the seed-outcluster/manifests outputs should run
 the *whole reactor* once from the parent pom:
 
 [source,nix]
 ----
-seedMaster = pkgs.stdenv.mkDerivation {
-  name = "rke2lab-seed-master";
+seedOutcluster = pkgs.stdenv.mkDerivation {
+  name = "rke2lab-seed-outcluster";
   src = ./.;                                   # full repo: parent pom + all modules
   nativeBuildInputs = [ pkgs.maven pkgs.jdk25 ];
   buildPhase = ''
@@ -114,7 +114,7 @@ seedMaster = pkgs.stdenv.mkDerivation {
   '';                                          # offline (-o) once deps are vendored; see open questions
   installPhase = ''
     mkdir -p $out/share/java
-    cp seed-master/target/seed-master-*-exec.jar $out/share/java/seed-master.jar
+    cp seed-outcluster/target/seed-outcluster-*-exec.jar $out/share/java/seed-outcluster.jar
   '';
 };
 ----
@@ -132,7 +132,7 @@ aarch64-linux` cross-builds via the linux-builder.
 
 == Pulumi binary resolution
 
-`Pulumi.yaml` hardcodes `binary: seed-master/target/seed-master-0.1.0-SNAPSHOT-exec.jar`
+`Pulumi.yaml` hardcodes `binary: seed-outcluster/target/seed-outcluster-0.1.0-SNAPSHOT-exec.jar`
 — the Maven build output — so the dev inner loop stays fast: `mvn package`
 (or the reactor) -> `pulumi up`, no `nix build` on the critical path. This is
 deliberate and matches the dev/release split: Maven = dev loop, flake = release.
@@ -140,11 +140,11 @@ deliberate and matches the dev/release split: Maven = dev loop, flake = release.
 A bare `result/` symlink was tried as the binary source and *rejected*: `result`
 is not stable. Any other `nix build`/`nix eval` that realizes a different output
 (e.g. forcing `lib.networkBlueprint`) repoints `./result` at that path, so
-`result/share/java/seed-master.jar` silently vanishes and `pulumi up` fails with
+`result/share/java/seed-outcluster.jar` silently vanishes and `pulumi up` fails with
 "Unable to access jarfile". A content-addressed store path also changes every
 build, so it can't be hardcoded either.
 
-Release/deploy consumes the store-built jar (`nix build .#seed-master`) through a
+Release/deploy consumes the store-built jar (`nix build .#seed-outcluster`) through a
 deploy wrapper, not by wiring a bare `result/` into `Pulumi.yaml`.
 
 === `nix run .#deploy -- <stack>` (implemented)
@@ -164,7 +164,7 @@ already live in the repo, so copying a skeleton would only duplicate them.
 nix run .#deploy -- dev            # preview (default, read-only — no apply)
 nix run .#deploy -- dev up         # apply, non-interactive (pulumi up --yes)
 nix run .#deploy -- dev up --target=...   # extra pulumi args pass through
-# each: builds .#seed-master, points Pulumi.yaml binary at the store jar,
+# each: builds .#seed-outcluster, points Pulumi.yaml binary at the store jar,
 # runs the chosen pulumi command in the repo dir, restores Pulumi.yaml.
 ----
 
@@ -186,7 +186,7 @@ present. The dev loop is untouched: `Pulumi.yaml`'s committed `binary` stays on
 the Maven target; the wrapper only rewrites it transiently. Extra args pass
 through (`nix run .#deploy -- dev --yes`).
 
-To make the inner `nix build .#seed-master` verbose, pass `DEPLOY_NIX_FLAGS`:
+To make the inner `nix build .#seed-outcluster` verbose, pass `DEPLOY_NIX_FLAGS`:
 
 [source,sh]
 ----
@@ -194,7 +194,7 @@ DEPLOY_NIX_FLAGS='-L -v -v' nix run .#deploy -- dev
 ----
 
 Flags on the *outer* `nix run` (e.g. `nix run .#deploy -L ...`) are consumed by
-nix to build/run the wrapper itself — the seed-master build is a separate child
+nix to build/run the wrapper itself — the seed-outcluster build is a separate child
 `nix` process and does not inherit them, hence the explicit channel.
 
 == Build-time vs runtime for the NRI plugin
@@ -272,7 +272,7 @@ design first gives the builder feature a clean, store-resolved world to build on
   ambient environment; the full reactor will expose this.
 . *Incremental dev story*: confirm the Maven inner loop stays untouched (it does —
   `./mvnw` is unchanged); document when to use which entry point.
-. *CI*: where `nix build .#seed-master .#flox-nri-plugin` runs (the linux-builder
+. *CI*: where `nix build .#seed-outcluster .#flox-nri-plugin` runs (the linux-builder
   must be reachable from CI, not just the dev machine).
 
 == Related Documentation
@@ -280,5 +280,5 @@ design first gives the builder feature a clean, store-resolved world to build on
 * link:flox-store-resolved-runtime-and-builder.adoc[Flox Store-Resolved Runtime +
   Remote Nix Builder] — the sibling feature sharing the linux-builder; the node
   consumes the plugin/env store paths this design pre-builds.
-* link:bootstrap-contract.adoc[Bootstrap Contract] — what the seed-master jar
+* link:bootstrap-contract.adoc[Bootstrap Contract] — what the seed-outcluster jar
   produces; unchanged by this design (only its build provenance changes).

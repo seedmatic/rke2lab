@@ -214,8 +214,8 @@ The designer runbook follows the same mapping, with the codebase as the system u
 == The v0 — feasible today, the infrastructure already exists
 
 A first implementation needs NO new engine. JGiven is already wired (`jgiven-core` + `jgiven-junit5`
-in the BOM and in `exec/seed-master`), the report directory is already configured
-(`jgiven.report.dir`), and seed-master already holds ~18 scenario classes under `controlplane/bdd/`
+in the BOM and in `exec/seed-outcluster`), the report directory is already configured
+(`jgiven.report.dir`), and seed-outcluster already holds ~18 scenario classes under `controlplane/bdd/`
 in the established style (`Given/When/Then extends Stage`, fluent steps, `@As` prose). The doctor
 scenarios prove the shape: the production vocabulary IS the scenario DSL.
 

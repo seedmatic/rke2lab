@@ -132,9 +132,7 @@ public class IncusIdentitySealScenario
                       new IllegalStateException(
                           "cannot grow: the capn client key is missing at"
                               + " .secrets:incus.capn.clientKey"));
-      this.material =
-          new IncusIdentityMaterial(
-              host.serverAddress(), host.serverCert(), host.clientCert(), clientKey);
+      this.material = new IncusIdentityMaterial(host.serverAddress(), host.clientCert(), clientKey);
       return self();
     }
 

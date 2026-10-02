@@ -241,7 +241,7 @@ public final class TailnetPurgeManifestsUnit extends AbstractManifestsUnit {
         done
         """
             .replace("@FUNNELS@", funnelPairs(cluster));
-    final String floxImage = ManifestSynthesisContext.current().floxDebugPolicy().prodImage();
+    final String floxImage = ManifestSynthesisContext.current().containerImages().carrier();
     final ApiObject jobObject =
         new ApiObject(
             scope,

@@ -33,7 +33,7 @@ The cluster domain already has its *core* — `ClusterSpecialist`, a `Specialist
 `osgi/cluster/cluster-core`, contributed to the doctor's DS-collected roster (the specialist
 distribution, commit `b2a65de0`). What was still missing when this was written was the *port* and the
 *edge*: the cluster readiness contract, and the live contact that satisfies it. They lived in
-`seed-master` then, folded into the host orchestration. This document extracts them.
+`seed-outcluster` then, folded into the host orchestration. This document extracts them.
 
 This is a *before / after* document. Each section states one problem, shows it, and shows the
 resolution. The "before" is the host-trapped state of the 2026-06-26 surface inventory (design
@@ -72,18 +72,18 @@ flowchart LR
 
 Four problems, each a section below:
 
-* *No cluster port.* The `ClusterReadinessProbe` contract lives in `exec/seed-master/.../controlplane/bdd/`
+* *No cluster port.* The `ClusterReadinessProbe` contract lives in `exec/seed-outcluster/.../controlplane/bdd/`
   — a contract stranded in the host, not a domain membrane.
 * *The phase enum squats the doctor.* `ClusterReadinessPhase` lives in `doctor-contract`, coupling the
   doctor domain to cluster readiness vocabulary it has no business owning.
 * *The kubectl contact is trapped in the host.* `ClusterBootstrapReadinessVerifier` shells kubectl
-  inline in `seed-master`, mixed with host orchestration that genuinely belongs there.
+  inline in `seed-outcluster`, mixed with host orchestration that genuinely belongs there.
 * *SchemaRef literals are loose strings.* `"cluster/api/v1"`, `"cluster/kubeconfig/v1"` … are spelled
   inline in `ClusterSpecialist`, the same name-mismatch hazard `SystemdUnitId` cured for systemd.
 
 == Problem 1 + 2 — the port does not exist, and its phase enum squats the doctor
 
-`ClusterReadinessProbe` (the contract) sits in `seed-master/controlplane/bdd/`; `ClusterReadinessPhase`
+`ClusterReadinessProbe` (the contract) sits in `seed-outcluster/controlplane/bdd/`; `ClusterReadinessPhase`
 (its vocabulary) sits in `doctor-contract`. Neither is where a domain's contract belongs — and the
 doctor should not carry another domain's phase enum (it is latent debt: the doctor depends on cluster
 readiness vocabulary, the wrong direction).
@@ -92,7 +92,7 @@ readiness vocabulary, the wrong direction).
 
 * `ClusterReadinessProbe` — the contract interface (moved from the host `bdd/` package).
 * `ClusterReadinessPhase` — moved out of `doctor-contract` into its owning domain. Blast radius: 5
-  `seed-master` files re-import (no `osgi/` file outside doctor-contract references it — the sealing
+  `seed-outcluster` files re-import (no `osgi/` file outside doctor-contract references it — the sealing
   holds); the doctor stops depending on cluster vocabulary.
 * `ClusterSchemaRef` — a phase↔`SchemaRef` mapping enum (the `SystemdUnitId` move): the four
   `"cluster/*/v1"` literals become typed constants, single-sourced, no name drift.
@@ -120,7 +120,7 @@ flowchart LR
 
 == Problem 3 — the kubectl contact, trapped in the host
 
-`ClusterBootstrapReadinessVerifier` (seed-master) is 556 lines that mix three different concerns:
+`ClusterBootstrapReadinessVerifier` (seed-outcluster) is 556 lines that mix three different concerns:
 
 * *the external contact* — `runCommand` (ProcessBuilder) shelling `kubectl get --raw=/readyz`
   (API_READY) and `kubectl wait --for=create` + `kubectl rollout status` (CONTROLLERS_EFFECTIVE);
@@ -272,7 +272,7 @@ gains a dependency on cluster-contract (its own domain's port — the natural di
 | Destination | Content
 
 | *cluster-contract* (new, `type=contract`)
-| `ClusterReadinessProbe` (or the Option-B contact) moved from seed-master `bdd/`;
+| `ClusterReadinessProbe` (or the Option-B contact) moved from seed-outcluster `bdd/`;
   `ClusterReadinessPhase` moved from doctor-contract; `ClusterSchemaRef` (new, phase↔SchemaRef).
   Deps: domain-annotations + doctor-contract.
 
@@ -285,7 +285,7 @@ gains a dependency on cluster-contract (its own domain's port — the natural di
 | `ClusterSpecialist` keeps its place; swaps loose SchemaRef literals for `ClusterSchemaRef`; gains a
   cluster-contract dependency.
 
-| *seed-master* (stays host)
+| *seed-outcluster* (stays host)
 | `SeedNodeBootstrapWatcher` (systemd/bootstrap gates), the kubeconfig NIO poll,
   `policy.manifestLink()`→controller refs, `VerificationResult` + its Pulumi output projection,
   `ClusterReadinessStage` orchestration. `ProductionClusterReadinessProbe` is refactored to inject and
@@ -311,7 +311,7 @@ flowchart LR
   cport["cluster domain — PORT<br/>cluster-contract (type=contract): ClusterReadinessContact"]
   ccore["cluster domain — CORE<br/>cluster-core: ClusterSpecialist"]
   scion["cluster domain — SCION<br/>cluster-bdd: ClusterReadinessScenario / ClusterRunbookHandler"]
-  host["control-plane — HOST<br/>seed-master: sows the scion, reaps a coarse verdict"]
+  host["control-plane — HOST<br/>seed-outcluster: sows the scion, reaps a coarse verdict"]
   dport["doctor domain — PORT<br/>doctor-contract: Observation, Symptom"]
   doctor["doctor domain — CORE<br/>HealthSystem, roster by DS"]
   edge -->|"fabric8 client (readyz + rollout)"| world
@@ -336,14 +336,14 @@ flowchart LR
 == Build order (each step green before the next)
 
 1. *cluster-contract* — create the contract module; move `ClusterReadinessPhase` from doctor-contract (re-import
-   the 5 seed-master files); add `ClusterSchemaRef`; move the probe/contact interface from `bdd/`. Build green.
+   the 5 seed-outcluster files); add `ClusterSchemaRef`; move the probe/contact interface from `bdd/`. Build green.
 2. *cluster-core* — swap the loose literals for `ClusterSchemaRef`; add the cluster-contract dep. Green.
 3. *cluster-edge* — create the `@Component` edge, extract the kubectl contact from the verifier (the
    chosen grain). Mirror `dbus-systemd-edge` (pom + bnd `type=edge`, no embedded jars). Green.
-4. *cluster-bdd + seed-master* — the readiness orchestration became the `cluster-bdd` scion
+4. *cluster-bdd + seed-outcluster* — the readiness orchestration became the `cluster-bdd` scion
    (`ClusterReadinessScenario`, `@OsgiService`-injecting `ClusterReadinessContact`), grown by
    `ClusterRunbookHandler`; the host `ProductionClusterReadinessProbe`/`ClusterBootstrapReadinessVerifier`
-   were deleted (not thinned), and `seed-master` now sows the scion through the broker. An in-container
+   were deleted (not thinned), and `seed-outcluster` now sows the scion through the broker. An in-container
    boot test proves the `Fabric8ClusterContact` `@Component` resolves and the contact works.
 
 [[the-cluster-scion-scenario]]

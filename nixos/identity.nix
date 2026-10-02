@@ -1,6 +1,6 @@
 # rke2lab per-node hostname — set at boot from the cloud-init-delivered /var/lib/rke2lab/node.env. The
 # per-node identity scalars (node-name/hostname/kind/id + the per-cluster dual-stack CIDRs) now arrive
-# through the UNIFORM cloud-init channel: seed-master (mgmt) poses them as a `write_files` entry
+# through the UNIFORM cloud-init channel: seed-outcluster (mgmt) poses them as a `write_files` entry
 # writing node.env (see ./cloud-init.nix for the incus datasource shim; host GROW renders the
 # cloud-config). This oneshot only sets the transient hostname from node.env (no dbus/hostnamed at
 # this early ordering point), so mDNS resolves <cluster>-<node> and rke2 registers under it. The

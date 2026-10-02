@@ -305,6 +305,230 @@ first thing to move; a member's own bridge answers no and should stay.
   as letting a commit birth a cluster — and worth deciding explicitly rather than
   inheriting.
 
+== 2026-09-28 — the VIP flow, measured on the operator we deploy
+
+Everything below is read from the SOURCE at the version we run (tailscale 1.102.3, CAPN v0.9.0),
+not from docs. It supersedes the three-candidate framing above where it contradicts it.
+
+=== ★ The VIP has TWO consumers, of different reach — do not conflate them
+
+[options="header"]
+|===
+| consumer | tailnet member? | path to the VIP | state
+| the operator on bioskop (its kubeconfig) | *yes* | host subnet routes | ✅ works since 2026-09-27
+| pods in the mgmt cluster (CAPI's probe) | no | the node's IP, which no grant names | ❌ broken
+|===
+
+So the requirement is NOT "replace the VIP": it is to make what the in-cluster probes already dial
+resolvable and reachable FROM A POD. And `controlPlaneEndpoint` is an IP today
+(`https://<vipHostInetAddr>:6443`), so there is nothing to "resolve" — an IP can only be routed.
+
+⚠️ Measured on the operator kubeconfig: THREE context forms already coexist — `bioskop-mgmt`,
+`bioskop-mgmt-fabric-name`, and the `-vip` ones. That is the asymmetry of MECHANISM this work should
+collapse, not merely a spelling difference.
+
+=== What the operator offers at 1.102.3
+
+`ProxyGroup.spec.type` ∈ `egress` | `ingress` | `kube-apiserver`; `replicas` defaults to *2* (the HA
+the removed `Connector` never had). For `kube-apiserver`:
+
+* `kubeAPIServer.hostname` — a DNS label, ≤63 chars, *unique across the whole tailnet*. It is a SPEC
+  field, so it is DETERMINISTIC: `<cluster>-apiserver` is knowable before the cluster exists, which
+  means the render CAN write it into `controlPlaneEndpoint`. That question is closed.
+* `kubeAPIServer.mode` ∈ `auth` | `noauth`, ⚠️ *defaulting to auth*. In `auth` mode requests are
+  "additionally impersonated using the sender's tailnet identity" — so with an egress proxy as the
+  sender, EVERY pod collapses into one identity. Same shape as the trap already paid on
+  `clustermesh-remote-users`, where a shared client cert collapsed all peers into one user and
+  nullified the per-peer authorization. It must be set explicitly.
+* `status.URL` + `status.Devices[].TailnetIPs` — published after reconcile, hence unusable as a
+  render-time contract; the deterministic hostname is what makes the contract writable.
+
+=== ⚠️ The tension that decides the shape
+
+A `kube-apiserver` ProxyGroup is an API-server PROXY: it terminates TLS and re-originates. Our
+authorization is a CLIENT CERT from the BYO-CA. The 2026-09-12 design chose `ProxyGroup type: egress`
++ a Service `ExternalName` in L4 pass-through precisely for that — "TLS bout-en-bout, contrairement à
+`apiServerProxy`" — and live-probed it.
+
+[options="header"]
+|===
+| shape | buys | costs
+| egress + `kube-apiserver` | policy expressible *tag→tag*, no CIDR in any grant, VIP off the path | TLS terminated at the proxy ⇒ the client-cert model must be revisited
+| *egress + the VIP in L4 pass-through* | TLS end-to-end, client certs intact, already probed | grants keep naming the vmnet CIDRs in `dst`
+|===
+
+★ Chosen: the second, because the requirement is that EXISTING in-cluster probes keep working, and it
+touches no contract. The `kube-apiserver` ProxyGroup stays as a later simplification, once it is known
+whether `noauth` preserves a client cert (not the same question as whether it terminates TLS).
+
+=== ⚠️ Correction to the archived record
+
+`claude-preview.archive-2026-09-25` marks the Service `ExternalName <w>-apiserver` with
+`tailnet-target-ip` as "✅ EXISTE". *It does not exist in code* — verified 2026-09-28 across rke2lab,
+seed-incluster, the flox-catalogue and ndh: zero occurrences of `ExternalName` or
+`tailnet-target-ip`. Either it was created out of band for the 2026-09-12 probe, or "exists" meant
+"is proven". So this is GREENFIELD, and "the adoption controller owns the VIP Service" is a design
+intent, not existing code to extend.
+
+=== The shape to build
+
+. a `ProxyGroup type: egress` in the cluster that PROBES (the parent);
+. a Service `ExternalName` per target — ⚠️ OWNED BY THE CONTROLLER, never Flux: the tailscale
+  operator MUTATES `spec.externalName` to the ClusterIP Service it provisions, so a force-apply SSA
+  would make the Service flap. That trap is already documented for the VIP Service;
++
+⚠️ *Corrected 2026-09-28 against the operator source we deploy* (v1.102.3,
+`cmd/k8s-operator/egress-services.go`). The annotation is `tailscale.com/tailnet-ip`, NOT
+`tailnet-target-ip` — that is the pre-ProxyGroup spelling, and an unrecognised annotation is
+IGNORED IN SILENCE. `validateEgressService` is the whole contract, and it is worth quoting because
+four of the five conditions are easy to miss: `tailscale.com/proxy-group` set; ONE of
+`tailscale.com/tailnet-fqdn` / `tailscale.com/tailnet-ip`; at least one entry in `spec.ports`;
+`spec.type` exactly `ExternalName`; and the referenced ProxyGroup of `spec.type: egress`. ★ That a
+raw `tailnet-ip` is accepted is what makes this viable at all — our target is a kube-vip ADDRESS,
+not a tailnet device, so an FQDN-only egress could not have expressed it.
+. the tailnet grant admitting `tag:k8s` → the vmnet segments (one line, in ndh — the proxy carries
+  `tag:k8s`, not `tag:headless`, so the grant widened on 2026-09-27 does not cover it);
+. LATER, and only then: `controlPlaneEndpoint` names the Service instead of the IP, which is what
+  finally STABILISES resolution for the probes from both vantage points.
+
+Steps 1-3 touch no contract and already unblock the probe that holds `nikopol-mgmt` at `Degraded`.
+
+=== Adjacent finding — the tailscaled fork stays
+
+The fork (`github:nxmatic/tailscale`, rebased on release-branch/1.102) carries TWO patches:
+CNAME-in-`extra_records` resolver support *and* SSH interception (the port-2222 switch). The CNAME
+half is dead — headscale hibernates and the SaaS forbids arbitrary MagicDNS records — but the SSH
+half is still needed, so *the fork stays*. Two consequences:
+
+* `flake.nix:111`'s justification names a reason that no longer applies; left uncorrected it misleads
+  exactly as `acl.hujson`'s "controller-AGNOSTIC" header did twice in one day;
+* ★ `catalog.netplan.tailnet.hosts.<host>.serviceNames` now has NO consumer — it feeds headscale
+  `dns.extra_records`, which hibernate. Same shape as the dead `image-state` ConfigMap: a declared
+  fact nothing reads, waiting for its delivery (Tailscale Services, or a ProxyGroup hostname). The
+  vocabulary is right; only the delivery is missing.
+
+★ And the naming these two threads need is the SAME: whatever gives the apiserver a stable name also
+retires the CNAME hack. The cleanup and the VIP work point one way.
+
+== 2026-09-28 (2) — the split zone is the only authority that answers everyone
+
+Measured live, during the cold start, on both bare-metals and from inside a pod. This CLOSES two of
+the three "measure before deciding" items above and reframes the certificate work.
+
+=== ★ A pod DOES resolve the split zones — including the peer's
+
+From a busybox pod on `bioskop-mgmt` (resolv.conf = CoreDNS `10.48.0.10`):
+
+[options="header"]
+|===
+| name | answer from a pod
+| `nixos.bioskop` | `172.16.0.1`
+| `bioskop-mgmt-master.bioskop` | `172.16.1.3` + `fd96:…:20::a50:a`
+| `nixos.nikopol` | `172.16.16.1` ← *cross-host, from a pod*
+|===
+
+So the chain CoreDNS → node resolver → this bare-metal's dnsmasq → `server=/nikopol/172.16.16.1`
+works end to end. ★ This is what makes naming the endpoint a real fix rather than a rename: the
+in-cluster probes — the audience that matters — can resolve a `.<host>` name today.
+
+=== ★ Every OTHER name answers a different address per asker, and two name another machine
+
+The incus server cert carried `<label> × {.local, .lan, <tailnet>}`. Resolved live:
+
+[options="header"]
+|===
+| name | from bioskop | from the Mac | denotes
+| `bioskop-nixos` | `127.0.0.2` | `100.90.5.23` | this host (two different ways)
+| `bioskop` | `100.76.71.8` | `192.168.1.129` | ⚠️ the VZ-HOST, not this VM
+| `bioskop.local` | `172.16.8.2` | — | ⚠️ `vzhost.bioskop`
+| `bioskop-nixos.lan` | `192.168.1.130` | `192.168.1.130` | this host, via the home router
+| *`nixos.bioskop`* | *`172.16.0.1`* | *`172.16.0.1`* | *this host, one answer*
+|===
+
+⚠️ And the product could never produce the right name: `bioskop-nixos.bioskop` is NXDOMAIN, because
+the split zone INVERTS the label order. That is why the missing name was not a forgotten entry but a
+shape the generator cannot express.
+
+=== ⚠️ The incus SAN list we control is on a cert the clustered daemon never serves
+
+★ *A correction to my own first reading of this, and the reason the incus half of the work was
+retired rather than shipped.* `ensure-incus-server-cert.sh` provisions `/var/lib/incus/server.crt`
+with the full SAN list — but measured 2026-09-28 on the wire:
+
+[options="header"]
+|===
+| | fingerprint | SANs
+| presented by BOTH members on `:8443` | `08:15:9E:B8…` | `DNS:bioskop-nixos`, `IP:127.0.0.1`, `IP:::1`
+| `/var/lib/incus/cluster.crt` (both, byte-identical) | `08:15:9E:B8…` | same
+| `/var/lib/incus/server.crt` (per member, RSA 4096) | `B9:AB:15:0F…` | the 8-name product
+|===
+
+So a clustered member serves the self-generated, cluster-WIDE `cluster.crt`; `server.crt` is a
+per-member IDENTITY, pinned by fingerprint and never presented. ndh already knew this and wrote it
+down — `modules/darwin/incus-remote-trust.d/post-activation.sh` measured it on 2026-09-26 and pins
+whichever file matches the wire.
+
+Two consequences. Widening `server.crt`'s SANs would rotate a cert three things pin (the Incus
+cluster member trust, each `<host>-incus-identity` Secret's `server-crt`, the operator's
+`servercerts`) *for no benefit at all*, since SANs are decoration on a fingerprint-pinned identity —
+the same identity-vs-address distinction {@code nixosHost} vs {@code nixosFabricFqdn} already draws.
+And because the served cert is ONE cert for the whole cluster, the names it must carry are BOTH
+zones' — `nixos.bioskop` AND `nixos.nikopol` — which is why nikopol today serves a cert whose only
+DNS name is `bioskop-nixos`.
+
+★ The real fix is already named in that same ndh comment: have the daemon serve a certificate issued
+by the fleet's own `mammoth-skate-tls` authority, installed cluster-wide via `incus cluster
+update-certificate`, so nothing is pinned and the identity survives a renew. `ClusterCaGenerator`
+already mints from that root. Not done; recorded here as the shape.
+
+=== The apiserver cert IS on the critical path
+
+kubectl and CAPI verify the hostname against the CA, which is exactly why the
+`bioskop-mgmt-fabric-name` context WORKS (`bioskop-mgmt-master.bioskop` is in the SAN set) while
+every other context dials a bare address. That is the half that was shipped.
+
+The apiserver cert is the opposite: kubectl and CAPI verify the hostname against the CA, which is
+exactly why the `bioskop-mgmt-fabric-name` context WORKS (`bioskop-mgmt-master.bioskop` is in the SAN
+set) while every other context dials a bare address.
+
+=== ★ The cattle clusters' SAN set was fiction
+
+`tlsSanSuperset` enumerated the CANONICAL pets. Measured:
+
+* `bioskop-wrkld-master.bioskop` → *NXDOMAIN* (that node is never created);
+* `bioskop-wrkld-control-plane-zg9cp.bioskop` → *resolves* (CAPI's generated name, auto-registered
+  from its DHCP hostname).
+
+So a birthed cluster's cert named six nodes that will never exist and missed the one that does —
+which is precisely why only `*-vip` contexts exist for those clusters. A per-NODE name cannot be the
+endpoint name; the VIP's can, because it is knowable before any node exists.
+
+=== What was built
+
+. `NamePlan.vipFabricFqdn` = `<role>-vip.<host>` — ONE definition. Not `<cluster>-vip.<host>`: a
+  cluster name IS `<host>-<role>`, so spelling the host in the label repeats the zone, the same
+  stutter `nixos.<host>` avoids.
+. `tlsSanSuperset` carries that name beside the VIP address, and the per-node entries moved UNDER
+  `fabricMacIsPredictable` — a pet cluster keeps them, a cattle cluster stops asserting phantoms.
+. The blueprint publishes the VIP as a MAC-less `SegmentHost` on the cluster's FABRIC segment, so
+  ndh renders `host-record=<role>-vip.<host>,<vip>`. The fabric segment is the one CONTAINED in the
+  bare-metal's managed net, hence the one whose hosts that dnsmasq serves; the address being on the
+  vmnet tier is irrelevant to a host-record — ndh already publishes `vzhost.<host>` at an address
+  outside the segment carrying it.
+Nothing was changed in ndh: the incus half belongs on `cluster.crt` (see above), not on the file we
+provision, so shipping it there would have rotated a pinned identity for nothing.
+
+⚠️ *Ordering, and it is not optional.* ndh reads rke2lab's blueprint as a flake input pinned by REV,
+so the `host-record` only appears after rke2lab is pushed → ndh's input bumped → the hosts switched.
+Only THEN can `controlPlaneEndpoint` name the VIP instead of its address (step 4 above) — flipping it
+before the name resolves would break every probe.
+
+⚠️ *And that input does not track this branch.* `ndh/flake.nix` pins
+`github:seedmatic/rke2lab/feature/nixos-node-substrate` (lock `acd0e45d4`) — the branch retired in
+September. A plain `nix flake update rke2lab` would follow the dead branch and pick up none of this,
+silently. The URL has to move to the integration branch first; same shape as the flox-catalogue,
+which had to be repointed at this branch for the same reason.
+
 == Related
 
 * ndh `docs/network-topology-c4.adoc#authorisation` — the tailnet policy, the Services

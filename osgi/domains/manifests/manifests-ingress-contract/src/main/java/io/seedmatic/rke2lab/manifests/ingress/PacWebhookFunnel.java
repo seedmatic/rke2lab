@@ -13,11 +13,11 @@ package io.seedmatic.rke2lab.manifests.ingress;
  * today it is the management cluster's funnel.
  *
  * <p>It lives in the {@code manifests.ingress} DUAL-REALM face precisely because both realms
- * consume it: OSGi-side the manifest units read {@link #LEAF}, host-side the {@code seed-master}
- * grow builds {@link #url()} to sow the webhook scion and the {@code ghapp} CLI pre-fills the
- * registration form. A {@code manifests.contract} home would be bundle-only — a flat-realm
- * reference from the host would break the realm-boundary law. It qualifies for the dual-realm rule:
- * a pure String record, JDK-only, manifests-owned, no service reference.
+ * consume it: OSGi-side the manifest units read {@link #LEAF}, host-side the {@code
+ * seed-outcluster} grow builds {@link #url()} to sow the webhook scion and the {@code ghapp} CLI
+ * pre-fills the registration form. A {@code manifests.contract} home would be bundle-only — a
+ * flat-realm reference from the host would break the realm-boundary law. It qualifies for the
+ * dual-realm rule: a pure String record, JDK-only, manifests-owned, no service reference.
  *
  * <p>A record over the {@code tailnet} (the host-config suffix, e.g. {@code mammoth-skate.ts.net} —
  * it ALREADY carries {@code .ts.net}, so {@link #url()} does not re-append it): {@link #url()} is

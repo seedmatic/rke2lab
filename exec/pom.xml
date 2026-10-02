@@ -18,7 +18,7 @@
     host-infra. Shade/exec config stays global in build-parent; this pom only aggregates.</description>
 
   <modules>
-    <module>seed-master</module>
+    <module>seed-outcluster</module>
     <module>plan-cli</module>
     <module>manifests-cli</module>
   </modules>

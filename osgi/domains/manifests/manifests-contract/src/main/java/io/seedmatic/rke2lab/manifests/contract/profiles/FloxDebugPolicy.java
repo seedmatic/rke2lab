@@ -30,25 +30,6 @@ package io.seedmatic.rke2lab.manifests.contract.profiles;
 public record FloxDebugPolicy(
     boolean meshEnabled, boolean networkingEnabled, boolean floxNriPluginEnabled) {
 
-  /**
-   * Single source of truth for the live carrier image — the minimal nix-built OCI base every
-   * flox-injected pod runs (nixos/flox-carrier.nix, baked into the node image and auto-imported by
-   * rke2's air-gap path, so {@code imagePullPolicy: IfNotPresent} never pulls). Workload binaries
-   * come from the flox env overlay; the carrier just provides {@code /usr/bin/env} + a shell for
-   * {@code flox activate} to bootstrap from. The prod/debug distinction now lives in the flox ENV
-   * (unstripped binary + delve), not the base image, so prod and debug share this one carrier. The
-   * string MUST match the RepoTag the nix image is tagged with.
-   */
-  private static final String CARRIER_IMAGE = "rke2lab/flox-carrier:0.1.0";
-
-  /**
-   * Single source of truth for the flox-controller node-agent image — the OCI image the
-   * flox-controller flake builds (io.seedmatic.flox-controller), baked into the node image and
-   * auto-imported by rke2's air-gap path, so {@code imagePullPolicy: IfNotPresent} never pulls. The
-   * string MUST match the RepoTag the nix image is tagged with (name:tag = the flake's VERSION).
-   */
-  private static final String FLOX_CONTROLLER_IMAGE = "io.seedmatic.flox-controller:0.0.0-develop";
-
   private static final FloxDebugPolicy DISABLED = new FloxDebugPolicy(false, false, false);
 
   /** Live-shape policy: every primitive falls through unchanged. */
@@ -56,32 +37,9 @@ public record FloxDebugPolicy(
     return DISABLED;
   }
 
-  public String debugImage() {
-    return CARRIER_IMAGE;
-  }
-
-  /** The single prod-image identifier shared by every flox-injected workload carrier. */
-  public String prodImage() {
-    return CARRIER_IMAGE;
-  }
-
-  /** The flox-controller node-agent image (see {@link #FLOX_CONTROLLER_IMAGE}). */
-  public String floxControllerImage() {
-    return FLOX_CONTROLLER_IMAGE;
-  }
-
   /** True if any per-domain debug toggle is on (used by the shell sidecar profile). */
   public boolean anyDomainEnabled() {
     return meshEnabled || networkingEnabled;
-  }
-
-  /**
-   * The carrier image. Prod and debug now share the single nix carrier — the debug affordance
-   * (unstripped binary + delve) lives in the flox env, not the base image — so this no longer
-   * branches on {@link #anyDomainEnabled()}. The one consumer is {@link DelveSidecarProfile}.
-   */
-  public String image() {
-    return CARRIER_IMAGE;
   }
 
   /**

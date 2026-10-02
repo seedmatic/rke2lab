@@ -18,11 +18,11 @@ view holds the inventory, the additivity proof, and the capability map.
 
 === The objective — what this view is ultimately for
 
-Before the inventory, the goal that gives the work its meaning. Today seed-master is a transient
+Before the inventory, the goal that gives the work its meaning. Today seed-outcluster is a transient
 orchestrator: it boots on the physical host, provisions a cluster, then dies — a special node holding
 the amount, its code baked flat in the exec-jar. The objective dissolves that asymmetry: the
 orchestrator becomes an ordinary peer in the cluster it bootstrapped, and everything — data and code —
-lives in the DAG. The move is monotone: seed-master is not deleted, it MOVES from orchestrator to
+lives in the DAG. The move is monotone: seed-outcluster is not deleted, it MOVES from orchestrator to
 workload-peer; the kernel level-0 shrinks to a throwaway bootstrapper that creates the empty cluster,
 seeds the first pull, and erases. At steady state everything is a workload-node — total homogeneity,
 the reflexive bootstrap closed. SHIPPED: the level-0 kernel and the cluster as an output. DESIGN: the

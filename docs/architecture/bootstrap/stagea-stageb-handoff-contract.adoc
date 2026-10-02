@@ -29,7 +29,7 @@ resources target *workload* clusters on possibly-different bare-metals.
 sequenceDiagram
   autonumber
   participant SM as seed-mgmt (host)
-  participant G as git · manifests/&lt;host&gt;-mgmt
+  participant G as git · manifests/{host}-mgmt
   participant MG as management cluster
   participant FM as Flux (in mgmt)
   participant CAPI as CAPI/CAPN/CAPRKE2<br/>(in management cluster)
@@ -37,7 +37,7 @@ sequenceDiagram
 
   SM->>MG: Stage A — nix-seed single node + bootstrap FluxRoot
   MG-->>SM: handoff assets (mgmt kubeconfig, identity, checksums, 2 CAPN identity secrets)
-  MG->>FM: FluxRoot brings up Flux, tracking manifests/&lt;host&gt;-mgmt
+  MG->>FM: FluxRoot brings up Flux, tracking manifests/{host}-mgmt
   FM->>CAPI: apply CAPI operator + providers + the workload CAPI CRs from the branch
   CAPI->>WL: greenfield-create over the node mesh (mammoth-skate)
   WL-->>CAPI: control-plane ready → kubeconfig for the workload cluster

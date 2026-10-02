@@ -258,7 +258,7 @@ public final class FunnelStatePersistenceManifestsUnit extends AbstractManifests
                 funnel.stateSecret(),
                 funnel.leafName(),
                 FunnelCertIssuance.current().name());
-    final String floxImage = ManifestSynthesisContext.current().floxDebugPolicy().prodImage();
+    final String floxImage = ManifestSynthesisContext.current().containerImages().carrier();
     final ApiObject jobObject =
         new ApiObject(
             scope,

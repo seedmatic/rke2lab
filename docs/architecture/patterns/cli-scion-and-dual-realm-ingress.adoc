@@ -20,7 +20,7 @@ asserted here as general.
 == Law 1 — a CLI is a thin north-adapter that sows a root scenario into the OSGi world
 
 A CLI verb does four things and no more: parse argv, seed a small run record, PLAY a host root
-scenario on the embedded JUnit launcher (the same BDD-as-engine machinery `seed-master` uses), and
+scenario on the embedded JUnit launcher (the same BDD-as-engine machinery `seed-outcluster` uses), and
 render the reaped runbook. The root scenario opens the gardening and SOWS a coordinate through the
 broker — the ONE host↔OSGi membrane (`seed.broker.port`) — and the domain grows its scion
 in-container, where the scion's `@OsgiService` collaborators resolve bundle-side against the same
@@ -45,8 +45,8 @@ scenario's steps), which the host renders — never a side-channel the host asse
 
 *Worked examples.* `manifests-cli` — `synthesize` sows `manifests` (grows `ManifestSynthesisScenario`),
 `versions` sows `manifests-versions` (grows `VersionBumpScenario`). `netplan-cli` — `yamlExport` sows
-`netplan`. `seed-master` — the root that sows every provisioning crossing. All four are the same
-gesture at different scales; a CLI that is coherent with `seed-master` is one that sows.
+`netplan`. `seed-outcluster` — the root that sows every provisioning crossing. All four are the same
+gesture at different scales; a CLI that is coherent with `seed-outcluster` is one that sows.
 
 == Law 2 — typed values BOTH realms hold live in a dual-realm ingress module
 

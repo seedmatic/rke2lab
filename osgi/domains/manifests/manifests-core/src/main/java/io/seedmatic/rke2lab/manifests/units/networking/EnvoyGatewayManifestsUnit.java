@@ -259,7 +259,7 @@ public final class EnvoyGatewayManifestsUnit extends AbstractManifestsUnit {
                                 // (annotation
                                 // above), not a stock alpine/k8s image.
                                 "image",
-                                ManifestSynthesisContext.current().floxDebugPolicy().prodImage(),
+                                ManifestSynthesisContext.current().containerImages().carrier(),
                                 "command",
                                 List.of("bash", "/scripts/install.sh"),
                                 "env",

@@ -16,6 +16,7 @@ import io.seedmatic.rke2lab.manifests.contract.ManifestVersionsBumpInput;
 import io.seedmatic.rke2lab.manifests.contract.profiles.GithubAppMaterial;
 import io.seedmatic.rke2lab.manifests.ingress.BumpLevel;
 import io.seedmatic.rke2lab.manifests.ingress.Component;
+import io.seedmatic.rke2lab.ndh.contract.NdhKeystoreCatalog;
 import io.seedmatic.rke2lab.ndh.contract.NdhKeystoreReader;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.CellarReceiver;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.InputReceiver;
@@ -123,7 +124,8 @@ public class VersionBumpScenario
   public static class When extends Stage<When> {
 
     /** The tailnet authority whose {@code domain} scopes the bot email (single source of trust). */
-    private static final String TAILNET_AUTHORITY = "mammoth-skate";
+    private static final String TAILNET_AUTHORITY =
+        NdhKeystoreCatalog.TAILNET_AUTHORITY.entryName();
 
     /** The per-tool discriminator — the SUFFIX the minter appends to the rke2lab bot base. */
     private static final String TOOL = "manifests-bumper";

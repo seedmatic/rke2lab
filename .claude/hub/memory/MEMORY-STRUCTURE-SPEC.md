@@ -165,3 +165,27 @@ nix-darwin-home memory is greenfield (init when first worked in).
 5. Update the launch convention: sessions root at `claude-memory`, project repos
    added as working dirs.
 6. (rke2lab commit deferred — parallel session owns rke2lab; coordinate.)
+
+### Status 2026-09-29 — steps 1-4 realised, and rke2lab's own store MOVED
+
+Step 1's `claude-memory` repo exists as **`claude-hub`** (`claude-hub.d/main`, 41 memory
+files), steps 2-4 landed with it: the hub index, the split, and the `[[hub:]]` re-scoping
+(87 occurrences). The table above is stale — rke2lab is no longer "58 files, symlink,
+git-tracked in the repo".
+
+★ **rke2lab's project-local memory now lives on an ORPHAN `memory` branch** with its own
+worktree at `<repo>.d/memory` (341 files), and NO code branch carries `.claude/memory/`
+any more. Sessions point `autoMemoryDirectory` at that worktree.
+
+Why a branch rather than a second repo: rke2lab already uses orphan branches as
+independent artifacts — `flox-catalogue` (109 commits) and `seed-incluster` (46), neither
+sharing an ancestor with `main`. A branch gives the same isolation as a repo (one line of
+history, one working copy, forking impossible) with no new repo, no subtree machinery and
+no cross-repo sync.
+
+What forced it, measured the same day: memory authored inside the branching code repo had
+split into two trees from one commit — 248 files against 325, 175 identical — and a
+dead-`[[link]]` audit over one of them reported **7 false deaths**. Per-worktree memory
+directories do not prevent that; they guarantee it. The contrast is in this very file's
+neighbourhood: the hub's memory, one repo with one working copy arriving as a synced
+subtree, was **41 files with 0 divergence** at the same moment.

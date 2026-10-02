@@ -4,14 +4,14 @@ import java.util.Map;
 
 /**
  * How the manifests render resolves its effective facet against the branch HEAD, and the guard the
- * asking CLI verb carries. The AMONT twin of a verb intent: the sower (seed-master's grow or the
- * {@code manifests-cli}) fills it so the in-container synthesis knows whether the SEEDED facet is
- * authoritative, whether the recorded HEAD facet wins, or whether HEAD is OVERLAID with a sparse
+ * asking CLI verb carries. The AMONT twin of a verb intent: the sower (seed-outcluster's grow or
+ * the {@code manifests-cli}) fills it so the in-container synthesis knows whether the SEEDED facet
+ * is authoritative, whether the recorded HEAD facet wins, or whether HEAD is OVERLAID with a sparse
  * set of operator overrides — without the host learning how the synthesis reads a branch.
  *
  * <ul>
  *   <li>{@link Verb#GROW} — the seeded facet is authoritative (the grow's Pulumi stack is the
- *       SSOT); no guard. The DEFAULT when unamended, so seed-master keeps applying its facet
+ *       SSOT); no guard. The DEFAULT when unamended, so seed-outcluster keeps applying its facet
  *       unchanged.
  *   <li>{@link Verb#INIT} — the seeded facet is authoritative, but the branch MUST be new (no
  *       recorded HEAD facet): guards against silently resetting an existing branch to the CLI args.
@@ -28,12 +28,12 @@ import java.util.Map;
  * fills it and the synthesis applies each path generically onto the HEAD facet. Empty for every
  * verb but {@code EDIT}.
  *
- * <p>The paths reach {@code debug}, {@code delivery} and {@code workloadTargets} — NOT the domain
- * set. There is no {@code publish.*} path any more: which domains a cluster renders is a FUNCTION
- * of its role ({@link ClusterRole}, parsed from {@code <host>-<role>}), so it replays
- * deterministically from the identity and is not an operator toggle. {@code PublishFacet} was
- * removed for that reason ({@code f51ba1d10}); the facet reader still tolerates a stale {@code
- * publish:} sub-map so a branch recorded before that still decodes on an in-cluster re-render.
+ * <p>The paths reach {@code debug}, {@code delivery} and {@code incusTargets} — NOT the domain set.
+ * There is no {@code publish.*} path any more: which domains a cluster renders is a FUNCTION of its
+ * role ({@link ClusterRole}, parsed from {@code <host>-<role>}), so it replays deterministically
+ * from the identity and is not an operator toggle. {@code PublishFacet} was removed for that reason
+ * ({@code f51ba1d10}); the facet reader still tolerates a stale {@code publish:} sub-map so a
+ * branch recorded before that still decodes on an in-cluster re-render.
  */
 public record RenderMode(Verb verb, Map<String, Boolean> overrides) {
 

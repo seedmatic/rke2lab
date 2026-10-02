@@ -29,7 +29,7 @@
 
   <dependencies>
     <!-- The fabric8 closure to embed. provided: on the bnd classpath so -includeresource nests the
-         jars (lib:=true) and bnd computes the import surface, but NOT propagated to seed-master — so
+         jars (lib:=true) and bnd computes the import surface, but NOT propagated to seed-outcluster — so
          the raw kubernetes-model-* bundles are never staged separately (which would resurrect the
          split-package). The vertx backend is excluded so Netty never reaches the classpath; the JDK
          backend is embedded instead. -->
@@ -51,7 +51,7 @@
     </dependency>
 
     <!-- snakeyaml-engine: the kubeconfig YAML parser fabric8 binds. compile (NOT provided) so it
-         propagates to seed-master and is staged as its own bundle — the wrap IMPORTS it, does not
+         propagates to seed-outcluster and is staged as its own bundle — the wrap IMPORTS it, does not
          embed it (it is already a first-class OSGi bundle). The only new transitive bundle fabric8
          needs; jackson + BouncyCastle are already staged by the manifests / cluster-pki graphs. -->
     <dependency>

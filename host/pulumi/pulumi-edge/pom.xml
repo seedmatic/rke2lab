@@ -11,7 +11,7 @@
   </parent>
 
   <artifactId>pulumi-edge</artifactId>
-  <name>host/pulumu/pulumi-edge</name>
+  <name>host/pulumi/pulumi-edge</name>
   <description>The Pulumi external edge: the single host-side home for every contact with the Pulumi
     state backend and Automation API, mutualised across all domains. Holds the low-level
     StackHandle/StackHistory/StackSnapshot/StackCheckpoint over the file backend, and the
@@ -42,7 +42,7 @@
     </dependency>
     <!-- junit as RUNTIME code (not test): PulumiDeploymentSeed is a Jupiter extension the host
          registers on the root scenario to install the live Deployment on the launcher worker thread
-         — the same "launcher is the engine, not a test tool" posture as seed-master's jgiven-junit5.
+         — the same "launcher is the engine, not a test tool" posture as seed-outcluster's jgiven-junit5.
          jupiter-api for the BeforeEachCallback/ExtensionContext side; platform-engine for the
          session-store seeding side (NamespacedHierarchicalStore/Namespace), as scenario-engine's
          RunRoleSeed/TxIdSeed use. Compile scope: the extension ships in the host runtime. -->

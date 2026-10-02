@@ -2,7 +2,7 @@
 Import-Package: ${annotation-noimports}, *
 Bundle-SymbolicName: io.seedmatic.rke2lab.unitrepo.core
 Export-Package: io.seedmatic.rke2lab.unitrepo.core
-# Embeddable model bundle (the unit-resolution oracle) — what the seed-master pom's WI-C note
+# Embeddable model bundle (the unit-resolution oracle) — what the seed-outcluster pom's WI-C note
 # planned ("embed it intact as an OSGi bundle"). Staged under META-INF/bundles by the capability
 # scan like the other domains.
 Provide-Capability: io.seedmatic.rke2lab.embed; type=model; model=unitrepo

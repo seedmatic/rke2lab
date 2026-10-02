@@ -7,8 +7,8 @@
 *Status:* SHIPPED on `feature/ssh-to-age-edge` (2026-06-22), integrable into `design/pre-integration`.
 The second realised external edge after link:pulumi-edge-handoff.adoc[pulumi-edge], and the FIRST one
 that lives in the OSGi world rather than host. Build GREEN on the reactor
-(`./mvnw -pl :seed-master,:manifests-cli,:netplan-cli -am clean package
--Dmaven.build.cache.skipCache=true -DskipTests=false`): seed-master 68 tests, manifests-core 24,
+(`./mvnw -pl :seed-outcluster,:manifests-cli,:netplan-cli -am clean package
+-Dmaven.build.cache.skipCache=true -DskipTests=false`): seed-outcluster 68 tests, manifests-core 24,
 manifests-cli 1, netplan-cli 1 — 0 failures, 0 errors, 0 skipped.
 
 Read it alongside link:../patterns/port-edge-domain-ownership.adoc[Who owns the port] (worked example
@@ -106,7 +106,7 @@ boot path.
   NAMESPACE, so the edge is discovered like any model bundle; the `type`/`<type>=<id>` attributes
   qualify its NATURE (read by humans, not the scan) — and ssh-to-age is the first carrier whose nature
   is `edge`, not `model`, which is why the two cores were retrofitted to `type=model; model=<id>`.
-* Both execs that boot manifests-core (`seed-master`, `manifests-cli`) stage the edge jar + exclude it
+* Both execs that boot manifests-core (`seed-outcluster`, `manifests-cli`) stage the edge jar + exclude it
   from the flat shade (the two irreducible pom faces) and declare a `runtime`-scope dependency on it —
   never a compile dep (DIP: the consumer compiles only against the `-port` seam).
 

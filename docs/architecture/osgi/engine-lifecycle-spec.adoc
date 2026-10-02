@@ -233,7 +233,7 @@ must be able to raise it WITHOUT knowing the framework/bundle distinction — on
   `LaunchConfig.frameworkLogLevel`, threaded by `FrameworkLaunch.embedded(LogLevel)` /
   `OsgiConnection.embedded(LogLevel)`) and the test `OutOfContainerFrameworkExtension` (reading
   `@FrameworkLog`). One mapping, can't drift — the same discipline as `applyFrameworkInvariants`.
-* *One knob → two planes.* The operator sets `logging:level` once; the host (`seed-master`) drives:
+* *One knob → two planes.* The operator sets `logging:level` once; the host (`seed-outcluster`) drives:
   ** *Plane A — the framework's own log* (`felix.log.level`, set at construction): the level is sown
      onto the launcher via `LogLevelSeed`, read host-side by `BaseWorldExtension` before it boots
      Felix, and threaded into the `LaunchConfig`. (Threaded, not a sysprop — the value is only knowable

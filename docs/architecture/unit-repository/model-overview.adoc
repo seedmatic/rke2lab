@@ -29,20 +29,20 @@ no workloads.
 
 == The objective — why a unit repository at all
 
-Before the thesis, the goal that gives every piece its meaning. Today seed-master is a *transient
+Before the thesis, the goal that gives every piece its meaning. Today seed-outcluster is a *transient
 orchestrator*: it runs on the physical host, boots the framework, seeds the management cluster, then
 dies. It is a special node — it holds the amount, its code is baked flat in the exec-jar, the cluster
 it makes is an output, not a peer. The objective is to dissolve that asymmetry: a unit repository where
 the orchestrator becomes an ordinary unit-node in the management cluster it seeded, and everything —
 data and code — lives in the DAG.
 
-=== Before — level-0: seed-master is the transient orchestrator
+=== Before — level-0: seed-outcluster is the transient orchestrator
 
 [mermaid]
 ....
 flowchart TB
   subgraph "physical host"
-    sm["seed-master — kernel level-0<br/>transient orchestrator<br/>code baked in the exec-jar<br/>NOT a unit"]
+    sm["seed-outcluster — kernel level-0<br/>transient orchestrator<br/>code baked in the exec-jar<br/>NOT a unit"]
   end
   subgraph "the cluster — an output, not a peer"
     rke["rke2lab cluster"]
@@ -56,7 +56,7 @@ flowchart TB
   class rke,wl out;
 ....
 
-=== After — level-x: seed-master is an ordinary unit-node in the management cluster's DAG
+=== After — level-x: seed-outcluster is an ordinary unit-node in the management cluster's DAG
 
 [mermaid]
 ....
@@ -64,7 +64,7 @@ flowchart TB
   boot["throwaway bootstrapper<br/>creates empty cluster, seeds first pull<br/>the irreducible level-0, then erases"]
   subgraph "the cluster — a node serving its own DAG"
     store["unit store — units incl. code, content-addressed"]
-    smp["seed-master — now an ordinary unit-node"]
+    smp["seed-outcluster — now an ordinary unit-node"]
     n1["unit-node A — scale-from-zero workload"]
     n2["unit-node B — scale-from-zero workload"]
   end
@@ -81,11 +81,11 @@ flowchart TB
 ....
 
 The move is monotone: nothing in BEFORE is erased. The cluster grows from an output into a node;
-seed-master is not deleted, it MOVES from transient orchestrator to unit-node in the management
+seed-outcluster is not deleted, it MOVES from transient orchestrator to unit-node in the management
 cluster's DAG (a changed role, named, not a rewrite); the kernel level-0 shrinks from "holds
 everything" to a throwaway bootstrapper that creates the empty cluster, seeds the first pull, and
 erases — nobody depends on it (alive-iff-required). At steady state every node — the seeder included —
-is a unit-node served by its cluster's DAG: total homogeneity of substrate. seed-master
+is a unit-node served by its cluster's DAG: total homogeneity of substrate. seed-outcluster
 migrates in by a *pull* — a `git clone` of its DAG — which is exactly a unit changing its manifestation
 from one substrate to another (the mechanism is the resolution + transport below).
 
@@ -137,7 +137,7 @@ with half of it. The resolution core is no longer a proposal — it runs in prod
 | ContentStore on JGit
 | DESIGN
 | Units serialize as git trees, a Visit is a commit, the store is backed by JGit's `ObjectDatabase`
-  SPI, decorrelated. Not built — JGit is a seed-master dependency today, there is no ContentStore.
+  SPI, decorrelated. Not built — JGit is a seed-outcluster dependency today, there is no ContentStore.
 
 | Ingest
 | DESIGN
