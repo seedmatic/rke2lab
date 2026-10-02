@@ -1,13 +1,50 @@
 ---
 name: etage0-bare-worktree-migration
-description: "Étage 0 de bioskop vers bare/worktree sur deux volumes APFS : décidé et mesuré le 2026-10-02, AUCUN geste posé. Les quatre décisions, et les pièges qui cassent en silence."
+description: "Étage 0 de bioskop migré vers bare/worktree sur deux volumes APFS case-sensitive : EXÉCUTÉ et vérifié le 2026-10-02. Le nouveau magasin fait autorité. Reste le gel de l'ancien + le rebuild NixOS."
 metadata:
   type: project
 ---
 
-**★★★ DÉCIDÉ ET ENTIÈREMENT MESURÉ le 2026-10-02 — rien d'exécuté.** Runbook complet dans
-`.claude/etage0-migration-handoff.md` (gitignoré, `.claude/.gitignore:56`). Premier incrément du
-chantier devpod-comme-atelier ; le *pourquoi* est dans `.claude/devpod-atelier-whiteboard.adoc`.
+**★★★ EXÉCUTÉ ET VÉRIFIÉ le 2026-10-02.** Le siège travaille désormais depuis
+`/Volumes/git-bare-store` + `/Volumes/git-worktree-store` ; l'ancien
+`/private/var/lib/git/seedmatic` est une **référence gelée**. Runbook + passation complète dans
+`.claude/etage0-migration-handoff.md` du worktree (gitignoré, `.claude/.gitignore:56`) — sa section
+« COMMENCE ICI » porte l'état d'exécution et les 7 pièges. Premier incrément du chantier
+devpod-comme-atelier ; le *pourquoi* est dans `.claude/devpod-atelier-whiteboard.adoc`.
+
+## Preuves d'exécution, en une ligne chacune
+
+* 8 clones **bare locaux** (jamais depuis GitHub : 5 branches non poussées, dont une sans upstream)
+  → **47 branches vérifiées identiques**.
+* ★ `pulumi preview` : `~ 1 to update · - 1 to delete · 20 unchanged`, **et l'ancien worktree donne
+  le plan IDENTIQUE** → migration **neutre en comportement, aucun cold start**. L'empreinte d'image
+  `077320b4…` correspond à l'image vivante dans incus, parce qu'elle vient du **contenu**
+  (`SplitImageFingerprint.of(metadata, rootfs)`), pas du chemin.
+* `main` ramené sur `develop` (`ed531af2e`) + force-push, avec 2 refs de filet **publiées**
+  (`backup/main-before-stack-realign`, `backup/origin-main-before-stack-realign`).
+* Mémoire : **346 fichiers des deux côtés**, par commit sur la branche `memory` puis fast-forward.
+
+## ⚠️ Le fork n'est pas théorique — il s'est produit
+
+Jouer `pulumi preview` dans les **deux** worktrees (pour prouver la neutralité) a fait commiter un
+render de chaque côté : les 4 branches `manifests/*` ont divergé en quelques minutes.
+★ **`pulumi preview` n'est donc PAS en lecture seule côté git** — il commite
+`render <cluster> manifests @ <sha>`. D'où l'urgence du gel.
+
+## ★★ Deux mémoires concurrentes dans le dépôt — correctif durable PAS fait
+
+**248 fichiers de mémoire sont commités sur la branche `main`** (`main/.claude/memory`, tracké),
+concurrents de la branche orpheline `memory` (346 fichiers). C'est le côté **perdant** du fork de
+2026-09-29 (248 contre 325 → réconciliés en 346), resté commité. L'orphelin est un **sur-ensemble
+strict** : 192 identiques, 56 divergents, **aucun** fichier présent seulement côté tracké ; son
+`MEMORY.md` fait 18 Ko (index restructuré) contre 132 Ko (ancien index plat).
+
+Palliatif appliqué : les checkouts `main` et `develop` ont été **retirés** du nouveau magasin, car
+ils matérialisaient cette copie sur disque. **Le correctif durable reste à faire : supprimer
+`.claude/memory` de la branche `main`.** Déjà absent sur `feature/viewpoint-separation`.
+
+★ **Contrôle d'ouverture de session** : si `MEMORY.md` fait 132 Ko / 250 lignes, tu lis la mémoire
+**périmée** — le dire immédiatement.
 
 ## Les quatre décisions utilisateur
 
