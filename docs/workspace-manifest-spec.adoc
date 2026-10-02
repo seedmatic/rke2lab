@@ -262,22 +262,82 @@ silently carry it, which is the very class of defect this manifest exists to rem
 repository's uniformity rule forbids two variants without an essential reason, and this
 reason was contingent.
 
-=== Why the registry cannot replace the cut idiom
+=== Why the registry does not disturb a mutual edge
 
-The repository graph contains cycles — each repository names the other — and acyclicity is
-*manufactured* by emptying the return edge (`follows = ""`, which the code calls *the cut
-idiom*). Registry and `follows` operate at two different levels:
+The repository graph contains mutual edges — two repositories each naming the other. They are
+resolved natively by a **reciprocal empty follows** on the back-reference. The code calls this
+*the cut idiom*, and that name is misleading in a way this specification must state, because
+the same word is used for two different things elsewhere.
 
-[cols="1,2"]
+==== `follows = ""` is follows-ROOT, not removal
+
+[IMPORTANT]
+====
+`follows = ""` means **follow the ROOT flake** — an empty lock path, rendered in the lock as
+`"inputs": { "{self}": [] }`. It is a **fixpoint**, and it does **not** nullify or remove the
+input.
+
+The root re-injects *itself* into its dependency's back-reference, so **both flakes see each
+other's real, complete outputs**. Empirically validated on 2026-08-17 against real nix: both
+directions resolve to real cross-data, and the lock writes and terminates.
+====
+
+That changes the reason, not the conclusion:
+
+* the back-reference **is** resolved — to the root, locally;
+* so nothing is fetched for it, and the **registry is never consulted** for that edge;
+* so the registry **cannot redirect it**: the consumer has already bound it to the root by its
+  own declaration.
+
+The only hard limit is a genuine **value cycle** (A's value from B's value from A's value),
+which yields infinite recursion and which no mechanism resolves. The invariant that keeps the
+graph sound is therefore: *the piece an owner pulls from a contributor must not itself read
+back the owner's merged output* — keep the contributed piece self-contained.
+
+==== Propagation and resolution are different questions
+
+The code branches carry `docs/architecture/patterns/flake-lock-propagation.adoc`, which treats
+the same mutual edge and reaches an apparently opposite conclusion:
+
+[quote]
+____
+❌ Declaring a cycle edge "cut" to make propagation terminate.
+✅ Guard each hop by derivation impact; the cycle then terminates by itself and no edge is
+special.
+____
+
+There is no disagreement — the two documents answer different questions, and only the shared
+word suggests otherwise:
+
+[cols="1,2,2"]
 |===
-| `follows = ""` | decides **which edge exists** — structure
-| the registry | decides **what an existing edge points at** — resolution
+| | that document | this specification
+
+| question
+| does a **bump propagate** for ever around the cycle?
+| can the **registry redirect** a back-reference?
+
+| answer
+| no — a hop whose derivations do not move commits nothing, so the chain dies. A cycle
+  terminates iff at least one direction is value-sensitive
+| no — the back-reference is already bound to the root, so the registry is never consulted for
+  it
+
+| what "cut" means there
+| declaring an edge special to force termination — **unnecessary**, the guard removes the need
+| the reciprocal empty follows — which is **follows-root**, present for lock
+  **de-duplication** (one shared instance instead of two), not for termination
 |===
 
-An emptied input is never resolved, so the registry is never consulted for that edge and
-**cannot resurrect it**. Hence: the **declared** repository graph is cyclic, while the
-**evaluated** graph is directed and acyclic by construction. The second is the one nix walks,
-and the one the registry populates.
+★ The measured detail that reconciles them is in the consumer's own comment: the reciprocal
+empty follows exists so that a neighbour's back-reference *"follows THIS root"*, keeping one
+shared closure in the lock rather than two. Emptying the edge is a **side effect of
+de-duplication**, never a termination mechanism. This specification's property therefore does
+not depend on any decision about propagation, and that document's ❌ does not reach it.
+
+NOTE: The cross-reference above is given as a repository path rather than a `link:`, because
+that document lives on the code branches while this one lives on an orphan branch, and no
+convention yet exists for a link between the two trees.
 
 == The two outputs
 

@@ -251,8 +251,11 @@ Recorded because the handoff is scratch and this file is not:
 
 | 2
 | "the DAG", "the DAG closure"
-| the **declared** graph is cyclic; acyclicity is manufactured by the cut idiom. The
-  **evaluated** graph is acyclic — and that is the one the registry populates
+| the **declared** graph has mutual edges — two repositories each naming the other. The
+  **evaluated** graph terminates because a back-reference is bound to the **root** by a
+  reciprocal empty follows, which is a fixpoint and **not** a removed edge. That is the graph
+  the registry populates, and it is why the registry cannot disturb a mutual edge. See the
+  specification, *Why the registry does not disturb a mutual edge*
 
 | 3
 | the editor file has 12 folders
