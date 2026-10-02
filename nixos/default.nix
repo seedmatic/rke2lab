@@ -22,7 +22,7 @@
     ./flox-controller.nix # the flox-controller node-agent image (baked → rke2 air-gap import; it produces the carriers)
     # NOTE: seed-incluster is NO LONGER baked — it rides the flox runtime like the mesh
     # workloads (cluster-api/seed-incluster FloxEnv installs the binary from the
-    # flox-catalogue onto the flox carrier). See SeedInclusterManifestsUnit.
+    # flox-catalog onto the flox carrier). See SeedInclusterManifestsUnit.
     ./ndh-bringup-runtime.nix # ndh bringup-runtime profile symlink (manage-tailnet's trampoline command contract, visible in flox pods)
     ./host-access.nix # dbus-over-TCP + mDNS, so the operator reaches the node
     ./nix-env.nix # nix.settings + the node toolbox on PATH

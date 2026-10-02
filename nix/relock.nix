@@ -35,9 +35,9 @@
   # a repo with none.
   pushFirstBranch ? "",
   # An orphan branch that PINS this repo and carries the flox envs. "" for a repo with none, and the
-  # whole catalogue hop is then skipped.
-  catalogueBranch ? "",
-  # This repo's input name inside that catalogue's lock.
+  # whole catalog hop is then skipped.
+  catalogBranch ? "",
+  # This repo's input name inside that catalog's lock.
   selfPinName ? name,
 }:
 pkgs.writeShellApplication {
@@ -53,7 +53,7 @@ pkgs.writeShellApplication {
       inherit
         selfPinName
         pushFirstBranch
-        catalogueBranch
+        catalogBranch
         ;
       repoUrl = url;
       repoName = name;

@@ -172,6 +172,95 @@ M file2.java
 3. Copy checkpoint content to new session to resume work
 4. Draft files are ephemeral - don't rely on them for recovery (they're merged into checkpoints)
 
+## Config home and session recovery
+
+Two pieces that keep this worktree's session history findable. They exist because of a
+measurement taken on 2026-10-02: of the **7 folders** in `develop.code-workspace`, exactly
+**one** satisfies the condition that gives this worktree its own config home. The other 6 are
+worktrees of three other repos, and a session launched from one of them falls back to
+`~/.claude` — where `/resume` in this workspace will never offer it.
+
+### `config-home-guard.sh` — SessionStart hook, and the answer to "which model is in force?"
+
+```bash
+.claude/bin/config-home-guard.sh explain    # read the live system and say
+```
+
+Asserts that `CLAUDE_CONFIG_DIR` resolves to *this* worktree's `.claude`, that
+`.claude/hub` exists (the wrapper's guard needs it), and that the worktree is still the
+**first** folder of the `.code-workspace` — the unwritten invariant that makes the extension
+launch with the right cwd. As a hook it is silent when healthy and emits a `systemMessage`
+otherwise; `explain` prints the mechanism, the three checks and the 1-of-7 count.
+
+**Why `explain` exists.** This wiring already drifted once: project memory described a
+"clean-split" model — wrapper disabled, config home set by `claudeCode.environmentVariables` —
+that was not what ran, and nothing re-checked the claim for months. Prose can stay wrong for a
+long time, so the authority is a command that re-measures on demand, not a document. If the two
+ever disagree again, the command wins and the document is the thing to fix.
+
+Checked at start because the transcript's location is fixed when the process launches: a
+session that landed in the wrong config home cannot be redirected.
+
+The config home itself is set by claude-hub's `claude-config-home-wrapper.sh`, delivered by
+home-manager and wired through `claudeCode.claudeProcessWrapper` in the `.code-workspace`. It
+falls through **silently** by design (the extension also invokes it for `auth status --json`
+with `cwd=/`), and fixing that at the source costs a claude-hub commit, an outward push, an
+ndh flake-lock bump and a home-manager switch — so the assertion lives here instead.
+
+### `claude-sessions.sh` — manual command
+
+```bash
+.claude/bin/claude-sessions.sh                          # every session, newest first
+.claude/bin/claude-sessions.sh relink                   # list candidates (always a dry run)
+.claude/bin/claude-sessions.sh relink <candidate> --apply   # move THAT ONE
+```
+
+`list` prints session id, size, last write, and **the first thing the user actually asked** —
+the only thing that identifies a session when you are hunting for the one that carried a role.
+Without it, that hunt means grepping .jsonl files of 0.4 MB to 117 MB by hand.
+
+It scans **every** transcript directory under this worktree's `projects/`, sorted together, not
+just the root slug: a session started in a subdirectory is keyed on that cwd and gets its own
+slug while sharing this config home, so it is a session of this worktree and listing only the
+root would hide it at the moment it is wanted. Such a line is marked with where it was started,
+e.g. `[manifests]`.
+
+`relink --apply` **refuses without a named candidate**, and the output says "candidate" rather
+than "orphan" on purpose: a directory under another slug may be one of those live subdirectory
+sessions rather than a moved worktree, and the tool cannot tell them apart.
+
+`relink` repairs the other failure: transcripts live in a directory named after the *encoded
+cwd*, so moving or renaming the worktree orphans them until that name is changed. It names its
+source explicitly: a directory under another slug may be a live session started from a
+subdirectory of this worktree, so moving it blindly would merge two histories.
+
+### Tests
+
+```bash
+flox activate -- bats .claude/bin/tests/
+```
+
+`bats` is pinned in `.flox/env/manifest.toml` as a plain catalog entry — deliberately not a
+flake ref, since nothing couples a test runner to a reactor version the way spotless couples
+`shfmt`.
+
+**Every case is a regression for a defect that actually happened** on 2026-10-02 rather than a
+hypothetical. The count is deliberately not written here — `bats` prints it, and a number in
+prose only ever goes stale (it already did once, at the third review round):
+
+- a multi-line harness block leaking its second line as "the user's question";
+- `relink --apply` reading the projects directory from `CLAUDE_CONFIG_DIR`, so a misrouted
+  session would have absorbed every other project's transcripts;
+- a slug beginning with `-` being parsed as a flag, and `basename` reading it as an option and
+  printing nothing — which made the move walk the whole projects directory and relocate a live
+  transcript directory;
+- an unreadable workspace file counting as a healthy verdict;
+- an unescaped quote in a path making the warning invalid JSON, so the cry was swallowed.
+
+Every test runs against a fake seat under the per-test temp dir. That is not politeness: a
+suite that exercised `relink --apply` against the real `.claude/projects` could destroy the
+history it exists to protect.
+
 ## Related Documentation
 
 - [Claude Code hooks documentation](https://docs.anthropic.com/claude-code/hooks)

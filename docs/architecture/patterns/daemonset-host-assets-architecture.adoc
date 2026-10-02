@@ -56,7 +56,7 @@ flowchart TB
   subgraph synth["rke2lab synthesis (manifests domain)"]
     envunit["FloxEnvManifestsUnit<br/>one FloxEnv CR per env/flavor"]:::code
     catunit["FloxCatalogManifestsUnit<br/>GitRepository + FloxCatalog CR"]:::code
-    catbranch["flox-catalogue branch<br/>nix flake at ROOT (env catalog)"]:::code
+    catbranch["flox-catalog branch<br/>nix flake at ROOT (env catalog)"]:::code
   end
   subgraph node["node (bioskop-nixos)"]
     baked["FOUNDATION (baked, node-base closure)<br/>NRI plugin 10-flox + hooks + /etc/flox.toml"]:::store
@@ -115,17 +115,17 @@ rke2lab-agnostic. rke2lab only INTEGRATES it:
   `osgi/domains/manifests/manifests-core/.../units/runtime/flox/`) emits the
   workload `FloxEnv` CRs (kdns for networking; the headscale/tailscale/headplane
   mesh family; per debug flavor). Each CR installs its package from the catalog via
-  a `floxcatalog:catalogue#<output>` ref and declares a `folder` — the GC-root
+  a `floxcatalog:catalog#<output>` ref and declares a `folder` — the GC-root
   category the plugin keys on, typed as the `FloxEnvFolder` enum so the CR folder
   and the consuming pod's annotation prefix cannot diverge.
   `FloxCatalogManifestsUnit` publishes the catalog: a nix flake at the ROOT of the
-  dedicated `flox-catalogue` git branch, exposed as a Flux `GitRepository` + a
+  dedicated `flox-catalog` git branch, exposed as a Flux `GitRepository` + a
   `FloxCatalog` CR the controller resolves. Flux applies both in an early layer.
 * *Delivery* — rke2lab consumes `flox-controller` and `flox-nri-plugin` as flake
   inputs (`…/develop`, green-gated) and bakes their images into the node-base
   image; the controller then reconciles the CRs onto each node.
 * *Bumps* — the operator bumps env versions by bumping the flake pins at the ROOT
-  of the `flox-catalogue` branch, re-locking, and pushing; the controller resolves
+  of the `flox-catalog` branch, re-locking, and pushing; the controller resolves
   each CR's `floxcatalog:` ref and never re-locks.
 
 The pod-injection annotation keys are a closed vocabulary typed as the
@@ -163,7 +163,7 @@ sequenceDiagram
 and annotate the consuming pod with `FloxAnnotation.ENVIRONMENT.forContainer(c)`.
 The controller realises it; the plugin injects it.
 
-✅ *DO bump env versions on the `flox-catalogue` branch.* Bump the flake pin,
+✅ *DO bump env versions on the `flox-catalog` branch.* Bump the flake pin,
 re-lock, push. Nothing rebuilds the node image; the controller re-realises.
 
 ❌ *DON'T bake an env into the node image.* That was the interim; a baked env makes

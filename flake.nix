@@ -727,7 +727,7 @@
         # controller binary + the ClusterAdoption CRD store path. The OCI image is NO
         # LONGER re-exported or baked — the controller rides the flox runtime (the
         # cluster-api/seed-incluster flox env installs the binary from the
-        # flox-catalogue), so only the binary + CRD are needed here. Same darwin-eval guard.
+        # flox-catalog), so only the binary + CRD are needed here. Same darwin-eval guard.
         seedInclusterPackages =
           let seedPkgs = seed-incluster.packages.${system} or { };
           in (if seedPkgs ? seed-incluster
@@ -1103,7 +1103,7 @@ USAGE
       # another repo's working state. See
       # docs/architecture/patterns/flake-lock-propagation.adoc § who-consumes-me.
       #
-      # rke2lab's own orphan branches (seed-incluster, flox-catalogue) are NOT listed: they
+      # rke2lab's own orphan branches (seed-incluster, flox-catalog) are NOT listed: they
       # are ours, handled in-tree below, not asked by request.
       relockConsumers = [ "github:seedmatic/ndh" ];
 
@@ -1111,7 +1111,7 @@ USAGE
       #
       # The rule (docs/architecture/patterns/flake-lock-propagation.adoc): bumping an input is
       # editing YOUR lock; making someone pin YOU is THEIR act. So this touches rke2lab's own
-      # artifacts and its own orphan BRANCHES' (seed-incluster, flox-catalogue — branches of this
+      # artifacts and its own orphan BRANCHES' (seed-incluster, flox-catalog — branches of this
       # repo, discovered via `git worktree list`, never hard-coded paths), and crosses a repo
       # boundary only as a REQUEST (`--downstream` runs the consumer's own `relock`).
       #
@@ -1148,7 +1148,7 @@ USAGE
         # Pushed BEFORE inputs resolve: a `github:` input sees only what is pushed.
         pushFirstBranch = "seed-incluster";
         # The branch that pins rke2lab and carries the flox envs.
-        catalogueBranch = "flox-catalogue";
+        catalogBranch = "flox-catalog";
         selfPinName = "rke2lab";
       };
       in {
@@ -1243,6 +1243,50 @@ USAGE
           meta.description = "Regenerate the committed dataplan.json from the plan jar (dataset plane)";
         };
 
+        # The envs vendored under .flox-envs.d arrive WITHOUT their manifest.lock: fleet ignores
+        # it, and the lock is what makes an env includable — so a fresh checkout cannot activate
+        # the seat until this runs ("manifest and lockfile are out of sync"). The locks stay
+        # gitignored on purpose: fleet publishes manifests, each checkout realises its own lock.
+        # The include graph is WALKED, not listed — a composed env must be locked after the ones
+        # it includes, and a hardcoded list rots the next time fleet adds an include.
+        apps.lock-flox-envs = {
+          type = "app";
+          program = toString (pkgs.writeShellScript "lock-flox-envs" ''
+            set -euo pipefail
+
+            cd "$(git rev-parse --show-toplevel)"
+
+            declare -A walked=()
+
+            lock_env() {
+              local env="$1"
+              local dir=".flox-envs.d/$env"
+              [ -n "''${walked[$env]:-}" ] && return 0
+              walked[$env]=1
+              if [ ! -f "$dir/.flox/env/manifest.toml" ]; then
+                echo "lock-flox-envs: no vendored env '$env' — is the subtree imported?" >&2
+                exit 1
+              fi
+              while read -r dep; do
+                [ -n "$dep" ] && lock_env "$dep"
+              done < <(sed -n "s|^[[:space:]]*dir = '\.\./\([^']*\)'.*|\1|p" "$dir/.flox/env/manifest.toml")
+              if [ -f "$dir/.flox/env/manifest.lock" ]; then
+                echo "  $env already locked"
+              else
+                echo "  locking $env"
+                flox upgrade --dir "$dir" >/dev/null
+              fi
+            }
+
+            while read -r env; do
+              lock_env "$env"
+            done < <(sed -n 's|^[[:space:]]*{ dir = "\./\.flox-envs\.d/\([^"]*\)".*|\1|p' .flox/env/manifest.toml)
+
+            echo "vendored flox envs locked — 'flox activate' is ready"
+          '');
+          meta.description = "Lock the flox envs vendored under .flox-envs.d so the seat can activate (fresh-checkout bootstrap)";
+        };
+
         # Stage the flox-controller CRD (single-sourced from the flox-controller flake)
         # onto the manifest-synthesis classpath for the DEV loop (`./mvnw -pl :manifests`).
         # Release builds stage it inside seedOutclusterJar. The staged crds/ dir is
@@ -1329,7 +1373,7 @@ USAGE
         apps.relock = {
           type = "app";
           program = "${relockApp}/bin/relock";
-          meta.description = "Reconcile THIS repo's locks: bump each input, DROP any bump that moves no exported derivation, push, then pin+re-lock the flox-catalogue branch. --downstream requests each declared consumer's own relock";
+          meta.description = "Reconcile THIS repo's locks: bump each input, DROP any bump that moves no exported derivation, push, then pin+re-lock the flox-catalog branch. --downstream requests each declared consumer's own relock";
         };
 
         # Anti-drift gate: fail if the committed JSON diverges from the jar output

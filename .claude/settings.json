@@ -6,8 +6,7 @@
     ],
     "additionalDirectories": [
       "/Volumes/git-bare-store",
-      "/Volumes/git-worktree-store",
-      "/private/var/lib/git"
+      "/Volumes/git-worktree-store"
     ]
   },
   "model": "opus[1m]",
@@ -27,6 +26,12 @@
             "command": "\"$CLAUDE_PROJECT_DIR/.claude/bin/memory-guard.sh\"",
             "timeout": 5,
             "statusMessage": "Verifying memory wiring..."
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/bin/config-home-guard.sh\"",
+            "timeout": 5,
+            "statusMessage": "Verifying the config home..."
           }
         ]
       }

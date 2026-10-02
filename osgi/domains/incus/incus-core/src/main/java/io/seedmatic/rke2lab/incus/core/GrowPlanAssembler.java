@@ -102,7 +102,7 @@ public final class GrowPlanAssembler {
    * inputs: nixpkgs, flox, flox-runtime — the last carries the baked NRI plugin + OCI hooks),
    * {@code flake.nix} (the nixosConfiguration wiring), and every file under {@code nixos/} (the
    * modules). Since the FloxEnv-CR migration the image bakes NO flox envs — the workload closures
-   * are realised at runtime by the flox-controller from the {@code flox-catalogue} branch, so no
+   * are realised at runtime by the flox-controller from the {@code flox-catalog} branch, so no
    * catalog tree feeds this hash (the former in-tree {@code runtime/flox} source has been removed).
    * Folded over the sorted set with path + NUL + bytes, so two identical trees hash identically. A
    * missing file/dir contributes nothing but the digest stays stable. Read-only: no shelling, so it

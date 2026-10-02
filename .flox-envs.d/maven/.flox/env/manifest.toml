@@ -1,0 +1,47 @@
+schema-version = "1.12.0"
+
+[install]
+  [install.jre-headless]
+    pkg-group = "maven"
+    pkg-path = "jre_headless"
+outputs = "all"
+
+  [install.maven]
+    pkg-group = "maven"
+    pkg-path = "maven"
+outputs = "all"
+
+[options]
+  systems = ['aarch64-darwin', 'aarch64-linux']
+
+[profile]
+  common = """
+    mvnw_path="${FLOX_ENV_PROJECT}/mvnw"
+    if [ -x "${mvnw_path}" ]; then
+      maven_user_config="${FLOX_ENV_PROJECT}/.m2"
+      mkdir -p "${maven_user_config}"
+      export MAVEN_USER_CONFIG="${maven_user_config}"
+      export MAVEN_SETTINGS="${MAVEN_USER_CONFIG}/settings.xml"
+    
+      if [ -n "${MAVEN_ARGS:-}" ]; then
+        case " ${MAVEN_ARGS} " in
+          *"--settings="*) ;;
+          *) export MAVEN_ARGS="${MAVEN_ARGS} --settings=${MAVEN_SETTINGS}" ;;
+        esac
+      else
+        export MAVEN_ARGS="--settings=${MAVEN_SETTINGS}"
+      fi
+    
+      if [ -d "${FLOX_ENV_PROJECT}/.mvnrepository" ]; then
+        export MAVEN_LOCAL_REPOSITORY="${FLOX_ENV_PROJECT}/.mvnrepository"
+      elif [ -d "${FLOX_ENV_PROJECT}/.m2/repo" ]; then
+        export MAVEN_LOCAL_REPOSITORY="${FLOX_ENV_PROJECT}/.m2/repo"
+      fi
+    
+      maven_version_output=$("${mvnw_path}" -N -q -DmavenVersion=3.9.9 \
+        -Dexpression=maven.version -Doutput=/dev/stdout help:evaluate 2>/dev/null | grep -v '^[[]' | tail -n 1)
+      if [ -n "${maven_version_output}" ]; then
+        export MAVEN_VERSION="${maven_version_output}"
+      fi
+    fi
+  """
