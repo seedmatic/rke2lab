@@ -39,9 +39,26 @@ concurrents de la branche orpheline `memory` (346 fichiers). C'est le côté **p
 strict** : 192 identiques, 56 divergents, **aucun** fichier présent seulement côté tracké ; son
 `MEMORY.md` fait 18 Ko (index restructuré) contre 132 Ko (ancien index plat).
 
-Palliatif appliqué : les checkouts `main` et `develop` ont été **retirés** du nouveau magasin, car
-ils matérialisaient cette copie sur disque. **Le correctif durable reste à faire : supprimer
-`.claude/memory` de la branche `main`.** Déjà absent sur `feature/viewpoint-separation`.
+✅ **RÉPARÉ le 2026-10-02** — `73ac3b584`, poussé sur `develop` **et** `main` (en fast-forward, pas
+une réécriture). Les 248 fichiers sont supprimés du tronc + règle **ancrée** `/memory/` dans
+`.claude/.gitignore:52`. Ancrée exprès : un `memory/` nu attraperait aussi `.claude/hub/memory/`,
+la mémoire du subtree hub, qui DOIT rester trackée. Vérifié — un checkout frais de `main` n'a plus
+de `.claude/memory`. Les checkouts `main`/`develop` restent **hors** du magasin : dans le modèle de
+pile, le tronc se visite par `gh stack trunk`.
+
+## ★★★ La leçon qui généralise — reculer une branche ressuscite ce qu'elle ne contenait plus
+
+Cette mémoire concurrente **n'était pas un vieux résidu** : `origin/main` ne la portait plus
+(`60b04c5db`, 0 fichier). C'est le **réalignement de pile qui l'a ressuscitée** — `main` ramené de
+`7b34a5354` à `ed531af2e`, c'est-à-dire **sous** le commit
+`27687987f refactor(claude)!: memory becomes an orphan branch` qui l'avait supprimée. Et ce commit
+portait aussi `memory-guard.sh`, `memory-commit.sh` et leur hook `settings.json` : le recul a donc
+retiré **le garde-fou contre précisément l'accident qu'il a causé**, puis le force-push l'a publié.
+
+> **Règle : avant de reculer une branche, lire ce que contiennent les commits abandonnés.** Un
+> `reset --hard` vers un commit ancien ne « remet pas en ordre », il **défait tous les refactors
+> intermédiaires** — y compris ceux qui supprimaient des pièges. Aucune erreur de configuration
+> n'est nécessaire pour que ça morde.
 
 ★ **Contrôle d'ouverture de session** : si `MEMORY.md` fait 132 Ko / 250 lignes, tu lis la mémoire
 **périmée** — le dire immédiatement.
