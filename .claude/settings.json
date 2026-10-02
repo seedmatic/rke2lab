@@ -5,6 +5,8 @@
       "WebFetch(domain:raw.githubusercontent.com)"
     ],
     "additionalDirectories": [
+      "/Volumes/git-bare-store",
+      "/Volumes/git-worktree-store",
       "/private/var/lib/git"
     ]
   },
