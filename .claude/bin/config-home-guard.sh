@@ -98,8 +98,13 @@ fi
 cat >/dev/null 2>&1 || true # drain the hook payload; nothing here needs it
 
 if ((${#problems[@]} > 0)); then
-  printf '{"systemMessage": "%s"}\n' "CONFIG HOME: $(
+  msg="CONFIG HOME: $(
     IFS='; '
     echo "${problems[*]}"
   )"
+  # Escape for JSON. The message carries PATHS, and a backslash or a double quote in one
+  # would make the payload invalid — so the cry would be swallowed in exactly the situation
+  # where it is the only thing standing between the user and a lost session.
+  msg=${msg//\\/\\\\}
+  printf '{"systemMessage": "%s"}\n' "${msg//\"/\\\"}"
 fi

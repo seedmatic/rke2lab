@@ -19,15 +19,28 @@
 set -uo pipefail
 
 root="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
-cfg="${CLAUDE_CONFIG_DIR:-$root/.claude}"
 
 # Reproduces the harness's own cwd encoding, e.g.
 #   /Volumes/git-worktree-store/seedmatic/rke2lab.d/develop
 #   -> -Volumes-git-worktree-store-seedmatic-rke2lab-d-develop
 encode() { printf '%s' "$1" | sed 's/[^a-zA-Z0-9]/-/g'; }
 
-projects="$cfg/projects"
+# ★ Anchored to the WORKTREE, never to CLAUDE_CONFIG_DIR. That variable falls back to
+# ~/.claude whenever the config home is misrouted — the very case config-home-guard.sh
+# exists to catch — and `relink --apply` reads every directory it finds here. Pointed at
+# ~/.claude it would move EVERY other project's transcripts under this worktree's name. The
+# default dry run would have softened that, not prevented it. Anchoring removes the
+# possibility instead of guarding it: every directory under a worktree's own config home
+# belongs to that worktree.
+projects="$root/.claude/projects"
 here="$projects/$(encode "$root")"
+
+# Said once, to stderr, because it changes what `list` can possibly show.
+if [[ -n "${CLAUDE_CONFIG_DIR:-}" ]] &&
+  [[ "$(cd "$CLAUDE_CONFIG_DIR" 2>/dev/null && pwd -P)" != "$(cd "$root/.claude" 2>/dev/null && pwd -P)" ]]; then
+  echo "warning: CLAUDE_CONFIG_DIR is '$CLAUDE_CONFIG_DIR', not this worktree — the running" >&2
+  echo "         session writes elsewhere and is absent below. See: config-home-guard.sh explain" >&2
+fi
 
 # A "user" entry is not the same thing as something the user said: the harness replays IDE
 # events, interruption notices and reminders through the same channel. So drop those and take
@@ -60,6 +73,7 @@ cmd_list() {
   fi
   local f
   # ls -t: most recently written first — the session you just lost is at the top.
+  # shellcheck disable=SC2045 # transcript names are UUIDs: no spaces, no glob characters
   for f in $(ls -t "$here"/*.jsonl 2>/dev/null); do
     printf '%-36s %6s  %s  %s\n' \
       "$(basename "$f" .jsonl)" \
