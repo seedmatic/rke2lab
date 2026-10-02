@@ -44,3 +44,9 @@ settings.local.json
 # Track hook scripts: counter the root .gitignore's generic [Bb]in/ rule
 !bin/
 !bin/*.sh
+
+# Claude's auto-memory. The knowledge base is NOT here — it lives on the orphan `memory`
+# branch, checked out at `<repo>.d/memory`, and sessions point `autoMemoryDirectory` there.
+# ANCHORED: a bare `memory/` would also match `.claude/hub/memory/`, the hub subtree's own
+# memory, which MUST stay tracked.
+/memory/
