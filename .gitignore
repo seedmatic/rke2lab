@@ -1,0 +1,4 @@
+# The flake registry is a GENERATED artifact: absolute paths, derived at activation from
+# ${FLOX_ENV_PROJECT}. The edited truth is the YAML beside it, which stays relative.
+# Committing this file would bake one machine's layout into the source of truth.
+/registry.json
