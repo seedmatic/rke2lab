@@ -39,9 +39,21 @@ claude-brainstorm-*.adoc
 diag-*.svg
 
 # nixos-node-substrate migration working notes — living scratch, never committed
-# (unlike the finalized *-handoff.md notes at this level, which ARE tracked)
-nixos-*-handoff.md
 nixos-*-progress.md
+
+# Handoffs are session-scoped, never committed. REVERSES the earlier policy, which said the
+# finalized `*-handoff.md` notes at this level WERE tracked. Nothing here is secret — the
+# reason is lifecycle: a handoff exists to pass work to the next session, and it is superseded
+# the moment that work lands. Tracking them accretes stale intent in the tree, which is exactly
+# what the preview and whiteboard rules above avoid. Same family as `nixos-*-progress.md`:
+# living scratch, not a deliverable. What survives a handoff belongs in `docs/` or in memory.
+# Three were already tracked when the rule flipped on 2026-10-02
+# (`cellar-secrets-design-handoff.md`, `doctor-frontier-handoff-note.md`,
+# `worktree-foundation-handoff.md`) and were untracked in the same change.
+# ANCHORED: a bare pattern would also match `.claude/hub/` and `.claude/memory/` — the same
+# unanchored-pattern trap as `checkpoint-*.md` and `memory/` elsewhere in this file.
+# Both spellings exist in the wild: `-handoff.md` and `-handoff-note.md`.
+/*handoff*.md
 
 # Machine-local policy-limits snapshot — runtime state, never committed
 policy-limits.json
