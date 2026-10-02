@@ -240,7 +240,7 @@
         "outputs": "all"
       },
       "podman-wrapper": {
-        "flake": "git+https://github.com/nxmatic/fleet?dir=flox/k8s/.flox/flakes/podman-wrapper",
+        "flake": "git+https://github.com/seedmatic/fleet?dir=flox/k8s/.flox/flakes/podman-wrapper",
         "outputs": "all"
       },
       "pstree": {
@@ -303,7 +303,6 @@
     },
     "vars": {
       "GITHUB_OWNER": "seedmatic",
-      "JAVA_TOOL_OPTIONS": "${JAVA_TOOL_OPTIONS:-} --enable-native-access=ALL-UNNAMED",
       "M2_REPO": "${HOME}/.m2/repository",
       "PULUMI_BACKEND_URL": "file://${FLOX_ENV_PROJECT}/.pulumi-state",
       "PULUMI_CONFIG_PASSPHRASE": "",
@@ -4395,7 +4394,7 @@
     },
     {
       "install_id": "podman-wrapper",
-      "locked-url": "git+https://github.com/nxmatic/fleet?dir=flox/k8s/.flox/flakes/podman-wrapper&ref=refs/heads/main&rev=e75151ebe43340cfcbe88afe0fbeff0a1c27797d",
+      "locked-url": "git+https://github.com/seedmatic/fleet?dir=flox/k8s/.flox/flakes/podman-wrapper&ref=refs/heads/main&rev=9ad42fc6e783696e596e146eb1b19b7655c5ad37",
       "flake-description": "podman-wrapper flake for k8s env",
       "locked-flake-attr-path": "packages.aarch64-darwin.default",
       "derivation": "/nix/store/jbfnkvm91hmyg4lml5jd9jbmpb0ia8pq-docker.drv",
@@ -4418,7 +4417,7 @@
     },
     {
       "install_id": "podman-wrapper",
-      "locked-url": "git+https://github.com/nxmatic/fleet?dir=flox/k8s/.flox/flakes/podman-wrapper&ref=refs/heads/main&rev=e75151ebe43340cfcbe88afe0fbeff0a1c27797d",
+      "locked-url": "git+https://github.com/seedmatic/fleet?dir=flox/k8s/.flox/flakes/podman-wrapper&ref=refs/heads/main&rev=9ad42fc6e783696e596e146eb1b19b7655c5ad37",
       "flake-description": "podman-wrapper flake for k8s env",
       "locked-flake-attr-path": "packages.aarch64-linux.default",
       "derivation": "/nix/store/82i7id1dcwbxv62c1gmix2shwpjjqfvk-docker.drv",
@@ -4648,25 +4647,25 @@
       "include": {
         "environments": [
           {
-            "dir": "../.flox.d/asciidoc"
+            "dir": "./.flox-envs.d/asciidoc"
           },
           {
-            "dir": "../.flox.d/git"
+            "dir": "./.flox-envs.d/git"
           },
           {
-            "dir": "../.flox.d/jdk"
+            "dir": "./.flox-envs.d/jdk"
           },
           {
-            "dir": "../.flox.d/k8s"
+            "dir": "./.flox-envs.d/k8s"
           },
           {
-            "dir": "../.flox.d/keyhole"
+            "dir": "./.flox-envs.d/keyhole"
           },
           {
-            "dir": "../.flox.d/pulumi"
+            "dir": "./.flox-envs.d/pulumi"
           },
           {
-            "dir": "../.flox.d/shell"
+            "dir": "./.flox-envs.d/shell"
           }
         ]
       }
@@ -4791,7 +4790,7 @@
         },
         "name": "asciidoc",
         "descriptor": {
-          "dir": "../.flox.d/asciidoc"
+          "dir": "./.flox-envs.d/asciidoc"
         }
       },
       {
@@ -4825,6 +4824,9 @@
             "gnupg": {
               "pkg-path": "gnupg",
               "pkg-group": "keyhole"
+            },
+            "go-2fa": {
+              "pkg-path": "go-2fa"
             },
             "keychain": {
               "pkg-path": "keychain",
@@ -4871,7 +4873,7 @@
         },
         "name": "git",
         "descriptor": {
-          "dir": "../.flox.d/git"
+          "dir": "./.flox-envs.d/git"
         }
       },
       {
@@ -4891,16 +4893,13 @@
               "pkg-path": "visualvm"
             }
           },
-          "vars": {
-            "JAVA_TOOL_OPTIONS": "${JAVA_TOOL_OPTIONS:-} --enable-native-access=ALL-UNNAMED"
-          },
           "hook": {},
           "profile": {},
           "options": {}
         },
         "name": "jdk",
         "descriptor": {
-          "dir": "../.flox.d/jdk"
+          "dir": "./.flox-envs.d/jdk"
         }
       },
       {
@@ -5000,7 +4999,7 @@
               "outputs": "all"
             },
             "podman-wrapper": {
-              "flake": "git+https://github.com/nxmatic/fleet?dir=flox/k8s/.flox/flakes/podman-wrapper",
+              "flake": "git+https://github.com/seedmatic/fleet?dir=flox/k8s/.flox/flakes/podman-wrapper",
               "outputs": "all"
             },
             "tubekit": {
@@ -5023,7 +5022,7 @@
         },
         "name": "k8s",
         "descriptor": {
-          "dir": "../.flox.d/k8s"
+          "dir": "./.flox-envs.d/k8s"
         }
       },
       {
@@ -5037,6 +5036,9 @@
             "gnupg": {
               "pkg-path": "gnupg",
               "pkg-group": "keyhole"
+            },
+            "go-2fa": {
+              "pkg-path": "go-2fa"
             },
             "keychain": {
               "pkg-path": "keychain",
@@ -5077,7 +5079,7 @@
         },
         "name": "keyhole",
         "descriptor": {
-          "dir": "../.flox.d/keyhole"
+          "dir": "./.flox-envs.d/keyhole"
         }
       },
       {
@@ -5103,7 +5105,7 @@
         },
         "name": "pulumi",
         "descriptor": {
-          "dir": "../.flox.d/pulumi"
+          "dir": "./.flox-envs.d/pulumi"
         }
       },
       {
@@ -5144,7 +5146,7 @@
         },
         "name": "shell",
         "descriptor": {
-          "dir": "../.flox.d/shell"
+          "dir": "./.flox-envs.d/shell"
         }
       }
     ],
@@ -5163,6 +5165,15 @@
           "Overriding": [
             "install",
             "gnupg"
+          ]
+        },
+        "higher_priority_name": "git"
+      },
+      {
+        "warning": {
+          "Overriding": [
+            "install",
+            "go-2fa"
           ]
         },
         "higher_priority_name": "git"
@@ -5253,6 +5264,15 @@
           "Overriding": [
             "install",
             "gnupg"
+          ]
+        },
+        "higher_priority_name": "keyhole"
+      },
+      {
+        "warning": {
+          "Overriding": [
+            "install",
+            "go-2fa"
           ]
         },
         "higher_priority_name": "keyhole"

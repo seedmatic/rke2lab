@@ -128,13 +128,16 @@ on-activate = """
     ## that points puppeteer at a cached headless shell. Included rather than restated here
     ## — the fleet env is where a SHARED toolchain lives, and `docs/` is rendered from more
     ## repos than this one. The doc-standards skill's validation gate depends on it.
-    { dir = "../.flox.d/asciidoc" },
-    { dir = "../.flox.d/git" },
-    { dir = "../.flox.d/jdk" },
-    { dir = "../.flox.d/k8s" },
-    { dir = "../.flox.d/keyhole" },
-    { dir = "../.flox.d/pulumi" },
-    { dir = "../.flox.d/shell" },
+    ## `.flox-envs.d/` is fleet's env tree vendored in as a git subtree, so these paths stay
+    ## inside the worktree. They used to reach a symlink in the PARENT directory, which made
+    ## where a worktree may live a precondition of activating it.
+    { dir = "./.flox-envs.d/asciidoc" },
+    { dir = "./.flox-envs.d/git" },
+    { dir = "./.flox-envs.d/jdk" },
+    { dir = "./.flox-envs.d/k8s" },
+    { dir = "./.flox-envs.d/keyhole" },
+    { dir = "./.flox-envs.d/pulumi" },
+    { dir = "./.flox-envs.d/shell" },
   ]
 
 
