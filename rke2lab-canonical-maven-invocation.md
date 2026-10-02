@@ -93,3 +93,40 @@ grep -E 'BUILD (SUCCESS|FAILURE)' "$LOG"
 ```
 
 See [[common-d-is-a-directory-wide-nix-input]].
+
+## ★★★ L'invocation de BARRIÈRE — établie le 2026-10-02, et elle n'est pas la canonique
+
+La canonique ci-dessus **ne peut pas être verte** aujourd'hui. Il existe donc une seconde
+invocation, celle qui sert de barrière avant fusion dans un dépôt **sans aucune CI** :
+
+```
+flox activate -- ./mvnw clean verify -Pclaude -DskipBench=true -pl '!:bench-tests' \
+  -Dmaven.build.cache.skipCache=false -DskipTests=false -B
+```
+
+Mesuré sur `c502f7a0d` : `BUILD SUCCESS`, `MVN_EXIT=0`, **128 modules**, 111 lignes `Tests run:`,
+**zéro échec**, et `exec/seed-outcluster … SUCCESS [8,195 s]`. Décision utilisateur : **ce vert
+satisfait la barrière formelle**, l'écart au réacteur complet étant assumé et nommé plutôt que
+masqué ; le test du bench garde sa session dédiée comme incrément à part.
+
+### Pourquoi `-pl '!:bench-tests'` et pas un drapeau
+
+★ **Aucune forme de `-DskipBench` ne peut verdir le build** — ni vide, ni `=true`. Lu dans les poms,
+pas déduit, et il a fallu DEUX sessions pour fermer le raisonnement :
+
+- `exec/seed-outcluster/pom.xml:729-743` — le profil `bench` ne fait **qu'une** chose : ajouter une
+  dépendance de test sur `bench-tests`. (⚠️ la citation `exec/seed-master/pom.xml:743` plus haut est
+  périmée deux fois : le module s'appelle `seed-outcluster`, et le bloc est en 729-743.)
+- `osgi/runtime/bench/pom.xml:35` — `bench-tests` est un `<module>` **inconditionnel** du réacteur.
+
+Donc le drapeau désarme le **couplage** (d'où le `SUCCESS` de `seed-outcluster`, qui n'est PAS
+`SKIPPED` derrière l'échec), mais le module se construit et exécute ses propres tests quoi qu'il
+arrive. Seul un geste sur le réacteur l'écarte.
+
+⚠️ **Deux formulations fausses à ne pas reprendre**, elles ont circulé dans
+`.claude/devpod-integration-handoff.md` : « `-DskipBench` écarte le module » et « `-DskipBench`
+désarme l'exécution du test, pas le module ». C'est l'inverse dans les deux cas — il désarme la
+dépendance, pas l'exécution. Elles y sont désormais marquées comme fausses, pas effacées.
+
+Et le seul échec restant, connu et **déjà sur `main`** :
+`PaxLoggingJulCaptureTest.jdkJavaUtilLoggingIsCapturedByPaxAndNeverHitsTheConsole`.
