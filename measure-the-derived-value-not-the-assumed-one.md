@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: c2c2a472-f982-468d-98de-1b23bbf4e274
-  modified: 2026-09-27T19:20:47.974Z
+  modified: 2026-10-02T09:06:31.662Z
 ---
 
 Soirée du **2026-09-27**. Quatre conclusions fausses, dont trois corrigées par l'utilisateur. Elles
@@ -37,6 +37,27 @@ un refus en vide.
 - Un `python replace` sans assertion, neutralisé par un reformatage entre deux éditions : le filtre
   n'était pas appliqué. Seul le **test que j'avais écrit** l'a dit. → préférer l'outil d'édition qui
   échoue si la chaîne ne matche pas, ou assortir chaque `replace` d'une assertion.
+
+## ★★ Le troisième visage : l'OUTIL répond à une autre question que celle posée
+
+Deux fois le 2026-10-02, pendant la vérification qui a précédé la suppression de l'ancien étage 0
+([[etage0-bare-worktree-migration]]), un outil a répondu **sans erreur** à une question différente
+de la mienne — donc un verdict faux, et confiant :
+
+- **`stat -f %z`** : syntaxe BSD, mais c'est le `stat` **GNU** qui est dans le PATH (via nix). `-f`
+  y signifie « système de fichiers », pas « format » → j'ai comparé des tailles de volume et conclu
+  que 4 transcripts **divergeaient** alors qu'ils étaient des préfixes exacts. Une seconde de plus
+  et j'écrasais en croyant perdre quelque chose. Forme GNU : `stat -c %s`, ou simplement `wc -c`.
+- **`rsync -rn`** : sans `-t`, rsync ne préserve pas les mtimes, donc son contrôle rapide déclare
+  **tout** fichier différent. 23 707 « écarts » annoncés, dont `pom.xml` et `CLAUDE.md` du worktree
+  où je travaillais. Et même avec `-a`, la comparaison reste invalide pour ce qui a voyagé **par
+  git** plutôt que par copie : la branche `memory` sortait à 347 fichiers « différents » à contenu
+  identique.
+
+**La leçon qui généralise** : avant de croire un verdict de comparaison, se demander *sur quoi*
+l'outil compare — et si la réponse est « les mtimes », elle ne vaut que si les mtimes ont été
+transportés. Pour du contenu, comparer le contenu (`cmp`), et réduire d'abord l'ensemble à ce qui
+n'est pas déjà prouvé égal autrement (ici : les fichiers trackés l'étaient par les refs git).
 
 ## Le réflexe
 

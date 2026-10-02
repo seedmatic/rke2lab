@@ -1,13 +1,20 @@
 ---
 name: etage0-bare-worktree-migration
-description: "Étage 0 de bioskop migré vers bare/worktree sur deux volumes APFS case-sensitive : EXÉCUTÉ et vérifié le 2026-10-02. Le nouveau magasin fait autorité. Reste le gel de l'ancien + le rebuild NixOS."
+description: "Étage 0 de bioskop migré vers bare/worktree sur deux volumes APFS case-sensitive : EXÉCUTÉ, vérifié, et l'ancien magasin SUPPRIMÉ le 2026-10-02. Reste le rebuild NixOS. Porte les 3 trous que seul un triage inverse révèle."
 metadata:
+  node_type: memory
   type: project
+  originSessionId: 56347839-f6c3-41aa-82ca-50aeb242564e
+  modified: 2026-10-02T09:09:11.349Z
 ---
 
-**★★★ EXÉCUTÉ ET VÉRIFIÉ le 2026-10-02.** Le siège travaille désormais depuis
-`/Volumes/git-bare-store` + `/Volumes/git-worktree-store` ; l'ancien
-`/private/var/lib/git/seedmatic` est une **référence gelée**. Runbook + passation complète dans
+**★★★ EXÉCUTÉ, VÉRIFIÉ, ET L'ANCIEN SUPPRIMÉ le 2026-10-02.** Le siège travaille depuis
+`/Volumes/git-bare-store` + `/Volumes/git-worktree-store`. L'ancien
+`/private/var/lib/git/seedmatic` **n'existe plus** : les 8 dépôts de la fermeture (6,4 Go) ont été
+supprimés après la vérification ci-dessous ; seuls les 3 hors fermeture restent sur place
+(`java-bbox-api-client`, `java-systemd`, `macos-screen-sharing-addons`, 17 Mo). Le gel en lecture
+n'a donc jamais eu lieu — on est passé directement à la suppression, décision utilisateur, la
+vérification étant passée. Runbook + passation complète dans
 `.claude/etage0-migration-handoff.md` du worktree (gitignoré, `.claude/.gitignore:56`) — sa section
 « COMMENCE ICI » porte l'état d'exécution et les 7 pièges. Premier incrément du chantier
 devpod-comme-atelier ; le *pourquoi* est dans `.claude/devpod-atelier-whiteboard.adoc`.
@@ -31,7 +38,41 @@ render de chaque côté : les 4 branches `manifests/*` ont divergé en quelques 
 ★ **`pulumi preview` n'est donc PAS en lecture seule côté git** — il commite
 `render <cluster> manifests @ <sha>`. D'où l'urgence du gel.
 
-## ★★ Deux mémoires concurrentes dans le dépôt — correctif durable PAS fait
+Les 4 tips anciens sont conservés en `refs/heads/backup/old-render-*` dans le nouveau bare. Leur
+seul écart sémantique était `dirty: false` → `true` dans `manifest.yaml` ; le reste n'était que du
+bruit de ré-chiffrement sops (±même nombre de lignes). Des artefacts dérivés, donc.
+
+## ★★★ Le triage inverse n'est pas optionnel — 3 trous, tous gitignorés
+
+Avant de supprimer l'ancien magasin (2026-10-02), la vérification a trouvé **trois choses vivantes
+qui n'existaient que là**. Toutes les trois étaient **gitignorées**, et c'est exactement pourquoi
+elles sont passées : un clone local porte les objets git, une copie d'artefacts porte ce qu'on a
+pensé à nommer, et **aucun des deux ne porte l'ignoré-mais-vivant**.
+
+1. **Les 16 `manifest.lock` de `fleet`** — absents du nouveau magasin (seuls les `manifest.toml`
+   étaient trackés). Sans eux, chaque env flox que les `[include]` de rke2lab consomment relockait
+   sur une closure potentiellement différente. Cf. [[references-resolve-at-build-not-runtime]] :
+   le lock DOIT voyager. Les locks de ndh, nnh et flox-controller, eux, sont trackés — donc arrivés.
+2. **Le certificat du listener incus de bioskop** — `listener.crt` + clé EC dans
+   `ndh.d/develop/.local.d/incus-listener-cert/bioskop/`, générés la veille. Pas régénérable sans
+   re-trust.
+3. **La mémoire de `flox-nri-plugin`** — `MEMORY.md` + `extraction-task.md` dans l'arbre de code
+   (l'anti-motif), la base de connaissance de ce dépôt.
+
+★ **Et une quatrième catégorie qu'aucune comparaison de refs ne peut voir : les `git stash`.**
+L'ancien rke2lab en portait **8**, le nouveau bare 0. Une entrée de stash n'est ni une branche ni un
+tag — elle n'est atteignable que par le **reflog de `refs/stash`**. Six étaient des `autostash`
+(résidus de rebase, abandonnés), mais deux étaient délibérés, dont un étiqueté par l'utilisateur
+lui-même « SAFETY NET, do NOT inspire alignment; align from specs » (2026-07-11). Conservés en
+`refs/archive/stash/*` dans le nouveau bare, messages d'origine intacts.
+
+**La recette, pour la prochaine fois :** comparer les refs ne suffit pas. Il faut (a) `git stash
+list` sur chaque dépôt source, (b) `git status --porcelain --ignored=matching` par worktree, puis
+comparer **par contenu** (`cmp`) ce qui reste après avoir écarté le régénérable — et le régénérable
+se filtre par motif **non ancré** (`.flox/log` vit aussi sous `flox/<env>/.flox/log`, 96 faux
+positifs sinon).
+
+## ★★ Deux mémoires concurrentes dans le dépôt — RÉPARÉ
 
 **248 fichiers de mémoire sont commités sur la branche `main`** (`main/.claude/memory`, tracké),
 concurrents de la branche orpheline `memory` (346 fichiers). C'est le côté **perdant** du fork de
@@ -69,7 +110,8 @@ retiré **le garde-fou contre précisément l'accident qu'il a causé**, puis le
    `/Volumes/git-worktree-store`.
 2. **Périmètre** : la fermeture du DAG rke2lab seule — 8 dépôts (rke2lab, ndh, nnh, claude-hub,
    flox-nri-plugin, flox-controller, nix-flake-commons, fleet). 6,4 Go sur les 298 du volume.
-3. **Autorité** : le nouveau magasin immédiatement ; l'ancien gelé en lecture.
+3. **Autorité** : le nouveau magasin immédiatement ; l'ancien gelé en lecture — puis, le même jour,
+   **supprimé** sans passer par le gel, la vérification étant passée (décision utilisateur).
 4. ★ **On DUPLIQUE, on ne déplace pas.** Ça annule `git worktree repair`, l'exigence « quand c'est
    calme », et tout risque d'atomicité — mais ça crée **deux copies vivantes**, qui est exactement
    la forme du fork de mémoire déjà mesuré (248 fichiers contre 325). D'où la règle : la bascule des
@@ -100,9 +142,11 @@ retiré **le garde-fou contre précisément l'accident qu'il a causé**, puis le
 - `[include] dir = "../.flox.d/<nom>"` se résout depuis le **parent du worktree**, donc un symlink
   vers `fleet/flox` à **chaque niveau portant un worktree**. ★ `rke2lab.d/design/.flox.d` **manque
   aujourd'hui** → `flox activate` y échoue déjà, avant toute migration.
-- Le `.code-workspace` de `viewpoint-separation` **n'a rien à changer** : ses chemins relatifs
-  (`../seed-incluster`, `../../ndh.d/develop`) survivent, et ses libellés disent déjà
-  `seedmatic/rke2lab.git/…` — ils décrivaient le layout cible avant qu'il existe.
+- Le `.code-workspace` de `viewpoint-separation` **n'a rien eu à changer pour migrer** : ses chemins
+  relatifs (`../seed-incluster`, `../../ndh.d/develop`) survivent, et ses libellés disaient déjà
+  `seedmatic/rke2lab.git/…` — ils décrivaient le layout cible avant qu'il existe. Un 7ᵉ dossier y a
+  été ajouté depuis, à la demande de l'utilisateur : `../memory`, pour suivre la mémoire dans
+  l'explorateur VSCode. Le fichier vit **hors** de tout worktree, donc il n'est pas versionné.
 
 ## Trois corrections à des croyances de départ
 
@@ -123,10 +167,21 @@ retiré **le garde-fou contre précisément l'accident qu'il a causé**, puis le
   ★ Urgent : `flox-nri-plugin` et `flox-controller` ont un `autoMemoryDirectory` pointant sur des
   worktrees **supprimés**, donc chaque session y repart d'une mémoire vierge sans que rien ne le
   signale. `nnh` porte l'anti-motif (mémoire dans l'arbre d'une branche de code, 10 fichiers à
-  migrer). Voir [[hub:worktree-per-conversation]].
-- **Aucune stack `gh` déclarée** pour les dépôts seedmatic, et l'extension n'est pas installée sur
-  ce siège. Le layout cible reste donc **un worktree par branche** ; la compression par stack est
-  ultérieure et ne toucherait que les 5 branches de travail de rke2lab.
+  migrer), et `flox-nri-plugin` aussi — ses 2 fichiers, rescapés de l'ancien magasin, attendent la
+  branche orpheline. Voir [[hub:worktree-per-conversation]].
+- **La pile de PR.** L'extension `github/gh-stack` est installée, mais avec `main == develop` une
+  seule PR est ouvrable (`viewpoint-separation → develop`, 160 commits) : ce n'est pas une pile. Une
+  vraie pile demande de **découper ces 160 commits** — incrément de conception à part entière.
+
+## Où a atterri ce que l'ancien magasin portait seul
+
+`rke2lab.d/.etage0-archive/` (16 Mo, 227 fichiers, **hors de tout worktree git** exprès, pour qu'il
+ne soit jamais commité par accident) : les planches, checkpoints, plans et transcripts des 5
+worktrees que le nouveau magasin ne matérialise plus, la mémoire de `flox-nri-plugin`,
+`opencode.json`, et les `settings.local.json` des 3 dépôts dont l'`autoMemoryDirectory` est cassé —
+gardés comme **référence** et non réinstallés, précisément parce qu'ils portent le bug. Son
+`README.md` liste la vérification. Les transcripts y sont **archivés, pas reprenables** : le slug
+est le chemin absolu, donc `--resume` ne les verra pas sans le worktree d'origine.
 
 ## Dette constatée au passage, hors périmètre
 
