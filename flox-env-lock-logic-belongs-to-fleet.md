@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: eef830de-9690-4fc8-ac3d-71fec81b1988
-  modified: 2026-10-03T07:13:21.700Z
+  modified: 2026-10-03T09:23:59.281Z
 ---
 
 **Décidé par l'utilisateur le 2026-10-03, code pas commencé.** Arbitrage de la session
@@ -46,6 +46,28 @@ problème, déjà résolu une fois — mais résolu *chez le consommateur*.
 **Les deux copies partent dans le MÊME changement** (fleet + rke2lab + ndh). Sinon deux
 copies deviennent trois. En attendant, un commentaire à la copie de ndh **nomme la
 destination décidée**, pour qu'elle ne devienne pas permanente en silence.
+
+## ★★★ Le même défaut a frappé la copie de ndh, à l'autre niveau — et la leçon est la parade
+
+Trouvé en revue de la PR #8 (2026-10-03), corrigé dans `d0abdb73`. `deps_of` lisait bien
+les **deux** styles de quote, mais le lecteur de **premier niveau** (celui qui alimente la
+boucle principale) n'en lisait qu'un. Mesuré : 3 includes en doubles quotes, **0** en
+simples. Et zéro n'est pas une erreur, c'est un **silence** : la boucle `while read` ne
+tourne jamais et la ligne de succès s'affiche quand même.
+
+⛔ Donc l'app annonçait « ready » à l'opérateur, sur une étape déclarée **OBLIGATOIRE**
+pour un clone frais, **après n'avoir rien verrouillé** — puis `flox activate` échouait sur
+le « manifest and lockfile are out of sync » que l'app existe précisément pour éviter.
+
+✅ **Deux correctifs, et le second compte plus que le premier :** symétriser les lecteurs,
+**et REFUSER sur zéro include** (exit 1) au lieu de rapporter un succès. La symétrie règle
+le cas du jour ; le refus règle la **classe** — il reste correct pour une forme d'include
+qu'aucun des deux lecteurs n'anticipe. **Un verrouilleur qui ne sait pas lire le manifeste
+doit le DIRE, pas répondre « rien ».**
+
+★ C'est exactement la famille de
+[[measure-the-derived-value-not-the-assumed-one]] : un outil qui répond « moins » au lieu
+de « je ne peux pas ». Ici le « moins » était zéro, et zéro se déguisait en succès.
 
 ## ★★ Et l'urgence n'est pas cosmétique : rke2lab est déjà cassé
 
