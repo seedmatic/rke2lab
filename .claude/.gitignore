@@ -82,3 +82,14 @@ settings.local.json
 # ANCHORED: a bare `memory/` would also match `.claude/hub/memory/`, the hub subtree's own
 # memory, which MUST stay tracked.
 /memory/
+
+# Backups written by the Write|Edit PreToolUse hook (bin/../hooks/file-backup-hook.js).
+# They are copies of files already under version control, so committing them stores the
+# same content twice and leaks work-in-progress into review.
+# ★ The hook writes to `<cwd>/.claude/.edit-baks/`, so its location follows the session's
+# working directory — a session whose cwd drifted to another worktree drops backups there.
+# Measured 2026-10-03: one such file was COMMITTED on `feature/ssot-manifest` (140 lines of
+# flake.nix), and two landed in the orphan `memory` checkout.
+# ANCHORED: a bare `.edit-baks/` would also match inside `.claude/hub/`, the subtree we do
+# not own — same trap as `/memory/` above.
+/.edit-baks/
