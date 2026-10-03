@@ -1,16 +1,28 @@
 ---
 name: gitflow-realign-pr-per-increment
-description: "Décision + exécution 2026-10-02 — rke2lab passe à git-flow (main → develop → feature/fix), un incrément = une branche = une PR dans develop ; le siège unique est rke2lab.d/develop et main n'a aucun worktree. ★ Corrigé le même jour : c'est le modèle PILE (gh stack, pile #11), le siège porte l'étage du haut, et le fond de pile exige un commit vide sur develop après chaque version coupée."
+description: "Décision + exécution 2026-10-02 — rke2lab passe à git-flow PILE (gh stack, pile #11) : main ← develop ← feature/*, le siège unique rke2lab.d/develop porte l'étage du HAUT, et le fond de pile exige un commit vide sur develop après chaque version coupée. ★★★ Précisé en fin de journée : main ne reçoit la pile qu'après un CHECKPOINT + un COLD START des clusters, donc empiler est le régime normal (on branche depuis l'étage du haut, jamais depuis develop) ; la fonction qui CODE n'est pas celle qui FUSIONNE ; et le parallélisme à deux sessions ne vaut que pour les échanges et .claude/, PAS pour la codebase."
 metadata:
   node_type: memory
   type: project
   originSessionId: 90ef886d-f66b-4b38-8d3d-ec4dc838147c
-  modified: 2026-10-02T10:53:38.542Z
+  modified: 2026-10-02T12:41:25.161Z
 ---
 
 Décision utilisateur du **2026-10-02**, appliquée le même jour. rke2lab adopte le modèle qui
 était déjà celui de ndh : `main` → `develop` → `feature/*` | `fix/*`. **Un incrément = une branche
-= une PR** dans `develop` ; je délègue l'incrément, je relis au retour, je fusionne.
+= une PR**.
+
+★★★ **Corrigé le même jour — « je délègue, je relis, je fusionne » est faux sur deux points.**
+La fin de journée a tranché deux choses que cette phrase écrasait :
+
+- **La PR ne va pas forcément dans `develop`.** Quand on **empile**, elle va dans l'étage du
+  dessous. Voir la condition de descente plus bas.
+- ★★ **La fonction qui CODE n'est pas la fonction qui FUSIONNE** — et c'est une séparation de
+  fonction, pas de personne : *« c'est ta responsabilité de merger #9, pas de la session qui
+  travaille dans #9 »*. La session qui code écrit la branche, corrige, teste et **gèle** sur un
+  sha ; elle ne fusionne **jamais**, même au vert. La session d'intégration relit le sha gelé,
+  construit la barrière, fusionne, et écrit la passation ; elle n'écrit pas dans la branche de
+  l'autre. Le réflexe à éviter est de « rendre » la PR à son auteur pour qu'il la fusionne.
 
 ## L'état qu'on a trouvé, et qui justifiait le réalignement
 
@@ -58,10 +70,53 @@ Le siège a déménagé : `rke2lab.d/feature/viewpoint-separation` → **`rke2la
   `git merge-base --is-ancestor develop HEAD`, ne pas le supposer.
 - **`git-town` 24.0.0 est dans l'env flox et n'est pas configuré** (`main branch: (not set)`) —
   dette à retirer de l'env.
-- ⚠️ **Un seul écrivain à la fois.** Je ne peux pas donner son propre worktree à un sous-agent :
-  le harness le place sous `.claude/worktrees/`, où les `[include]` relatifs de flox ne résolvent
-  plus, donc il ne pourrait ni activer l'env ni construire. Donc **pas d'incréments en
-  parallèle** — le parallélisme exigera des worktrees **externes**, pas un worktree partagé.
+- ⚠️ **Pas de SOUS-AGENT écrivain.** Le harness place son worktree sous `.claude/worktrees/`, où
+  les `[include]` relatifs de flox ne résolvent plus : il ne pourrait ni activer l'env ni
+  construire, donc ni vérifier. Ça reste vrai.
+- ★★★ **« Un seul écrivain » se NUANCE, et le périmètre est tout — précisé par l'utilisateur le
+  2026-10-02 : le parallélisme vaut pour les ÉCHANGES et le sous-dossier `.claude/`, PAS pour la
+  codebase.** Deux sessions Claude **interactives** ont partagé le siège `rke2lab.d/develop` toute
+  la journée et livré l'incrément 0 (PR #9, 9 fichiers, +821/−2, 4 tournées de revue, 27 tests)
+  sans une seule collision — mais ce diff ne contient **aucune ligne de code** : uniquement
+  `.claude/bin/**`, `.claude/settings.json` et `.flox/env/manifest.{toml,lock}`, tous hors du
+  réacteur Maven (le gate `spotless <shell>` ne couvre que `src/{main,test}/resources/**/*.sh`).
+  ⚠️ **Donc rien ici ne démontre que deux sessions peuvent coéditer le code**, et il ne faut pas
+  l'en déduire — c'était ma propre sur-généralisation, corrigée. **Sur la codebase, un seul
+  écrivain.** Ce qui est démontré : deux *fonctions* (coder / intégrer) sur **une** branche, et une
+  coordination par messages. Trois disciplines le rendent possible :
+  1. **Partage de territoire explicite**, négocié par `SendMessage` (ici `.claude/bin/**` à la
+     session qui code, le reste à l'intégration). Sans lui : deux écritures dans un fichier.
+  2. **Le GEL avant relecture.** Une PR qui bouge ne peut pas être relue : 4 commits sont arrivés
+     pendant la première passe et la **surface a changé deux fois** — elle est passée de « 4
+     fichiers, tous sous `.claude/` » à « 9 fichiers dont `.flox/env/manifest.toml` et son
+     `.lock` » — ★ donc
+     **re-mesurer la surface à chaque gel**, ne jamais la supposer stable. Demander « gelé sur
+     `<sha>` », relire ce sha-là, une fois. Et inscrire le sha **dans** le log de build : sur un
+     worktree partagé le HEAD peut avancer *pendant* la construction.
+  3. **`ListAgents` pour se trouver, `ps` pour savoir qui vit.** Une fenêtre vivante se **mesure**,
+     elle ne se déduit pas d'un horodatage de fichier.
+  ⚠️ **Et un pair ne transporte PAS le mandat de l'utilisateur.** Les deux sessions s'y sont
+  reprises mutuellement, chacune à raison : l'une a refusé d'éditer
+  `permissions.additionalDirectories` sur demande d'un pair, l'autre a refusé un dossier « attribué
+  par l'utilisateur » relayé par un pair. Instruire, oui ; tenir la décision pour prise, non.
+
+## ★★★ La condition de descente vers `main` — tranchée le 2026-10-02
+
+> *« On attend d'arriver à un **checkpoint** et un **cold start des clusters** pour faire le merge
+> de la stack dans `main`. Je veux voir `gh stack` à la manœuvre avec une belle stack de PR. »*
+
+- **`main` ne reçoit rien avant un cold start réussi.** La descente de la pile est une **coupe de
+  version**, pas de l'hygiène git : elle se gagne par une preuve de bout en bout, pas par un
+  `BUILD SUCCESS`.
+- **Donc la pile a le droit de GRANDIR**, et empiler devient le **régime normal** jusque-là — pas
+  un pis-aller en attendant une fusion. Premier cas appliqué : l'incrément 0 (`#9`, gelé
+  `eeea263d4`, vert, revue convergée) **n'a pas été fusionné** ; l'incrément suivant se pose
+  **par-dessus**, donc on branche depuis l'étage du haut et **jamais depuis `develop`**.
+- ★ L'argument écarté, gardé pour qu'il ne se ré-instruise pas : les deux incréments étant
+  *indépendants*, fusionner d'abord aurait évité un restack. Non retenu — l'utilisateur garde
+  l'option de faire descendre la pile entière en une seule version.
+- ⚠️ Le prix : quand un étage fusionne, celui du dessus doit être **restacké**. Avec N étages,
+  c'est exactement le travail de `gh stack` — ne pas l'improviser à la main.
 
 ## Branches mortes, mesurées le 2026-10-02
 

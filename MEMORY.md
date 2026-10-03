@@ -68,7 +68,7 @@ Adding a fact: write the topic file, then one ≤200-char line in the right
 | OSGi cleanup / module layout — SHIPPED slices | 12 | [INDEX-osgi-cleanup-shipped.md](INDEX-osgi-cleanup-shipped.md) |
 | Doctor / health system | 14 | [INDEX-doctor.md](INDEX-doctor.md) |
 | Infra / manifests / config | 12 | [INDEX-infra-manifests.md](INDEX-infra-manifests.md) |
-| Rules / patterns / gotchas | 25 | [INDEX-rules-gotchas.md](INDEX-rules-gotchas.md) |
+| Rules / patterns / gotchas | 54 | [INDEX-rules-gotchas.md](INDEX-rules-gotchas.md) |
 | Memory / workspace mechanics | 6 | [INDEX-memory-mechanics.md](INDEX-memory-mechanics.md) |
 | Backlogs / misc | 33 | [INDEX-backlogs.md](INDEX-backlogs.md) |
 | Chantiers ABOUTIS — sept. 2026 | 8 | [INDEX-shipped-2026-09.md](INDEX-shipped-2026-09.md) |
@@ -92,6 +92,12 @@ rename keeps the old word, so a literal search finds nothing in the code.
   who runs `pulumi`), so `master` was naming a rank inside a sequence of PLACES. The
   spelling (no internal hyphen) is what kept the BRANCH `seed-incluster` out of scope:
   no ref rename, no flake-input URL move, no lock churn. See [[runmode-livegate-pulumi-abstraction]].
+- **`flox-catalogue` → `flox-catalog`** (`e18039c37`, 2026-10-02). L'américain `catalog` est
+  la convention mesurée du périmètre (~1386 contre ~94) ; la branche en était le seul
+  britannique et il fuyait dans le `GitRepository` Flux, la CR `FloxCatalog` (`catalogue` →
+  `catalog`) et chaque ref `floxcatalog:catalogue#…`. Ancien nom **supprimé** sur `origin`.
+  NON balayés, exprès : le français, le scratch `.claude/`, le hub (3 mentions, autre dépôt).
+  See [[flox-envs-vendored-as-subtree]].
 - **`world-gateway` → `seed-broker-port`** (`acd68a510`). Live branch: `seed-broker`
   in 392 files, `world-gateway` in 14 (docs only). Memory still says
   `world-gateway` in 49 files / 27 index entries — the `world-gateway-2a…2e`
