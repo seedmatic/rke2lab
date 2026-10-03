@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: b5348306-a83e-49e8-bb21-406f5e96e83c
-  modified: 2026-10-03T11:22:53.930Z
+  modified: 2026-10-03T12:17:48.723Z
 ---
 
 Tout plan d'**atelier de dev en cluster** (Eclipse Che, DevWorkspace, DevPod, n'importe
@@ -80,6 +80,58 @@ Deux routes **documentées et supportées**, pas des bricolages :
 devrait re-signer et il faut quand même des identifiants côté pod. ⚠️ Et tout relais doit
 réémettre `Content-Type: application/vnd.amazon.eventstream` **intact**, sinon Claude Code
 rejette le flux (`Bedrock streaming response has content-type`) ou retombe en non-streaming.
+
+## ★★★ Mantle : PROUVÉ vivant, et tous les paramètres du relais lus sur le fil (2026-10-03)
+
+Mantle **fonctionne** sur ce compte — pas seulement autorisé en IAM. Discriminateur :
+pointer `ANTHROPIC_BEDROCK_MANTLE_BASE_URL` sur un hôte **inexistant** → `rc=124`
+(bloqué), contre `rc=0` sans override. Donc le chemin Mantle est réel **et** l'override
+redirige. ⚠️ Un test avec Bedrock coupé mais un id `us.anthropic.*` a **réussi** au lieu
+d'échouer : ne pas en tirer de conclusion, Claude Code peut router ailleurs.
+
+Paramètres **mesurés** (sniffer local sur la base URL, + grep du bundle), pas devinés :
+
+| paramètre | valeur |
+| --- | --- |
+| nom de service SigV4 | **`bedrock-mantle`** |
+| région | `us-east-1` |
+| chemin | `POST /v1/messages?beta=true` (forme Anthropic **native**) |
+| en-tête | `anthropic-version: 2023-06-01` |
+| amont | **`https://bedrock-mantle.${region}.api.aws`** |
+
+★★ Le domaine est **`.api.aws`**, PAS `amazonaws.com` — trois résolutions devinées ont
+rendu NXDOMAIN avant que le bundle (`.claude-wrapped`, gabarit
+`a.ANTHROPIC_BEDROCK_MANTLE_BASE_URL||\`https://bedrock-mantle.${u}.api.aws\``) ne tranche.
+`bedrock-mantle.us-east-1.api.aws` résout (52.87.73.163, 3.214.115.45).
+
+★ **Pourquoi `SKIP_MANTLE_AUTH` doit exister** : `host` figure dans les `SignedHeaders`.
+Une signature calculée pour l'adresse du relais est donc **invalide** en amont — la
+signature du client n'est pas relayable, le relais **doit** re-signer, donc le client doit
+s'abstenir. Mantle **ne dispense pas** du SSO : il le **déplace**.
+
+## Le composant, et le piège de l'admission controller
+
+`awslabs/aws-sigv4-proxy` (actif) est le **seul** proxy inverse signeur SigV4 généraliste ;
+flags `--host --name --region --port`. ⛔ Pas dans nixpkgs, et ses releases ne livrent que
+`.rpm`/`.deb` — mais ce n'est **pas** un obstacle de build : Go pur (pas de CGO),
+`go 1.26.0` contre `1.26.7` dans nixpkgs, et `vendor/` présent → **`vendorHash = null`**.
+Dérivation d'une quinzaine de lignes, plus simple que `overlays/lazygit.nix`.
+⛔ **envoy** porte un filtre `aws_request_signing` intégré mais n'est **pas disponible sur
+aarch64-darwin** — option close, mesurée par `.drvPath`.
+
+⚠️ **`aws-observability/aws-sigv4-proxy-admission-controller` est le mauvais moitié** : il
+injecte le proxy en **sidecar DANS le pod** (annotations `sidecar.aws.signing-proxy/{host,
+name,region,role-arn}`, exemple canonique AMP `aps`). Donc il signe **dans le cluster** et
+suppose une identité AWS du pod via `role-arn` → **IRSA/OIDC**, exactement la route que
+l'IAM d'entreprise ferme. Il ne redeviendrait pertinent **que si** la demande de confiance
+OIDC aboutissait. Et il est **figé depuis 2025-11-23**. ★ Dans le design « relais sur le
+vzhost », le côté k8s n'a besoin de **rien** : trois variables d'environnement.
+
+⚠️⚠️ La pièce **non résolue** : `aws-sigv4-proxy` n'a **aucune** authentification. Il signe
+tout ce qu'il reçoit → passerelle Bedrock d'entreprise **ouverte** au segment fabric.
+Le contrôle d'accès est à concevoir (mTLS, jeton, ou liaison restreinte + filtrage).
+⚠️ Et son streaming n'est **pas documenté** : à vérifier, un tampon sans *flush* dégraderait
+les réponses en « tout d'un coup » (le piège `eventstream` ne s'applique pas à Mantle, SSE).
 
 ⚠️⚠️ Ne **jamais** contourner par `ANTHROPIC_API_KEY` ni `apiKey` : ça détourne le SDK de
 Bedrock, et ça change le **modèle** *et* la **facturation**.
