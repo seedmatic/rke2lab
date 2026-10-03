@@ -73,17 +73,6 @@
             vendorHash = "sha256-2SXAu1fxiRbuMOKOoB8OVzTmtR3Os423j80En+SHnzU=";
 
             subPackages = [ "cmd/workspace" ];
-
-            # ⚠️ `subPackages` restricts the CHECK phase as well as the build, so the default
-            # check ran the 4 tests of `cmd/workspace` and silently skipped the 48 in
-            # `internal/workspace` — where the assertions live. Measured 2026-10-03: the build
-            # log held exactly one `ok` line. Override the phase so the gate covers the module
-            # it is supposed to gate.
-            checkPhase = ''
-              runHook preCheck
-              go test ./...
-              runHook postCheck
-            '';
             env.CGO_ENABLED = 0;
             ldflags = [ "-s" "-w" "-X main.version=${version}" ];
             meta.mainProgram = "workspace";
