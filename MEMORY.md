@@ -40,6 +40,9 @@ Adding a fact: write the topic file, then one ≤200-char line in the right
 - [★ deux décisions en attente de l'utilisateur (2026-09-20)](unmanaged-mac-ssh-material-chain.md) — (1) passer les auth-keys tailnet en `ephemeral = true` pour supprimer la cause des fantômes qui retiennent les noms [[tailnet-node-identity-ephemeral-ghosts]] ; (2) corriger l'identité `nxmatic`/`/Volumes/user-home` du profil nikopol et **activer nix-darwin en local sur le laptop corp** plutôt qu'écrire un enrôleur — risque : nix-darwin prend la main sur `/etc/ssh` et les shells d'une machine sous MDM.
 - [★★★ flox envs — PRÉVU, PAS COMMENCÉ : séparer producteur / livraison / réalisation (décidé 2026-09-23)](references-resolve-at-build-not-runtime.md) — décision utilisateur : **les références se résolvent au BUILD, pas au runtime** ; le lock va dans git et voyage avec le rendu, l'annotation `relock` reste la *commande* du bump mais gagne une **portée par inputs** (tous par défaut). Trois rôles effondrés en un dans flox-controller, et les deux découpages sont DÉJÀ écrits dans ses propres commentaires (`the lock is NEVER produced by the controller`, `until split into a leader-elected cluster manager`) — la régression est `propagateRelock`, qui estampille chaque révision de catalogue en relock total. ⚠️ C'est un DaemonSet sans leader : N pods écrivent le même `status.Lock` pendant que chaque nœud réalise sa closure — masqué par les clusters mono-nœud. Le producteur doit **commiter dans git** (branche `flox-catalogue`, qui ne redéclenche pas le rendu) → plaide pour un pipeline Tekton, le droit d'écriture hors des nœuds. See [[seed-incluster-crd-and-binary-travel-by-two-pins]] [[node-env-gated-oneshots-skip-capn-nodes]].
 - [★★★ nikopol-mgmt — modèle B tranché (2026-09-25) + PREMIER cas d'usage du clustermesh](nikopol-mgmt-federation-clustermesh-first-case.md) — bioskop **enfante** nikopol-mgmt puis il s'**auto-adopte** : le plan CAPI n'est qu'un échafaudage, mais le **clustermesh MGMT** (id 1 ↔ 3) est permanent — pré-armé depuis toujours, jamais eu de 2e membre, et son **appariement est out-of-band** (`clustermesh-remote-users` vide, aucun Secret `cilium-clustermesh`). Whiteboard `.claude/claude-preview.adoc`. ★ Incus **EN CLUSTER : RETENU** (rejet retiré le 09-25 — `database-client` garde l'itinérant hors du raft ; corrige la version antérieure de cette ligne). Étape 1 LIVRÉE + vivante : `fabric-br` et la zone appartiennent à NixOS, `nixos.<host>` résout des deux côtés. See [[bridges-leave-incus-forced-not-chosen]] [[single-owner-rule]].
+- [★★ ndh NORMALISÉ 2026-10-03 (PR #8)](ndh-normalized-and-flox-envs-vendored.md) — `main` forcé après 20 mois de gel, pile montée, 8 branches → 2 (3 archivées), envs flox vendorés. ⚠️ RESTE : rebuild `nixos.bioskop`, opérateur.
+- [★★ flox lock — DÉCIDÉ, PAS COMMENCÉ : flake DU SUBTREE possédé par fleet](flox-env-lock-logic-belongs-to-fleet.md) — ⛔ les 2 copies partent ensemble ; celle de rke2lab est déjà cassée (un seul style de quote).
+- [★★ image Tart nerd-nixos — DÉCIDÉ, PAS COMMENCÉ : hors de l'activation darwin](nerd-nixos-image-build-leaves-activation.md) — ~31 GiB/switch, par **interpolation de dérivation**, donc invisible à un grep.
 - [★ config RKE2 — livraison uniforme `nix run <branche>#install-rke2-config`](rke2-config-reconciliation-nixrun-delivery.md) — design tranché, code pas commencé ; plan `.claude/rke2-config-reconciliation-plan.md`.
 - [★ workload grow — fondations (modèle B tranché)](workload-grow-foundations-resume.md) — `bioskop-wrkld` bloqué sur fondations mono-cluster ; roadmap `.claude/workload-grow-foundations-plan.md`.
 - [★★ Cellier TRANSACTIONNEL — design convergé, code pas commencé](cellar-transactional-design-state.md) — ScenarioCellar universel + SeedRunLedger ; 4 étapes de fondation à coder.
@@ -75,85 +78,8 @@ Adding a fact: write the topic file, then one ≤200-char line in the right
 
 ## Renamed since these notes were written — translate before searching
 
-Checked against `feature/nixos-node-substrate` on 2026-09-19. Memory predating a
-rename keeps the old word, so a literal search finds nothing in the code.
-
-- **`seed-master` → `seed-outcluster`** (`17de9ca95`, 2026-10-01, pushed on
-  `feature/viewpoint-separation`). 161 files; **zero Java identifiers moved** (the
-  package stays `io.seedmatic.rke2lab.controlplane.*`), so only coordinates and prose
-  changed. Translate when searching: the Maven selector is now `-pl :seed-outcluster`,
-  the flake output `.#seed-outcluster`, the nix binding `seedOutclusterJar`, the jar
-  `share/java/seed-outcluster.jar`, the log `.local.d/seed-outcluster.log`. Memory and
-  `.claude/` were deliberately NOT swept (a record rewritten to match a later rename
-  falsifies it) — `incontainer-test-not-in-seedmaster-reactor.md` keeps the old word in
-  its FILENAME, and `docrepo-dag-state.md` carries ~30 historical mentions. ★ Why the
-  word changed: the pair did not contrast on one axis — the chain is
-  **`operator -> pulumi -> outcluster -> incluster`**, where link 1 is a PERSON (the one
-  who runs `pulumi`), so `master` was naming a rank inside a sequence of PLACES. The
-  spelling (no internal hyphen) is what kept the BRANCH `seed-incluster` out of scope:
-  no ref rename, no flake-input URL move, no lock churn. See [[runmode-livegate-pulumi-abstraction]].
-- **`flox-catalogue` → `flox-catalog`** (`e18039c37`, 2026-10-02). L'américain `catalog` est
-  la convention mesurée du périmètre (~1386 contre ~94) ; la branche en était le seul
-  britannique et il fuyait dans le `GitRepository` Flux, la CR `FloxCatalog` (`catalogue` →
-  `catalog`) et chaque ref `floxcatalog:catalogue#…`. Ancien nom **supprimé** sur `origin`.
-  NON balayés, exprès : le français, le scratch `.claude/`, le hub (3 mentions, autre dépôt).
-  See [[flox-envs-vendored-as-subtree]].
-- **`world-gateway` → `seed-broker-port`** (`acd68a510`). Live branch: `seed-broker`
-  in 392 files, `world-gateway` in 14 (docs only). Memory still says
-  `world-gateway` in 49 files / 27 index entries — the `world-gateway-2a…2e`
-  entries name *chantier phases*, so their titles stay; only the vocabulary moved.
-- Spec chain, all three now one file `docs/architecture/osgi/seed-broker-spec.adoc`:
-  `multiplexor-spec.adoc` → `world-exchange-spec.adoc` (`7e289e236`) → renamed
-  again with the word (`adc113f61`, `acd68a510`).
-- Doc re-cut by nature (`e0945ec71`): `osgi/pipeline-spec.adoc` →
-  `docs/architecture/bdd/bdd.adoc`; `atlas/host-pipeline.adoc` →
-  `docs/architecture/atlas/seed.adoc`. Fully-qualified citations were fixed on
-  09-19; bare `pipeline-spec.adoc` mentions left alone — several are *about* the
-  re-cut, and `pipeline-spec-recut-plan.md` even carries the `git mv` command.
-- `osgi/two-gates-spec.adoc` is cited by two entries but **never existed** in any
-  commit — a promised doc that was never written.
-- `docs/manifests-architecture.adoc` → `docs/architecture/manifests/manifests-architecture.adoc`.
-- **Not stale, cross-repo:** `docs/host-builder-phases.adoc`,
-  `docs/operator-commands.adoc`, `docs/vm-operator-runbook.adoc` live in **ndh**.
-  22 of 76 cited paths looked missing; a third were simply another repo's.
+- [Table de traduction des mots renommés](renamed-words-translate-before-searching.md) — `seed-master`→`seed-outcluster`, `flox-catalogue`→`flox-catalog`, `world-gateway`→`seed-broker-port`, specs re-découpées. ⚠️ Une mémoire antérieure à un renommage garde l'ancien mot.
 
 ## Known debt in this memory
 
-- **201 of 224 entries exceed the 200-char rule** (average 609). Compressing them
-  is safe — every topic file is already 3-10× its index line — but verify per
-  entry first: `cluster-seed-execution-state` had its newest decision (fork B,
-  2026-07-08) living ONLY in the index line while the file stopped at 07-07.
-  Shortening blindly loses facts; that one was rescued into the file on 09-19.
-- `INDEX-osgi-pipeline.md` is 77 entries / 62 KB, nothing committed after
-  2026-08-14. It carries a `## À trancher` list of 16 dormant candidates —
-  **proposed, nothing moved**: a keyword+date heuristic misjudged three entries
-  there, so the call needs a human who knows the chantier.
-- **Dead `[[link]]` check, run 2026-09-19** (296 unique refs / 1657 occurrences):
-  252 resolved, 20 were hub files missing their `hub:` prefix — the structure
-  spec's migration step 4, never done — now fixed across 87 occurrences. Every
-  index entry target exists except one, which never existed in git and whose
-  content lived only in its index line: rebuilt as
-  `checkpoint-identity-to-seam-backlog.md`.
-  ⚠️ **That rebuild could never be committed, for 10 days.** `.claude/.gitignore`
-  carried an UNANCHORED `checkpoint-*.md` (meant for session checkpoints), which also
-  matched the memory file whose name starts with the same word. Anchored to
-  `/checkpoint-*.md` on 2026-09-29. A name-shaped rule must say WHERE it applies.
-- **★ Corrected 2026-09-29 — 7 of those 16 "dead" refs were never dead.**
-  The 09-19 audit ran against ONE memory tree while the files sat in the other:
-  memory was written into the `main` checkout while work was committed from each
-  session's own worktree, so two trees diverged (248 files vs 325). The 3-way merge
-  that reconciled them recovered `caprke2-byo-ca-secret-contract`,
-  `cold-start-cleanup-and-funnel-cert-persistence`, `flox-carrier-containerize-spike`,
-  `flox-controller-build-deploy-state`, `flox-envs-runtime-crd-delivery`,
-  `flox-gate-secret-flow-devlxd-then-certmanager` and
-  `ghapp-webhook-reconcile-and-funnel-rename`.
-  **9 refs remain genuinely dead**, re-verified against the reconciled tree AND the
-  hub on 2026-09-29: `realm-boundary-gate` (7×), `spec-figure-first-reading-loop` (4×),
-  `c4-diagrams-flowchart-not-native-dsl` (3×), `port-edge-domain-ownership`,
-  `thread-manifestations`, `systematic-debugging`, `runtime-view`, `render-config`,
-  `pipeline-spec-legibility-cleanup-post-go`. Each is a fact someone meant to write
-  and did not; the citing entries still hold the gist.
-  Re-run: extract `\[\[name\]\]` from `*.md`, resolve bare names against this dir
-  and `hub:` ones against the hub memory dir. Ignore `name`/`x`/`links`/`link` —
-  they are syntax examples in the header, not refs. **And run it against ONE
-  reconciled tree** — an audit over a forked memory reports false deaths.
+- [Dette connue de cette mémoire](memory-index-known-debt.md) — entrées trop longues (201/224), `INDEX-osgi-pipeline` dormant, et l'audit de liens morts dont **7 fausses morts** dues à deux arbres de mémoire divergents.
