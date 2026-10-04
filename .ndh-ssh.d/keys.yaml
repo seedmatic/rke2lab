@@ -264,6 +264,18 @@ keys:
   # Every name is DERIVED from ndh's catalog for the nikopol host — `fabricFqdn`,
   # `nixosHostname`, `netGateway` — and nch's module refuses a certificate whose SANs
   # disagree with that derivation, so the drift is caught instead of being lived with.
+  # Compare with `nix eval .#lib.edgeSanSpec` in nch: that derived list is the authority and
+  # this one is the copy.
+  #
+  # ★ This pointer is load-bearing, not courtesy: `.ndh-ssh.d/` is a SUBTREE whose tree ndh
+  # owns, so whoever reads this entry is reading a SYNCHRONIZED COPY and has no local author
+  # to ask. The reference is the only thing that says where the decision was made.
+  #
+  # The design and the two rejected alternatives (a Tailscale certificate is bound to a node
+  # the holder must never become; the corporate PKI's certificate authenticates us to them,
+  # not our clients to us) are recorded in seedmatic/nch at
+  # docs/architecture/trust-chain.adoc, with docs/architecture/relay-topology.adoc for the
+  # shape this leaf serves.
   nch-relay-tls-server:
     type: ecdsa-sha2-nistp256
     authority: mammoth-skate-tls
@@ -305,23 +317,23 @@ sops:
   age:
     - enc: |
         -----BEGIN AGE ENCRYPTED FILE-----
-        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBnNisvU1pBc2ZncGhGRjVO
-        eC8wOVVTSng3L2xwQWRvTklEUUVqL1gvQkZjCk5qcHpOWVRPQnA1OURKczhpekwz
-        S1NJVzhjR25mM0hDRVhuVmRlaDVKYXcKLS0tIDFrVk4rblBSdFpkSGp5VEFkV1BW
-        blIzYWRoclAzVktYWHE2ajlFVkxqMzQKyUM/9wFAG+4/5U+MDYkOSAqjbYwfTefP
-        31mjIvL3z6D+AeaZPHxYDf67bfp9McAxXzXjP/hQ/VLPP2CPjvi7vA==
+        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSArb2VsS0FZcDdLdUFINUhR
+        KytXVEloeFRqTFNSQmpFSEtmOE93dFJzR3hNCjg4TVJ1aE5pRnNBcWZ4SWF2aWZP
+        N0F5SlpYeHJSRjVTV043bFU5ZWZoZ28KLS0tIDBFd3laT3UxTy95SDN3OVZ4NkFm
+        VzF0SUxBVUxtSFAvWXZ1a3V6QStEZGcK4n2JIRZd+0ESV25Fy0XNTelfOAf0xl4K
+        di6aK50Q2IAJBd3vfAIN/k7r85kVJbn85AlpE8Oz3dwncbOIaCY36A==
         -----END AGE ENCRYPTED FILE-----
       recipient: age10ey0lcup4zpjqcknpxw7enpsagn674nm634f2u75trfr5t62uq5qdjuxzv
     - enc: |
         -----BEGIN AGE ENCRYPTED FILE-----
-        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBoaTJMTDVWV2ZIK1UrSHJi
-        TFJEd21zWUJkRC90cGRtNVQycVBBQjloYUE4CnlmaUUxWGJ5WjRRUk5wWnVmS1cx
-        NE1OSm9DL2cyRitzblN3Wk01RFAzY0kKLS0tIGJuRkNpK2Nlb21BSWJZMGxNSklD
-        c3JzM0NtRXlPMVZDbG9xcUttRDBkOHcKC/DzKITvgsRhtMd74jhK61aRQAl5nAcs
-        eSUTzYEVLBl7ZpUICzaFO2aKttpzbSxr9/a1yWhmKrySrjqpi/9rkA==
+        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBxT092WW44bkt0LzB6d3ZH
+        VDc2cHYzdGFrM0txdnhNOWlpbEE0NUd1Y21ZClJJa05zVmRqSXFoOFQzcDZ6UjFD
+        Vll6SzkzTWJ1WG9IUEJZR0FOS2VOaTgKLS0tICtkNnplQU0xeE12RllHL1E4UVN4
+        TVN0QU1UdXJ6ZE0rdWx2UlUrSWZ6ckkKrIV+ALfdOrcGQXMHPbpOK2zzm/q0BoPw
+        DVdt82csLuwfHLkn731h6A8QZwyA3pe0wjujRetKiBy+Sgs8zTbzNg==
         -----END AGE ENCRYPTED FILE-----
       recipient: age1k0tc4gmaqrk5df3ujja34gkqxstu0cye7fl7fktjeuua3yych3aqxfjlak
   encrypted_regex: ^(data|stringData)$
-  lastmodified: "2026-10-04T16:01:40Z"
-  mac: ENC[AES256_GCM,data:abGx/4YtNph/eB4+naaV0T32UadzIdUzotkbxX+C4nBqjZKC+CNg+ispdLuMpDTMZth3YfueaYlJYSaIjyO0X3Q5dBrxSDfzPaQU4HCcPVfrZOopES8ZKM+u/aXWzsChDP4Wo2qXxyWxY0A+gfggsNPwQRiYfA0fiKe1uxOWxoA=,iv:hvwfn8UMtQZ8nbS/X7PPRXqq0ks2HvHmzOnzhEU66yA=,tag:GiJu7rmGnEEW1Vk6O72F6g==,type:str]
+  lastmodified: "2026-10-04T17:47:33Z"
+  mac: ENC[AES256_GCM,data:xqvmWGthHAHy85Bl1fvfTQFE4/iqqu9QC0yD5UM8UHpDQ5ytgz6FipGHf+2BoLT7CbaXg5S+pbPxXXnP3fvwxp0Bht74pVzukavUxkJy1hHQIGeBTbEk69F6Y9V6OgryI4WBmIGE2EMV3ZbpXvLqHL6v0RxGuzFV8vyBAgcM72c=,iv:BIvA0dljRAbz/oWqFfFn7y5Le+cebu/BZUIAxdB0Xmo=,tag:XFuy6Us6jjx3oLCmQ1+bLg==,type:str]
   version: 3.13.3
