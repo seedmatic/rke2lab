@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+
+# Refuse to commit secret material in the clear.
+#
+# Checks the STAGED BLOB, never the worktree. In a repository whose .gitattributes
+# runs the sops clean filter, the worktree copy is legitimately plaintext and only
+# the blob is encrypted — so a worktree check would fire on every commit while
+# missing the one case that matters: a blob that escaped the filter.
+#
+# The pattern is written with its literal broken (PRIVATE[ ]KEY) so this file does
+# not match itself. A scanner that carries its own signatures flags itself and every
+# document that mentions them.
+#
+# That case is not hypothetical. Eight SSH private keys sat in the clear in a
+# public repository from 2026-08-27 to 2026-10-04, in a file carrying a VALID sops
+# envelope with an empty payload, because a Kubernetes creation_rule matched it
+# first and its encrypted_regex matched none of its fields. Neither the filter nor
+# an eval-time assertion could see it: one saw an envelope, the other asked whether
+# the file "looks decrypted". The question has to be whether secret material is
+# still readable.
+secret_material_guard() {
+  local found=0 f blob
+  while IFS= read -r -d '' f; do
+    blob="$(git ls-files -s -- "$f" | awk '{print $2}')"
+    [[ -n "$blob" ]] || continue
+    if git cat-file blob "$blob" 2>/dev/null |
+       grep -aqE 'BEGIN [A-Z]*[ ]?PRIVATE[ ]KEY|AGE-SECRET[-]KEY-1'; then
+      echo "  ⛔ $f — staged blob contains private key material in the clear" >&2
+      found=1
+    fi
+  done < <(git diff --cached --name-only --diff-filter=ACMR -z)
+
+  if ((found)); then
+    cat >&2 <<'EOF'
+
+Refusing the commit. One of the staged blobs carries a private key or an age
+secret in the clear.
+
+If the file is meant to be sops-encrypted, the encryption did not happen. Check
+which creation_rule .sops.yaml applied to it — a rule whose encrypted_regex
+matches none of the file's fields still produces a complete, valid envelope around
+an unencrypted payload.
+
+Verify with the same question this guard asks, which is about content and not
+about the envelope:
+
+  git show :<path> | grep -c 'BEGIN OPENSSH'
+
+EOF
+    return 1
+  fi
+  return 0
+}
+
+secret_material_guard
