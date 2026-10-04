@@ -93,3 +93,10 @@ settings.local.json
 # ANCHORED: a bare `.edit-baks/` would also match inside `.claude/hub/`, the subtree we do
 # not own — same trap as `/memory/` above.
 /.edit-baks/
+
+# Session tags read by the seat-roster extension. Keyed by `sessionId`, which is
+# per-seat and per-process: a tag file names a session that exists on THIS machine
+# and nowhere else, so committing them would publish one seat's live state.
+# ★ Third instance of the same trap in one day — the other two were 13 permission
+# entries that landed in the TRACKED settings.json, and the edit-hook backups.
+/seat-roster/
