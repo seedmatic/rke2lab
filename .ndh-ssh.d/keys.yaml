@@ -256,6 +256,39 @@ keys:
       not_after_days: 365
     annotations:
       public_scope: system
+  # The nch relay's TLS leaf. One authenticated host serves AWS credentials to the whole
+  # fabric segment, so it has to prove its identity to clients that hold no corporate
+  # credentials of their own.
+  #
+  # The SANs mirror nch's `lib.vzHost.certSans`, which ndh's catalog DERIVES
+  # (172.16.${hostId * 16 + 8}.2). They are spelled out here only because this file is
+  # static YAML — and nch's installer refuses a certificate whose SANs disagree with the
+  # derived list, so the drift is caught at deploy time instead of being lived with.
+  #
+  # Fabric names only. vzhost.nikopol carries the corporate VPN and must never join the
+  # tailnet, so it cannot hold a publicly-trusted certificate: this operator-local CA is
+  # the authority, and `mammoth-skate-tls` already signs x509 for headscale above.
+  nch-relay-tls-server:
+    type: ecdsa-sha2-nistp256
+    authority: mammoth-skate-tls
+    cert_usage:
+      - tls-server
+    comment: nch-relay-tls-server@vzhost.nikopol
+    usage:
+      - host-signing
+    profiles:
+      - user
+    tls:
+      common_name: vzhost.nikopol
+      sans:
+        dns:
+          - vzhost.nikopol
+          - nikopol-vzhost
+        ip:
+          - 172.16.24.2
+      not_after_days: 365
+    annotations:
+      public_scope: system
   vz-nudge:
     type: ssh-ed25519
     authority: mammoth-skate
@@ -276,23 +309,23 @@ sops:
   age:
     - enc: |
         -----BEGIN AGE ENCRYPTED FILE-----
-        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSAxdWtqMVEzUEIwbDlmYVBl
-        MjdsbmtPM0h3SFVUNlV4MnprM010NHFZbFFZCmpVUTNMTTF6a01zMjdnWldMd3FI
-        OFF6MnFsblBMWDBUWStXU0VlekdWamcKLS0tIGpCWHlGaVNqMWk0RFU3ZGtReFNM
-        ZmFoUThTTU5KM2FIS2ZJNnVhenVxKzAKM/yGjJo1NRqSq+Q3tmlp35Ir4z0vc4nU
-        LEXH5s+dHCko1Vvce/aUDUWAZCSptghZy8e5F2tvAvulMkmSj6tBIg==
+        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBNWWljVDZMS1YyeG9tM2Fx
+        YWJZZjhRamFnRjgxRTlvc3p2SVBJY2lqUGhVCnowQ05DbGgxaW55NzNjMm9UK2Y0
+        dzhoWUUwZUpaMExJdWZIdWsvSEV5VUEKLS0tIGM4MmN5bzdqZWEzQmhIc0NpbnV4
+        QTY0bjAxbzlJekZQVTBrY01RaVBtNUEKeF6mKmZ9PJmW7wVc8X2QWVOaiT/yImmT
+        asfbNrPFZ/wNIretPzlDixNE48LXrgmnrnzrA/zGRnbFWEG+1ZzWoQ==
         -----END AGE ENCRYPTED FILE-----
       recipient: age10ey0lcup4zpjqcknpxw7enpsagn674nm634f2u75trfr5t62uq5qdjuxzv
     - enc: |
         -----BEGIN AGE ENCRYPTED FILE-----
-        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSA4VFc2WVlxSHhnUFhqUFB4
-        cjdjekdsREc2MnhLTngwc2lNQ1V3NERQaWdVCnF3cEpsSllxSTV3djcvUUw4aVg0
-        U2lwM1I5RkVmVXFQT2dzQlQxbFlWbzQKLS0tIElNVHJScXBORVVGVlpaL3E1bDdM
-        eWNGd25CRW9tNXA4SkV2anlmU1pCK1UKmpQBpf7KUpCB91JlzqdB4Ka1GtITwT1D
-        NzRbQM0d+c61eAkgllp0NGGNlSljLf5bAKOIsL9Sfa0OJ0uLj13w8A==
+        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBXei9kN0NyeHVGOGJNYVBS
+        UlY0ck1qT3g0NXd6Tmc1NmpDT0NmajF4bUhvCjdHUldua2l0V3RaZDZvcTA1dzYx
+        a2IvRDhZOUpqcjZjeGxLMzZUOGlwSWcKLS0tIGNqWitLZnQ1Y0pRYWFIQmZtUkND
+        R2VUWFVMaWlpY0lkbW5QdDRBS0owdk0K1Rklh5olQNyAC78ggKEpyaC7lF2hGNbz
+        MDnTdVALDWPjKX9OkYqp/IF3d5tmoQkPaqcxSnegy55SZFlEU7R6BA==
         -----END AGE ENCRYPTED FILE-----
       recipient: age1k0tc4gmaqrk5df3ujja34gkqxstu0cye7fl7fktjeuua3yych3aqxfjlak
   encrypted_regex: ^(data|stringData)$
-  lastmodified: "2026-08-27T12:20:26Z"
-  mac: ENC[AES256_GCM,data:9qUkqer3QNTT/bcaMxDOWlkgkt92i7yXCIcqhmQgqd8rTAORVkSTgxBHvG544KAxQGs1CGHAE01BRoiRmJYVZhrCznZ13OHKNIyi535SYRdJ0zu/w9lcLOofG5D/cl3RmUppQRo8awy9PYZ7BG0MzTvl7dvg1r/besq/mI9p4DI=,iv:bORuUAiyAqWxQhehVibP3AIM5ceIkHjBG70MKMlcsCg=,tag:oWSpBllFabGduOb84xS/vw==,type:str]
-  version: 3.13.1
+  lastmodified: "2026-10-04T15:22:50Z"
+  mac: ENC[AES256_GCM,data:78qkdS7PmKeNxI//HosnbN6KOl6Vur0dddSvhwB4tXLoaCyOSHaoqjIQ431jBbkE2hw9MGdzJ3k04QAqYlHY0+8PuiWMlFsI/XOg6qwYwFm2JRHGdvOoA3sj12SN5qy/lH8qNPR1Wthis+7e0St+ukp3ezHh1Y5NVtWuVVogNSA=,iv:x5wDlIlLbxS6jwPB7GpG0vdIJSdTuNh9259DTipcUOk=,tag:L2MVN6vInhB62lFRjasadg==,type:str]
+  version: 3.13.3
