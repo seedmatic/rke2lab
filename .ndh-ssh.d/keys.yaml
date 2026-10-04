@@ -256,36 +256,32 @@ keys:
       not_after_days: 365
     annotations:
       public_scope: system
-  # The nch relay's TLS leaf. One authenticated host serves AWS credentials to the whole
-  # fabric segment, so it has to prove its identity to clients that hold no corporate
-  # credentials of their own.
+  # The nch relay's TLS edge. The relay HOLDS the corporate SSO on vzhost.nikopol, where it
+  # listens on LOOPBACK only (launchd socket activation, user agent — the smallest footprint
+  # on an EDR-monitored machine). The fabric-facing endpoint lives on the NixOS guest, which
+  # owns fabric-br and is not monitored, so THIS leaf is for that guest, not for the Mac.
   #
-  # The SANs mirror nch's `lib.vzHost.certSans`, which ndh's catalog DERIVES
-  # (172.16.${hostId * 16 + 8}.2). They are spelled out here only because this file is
-  # static YAML — and nch's installer refuses a certificate whose SANs disagree with the
-  # derived list, so the drift is caught at deploy time instead of being lived with.
-  #
-  # Fabric names only. vzhost.nikopol carries the corporate VPN and must never join the
-  # tailnet, so it cannot hold a publicly-trusted certificate: this operator-local CA is
-  # the authority, and `mammoth-skate-tls` already signs x509 for headscale above.
+  # Every name is DERIVED from ndh's catalog for the nikopol host — `fabricFqdn`,
+  # `nixosHostname`, `netGateway` — and nch's module refuses a certificate whose SANs
+  # disagree with that derivation, so the drift is caught instead of being lived with.
   nch-relay-tls-server:
     type: ecdsa-sha2-nistp256
     authority: mammoth-skate-tls
     cert_usage:
       - tls-server
-    comment: nch-relay-tls-server@vzhost.nikopol
+    comment: nch-relay-tls-server@nixos.nikopol
     usage:
       - host-signing
     profiles:
-      - user
+      - system
     tls:
-      common_name: vzhost.nikopol
+      common_name: nixos.nikopol
       sans:
         dns:
-          - vzhost.nikopol
-          - nikopol-vzhost
+          - nixos.nikopol
+          - nikopol-nixos
         ip:
-          - 172.16.24.2
+          - 172.16.16.1
       not_after_days: 365
     annotations:
       public_scope: system
@@ -309,23 +305,23 @@ sops:
   age:
     - enc: |
         -----BEGIN AGE ENCRYPTED FILE-----
-        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBNWWljVDZMS1YyeG9tM2Fx
-        YWJZZjhRamFnRjgxRTlvc3p2SVBJY2lqUGhVCnowQ05DbGgxaW55NzNjMm9UK2Y0
-        dzhoWUUwZUpaMExJdWZIdWsvSEV5VUEKLS0tIGM4MmN5bzdqZWEzQmhIc0NpbnV4
-        QTY0bjAxbzlJekZQVTBrY01RaVBtNUEKeF6mKmZ9PJmW7wVc8X2QWVOaiT/yImmT
-        asfbNrPFZ/wNIretPzlDixNE48LXrgmnrnzrA/zGRnbFWEG+1ZzWoQ==
+        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBnNisvU1pBc2ZncGhGRjVO
+        eC8wOVVTSng3L2xwQWRvTklEUUVqL1gvQkZjCk5qcHpOWVRPQnA1OURKczhpekwz
+        S1NJVzhjR25mM0hDRVhuVmRlaDVKYXcKLS0tIDFrVk4rblBSdFpkSGp5VEFkV1BW
+        blIzYWRoclAzVktYWHE2ajlFVkxqMzQKyUM/9wFAG+4/5U+MDYkOSAqjbYwfTefP
+        31mjIvL3z6D+AeaZPHxYDf67bfp9McAxXzXjP/hQ/VLPP2CPjvi7vA==
         -----END AGE ENCRYPTED FILE-----
       recipient: age10ey0lcup4zpjqcknpxw7enpsagn674nm634f2u75trfr5t62uq5qdjuxzv
     - enc: |
         -----BEGIN AGE ENCRYPTED FILE-----
-        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBXei9kN0NyeHVGOGJNYVBS
-        UlY0ck1qT3g0NXd6Tmc1NmpDT0NmajF4bUhvCjdHUldua2l0V3RaZDZvcTA1dzYx
-        a2IvRDhZOUpqcjZjeGxLMzZUOGlwSWcKLS0tIGNqWitLZnQ1Y0pRYWFIQmZtUkND
-        R2VUWFVMaWlpY0lkbW5QdDRBS0owdk0K1Rklh5olQNyAC78ggKEpyaC7lF2hGNbz
-        MDnTdVALDWPjKX9OkYqp/IF3d5tmoQkPaqcxSnegy55SZFlEU7R6BA==
+        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBoaTJMTDVWV2ZIK1UrSHJi
+        TFJEd21zWUJkRC90cGRtNVQycVBBQjloYUE4CnlmaUUxWGJ5WjRRUk5wWnVmS1cx
+        NE1OSm9DL2cyRitzblN3Wk01RFAzY0kKLS0tIGJuRkNpK2Nlb21BSWJZMGxNSklD
+        c3JzM0NtRXlPMVZDbG9xcUttRDBkOHcKC/DzKITvgsRhtMd74jhK61aRQAl5nAcs
+        eSUTzYEVLBl7ZpUICzaFO2aKttpzbSxr9/a1yWhmKrySrjqpi/9rkA==
         -----END AGE ENCRYPTED FILE-----
       recipient: age1k0tc4gmaqrk5df3ujja34gkqxstu0cye7fl7fktjeuua3yych3aqxfjlak
   encrypted_regex: ^(data|stringData)$
-  lastmodified: "2026-10-04T15:22:50Z"
-  mac: ENC[AES256_GCM,data:78qkdS7PmKeNxI//HosnbN6KOl6Vur0dddSvhwB4tXLoaCyOSHaoqjIQ431jBbkE2hw9MGdzJ3k04QAqYlHY0+8PuiWMlFsI/XOg6qwYwFm2JRHGdvOoA3sj12SN5qy/lH8qNPR1Wthis+7e0St+ukp3ezHh1Y5NVtWuVVogNSA=,iv:x5wDlIlLbxS6jwPB7GpG0vdIJSdTuNh9259DTipcUOk=,tag:L2MVN6vInhB62lFRjasadg==,type:str]
+  lastmodified: "2026-10-04T16:01:40Z"
+  mac: ENC[AES256_GCM,data:abGx/4YtNph/eB4+naaV0T32UadzIdUzotkbxX+C4nBqjZKC+CNg+ispdLuMpDTMZth3YfueaYlJYSaIjyO0X3Q5dBrxSDfzPaQU4HCcPVfrZOopES8ZKM+u/aXWzsChDP4Wo2qXxyWxY0A+gfggsNPwQRiYfA0fiKe1uxOWxoA=,iv:hvwfn8UMtQZ8nbS/X7PPRXqq0ks2HvHmzOnzhEU66yA=,tag:GiJu7rmGnEEW1Vk6O72F6g==,type:str]
   version: 3.13.3
