@@ -256,6 +256,47 @@ keys:
       not_after_days: 365
     annotations:
       public_scope: system
+  # The nch relay's TLS edge. The relay HOLDS the corporate SSO on vzhost.nikopol, where it
+  # listens on LOOPBACK only (launchd socket activation, user agent — the smallest footprint
+  # on an EDR-monitored machine). The fabric-facing endpoint lives on the NixOS guest, which
+  # owns fabric-br and is not monitored, so THIS leaf is for that guest, not for the Mac.
+  #
+  # Every name is DERIVED from ndh's catalog for the nikopol host — `fabricFqdn`,
+  # `nixosHostname`, `netGateway` — and nch's module refuses a certificate whose SANs
+  # disagree with that derivation, so the drift is caught instead of being lived with.
+  # Compare with `nix eval .#lib.edgeSanSpec` in nch: that derived list is the authority and
+  # this one is the copy.
+  #
+  # ★ This pointer is load-bearing, not courtesy: `.ndh-ssh.d/` is a SUBTREE whose tree ndh
+  # owns, so whoever reads this entry is reading a SYNCHRONIZED COPY and has no local author
+  # to ask. The reference is the only thing that says where the decision was made.
+  #
+  # The design and the two rejected alternatives (a Tailscale certificate is bound to a node
+  # the holder must never become; the corporate PKI's certificate authenticates us to them,
+  # not our clients to us) are recorded in seedmatic/nch at
+  # docs/architecture/trust-chain.adoc, with docs/architecture/relay-topology.adoc for the
+  # shape this leaf serves.
+  nch-relay-tls-server:
+    type: ecdsa-sha2-nistp256
+    authority: mammoth-skate-tls
+    cert_usage:
+      - tls-server
+    comment: nch-relay-tls-server@nixos.nikopol
+    usage:
+      - host-signing
+    profiles:
+      - system
+    tls:
+      common_name: nixos.nikopol
+      sans:
+        dns:
+          - nixos.nikopol
+          - nikopol-nixos
+        ip:
+          - 172.16.16.1
+      not_after_days: 365
+    annotations:
+      public_scope: system
   vz-nudge:
     type: ssh-ed25519
     authority: mammoth-skate
@@ -276,23 +317,23 @@ sops:
   age:
     - enc: |
         -----BEGIN AGE ENCRYPTED FILE-----
-        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSAxdWtqMVEzUEIwbDlmYVBl
-        MjdsbmtPM0h3SFVUNlV4MnprM010NHFZbFFZCmpVUTNMTTF6a01zMjdnWldMd3FI
-        OFF6MnFsblBMWDBUWStXU0VlekdWamcKLS0tIGpCWHlGaVNqMWk0RFU3ZGtReFNM
-        ZmFoUThTTU5KM2FIS2ZJNnVhenVxKzAKM/yGjJo1NRqSq+Q3tmlp35Ir4z0vc4nU
-        LEXH5s+dHCko1Vvce/aUDUWAZCSptghZy8e5F2tvAvulMkmSj6tBIg==
+        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSArb2VsS0FZcDdLdUFINUhR
+        KytXVEloeFRqTFNSQmpFSEtmOE93dFJzR3hNCjg4TVJ1aE5pRnNBcWZ4SWF2aWZP
+        N0F5SlpYeHJSRjVTV043bFU5ZWZoZ28KLS0tIDBFd3laT3UxTy95SDN3OVZ4NkFm
+        VzF0SUxBVUxtSFAvWXZ1a3V6QStEZGcK4n2JIRZd+0ESV25Fy0XNTelfOAf0xl4K
+        di6aK50Q2IAJBd3vfAIN/k7r85kVJbn85AlpE8Oz3dwncbOIaCY36A==
         -----END AGE ENCRYPTED FILE-----
       recipient: age10ey0lcup4zpjqcknpxw7enpsagn674nm634f2u75trfr5t62uq5qdjuxzv
     - enc: |
         -----BEGIN AGE ENCRYPTED FILE-----
-        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSA4VFc2WVlxSHhnUFhqUFB4
-        cjdjekdsREc2MnhLTngwc2lNQ1V3NERQaWdVCnF3cEpsSllxSTV3djcvUUw4aVg0
-        U2lwM1I5RkVmVXFQT2dzQlQxbFlWbzQKLS0tIElNVHJScXBORVVGVlpaL3E1bDdM
-        eWNGd25CRW9tNXA4SkV2anlmU1pCK1UKmpQBpf7KUpCB91JlzqdB4Ka1GtITwT1D
-        NzRbQM0d+c61eAkgllp0NGGNlSljLf5bAKOIsL9Sfa0OJ0uLj13w8A==
+        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBxT092WW44bkt0LzB6d3ZH
+        VDc2cHYzdGFrM0txdnhNOWlpbEE0NUd1Y21ZClJJa05zVmRqSXFoOFQzcDZ6UjFD
+        Vll6SzkzTWJ1WG9IUEJZR0FOS2VOaTgKLS0tICtkNnplQU0xeE12RllHL1E4UVN4
+        TVN0QU1UdXJ6ZE0rdWx2UlUrSWZ6ckkKrIV+ALfdOrcGQXMHPbpOK2zzm/q0BoPw
+        DVdt82csLuwfHLkn731h6A8QZwyA3pe0wjujRetKiBy+Sgs8zTbzNg==
         -----END AGE ENCRYPTED FILE-----
       recipient: age1k0tc4gmaqrk5df3ujja34gkqxstu0cye7fl7fktjeuua3yych3aqxfjlak
   encrypted_regex: ^(data|stringData)$
-  lastmodified: "2026-08-27T12:20:26Z"
-  mac: ENC[AES256_GCM,data:9qUkqer3QNTT/bcaMxDOWlkgkt92i7yXCIcqhmQgqd8rTAORVkSTgxBHvG544KAxQGs1CGHAE01BRoiRmJYVZhrCznZ13OHKNIyi535SYRdJ0zu/w9lcLOofG5D/cl3RmUppQRo8awy9PYZ7BG0MzTvl7dvg1r/besq/mI9p4DI=,iv:bORuUAiyAqWxQhehVibP3AIM5ceIkHjBG70MKMlcsCg=,tag:oWSpBllFabGduOb84xS/vw==,type:str]
-  version: 3.13.1
+  lastmodified: "2026-10-04T17:47:33Z"
+  mac: ENC[AES256_GCM,data:xqvmWGthHAHy85Bl1fvfTQFE4/iqqu9QC0yD5UM8UHpDQ5ytgz6FipGHf+2BoLT7CbaXg5S+pbPxXXnP3fvwxp0Bht74pVzukavUxkJy1hHQIGeBTbEk69F6Y9V6OgryI4WBmIGE2EMV3ZbpXvLqHL6v0RxGuzFV8vyBAgcM72c=,iv:BIvA0dljRAbz/oWqFfFn7y5Le+cebu/BZUIAxdB0Xmo=,tag:XFuy6Us6jjx3oLCmQ1+bLg==,type:str]
+  version: 3.13.3
