@@ -26,8 +26,16 @@ secret_material_guard() {
   while IFS= read -r -d '' f; do
     blob="$(git ls-files -s -- "$f" | awk '{print $2}')"
     [[ -n "$blob" ]] || continue
-    if git cat-file blob "$blob" 2>/dev/null |
-       grep -aqE 'BEGIN [A-Z]*[ ]?PRIVATE[ ]KEY|AGE-SECRET[-]KEY-1'; then
+    # A header alone is a MENTION — schemas, specs and docs legitimately name these
+    # blocks. Real material has a header AND a body, so require a long base64 line
+    # within two lines of the header. Without that distinction the guard fires on
+    # its own documentation and gets switched off within a week.
+    if git cat-file blob "$blob" 2>/dev/null | awk '
+        /BEGIN [A-Z]*[ ]?PRIVATE[ ]KEY/ { hdr = NR }
+        hdr && NR > hdr && NR <= hdr + 2 && /^[A-Za-z0-9+\/=]{40,}$/ { found = 1; exit }
+        /AGE-SECRET[-]KEY-1[A-Z0-9]{50,}/ { found = 1; exit }
+        END { exit(found ? 0 : 1) }
+      '; then
       echo "  ⛔ $f — staged blob contains private key material in the clear" >&2
       found=1
     fi
