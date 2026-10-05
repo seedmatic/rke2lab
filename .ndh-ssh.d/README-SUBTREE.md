@@ -150,15 +150,28 @@ touches only the TLS side.
 
 `keys.yaml` is SOPS-encrypted, with 4 age recipients:
 
-- `age10ey0l...` — Operator key (primary)
-- `age1trxp...` — Additional operator key
-- `age17q5k...` — Additional operator key
+Every one of them is derived from an ed25519 SSH key via `ssh-to-age` — recompute any line with
+`ssh-to-age < <key>.pub` rather than trusting this list:
+
+- `age10ey0l...` — Operator key (primary). It is the **`github-signing-hyland`** key
+  (`~/.local/share/ndh/ssh-keys/github-signing-hyland.pub`): the same ed25519 key signs commits and
+  decrypts this content, so rotating one revokes the other.
+- `age1trxp...` — **bioskop's SSH host key** (`/etc/ssh/ssh_host_ed25519_key.pub` on that host), which
+  is how sops-nix decrypts there at activation. Not an operator key.
+- `age17q5k...` — **nikopol's SSH host key**, same role on that host.
 - `age1k0tc4...` — **rke2-cluster key** (derived from the `rke2-cluster` SSH key via `ssh-to-age`)
+
+CAUTION: `keys.yaml` holds the `mammoth-skate` authority's PRIVATE material, so this recipient list
+is the list of identities that can read the SSH CA — and the primary one is the operator key, which
+also lives on the corp-managed Mac to sign commits. Reading the CA there therefore only takes access
+to that machine. Narrowing it (a distinct operator identity for the sensitive files, leaving the
+signing key as a recipient of `.secrets` alone) is the real fix and is NOT done; see the note in
+`.sops.yaml`.
 
 The rke2-cluster age key
 (`age1k0tc4gmaqrk5df3ujja34gkqxstu0cye7fl7fktjeuua3yych3aqxfjlak`) is:
 
-- Derived from the SSH key: `ssh-to-age < ~/.local/var/run/secrets/ssh-keys/rke2-cluster.pub`
+- Derived from the SSH key: `ssh-to-age < ~/.local/share/ndh/ssh-keys/rke2-cluster.pub`
 - Used as a recipient in rke2lab's `.sops.yaml` (operator key + flux key)
 - What lets both the operator AND Flux in-cluster decrypt the same content
 - Single source of truth: the SSH private key is stored only in nix-darwin-home secrets
