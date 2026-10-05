@@ -44,7 +44,14 @@ public enum NdhKeystoreCatalog {
    * entry, three consumers: the cellar seals to it, Flux's sops-age identity is derived from it,
    * and cluster-pki seals the node bundle for it.
    */
-  CLUSTER_SSH_KEY("rke2-cluster");
+  CLUSTER_SSH_KEY("rke2-cluster"),
+
+  /**
+   * The SSH key the manifests pipeline signs its commits with — {@code keys.github-signing}. It was
+   * a string literal in three places (the resolver and both scenarios that sign), absent from this
+   * registry, which is the shape the registry exists to prevent.
+   */
+  SIGNING_KEY("github-signing");
 
   private final String entryName;
 

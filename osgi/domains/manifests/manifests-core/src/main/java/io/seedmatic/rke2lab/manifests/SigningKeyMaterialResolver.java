@@ -1,6 +1,7 @@
 package io.seedmatic.rke2lab.manifests;
 
 import io.seedmatic.rke2lab.manifests.contract.profiles.SigningKeyMaterial;
+import io.seedmatic.rke2lab.ndh.contract.NdhKeystoreCatalog;
 import io.seedmatic.rke2lab.ndh.contract.NdhKeystoreReader;
 import io.seedmatic.rke2lab.seed.broker.port.EnclosureGate;
 import java.util.Optional;
@@ -24,7 +25,7 @@ final class SigningKeyMaterialResolver {
   private static final Logger LOG = LoggerFactory.getLogger(SigningKeyMaterialResolver.class);
 
   /** The ndh key-store entry the rke2lab bot's rendered commit is signed with. */
-  static final String SIGNING_KEY = "github-signing";
+  static final String SIGNING_KEY = NdhKeystoreCatalog.SIGNING_KEY.entryName();
 
   private final NdhKeystoreReader keystore;
   private final Optional<EnclosureGate> enclosure;

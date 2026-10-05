@@ -30,19 +30,25 @@ public interface NdhKeystoreReader {
   String authorityDomain(String authority);
 
   /**
-   * The private key of a TLS authority — {@code authorities.<authority>.private} (PEM or OpenSSH).
+   * The private key of a TLS authority — {@code authorities.<authority>.slots.<oldest>.private}
+   * (PEM or OpenSSH). The OLDEST generation, because that is the one an authority signs with: a new
+   * authority is trusted one activation at a time, so its leaves are only re-signed under it once
+   * every verifier knows it.
    */
   String authorityPrivate(String authority);
 
-  /** The private key of an SSH key entry — {@code keys.<keyName>.private} (OpenSSH). */
+  /**
+   * The private key of an SSH key entry — {@code keys.<keyName>.slots.<newest>.private} (OpenSSH),
+   * the generation the key presents.
+   */
   String sshPrivate(String keyName);
 
   /**
-   * The public key of an SSH key entry — {@code keys.<keyName>.public} (the {@code ssh-ed25519
-   * AAAA…} authorized_keys line). The seal side of {@link #sshPrivate}: the cellar cipher seals an
-   * age SSH-recipient stanza TO this public key and reveals it with the matching private, so a
-   * harvest sealed by the seed is readable by whoever holds the key — no ssh-to-age, no separate
-   * age key.
+   * The public key of an SSH key entry — {@code keys.<keyName>.slots.<newest>.public}: the bare
+   * base64 blob, WITHOUT the {@code ssh-ed25519} type or the comment (ndh keeps both in fields of
+   * their own). The seal side of {@link #sshPrivate}: the cellar cipher seals an age SSH-recipient
+   * stanza TO this public key and reveals it with the matching private, so a harvest sealed by the
+   * seed is readable by whoever holds the key — no ssh-to-age, no separate age key.
    */
   String sshPublic(String keyName);
 }
