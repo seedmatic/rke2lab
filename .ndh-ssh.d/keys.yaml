@@ -13,14 +13,7 @@ authorities:
     domain: mammoth-skate.ts.net
     public: AAAAC3NzaC1lZDI1NTE5AAAAIMm2fu/uVbaaj1OljiSnZ9T1ES9yvbG+Y6JhyLrnQQAS
     # sops:encrypted
-    private: |-
-      -----BEGIN OPENSSH PRIVATE KEY-----
-      b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
-      QyNTUxOQAAACDJtn7v7lW2mo9TpY4kp2fU9REvcr2xvmOiYci650EAEgAAAJiYDZtRmA2b
-      UQAAAAtzc2gtZWQyNTUxOQAAACDJtn7v7lW2mo9TpY4kp2fU9REvcr2xvmOiYci650EAEg
-      AAAEDkqwy0SqqNYXq+4+htWltyyXdBUWP3tQ/V0zAxOm8a3Mm2fu/uVbaaj1OljiSnZ9T1
-      ES9yvbG+Y6JhyLrnQQASAAAAD254bWF0aWNAYmlvc2tvcAECAwQFBg==
-      -----END OPENSSH PRIVATE KEY-----
+    private: ENC[AES256_GCM,data:DmbClZTt5TTqEMpDRElP7Rr78fkAiqfClX+YkbYYvLGefVyuIo07hix/3/HYAPInKu2hQnSSM863fkITVcZQtnpTVAN568dQLdVcWfc8wNvAK+NtllANcknBf4BvAO27vbPtayzo2dTMpW4ogFCHTLGJW+nLLwpXX7gygia7HVCurPlQcUFheh6sY+hvJIVvBd9hhcaor8HwjH9+EKuIkS1aySW2QhzXuWMgrISpfOFGM2zPDMSbqCw/9P4SR1yRoWYRgHx/CZiAHP6w3vim0VCPIE9aX1+Uv8lC3VorF6h4N0+MafF5BGN0EEIMgwsPGP5DSUI5APey+hsA8cWXhdEcva36WlkSlTIbQS5Q1T4IJc79LWnGBUvDIdu8AEIIJJwO5hqnmrd8iIkn+4SnRlUVpnDhGSEfN9cJ/MwyQKDi9juLx6IzZsz9SO3co00h9lQALTFKqU6OSsaE2kHgwc7OZNWiApdgAMoQDZl+kY/oPAIINGMpILu8cO2Y9OY7vw/Ut/0uw5MtuIHbbUDSoZ7PwnUQTW4jjuQ=,iv:+JASOyTtI0emZmNqG+XfmMC2prW2JNbgcdEdrPEylGM=,tag:c2S5Ck8OBQg7nn0QAtxlDg==,type:str]
     usage:
       - ssh-authority
       - tls-authority
@@ -41,16 +34,7 @@ authorities:
     comment: cert-authority@mammoth-skate-tls
     public: AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBNk85dUnU8uD1qUbP6m78fguUtf1uwicxfR0XCY5c5G+1vgxGiI6RJXj7szDlzpmSTFVLh/UL9sUtom2spAwTNg=
     # sops:encrypted
-    private: |-
-      -----BEGIN OPENSSH PRIVATE KEY-----
-      b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAaAAAABNlY2RzYS
-      1zaGEyLW5pc3RwMjU2AAAACG5pc3RwMjU2AAAAQQTZPOXVJ1PLg9alGz+pu/H4LlLX9bsI
-      nMX0dFwmOXORvtb4MRoiOkSV4+7Mw5c6ZkkxVS4f1C/bFLaJtrKQMEzYAAAAuAU6I+AFOi
-      PgAAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBNk85dUnU8uD1qUb
-      P6m78fguUtf1uwicxfR0XCY5c5G+1vgxGiI6RJXj7szDlzpmSTFVLh/UL9sUtom2spAwTN
-      gAAAAgIVpMEF6HarxWmFRiWfA7HRPETMMIDuAd8TGeEgroWsAAAAAgY2VydC1hdXRob3Jp
-      dHlAbWFtbW90aC1za2F0ZS10bHM=
-      -----END OPENSSH PRIVATE KEY-----
+    private: ENC[AES256_GCM,data:A+7rYOzIyMp7yIWoWiTy12EbMdvyOvTx2bncvTQk8mEFo7u/H/i1SMEbSRuMaRBAchflQGCFm2oejWFDUugU/JJ8B1Q1ZrLQvSU/5t7jHHAXcf8QtHVjUFmMvj5dSBqubkvUTdbZm1GIHxRxWuuhD05VKZAQwBFC8dl7bDsvYz3WQcihiG69nZvQlgWFTaFzGk9F905IQvxPGjkmNNuN6ArJ7282L9ghRlvMAU7n2825swcxYjkVcnmBrJL4lc4ItyoJXV2w1RrSWVX3RKn6h/vqCe4+fpJZnXpeNix6qBK2SOXkTpkBTnQPwPTiBoug87IbqDlIxMbg/rbojRj+6EUwcsumJitAPMataIHTfF2F7ZG6TcqpIPtjj75SUgd7dKoYDAW1dkIZZvOk2P4JkF8kudO87VW4m3aQ1irLJeenS+RS7bv1AtauxX3g8NXO4bDQXwFQ0g4u9dsO2aWsTS/8IXWRSSEZurRJaoR+nVGs9qWpGA2cgKhp50lDpSQ2g65wp7ihzsfXn+8iq+Jwu58BqG608UE8Ubd+hRtbfCDlMJMJ8CvqY/eDkZeSJyjV444zXff31FP2Vwalpjo06ZPi0Tar+BW9dz+0nIAVFNnC8XDESrynQPmWgVkW48e7hRP2OBKwU7Nnpvc8AGbQ6BqOvB8JsVeOGdEILQzbRSGmyCpd/mDW7VJjw7A=,iv:WXYQ5e8hMp863/6ByYeSFKeyr/9qCq/VWYK8da2Iug4=,tag:5Enig5i8aCatjiV8UQaOsA==,type:str]
     usage:
       - tls-authority
     annotations:
@@ -104,14 +88,7 @@ keys:
       rdp-host: rdp-host
     public: AAAAC3NzaC1lZDI1NTE5AAAAIMHU43EVt2ETrAd7u65ZX+nyLtbMKVr+zvdyM/6db7MV
     # sops:encrypted
-    private: |-
-      -----BEGIN OPENSSH PRIVATE KEY-----
-      b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
-      QyNTUxOQAAACDB1ONxFbdhE6wHe7uuWV/p8i7WzCla/s73cjP+nW+zFQAAAJhyGjWdcho1
-      nQAAAAtzc2gtZWQyNTUxOQAAACDB1ONxFbdhE6wHe7uuWV/p8i7WzCla/s73cjP+nW+zFQ
-      AAAEAnINvfigN+5+6J5NY1dOLj9jWz3zhRYTnvsNmty7XK6MHU43EVt2ETrAd7u65ZX+ny
-      LtbMKVr+zvdyM/6db7MVAAAAEWJ1aWxkZXJAbG9jYWxob3N0AQIDBA==
-      -----END OPENSSH PRIVATE KEY-----
+    private: ENC[AES256_GCM,data:VPYPfMUaTYcnv/oTgKkBfJgGEuXngkPUjy9lUQLp0vI7FRXWJrLlsl9OCztG4lFlcGVabb/x5s/sl8unJunqEhGGWHgfR2cRVK5HdZZMTXAiY47YPMBKwF+ricOXoshU7xHQGJgSF+6KR+v2PulyHCL9YaeAZT9qiWeR0lH6/El0AIfMZ8CLqmW1g1oP3nk0vgFzWr5CVM9Vy0IsHbfG3g/78ntN760/Bz2gmjrec2WFQ9rSnYHVRjZtR+XrfGYAqlUP9ShBM7umCXz5a4qcdwqHCiQUFOdHRXFehArZZEnb0qQwP0cNYwA+EQdlFRuYvqCq5u+gihG/E+NvhrU2a+41ZYs6wiFzmQHmS2X9WlxJAP8wChTld1zRHWydWJo1trhRVmkMNULfqw/iIn2bkcvhn24AtP0y9WEJr7X5Ybp9X7AUC6Bk/fM4XK0YRxC9/BfsudiXB5Ar+EVVjT/3ZDJKyBgurtPQMxv1UBishBob6h0GvwR1LddBdg0tYoqB4k0Q188CM05wSOO3kihCWXDdNZvOCHOGgWI=,iv:n6SSd9f3MXjDAqGstgPX6SP/m1TfuNuved0nVJkgVOk=,tag:0ooERFAsHGQLubEmjYB0Mg==,type:str]
     annotations:
       public_scope: user
   rdp-host:
@@ -133,14 +110,7 @@ keys:
       - forwarding
     public: AAAAC3NzaC1lZDI1NTE5AAAAIGet5e+oTAP3AfpWzlaM+SrHov14dGzao1jadf0S03oE
     # sops:encrypted
-    private: |-
-      -----BEGIN OPENSSH PRIVATE KEY-----
-      b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
-      QyNTUxOQAAACBnreXvqEwD9wH6Vs5WjPkqx6L9eHRs2qNY2nX9EtN6BAAAAJiQ7CRwkOwk
-      cAAAAAtzc2gtZWQyNTUxOQAAACBnreXvqEwD9wH6Vs5WjPkqx6L9eHRs2qNY2nX9EtN6BA
-      AAAEBudopHDqEzF7Fd61diWPjIIREb1B8UfQDEmozwzBbwoGet5e+oTAP3AfpWzlaM+SrH
-      ov14dGzao1jadf0S03oEAAAAFW54bWF0aWNAbWFtbW90aC1za2F0ZQ==
-      -----END OPENSSH PRIVATE KEY-----
+    private: ENC[AES256_GCM,data:uJjMfXAiVWYl4/CNr1dqxim7CnQ2V7YLxZXOkRnTM0mvYK3CnjVcllN1gomXeOU1dihHnzib1bRGuW6SJvQGzWh5n8YMNUxOg3YNWzaNxoE76BgV0rqctsDelYdoz46ppm2CyYLRLOr9H0VJfc37Q4iVK+G3qqeK2aHaXJzaRGfM4S9L65Ex78bXQT/hew6HBhYP9UQXVQVOCNEGtulTBCDut7z/eFGr7cN4TuXBQOT6/Dx1SXkNLFBSr+8JNWRwiVOy3bvOJzfSpZ7VSJtxmpAIEsUAVE84QblVyX0NXIN2zu7SKQPZHRM8BJ2jeTlDJNEcKacCApxVaYl/YTKHAx3Xyc9lMibZAj0dTFimyYviDsvW+YXTvUJ9DrUokY7s9scdWWBTzqjLpMu3IGdJYGaAhQvE5my1K5322fTskvX6VSFYCmw+a5HpXS4D7Vl1AbRoBQJTb11sNc5CyV+j7YkeRnFn884xEyvPn9jX+yEBYA6yzbFuc65kuaJ4PscL+QqnNNnH1kgU7VMptM4/05XuxbuI+AcUcu8=,iv:E8LA2WcQZQsPCAmXGl97Yn7FJPuSyojeO927eKrQLRU=,tag:NVtHnPW7/03yBOaM9Almiw==,type:str]
     annotations:
       public_scope: user
   vz-guest-nixos:
@@ -161,14 +131,7 @@ keys:
       rdp-host: rdp-host
     public: AAAAC3NzaC1lZDI1NTE5AAAAIG1fGVLU3BOE2R+1zuJRSOAxYsw+fd4y7YvwZFxMs8RF
     # sops:encrypted
-    private: |-
-      -----BEGIN OPENSSH PRIVATE KEY-----
-      b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
-      QyNTUxOQAAACBtXxlS1NwThNkftc7iUUjgMWLMPn3eMu2L8GRcTLPERQAAAJiHkpDVh5KQ
-      1QAAAAtzc2gtZWQyNTUxOQAAACBtXxlS1NwThNkftc7iUUjgMWLMPn3eMu2L8GRcTLPERQ
-      AAAEAatyeFdzvpH/jUWmLbEX+odjIBx/HRrrQszE7Bxpzblm1fGVLU3BOE2R+1zuJRSOAx
-      Ysw+fd4y7YvwZFxMs8RFAAAAEnJvb3RAYmlvc2tvcC1uaXhvcwECAw==
-      -----END OPENSSH PRIVATE KEY-----
+    private: ENC[AES256_GCM,data:SgvGrKyCPwD9o7WIoNiiM/bTfYgmA+hPy86aL+0ql4g9oTOS0T+lCqbPUzUODvdBGEAFzyhYaTfoz8vI5QEafacI/ZzZ4geykYsvdyydgHG1i+bEXI5ytDQTNH0eN5KWjr75ybnTSgqkt0R71vTC3UHC6pkssQ3pB9N0N7e9a3LRxZWgQWL4PUWnp7hEa7AaMd9Oe/0tLu1CLOJ42+2ryEI03C7s09bHtRT4BssspAV/pA/JVzbQmvdzUtJNgmL61zqoHsJkb4HLOylHYU2YUkGj8CPwxpYiYYWGm1stGyi5zfvbh2ro27W3CVU54iHQMk+sKhMXg/ZLcBJC92ldIC4foUHrmbOWf+UHRvlhMAarsad03mDOGz9ENsFD+F03yt0XNYnNN4FY0jB1Q+CQNGJbE9tlPoJO+NMeWuoehv7NTT05NkncpsixR2MXEka2oxq4nohLI5IFwT9HiBNL7oWzyjq6B5bIk32U8VG3Lo5wmvaobPHj4yvxqdE5AyEWPz9jdoObQVla8x2T8eMTD5fa/EpC4fzwmeM=,iv:GWGaMbIHmg7vNlNydtM6WYgGbrzJzcE0dtXQcJjaLKc=,tag:8Z8AhaspiwxJwmrpoJWnpg==,type:str]
     annotations:
       public_scope: user
       enrollment:
@@ -185,14 +148,7 @@ keys:
       - user
     public: AAAAC3NzaC1lZDI1NTE5AAAAIEk3mPT46ePtbxdZg4CLBGVW4Tt5iFTxNdLm1ohNpV0b
     # sops:encrypted
-    private: |-
-      -----BEGIN OPENSSH PRIVATE KEY-----
-      b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
-      QyNTUxOQAAACBJN5j0+Onj7W8XWYOAiwRlVuE7eYhU8TXS5taITaVdGwAAAKBMuiJbTLoi
-      WwAAAAtzc2gtZWQyNTUxOQAAACBJN5j0+Onj7W8XWYOAiwRlVuE7eYhU8TXS5taITaVdGw
-      AAAEDAUZgw7z0aKy2X5D8LkvGyMn32eA/WU4KNpNj6KB/L2kk3mPT46ePtbxdZg4CLBGVW
-      4Tt5iFTxNdLm1ohNpV0bAAAAFmdpdGh1Yi1jbHVzdGVyQG54bWF0aWMBAgMEBQYH
-      -----END OPENSSH PRIVATE KEY-----
+    private: ENC[AES256_GCM,data:EWDju7mFyDOe18hHyQONqJgjCNGjcvx3iBqnPPn+jieZA63P2+Q2Exgasg0p/JmwPAOMWkv1Rj16A+B8Z3q5PE9nxLoToGhB9Q3KcYg5KUiQnx1LykMZP/hy82yo0WwQR/7n3u5AIk9UH7Xu5lLqjG0/CWrjNm1QOJty6I0FqfUvTGKHEL/oeNfU4hDzBRTiSs5tMn6LhlMGv0dQDI4IxpA8t4y8GCAMv5XQdCw7XaBiafklaa9p5Z4RNI6gqwsZk7iNJydd84cJnlPV1Dt+5lSVh5mFeGns7URAmX9JJjAXVPl5bHUlrfimEfEVWk6AGIiEPWMewA0xI2b2HXWQ+z/xK3Wcgpq3OvHpVkxgzMsChcjpxxXZIDfug/5pg8e3mRmijC/lYCFgh1vk4/hGA2r+b8142VyzSFvSmPds0bmCKkLBPuLxL7upx5DL9d7o7lmzADSFbH7sREasbIre3U/cxmh1sZQG8/shRPi+a7zUHU6oC+YZ5FiqWb2yoPTBg4xoxFJWSPyVWJTVfJNM7l9qvvMCMwf+8qPu9zddtNlLhA==,iv:qYX4kPAvrYl0QZADQZTSCtlgCTGKfDol0AhwgrXYnR4=,tag:sqEcBkRPBP/KZvCDapvP1A==,type:str]
     annotations:
       public_scope: user
   github-signing:
@@ -205,15 +161,7 @@ keys:
       - user
     public: AAAAC3NzaC1lZDI1NTE5AAAAILvIHiqhNBsZE6gxYmDBA4tM2nGc6jV0sAkFa9f0iare
     # sops:encrypted
-    private: |-
-      -----BEGIN OPENSSH PRIVATE KEY-----
-      b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
-      QyNTUxOQAAACC7yB4qoTQbGROoMWJgwQOLTNpxnOo1dLAJBWvX9Imq3gAAAKg6HVM5Oh1T
-      OQAAAAtzc2gtZWQyNTUxOQAAACC7yB4qoTQbGROoMWJgwQOLTNpxnOo1dLAJBWvX9Imq3g
-      AAAEBNj1GkgODTqhX+vuRhoIVNA960GF3yH7BipzoMkNY9m7vIHiqhNBsZE6gxYmDBA4tM
-      2nGc6jV0sAkFa9f0iareAAAAHnN0ZXBoYW5lLmxhY29pbkBBUEwtZGs0MG5qaGs5aAECAw
-      QFBgc=
-      -----END OPENSSH PRIVATE KEY-----
+    private: ENC[AES256_GCM,data:pJAFybPLKvIr0Z1c6MS+o/8t+FPrI7ipRzlcOtXlCetPlut7ixtB4N8vwU+arRvNagk19zzEq17CFXFr2iHrpxAUBU+MgU9l8NikF15Z0C+wrji6Rk9BRfvQD0QTRQFcoQBZK8ogxpsv2/v4eGIx3tiAJuQWPtODPNk4YQVW84xO1bhiqadctSdUalQE0cucyRubHxd1DOWH60o8yvX/Ibw4LM1kfc/MEsp16JZY0WGDkQEBRFkEcptCloyA35lgrHUTXBy6sJOMAd8YiuURrAerpBkRTVrE9ehrRumQTOcYgUwqsf+hreGTJYEuz+ltn4rPvGBUAswJavyzRms2iUHIevuKdCEk4YCFKlE5lPlZ095vfa2bUAEx1+FZcyR2a4bimvARkziJCFwgp4vkRcdpQ9b/MiP9WmHukbXg4lizWjrzfTVr2aOBhZkYjCqurRdvU14TDI50jhP95A4r6PtZEKiy5PzZV5nom62uT2sRniL/PDEG0kexQ6wp0ner42ciGLl6fqXe4gIGFLYylSFNPUrXHp3FYuBrt+TytS75Dm/oaVHJkxc9xB/2GxI=,iv:+YuFhnavpbLQ4J22HeIotZa42/YlQq4S8eGUNxhMF+I=,tag:jhJmAo3udcFcrUVozWKJvg==,type:str]
     annotations:
       public_scope: user
   github-signing-hyland:
@@ -226,14 +174,7 @@ keys:
       - user
     public: AAAAC3NzaC1lZDI1NTE5AAAAIF23Jq3UEKPHGZOGgdQdIvc4Am5EYQZNnCSA+bSs2WOP
     # sops:encrypted
-    private: |-
-      -----BEGIN OPENSSH PRIVATE KEY-----
-      b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
-      QyNTUxOQAAACBdtyat1BCjxxmThoHUHSL3OAJuRGEGTZwkgPm0rNljjwAAAJizk4Fos5OB
-      aAAAAAtzc2gtZWQyNTUxOQAAACBdtyat1BCjxxmThoHUHSL3OAJuRGEGTZwkgPm0rNljjw
-      AAAEB/J1spZcmY5vI6kkiDaoyF+jZ1PC5T2GfH87UwBaMU3V23Jq3UEKPHGZOGgdQdIvc4
-      Am5EYQZNnCSA+bSs2WOPAAAAD2h4cHIgZ2l0IGFjY2VzcwECAwQFBg==
-      -----END OPENSSH PRIVATE KEY-----
+    private: ENC[AES256_GCM,data:dwPRLdWPv0BhXwZxNhWQWFWMvIYEeAfFc4ljYLPOl4mhhX3OHoyDUp0PLPlx3oO8+C/ymxpTQsgRAArh+OIQsR1umaxMtSjvdR2LrRv8Vxz0/kRfPAYy9NgrjEUHAkqzGld/KScFmgCJqrN6zAG4x/G3iwxtA93dlgil425nGcAfj3CfQKZtfqwi6ZAsVwwl/yynyoabTBPNqANhbofdSzHjiCn3YOdsq/ZO0KeXXGj49HKLWqOMJUgCg3bR8xwJ4SsX5xiIH25BF/WimMrh547VJYO0xVVCjXScAQXtF4DsEJT64QNkBHaWmaxJKFCRnsSTe5o7zeqmmAk48MxJNF5sR/sxl0Hi1Md+eeHRjdhYgMcVwXdd+hr7Qwb7BD9ipHL2fyikvxGJnOyVQFHwXuF5WpRW/c7XyT9rzy+FFAQo1UrktyJgvUD/XQGjGTZrXPkQLzPhbn5OuKVqTi+eMjDNnjOywEPRzmrbm8e44C/nOuNrDZ11x2KUtke9fgcvIkrlW8pqn0gLcSi3lj91Blw7bZKJYruiKSQ=,iv:arQtDpiKpF3FWZ9vZb4X8yj3X2okr599qXQgZwuQMX8=,tag:YuUgs63rd0QXZQfT4udSNQ==,type:str]
     annotations:
       public_scope: user
   headscale-tls-server:
@@ -317,23 +258,41 @@ sops:
   age:
     - enc: |
         -----BEGIN AGE ENCRYPTED FILE-----
-        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSArb2VsS0FZcDdLdUFINUhR
-        KytXVEloeFRqTFNSQmpFSEtmOE93dFJzR3hNCjg4TVJ1aE5pRnNBcWZ4SWF2aWZP
-        N0F5SlpYeHJSRjVTV043bFU5ZWZoZ28KLS0tIDBFd3laT3UxTy95SDN3OVZ4NkFm
-        VzF0SUxBVUxtSFAvWXZ1a3V6QStEZGcK4n2JIRZd+0ESV25Fy0XNTelfOAf0xl4K
-        di6aK50Q2IAJBd3vfAIN/k7r85kVJbn85AlpE8Oz3dwncbOIaCY36A==
+        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBXMjA1TVhFQTQvSG9XeSs3
+        M0J6YmZ6dlJaVlJ0NzVQTkxuU0F3TlMrNHowCktJcVFZYUxuYVFHS1VjcXFoMVRQ
+        Sk1jRzhVOE1RTEdDZ0pjdE9kTUE2RmMKLS0tIGRuMDhLVTNGOU9VUCtxVE5JenI4
+        Wk5MVmtPN2hpRElFRjh4RVB4SU15RWMK7r0gZfZviu5kuiE2zL5cvKW/IL44YBl5
+        /rBZ+X/5tpzgG9HuKkGG0/8wdNJUYcW4cL+PfvEctFS3XanuZ3hiMg==
+        -----END AGE ENCRYPTED FILE-----
+      recipient: age1stxdeh0t6arhdm7uhyy2jcf2qj9r9vfzkwte4jr4gj6hlpxe740seq8j82
+    - enc: |
+        -----BEGIN AGE ENCRYPTED FILE-----
+        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSAxUWpETWxDT1ZwN292WHp6
+        ZGtrdWFIbnh5aTNjRlFNRlVTUUdUaU90dTFJCnE4STVBQ2ViLzJ3dmFrb2xvM2px
+        VzNGMWVoTjl6TlYzdG83cjFDNDRoajQKLS0tIGVrenZUMDI2RnJNeTVRM3BKQUJI
+        YlE5OElOOFhKQUVPV0R1QUJRbjNSUEUKFekx/oQo29nMZ/JkfzKp7mXtKKT8XXku
+        8xJ+QgqFRK8uaTjct9pDB2nmgksikMsNMfHaX2HPju5i/TDQ/9yLkg==
+        -----END AGE ENCRYPTED FILE-----
+      recipient: age19fvdjd6gr3mwthv4vuvym24wxlkugvcy4fuvmnngecsg8fpj4y9qm33qu0
+    - enc: |
+        -----BEGIN AGE ENCRYPTED FILE-----
+        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBkd1BlV2JHTEpyNktrRzVx
+        anlvNlJ4UG1PK25uQlp5eUxIK2RCMFVJSXc0CkNRUUMvaSt6ckhjTFE2UGI3N2tS
+        T0cxQmtKVXdGRGFYS1hPZ005ZW5jR00KLS0tIFRaK1dYTXRsQkYrOFBmSVM3eFkw
+        S2ZHNEY4ckxUOXNYSmJ2cU5pbWphbzgK+zejACvnvLcKnxfmeJF1IzPgU5T/v/4F
+        WfXq7ybzF0agL8euyq9Gkpvh+K9CWWnfQw+//qLORI+1Qn7+qEcCpg==
         -----END AGE ENCRYPTED FILE-----
       recipient: age10ey0lcup4zpjqcknpxw7enpsagn674nm634f2u75trfr5t62uq5qdjuxzv
     - enc: |
         -----BEGIN AGE ENCRYPTED FILE-----
-        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBxT092WW44bkt0LzB6d3ZH
-        VDc2cHYzdGFrM0txdnhNOWlpbEE0NUd1Y21ZClJJa05zVmRqSXFoOFQzcDZ6UjFD
-        Vll6SzkzTWJ1WG9IUEJZR0FOS2VOaTgKLS0tICtkNnplQU0xeE12RllHL1E4UVN4
-        TVN0QU1UdXJ6ZE0rdWx2UlUrSWZ6ckkKrIV+ALfdOrcGQXMHPbpOK2zzm/q0BoPw
-        DVdt82csLuwfHLkn731h6A8QZwyA3pe0wjujRetKiBy+Sgs8zTbzNg==
+        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBvaEVJWGZuNndNNHJvSUZI
+        Q3ZDZWxUZDFWQmIvZWpqM3gyUm5pSk1PaGlvCkhhbnJ1TTZCVldNTGRrUWxXT3E0
+        eDZqR0hMbVZLVnVNd0VMSjUxUjR5Vm8KLS0tIGNtV2VkMFBYV3o2MkM4aDJFZ3Fs
+        aUI1ODZKVTczSjN3TWVmdmQ5UVJDSlEKStyUW6uKSEcHRFcnmzCP0j3cJa6HYLb0
+        mQ89PB5/FmZCiSOCmDSwBq9Z+433ns4IF9C5XbACT59mS5ma9BTlNA==
         -----END AGE ENCRYPTED FILE-----
       recipient: age1k0tc4gmaqrk5df3ujja34gkqxstu0cye7fl7fktjeuua3yych3aqxfjlak
-  encrypted_regex: ^(data|stringData)$
-  lastmodified: "2026-10-04T17:47:33Z"
-  mac: ENC[AES256_GCM,data:xqvmWGthHAHy85Bl1fvfTQFE4/iqqu9QC0yD5UM8UHpDQ5ytgz6FipGHf+2BoLT7CbaXg5S+pbPxXXnP3fvwxp0Bht74pVzukavUxkJy1hHQIGeBTbEk69F6Y9V6OgryI4WBmIGE2EMV3ZbpXvLqHL6v0RxGuzFV8vyBAgcM72c=,iv:BIvA0dljRAbz/oWqFfFn7y5Le+cebu/BZUIAxdB0Xmo=,tag:XFuy6Us6jjx3oLCmQ1+bLg==,type:str]
+  encrypted_comment_regex: sops:encrypted
+  lastmodified: "2026-10-05T00:48:04Z"
+  mac: ENC[AES256_GCM,data:2OPgeiELzt+w9tawHJlhi6PwncMLLAfmdM7wOgFXuLVqFFJqEzuxaJ62Wu1v+z631evjf7rw7AFgb6kZwueXuJms2dASjTf7osBKNeHKDuX9rgWgpX3Ad3q+FTXvX9g+N+B3WsV0GI6vVwt+vbfu8FO/lgJgPl2NkmTzBRNd7OM=,iv:U64lBzPcoEIeNzCE6qk+6oucSxVPjG4O5zwX0p6xUCc=,tag:R23JcnGjHj1rWSMiF0BaHg==,type:str]
   version: 3.13.3

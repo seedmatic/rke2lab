@@ -1,16 +1,22 @@
 creation_rules:
   # Age recipients for SOPS encryption.
   #
-  # - age19fvdj... : Operator decryption key. ★ A STANDALONE age identity, deliberately NOT
+  # - age1stxd... : Operator decryption key. ★ A STANDALONE age identity, deliberately NOT
   #                  derived from an SSH key, and it appears in no keys.yaml. Lives only at
   #                  ~/.config/sops/age/, which activation READS as an import candidate and
   #                  never rewrites, so it reaches /etc/sops/age/keys.txt and from there the
   #                  NixOS guests.
-  #                  Why standalone, against the convention the other two follow: the key that
+  #                  Why standalone, against the convention the host keys follow: the key that
   #                  opens a file must not live inside that file. It did — the operator key was
   #                  an entry of the very keys.yaml it decrypts — so publishing that file handed
   #                  over everything sops protects in both repositories at once. Deriving this
   #                  one from an SSH key would recreate exactly that coupling.
+  # - age19fvdj... : ⛔ COMPROMISED, being retired. Its standalone predecessor, which held for
+  #                  one day: on 2026-10-05 it was printed in the clear into an operator session
+  #                  log by a shell command whose two stdin redirections made an interpreter read
+  #                  the key file as its own script. Never committed, never pushed — the exposure
+  #                  is a local log plus the path that carried it, not this repository. Kept as a
+  #                  recipient only until every encrypted file is re-keyed, then removed.
   # - age10ey0l... : ⛔ COMPROMISED, being retired. It is the `github-signing-hyland` SSH key,
   #                  which also signs commits, and it was published in the clear in this public
   #                  repository from 2026-08-27. Kept as a recipient only until every encrypted
@@ -47,6 +53,7 @@ creation_rules:
     input_type: kubernetes
     encrypted_regex: '^(data|stringData)$'
     age: >-
+      age1stxdeh0t6arhdm7uhyy2jcf2qj9r9vfzkwte4jr4gj6hlpxe740seq8j82,
       age19fvdjd6gr3mwthv4vuvym24wxlkugvcy4fuvmnngecsg8fpj4y9qm33qu0,
       age10ey0lcup4zpjqcknpxw7enpsagn674nm634f2u75trfr5t62uq5qdjuxzv,
       age1k0tc4gmaqrk5df3ujja34gkqxstu0cye7fl7fktjeuua3yych3aqxfjlak
@@ -57,6 +64,7 @@ creation_rules:
   - path_regex: '.*'
     encrypted_comment_regex: 'sops:encrypted'
     age: >-
+      age1stxdeh0t6arhdm7uhyy2jcf2qj9r9vfzkwte4jr4gj6hlpxe740seq8j82,
       age19fvdjd6gr3mwthv4vuvym24wxlkugvcy4fuvmnngecsg8fpj4y9qm33qu0,
       age10ey0lcup4zpjqcknpxw7enpsagn674nm634f2u75trfr5t62uq5qdjuxzv,
       age1k0tc4gmaqrk5df3ujja34gkqxstu0cye7fl7fktjeuua3yych3aqxfjlak
