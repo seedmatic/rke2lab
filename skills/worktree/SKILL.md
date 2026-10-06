@@ -101,15 +101,40 @@ and **Claude backend** — then run the steps.
 5. **Write `.claude/settings.local.json`** (gitignored, per-checkout). It carries
    two independent things:
 
-   **(a) Memory redirect — ALWAYS, regardless of backend.** Set
-   `autoMemoryDirectory` to the **absolute** path of this worktree's tracked
-   memory dir, so Claude's auto-memory reads/writes straight into
-   `<worktree>/.claude/memory/` (git-tracked → rides into the branch at merge)
-   instead of the repo-wide, reload-lost `~/.claude/projects/<slug>/memory`
-   default. The path **must be absolute** (`~/` also allowed; no relative /
-   `${workspaceFolder}`) — derive it from the worktree root, don't hardcode.
-   This replaces the old `link-memory.sh` symlink (slug-fragile, reader-dependent,
-   broke on non-main worktrees); an absolute path is slug- and reader-independent.
+   **(a) Memory redirect — ALWAYS, regardless of backend.** Point
+   `autoMemoryDirectory` at the repo's **`memory` worktree** — `<repo>.d/memory` — an
+   ORPHAN branch holding nothing but the knowledge base. NOT this worktree, and not the
+   `main` checkout. The path **must be absolute** (`~/` also allowed; no relative /
+   `${workspaceFolder}`), which is what makes it slug- and reader-independent (the old
+   `link-memory.sh` symlink was neither, and broke on non-main worktrees).
+
+   ⚠️ **It used to point at `<worktree>/.claude/memory`, on the reasoning that being
+   git-tracked it would "ride into the branch at merge". Measured 2026-09-29: it does
+   not ride, it FORKS.** Two trees had diverged from one commit — 248 files in a branch
+   worktree against 325 in the `main` checkout, 175 identical — and a dead-`[[link]]`
+   audit run over one of them reported **7 false deaths**, recording live facts as lost.
+   Reconciling them took a 3-way merge, because neither side was uniformly ahead.
+   Per-worktree memory does not prevent forking; it *guarantees* it, and the merge that
+   was supposed to heal it is the step nobody performs.
+
+   ★ So the knowledge base is **one orphan branch with one worktree**, the convention
+   this repo already uses twice — `flox-catalogue` (109 commits) and `seed-incluster`
+   (46), both orphans with no common ancestor. Forking stops being discouraged and
+   becomes impossible: no code branch carries `.claude/memory/` at all. Preferred over
+   the dedicated `claude-memory` repo that `MEMORY-STRUCTURE-SPEC.md` step 1 proposed —
+   same isolation, no new repo, no subtree machinery, no cross-repo sync.
+
+   Two consequences to respect:
+
+   - **Something must COMMIT it**, because the session that writes there is not the one
+     that commits from there. That is what left 32 memory files dirty in a `main`
+     checkout for 11 days (oldest 2026-09-18). The session-end hook
+     (`.claude/bin/memory-commit.sh`) does it; the `SessionStart` guard shouts if the
+     worktree is dirty or the configured directory is not the memory worktree.
+   - **A running session cannot be redirected.** The path is resolved once, into the
+     system prompt; editing this file mid-session changes nothing until the next one
+     (measured: corrected 09-27 22:44, writes still landing in the old directory
+     09-28 12:48). So verify at session START, not after.
 
    **(b) The Claude backend.** Ask: **AWS Bedrock** (`ai-tools-shared`) or the
    **enterprise Anthropic** account (direct)?
@@ -118,12 +143,12 @@ and **Claude backend** — then run the steps.
      ```json
      {
        "model": "opus[1m]",
-       "autoMemoryDirectory": "<worktree-abs>/.claude/memory",
+       "autoMemoryDirectory": "<repo>.d/memory",
        "env": {
          "CLAUDE_CODE_USE_BEDROCK": "1",
          "AWS_PROFILE": "ai-tools-shared",
          "AWS_REGION": "us-east-1",
-         "ANTHROPIC_DEFAULT_OPUS_MODEL": "us.anthropic.claude-opus-4-8",
+         "ANTHROPIC_DEFAULT_OPUS_MODEL": "us.anthropic.claude-opus-5",
          "ANTHROPIC_DEFAULT_SONNET_MODEL": "us.anthropic.claude-sonnet-4-6",
          "ANTHROPIC_DEFAULT_HAIKU_MODEL": "us.anthropic.claude-haiku-4-5-20251001-v1:0"
        }
@@ -139,7 +164,7 @@ and **Claude backend** — then run the steps.
      redirect (the committed `.claude/settings.json` already selects the direct
      account):
      ```json
-     { "autoMemoryDirectory": "<worktree-abs>/.claude/memory" }
+     { "autoMemoryDirectory": "<repo>.d/memory" }
      ```
 6. **Generate the `.code-workspace`** as a sibling of the worktree, inside the
    namespace dir: `<repo>.d/<namespace>/<slug>.code-workspace`. Name the file with

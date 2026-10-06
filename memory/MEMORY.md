@@ -24,6 +24,8 @@ The cross-cutting hub, auto-loaded as the session root. One line per entry (<~18
 
 ## Cross-cutting: git / workspace / build
 
+- [[develop-into-main-is-a-no-ff-merge]] — `develop` → `main` by **`--no-ff` merge**, `main` → `develop` by **rebase**; never squash: a squash makes main stop being an ancestor, and a later `rebase main` on develop DROPS its commits.
+
 - [[external-worktree-operating-model-state]] — ★ ACTIVE chantier: worktree-rooted Claude config. 3 layers (specific=repo .claude/ → general=claude-hub subtree at .claude/hub → ephemeral). CONFIG_DIR=<worktree>/.claude/hub, native settings cascade. Spec+plan written, step-1 PROVEN. GOTCHA: extension needs ABSOLUTE CONFIG_DIR (no ${workspaceFolder} subst). NEXT = wire real workspace + integrate to main.
 - [[claude-auto-memory-mechanics]] — hard facts: auto-memory is REPO-WIDE by default (keyed off the git repo, shared across worktrees); `autoMemoryDirectory` (absolute/~ path in settings.local.json) VERIFIED on darwin 2026-08-14 — redirects read+write, REPLACED the deleted `link-memory.sh` symlink; only MEMORY.md auto-loads (200 lines/25KB); CLAUDE_CONFIG_DIR not documented to affect memory.
 - [[worktree-per-conversation]] — PROMOTED to global CLAUDE.md rule; each conversation its OWN worktree, main READ-ONLY, base=fresh from origin/main.
