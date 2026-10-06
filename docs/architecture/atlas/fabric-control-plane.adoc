@@ -207,7 +207,7 @@ changed — the serial console, `incus exec`, or the emergency screen.
 ....
 flowchart TB
   s0["0 · rke2lab prerequisites — DONE: v2 reader, relay leaf upstreamed, github-signing in the catalog"]:::done
-  s1["1 · headscale ≥ 0.29 in ndh — an overlay, nixpkgs pins 0.28.0"]
+  s1["1 · headscale ≥ 0.29 in ndh — DONE: the version band re-aimed, and NixOS made to honour the pin"]:::done
   s2["2 · bioskop control plane — headscale in an Incus container on bioskop-nixos"]
   s3["3 · per-tailnet policy — CGNAT sub-prefixes, grants, ssh rules, generated from the catalog"]
   s4["4 · vmnet announcement moves to the cluster nodes — before any guest leaves the SaaS"]
@@ -239,8 +239,19 @@ reads instead of its literal — all in `7a0d6d79e`. `.ndh-ssh.d/keys.yaml` is t
 the bump bot's commits Unverified, and a plain subtree pull would have deleted the relay leaf
 
 | 1 — headscale ≥ 0.29
-| an ndh overlay pins headscale like `tailscale` is pinned
-| grants arrive in 0.29.0 (2026-06-17); latest 0.29.4 (2026-09-23)
+| ✅ *DONE in ndh, measured 2026-10-06* (`04e83f35` + the re-lock `a8d463ca`). Not an overlay — a
+**re-aim of the existing version band** in `modules/.common.d/headscale-pkg.nix`, from
+`>= 0.28, < 0.29` to `>= 0.29, < 0.30`, because `nixpkgs-unstable` already carries the version we
+want. `0.30` is the right ceiling: it moves the admin surface to `/api/v2` + OAuth, which we do not
+need while the clusters stay on the SaaS
+| grants arrive in 0.29.0 (2026-06-17); unstable carries 0.29.4 (2026-09-23). ⛔ *Two defects the
+bump uncovered, both fixed in the same change:* the band was a **tripwire that had already tripped**
+— unstable was past it, so `pinned` fell back to `pkgs.headscale` silently, harmless only by luck
+(stable happened to sit inside the band it aimed at); the fallback now warns at eval time and names
+both versions. And `ndh.headscalePkg` called itself the single source of truth while **only darwin
+honoured it** — `modules/nixos/headscale-daemon.nix` took `pkgs.headscale` directly, so the re-aim
+alone would have moved darwin and left NixOS on stable, on the very platform the control plane is
+about to run on
 
 | 2 — bioskop control plane
 | `headscale-daemon` moves from the guest's host system into an Incus container; `server_url` = a
@@ -252,9 +263,24 @@ signed on a seat from the shared `mammoth-skate-tls` root, which every member al
 ceiling does not apply to an administrator-added root, so the leaf can be long-lived
 
 | 3 — per-tailnet policy
-| the catalog gains a CGNAT and ULA sub-prefix per control plane; `manage-tailnet` renders one policy
-per tailnet and applies it through headscale's own tooling
-| `config-example.yaml`: *"Using a SUBSET of these ranges is supported"*
+| **The carve landed** (ndh `0e727c3a`): `netplan.tailnet` became `netplan.tailnets`, keyed
+`saas` / `bioskop` / `nikopol`, each a control plane's *domain of authority*. The vendor entry is
+`allocation = "vendor"` with its `/10` as an opaque **given**; ours are `allocation = "ours"`,
+`magicDns = false`, no `domain`, with `v4 = 100.{127 - hostId}.0.0/16` and
+`v6 = fd7a:115c:a1e0:{hostId + 1}::/64` — and `assert hostId < 9`, because the v6 carve spells the
+index as a **hextet** and only 1–9 agree in decimal and hex. `netplan.segments` went 33 → 38: the
+hard-coded `100.64.0.0/10` pair is gone, replaced by six **derived** entries `tailnet-{saas,bioskop,nikopol}`,
+so nnh's attribution now tells the tailnets apart instead of collapsing every address into one
+`tailnet` label. ⬜ *Remaining:* `manage-tailnet` rendering one policy per tailnet and applying it
+through headscale's own tooling
+| `config-example.yaml`: *"Using a SUBSET of these ranges is supported"*. ⚠️ *The carve is for
+legibility — nothing may depend on it:* no machine is ever on two tailnets (clusters on the vendor's,
+infra on ours, one `tailscaled` each), so a collision is never resolved on a host, and cross-tailnet
+traffic targets **segment** addresses because `tailscaled`'s `ts-forward` hard-codes
+`-s 100.64.0.0/10 -j DROP`. What it buys is that an address says which tailnet it belongs to.
+*Measured:* the SaaS is not a carve participant — its 13 live addresses are scattered 100.65 → 100.120
+across the whole `/10` and we do not control its allocator; the asymmetry is in the type so nobody
+later "fixes" the vendor entry by carving it
 
 | 4 — vmnet announcement
 | each cluster's nodes announce their own `/21` into the SaaS
@@ -262,7 +288,11 @@ per tailnet and applies it through headscale's own tooling
 
 | 5 — bioskop infra nodes
 | bioskop and bioskop-nixos register to their tailnet and leave the SaaS
-| layer 0 measured first: the serial console and `incus exec` answer
+| layer 0 measured first: the serial console and `incus exec` answer. ⚠️ *A consequence of the ssh
+repair in step 9:* the guest's tailnet FQDN pattern is derived from `netplan.tailnets.saas.domain`,
+the only tailnet with a MagicDNS domain — so the moment a guest leaves the SaaS, that `Host` pattern
+stops describing it. It matches nothing rather than mis-matching, so nothing breaks; but the pattern
+must follow the guest to its new tailnet, and our tailnets form no FQDN at all
 
 | 6 — nikopol control plane
 | same as 2–5, with a private `server_url` reached over the segment
@@ -281,8 +311,19 @@ per tailnet and applies it through headscale's own tooling
 and the principals command removed; `vz-nudge` becomes `tart exec`; **no emergency SSH key replaces
 them** — the emergency path is a bbox VNC forward to bioskop's screen, its credential from the password
 store, so `tcp/2222` and the `rdp.mammoth-skate` ssh tunnel are superseded;
-`ssh-keys-renew --retire` writes `revoked` with the slot removal
-| `tart exec` is unmeasured — `tart list` failed on a locked `disk.img`
+`ssh-keys-renew --retire` writes `revoked` with the slot removal. ✅ *One piece landed early as a
+repair, not a removal* (ndh `42c1035c`): both ssh modules read `netplan.tailnet ? name`, a key the
+catalog **has never had**, so `tailnetName` was permanently null and the two
+`lib.optional (tailnetFqdn != null)` guards could never contribute — the guest's tailnet FQDN reached
+no ssh config at all, silently, despite `includeTailnet` defaulting to true. The correct form is the
+two-part `<guest><domain>`: `<host>.<name>.<domain>` would have rendered
+`bioskop-nixos.mammoth-skate..mammoth-skate.ts.net`, because `name` had been absorbed by `domain`
+and nobody removed the guards
+| `tart exec` is unmeasured — `tart list` failed on a locked `disk.img`. ⚠️ The ssh repair **changes
+rendered ssh config, additively**: the guest stanza now reads
+`Host bioskop-nixos bioskop-nixos.local bioskop-nixos.mammoth-skate.ts.net`, where the third pattern
+was absent — so reaching a guest by its tailnet FQDN now picks up the intended identity and host-key
+policy instead of falling through. Verified at the rendered-file level, not at eval
 
 | 10 — projections
 | per-role projections of `keys.yaml`, each encrypted whole for its own recipients. Each GUEST
