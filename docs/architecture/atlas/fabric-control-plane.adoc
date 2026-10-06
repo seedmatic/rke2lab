@@ -206,7 +206,7 @@ changed — the serial console, `incus exec`, or the emergency screen.
 [mermaid]
 ....
 flowchart TB
-  s0["0 · rke2lab prerequisites — v2 reader, upstream nch-relay-tls-server, github-signing in the catalog"]:::now
+  s0["0 · rke2lab prerequisites — DONE: v2 reader, relay leaf upstreamed, github-signing in the catalog"]:::done
   s1["1 · headscale ≥ 0.29 in ndh — an overlay, nixpkgs pins 0.28.0"]
   s2["2 · bioskop control plane — headscale in an Incus container on bioskop-nixos"]
   s3["3 · per-tailnet policy — CGNAT sub-prefixes, grants, ssh rules, generated from the catalog"]
@@ -221,7 +221,7 @@ flowchart TB
   s12["12 · later — the clusters move to headscale, on headscale 0.30"]:::later
   s0 --> s1 --> s2 --> s3 --> s4 --> s5 --> s6 --> s7 --> s8 --> s9 --> s10 --> s11 -.-> s12
 
-  classDef now fill:#fee2e2,stroke:#b91c1c,stroke-width:2px;
+  classDef done fill:#d9f2e0,stroke:#2d7a4b,stroke-width:2px;
   classDef later fill:#f3f4f6,stroke:#9ca3af,stroke-dasharray:4 3;
 ....
 
@@ -230,11 +230,13 @@ flowchart TB
 | Step | Content | Precondition / measured fact
 
 | 0 — rke2lab prerequisites
-| `DefaultNdhKeystoreReader` resolves the presented generation (`max(slots)`); `nch-relay-tls-server`
-upstreamed to ndh; `github-signing` named in `NdhKeystoreCatalog`
-| *Live, not pending:* the retired `github-signing` public is gone from GitHub, so the bot's commits are
-Unverified. A plain subtree pull would delete `nch-relay-tls-server`, which exists only here
-(`c546290c7`)
+| ✅ *DONE on develop, measured 2026-10-06.* `DefaultNdhKeystoreReader` resolves the presented
+generation (`newestSlot`, with the oldest for an authority) and raises on a v1 flat entry;
+`NdhKeystoreCatalog` gained `SIGNING_KEY("github-signing")`, which `SigningKeyMaterialResolver` now
+reads instead of its literal — all in `7a0d6d79e`. `.ndh-ssh.d/keys.yaml` is the v2 slots shape
+(`4a13478b6`), and `nch-relay-tls-server` exists in **both** trees, upstreamed to ndh
+| it had to land first: the retired `github-signing` public is gone from GitHub, so a stale copy made
+the bump bot's commits Unverified, and a plain subtree pull would have deleted the relay leaf
 
 | 1 — headscale ≥ 0.29
 | an ndh overlay pins headscale like `tailscale` is pinned
