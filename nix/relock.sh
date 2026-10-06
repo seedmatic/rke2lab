@@ -74,6 +74,27 @@ else
   echo "relock(@repoName@): cloned at $cur"
 fi
 
+# The registry that resolves a repo's INDIRECT inputs, pinned to its COMMITTED file — by a CLI
+# flag rather than NIX_CONFIG. Measured 2026-10-06: `--flake-registry` beats a NIX_CONFIG aimed
+# elsewhere, and leaving NIX_CONFIG alone matters because that is where access-tokens for the
+# private inputs live.
+#
+# Why pin at all: an operator's shell aims this setting at their own gitignored
+# flake-registry.local.json, so without the pin we would re-lock through THEIR local re-aim and
+# commit the result — a lock that resolves on their machine and nowhere else. The clone path makes
+# it worse, not better: a fresh clone has no local file, so the ambient one would be the only one.
+#
+# A repo that has not moved to indirect inputs carries no such file: nothing to pin, and the
+# local-lock guard in relock_input covers it regardless. Uniform across the chain either way.
+registry_flag=()
+set_registry_flag() { # $1 checkout dir
+  registry_flag=()
+  if [ -f "$1/flake-registry.json" ]; then
+    registry_flag=(--flake-registry "$1/flake-registry.json")
+  fi
+}
+set_registry_flag "$RKE"
+
 # The per-input comparison attributes a derivation change to the input just bumped, so
 # any OTHER uncommitted edit would be credited to it. Refuse rather than mislead.
 dirty=$(git -C "$RKE" status --porcelain -- . ':!flake.lock' @ownedArtifacts@)
@@ -146,13 +167,37 @@ regen_artifact() { # $1 app
 
 relock_input() { # $1 input name
   printf '  %-18s ' "$1"
-  if ! ( cd "$RKE" && nix flake update "$1" --refresh ) >/dev/null 2>&1; then
+  if ! ( cd "$RKE" && nix "${registry_flag[@]}" flake update "$1" --refresh ) >/dev/null 2>&1; then
     echo "FAILED to resolve"
     return 1
   fi
   if git -C "$RKE" diff --quiet -- flake.lock; then
     echo "already current"
     return 0
+  fi
+  # A lock has to be fetchable by everyone, not only by whoever ran this. The ONLY way a local
+  # revision can enter one is a path- or file-typed ref: a `github:` fetch physically cannot see an
+  # unpushed commit, which is what makes the chain push-gated to begin with. Measured 2026-10-06 —
+  # re-locking ndh's `rke2lab` input resolved the PUSHED head while the local checkout sat two
+  # commits ahead of it. So this single check IS the invariant; probing "is the rev on the remote"
+  # as well would be vacuous.
+  local locked_at
+  locked_at=$(jq -r --arg i "$1" '
+    (.nodes.root.inputs[$i]) as $n
+    | if ($n | type) != "string" then ""
+      else
+        .nodes[$n].locked
+        | if .type == "path" then "path:" + (.path // "")
+          elif ((.url // "") | test("^(file|git\\+file)://")) then .url
+          else "" end
+      end' "$RKE/flake.lock")
+  if [ -n "$locked_at" ]; then
+    git -C "$RKE" checkout -q -- flake.lock
+    echo "LOCAL lock REFUSED -> $locked_at"
+    echo "relock: that revision resolves only on this machine, so the lock would be unfetchable" >&2
+    echo "        for every other consumer. Aim the registry at a pushed ref — the committed" >&2
+    echo "        flake-registry.json, not a flake-registry.local.json — and run again." >&2
+    return 1
   fi
   local after
   after=$(evalmap)
@@ -289,7 +334,10 @@ echo
 if [ "$do_catalog" = 1 ] && [ -n "$CAT" ]; then
   echo "== own branch @catalogBranch@: pin @selfPinName@ =="
   rke_before=$(lockrev "$CAT/flake.lock" @selfPinName@)
-  ( cd "$CAT" && nix flake update @selfPinName@ --refresh )
+  # The catalog branch is a different checkout with its own committed registry, so the pin is
+  # re-resolved for it rather than inherited from the main one.
+  set_registry_flag "$CAT"
+  ( cd "$CAT" && nix "${registry_flag[@]}" flake update @selfPinName@ --refresh )
   rke_after=$(lockrev "$CAT/flake.lock" @selfPinName@)
   if [ "$rke_before" != "$rke_after" ]; then
     git -C "$CAT" commit -q -m "chore(flake): relock @selfPinName@ -> ${rke_after:0:9}" -- flake.lock
