@@ -97,7 +97,15 @@ set_registry_flag "$RKE"
 
 # The per-input comparison attributes a derivation change to the input just bumped, so
 # any OTHER uncommitted edit would be credited to it. Refuse rather than mislead.
-dirty=$(git -C "$RKE" status --porcelain -- . ':!flake.lock' @ownedArtifacts@)
+#
+# TRACKED changes only. Measured 2026-10-07: nix's git fetcher EXCLUDES untracked files from a
+# flake's source — the untracked `.claude/` scratch paths in this checkout are absent from the
+# store path `nix flake metadata` reports, while tracked `flake.nix` is present. So an untracked
+# file cannot move any derivation, and refusing on one refuses on a condition this guard cannot
+# be protecting against. It did exactly that: scratch notes left by another session blocked a
+# reconciliation outright, and the only ways out were to commit files that were not ours or to
+# delete them.
+dirty=$(git -C "$RKE" status --porcelain --untracked-files=no -- . ':!flake.lock' @ownedArtifacts@)
 if [ -n "$dirty" ]; then
   echo "REFUSING: the worktree carries changes beyond the artifacts relock owns, so a" >&2
   echo "derivation change could not be attributed. Commit or set them aside:" >&2
