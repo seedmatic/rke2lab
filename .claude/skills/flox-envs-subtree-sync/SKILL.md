@@ -78,15 +78,34 @@ It re-splits `main:flox` and force-pushes, because the branch is derived: a re-s
 rewrites it and cannot fast-forward. The lease is what still refuses to clobber a
 push that arrived since the fetch.
 
-⚠️ The first republication (2026-10-02) had **disjoint** histories — the branch had
-frozen and been reconciled by an unrelated local commit — so the force was total. Check
-that the result is what you meant:
+⚠️ **`make` must be GNU Make 4.x.** The Makefile uses `.ONESHELL`, which **3.81 ignores
+in silence** — and 3.81 is what macOS ships at `/usr/bin/make`. Each recipe line then runs
+in its own shell, so the multi-line `if` in `ensure-subtree-context` dies on
+`syntax error: unexpected end of file`, and **nothing is published**. fleet ships
+`flox/gnumake` for exactly this but has no seat of its own to activate it, so reach for a
+make explicitly:
 
 ```bash
-diff <(git ls-tree --name-only origin/flox-subtree) <(git ls-tree --name-only main:flox)
+nix run nixpkgs#gnumake -- -C <fleet> flox-publish
 ```
 
-Empty output is the pass. Then pull it down here.
+⚠️ Then check that the result is what you meant — the first republication (2026-10-02) had
+**disjoint** histories, the branch having frozen and been reconciled by an unrelated local
+commit, so the force was total. The check is **tree-hash equality**:
+
+```bash
+git -C <fleet> fetch --prune origin flox-subtree
+[ "$(git -C <fleet> rev-parse origin/flox-subtree^{tree})" \
+= "$(git -C <fleet> rev-parse main:flox)" ] && echo identical
+```
+
+★ It used to be `diff <(git ls-tree --name-only …) <(…)`, and that was **worthless for
+content**: without `-r` it compares only top-level entries — measured 2026-10-07, **40 names
+against 81 real files** — and names alone never show a changed file. It passed while a failed
+publish had left the branch without the edit it was supposed to carry. A tree hash proves
+structure and content in one comparison.
+
+Then pull it down here.
 
 ## Verify — and know why the obvious check is worthless alone
 
