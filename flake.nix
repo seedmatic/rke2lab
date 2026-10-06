@@ -35,17 +35,36 @@
   ];
 
   inputs = {
-    # INVARIANT: nix-darwin-home must NEVER be an input of this flake.
-    # The two repos relate in opposite scopes: nix-darwin-home depends on rke2lab
-    # at BUILD/eval time (it imports this flake's networkBlueprint as the netplan
-    # source of truth), while rke2lab depends on nix-darwin-home only at RUNTIME
-    # (its incus instances run on the NixOS host nix-darwin-home provisions). That
-    # runtime edge is invisible to nix eval, so there is no cycle. Adding
-    # nix-darwin-home here would close the loop into a real flake-eval cycle.
-    # Keep the dependency one-directional at the flake level: nix-darwin-home -> rke2lab.
+    # ndh (nix-darwin-home) IS an input of this flake — see `ndh` at the bottom of this block.
+    # The comment that stood here claimed the exact opposite ("must NEVER be an input", "would
+    # close the loop into a real flake-eval cycle") and was not retired on the day it was
+    # broken. The real model is stated at that input: a MUTUAL edge, cut with a reciprocal
+    # EMPTY follows, each side consuming only a self-contained constant of the other. So
+    # bidirectional with a cut, never one-directional. The old text was worse than decorative —
+    # it was actionable in the WRONG direction: a reader would conclude this flake is broken,
+    # or remove the input to "restore the invariant", which would break the five things this
+    # repo genuinely consumes from ndh.
+    #
+    # ★ Why it survived is the part worth keeping: the comment said `nix-darwin-home` while the
+    # input says `ndh`, so NO search ever touched both. An incomplete rename does not leave a
+    # visible inconsistency — it leaves two vocabularies that never meet. The repo's memory
+    # records that trap for NOTES ("translate renamed words before searching"); it applies to
+    # code just as hard, and every rotten pin found alongside this one was hiding behind a
+    # renamed word.
+    #
+    # Every SEEDMATIC-owned input below is an INDIRECT id (`url = "ndh"`), resolved through
+    # nix's registry: the default targets live in the committed flake-registry.json, and a
+    # gitignored flake-registry.local.json re-aims one locally (see the [hook] in
+    # .flox/env/manifest.toml). FOUR of the five used to name `/develop` — the sneakiest form
+    # of this rot, because a branch that will never be deleted never errors: it just silently
+    # supplies whatever `develop` holds instead of the line actually being worked on.
+    #
+    # Hermeticity is unaffected, measured: an indirect id is consulted only when RE-locking,
+    # and flake.lock still records a revision, so anyone evaluating from the lock — with no
+    # registry at all — resolves exactly what we resolved.
 
     # Use flake-commons as aggregator to stay synchronized with nix-darwin-home
-    flake-commons.url = "github:seedmatic/nix-flake-commons/develop";
+    flake-commons.url = "flake-commons";
     # Cut the devenv/cachix/nix cluster: we consume NONE of it (no devShell here uses devenv/cachix),
     # yet flake-commons pulls `cachix` → `devenv` → the `nix` flake, a MUTUALLY-RECURSIVE input tree
     # (~470 devenv_N + ~505 nix_N + cachix_N + duplicate nixpkgs-23-11) — ~11.5k lock nodes that bloat
@@ -78,7 +97,7 @@
     # releases abandoned for now, co-dev on develop alongside flox-controller); the
     # `follows` below dedup its aggregator + nixpkgs against ours so there is a
     # single resolved version set across the flakes.
-    flox-runtime.url = "github:seedmatic/flox-nri-plugin/develop";
+    flox-runtime.url = "flox-runtime";
     flox-runtime.inputs.nixpkgs.follows = "nixpkgs";
     flox-runtime.inputs.flake-utils.follows = "flake-utils";
     flox-runtime.inputs.flake-commons.follows = "flake-commons";
@@ -89,7 +108,7 @@
     # entry point (image cross-builds via the linux-builder, like the NRI plugin).
     # Referenced on the `develop` integration branch (seedmatic convention);
     # follows dedup its aggregator + nixpkgs against ours.
-    flox-controller.url = "github:seedmatic/flox-controller/develop";
+    flox-controller.url = "flox-controller";
     flox-controller.inputs.nixpkgs.follows = "nixpkgs";
     flox-controller.inputs.flake-utils.follows = "flake-utils";
     flox-controller.inputs.flake-commons.follows = "flake-commons";
@@ -100,7 +119,7 @@
     # on a DEDICATED orphan branch of THIS repo (a separate Go build artifact, not the Maven
     # reactor) — a same-repo branch input, pinned by rev in flake.lock. Re-exported so the
     # OCI image cross-builds via the linux-builder, like flox-controller. follows dedup.
-    seed-incluster.url = "github:seedmatic/rke2lab/seed-incluster";
+    seed-incluster.url = "seed-incluster";
     seed-incluster.inputs.nixpkgs.follows = "nixpkgs";
     seed-incluster.inputs.flake-utils.follows = "flake-utils";
     seed-incluster.inputs.flake-commons.follows = "flake-commons";
@@ -113,7 +132,7 @@
     # self-contained constant); NEVER `.segments`/`.asns` (they union
     # networkBlueprint → value cycle). Pinned as a github rev now that the cut is
     # proven (a local path during prototyping).
-    ndh.url = "github:seedmatic/ndh/develop";
+    ndh.url = "ndh";
     ndh.inputs.rke2lab.follows = "";
     ndh.inputs.flake-commons.follows = "flake-commons";
   };

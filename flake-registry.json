@@ -1,0 +1,30 @@
+{
+  "version": 2,
+  "flakes": [
+    {
+      "from": { "type": "indirect", "id": "flake-commons" },
+      "to": { "type": "github", "owner": "seedmatic", "repo": "nix-flake-commons" }
+    },
+    {
+      "from": { "type": "indirect", "id": "flox-runtime" },
+      "to": { "type": "github", "owner": "seedmatic", "repo": "flox-nri-plugin" }
+    },
+    {
+      "from": { "type": "indirect", "id": "flox-controller" },
+      "to": { "type": "github", "owner": "seedmatic", "repo": "flox-controller" }
+    },
+    {
+      "from": { "type": "indirect", "id": "ndh" },
+      "to": { "type": "github", "owner": "seedmatic", "repo": "ndh" }
+    },
+    {
+      "from": { "type": "indirect", "id": "seed-incluster" },
+      "to": {
+        "type": "github",
+        "owner": "seedmatic",
+        "repo": "rke2lab",
+        "ref": "seed-incluster"
+      }
+    }
+  ]
+}

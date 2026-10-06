@@ -65217,18 +65217,16 @@
         "zen-browser": "zen-browser_129"
       },
       "locked": {
-        "lastModified": 1789286053,
-        "narHash": "sha256-GkIN9sn8RhM3D+c9DXdnXL6z9VUhm6Y0ZFofB7WCm7M=",
+        "lastModified": 1791310612,
+        "narHash": "sha256-s0x2VQ70xpmcSz4CYQm3vQfuNZlWz6jdsAEMCfQjzxs=",
         "owner": "seedmatic",
         "repo": "nix-flake-commons",
-        "rev": "783718f167110b140925c51ccf473234b8dd181c",
+        "rev": "ed347450fb47f368451108e0c9f37b2e210a472f",
         "type": "github"
       },
       "original": {
-        "owner": "seedmatic",
-        "ref": "develop",
-        "repo": "nix-flake-commons",
-        "type": "github"
+        "id": "flake-commons",
+        "type": "indirect"
       }
     },
     "flake-commons_2": {
@@ -102818,18 +102816,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1790593895,
+        "lastModified": 1791305583,
         "narHash": "sha256-LikDOT2ucj2LkyxMcI3tSOrcX13OZ0EXkfOmw1yyzCM=",
         "owner": "seedmatic",
         "repo": "flox-controller",
-        "rev": "ca151e53170fc373e632da391ab314e827f0b179",
+        "rev": "b865e4d505e710601c9c695b5aa10e55b10da444",
         "type": "github"
       },
       "original": {
-        "owner": "seedmatic",
-        "ref": "develop",
-        "repo": "flox-controller",
-        "type": "github"
+        "id": "flox-controller",
+        "type": "indirect"
       }
     },
     "flox-runtime": {
@@ -102845,18 +102841,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1790805818,
+        "lastModified": 1791305930,
         "narHash": "sha256-J3IrJtV2pvA0CMYYG1OUAYGkUwsRRwqEbFa/6WH72wQ=",
         "owner": "seedmatic",
         "repo": "flox-nri-plugin",
-        "rev": "dc872115ca119008e4cc5bbbe495af68233c76e1",
+        "rev": "f34fe5a13de29dd6546af07061f3e7f35b357a98",
         "type": "github"
       },
       "original": {
-        "owner": "seedmatic",
-        "ref": "develop",
-        "repo": "flox-nri-plugin",
-        "type": "github"
+        "id": "flox-runtime",
+        "type": "indirect"
       }
     },
     "flox_10": {
@@ -152707,11 +152701,6 @@
           "flake-commons",
           "impermanence"
         ],
-        "incus-compose": [
-          "ndh",
-          "flake-commons",
-          "incus-compose"
-        ],
         "lix-module": [
           "ndh",
           "flake-commons",
@@ -152743,11 +152732,6 @@
           "nixpkgs-unstable"
         ],
         "nnh": "nnh",
-        "ripvcs": [
-          "ndh",
-          "flake-commons",
-          "ripvcs"
-        ],
         "rke2lab": [],
         "socket-vmnet": [
           "ndh",
@@ -152756,26 +152740,19 @@
         ],
         "sops-nix": "sops-nix_2",
         "tailscale-fork": "tailscale-fork",
-        "treefmt-nix": "treefmt-nix_228",
-        "zen-browser": [
-          "ndh",
-          "flake-commons",
-          "zen-browser"
-        ]
+        "treefmt-nix": "treefmt-nix_228"
       },
       "locked": {
-        "lastModified": 1790864968,
-        "narHash": "sha256-TOg6ikuKXiBgfdPD1ydR60yHT9P+np0dR0YbCOC7Qhc=",
+        "lastModified": 1791308786,
+        "narHash": "sha256-9tv8UlVY8x3AhcvoUFosQCEu9Pt/p2ley2oYempM/GU=",
         "owner": "seedmatic",
         "repo": "ndh",
-        "rev": "deeb1ebb91b1d0f8f1e0d66102995cb6ea0e02fb",
+        "rev": "a3171c9395ed785d1c62855553ca9bdc6791aa10",
         "type": "github"
       },
       "original": {
-        "owner": "seedmatic",
-        "ref": "develop",
-        "repo": "ndh",
-        "type": "github"
+        "id": "ndh",
+        "type": "indirect"
       }
     },
     "nix": {
@@ -216370,12 +216347,12 @@
     },
     "nixpkgs-unstable": {
       "locked": {
-        "lastModified": 1789149629,
-        "narHash": "sha256-H6GwaZzZf+4npqv0tph94w9tZddSjFjmQrVsW0z78uk=",
-        "rev": "eaad089433ca2bb662274377d33df3d0e51ef28b",
-        "revCount": 1072397,
+        "lastModified": 1791260994,
+        "narHash": "sha256-Miqqk/ammqnTUxaoCyvtwoPeLbI1ksFyLxi/CazZpWY=",
+        "rev": "151fa4e8ddfdd8dd25d945ad94ed54a13de9f6e4",
+        "revCount": 1086391,
         "type": "tarball",
-        "url": "https://api.flakehub.com/f/pinned/NixOS/nixpkgs/0.1.1072397%2Brev-eaad089433ca2bb662274377d33df3d0e51ef28b/01a096b2-d158-7183-ae68-b86674ebb578/source.tar.gz"
+        "url": "https://api.flakehub.com/f/pinned/NixOS/nixpkgs/0.1.1086391%2Brev-151fa4e8ddfdd8dd25d945ad94ed54a13de9f6e4/01a11093-232b-73b3-a9d0-859cd3039a86/source.tar.gz"
       },
       "original": {
         "type": "tarball",
@@ -284174,10 +284151,8 @@
         "type": "github"
       },
       "original": {
-        "owner": "seedmatic",
-        "ref": "seed-incluster",
-        "repo": "rke2lab",
-        "type": "github"
+        "id": "seed-incluster",
+        "type": "indirect"
       }
     },
     "socket-vmnet": {

@@ -312,7 +312,7 @@
       "PULUMI_HOME": "${XDG_STATE_HOME:-$HOME/.local/state}/pulumi"
     },
     "hook": {
-      "on-activate": "    if [ -z \"${PUPPETEER_EXECUTABLE_PATH:-}\" ]; then\n      for _shell in \"$HOME\"/.cache/puppeteer/chrome-headless-shell/*/chrome-headless-shell-*/chrome-headless-shell; do\n        [ -x \"$_shell\" ] && export PUPPETEER_EXECUTABLE_PATH=\"$_shell\"\n      done\n      unset _shell\n    fi\n  \n    if [ -d \"${FLOX_ENV_PROJECT}/.github\" ]; then\n      remote=$(git -C \"${FLOX_ENV_PROJECT}\" remote get-url origin 2>/dev/null || true)\n      if [ -n \"${remote}\" ]; then\n        remote_host=\"github.com\"\n        case \"${remote}\" in\n          git@*:* )\n            remote_host=$(printf '%s' \"${remote}\" | cut -d'@' -f 2 | cut -d':' -f 1)\n            ;;\n          http://*|https://*)\n            remote_host=$(printf '%s' \"${remote}\" | cut -d'/' -f 3)\n            ;;\n          ssh://*)\n            remote_host=$(printf '%s' \"${remote}\" | cut -d'/' -f 3 | cut -d':' -f 1)\n            ;;\n        esac\n    \n        if [ -n \"${GH_TOKEN:-}\" ] && ! gh auth status --hostname \"${remote_host}\" >/dev/null 2>&1; then\n          echo \"Detected GH_TOKEN, logging in gh for ${remote_host}...\" >&2\n          printf '%s' \"${GH_TOKEN}\" | gh auth login --with-token --hostname \"${remote_host}\" >/dev/null 2>&1 || true\n        fi\n    \n        if gh auth status --hostname \"${remote_host}\" >/dev/null 2>&1; then\n          gh auth setup-git --hostname \"${remote_host}\" >/dev/null 2>&1 || true\n        fi\n      fi\n    fi\n  \n    mkdir -p \"$PULUMI_HOME\"\n  \n  mkdir -p \"${PULUMI_HOME}\"\n  mkdir -p \"${FLOX_ENV_PROJECT}/.pulumi-state\"\n  if command -v javac >/dev/null 2>&1; then\n    export JAVA_HOME=\"$(dirname \"$(dirname \"$(command -v javac)\")\")\"\n  fi\n  if command -v gh >/dev/null 2>&1 && [ -z \"${GH_TOKEN:-}\" ]; then\n    export GH_TOKEN=\"$(gh auth token 2>/dev/null)\"\n  fi\n  export KUBECONFIG=\"${FLOX_ENV_PROJECT}/.local.d/kubeconfig.yaml\"\n"
+      "on-activate": "    if [ -z \"${PUPPETEER_EXECUTABLE_PATH:-}\" ]; then\n      for _shell in \"$HOME\"/.cache/puppeteer/chrome-headless-shell/*/chrome-headless-shell-*/chrome-headless-shell; do\n        [ -x \"$_shell\" ] && export PUPPETEER_EXECUTABLE_PATH=\"$_shell\"\n      done\n      unset _shell\n    fi\n  \n    if [ -d \"${FLOX_ENV_PROJECT}/.github\" ]; then\n      remote=$(git -C \"${FLOX_ENV_PROJECT}\" remote get-url origin 2>/dev/null || true)\n      if [ -n \"${remote}\" ]; then\n        remote_host=\"github.com\"\n        case \"${remote}\" in\n          git@*:* )\n            remote_host=$(printf '%s' \"${remote}\" | cut -d'@' -f 2 | cut -d':' -f 1)\n            ;;\n          http://*|https://*)\n            remote_host=$(printf '%s' \"${remote}\" | cut -d'/' -f 3)\n            ;;\n          ssh://*)\n            remote_host=$(printf '%s' \"${remote}\" | cut -d'/' -f 3 | cut -d':' -f 1)\n            ;;\n        esac\n    \n        if [ -n \"${GH_TOKEN:-}\" ] && ! gh auth status --hostname \"${remote_host}\" >/dev/null 2>&1; then\n          echo \"Detected GH_TOKEN, logging in gh for ${remote_host}...\" >&2\n          printf '%s' \"${GH_TOKEN}\" | gh auth login --with-token --hostname \"${remote_host}\" >/dev/null 2>&1 || true\n        fi\n    \n        if gh auth status --hostname \"${remote_host}\" >/dev/null 2>&1; then\n          gh auth setup-git --hostname \"${remote_host}\" >/dev/null 2>&1 || true\n        fi\n      fi\n    fi\n  \n    mkdir -p \"$PULUMI_HOME\"\n  \n  _rke_registry=\"${FLOX_ENV_PROJECT}/flake-registry.json\"\n  if [ -f \"${FLOX_ENV_PROJECT}/flake-registry.local.json\" ]; then\n    _rke_registry=\"${FLOX_ENV_PROJECT}/flake-registry.local.json\"\n  fi\n  # nix.conf settings are newline-separated, and NIX_CONFIG may already carry some.\n  _rke_nl='\n'\n  export NIX_CONFIG=\"${NIX_CONFIG:+${NIX_CONFIG}${_rke_nl}}flake-registry = $_rke_registry\"\n  unset _rke_registry _rke_nl\n\n  mkdir -p \"${PULUMI_HOME}\"\n  mkdir -p \"${FLOX_ENV_PROJECT}/.pulumi-state\"\n  if command -v javac >/dev/null 2>&1; then\n    export JAVA_HOME=\"$(dirname \"$(dirname \"$(command -v javac)\")\")\"\n  fi\n  if command -v gh >/dev/null 2>&1 && [ -z \"${GH_TOKEN:-}\" ]; then\n    export GH_TOKEN=\"$(gh auth token 2>/dev/null)\"\n  fi\n  export KUBECONFIG=\"${FLOX_ENV_PROJECT}/.local.d/kubeconfig.yaml\"\n"
     },
     "profile": {
       "common": "    GITHUB_SIGNING_KEYFILE=\"$HOME\"/.ssh/keys.d/github-signing\n    if [[ -r \"$GITHUB_SIGNING_KEYFILE\" ]]; then\n      set -a\n      SOPS_AGE_KEY=$( ssh-to-age -private-key < \"$GITHUB_SIGNING_KEYFILE\" )\n      set +a\n    else\n      echo no signing key\n    fi\n  \n    export ANTORA_CACHE_DIR=\"${FLOX_ENV_PROJECT}/.cache/antora\"\n    export DOCS_BUILD_DIR=\"${FLOX_ENV_PROJECT}/.output/docs\"\n  \n    GITHUB_SIGNING_KEYFILE=\"$HOME\"/.ssh/keys.d/github-signing\n    if [[ -r \"$GITHUB_SIGNING_KEYFILE\" ]]; then\n      set -a\n      SOPS_AGE_KEY=$( ssh-to-age -private-key < \"$GITHUB_SIGNING_KEYFILE\" )\n      set +a\n    else\n      echo no signing key\n    fi\n  \n    if [ -d \"${FLOX_ENV_PROJECT}/.github\" ]; then\n      gh_login=\"\"\n      if [ -n \"${GH_TOKEN:-}\" ]; then\n        gh_login=$(gh api user --jq '.login' 2>/dev/null || true)\n      elif command -v pass >/dev/null 2>&1; then\n        gh_secret=$(pass show coding/github@work 2>/dev/null | head -n 1 || true)\n        if [ -n \"${gh_secret}\" ]; then\n          gh_login=$(env GH_TOKEN=\"${gh_secret}\" gh api user --jq '.login' 2>/dev/null || true)\n        fi\n      fi\n      if [ -n \"${gh_login}\" ]; then\n        remote=$(git -C \"${FLOX_ENV_PROJECT}\" remote get-url origin 2>/dev/null || true)\n        if [ -n \"${remote}\" ]; then\n          owner=$(printf '%s' \"${remote}\" | cut -d'/' -f 4)\n          repo_name=$(printf '%s' \"${remote}\" | cut -d'/' -f 5 | cut -d'.' -f 1)\n          export GITHUB_LOGIN=\"${gh_login}\"\n          export GITHUB_OWNER=\"${owner}\"\n          export GITHUB_REPOSITORY=\"${owner}/${repo_name}\"\n        fi\n      fi\n    fi\n  \n    GITHUB_SIGNING_KEYFILE=\"$HOME\"/.ssh/keys.d/github-signing\n    if [[ -r \"$GITHUB_SIGNING_KEYFILE\" ]]; then\n      set -a\n      SOPS_AGE_KEY=$( ssh-to-age -private-key < \"$GITHUB_SIGNING_KEYFILE\" )\n      set +a\n    else\n      echo no signing key\n    fi\n  "
@@ -4197,6 +4197,64 @@
       "priority": 5
     },
     {
+      "install_id": "flux9s",
+      "locked-url": "github:seedmatic/rke2lab/5495e02c83a5cdd0cd136730d8ae9c051e235e2c?narHash=sha256-%2BWT6TJR8p46WSkUpBz/Jbh%2B2NX7oyYeUSDN/aD4VwOs%3D",
+      "flake-description": "RKE2 lab infrastructure and network blueprints",
+      "locked-flake-attr-path": "packages.aarch64-darwin.flux9s",
+      "derivation": "/nix/store/fvpjmvmq2z5437wlx1yqddyr3kcid1rg-flux9s-1.0.3.drv",
+      "outputs": {
+        "out": "/nix/store/jxpf193yh63zd97lawxrv6d1k9965cdp-flux9s-1.0.3"
+      },
+      "output-names": [
+        "out"
+      ],
+      "outputs-to-install": [
+        "out"
+      ],
+      "requested-outputs-to-install": [],
+      "package-system": "aarch64-darwin",
+      "system": "aarch64-darwin",
+      "name": "flux9s-1.0.3",
+      "pname": "flux9s",
+      "version": "1.0.3",
+      "description": "K9s-inspired terminal UI for monitoring Flux GitOps resources",
+      "licenses": [
+        "Apache-2.0"
+      ],
+      "broken": false,
+      "unfree": false,
+      "priority": 5
+    },
+    {
+      "install_id": "flux9s",
+      "locked-url": "github:seedmatic/rke2lab/5495e02c83a5cdd0cd136730d8ae9c051e235e2c?narHash=sha256-%2BWT6TJR8p46WSkUpBz/Jbh%2B2NX7oyYeUSDN/aD4VwOs%3D",
+      "flake-description": "RKE2 lab infrastructure and network blueprints",
+      "locked-flake-attr-path": "packages.aarch64-linux.flux9s",
+      "derivation": "/nix/store/3yjnfil6gvba2qxq215dzalivqxnigdq-flux9s-1.0.3.drv",
+      "outputs": {
+        "out": "/nix/store/61iaph0r7914g86jgwzd9i95gkyx4qpr-flux9s-1.0.3"
+      },
+      "output-names": [
+        "out"
+      ],
+      "outputs-to-install": [
+        "out"
+      ],
+      "requested-outputs-to-install": [],
+      "package-system": "aarch64-linux",
+      "system": "aarch64-linux",
+      "name": "flux9s-1.0.3",
+      "pname": "flux9s",
+      "version": "1.0.3",
+      "description": "K9s-inspired terminal UI for monitoring Flux GitOps resources",
+      "licenses": [
+        "Apache-2.0"
+      ],
+      "broken": false,
+      "unfree": false,
+      "priority": 5
+    },
+    {
       "install_id": "incus-client",
       "locked-url": "github:seedmatic/rke2lab/5495e02c83a5cdd0cd136730d8ae9c051e235e2c?narHash=sha256-%2BWT6TJR8p46WSkUpBz/Jbh%2B2NX7oyYeUSDN/aD4VwOs%3D",
       "flake-description": "RKE2 lab infrastructure and network blueprints",
@@ -4313,6 +4371,29 @@
       "broken": false,
       "unfree": false,
       "priority": 1
+    },
+    {
+      "install_id": "manage-tailnet",
+      "locked-url": "github:seedmatic/rke2lab/5495e02c83a5cdd0cd136730d8ae9c051e235e2c?narHash=sha256-%2BWT6TJR8p46WSkUpBz/Jbh%2B2NX7oyYeUSDN/aD4VwOs%3D",
+      "flake-description": "RKE2 lab infrastructure and network blueprints",
+      "locked-flake-attr-path": "packages.aarch64-darwin.manage-tailnet",
+      "derivation": "/nix/store/cin9kj5f2q22a40zlj63aygv1vs5fhnq-manage-tailnet.drv",
+      "outputs": {
+        "out": "/nix/store/n0ir30gxjiz4c5rpk43iz9823gdg4w5m-manage-tailnet"
+      },
+      "output-names": [
+        "out"
+      ],
+      "outputs-to-install": [
+        "out"
+      ],
+      "requested-outputs-to-install": [],
+      "package-system": "aarch64-darwin",
+      "system": "aarch64-darwin",
+      "name": "manage-tailnet",
+      "broken": false,
+      "unfree": false,
+      "priority": 5
     },
     {
       "install_id": "maven",
@@ -4549,87 +4630,6 @@
       "broken": false,
       "unfree": false,
       "priority": 5
-    },
-    {
-      "install_id": "flux9s",
-      "locked-url": "github:seedmatic/rke2lab/5495e02c83a5cdd0cd136730d8ae9c051e235e2c?narHash=sha256-%2BWT6TJR8p46WSkUpBz/Jbh%2B2NX7oyYeUSDN/aD4VwOs%3D",
-      "flake-description": "RKE2 lab infrastructure and network blueprints",
-      "locked-flake-attr-path": "packages.aarch64-darwin.flux9s",
-      "derivation": "/nix/store/fvpjmvmq2z5437wlx1yqddyr3kcid1rg-flux9s-1.0.3.drv",
-      "outputs": {
-        "out": "/nix/store/jxpf193yh63zd97lawxrv6d1k9965cdp-flux9s-1.0.3"
-      },
-      "output-names": [
-        "out"
-      ],
-      "outputs-to-install": [
-        "out"
-      ],
-      "requested-outputs-to-install": [],
-      "package-system": "aarch64-darwin",
-      "system": "aarch64-darwin",
-      "name": "flux9s-1.0.3",
-      "pname": "flux9s",
-      "version": "1.0.3",
-      "description": "K9s-inspired terminal UI for monitoring Flux GitOps resources",
-      "licenses": [
-        "Apache-2.0"
-      ],
-      "broken": false,
-      "unfree": false,
-      "priority": 5
-    },
-    {
-      "install_id": "flux9s",
-      "locked-url": "github:seedmatic/rke2lab/5495e02c83a5cdd0cd136730d8ae9c051e235e2c?narHash=sha256-%2BWT6TJR8p46WSkUpBz/Jbh%2B2NX7oyYeUSDN/aD4VwOs%3D",
-      "flake-description": "RKE2 lab infrastructure and network blueprints",
-      "locked-flake-attr-path": "packages.aarch64-linux.flux9s",
-      "derivation": "/nix/store/3yjnfil6gvba2qxq215dzalivqxnigdq-flux9s-1.0.3.drv",
-      "outputs": {
-        "out": "/nix/store/61iaph0r7914g86jgwzd9i95gkyx4qpr-flux9s-1.0.3"
-      },
-      "output-names": [
-        "out"
-      ],
-      "outputs-to-install": [
-        "out"
-      ],
-      "requested-outputs-to-install": [],
-      "package-system": "aarch64-linux",
-      "system": "aarch64-linux",
-      "name": "flux9s-1.0.3",
-      "pname": "flux9s",
-      "version": "1.0.3",
-      "description": "K9s-inspired terminal UI for monitoring Flux GitOps resources",
-      "licenses": [
-        "Apache-2.0"
-      ],
-      "broken": false,
-      "unfree": false,
-      "priority": 5
-    },
-    {
-      "install_id": "manage-tailnet",
-      "locked-url": "github:seedmatic/rke2lab/5495e02c83a5cdd0cd136730d8ae9c051e235e2c?narHash=sha256-%2BWT6TJR8p46WSkUpBz/Jbh%2B2NX7oyYeUSDN/aD4VwOs%3D",
-      "flake-description": "RKE2 lab infrastructure and network blueprints",
-      "locked-flake-attr-path": "packages.aarch64-darwin.manage-tailnet",
-      "derivation": "/nix/store/cin9kj5f2q22a40zlj63aygv1vs5fhnq-manage-tailnet.drv",
-      "outputs": {
-        "out": "/nix/store/n0ir30gxjiz4c5rpk43iz9823gdg4w5m-manage-tailnet"
-      },
-      "output-names": [
-        "out"
-      ],
-      "outputs-to-install": [
-        "out"
-      ],
-      "requested-outputs-to-install": [],
-      "package-system": "aarch64-darwin",
-      "system": "aarch64-darwin",
-      "name": "manage-tailnet",
-      "broken": false,
-      "unfree": false,
-      "priority": 5
     }
   ],
   "compose": {
@@ -4704,7 +4704,7 @@
         "PULUMI_HOME": "${XDG_STATE_HOME:-$HOME/.local/state}/pulumi"
       },
       "hook": {
-        "on-activate": "  mkdir -p \"${PULUMI_HOME}\"\n  mkdir -p \"${FLOX_ENV_PROJECT}/.pulumi-state\"\n  if command -v javac >/dev/null 2>&1; then\n    export JAVA_HOME=\"$(dirname \"$(dirname \"$(command -v javac)\")\")\"\n  fi\n  if command -v gh >/dev/null 2>&1 && [ -z \"${GH_TOKEN:-}\" ]; then\n    export GH_TOKEN=\"$(gh auth token 2>/dev/null)\"\n  fi\n  export KUBECONFIG=\"${FLOX_ENV_PROJECT}/.local.d/kubeconfig.yaml\"\n"
+        "on-activate": "  _rke_registry=\"${FLOX_ENV_PROJECT}/flake-registry.json\"\n  if [ -f \"${FLOX_ENV_PROJECT}/flake-registry.local.json\" ]; then\n    _rke_registry=\"${FLOX_ENV_PROJECT}/flake-registry.local.json\"\n  fi\n  # nix.conf settings are newline-separated, and NIX_CONFIG may already carry some.\n  _rke_nl='\n'\n  export NIX_CONFIG=\"${NIX_CONFIG:+${NIX_CONFIG}${_rke_nl}}flake-registry = $_rke_registry\"\n  unset _rke_registry _rke_nl\n\n  mkdir -p \"${PULUMI_HOME}\"\n  mkdir -p \"${FLOX_ENV_PROJECT}/.pulumi-state\"\n  if command -v javac >/dev/null 2>&1; then\n    export JAVA_HOME=\"$(dirname \"$(dirname \"$(command -v javac)\")\")\"\n  fi\n  if command -v gh >/dev/null 2>&1 && [ -z \"${GH_TOKEN:-}\" ]; then\n    export GH_TOKEN=\"$(gh auth token 2>/dev/null)\"\n  fi\n  export KUBECONFIG=\"${FLOX_ENV_PROJECT}/.local.d/kubeconfig.yaml\"\n"
       },
       "profile": {},
       "options": {},
