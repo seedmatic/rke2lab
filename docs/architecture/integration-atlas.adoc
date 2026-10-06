@@ -329,6 +329,10 @@ monotone before/after figures.
   secrets/filter subsystem: stack config + worktree secrets unified on the one amendment channel
   (coordinate = domain · role = kind · sensitivity = attribute); the git-modelled cellar clean/smudge
   filter and the recipient gap the `bench-cellar` proof closes.
+* link:atlas/fabric-control-plane.adoc[Fabric control-plane view] (📐 Design) — the infrastructure's
+  access plane migrating from one SaaS tailnet and an SSH authority on every host to one self-managed
+  headscale tailnet per bare-metal, access by policy, a keyless out-of-band bootstrap; the clusters
+  stay on the SaaS.
 * link:atlas/nixos-substrate.adoc[NixOS node substrate view] — the node OS becoming a declarative
   NixOS closure: the imperative materialisation apparatus (`distrobuilder`, cloud-init, the 28 host
   scripts, `/srv/host` staging) collapsing into the image + a devlxd-delivered per-node/bootstrap

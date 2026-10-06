@@ -11,16 +11,6 @@ authorities:
     type: ssh-ed25519
     comment: cert-authority@mammoth-skate
     domain: mammoth-skate.ts.net
-    public: AAAAC3NzaC1lZDI1NTE5AAAAIMm2fu/uVbaaj1OljiSnZ9T1ES9yvbG+Y6JhyLrnQQAS
-    # sops:encrypted
-    private: |-
-      -----BEGIN OPENSSH PRIVATE KEY-----
-      b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
-      QyNTUxOQAAACDJtn7v7lW2mo9TpY4kp2fU9REvcr2xvmOiYci650EAEgAAAJiYDZtRmA2b
-      UQAAAAtzc2gtZWQyNTUxOQAAACDJtn7v7lW2mo9TpY4kp2fU9REvcr2xvmOiYci650EAEg
-      AAAEDkqwy0SqqNYXq+4+htWltyyXdBUWP3tQ/V0zAxOm8a3Mm2fu/uVbaaj1OljiSnZ9T1
-      ES9yvbG+Y6JhyLrnQQASAAAAD254bWF0aWNAYmlvc2tvcAECAwQFBg==
-      -----END OPENSSH PRIVATE KEY-----
     usage:
       - ssh-authority
       - tls-authority
@@ -36,21 +26,14 @@ authorities:
       AytlcANBAO8pmCFmL0pYYenz0TfpS3j84O/fix4oDZlZ1oRO6/z9tsNXVnU7InKj
       hD92o9nzc3aj3HVT4WkWHVzfbNFeBQk=
       -----END CERTIFICATE-----
+    slots:
+      26-10-05:
+        public: AAAAC3NzaC1lZDI1NTE5AAAAIFdHpryIBqPRUPfIKsKtE69u38Vj0csTFIEpQkjXGyrw
+        # sops:encrypted
+        private: ENC[AES256_GCM,data:1934DxMIWWkpN37vwTZclKUvcnS2YL4SX4nQB06F6e1rKjmFQq2ABEG36G/Gry4Wbd4H4/CFkJoZ3aupBeMIml6cSdFmqUxd3CL6TSPXUH/YnVixM4axZ/FBGCrMIVQsbtE7GdRuTF3MuWhO+GJrMx7Im0kbuAROh26rhlgMSlY8+NrJEsjzlTUkFPUzJ2Ojy/5X+zsEzB3cXiVETFKDz5TE9KrK+FcYFDUJSMrQPYAJ7Y/4A+miQKI0azfyPGWQg+ZvhiAfeFEXtcvvc0f6WgK6jctbGKKQvdIsOHbbI6aGElTD7DrFdPDWdkDGB1+8NpQppm7toaRlW0FesLY+wOa9Z9rydykOW+XR3okFBv8NqK6HK39Rmw2cBzA0doThy022Naz7K70FOrZgFpunphYxAtrFtWVPHMy3Znx0Y4aoViXF9BCRln4wVzf8pMJpdD/sMyZUFFCT0vcZTUYs7vTDKqZaZ5eulS5z9XF4O6Gppyt2tSsflFhGuboGFNE1UMrKx5l9tGi6cJqvrL0ZfJueo+pp+Kk6bZ2UHMQM7AerVg==,iv:5Bgj9DUZvRh0IkwYNcKh2gEM8Qy45crC7FqOZo5qQqM=,tag:r1A8Tlj8x/2N5IWiQcOs4Q==,type:str]
   mammoth-skate-tls:
     type: ecdsa-sha2-nistp256
     comment: cert-authority@mammoth-skate-tls
-    public: AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBNk85dUnU8uD1qUbP6m78fguUtf1uwicxfR0XCY5c5G+1vgxGiI6RJXj7szDlzpmSTFVLh/UL9sUtom2spAwTNg=
-    # sops:encrypted
-    private: |-
-      -----BEGIN OPENSSH PRIVATE KEY-----
-      b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAaAAAABNlY2RzYS
-      1zaGEyLW5pc3RwMjU2AAAACG5pc3RwMjU2AAAAQQTZPOXVJ1PLg9alGz+pu/H4LlLX9bsI
-      nMX0dFwmOXORvtb4MRoiOkSV4+7Mw5c6ZkkxVS4f1C/bFLaJtrKQMEzYAAAAuAU6I+AFOi
-      PgAAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBNk85dUnU8uD1qUb
-      P6m78fguUtf1uwicxfR0XCY5c5G+1vgxGiI6RJXj7szDlzpmSTFVLh/UL9sUtom2spAwTN
-      gAAAAgIVpMEF6HarxWmFRiWfA7HRPETMMIDuAd8TGeEgroWsAAAAAgY2VydC1hdXRob3Jp
-      dHlAbWFtbW90aC1za2F0ZS10bHM=
-      -----END OPENSSH PRIVATE KEY-----
     usage:
       - tls-authority
     annotations:
@@ -66,6 +49,11 @@ authorities:
       oXdLOHayMAoGCCqGSM49BAMCA0kAMEYCIQDbYIDHyIhisoc0EcHJchML8AKqbjJ2
       HfpcXmMjspC3kQIhAI/L3DGJ6apVAaQRktJHWmMJscfUaxMQxGEo1cPMM48K
       -----END CERTIFICATE-----
+    slots:
+      26-05-29:
+        public: AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBNk85dUnU8uD1qUbP6m78fguUtf1uwicxfR0XCY5c5G+1vgxGiI6RJXj7szDlzpmSTFVLh/UL9sUtom2spAwTNg=
+        # sops:encrypted
+        private: ENC[AES256_GCM,data:y2kUua2oeLXw3hAtji3NZ4+USg+AYq9gqXDGT5tI2YsOKvOO8aMBAP65IAUw9bsY+oz1LQY19xT942UCEoMFLoZoFpKZMqoNO6TuwZd1tczNIySYgamV/FvxFdsaKjSTeJnELgTfEuTcK4MBz1ZLqs3tLMGS6wW7VAPd7FP/hJknk+6or225TRpQEcyrUZKnuIGW9U/rpdRFu5hrjgTKHniIPxKC4SWKwAE+id+gBi+gi0zQ8JuFcVvByELCG/FFGqbxCBO0e/5IGqGzzSB3LVgAoQdVitXOw0FhPUruFaP3iG4HSxpcLNz45a3PPOFDcJeUp7eJgOHEVkKZl5UMXknhBI6ytnPs2xAa7mvwgQpRXEWz/ZXJhai/awDRCW2TWiAYOzoXksn6mUgjCbB1eFbDz9yKP57oLFW/DyMetcN28KI0Jd1jjzdJIDpGvd2gxN66TvXDCKkbgTgqX8vWLnE8FXaPbgBZGKNd3nzZkrotUuPNYczWghCoKAY7wqg1juOBw3UPRCU41E+CAZ9879uqRRxWpchIUlxtOTuntnwWOzZefyrQQB2ZWRioZwJdR7LUs3rXZARksEw7azoEEzW9LfmXlu7IhSUVXkKBb1NGk69OQsMr8+YvwNpq7ySEVqmNNALSHyTY4OHUWlE3TPky5XjvxGJcpJ5yKr9pFce349sg4ZVv1IIcOj4=,iv:S5BGHQZF/8IwU4KQrqnL8Dpm/ZD0rB+VIJA6hrDQUyE=,tag:EhILd1ObmlgTvYdCY+x5AA==,type:str]
 keys:
   nix-store:
     type: ssh-ed25519
@@ -84,6 +72,9 @@ keys:
       nix-store: nix-store
     annotations:
       public_scope: system
+    slots:
+      26-05-29: {}
+    renew: on-activation
   linux-builder:
     type: ssh-ed25519
     authority: mammoth-skate
@@ -102,18 +93,13 @@ keys:
     principals:
       linux-builder: linux-builder
       rdp-host: rdp-host
-    public: AAAAC3NzaC1lZDI1NTE5AAAAIMHU43EVt2ETrAd7u65ZX+nyLtbMKVr+zvdyM/6db7MV
-    # sops:encrypted
-    private: |-
-      -----BEGIN OPENSSH PRIVATE KEY-----
-      b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
-      QyNTUxOQAAACDB1ONxFbdhE6wHe7uuWV/p8i7WzCla/s73cjP+nW+zFQAAAJhyGjWdcho1
-      nQAAAAtzc2gtZWQyNTUxOQAAACDB1ONxFbdhE6wHe7uuWV/p8i7WzCla/s73cjP+nW+zFQ
-      AAAEAnINvfigN+5+6J5NY1dOLj9jWz3zhRYTnvsNmty7XK6MHU43EVt2ETrAd7u65ZX+ny
-      LtbMKVr+zvdyM/6db7MVAAAAEWJ1aWxkZXJAbG9jYWxob3N0AQIDBA==
-      -----END OPENSSH PRIVATE KEY-----
     annotations:
       public_scope: user
+    slots:
+      26-10-05:
+        public: AAAAC3NzaC1lZDI1NTE5AAAAIFb+p0nUP/k9dFfy28gMmgM63a2lVv6hsTWJCcr69/6u
+        # sops:encrypted
+        private: ENC[AES256_GCM,data:tRrFVeZcaLfLo2zbAqPxcSD1WXUJCk0R7sZiS/yO0YA/33QxSSwaU5NqtFpRU/bSelnM0LldFAG/EaZ/cZC8YsfMq+SpM32CGzKzs8lrvYt1gD9+6hZx9MLqZZMuTFjPEEcH17LE7PP1SG7n/XbQ0Ewbj2hINqo3B3ihcS+haEHac6YSHiM8T+tT4Nb3ZmZnHrDXw4KkhQyt2iODgKquB4r51hd+txDy2zqvzRGjCTcnitzYY8Crot3bc20gL2W5JSuR02KGZP/jUXnkeldaxCv5hRpvLBP6xPEjjke3LVN258hJoN8bj/U3gykAuZIdQXL2nx8kTxNQqNkCtvLH+OJBaHD5yEM2bd2bjMg2gbLXgxYgB4BFa+gtm0a+inHgV35f1OtPcGaeXVaQzy6AeXE0lvRmQN9rEaeVmUAiTxcPbALlEzwHEEhHfoTkTeYuapSTgH2YfDeVLnpBbJ0SHWZ4NQwjSEcUZJPDr77kcZGmTdLrXV9tZPlx+UxcTsx4dDvJ0MNVPhdYQH4XSg7r0u7h0kcuJsdncDJebpTp5mEEjQ==,iv:v3Bhorz13mgVVREppr28stLzClzu7IjOyRA/tPRZD9c=,tag:p7V97VyeCtKzXyB8ts9KlA==,type:str]
   rdp-host:
     type: ssh-ed25519
     authority: mammoth-skate
@@ -131,50 +117,13 @@ keys:
       rdp-host: rdp-host
     authorized_keys_options:
       - forwarding
-    public: AAAAC3NzaC1lZDI1NTE5AAAAIGet5e+oTAP3AfpWzlaM+SrHov14dGzao1jadf0S03oE
-    # sops:encrypted
-    private: |-
-      -----BEGIN OPENSSH PRIVATE KEY-----
-      b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
-      QyNTUxOQAAACBnreXvqEwD9wH6Vs5WjPkqx6L9eHRs2qNY2nX9EtN6BAAAAJiQ7CRwkOwk
-      cAAAAAtzc2gtZWQyNTUxOQAAACBnreXvqEwD9wH6Vs5WjPkqx6L9eHRs2qNY2nX9EtN6BA
-      AAAEBudopHDqEzF7Fd61diWPjIIREb1B8UfQDEmozwzBbwoGet5e+oTAP3AfpWzlaM+SrH
-      ov14dGzao1jadf0S03oEAAAAFW54bWF0aWNAbWFtbW90aC1za2F0ZQ==
-      -----END OPENSSH PRIVATE KEY-----
     annotations:
       public_scope: user
-  vz-guest-nixos:
-    type: ssh-ed25519
-    authority: mammoth-skate
-    # v1: authorities.mammoth-skate.usage = [ssh-host, ssh-user]
-    cert_usage:
-      - ssh-host
-      - ssh-user
-    comment: root@bioskop-nixos
-    usage:
-      - agent-signing
-      - user-signing
-    profiles:
-      - system
-    principals:
-      linux-builder: linux-builder
-      rdp-host: rdp-host
-    public: AAAAC3NzaC1lZDI1NTE5AAAAIG1fGVLU3BOE2R+1zuJRSOAxYsw+fd4y7YvwZFxMs8RF
-    # sops:encrypted
-    private: |-
-      -----BEGIN OPENSSH PRIVATE KEY-----
-      b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
-      QyNTUxOQAAACBtXxlS1NwThNkftc7iUUjgMWLMPn3eMu2L8GRcTLPERQAAAJiHkpDVh5KQ
-      1QAAAAtzc2gtZWQyNTUxOQAAACBtXxlS1NwThNkftc7iUUjgMWLMPn3eMu2L8GRcTLPERQ
-      AAAEAatyeFdzvpH/jUWmLbEX+odjIBx/HRrrQszE7Bxpzblm1fGVLU3BOE2R+1zuJRSOAx
-      Ysw+fd4y7YvwZFxMs8RFAAAAEnJvb3RAYmlvc2tvcC1uaXhvcwECAw==
-      -----END OPENSSH PRIVATE KEY-----
-    annotations:
-      public_scope: user
-      enrollment:
-        fingerprint: SHA256:q6+rTkuA5ykNZepJCau8Uza0jP98dynlCfz+Z7UE8/M
-        source: nerd-nixos
-        capturedAt: "2026-04-07T22:48:19Z"
+    slots:
+      26-10-05:
+        public: AAAAC3NzaC1lZDI1NTE5AAAAIM2ydCX6iGWLvMCJ3CR1hujCwjs96i/PTNqQrLIA1UjG
+        # sops:encrypted
+        private: ENC[AES256_GCM,data:WBpL8pYVQX+K4oxGUNs+fxUQyRJYXM2k/a/qyQOSRQob9jdiPdw/TDj4bxo06rM2PhBtYG8xZB46DN4y3GbDYN+rE/5zTTYagYZEa+bzKi19gN59/gesKIpotecrEbBeIvXWhUG7YlB2Zpa0il+2eIHYGhFa2ASrcYmuErpUuY1EsgK4qlnPNse3i8tN6zn7iDZLX04fw+eoR4ceLwm4anpVP9gNOcMODwiBK5+lTmfHraRdHUEUmTk/pvfLbXcJ3kLKYfJj2fEXMigedV0WRHqTIA5VTrRs7Ao/5+A4nvwQX7j6EvzlzAeTnWVDqmunI5cWZKVkKRADw0pyDwgg6ZL24Ddm+HyhtDHw1YwDCMBhrpuNpa3/Yx5SLCcnh/Pu/O5GjsRjmMshPRd7IRrE19GY+FtT37jbstJIpz4D1mdG6am8Ij/38e/93sHNdn05hd8mGR6XgReoqHikCr0M2wJTOB0aWKgUG+E+9g6vCutpiFVZ6n28fnQyryU9ijxgd2IMXuGeSrYBov7lbbtBULBP7kHjmbFXN4A=,iv:mIRdEdbXFI2cnIGXbh+JsAeQ6zs7FB/B/9WZY1TTWoM=,tag:IdgPX1tjZzNmexINBA/jbA==,type:str]
   rke2-cluster:
     type: ssh-ed25519
     # Bare key — no authority, used directly for GitHub auth.
@@ -183,18 +132,13 @@ keys:
       - ssh-user
     profiles:
       - user
-    public: AAAAC3NzaC1lZDI1NTE5AAAAIEk3mPT46ePtbxdZg4CLBGVW4Tt5iFTxNdLm1ohNpV0b
-    # sops:encrypted
-    private: |-
-      -----BEGIN OPENSSH PRIVATE KEY-----
-      b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
-      QyNTUxOQAAACBJN5j0+Onj7W8XWYOAiwRlVuE7eYhU8TXS5taITaVdGwAAAKBMuiJbTLoi
-      WwAAAAtzc2gtZWQyNTUxOQAAACBJN5j0+Onj7W8XWYOAiwRlVuE7eYhU8TXS5taITaVdGw
-      AAAEDAUZgw7z0aKy2X5D8LkvGyMn32eA/WU4KNpNj6KB/L2kk3mPT46ePtbxdZg4CLBGVW
-      4Tt5iFTxNdLm1ohNpV0bAAAAFmdpdGh1Yi1jbHVzdGVyQG54bWF0aWMBAgMEBQYH
-      -----END OPENSSH PRIVATE KEY-----
     annotations:
       public_scope: user
+    slots:
+      26-05-29:
+        public: AAAAC3NzaC1lZDI1NTE5AAAAIEk3mPT46ePtbxdZg4CLBGVW4Tt5iFTxNdLm1ohNpV0b
+        # sops:encrypted
+        private: ENC[AES256_GCM,data:84EzMpBbLavoCuCyI3tlHFCEPsvTElxeUaoA8T/wKDJyFhO+/dCFqVwYfOa+P+j/O3A7Uy2/ba0RLkIfFx8aPWK8hbQh68ZZpJfmjUvtSpTNytw3HHR7NMgdAHFoH1EtMQbQ7BjJ8kMnh6O9sjvT5WzrDMOuTmt26jTuRvnk4mWwP1sM2741CbKbvEa+VY4jQ2ufGdw9Lq8n1KPFtb/QHJeAhSG5VhPOGFA4rwEp4ZWpZcu0bSvs1DFyoTFMIb6VN3Toko4j+yhWVPUejUBq5xa3Xuk9TZe+nOt/BNib42uPA0kds7NxdF4bdhfIgtcSaiUl/wksCtL5WCPmmgZKqkw1gxj8iwP6cabbBpCkCDeD2vukf7mv2GP4qNunHQfU7bGUTwscuoEwCUXECViF8mWYjm40lPu9un7yBEfA27gldhlUnaQsjLs1ra5SDn+94h5hIZIEQy2h9X/1//OzaOQCqjnBi78UBVMigXuTiNMYrfeLM8vsLVDvVxtpp6PU2nz5EqsLJW1QCyHOOEA030586sxAtrkMfyejPRjG2ES8bA==,iv:zVsJYt1aS1nyJYqYNEXxEFRNX75DZOSIcKDKGc1N5TU=,tag:jh/h+/6r32Fuk2wgfEvb/A==,type:str]
   github-signing:
     type: ssh-ed25519
     # Bare key — github signing identity.
@@ -203,19 +147,13 @@ keys:
       - github-signing
     profiles:
       - user
-    public: AAAAC3NzaC1lZDI1NTE5AAAAILvIHiqhNBsZE6gxYmDBA4tM2nGc6jV0sAkFa9f0iare
-    # sops:encrypted
-    private: |-
-      -----BEGIN OPENSSH PRIVATE KEY-----
-      b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
-      QyNTUxOQAAACC7yB4qoTQbGROoMWJgwQOLTNpxnOo1dLAJBWvX9Imq3gAAAKg6HVM5Oh1T
-      OQAAAAtzc2gtZWQyNTUxOQAAACC7yB4qoTQbGROoMWJgwQOLTNpxnOo1dLAJBWvX9Imq3g
-      AAAEBNj1GkgODTqhX+vuRhoIVNA960GF3yH7BipzoMkNY9m7vIHiqhNBsZE6gxYmDBA4tM
-      2nGc6jV0sAkFa9f0iareAAAAHnN0ZXBoYW5lLmxhY29pbkBBUEwtZGs0MG5qaGs5aAECAw
-      QFBgc=
-      -----END OPENSSH PRIVATE KEY-----
     annotations:
       public_scope: user
+    slots:
+      26-10-05:
+        public: AAAAC3NzaC1lZDI1NTE5AAAAID7/8Szxs9eC5fy3zMytkj8xwTyj5PMe5faHfCObw/gE
+        # sops:encrypted
+        private: ENC[AES256_GCM,data:JJzVYL6aKvn6aYUujJEHEK7/O4SU31+2aPpNeCNrF3DGv9TDWor+oa/1jYzVrfGMxjwWrNaELdVHhy29bLn/iQL0WIpfYNTvpkRHK14jvo/bxU4UTkNsbEI+NUmNJy/Ns34N+CAVpHltFVKf9csnpkjtiVQyRV2oOqjnMNeO96KURm95Au1kPUglhwPPXrnfZnQRw2VbcKalUAU6pt3M4+0skXJ69XBI+AVpfRscvF+KQ10H6Csa11lwVi/nABcYYO/WB5zxahFoYgWsQoPaqw+Hc15UgcC17ZA0S7DFRdoi2aepgUNXvqBj/I8vNDNeoGGU30vv/YwzW3zg0mPMAUXpoWest8I2/a8/LAXiSRniKmG5w8ApicvY5hzaEpqax2CyN8tEjSOGlyiEyq8j8m5LHFU4h69dEp3dSlpQ5QqwYDxZ3/pM/CZKXiKh0jhUKv73jzF0O6+V5JGMv6Z0To7gxCyZdVzkNv/Mh65sKm4mF9BDKqagtG4UzQ3sekg9kFuhgJuUpTCtht9WJtkOo49bYoTyM68VFvufu8ApRTOa/KXayyuLhPXzj3d8rH8=,iv:ta+VAN5FPUZrq4QMbEMUVfdLyX35RMAw+8qQiUF7PMY=,tag:aOdSTN83n6x+NhEtUUV6Bw==,type:str]
   github-signing-hyland:
     type: ssh-ed25519
     # Bare key — github signing identity (hyland).
@@ -224,38 +162,13 @@ keys:
       - github-signing
     profiles:
       - user
-    public: AAAAC3NzaC1lZDI1NTE5AAAAIF23Jq3UEKPHGZOGgdQdIvc4Am5EYQZNnCSA+bSs2WOP
-    # sops:encrypted
-    private: |-
-      -----BEGIN OPENSSH PRIVATE KEY-----
-      b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
-      QyNTUxOQAAACBdtyat1BCjxxmThoHUHSL3OAJuRGEGTZwkgPm0rNljjwAAAJizk4Fos5OB
-      aAAAAAtzc2gtZWQyNTUxOQAAACBdtyat1BCjxxmThoHUHSL3OAJuRGEGTZwkgPm0rNljjw
-      AAAEB/J1spZcmY5vI6kkiDaoyF+jZ1PC5T2GfH87UwBaMU3V23Jq3UEKPHGZOGgdQdIvc4
-      Am5EYQZNnCSA+bSs2WOPAAAAD2h4cHIgZ2l0IGFjY2VzcwECAwQFBg==
-      -----END OPENSSH PRIVATE KEY-----
     annotations:
       public_scope: user
-  headscale-tls-server:
-    type: ecdsa-sha2-nistp256
-    authority: mammoth-skate-tls
-    cert_usage:
-      - tls-server
-    comment: headscale-tls-server@mammoth-skate
-    usage:
-      - host-signing
-    profiles:
-      - user
-    tls:
-      common_name: mammoth-skate.duckdns.org
-      sans:
-        dns:
-          - mammoth-skate.duckdns.org
-          - headscale.mammoth-skate.test
-          - headscale.mammoth-skate.local
-      not_after_days: 365
-    annotations:
-      public_scope: system
+    slots:
+      26-10-05:
+        public: AAAAC3NzaC1lZDI1NTE5AAAAIJmxr6Xl2g1Ren8nyT4L+g1aayeBbiqswlOGWzKaatg4
+        # sops:encrypted
+        private: ENC[AES256_GCM,data:XOsM9vSEC/ctrt8u3ejnKczW+kuXuqU9YKXxuZ9lWYngZHnwxZmKjPtL6yc6hWQz3gBFbfdRqG62XmoBlA7kD7mAC1wpcKDhUQzlZaPas6aOCzS9gMnNkZewWuN7eiDcxrFN6hX6XnEjnl+dkgDYpdhtaY6yWJybM7Tvbtm0o9GIDIO3Zo83dMypWvxfuYhxvsdCVwOeWkeawxvHXZS+7U/pmFZrA8PO9IiA3+vFmzKpwVU0wu92pzEBuwNlO8pHvUSGjOwZTDUUTGVlHcxA5jveaZPxpuAPhvaxMMCey0R/Ebgf306A36sklu0iaIGQorgs4lbUQksil6F2/EHnXON8VTFQpk52/pvwTVFCdwDTFLrkFWX3ttZj7lTOq2jJMFC31IrZrFGFJ+pQtg2DaBGkUcOP/yQfo9s218bg0If4iZt5MG8MTChP9nPEH2rp2lCTpqiRs9/hPZNSGqkrBBMc++xx+01qzdkyPEchqIxwiQi+YeNlllYpo7NSVp4P+8SbpbbZOyHT6WtIuuD8ncOIDX30eMyGLpYo+kbDg6csmilpQnveRGiy/y19tbE=,iv:GiEx/8wNjQOLETkTUj1gnJHCuepphUIp133NA2kdaj4=,tag:UUFrAvTH1PwNcTSZsD1H0A==,type:str]
   vz-nudge:
     type: ssh-ed25519
     authority: mammoth-skate
@@ -272,27 +185,125 @@ keys:
       rdp-host: rdp-host
     annotations:
       public_scope: system
+    slots:
+      26-05-29: {}
+    renew: on-activation
+  github-authentication:
+    # Bare key — GitHub ssh authentication only, never signing.
+    type: ssh-ed25519
+    comment: github-authentication@nxmatic
+    usage:
+      - github-authentication
+    profiles:
+      - user
+    annotations:
+      public_scope: user
+    slots:
+      26-10-05:
+        public: AAAAC3NzaC1lZDI1NTE5AAAAICQKpfav/YAyZasUYR0RTY+n3rkekmcq07xn3wEf7Avh
+        # sops:encrypted
+        private: ENC[AES256_GCM,data:0+k1XSytPf4SmINhg6fIFYZPG59nSk8iuiNC0TwYsJ6hkEKXyhxv0BGNm0SdY6Af2XgRaNZzCgJUNz+t6f9SH8mexDyVuLyyk15RHOSV91AnDDSYZUlELdum3ljljEyJjPH+T2cmMSSjHLiFSEnET0XCjR+4eh5btxLnIsY6lupTvhFXOEkqGwCdg3XiyU6ubmH/mPPqqSW+2ushFWSwsvqpDc15iXtBT781ucnVViEztSYVkiDTXzlSGy0HoUF42l9OqmQmwlfAD/iU+BBm6g5uMNzS0eyDPhW5LZcuIw0S52i6ZY2bvcvhwRylHLET2AtJLmNp5jXcEQgBi9CDGy4k+r1ziaIWABBAX5NsjP6I4CH0674Mi1mmrpNdH+t267JdOKu5m/rB8ueBpI3KmZHemz47aP05vkgIYwF2Ec/gx9i6ktLh94AQmnCStPfC0WcuW9HJ/OoFgjTMnrMyaEViEIpcptxVv86LfE/m8YsfAYqg2gTHM0USGEkj4BiXHlZEYTFruLkMhI5bGIDj8NACKItX6r63Hq0SzNTdFI3grw==,iv:b14CIgEHIJiqxkXgCX1HYvGHYdP9xDF1AZqwx3tT5ow=,tag:sIXtCED13f2mVBIOMitVAg==,type:str]
+  nch-relay-tls-server:
+    # TLS edge of the nch relay on nikopol-nixos. Declared in rke2lab (c546290c7, 824550bd1, 87cd2a1ba) directly in the subtree copy; upstreamed here with material generated ONCE.
+    type: ecdsa-sha2-nistp256
+    authority: mammoth-skate-tls
+    cert_usage:
+      - tls-server
+    comment: nch-relay-tls-server@nixos.nikopol
+    usage:
+      - host-signing
+    profiles:
+      - system
+    tls:
+      common_name: nixos.nikopol
+      sans:
+        dns:
+          - nixos.nikopol
+          - nikopol-nixos
+        ip:
+          - 172.16.16.1
+      not_after_days: 365
+    annotations:
+      public_scope: system
+    slots:
+      26-10-05:
+        public: AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEZ3467lozxKdMyFJR88JKpxpviNgFxkMDRtkK1aQmY2FAC6EYmD7Da3N3XgrT+5guINtsp+uhpEX3u02rjY0UQ=
+        # sops:encrypted
+        private: ENC[AES256_GCM,data:8i0+zju+zRYW5YYmQUNAaTrxgyBqKt2aNnwTLCb+k33+U2cE0XNDqyFZno0hfVDG8yXJIKWlDIEGrwpGzZAQeiQYQLmYnE/lkAGYDpiN53NLe8DNknGjKDHyvOJyGKtgifva9B/7KwWGscxoocYFqSEmV6xJHUJMOzyNg90jgJM6Fx+QimjF59L8a8Np59MLntq7sAWeaVZM2BUCqIeHSwu4T9itoyQkM80NUjf6vZP0/o8zKQ4qWN3V35Pxh02gZOHet+5iAps3vJKr0BhERM7LZeYCZRJMO6nPOebWHhdaMjuhsdIs5/gf/9AZfLrH9hl1pM4vUHdB9Mhcsd3N1wQ0IaHVQh892DL8TFvErYxcTBw9TIXJhD0M6hxr+45ZGjXeWsexx58neFuYyohUnil1Un15L6YflSjKGckaOaSqBaozqEfR77207d1yHWlXJr26oY6V1KhUqX8Q8W6azEkOliAf/WrLAkoDlSJ7UuGiN2xnGu78uiSuJVX7cuWwZf3SRkOylOPDkvZOgBS1BBw4V9ZruifxGK3lrX16lG+M7yCTwbW/iWqMpIMYDc+MRO324Ut5KV7eWou0nm1vqlDSZF40CqysjftLjSCmjGvF2+TRKClvWMWHDSitcwGmhVJDNyyU3d5mdUqiNzQO8J7isXHqntIYmb2QDrKaT+hLZWlVToElezJ1Mu2ODdMwY2TVAyhO6Ao=,iv:MslThTnu2bfIsZhNwS2kAQ6RkYow0nMEW9+RapEAaAM=,tag:YF9axUZGo1xMFQMOH3ZPjA==,type:str]
+revoked:
+  # Generations no sshd accepts any more — see keys.schema.yaml#revoked.
+  mammoth-skate@26-05-29:
+    type: ssh-ed25519
+    public: AAAAC3NzaC1lZDI1NTE5AAAAIMm2fu/uVbaaj1OljiSnZ9T1ES9yvbG+Y6JhyLrnQQAS
+    reason: authority private published in the clear (rke2lab, 2026-08-27); retired by the phase 2 of e6718c5f — revoking it refuses every certificate it signed
+  vz-guest-nixos@26-05-29:
+    type: ssh-ed25519
+    public: AAAAC3NzaC1lZDI1NTE5AAAAIG1fGVLU3BOE2R+1zuJRSOAxYsw+fd4y7YvwZFxMs8RF
+    reason: private published in the clear (rke2lab, 2026-08-27); key retired in fc050807, unused since nikopol VZ host reaches its guest via screen
+  linux-builder@26-05-29:
+    type: ssh-ed25519
+    public: AAAAC3NzaC1lZDI1NTE5AAAAIMHU43EVt2ETrAd7u65ZX+nyLtbMKVr+zvdyM/6db7MV
+    reason: private published in the clear (rke2lab, 2026-08-27); superseded by 26-10-05
+  github-signing@26-05-29:
+    type: ssh-ed25519
+    public: AAAAC3NzaC1lZDI1NTE5AAAAILvIHiqhNBsZE6gxYmDBA4tM2nGc6jV0sAkFa9f0iare
+    reason: private published in the clear (rke2lab, 2026-08-27); superseded by 26-10-05, removed from GitHub in both roles
+  github-signing-hyland@26-05-29:
+    type: ssh-ed25519
+    public: AAAAC3NzaC1lZDI1NTE5AAAAIF23Jq3UEKPHGZOGgdQdIvc4Am5EYQZNnCSA+bSs2WOP
+    reason: private published in the clear (rke2lab, 2026-08-27); superseded by 26-10-05, removed from GitHub in both roles
+  rdp-host@26-05-29:
+    type: ssh-ed25519
+    public: AAAAC3NzaC1lZDI1NTE5AAAAIGet5e+oTAP3AfpWzlaM+SrHov14dGzao1jadf0S03oE
+    reason: private published in the clear (rke2lab, 2026-08-27); superseded by 26-10-05 — it was the sshd host key of all four machines, the operator key and root builder key at once
 sops:
   age:
     - enc: |
         -----BEGIN AGE ENCRYPTED FILE-----
-        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSAxdWtqMVEzUEIwbDlmYVBl
-        MjdsbmtPM0h3SFVUNlV4MnprM010NHFZbFFZCmpVUTNMTTF6a01zMjdnWldMd3FI
-        OFF6MnFsblBMWDBUWStXU0VlekdWamcKLS0tIGpCWHlGaVNqMWk0RFU3ZGtReFNM
-        ZmFoUThTTU5KM2FIS2ZJNnVhenVxKzAKM/yGjJo1NRqSq+Q3tmlp35Ir4z0vc4nU
-        LEXH5s+dHCko1Vvce/aUDUWAZCSptghZy8e5F2tvAvulMkmSj6tBIg==
+        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSArOS9qazhEM1FtblZrREhM
+        NDBPUmIyNWVtWWVOQ2sxa05TRWZIaCtmajNRCmhpdnNNMzVXa0hMdmY4c2dGNzJ5
+        QkJLTVR6eUtvSWxEUVpyalE5aGN3S28KLS0tIDVUVUYzTzJxOVRkdEVPVE5oVUZ2
+        bVZRM3JMcmtYTmJybllTRHRMbldvQ2MKzStMPN85LywNBBs0JIrWyKAADTOl2zDJ
+        PchPh6ygfuCXkDkjl7vtBfbX9MGmYwGITeU+7u2Vpn4371ijBvALBQ==
+        -----END AGE ENCRYPTED FILE-----
+      recipient: age1stxdeh0t6arhdm7uhyy2jcf2qj9r9vfzkwte4jr4gj6hlpxe740seq8j82
+    - enc: |
+        -----BEGIN AGE ENCRYPTED FILE-----
+        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBucTUxS1pFR3pnNDFoa0Zr
+        cTA1WU8vWFNJc1o1aUQySFhlMTJBVThncXpVCjREbGs1c2VaT0sySW5uVytEN2Ew
+        aDZHM3NQS25xQS81UFZXVHRjbmNmSlUKLS0tIDlTU1IvbEZneDVKVzE4TFJ2aWRk
+        RlVRRGg3REtoY1ZFUy9qSEFtNThTSzAKLO8RWDb14O8cdXHaUKZROMGBT/1Te1Ez
+        dzb+S15qzXW7Tx1fIxQnQ8XgzoaOYSY/cLRbegiAhlCigp9bFkDYLQ==
         -----END AGE ENCRYPTED FILE-----
       recipient: age10ey0lcup4zpjqcknpxw7enpsagn674nm634f2u75trfr5t62uq5qdjuxzv
     - enc: |
         -----BEGIN AGE ENCRYPTED FILE-----
-        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSA4VFc2WVlxSHhnUFhqUFB4
-        cjdjekdsREc2MnhLTngwc2lNQ1V3NERQaWdVCnF3cEpsSllxSTV3djcvUUw4aVg0
-        U2lwM1I5RkVmVXFQT2dzQlQxbFlWbzQKLS0tIElNVHJScXBORVVGVlpaL3E1bDdM
-        eWNGd25CRW9tNXA4SkV2anlmU1pCK1UKmpQBpf7KUpCB91JlzqdB4Ka1GtITwT1D
-        NzRbQM0d+c61eAkgllp0NGGNlSljLf5bAKOIsL9Sfa0OJ0uLj13w8A==
+        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBaTUZNMUJTZUdDNThGbWta
+        TDQzdzl3YmVCWjNMWEZ5TGRVVXFTWSsvbDBzCnJxTS91eVdPKzc0N3Jic2RvbU1h
+        azZaRmlTa21UUWk0ZWtwUnVhMVpGaHMKLS0tIFBkOW1RM2JtZ2hUYWFEbUN4cEw1
+        MXp4K1R4ZXhYdnZjNDM5bytHdWEzNmcKB8YZn7eOdKoZui35KyaioxeMml6OrJUa
+        bibhSObw7rCoN2fhJn4HKOGVzvwRWbhNsye50kfy6gi+eKlgMzWffQ==
+        -----END AGE ENCRYPTED FILE-----
+      recipient: age1trxpn8efl5jctwakgpxxjd2h6x5h2m40ggugxl909qsj0h99p9yqkk8tej
+    - enc: |
+        -----BEGIN AGE ENCRYPTED FILE-----
+        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSB0SFBGbDEwWi8vNlp5QS9y
+        VVlETUs0NkNYNWFDbDRGNk1nUlFlNU5QK3pjClZSZTZiMmxOZEpqbFdsdGFqaEoy
+        TytIWENpcTBERVdocElCZG12Nk1mbjAKLS0tIE92SlE1RDlieE1sb3pDU3VTSVBX
+        VzZHRjREaWdWWnBwTk1tcUV3YnMyR1UKU/hwx4xMyExttetJ51HAOlv+A09i5+7l
+        i2LoFelw3ac8Uq8izx0DbRtTvJYKGooH1OcjP+DkKGeHMB1B9sriBQ==
+        -----END AGE ENCRYPTED FILE-----
+      recipient: age17q5kw0epcl9ft7ecegr20040vx3g86z0f7vtecn9t8kk27qjspaqp66pp4
+    - enc: |
+        -----BEGIN AGE ENCRYPTED FILE-----
+        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBmZ3RNUnJ4aDRCTnoxc3Bi
+        eVBnVEMySTBMVDNHYlRmUnZXSXV4SGlsclFnCnlSQlFMeDg2MWo1a29MVW1WajlS
+        VGdkZzQrd2t4L1R1NlZMMkh0cklMT2cKLS0tIFM5NzMrM2M3N3lReFdzaGhBbEti
+        dE96MXVRNTk5R1IvK0F3aG1iUjBmK0EKrLqbeT2ffhR2dgoqO8lGVcxLo7pqehQV
+        cgR0G+ueErAIBxcUmFNovO7qbU0GL1C6I6a2rAULIQGfxur9YZD9gA==
         -----END AGE ENCRYPTED FILE-----
       recipient: age1k0tc4gmaqrk5df3ujja34gkqxstu0cye7fl7fktjeuua3yych3aqxfjlak
-  encrypted_regex: ^(data|stringData)$
-  lastmodified: "2026-08-27T12:20:26Z"
-  mac: ENC[AES256_GCM,data:9qUkqer3QNTT/bcaMxDOWlkgkt92i7yXCIcqhmQgqd8rTAORVkSTgxBHvG544KAxQGs1CGHAE01BRoiRmJYVZhrCznZ13OHKNIyi535SYRdJ0zu/w9lcLOofG5D/cl3RmUppQRo8awy9PYZ7BG0MzTvl7dvg1r/besq/mI9p4DI=,iv:bORuUAiyAqWxQhehVibP3AIM5ceIkHjBG70MKMlcsCg=,tag:oWSpBllFabGduOb84xS/vw==,type:str]
-  version: 3.13.1
+  encrypted_comment_regex: sops:encrypted
+  lastmodified: "2026-10-05T20:57:10Z"
+  mac: ENC[AES256_GCM,data:uigzy0apbG6zt/xnrjj5d8iS/3jhz8h/uz9qKMKi5Bu32ry16VKwkwzKxowRVZasCp4cvpB2Ssf8ChnYPCLSpNv1vsEKUfhxBEX2zeQnO9OEmH+Jjue1xGvtjkZZw73ZdtMWsZ/6GPem+R2EzcMT0o5qSBg7Q1BigPKBE0lLv6I=,iv:gESg9tqarQ3cv3tBF6ofkJ0m7H58S1EFDYlsnHV7lrM=,tag:yLHjAnAesrjlU76X15iRug==,type:str]
+  version: 3.13.3

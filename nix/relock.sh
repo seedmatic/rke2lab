@@ -4,7 +4,7 @@
 #
 # Build-time tokens (written WITHOUT at-sigils here so replaceVars does not substitute them in this
 # comment): repoName, repoSlug, repoUrl, system, consumers, ownedArtifacts, pushFirstBranch,
-# catalogueBranch, selfPinName.
+# catalogBranch, selfPinName.
 #
 # ★ WHY the name is identical in every repo: propagation is a REQUEST, and the caller must know
 # nothing about the callee beyond its name — that uniformity is what makes `nix run <any repo>#relock`
@@ -29,9 +29,9 @@ Reconcile this repo's derived, committed artifacts. No target = ALL of them.
   plans             regen-dataplan
   netplan           regen-blueprint
   regen-<name>      one regen app by name
-  envs              every flox env             -> flox-catalogue */manifest.lock
+  envs              every flox env             -> flox-catalog */manifest.lock
   envs:<id>         one env (cluster-api/seed-incluster)
-  catalogue         the flox-catalogue branch's rke2lab pin
+  catalog         the flox-catalog branch's rke2lab pin
 
 An input bump that moves no exported derivation is DROPPED, not carried.
 --downstream then REQUESTS each declared consumer's own relock.
@@ -172,35 +172,35 @@ relock_input() { # $1 input name
 # Orphan-branch hops are OPTIONAL — a repo with none simply skips them. NOT a parameter: a
 # repo either carries such a branch or it does not, and `git worktree list` already answers
 # that. This is what lets the same implementation serve a repo like ndh, which has neither a
-# seed-incluster nor a flox-catalogue branch.
+# seed-incluster nor a flox-catalog branch.
 # Via variables, not the tokens inline: after substitution a token IS a literal, and shellcheck
 # rejects `[ -n "literal" ]` (SC2157) — correctly, since the test would be constant.
 pushFirstBranch="@pushFirstBranch@"
-catalogueBranch="@catalogueBranch@"
+catalogBranch="@catalogBranch@"
 SIC=""
 if [ -n "$pushFirstBranch" ]; then SIC=$(wt_for_branch "$pushFirstBranch") || SIC=""; fi
 CAT=""
-if [ -n "$catalogueBranch" ]; then CAT=$(wt_for_branch "$catalogueBranch") || CAT=""; fi
+if [ -n "$catalogBranch" ]; then CAT=$(wt_for_branch "$catalogBranch") || CAT=""; fi
 
 if [ -n "$CAT" ]; then
   cat_ref=$(jq -r --arg p "@selfPinName@" '.nodes[$p].original.ref // empty' "$CAT/flake.lock")
   if [ -n "$cat_ref" ] && [ "$cat_ref" != "$cur" ]; then
-    echo "MISMATCH: @catalogueBranch@ tracks @selfPinName@@$cat_ref but this worktree is on '$cur' —" >&2
+    echo "MISMATCH: @catalogBranch@ tracks @selfPinName@@$cat_ref but this worktree is on '$cur' —" >&2
     echo "propagation would not reach the catalog. Stand on '$cat_ref' (or repoint the catalog)." >&2
     exit 1
   fi
 fi
 
 # No target = everything, in dependency order: artifacts first (they can move the
-# derivations the input guard compares against), then inputs, then the catalogue.
+# derivations the input guard compares against), then inputs, then the catalog.
 if [ "${#targets[@]}" -eq 0 ]; then
-  targets=(artifacts inputs envs catalogue)
+  targets=(artifacts inputs envs catalog)
 fi
 
 echo "worktrees:"
 echo "  @repoName@ ($cur) : $RKE"
 echo "  seed-incluster : $SIC"
-echo "  flox-catalogue : $CAT"
+echo "  flox-catalog : $CAT"
 echo "targets: ${targets[*]}"
 echo
 
@@ -214,7 +214,7 @@ if [ -n "$SIC" ]; then
 fi
 
 baseline=$(evalmap)
-do_catalogue=0
+do_catalog=0
 env_targets=()
 committed=0
 for t in "${targets[@]}"; do
@@ -234,22 +234,22 @@ for t in "${targets[@]}"; do
       while read -r i; do relock_input "$i" || true; done < <(all_inputs)
       echo ;;
     # ⚠️ The env locks are NOT taken here. They resolve `path:../../..#<attr>` against the
-    # CATALOGUE's flake, so locking before its rke2lab pin moves records the OLD derivation
+    # CATALOG's flake, so locking before its rke2lab pin moves records the OLD derivation
     # and then reports "unchanged (churn dropped)" — a sincere answer to a question asked too
     # early. Measured 2026-09-30: cluster-api/seed-incluster reported unchanged, the pin then
     # advanced, and the env kept pinning the previous controller binary, so the node would
     # never have realised it. Re-locking the SAME env after the bump reported BUMPED and the
-    # drv changed. So the targets only RECORD what to lock; the catalogue hop does it, after.
+    # drv changed. So the targets only RECORD what to lock; the catalog hop does it, after.
     # Naming an env is for a SURGICAL act only. Normally you do not: any change committed to
-    # rke2lab implies the catalogue must be re-pinned and the envs re-locked, because the
-    # envs resolve `path:../../..#<attr>` THROUGH the catalogue's flake. Requiring the
+    # rke2lab implies the catalog must be re-pinned and the envs re-locked, because the
+    # envs resolve `path:../../..#<attr>` THROUGH the catalog's flake. Requiring the
     # operator to pair `relock seed-incluster envs:cluster-api/seed-incluster` made them
     # supply a dependency relation they should not have to know — and let them name the
     # wrong env, or forget it. The derivation guard drops the envs that did not move, so
     # re-locking all of them is both cheap and correct.
-    envs) env_targets+=("") ; do_catalogue=1 ;;
-    envs:*) env_targets+=("${t#envs:}") ; do_catalogue=1 ;;
-    catalogue) do_catalogue=1 ;;
+    envs) env_targets+=("") ; do_catalog=1 ;;
+    envs:*) env_targets+=("${t#envs:}") ; do_catalog=1 ;;
+    catalog) do_catalog=1 ;;
     *)
       if all_inputs | grep -qx -- "$t"; then
         echo "== input $t =="
@@ -262,22 +262,22 @@ for t in "${targets[@]}"; do
   esac
 done
 
-# Anything committed here must TRAVEL: the catalogue pins rke2lab and the envs resolve
+# Anything committed here must TRAVEL: the catalog pins rke2lab and the envs resolve
 # through it, so a change that stops at this repo is a change the nodes never see. The
 # operator therefore never has to pair a target with its env — see the note at the env
 # targets.
-if [ "$committed" = 1 ] && [ "$do_catalogue" = 0 ] && [ -n "$CAT" ]; then
-  do_catalogue=1
+if [ "$committed" = 1 ] && [ "$do_catalog" = 0 ] && [ -n "$CAT" ]; then
+  do_catalog=1
   env_targets=("")
-  echo "  (committed here ⇒ re-pinning the catalogue and re-locking every env)"
+  echo "  (committed here ⇒ re-pinning the catalog and re-locking every env)"
   echo
 fi
 
-# Push whatever the artifacts did. The catalogue hop resolves
+# Push whatever the artifacts did. The catalog hop resolves
 # github:seedmatic/rke2lab/<branch> and therefore pins what the REMOTE answers, not this
 # worktree — so pushing only on a change was the hole: any other commit left HEAD
-# unpushed and the catalogue silently pinned an older rev while reporting a clean bump
-# (measured 2026-09-30: catalogue at 9ccd89923 while HEAD was fec07de85).
+# unpushed and the catalog silently pinned an older rev while reporting a clean bump
+# (measured 2026-09-30: catalog at 9ccd89923 while HEAD was fec07de85).
 git -C "$RKE" push
 rke_head=$(git -C "$RKE" rev-parse HEAD)
 echo "  @repoName@ @ ${rke_head:0:9} pushed"
@@ -285,9 +285,9 @@ echo
 
 # ⚠️ `-n "$CAT"` is load-bearing, and its absence was a latent defect: the header claims this
 # implementation serves a repo with no such branch, yet an unguarded hop would `lockrev "/flake.lock"`
-# and die on exactly that repo. A repo without a catalogue branch simply has nothing to re-pin.
-if [ "$do_catalogue" = 1 ] && [ -n "$CAT" ]; then
-  echo "== own branch @catalogueBranch@: pin @selfPinName@ =="
+# and die on exactly that repo. A repo without a catalog branch simply has nothing to re-pin.
+if [ "$do_catalog" = 1 ] && [ -n "$CAT" ]; then
+  echo "== own branch @catalogBranch@: pin @selfPinName@ =="
   rke_before=$(lockrev "$CAT/flake.lock" @selfPinName@)
   ( cd "$CAT" && nix flake update @selfPinName@ --refresh )
   rke_after=$(lockrev "$CAT/flake.lock" @selfPinName@)
@@ -308,21 +308,21 @@ if [ "$do_catalogue" = 1 ] && [ -n "$CAT" ]; then
     fi
   done
   # ASSERT the landing rather than trust the bump report: a lagging push, a stale
-  # --refresh cache or a catalogue tracking another branch all end here quietly on a rev
+  # --refresh cache or a catalog tracking another branch all end here quietly on a rev
   # that is not what this run built. The point is to make ONE revision travel — prove it.
   if [ "$rke_after" != "$rke_head" ]; then
-    echo "MISMATCH: the catalogue pinned rke2lab ${rke_after:0:9} but this run pushed ${rke_head:0:9} —" >&2
+    echo "MISMATCH: the catalog pinned rke2lab ${rke_after:0:9} but this run pushed ${rke_head:0:9} —" >&2
     echo "the propagation did NOT carry this revision. Check that '$cur' is the branch the" >&2
-    echo "catalogue tracks and that the push above reached the remote." >&2
+    echo "catalog tracks and that the push above reached the remote." >&2
     exit 1
   fi
-  echo "  verified: catalogue pins rke2lab ${rke_head:0:9} — the revision this run pushed"
+  echo "  verified: catalog pins rke2lab ${rke_head:0:9} — the revision this run pushed"
   ahead=$(git -C "$CAT" rev-list --count '@{u}..HEAD' 2>/dev/null || echo 0)
   if [ "${ahead:-0}" -gt 0 ] 2>/dev/null; then
     git -C "$CAT" push
-    echo "  flox-catalogue pushed $ahead commit(s) — FloxCatalog syncs, FloxEnvs re-realize"
+    echo "  flox-catalog pushed $ahead commit(s) — FloxCatalog syncs, FloxEnvs re-realize"
   else
-    echo "  flox-catalogue already up to date"
+    echo "  flox-catalog already up to date"
   fi
   echo
 fi

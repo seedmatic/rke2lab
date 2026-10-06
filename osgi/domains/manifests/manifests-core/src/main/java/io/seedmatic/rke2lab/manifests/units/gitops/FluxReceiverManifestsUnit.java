@@ -134,9 +134,9 @@ public final class FluxReceiverManifestsUnit extends AbstractManifestsUnit {
                 "secretRef",
                 Map.of("name", WEBHOOK_TOKEN_SECRET),
                 // Every GitRepository fed by THIS repo's pushes: the rendered-branch source AND the
-                // flox-catalogue source (both on github.com/seedmatic/rke2lab, so one webhook
+                // flox-catalog source (both on github.com/seedmatic/rke2lab, so one webhook
                 // delivery
-                // covers them). Omitting flox-catalogue left a catalog push waiting on the 5m poll
+                // covers them). Omitting flox-catalog left a catalog push waiting on the 5m poll
                 // —
                 // the FloxCatalog revision, hence the FloxEnv relock propagation, only advanced
                 // late.

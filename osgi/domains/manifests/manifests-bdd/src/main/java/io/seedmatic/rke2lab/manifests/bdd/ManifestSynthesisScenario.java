@@ -333,7 +333,7 @@ public class ManifestSynthesisScenario
   // sops key-store is unreadable, so the bot identity takes this constant — the same deployment
   // coupling TAILNET_AUTHORITY already carries.
   private static final String TAILNET_DOMAIN = "mammoth-skate.ts.net";
-  private static final String SIGNING_KEY = "github-signing";
+  private static final String SIGNING_KEY = NdhKeystoreCatalog.SIGNING_KEY.entryName();
 
   // The env a mounted Secret feeds the IN_CLUSTER commit-signing key through (the NODE_BOOTSTRAP →
   // replicator lane), the twin of the PaC-provided RKE2LAB_PUSH_TOKEN.

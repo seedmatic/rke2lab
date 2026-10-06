@@ -642,7 +642,7 @@ convention is on the class NAME, the unit of selection, not the method annotatio
 |===
 
 The `-bdd` bundle is justified by realm + port-purity + an execution front-door (a `run()`, like
-`DoctorCoreTests.run()` — it *executes* its scenarios, it does not *catalogue* them). It does NOT expose
+`DoctorCoreTests.run()` — it *executes* its scenarios, it does not *catalog* them). It does NOT expose
 a registry: a scenario is never published as an OSGi service; discovery is by class-selection /
 package-enumeration. A registry of graftable scenarios becomes relevant only when a root scenario must
 graft N sub-scenarios from N domains without naming them — that is the future per-domain roster

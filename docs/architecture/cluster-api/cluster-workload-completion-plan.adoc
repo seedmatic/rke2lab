@@ -194,7 +194,7 @@ Concrete workstream:
 
 == Phase 4 — build cluster-required binaries via nix
 
-The flox-env catalog flake (a nix flake at the root of the `flox-catalogue` branch) already builds
+The flox-env catalog flake (a nix flake at the root of the `flox-catalog` branch) already builds
 `kdns` + the headplane stack from source, and the `flox-nri-plugin` fork flake
 (`github:seedmatic/flox-nri-plugin`) builds the plugin. Same path applies to the rest of the operator
 binaries we currently consume as upstream container images.

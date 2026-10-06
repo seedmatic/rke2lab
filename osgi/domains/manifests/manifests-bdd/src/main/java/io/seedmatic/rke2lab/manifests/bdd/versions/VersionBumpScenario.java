@@ -131,7 +131,7 @@ public class VersionBumpScenario
     private static final String TOOL = "manifests-bumper";
 
     /** The ndh SSH key the bot SSH-signs its commit with (git SSHSIG) — rke2lab's own key. */
-    private static final String SIGNING_KEY = "github-signing";
+    private static final String SIGNING_KEY = NdhKeystoreCatalog.SIGNING_KEY.entryName();
 
     @ExpectedScenarioState BumpLevel level;
     @ExpectedScenarioState boolean apply;

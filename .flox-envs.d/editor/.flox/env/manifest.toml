@@ -1,0 +1,12 @@
+version = 1
+
+[install]
+  [install.emacs-nox]
+    pkg-group = 'editor'
+    pkg-path = 'emacs-nox'
+
+  [install.vim]
+    pkg-group = 'editor'
+    pkg-path = 'vim'
+
+[options]

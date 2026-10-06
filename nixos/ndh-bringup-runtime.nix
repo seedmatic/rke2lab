@@ -6,7 +6,7 @@
 # ssh-keygen, yq, git) before running the script; if the profile bin is missing it
 # aborts (NDH_BOOTSTRAP_STRICT defaults on → "sed: command not found").
 #
-# manage-tailnet (packaged on the flox-catalogue branch, run in-cluster by the mesh
+# manage-tailnet (packaged on the flox-catalog branch, run in-cluster by the mesh
 # TailnetPurgeManifestsUnit Job) rides that trampoline. flox-injected pods share the
 # node's /nix, so seeding the profile symlink HERE makes it visible inside the purge
 # pod. Without it the purge fail-opens (the trampoline aborts, `|| true` swallows it).

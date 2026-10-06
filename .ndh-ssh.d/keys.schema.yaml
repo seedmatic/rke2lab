@@ -38,11 +38,38 @@ properties:
       "^[a-z][a-z0-9-]*$":
         $ref: "#/$defs/key"
     additionalProperties: false
+  revoked:
+    type: object
+    description: >
+      Generations no sshd may accept any more, keyed `<name>@<YY-MM-DD>` — the
+      slot they were retired from. Refused raw AND as a certificate, whichever
+      authority signed it; a revoked authority key takes every certificate it
+      signed with it. Certificates here are valid forever, so retiring a slot
+      alone does not stop a copied certificate: this list does. A generation
+      enters it in the same change that deletes its slot, never while the slot
+      still exists (eval refuses that, it would lock the key's users out).
+    patternProperties:
+      "^[a-z][a-z0-9-]*@[0-9]{2}-[0-9]{2}-[0-9]{2}$":
+        $ref: "#/$defs/revokedKey"
+    additionalProperties: false
   sops:
     type: object
     description: "Opaque sops metadata; validated by sops itself."
 
 $defs:
+
+  revokedKey:
+    type: object
+    required: [type, public, reason]
+    additionalProperties: false
+    properties:
+      type:
+        $ref: "#/$defs/sshKeyType"
+      public:
+        $ref: "#/$defs/publicBlob"
+      reason:
+        type: string
+        minLength: 1
 
   sshKeyType:
     type: string
@@ -63,6 +90,10 @@ $defs:
       - agent-signing
       - host-signing
       - github-signing
+      # Authenticates to GitHub over ssh and nothing else — kept apart from
+      # github-signing so a leak of one grants either push access or a
+      # "Verified" signature, never both.
+      - github-authentication
       # v2.1: the `mammoth-skate` authority also signs TLS x509 certs so
       # headscale can serve HTTPS without introducing a second CA key.
       # Leaf keys declare `cert_usage: [tls-server]` (and optionally
@@ -113,6 +144,20 @@ $defs:
       - type: string
         minLength: 40
 
+  publicBlob:
+    description: >
+      The BARE base64 blob, with no `ssh-ed25519 ` prefix and no trailing
+      comment: the type lives in `type:` and the comment in `comment:`, and
+      consumers rebuild the `<type> <blob> <comment>` line from the three.
+      The pattern is the barrier: writing a whole line in here instead doubled
+      both the type and the comment in every rebuilt line, and `ssh-keygen -lf`
+      accepted the result without complaint.
+    anyOf:
+      - type: string
+        pattern: '^ENC\[.*\]$'
+      - type: string
+        pattern: '^[A-Za-z0-9+/]{40,}={0,2}$'
+
   principalsMap:
     type: object
     description: >
@@ -125,13 +170,72 @@ $defs:
         pattern: "^[a-z_][a-z0-9_-]*$"
     additionalProperties: false
 
+  slots:
+    type: object
+    description: >
+      Generations of key material, keyed by the date it was created (YY-MM-DD).
+      The generation that is PRESENTED is derived from the newest key; every slot
+      is ACCEPTED. One slot is settled, two is a renewal in flight. Three means
+      phase 2 of a renewal was skipped, which is why maxProperties is 2 — the
+      schema enforces what the shell also asserts. Two digits for the year keeps
+      the key a plain string: YAML types a four-digit date as !!timestamp, and the
+      enrichment writes with `yq -i`, which may re-serialise a typed key.
+      A slot may be EMPTY, which is how a renewal is requested: the enrichment
+      generates material for whichever slot has none.
+      See docs/ssh-keys-renewal-spec.adoc.
+    minProperties: 1
+    maxProperties: 2
+    propertyNames:
+      pattern: "^[0-9]{2}-[0-9]{2}-[0-9]{2}$"
+    additionalProperties:
+      type: object
+      additionalProperties: false
+      properties:
+        public:
+          $ref: "#/$defs/publicBlob"
+        private:
+          $ref: "#/$defs/base64OrEnc"
+        certificates:
+          $ref: "#/$defs/certificates"
+
+  certificates:
+    type: object
+    description: >
+      Signed certificates for THIS generation of the key, keyed by authority
+      name then by cert type. A certificate belongs to the generation it
+      certifies, which is why it sits inside the slot rather than beside it:
+      during a renewal both generations are published, and each needs its own.
+
+      Populated by the enrichment step output; never present in the input
+      shape, and never persisted — keys are stable and certificates are
+      derived. SSH cert types carry a single-line openssh format; TLS types
+      carry a PEM blob (multi-line, BEGIN/END CERTIFICATE).
+
+      The signing authority is always the PRESENTED one. An authority renews
+      before its leaves, so a single certificate per key generation suffices;
+      see docs/ssh-keys-renewal-spec.adoc.
+    patternProperties:
+      "^[a-z][a-z0-9-]*$":
+        type: object
+        additionalProperties: false
+        properties:
+          ssh-user:
+            type: string
+            pattern: "^ssh-[a-z0-9-]+-cert-v01@openssh.com "
+          ssh-host:
+            type: string
+            pattern: "^ssh-[a-z0-9-]+-cert-v01@openssh.com "
+          tls-server:
+            type: string
+            pattern: "^-----BEGIN CERTIFICATE-----"
+    additionalProperties: false
+
   authority:
     type: object
     additionalProperties: false
     required:
       - type
-      - public
-      - private
+      - slots
     properties:
       type:
         $ref: "#/$defs/sshKeyType"
@@ -140,10 +244,8 @@ $defs:
       domain:
         type: string
         description: "DNS domain the authority asserts jurisdiction over."
-      public:
-        $ref: "#/$defs/base64OrEnc"
-      private:
-        $ref: "#/$defs/base64OrEnc"
+      slots:
+        $ref: "#/$defs/slots"
       ca_crt:
         type: string
         pattern: "^-----BEGIN CERTIFICATE-----"
@@ -183,6 +285,7 @@ $defs:
       - type
       - usage
       - profiles
+      - slots
     # Cert-signed keys must declare both authority and cert_usage. Bare
     # keys (no signing, just a keypair) omit both. The allOf below enforces
     # the "either both or neither" invariant — JSON Schema's answer to
@@ -287,38 +390,22 @@ $defs:
         uniqueItems: true
       comment:
         type: string
-      public:
-        $ref: "#/$defs/base64OrEnc"
-      private:
-        $ref: "#/$defs/base64OrEnc"
+      slots:
+        $ref: "#/$defs/slots"
+      renew:
+        enum: [on-activation, on-request]
+        description: >
+          Key material is stable by default and renewed on request. `on-activation`
+          is the declared exception, for entries whose material is meant to be
+          ephemeral. The default direction is deliberate: a forgotten annotation
+          must be harmless, and forgetting it the other way round gives a key that
+          changes on every activation, silently.
       principals:
         $ref: "#/$defs/principalsMap"
       authorized_keys_options:
         type: array
         items:
           type: string
-      certificates:
-        type: object
-        description: >
-          Signed certificates, keyed by authority name then by cert type.
-          Populated by the enrichment step output; not present in the input
-          shape.  SSH cert types carry a single-line openssh format; TLS
-          types carry a PEM blob (multi-line, BEGIN/END CERTIFICATE).
-        patternProperties:
-          "^[a-z][a-z0-9-]*$":
-            type: object
-            additionalProperties: false
-            properties:
-              ssh-user:
-                type: string
-                pattern: "^ssh-[a-z0-9-]+-cert-v01@openssh.com "
-              ssh-host:
-                type: string
-                pattern: "^ssh-[a-z0-9-]+-cert-v01@openssh.com "
-              tls-server:
-                type: string
-                pattern: "^-----BEGIN CERTIFICATE-----"
-        additionalProperties: false
       annotations:
         type: object
         additionalProperties: true

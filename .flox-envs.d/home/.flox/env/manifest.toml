@@ -1,0 +1,25 @@
+schema-version = "1.10.0"
+
+[include]
+  [[include.environments]]
+    dir = '../keyhole'
+
+  [[include.environments]]
+    dir = '../shell'
+
+  [[include.environments]]
+    dir = '../xdg'
+
+[install]
+  [install.direnv]
+    pkg-group = "home"
+    pkg-path = "direnv"
+outputs = "all"
+
+  [install.lldpd]
+    pkg-group = "home"
+    pkg-path = "lldpd"
+outputs = "all"
+
+[options]
+systems = ["aarch64-darwin", "aarch64-linux"]

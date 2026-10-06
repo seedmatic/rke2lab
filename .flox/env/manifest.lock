@@ -34,6 +34,9 @@
         "pkg-path": "bash",
         "outputs": "all"
       },
+      "bats": {
+        "pkg-path": "bats"
+      },
       "cdk8s-cli": {
         "pkg-path": "cdk8s-cli"
       },
@@ -240,7 +243,7 @@
         "outputs": "all"
       },
       "podman-wrapper": {
-        "flake": "git+https://github.com/nxmatic/fleet?dir=flox/k8s/.flox/flakes/podman-wrapper",
+        "flake": "git+https://github.com/seedmatic/fleet?dir=flox/k8s/.flox/flakes/podman-wrapper",
         "outputs": "all"
       },
       "pstree": {
@@ -303,7 +306,6 @@
     },
     "vars": {
       "GITHUB_OWNER": "seedmatic",
-      "JAVA_TOOL_OPTIONS": "${JAVA_TOOL_OPTIONS:-} --enable-native-access=ALL-UNNAMED",
       "M2_REPO": "${HOME}/.m2/repository",
       "PULUMI_BACKEND_URL": "file://${FLOX_ENV_PROJECT}/.pulumi-state",
       "PULUMI_CONFIG_PASSPHRASE": "",
@@ -2899,6 +2901,64 @@
       "priority": 5
     },
     {
+      "attr_path": "bats",
+      "broken": false,
+      "derivation": "/nix/store/rk7n4pvrz8fjn8mhxyha0zl09s57msjy-bats-1.14.0.drv",
+      "description": "Bash Automated Testing System",
+      "install_id": "bats",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
+      "name": "bats-1.14.0",
+      "pname": "bats",
+      "rev": "e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
+      "rev_count": 1079315,
+      "rev_date": "2026-09-25T08:03:29Z",
+      "scrape_date": "2026-09-26T04:58:19.575853Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.14.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/3qxkgcdc5dngrf4d73xfsca8hhydypg1-bats-1.14.0"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "bats",
+      "broken": false,
+      "derivation": "/nix/store/z5r35vvcbfi2sh9ckryn990axwzacq58-bats-1.14.0.drv",
+      "description": "Bash Automated Testing System",
+      "install_id": "bats",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
+      "name": "bats-1.14.0",
+      "pname": "bats",
+      "rev": "e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
+      "rev_count": 1079315,
+      "rev_date": "2026-09-25T08:03:29Z",
+      "scrape_date": "2026-09-26T05:29:37.992895Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.14.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/57brk6cs451zz65x6q3zhfadb6bckg66-bats-1.14.0"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
       "attr_path": "cdk8s-cli",
       "broken": false,
       "derivation": "/nix/store/0bns6f7834112zgq7c1vmkv669i4xzna-cdk8s-cli-2.207.58.drv",
@@ -4395,7 +4455,7 @@
     },
     {
       "install_id": "podman-wrapper",
-      "locked-url": "git+https://github.com/nxmatic/fleet?dir=flox/k8s/.flox/flakes/podman-wrapper&ref=refs/heads/main&rev=e75151ebe43340cfcbe88afe0fbeff0a1c27797d",
+      "locked-url": "git+https://github.com/seedmatic/fleet?dir=flox/k8s/.flox/flakes/podman-wrapper&ref=refs/heads/main&rev=9ad42fc6e783696e596e146eb1b19b7655c5ad37",
       "flake-description": "podman-wrapper flake for k8s env",
       "locked-flake-attr-path": "packages.aarch64-darwin.default",
       "derivation": "/nix/store/jbfnkvm91hmyg4lml5jd9jbmpb0ia8pq-docker.drv",
@@ -4418,7 +4478,7 @@
     },
     {
       "install_id": "podman-wrapper",
-      "locked-url": "git+https://github.com/nxmatic/fleet?dir=flox/k8s/.flox/flakes/podman-wrapper&ref=refs/heads/main&rev=e75151ebe43340cfcbe88afe0fbeff0a1c27797d",
+      "locked-url": "git+https://github.com/seedmatic/fleet?dir=flox/k8s/.flox/flakes/podman-wrapper&ref=refs/heads/main&rev=9ad42fc6e783696e596e146eb1b19b7655c5ad37",
       "flake-description": "podman-wrapper flake for k8s env",
       "locked-flake-attr-path": "packages.aarch64-linux.default",
       "derivation": "/nix/store/82i7id1dcwbxv62c1gmix2shwpjjqfvk-docker.drv",
@@ -4576,6 +4636,9 @@
     "composer": {
       "schema-version": "1.10.0",
       "install": {
+        "bats": {
+          "pkg-path": "bats"
+        },
         "cdk8s-cli": {
           "pkg-path": "cdk8s-cli"
         },
@@ -4648,25 +4711,25 @@
       "include": {
         "environments": [
           {
-            "dir": "../.flox.d/asciidoc"
+            "dir": "./.flox-envs.d/asciidoc"
           },
           {
-            "dir": "../.flox.d/git"
+            "dir": "./.flox-envs.d/git"
           },
           {
-            "dir": "../.flox.d/jdk"
+            "dir": "./.flox-envs.d/jdk"
           },
           {
-            "dir": "../.flox.d/k8s"
+            "dir": "./.flox-envs.d/k8s"
           },
           {
-            "dir": "../.flox.d/keyhole"
+            "dir": "./.flox-envs.d/keyhole"
           },
           {
-            "dir": "../.flox.d/pulumi"
+            "dir": "./.flox-envs.d/pulumi"
           },
           {
-            "dir": "../.flox.d/shell"
+            "dir": "./.flox-envs.d/shell"
           }
         ]
       }
@@ -4791,7 +4854,7 @@
         },
         "name": "asciidoc",
         "descriptor": {
-          "dir": "../.flox.d/asciidoc"
+          "dir": "./.flox-envs.d/asciidoc"
         }
       },
       {
@@ -4825,6 +4888,9 @@
             "gnupg": {
               "pkg-path": "gnupg",
               "pkg-group": "keyhole"
+            },
+            "go-2fa": {
+              "pkg-path": "go-2fa"
             },
             "keychain": {
               "pkg-path": "keychain",
@@ -4871,7 +4937,7 @@
         },
         "name": "git",
         "descriptor": {
-          "dir": "../.flox.d/git"
+          "dir": "./.flox-envs.d/git"
         }
       },
       {
@@ -4891,16 +4957,13 @@
               "pkg-path": "visualvm"
             }
           },
-          "vars": {
-            "JAVA_TOOL_OPTIONS": "${JAVA_TOOL_OPTIONS:-} --enable-native-access=ALL-UNNAMED"
-          },
           "hook": {},
           "profile": {},
           "options": {}
         },
         "name": "jdk",
         "descriptor": {
-          "dir": "../.flox.d/jdk"
+          "dir": "./.flox-envs.d/jdk"
         }
       },
       {
@@ -5000,7 +5063,7 @@
               "outputs": "all"
             },
             "podman-wrapper": {
-              "flake": "git+https://github.com/nxmatic/fleet?dir=flox/k8s/.flox/flakes/podman-wrapper",
+              "flake": "git+https://github.com/seedmatic/fleet?dir=flox/k8s/.flox/flakes/podman-wrapper",
               "outputs": "all"
             },
             "tubekit": {
@@ -5023,7 +5086,7 @@
         },
         "name": "k8s",
         "descriptor": {
-          "dir": "../.flox.d/k8s"
+          "dir": "./.flox-envs.d/k8s"
         }
       },
       {
@@ -5037,6 +5100,9 @@
             "gnupg": {
               "pkg-path": "gnupg",
               "pkg-group": "keyhole"
+            },
+            "go-2fa": {
+              "pkg-path": "go-2fa"
             },
             "keychain": {
               "pkg-path": "keychain",
@@ -5077,7 +5143,7 @@
         },
         "name": "keyhole",
         "descriptor": {
-          "dir": "../.flox.d/keyhole"
+          "dir": "./.flox-envs.d/keyhole"
         }
       },
       {
@@ -5103,7 +5169,7 @@
         },
         "name": "pulumi",
         "descriptor": {
-          "dir": "../.flox.d/pulumi"
+          "dir": "./.flox-envs.d/pulumi"
         }
       },
       {
@@ -5144,7 +5210,7 @@
         },
         "name": "shell",
         "descriptor": {
-          "dir": "../.flox.d/shell"
+          "dir": "./.flox-envs.d/shell"
         }
       }
     ],
@@ -5163,6 +5229,15 @@
           "Overriding": [
             "install",
             "gnupg"
+          ]
+        },
+        "higher_priority_name": "git"
+      },
+      {
+        "warning": {
+          "Overriding": [
+            "install",
+            "go-2fa"
           ]
         },
         "higher_priority_name": "git"
@@ -5253,6 +5328,15 @@
           "Overriding": [
             "install",
             "gnupg"
+          ]
+        },
+        "higher_priority_name": "keyhole"
+      },
+      {
+        "warning": {
+          "Overriding": [
+            "install",
+            "go-2fa"
           ]
         },
         "higher_priority_name": "keyhole"

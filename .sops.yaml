@@ -1,31 +1,69 @@
 creation_rules:
-  # Age recipients for SOPS encryption. Both are DERIVED from an ed25519 SSH key via `ssh-to-age`,
-  # so the SSH key is the single source of truth and no age key exists on its own.
-  # - age10ey0l... : Operator key (from nix-darwin-home, used by git sops filter)
-  #                  Obtained: ssh-to-age < ~/.local/share/ndh/ssh-keys/github-signing-hyland.pub
-  #                  ★ It IS the `github-signing-hyland` key — the same ed25519 key signs commits
-  #                  and decrypts this repo, so the two lifecycles are COUPLED: rotating the GitHub
-  #                  signing key silently revokes operator decryption here and in ndh. Re-key both
-  #                  repos (`sops updatekeys`) in the same change, never the SSH key alone.
-  # - age1k0tc4... : Flux/cluster key (derived from rke2-cluster SSH key via ssh-to-age)
-  #                  Obtained: ssh-to-age < ~/.local/share/ndh/ssh-keys/rke2-cluster.pub
-  #                  Used by Flux in-cluster to decrypt gitops/ resources
+  # Age recipients for SOPS encryption.
+  #
+  # - age1stxd... : Operator decryption key. ★ A STANDALONE age identity, deliberately NOT
+  #                  derived from an SSH key, and it appears in no keys.yaml. Lives only at
+  #                  ~/.config/sops/age/, which activation READS as an import candidate and
+  #                  never rewrites, so it reaches /etc/sops/age/keys.txt and from there the
+  #                  NixOS guests.
+  #                  Why standalone, against the convention the host keys follow: the key that
+  #                  opens a file must not live inside that file. It did — the operator key was
+  #                  an entry of the very keys.yaml it decrypts — so publishing that file handed
+  #                  over everything sops protects in both repositories at once. Deriving this
+  #                  one from an SSH key would recreate exactly that coupling.
+  # - age19fvdj... : ⛔ COMPROMISED, being retired. Its standalone predecessor, which held for
+  #                  one day: on 2026-10-05 it was printed in the clear into an operator session
+  #                  log by a shell command whose two stdin redirections made an interpreter read
+  #                  the key file as its own script. Never committed, never pushed — the exposure
+  #                  is a local log plus the path that carried it, not this repository. Kept as a
+  #                  recipient only until every encrypted file is re-keyed, then removed.
+  # - age10ey0l... : ⛔ COMPROMISED, being retired. It is the `github-signing-hyland` SSH key,
+  #                  which also signs commits, and it was published in the clear in this public
+  #                  repository from 2026-08-27. Kept as a recipient only until every encrypted
+  #                  file is re-keyed to age19fvdj..., then removed.
+  # - age1k0tc4... : ⛔ COMPROMISED. Flux/cluster key (from the rke2-cluster SSH key), published
+  #                  in the same file. Rotate with the rest of the material; Flux decrypts
+  #                  gitops/ resources with it in-cluster.
   #
   # ndh carries two MORE recipients that this repo deliberately does not: the bioskop and nikopol
   # SSH HOST keys, which is how sops-nix decrypts on those machines at activation. Nothing here is
   # read at a host's activation, so adding them would widen the blast radius for nothing.
 
-  # k8s is catching only secrets based
-  - path_regex: '.*\.ya?ml'
+  # ⛔ These path_regex values MUST mirror the `filter=sops-*` entries in .gitattributes.
+  # When they drifted, 8 SSH private keys were published in the clear for five weeks.
+  #
+  # The rules are tried IN ORDER and the FIRST path match wins. The Kubernetes rule used to
+  # read `path_regex: '.*\.ya?ml'`, which caught EVERY yaml — including .ndh-ssh.d/keys.yaml,
+  # whose secret fields are named `private`, not `data`/`stringData`. So its
+  # `encrypted_regex` matched nothing and sops wrote a complete, VALID envelope
+  # (recipients, mac, version) around a payload it had never encrypted. The single `ENC[`
+  # a grep then finds is sops's own `mac`.
+  #
+  # ★ Two things made that unrecoverable rather than merely wrong. The clean filter refuses
+  # to re-stage a file that already carries sops metadata ("worktree likely not smudged"),
+  # so the file became immune to its own repair. And every later check looked for an
+  # envelope — which was present — instead of looking for secret material in the clear.
+  # The guard that would have caught it tests the BLOB:
+  #   git cat-file blob <rev>:<path> | grep -q 'BEGIN OPENSSH PRIVATE KEY' && refuse
+
+  # Kubernetes Secrets only: encrypt the `data`/`stringData` fields.
+  # Narrowed to the one family that actually has those fields — the gitops secrets named
+  # in .gitattributes as `**/01-secret-*.yaml`.
+  - path_regex: '(^|/)01-secret-[^/]*\.ya?ml$'
     input_type: kubernetes
     encrypted_regex: '^(data|stringData)$'
     age: >-
+      age1stxdeh0t6arhdm7uhyy2jcf2qj9r9vfzkwte4jr4gj6hlpxe740seq8j82,
       age10ey0lcup4zpjqcknpxw7enpsagn674nm634f2u75trfr5t62uq5qdjuxzv,
       age1k0tc4gmaqrk5df3ujja34gkqxstu0cye7fl7fktjeuua3yych3aqxfjlak
-  # other YAML documents should have a sops:encrypted comment
+  # Everything else — `.secrets` and `.ndh-ssh.d/keys.yaml` — marks each secret scalar with
+  # a `# sops:encrypted` comment. This rule was previously DEAD for yaml files, because the
+  # rule above swallowed them all first, which is why keys.yaml carried eight such markers
+  # and no encryption.
   - path_regex: '.*'
     encrypted_comment_regex: 'sops:encrypted'
     age: >-
+      age1stxdeh0t6arhdm7uhyy2jcf2qj9r9vfzkwte4jr4gj6hlpxe740seq8j82,
       age10ey0lcup4zpjqcknpxw7enpsagn674nm634f2u75trfr5t62uq5qdjuxzv,
       age1k0tc4gmaqrk5df3ujja34gkqxstu0cye7fl7fktjeuua3yych3aqxfjlak
 stores:

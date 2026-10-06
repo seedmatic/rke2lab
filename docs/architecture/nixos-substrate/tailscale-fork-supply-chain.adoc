@@ -44,7 +44,7 @@ graph TD
     NDH["ndh flake<br/>(seedmatic/ndh, develop)<br/>tailscale-fork input + tailscaleOverlay"]:::ssot
 
     RKE["rke2lab flake<br/>(pins ndh)"]:::consumer
-    CAT["flox-catalogue branch<br/>(pins ndh)"]:::consumer
+    CAT["flox-catalog branch<br/>(pins ndh)"]:::consumer
 
     HOSTS["Operator + node hosts<br/>bioskop / bioskop-nixos<br/>services.tailscale (PATH A)"]:::runtime
     MESH["In-cluster mesh pods<br/>headscale-gateway / -client<br/>tailscaled (PATH B)"]:::runtime
@@ -76,11 +76,11 @@ graph TD
 
 [NOTE]
 ====
-*Single `ndh` pin.* Only rke2lab pins `ndh`. flox-catalogue (a branch of rke2lab)
+*Single `ndh` pin.* Only rke2lab pins `ndh`. flox-catalog (a branch of rke2lab)
 takes rke2lab as an input and sets `ndh.follows = "rke2lab/ndh"`, so both the host
 (path A) and the mesh (path B) resolve the *same* `ndh` rev — hence the same
 tailscale fork build, with no drift. No flake cycle: rke2lab references the
-flox-catalogue branch only at runtime (the FloxCatalog), not as a flake input, and
+flox-catalog branch only at runtime (the FloxCatalog), not as a flake input, and
 the `ndh`↔`rke2lab` edge is already cut in rke2lab (`ndh.inputs.rke2lab.follows =
 ""`).
 ====
@@ -117,10 +117,10 @@ graph TD
         LP --> SVC
     end
 
-    subgraph meshB["PATH B — mesh (flox-catalogue follows rke2lab/ndh)"]
-        TP["catalogue: tailscale-prod =<br/>ndh.packages.&lt;sys&gt;.tailscale"]:::run
-        FE["FloxEnv mesh/tailscale<br/>install ref floxcatalog:catalogue#tailscale"]:::run
-        FC["FloxCatalog CR + GitRepository(flox-catalogue)<br/>flox-controller resolves the output"]:::run
+    subgraph meshB["PATH B — mesh (flox-catalog follows rke2lab/ndh)"]
+        TP["catalog: tailscale-prod =<br/>ndh.packages.&lt;sys&gt;.tailscale"]:::run
+        FE["FloxEnv mesh/tailscale<br/>install ref floxcatalog:catalog#tailscale"]:::run
+        FC["FloxCatalog CR + GitRepository(flox-catalog)<br/>flox-controller resolves the output"]:::run
         POD["mesh tailscaled"]:::run
         PK --> TP
         TP --> FE
@@ -139,7 +139,7 @@ Key points:
   (systemPkgs) tailscale`) to give consumers a first-class output.
 * *Path A* rides `legacyPackages` through the host's `services.tailscale`.
 * *Path B* consumes the explicit `packages.<sys>.tailscale` output; the
-  flox-catalogue re-export is what the FloxEnv resolves via the FloxCatalog.
+  flox-catalog re-export is what the FloxEnv resolves via the FloxCatalog.
 * The overlay keeps `shortStamp` at the *upstream* version string (read from
   `VERSION.txt`) because headscale's client/server skew check is string-equality
   on the short stamp; the fork identity rides `longStamp`
@@ -158,7 +158,7 @@ the fork input in `ndh` only moves whichever path actually consumes the fork.
 .❌ Anti-pattern (the trap this fork hit)
 [source,nix]
 ----
-# flox-catalogue/flake.nix — mesh consumed STOCK nixpkgs, patch never landed
+# flox-catalog/flake.nix — mesh consumed STOCK nixpkgs, patch never landed
 tailscale-prod = pkgs.tailscale.overrideAttrs (_: { doCheck = false; });
 ----
 
@@ -169,7 +169,7 @@ ran stock tailscale.
 .✅ Correct — mesh consumes the ndh fork
 [source,nix]
 ----
-# flox-catalogue/flake.nix
+# flox-catalog/flake.nix
 tailscale-prod = ndh.packages.${system}.tailscale.overrideAttrs (_: {
   doCheck = false;   # lab-only; upstream atomicfile_test fails in the nix sandbox
 });
@@ -226,7 +226,7 @@ git push origin develop
 
 === 3. rke2lab — the single ndh pin (host path A + mesh source)
 
-rke2lab is the *only* place `ndh` is pinned; flox-catalogue follows this.
+rke2lab is the *only* place `ndh` is pinned; flox-catalog follows this.
 
 [source,console]
 ----
@@ -239,29 +239,29 @@ git push
 Hosts pick up the fork on their next `nixos-rebuild switch` / `darwin-rebuild switch`
 (they enable `services.tailscale`, whose package comes from `ndh`'s overlaid pkgs).
 
-=== 4. flox-catalogue — mesh path B (follows rke2lab)
+=== 4. flox-catalog — mesh path B (follows rke2lab)
 
-flox-catalogue does *not* bump `ndh` — it bumps `rke2lab`, and `ndh.follows =
+flox-catalog does *not* bump `ndh` — it bumps `rke2lab`, and `ndh.follows =
 "rke2lab/ndh"` carries the new pin, so the mesh lands on the same fork as the host.
 
 [source,console]
 ----
-cd /private/var/lib/git/seedmatic/rke2lab.d/flox-catalogue   # dedicated worktree
+cd /private/var/lib/git/seedmatic/rke2lab.d/flox-catalog   # dedicated worktree
 nix flake update rke2lab
-# Confirm the catalogue output is the fork:
+# Confirm the catalog output is the fork:
 nix eval '.#packages.aarch64-linux.tailscale.ldflags' \
   --apply 'fs: builtins.filter (f: builtins.isString f && builtins.match ".*gitCommitStamp.*" f != null) fs'
 #   -> [ "-X tailscale.com/version.gitCommitStamp=<new-fork-rev>" ]
 # Optional hygiene: refresh the committed env locks (see NOTE below):
 nix run .#lock-envs -- mesh/tailscale mesh/tailscale-debug
 git commit -m "chore(lock): bump rke2lab (mesh tailscale 1.<NEW>)" flake.lock environment.d/mesh/tailscale*/manifest.lock
-git push origin flox-catalogue
+git push origin flox-catalog
 ----
 
 [NOTE]
 ====
-The runtime mesh install ref is `floxcatalog:catalogue#tailscale`, which the
-flox-controller resolves against the *catalogue flake output* at the reconciled
+The runtime mesh install ref is `floxcatalog:catalog#tailscale`, which the
+flox-controller resolves against the *catalog flake output* at the reconciled
 commit — not against `environment.d/mesh/tailscale/manifest.lock`. That committed
 `manifest.lock` is for local `flox activate` reproducibility, not the in-cluster
 mesh path; re-locking it (`nix run .#lock-envs -- mesh/tailscale
@@ -271,9 +271,9 @@ rollout gate.
 
 === 5. Deploy the mesh
 
-Flux reconciles the `flox-catalogue` `GitRepository` to the new commit → the
+Flux reconciles the `flox-catalog` `GitRepository` to the new commit → the
 `FloxCatalog` artifact advances → `FloxEnv mesh/tailscale` re-resolves
-`floxcatalog:catalogue#tailscale` → the flox-controller re-realises it onto nodes
+`floxcatalog:catalog#tailscale` → the flox-controller re-realises it onto nodes
 → restart the mesh pods (`headscale-gateway` Deployment, `headscale-client`
 DaemonSet) to pick up the new `tailscaled`.
 
@@ -294,10 +294,10 @@ DaemonSet) to pick up the new `tailscaled`.
   branch, push, re-`nix flake update tailscale-fork`.
 
 | Mesh still reports the old version after a bump
-| Path B not propagated (flake edited but catalogue not re-locked/reconciled, or
+| Path B not propagated (flake edited but catalog not re-locked/reconciled, or
   pods not restarted)
-| `nix eval` the catalogue `packages.<sys>.tailscale` ldflags to confirm the fork
-  rev; check the `flox-catalogue` `GitRepository` reconciled to the new commit;
+| `nix eval` the catalog `packages.<sys>.tailscale` ldflags to confirm the fork
+  rev; check the `flox-catalog` `GitRepository` reconciled to the new commit;
   restart mesh pods.
 
 | headscale rejects the client (version skew)
@@ -316,5 +316,5 @@ DaemonSet) to pick up the new `tailscaled`.
 
 * link:flox-containerd-runtime.adoc[The flox containerd runtime] — the runtime shim that injects mesh workload packages; tailscale is one such workload.
 * link:../patterns/flox-store-resolved-runtime-and-builder.adoc[Flox Store-Resolved Runtime + Remote Nix Builder] — how FloxEnv packages (incl. this tailscale) are delivered onto the host store.
-* link:../patterns/daemonset-host-assets-architecture.adoc[DaemonSet Host Assets Architecture] — the `flox-catalogue` branch → FloxCatalog delivery model this doc's path B rides.
+* link:../patterns/daemonset-host-assets-architecture.adoc[DaemonSet Host Assets Architecture] — the `flox-catalog` branch → FloxCatalog delivery model this doc's path B rides.
 * link:../patterns/flox-env-readiness-gating.adoc[FloxEnv readiness gating] — how the mesh pods wait for their FloxEnv (incl. tailscale) to be realised.

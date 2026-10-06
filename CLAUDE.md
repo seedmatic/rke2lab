@@ -6,6 +6,12 @@
 # Install flox (if not already installed)
 curl -L https://downloads.flox.dev/by-env/stable/install | sh
 
+# Lock the vendored flox envs under .flox-envs.d — REQUIRED on a fresh clone.
+# The envs are a git subtree of fleet, which does not track their manifest.lock,
+# and an env without a lock cannot be included: `flox activate` fails with
+# "manifest and lockfile are out of sync" until this has run once.
+nix run .#lock-flox-envs
+
 # Activate flox environment (provides JDK 25 toolchain)
 flox activate
 ```
@@ -42,6 +48,9 @@ All Maven commands must run through flox: `flox activate -- ./mvnw ...`
 - `sdks/incus/` - Incus API client SDK
 - `bom/` - Bill of materials for dependency management
 - `docs/` - Architecture documentation (40+ AsciiDoc files)
+- `.flox-envs.d/` - fleet's flox env tree, vendored as a git subtree; the seat's `[include]`
+  entries point into it. Never edit it here — edits go to fleet and come back through the
+  **`flox-envs-subtree-sync` skill**, which also covers the mandatory re-lock after a pull.
 
 ## Where to learn more
 
