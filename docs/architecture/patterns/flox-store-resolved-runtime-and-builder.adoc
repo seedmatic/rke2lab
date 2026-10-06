@@ -824,7 +824,8 @@ indirection — the host builds the container's packages on bare metal directly.
 nix-darwin-home already defines a complete peer-to-peer remote-store mechanism.
 The inbound side runs a dedicated `nix-store` user with forced shell
 `nix-daemon --stdio` (a locked-down remote-build endpoint). The canonical
-outbound access path is `ssh-ng://nix-store.<host>`, cert-signed. A Flox
+outbound access path is `ssh-ng://nix-store.<host>`, authorised by a static key
+restricted to that forced command (ndh `docs/ssh-keys-architecture.adoc`). A Flox
 container that needs to build is exactly "a new consumer" of this path. No new
 key, no new host user.
 
@@ -851,8 +852,9 @@ Anything not in-store and not substitutable goes to the remote builder.
 
 * *No local builds*: `max-jobs = 0`. The container is a pure client; it needs no
   in-container nixbld users.
-* *Build identity*: the existing `nix-store` key (purpose-built, cert-signed,
-  forced-command endpoint). Not the `linux-builder` key (that is host->VM).
+* *Build identity*: the `nix-store` key — static, generated once on the machine that serves the
+  store, authorised for the forced-command endpoint only. Not the `linux-builder` key (that is
+  host->VM).
 * *Universal, not opt-in*: every Flox container gets `builder.conf` mounted.
 * *Config ownership*: authored by the NRI manifest unit so it is retrievable and
   patchable from code, not baked into the node-base image.

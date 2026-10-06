@@ -188,10 +188,10 @@ flowchart TB
 ----
 
 The <<mesh,virtual network (the mesh)>> is the *transport* that lets the management cluster reach a
-workload on a different bare-metal. The relevant plane here is the *node* plane — `Tailscale`'s
-`mammoth-skate` tailnet, on which every node is a permanent member — so this hop works at bootstrap and
-in steady state alike, independent of whether any Headscale workload plane exists yet. Without it, a
-management cluster on one host cannot reach a workload's API or the Incus host on another.
+workload on a different bare-metal. The relevant plane here is the *cluster* plane — `Tailscale`'s
+`mammoth-skate` tailnet, on which every cluster node is a permanent member — so this hop works at
+bootstrap and in steady state alike. Without it, a management cluster on one host cannot reach a
+workload's API on another.
 
 [[incus-tenancy]]
 == Incus tenancy — a project per cluster, engines not nested (C4 L3 — deployment)
@@ -314,50 +314,34 @@ node/cluster-reachability counterpart of what kube-vip does for the control-plan
 stabilises the apiserver address; the mesh stabilises reachability across bare-metals, independent of
 the physical network).
 
-It is *not* one mesh but *two planes that stack*, at two different levels — this is the key
-distinction, and it is not a migration where one replaces the other:
+It is *not* one mesh but *two planes*, one per level, and they do not stack inside a cluster:
 
-* *Node plane — `Tailscale`, tailnet `mammoth-skate`.* Every *node* is a member: the bare-metal NixOS
-  hosts, the management control node, every workload control node. This plane is *always* present,
-  independent of any running cluster, so it is the *bootstrap-time* transport (the management cluster's
-  first cross-host reconciliation rides it) and the path for external access. It is the machine-level
-  address plane.
-* *Workload plane — `Headscale` (self-hosted control-server + DERP).* The *workloads inside* the
-  clusters (pods / services) are members of a *distinct* tailnet defined by Headscale. Headscale is
-  itself deployed *as a workload-cluster service*, so this plane exists only *after* a workload cluster
-  is up — today, with no workload running yet, there is no Headscale at all. It is hosted on the
-  *always-live* `bioskop-wrkld` (never on the on-demand management cluster).
+* *Cluster plane — `Tailscale` SaaS, tailnet `mammoth-skate`.* Every *cluster node* is a member — the
+  management control node, every workload node — together with the clusters' tailscale-operator. It
+  stays on the SaaS because the operator drives the Tailscale admin API (`/api/v2`, OAuth), which
+  headscale gains only in 0.30.0, unreleased on 2026-10-06.
+* *Infrastructure plane — one self-managed `headscale` tailnet per bare-metal.* The bare-metals'
+  darwin hosts and their NixOS guests are members of their own segment's tailnet, whose control plane
+  runs in an Incus container on that guest. Specified in ndh `docs/fabric-control-plane-spec.adoc`.
 
-The two coexist by design, each at its own level: nodes stay on `mammoth-skate` permanently; the
-Headscale tailnet is layered on top for workload-to-workload reachability once the workloads exist.
+There is no workload plane of its own any more: headscale lives on the *infrastructure*, never inside
+a cluster, so stopping a cluster cannot take a control plane with it.
 
-This also dissolves the obvious chicken-and-egg: the management cluster's first cross-host
-reconciliation is node-level, so it rides the `mammoth-skate` node plane (or the LAN) and cannot need
-Headscale (nothing hosts it yet). And because Headscale lives on a *workload*, it is never on the
-on-demand management cluster — stopping that cluster cannot take the workload plane with it.
+Cluster nodes need no ssh: they are Incus instances, reached out of band with `incus exec` from
+their host.
 
-.Deferred — do not over-specify here
+.The off-mesh bare-metal
 [NOTE]
 ====
-The two-plane split (nodes on `mammoth-skate` / workloads on Headscale) and Headscale's host (the
-always-live `bioskop-wrkld`) are decided. What remains a separate concern is the internal/LAN vs
-external split (self-hosted Headscale for internal, Tailscale for outside) and whether a given
-bare-metal is LAN-local or remote. Its first concrete instance is the corp bare-metal Mac (`vzhost.nikopol`)
-that hosts `nikopol-nixos`: JAMF-managed, it cannot be a `mammoth-skate` member. Instead it lives on
-`nikopol-nixos`'s *baremetal instance segment* (`172.16.6.0/24`), which `nikopol-nixos` advertises into
-the tailnet with a split-DNS `.nikopol` zone — so peers resolve and reach `vzhost.nikopol` (and the segment's
-instances) by name, over the advertised route, without the Mac being a tailnet member. That transport is
-specified in `nix-darwin-home`'s `docs/network-topology-c4.adoc`. This does not touch the *property* this
-document relies on: every *node* (the bare-metal hypervisors and every cluster node) is a `mammoth-skate`
-member, so the management cluster reaches each workload node regardless of host — the off-mesh case is
-the bare-metal Mac, never a node.
+The corporate bare-metal (`vzhost.nikopol`, JAMF-managed) can join no tailnet. It sits on
+`nikopol-nixos`'s `/30` link, inside the nikopol segment, and is reached by name through the
+`.nikopol` zone — specified in ndh `docs/network-topology-c4.adoc`. Every *cluster node* remains a
+`mammoth-skate` member, so the management cluster reaches each workload node regardless of host; the
+off-mesh case is that bare-metal, never a node.
 
-That property is load-bearing beyond this document: because cross-host reach already rides the node
-plane, the shared home L2 is no longer what makes clusters mutually reachable — which is precisely what
-frees every cluster node's *reachable* address plane to move off the home LAN and into that same
-per-bare-metal segment. That move is decided and figured in
-link:../atlas/netplan.adoc[the netplan address-plane atlas]; the off-mesh corp Mac stops being the
-segment's only tenant and becomes one leaf among the nodes.
+Because cross-host reach does not rest on a shared home L2, every cluster node's reachable address
+plane lives in its per-bare-metal segment — figured in link:../atlas/netplan.adoc[the netplan
+address-plane atlas].
 ====
 
 [[cp-endpoint-reach]]
@@ -407,7 +391,7 @@ Two facts settle HOW to bridge it:
   common to both hosts is the <<mesh,tailnet>> — there is never a shared L2 or routable uplink
   cross-host.
 . *The VIP is a NODE-level address* (it lives on `vmnet0`, a node interface), so it belongs to the
-  <<mesh,node plane (`mammoth-skate`)>>, not the workload plane (Headscale, for pods↔pods).
+  <<mesh,cluster plane (`mammoth-skate`)>>.
 
 === The mechanism — the BARE-METAL is the subnet router, two locks
 
@@ -419,6 +403,17 @@ live inside that `/21`, so one route per bridge covers them. The controller pod 
 workload VIP through the tailnet — including when `nikopol-nixos` is roaming (DERP relays traverse the
 CGNAT; once punched, Tailscale upgrades to a direct path). CAPN consumes the pre-existing kube-vip
 endpoint via its load-balancer `external` mode (it does not orchestrate the LB; it uses the address).
+
+.Target — the NixOS guests leave the SaaS tailnet
+[IMPORTANT]
+====
+In the target the NixOS guests are members of their segment's headscale tailnet, not of
+`mammoth-skate`, so they can no longer announce the `vmnet` `/21` into it. *Open, with the option that
+fits the invariant below:* each cluster's nodes — `mammoth-skate` members already — announce their
+OWN cluster's `/21`, never the supernet. That is exactly *"it advertises only what its OWN node can
+forward"*, and no cluster black-holes the other bare-metal's. The migration is figured in
+link:../atlas/fabric-control-plane.adoc[the fabric control-plane atlas].
+====
 
 .Why the HOST and not a per-cluster Connector (corrected 2026-09-27)
 [IMPORTANT]
@@ -470,12 +465,12 @@ flowchart LR
   end
   subgraph HOST["nikopol-nixos — the bare-metal (tag:nixos)"]
     SR["subnet router<br/>advertises vmnet /21 per bridge it owns"]
-    VIP["kube-vip VIP<br/>10.80.&lt;w&gt;.10:6443 on vmnet0"]
+    VIP["kube-vip VIP<br/>10.80.{w}.10:6443 on vmnet0"]
   end
-  subgraph TS["node plane — mammoth-skate (tailnet + DERP)"]
+  subgraph TS["cluster plane — mammoth-skate (tailnet + DERP)"]
     R{{"route approved (autoApprovers, tag:nixos)<br/>+ ACL accept dst 10.80.0.0/18<br/>— both from ndh manage-tailnet"}}
   end
-  SR -.->|advertises 10.80.&lt;w&gt;.0/21| R
+  SR -.->|"advertises 10.80.{w}.0/21"| R
   CAPI -->|routes via tailnet| R
   R -->|DERP then direct| SR
   SR -->|forwards on its own bridge| VIP
@@ -485,7 +480,7 @@ flowchart LR
 [TIP]
 ====
 *Chosen — reach the vmnet segments over `mammoth-skate` (Tailscale SaaS) FIRST.* Zero new
-component: the bare-metal is already a tailnet subnet router for its own fabric `/20`, the node plane
+component: the bare-metal is already a tailnet subnet router for its own fabric `/20`, the cluster plane
 already carries the itinerant host, and DERP handles the CGNAT. (As first written this rode the
 operator's per-cluster `Connector`; the owner moved to the host on 2026-09-27 — see the correction
 above — which removed a component rather than adding one.) The two locks (route approval + ACL accept) are made
@@ -494,11 +489,9 @@ every future cluster and survive purge/re-grow. *Validated live (2026-09-12):* f
 `10.80.7.10:6443` (the mgmt apiserver VIP) is reachable through the tailnet — DERP first, then a
 direct path.
 
-A self-hosted `Headscale` may REPLACE the SaaS control-server later for sovereignty — the natural
-end-state for these internal-only clusters (access rests on internal services alone). The migration
-path is <<sovereign-headscale-reach>>. It is NOT on the on-demand management cluster (an itinerant
-node behind CGNAT could not register with a control-server behind the home NAT; self-hosted Headscale
-would need DERP + a public, always-live endpoint). Its host is deferred.
+Self-hosted headscale replaces the SaaS for the *infrastructure* nodes first — one control plane per
+bare-metal, on its NixOS guest, never on a cluster (ndh `docs/fabric-control-plane-spec.adoc`). The
+clusters follow once headscale carries the operator's admin API — see <<sovereign-headscale-reach>>.
 
 *Rejected — a shared-L2 VIP:* there is no shared L2 with an itinerant host.
 
@@ -529,11 +522,11 @@ impersonation, no creds-less kubeconfig.
 flowchart LR
   subgraph MGMT["bioskop-mgmt"]
     CAPI["CAPI pod<br/>kubeconfig.server = egress FQDN"]
-    EG["egress: ExternalName Service &lt;w&gt;-apiserver<br/>+ ProxyGroup type:egress<br/>(owned by rke2-adoption-controller)<br/>tailnet-target-ip: 10.80.&lt;w&gt;.10"]
+    EG["egress: ExternalName Service {w}-apiserver<br/>+ ProxyGroup type:egress<br/>(owned by rke2-adoption-controller)<br/>tailnet-target-ip: 10.80.{w}.10"]
   end
   subgraph W["*-wrkld"]
-    SR["its bare-metal (tag:nixos)<br/>advertises vmnet 10.80.&lt;w&gt;.0/21"]
-    VIP["kube-vip VIP<br/>10.80.&lt;w&gt;.10:6443"]
+    SR["its bare-metal (tag:nixos)<br/>advertises vmnet 10.80.{w}.0/21"]
+    VIP["kube-vip VIP<br/>10.80.{w}.10:6443"]
   end
   CAPI -->|ClusterIP/DNS| EG
   EG -->|"L4 (TLS pass-through)"| SR
@@ -584,59 +577,20 @@ FloxEnv workload (its Deployment carries the flox-controller annotations
 principle. Rendered by `Rke2AdoptionControllerManifestsUnit` (cluster-api domain).
 
 [[sovereign-headscale-reach]]
-=== Migrating the reach to a sovereign Headscale (deferred chantier)
+=== Moving the clusters onto headscale — the design rule
 
-Both reaches above ride the *tailscale-operator* on `mammoth-skate` (Tailscale SaaS). Because these
-clusters are *internal-only* — access rests on internal services alone — the target end-state is to
-move the operator's control-server off the SaaS onto a *self-hosted Headscale*, closing the last
-external dependency in the reach. This is decided as a direction and *deferred*; recorded here so it
-is not re-derived.
+The clusters stay on the SaaS until headscale implements the admin API the tailscale-operator drives
+(0.30.0). When they move, they join the infrastructure control plane of their bare-metal; the steps
+and their preconditions are figured in link:../atlas/fabric-control-plane.adoc[the fabric
+control-plane atlas].
 
-*Why it does not "just work" today.* The operator's join (its `tsnet` proxies registering) is not the
-coupling — Headscale reimplements the coordination protocol, so the proxies WOULD join. The coupling
-is the operator's *control loop*, which drives the **Tailscale admin REST API** (`api.tailscale.com/api/v2`,
-Go client `tailscale.com/client/tailscale/v2`, OAuth `CLIENT_ID`/`CLIENT_SECRET`) to mint per-proxy
-tagged auth-keys, manage devices, and enforce tag ownership. No *released* Headscale (≤ v0.29.3, the
-latest as of 2026-09-12) implements `/api/v2` or OAuth clients — its own API is a differently-shaped
-v1 HTTP surface (and its gRPC is being removed), which the operator cannot speak. So on any release,
-the operator cannot drive Headscale.
-
-*Why the migration is a config flip, not a fork.* Headscale is closing this gap *by design*.
-Headscale `main` / the upcoming **0.30.0** (unreleased as of 2026-09-12) ports `/api/v2` + OAuth
-clients "reusing Tailscale's wire shapes" *specifically so the Tailscale operator and Terraform
-provider drive Headscale unchanged (PR #3334); its CI (PR #3337) runs the REAL operator in k3s
-against Headscale over plain HTTP and proves operator self-registration, the **egress Connector**
-(subnet router), ingress, and **ProxyGroup** — the last of which is the primitive this reach still
-uses (its subnet route now comes from the bare-metal, outside Kubernetes entirely). The
-retarget is a single knob: `OPERATOR_LOGIN_SERVER` points BOTH the `tsnet` control plane AND the
-`/api/v2` client base-URL at Headscale, and a Headscale-minted OAuth client (scopes `devices:core` +
-`auth_keys`, tagged `tag:k8s-operator` owning `tag:k8s`) replaces the SaaS one. Same operator, same
-manifests.
-
-.The design consequence for the egress manifests
+.The design rule that keeps that move a config flip
 [IMPORTANT]
 ====
-Render the operator config with the *login-server as a parameter* (SaaS today,
-`OPERATOR_LOGIN_SERVER=<headscale>` tomorrow). Then the SaaS→Headscale migration is a config flip on
-one field, not a rewrite of the egress `ManifestsUnit`. The route-approval/ACL CIDRs are already
-derived from the blueprint `"vmnet"` segment (the SAME SSOT feeds ndh's `manage-tailnet` for SaaS and
-would feed Headscale's policy), so neither plane hardcodes the reach.
-====
-
-.Caveats and the rejected fork
-[NOTE]
-====
-* *Version floor.* Requires Headscale 0.30.0 (unreleased today) — the sovereign flip is gated on that
-  ship or on running a pinned `main` build (we already pin `tailscale` in ndh; pinning Headscale is in
-  the same discipline). 0.30.0 also REMOVES Headscale's gRPC, so any consumer of ours on that gRPC
-  breaks — audit before pinning.
-* *apiserver-proxy unverified — but not needed.* Headscale's operator CI does NOT exercise the
-  `apiServerProxy`/kube-apiserver ProxyGroup. Irrelevant here: plan A uses native client-cert egress
-  (L4 pass-through), never the TLS-terminating apiserver-proxy.
-* *Rejected — a bespoke controller on `hibare/headscale-client-go`.* It would reimplement what 0.30.0
-  ships for free, against the v1 HTTP surface Headscale is actively reshaping (gRPC removed, v2 added)
-  — building on a moving target. Kept ONLY as a last resort if a sovereign reach is mandatory on a
-  RELEASED Headscale before 0.30.0 lands.
+Render the operator config with the *login-server as a parameter* (`OPERATOR_LOGIN_SERVER`). The move
+is then a flip of one field, not a rewrite of the egress `ManifestsUnit`. The route-approval and grant
+CIDRs are derived from the blueprint `"vmnet"` segment — the same source feeds every control plane's
+policy, so no plane hard-codes the reach.
 ====
 
 [[why-separation]]
