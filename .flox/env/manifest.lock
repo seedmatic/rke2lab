@@ -68,7 +68,7 @@
         "pkg-group": "flox-mcp-server"
       },
       "flux9s": {
-        "flake": "github:seedmatic/rke2lab/feature/viewpoint-separation#flux9s"
+        "flake": "github:seedmatic/rke2lab#flux9s"
       },
       "fluxcd": {
         "pkg-path": "fluxcd",
@@ -112,7 +112,7 @@
         "outputs": "all"
       },
       "incus-client": {
-        "flake": "github:seedmatic/rke2lab/feature/viewpoint-separation#incus-client"
+        "flake": "github:seedmatic/rke2lab#incus-client"
       },
       "jdk": {
         "pkg-path": "jdk",
@@ -199,7 +199,7 @@
         "pkg-path": "lazygit"
       },
       "manage-tailnet": {
-        "flake": "github:seedmatic/rke2lab/feature/viewpoint-separation#manage-tailnet",
+        "flake": "github:seedmatic/rke2lab#manage-tailnet",
         "systems": [
           "aarch64-darwin"
         ]
@@ -4197,66 +4197,8 @@
       "priority": 5
     },
     {
-      "install_id": "flux9s",
-      "locked-url": "github:seedmatic/rke2lab/1b112ae98520a56ebee0cf5fb27f6f7714cff115?narHash=sha256-Juw2lnNuaTTN5gT4/1zUbspf2mcODYqEgG0PXwOZacQ%3D",
-      "flake-description": "RKE2 lab infrastructure and network blueprints",
-      "locked-flake-attr-path": "packages.aarch64-darwin.flux9s",
-      "derivation": "/nix/store/fvpjmvmq2z5437wlx1yqddyr3kcid1rg-flux9s-1.0.3.drv",
-      "outputs": {
-        "out": "/nix/store/jxpf193yh63zd97lawxrv6d1k9965cdp-flux9s-1.0.3"
-      },
-      "output-names": [
-        "out"
-      ],
-      "outputs-to-install": [
-        "out"
-      ],
-      "requested-outputs-to-install": [],
-      "package-system": "aarch64-darwin",
-      "system": "aarch64-darwin",
-      "name": "flux9s-1.0.3",
-      "pname": "flux9s",
-      "version": "1.0.3",
-      "description": "K9s-inspired terminal UI for monitoring Flux GitOps resources",
-      "licenses": [
-        "Apache-2.0"
-      ],
-      "broken": false,
-      "unfree": false,
-      "priority": 5
-    },
-    {
-      "install_id": "flux9s",
-      "locked-url": "github:seedmatic/rke2lab/1b112ae98520a56ebee0cf5fb27f6f7714cff115?narHash=sha256-Juw2lnNuaTTN5gT4/1zUbspf2mcODYqEgG0PXwOZacQ%3D",
-      "flake-description": "RKE2 lab infrastructure and network blueprints",
-      "locked-flake-attr-path": "packages.aarch64-linux.flux9s",
-      "derivation": "/nix/store/3yjnfil6gvba2qxq215dzalivqxnigdq-flux9s-1.0.3.drv",
-      "outputs": {
-        "out": "/nix/store/61iaph0r7914g86jgwzd9i95gkyx4qpr-flux9s-1.0.3"
-      },
-      "output-names": [
-        "out"
-      ],
-      "outputs-to-install": [
-        "out"
-      ],
-      "requested-outputs-to-install": [],
-      "package-system": "aarch64-linux",
-      "system": "aarch64-linux",
-      "name": "flux9s-1.0.3",
-      "pname": "flux9s",
-      "version": "1.0.3",
-      "description": "K9s-inspired terminal UI for monitoring Flux GitOps resources",
-      "licenses": [
-        "Apache-2.0"
-      ],
-      "broken": false,
-      "unfree": false,
-      "priority": 5
-    },
-    {
       "install_id": "incus-client",
-      "locked-url": "github:seedmatic/rke2lab/1b112ae98520a56ebee0cf5fb27f6f7714cff115?narHash=sha256-Juw2lnNuaTTN5gT4/1zUbspf2mcODYqEgG0PXwOZacQ%3D",
+      "locked-url": "github:seedmatic/rke2lab/5495e02c83a5cdd0cd136730d8ae9c051e235e2c?narHash=sha256-%2BWT6TJR8p46WSkUpBz/Jbh%2B2NX7oyYeUSDN/aD4VwOs%3D",
       "flake-description": "RKE2 lab infrastructure and network blueprints",
       "locked-flake-attr-path": "packages.aarch64-darwin.incus-client",
       "derivation": "/nix/store/7ksq3h46dyrc75r24sv41x3chmpwq8w4-incus-client-7.4.0.drv",
@@ -4285,7 +4227,7 @@
     },
     {
       "install_id": "incus-client",
-      "locked-url": "github:seedmatic/rke2lab/1b112ae98520a56ebee0cf5fb27f6f7714cff115?narHash=sha256-Juw2lnNuaTTN5gT4/1zUbspf2mcODYqEgG0PXwOZacQ%3D",
+      "locked-url": "github:seedmatic/rke2lab/5495e02c83a5cdd0cd136730d8ae9c051e235e2c?narHash=sha256-%2BWT6TJR8p46WSkUpBz/Jbh%2B2NX7oyYeUSDN/aD4VwOs%3D",
       "flake-description": "RKE2 lab infrastructure and network blueprints",
       "locked-flake-attr-path": "packages.aarch64-linux.incus-client",
       "derivation": "/nix/store/bkxsmg2fvsmssd7kiixc8k9nz5wxk82f-incus-client-7.4.0.drv",
@@ -4371,29 +4313,6 @@
       "broken": false,
       "unfree": false,
       "priority": 1
-    },
-    {
-      "install_id": "manage-tailnet",
-      "locked-url": "github:seedmatic/rke2lab/1b112ae98520a56ebee0cf5fb27f6f7714cff115?narHash=sha256-Juw2lnNuaTTN5gT4/1zUbspf2mcODYqEgG0PXwOZacQ%3D",
-      "flake-description": "RKE2 lab infrastructure and network blueprints",
-      "locked-flake-attr-path": "packages.aarch64-darwin.manage-tailnet",
-      "derivation": "/nix/store/ac69kkqm951852k724b6dy89spvck2hi-manage-tailnet.drv",
-      "outputs": {
-        "out": "/nix/store/s8n6440629hcb69g157k8c86i5vjx164-manage-tailnet"
-      },
-      "output-names": [
-        "out"
-      ],
-      "outputs-to-install": [
-        "out"
-      ],
-      "requested-outputs-to-install": [],
-      "package-system": "aarch64-darwin",
-      "system": "aarch64-darwin",
-      "name": "manage-tailnet",
-      "broken": false,
-      "unfree": false,
-      "priority": 5
     },
     {
       "install_id": "maven",
@@ -4630,6 +4549,87 @@
       "broken": false,
       "unfree": false,
       "priority": 5
+    },
+    {
+      "install_id": "flux9s",
+      "locked-url": "github:seedmatic/rke2lab/5495e02c83a5cdd0cd136730d8ae9c051e235e2c?narHash=sha256-%2BWT6TJR8p46WSkUpBz/Jbh%2B2NX7oyYeUSDN/aD4VwOs%3D",
+      "flake-description": "RKE2 lab infrastructure and network blueprints",
+      "locked-flake-attr-path": "packages.aarch64-darwin.flux9s",
+      "derivation": "/nix/store/fvpjmvmq2z5437wlx1yqddyr3kcid1rg-flux9s-1.0.3.drv",
+      "outputs": {
+        "out": "/nix/store/jxpf193yh63zd97lawxrv6d1k9965cdp-flux9s-1.0.3"
+      },
+      "output-names": [
+        "out"
+      ],
+      "outputs-to-install": [
+        "out"
+      ],
+      "requested-outputs-to-install": [],
+      "package-system": "aarch64-darwin",
+      "system": "aarch64-darwin",
+      "name": "flux9s-1.0.3",
+      "pname": "flux9s",
+      "version": "1.0.3",
+      "description": "K9s-inspired terminal UI for monitoring Flux GitOps resources",
+      "licenses": [
+        "Apache-2.0"
+      ],
+      "broken": false,
+      "unfree": false,
+      "priority": 5
+    },
+    {
+      "install_id": "flux9s",
+      "locked-url": "github:seedmatic/rke2lab/5495e02c83a5cdd0cd136730d8ae9c051e235e2c?narHash=sha256-%2BWT6TJR8p46WSkUpBz/Jbh%2B2NX7oyYeUSDN/aD4VwOs%3D",
+      "flake-description": "RKE2 lab infrastructure and network blueprints",
+      "locked-flake-attr-path": "packages.aarch64-linux.flux9s",
+      "derivation": "/nix/store/3yjnfil6gvba2qxq215dzalivqxnigdq-flux9s-1.0.3.drv",
+      "outputs": {
+        "out": "/nix/store/61iaph0r7914g86jgwzd9i95gkyx4qpr-flux9s-1.0.3"
+      },
+      "output-names": [
+        "out"
+      ],
+      "outputs-to-install": [
+        "out"
+      ],
+      "requested-outputs-to-install": [],
+      "package-system": "aarch64-linux",
+      "system": "aarch64-linux",
+      "name": "flux9s-1.0.3",
+      "pname": "flux9s",
+      "version": "1.0.3",
+      "description": "K9s-inspired terminal UI for monitoring Flux GitOps resources",
+      "licenses": [
+        "Apache-2.0"
+      ],
+      "broken": false,
+      "unfree": false,
+      "priority": 5
+    },
+    {
+      "install_id": "manage-tailnet",
+      "locked-url": "github:seedmatic/rke2lab/5495e02c83a5cdd0cd136730d8ae9c051e235e2c?narHash=sha256-%2BWT6TJR8p46WSkUpBz/Jbh%2B2NX7oyYeUSDN/aD4VwOs%3D",
+      "flake-description": "RKE2 lab infrastructure and network blueprints",
+      "locked-flake-attr-path": "packages.aarch64-darwin.manage-tailnet",
+      "derivation": "/nix/store/cin9kj5f2q22a40zlj63aygv1vs5fhnq-manage-tailnet.drv",
+      "outputs": {
+        "out": "/nix/store/n0ir30gxjiz4c5rpk43iz9823gdg4w5m-manage-tailnet"
+      },
+      "output-names": [
+        "out"
+      ],
+      "outputs-to-install": [
+        "out"
+      ],
+      "requested-outputs-to-install": [],
+      "package-system": "aarch64-darwin",
+      "system": "aarch64-darwin",
+      "name": "manage-tailnet",
+      "broken": false,
+      "unfree": false,
+      "priority": 5
     }
   ],
   "compose": {
@@ -4656,13 +4656,13 @@
           "pkg-group": "flox-mcp-server"
         },
         "flux9s": {
-          "flake": "github:seedmatic/rke2lab/feature/viewpoint-separation#flux9s"
+          "flake": "github:seedmatic/rke2lab#flux9s"
         },
         "graphviz": {
           "pkg-path": "graphviz"
         },
         "incus-client": {
-          "flake": "github:seedmatic/rke2lab/feature/viewpoint-separation#incus-client"
+          "flake": "github:seedmatic/rke2lab#incus-client"
         },
         "jdk25": {
           "flake": "github:seedmatic/rke2lab#jdk25",
@@ -4672,7 +4672,7 @@
           "pkg-path": "k9s"
         },
         "manage-tailnet": {
-          "flake": "github:seedmatic/rke2lab/feature/viewpoint-separation#manage-tailnet",
+          "flake": "github:seedmatic/rke2lab#manage-tailnet",
           "systems": [
             "aarch64-darwin"
           ]
