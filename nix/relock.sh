@@ -235,14 +235,21 @@ if [ -n "$pushFirstBranch" ]; then SIC=$(wt_for_branch "$pushFirstBranch") || SI
 CAT=""
 if [ -n "$catalogBranch" ]; then CAT=$(wt_for_branch "$catalogBranch") || CAT=""; fi
 
-if [ -n "$CAT" ]; then
-  cat_ref=$(jq -r --arg p "@selfPinName@" '.nodes[$p].original.ref // empty' "$CAT/flake.lock")
-  if [ -n "$cat_ref" ] && [ "$cat_ref" != "$cur" ]; then
-    echo "MISMATCH: @catalogBranch@ tracks @selfPinName@@$cat_ref but this worktree is on '$cur' —" >&2
-    echo "propagation would not reach the catalog. Stand on '$cat_ref' (or repoint the catalog)." >&2
-    exit 1
-  fi
-fi
+# There WAS a pre-flight check here: read `original.ref` out of the catalog's lock and refuse
+# if it differed from the branch we stand on. It is gone, and not because it was inconvenient.
+#
+# It PREDICTED by name what the catalog hop already MEASURES by revision: the post-condition at
+# the end of that hop compares the rev the catalog ended up pinning against the rev this run
+# pushed, and exits 1 when they differ. That assertion covers the same failure — and covers it
+# for every shape of target, whether the catalog names a ref, names none, or points at a local
+# checkout. The name-based prediction only ever worked for one of those three.
+#
+# And it was actively in the way: the catalog's pin is now an INDIRECT id, so there is no
+# `original.ref` to read. The check would have silently skipped itself (`[ -n "$cat_ref" ]`)
+# while looking like it still guarded something — the worst of the two outcomes. Any repair of
+# that pin removes the ref, so this check could not survive the chantier in any form.
+#
+# One guard that measures beats two where one guesses.
 
 # No target = everything, in dependency order: artifacts first (they can move the
 # derivations the input guard compares against), then inputs, then the catalog.
