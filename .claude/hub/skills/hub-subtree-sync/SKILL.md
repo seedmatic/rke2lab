@@ -7,8 +7,8 @@ description: >-
   .claude/hub", "pull hub updates", a session that edited `.claude/hub/…` reaching
   its end, or the subtree error `could not rev-parse split hash <sha>`. Encodes the
   hardened procedure: `--ignore-joins` always, `--squash` both ways, NEVER
-  `--rejoin`, the missing-base-object recovery, the conflict policy, and the single
-  outward `push origin main`.
+  `--rejoin`, the missing-base-object recovery, the conflict policy, and publishing
+  through the hub's own `develop` → `main` merge-down.
 ---
 
 # Sync the claude-hub subtree
@@ -41,6 +41,19 @@ and you'll pay for it in conflicts you could have avoided by syncing down up fro
 - Keep `--squash` in **both** directions.
 - **NEVER delete the split branches** (see *Cleanup*) — the pull needs their base SHAs.
 
+## Notation
+
+| Placeholder | What it names |
+|---|---|
+| `<repo>` | the **consumer** checkout you are syncing (where `.claude/hub/` lives) |
+| `<bare>` | the hub's bare repository, when the host has one — the fast, local transfer point |
+| `<hub-develop>` | the hub checkout on **`develop`** — where an up-sync lands and where hub edits are made |
+| `<hub-main>` | the hub checkout on **`main`** — read-only reference; you split a down-sync from it and merge into it |
+
+⛔ Do not collapse `<hub-develop>` and `<hub-main>` into one `<hub>`. One variable for two
+branches is how a conflict-resolution instruction comes to name the wrong side — which
+fails silently, by keeping the wrong content rather than erroring.
+
 ## Topology — DERIVE it, never recite it
 
 Origin is `github.com/seedmatic/claude-hub` everywhere (moved from `nxmatic`; GitHub
@@ -54,20 +67,26 @@ gone. Two commands answer everything, so run them instead of trusting any path w
 below:
 
 ```bash
-git -C <hub> rev-parse --git-common-dir    # ends in `.git` inside the checkout → plain clone
+git -C <hub-main> rev-parse --git-common-dir    # ends in `.git` inside the checkout → plain clone
                                            # a path under a *-store → worktree of a bare
-git remote get-url claude-hub              # a local path → one outward step; an https url → two
+git remote get-url claude-hub              # a local path → two outward steps; an https url → three
 ```
 
 **What the two answers decide**, and it is the only thing that varies:
 
 | `claude-hub` remote points at | Outward steps |
 |---|---|
-| a **local bare** | **one** — only the final `push origin main` touches GitHub |
-| **GitHub** | **two** — `git push claude-hub split/...` is already a publish, on top of `push origin main` |
+| a **local bare** | **two** — `push origin develop` then `push origin main`; the split push stays local |
+| **GitHub** | **three** — `git push claude-hub split/...` is already a publish, on top of those two |
+
+⚠️ **Two, not one** — publishing goes through the hub's own `develop` → `main` merge-down
+(see *Sync UP*), so **both** refs are pushed. Pushing only the merge-down would leave the
+hub's `develop` silently diverging from its origin, which is the exact rot this skill
+exists to prevent. Older revisions of this file claimed "one outward step"; that was true
+when the up-sync landed straight on `main`, and the arithmetic moved with the flow.
 
 So when a local bare exists, point the consumer's remote at it — local, fast, and it keeps
-the "one outward step" property the rest of this skill assumes:
+the split transfer out of the outward count:
 
 ```bash
 git remote set-url claude-hub <bare>    # or `remote add` if absent; idempotent either way
@@ -78,15 +97,18 @@ to reuse: the hub checkout is a **worktree of a bare** (`--git-common-dir` →
 `/Volumes/git-bare-store/seedmatic/claude-hub.git`), under `seedmatic/` rather than the
 `nxmatic/` the old text named — the étage-0 bare/worktree migration moved it. The
 consumer's `claude-hub` remote was repointed at that bare the same day, so a sync here is
-one outward step.
+two outward steps — `develop` then the merge-down on `main`.
 
-Derive it, don't assume: `git -C <hub> rev-parse --git-common-dir` and
+Derive it, don't assume: `git -C <hub-main> rev-parse --git-common-dir` and
 `git remote get-url claude-hub` answer both questions in one breath.
 
 ## Sync DOWN (claude-hub → this repo)
 
+Split from **`<hub-main>`** — the published state is what a consumer should build on; the
+hub's `develop` may carry work not yet merged down.
+
 ```bash
-git -C <hub> subtree split --prefix=.claude --branch=split/claude-hub/dot-claude --ignore-joins
+git -C <hub-main> subtree split --prefix=.claude --branch=split/claude-hub/dot-claude --ignore-joins
 git fetch claude-hub split/claude-hub/dot-claude
 git subtree pull --prefix=.claude/hub claude-hub split/claude-hub/dot-claude --squash
 ```
@@ -99,18 +121,27 @@ the hub's older version on the same topic). Commit the merge.
 ```bash
 git subtree split --prefix=.claude/hub --branch=split/<repo>/dot-claude --ignore-joins
 git push claude-hub split/<repo>/dot-claude
-git -C <hub> subtree pull --prefix=.claude <bare> split/<repo>/dot-claude --squash
+git -C <hub-develop> subtree pull --prefix=.claude <bare> split/<repo>/dot-claude --squash
 ```
-On the hub side, "ours" = hub main, "theirs" = your up-branch (the reconciled
-superset from the down-sync) → resolve conflicts **`--theirs`**. Then **verify the
-content is identical** before publishing:
+⚠️ **Pull into the hub's `develop`, not into `main`.** The hub follows the same
+convention as every other repo here — work lands on `develop`, and `main` only ever
+receives a merge-down. So `<hub-develop>` is the target of the pull and `<hub-main>`
+stays a read-only reference you merge into. (The hub had no local `develop` until
+2026-10-07; create it as its own worktree, `git worktree add <path> develop`.)
+
+On the hub side, "ours" = the hub branch you pulled into, "theirs" = your up-branch
+(the reconciled superset from the down-sync) → resolve conflicts **`--theirs`**. Then
+**verify the content is identical** before publishing:
 ```bash
-diff -rq <hub>/.claude <repo>/.claude/hub | grep -v 'README-SUBTREE\|\.git'   # expect no output
+diff -rq <hub-develop>/.claude <repo>/.claude/hub | grep -v 'README-SUBTREE\|\.git'   # expect no output
 ```
-Then the **one outward step** (confirm with the user first — it publishes to GitHub):
+Then publish — **two refs, in this order** (confirm with the user first; it goes to GitHub):
 ```bash
-git -C <hub> push origin main
+git -C <hub-develop> push origin develop
+git -C <hub-main> merge --no-ff develop && git -C <hub-main> push origin main
 ```
+`--no-ff` and never `--squash` on the way down: reachability from `main` is what keeps
+pinned revisions safe from `gc`.
 
 ## If `could not rev-parse split hash <sha>`
 
@@ -147,7 +178,7 @@ place. ⚠️ **Never delete that branch** — it is load-bearing for every futu
   `"${sha}:refs/heads/..."`.
 - `subtree pull` refuses outright with `working tree has modifications. Cannot add.` — an
   UNTRACKED file is enough. If the hub checkout is dirty and you must not disturb it, run
-  the pull in a throwaway worktree: `git -C <hub> worktree add --detach /tmp/hub-sync main`.
+  the pull in a throwaway worktree: `git -C <hub-main> worktree add --detach /tmp/hub-sync main`.
 
 ## Cleanup — do NOT delete the split branches
 
@@ -162,8 +193,10 @@ The branches are tiny; keep them. (`--ignore-joins` rescues the *split* side, bu
 
 ## Editing rules (so the flow stays clean)
 
-- Edit hub content only in a consumer subtree (`<repo>/.claude/hub/…`), never
-  directly in `claude-hub.d/main` (pull-only). If you must edit the hub directly,
-  `git -C <hub> push origin main` immediately — "edited" and "pushed" are one step.
+- Prefer editing hub content in a consumer subtree (`<repo>/.claude/hub/…`), so the
+  edit travels with the session that needed it. If you edit the hub **directly**, do it
+  in its **`develop`** worktree — never in the `main` checkout, which stays a read-only
+  reference like every other repo's `main` — and publish **immediately**: "edited" and
+  "published" are one step, and publishing means `develop` pushed *and* merged down.
 - Hub (cross-cutting) memory lives in `.claude/hub/memory/` (`[[name]]` / `[[hub:name]]`);
   project-specific memory in the consumer's own `.claude/memory/` (`[[<repo>:name]]`).
