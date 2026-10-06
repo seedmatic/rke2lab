@@ -41,28 +41,44 @@ and you'll pay for it in conflicts you could have avoided by syncing down up fro
 - Keep `--squash` in **both** directions.
 - **NEVER delete the split branches** (see *Cleanup*) — the pull needs their base SHAs.
 
-## Topology — DIFFERS PER HOST, measure it
+## Topology — DERIVE it, never recite it
 
 Origin is `github.com/seedmatic/claude-hub` everywhere (moved from `nxmatic`; GitHub
 redirects, so a stale remote keeps working and hides itself — all remotes repointed
 2026-09-29).
 
-**nikopol** — bare + worktrees, so only the final push is outward:
+⛔ **This section used to carry one stanza per host with hard-coded paths, and both had
+rotted by 2026-10-07** — they named an org directory and a clone layout that no longer
+existed, which is worse than saying nothing: it sends you to work on a topology that is
+gone. Two commands answer everything, so run them instead of trusting any path written
+below:
 
-- Hub checkout `<hub>` = `/Volumes/git-worktree-store/nxmatic/claude-hub.d/main`,
-  a worktree of the bare `/Volumes/git-bare-store/nxmatic/claude-hub.git`
-  (directory names keep `nxmatic/`; that is a path, not the URL).
-- Add a `claude-hub` remote in this repo pointing at that **bare** (local, fast):
-  `git remote add claude-hub /Volumes/git-bare-store/nxmatic/claude-hub.git`
-  (idempotent — skip if present). Only the final `push origin main` touches GitHub.
+```bash
+git -C <hub> rev-parse --git-common-dir    # ends in `.git` inside the checkout → plain clone
+                                           # a path under a *-store → worktree of a bare
+git remote get-url claude-hub              # a local path → one outward step; an https url → two
+```
 
-**This host (measured 2026-09-29)** — no bare, so TWO steps are outward:
+**What the two answers decide**, and it is the only thing that varies:
 
-- Hub checkout `<hub>` = `/private/var/lib/git/nxmatic/claude-hub.d/main`, a plain clone
-  (`git rev-parse --git-common-dir` → `.git`, not a worktree of a bare).
-- The `claude-hub` remote here points at **GitHub**, not a local bare — so
-  `git push claude-hub split/...` is ALREADY an outward publish, on top of the final
-  `push origin main`. The skill's "only one outward step" holds only with a local bare.
+| `claude-hub` remote points at | Outward steps |
+|---|---|
+| a **local bare** | **one** — only the final `push origin main` touches GitHub |
+| **GitHub** | **two** — `git push claude-hub split/...` is already a publish, on top of `push origin main` |
+
+So when a local bare exists, point the consumer's remote at it — local, fast, and it keeps
+the "one outward step" property the rest of this skill assumes:
+
+```bash
+git remote set-url claude-hub <bare>    # or `remote add` if absent; idempotent either way
+```
+
+ⓘ **Measured on this host 2026-10-07**, as an example of the derivation and not as a fact
+to reuse: the hub checkout is a **worktree of a bare** (`--git-common-dir` →
+`/Volumes/git-bare-store/seedmatic/claude-hub.git`), under `seedmatic/` rather than the
+`nxmatic/` the old text named — the étage-0 bare/worktree migration moved it. The
+consumer's `claude-hub` remote was repointed at that bare the same day, so a sync here is
+one outward step.
 
 Derive it, don't assume: `git -C <hub> rev-parse --git-common-dir` and
 `git remote get-url claude-hub` answer both questions in one breath.
