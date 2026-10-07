@@ -154,12 +154,56 @@ capability arrived another way.
 So the mechanical delta is small: a `loginServer` in `valuesContent`, and a gateway pointed at a
 client minted by `headscale oauth-clients` with scopes and tags.
 
-=== ⛔ What makes it an arbitration rather than a port
+=== ✅ Coexistence is a supported feature, not a workaround — the `Tailnet` CRD
+
+⛔ *An earlier revision of this document framed the switch around `OPERATOR_LOGIN_SERVER` and then
+offered "keep the funnel path on the SaaS" as one of three uncomfortable options. Both were wrong:*
+`OPERATOR_LOGIN_SERVER` moves **everything**, Funnel included, and keeping two tailnets side by side
+is not a split hack — **the operator supports it natively**.
+
+*Measured on the exact chart version we pin (`1.102.3`; present since `1.98.10`):*
+
+[cols="1,2",options="header"]
+|===
+| Mechanism | Shape
+
+| `tailnets.tailscale.com`
+| a **cluster-scoped** CRD: `spec.loginUrl` plus `spec.credentials.secretName` (`client_id` +
+`client_secret`, or `audience` for workload identity)
+| `Connector.spec.tailnet`, `ProxyGroup.spec.tailnet`
+| empty ⇒ the **default** tailnet (the chart's own); otherwise the name of a `Tailnet` CR. So the
+choice is **per resource**, opt-in
+| the reconciler
+| `reconciler/tailnet` is registered in `operator.go` with **no feature gate**, with an API-client
+factory `For(tailnet string)`
+|===
+
+So the default stays the SaaS — **the Funnel and its annotations keep working, untouched** — and one
+`Tailnet` CR per headscale control plane is added beside it. That dovetails with
+`netplan.tailnets = { saas, bioskop, nikopol }`: the CR names would come from that catalogue rather
+than being invented.
+
+⚠️ **`spec.tailnet` is immutable** (CEL `self == oldSelf`). Moving a resource from one tailnet to the
+other therefore means **delete and recreate**, which means a **new device identity** — so this is a
+placement decision taken once per resource, not a dial.
+
+⬜ **Not verified, and load-bearing enough to say so:** whether proxies created by *annotation*
+(Ingress/Service) and the operator's **own** device can leave the default tailnet — they very
+probably cannot. And upstream's own harness drives `loginServer`, **not** `Tailnet`, so the
+`Tailnet` → headscale path is **untested upstream**. It still needs headscale **0.30** regardless,
+because the operator mints each proxy's auth key through `/api/v2` + OAuth.
+
+=== ⛔ What remains an arbitration rather than a port
 
 **The Funnel is SaaS-only, and we use it.** *Measured in this repo:* `Funnel`, `FunnelLeaf`,
 `PacWebhookFunnel` and `FunnelCertIssuance` are ingress-domain types, and `TailscaleManifestsUnit`
 imports `FunnelCertIssuance` with an apparatus of cert restore and state persistence around it —
 `FunnelCertRestoreManifestsUnit`, `FunnelStatePersistenceManifestsUnit`.
+
+ⓘ With the `Tailnet` CRD the arbitration **shrinks but does not vanish**: the funnel path staying on
+the vendor is now a supported placement rather than a concession, so the live question is no longer
+*"what replaces the Funnel"* but *"which resources are worth moving at all"* — and that is still a
+design call, not a release.
 
 [cols="1,2",options="header"]
 |===
@@ -207,7 +251,21 @@ own the system trust store (`security.pki.certificates` on NixOS, the System key
 That is exactly why a leaf from the private `mammoth-skate-tls` root works there.
 
 The constraint bites **only when pods become members** — step 12. It is a design input for *that*
-step, not a reason to revisit the container's TLS today.
+step, not a reason to revisit the container's TLS today. The Incus container that *runs* headscale is
+a **server**, not a client, so it is not concerned at all.
+
+⬜ *One reserve, stated as an unmeasured hypothesis rather than a finding:* a `tailscaled` launched
+from a **flox/nix** environment may inherit `SSL_CERT_FILE` pointing at nix's own `cacert` bundle,
+which would **bypass the system trust store even on a NixOS host** — and then the constraint bites
+earlier than step 12. One line settles it per member:
+
+[source,bash]
+----
+tr '\0' '\n' < /proc/$(pgrep -x tailscaled)/environ | grep SSL_CERT
+----
+
+⚠️ And a second URL the private leaf has to cover: the **embedded DERP presents its own
+certificate**, verified by the same trust store. Same rule, one more name.
 ====
 
 **DERP, or no data plane.** A pod's only endpoint is an unroutable pod IP, so its sole path to an
@@ -220,6 +278,44 @@ absent.
 **unquoted**, so an all-digits identifier becomes a YAML number and the apiserver rejects it.
 Upstream creates the Secret with `--from-literal`. We create the Secret ourselves, so this costs
 nothing — provided the values stay strings.
+
+=== ★ Coexistence changes the status of the CGNAT carve — and the carve is already there
+
+Both the SaaS and headscale draw addresses from `100.64.0.0/10` by default. A proxy pod belongs to
+**one** tailnet, so there is no collision *on a pod*. But anything reasoning about `100.x` at
+**cluster scale** — egress `ExternalName`, network policies, the doctor — becomes ambiguous the day
+two tailnets are present in one cluster.
+
+✅ *The addressing work is already done.* ndh's catalogue carves our two tailnets out of the range,
+measured on the chantier branch:
+
+[cols="1,1,1",options="header"]
+|===
+| tailnet | `allocation` | `prefixes.v4`
+
+| `saas` | `vendor` | `100.64.0.0/10` — an opaque **given**, we do not control its allocator
+| `bioskop` | `ours` | `100.127.0.0/16`
+| `nikopol` | `ours` | `100.126.0.0/16`
+|===
+
+⛔ **But this retires a caveat I wrote, and the retirement is the point of this section.** The carve
+is documented — in the spec, in the migration atlas, and in its own code comment — as being *for
+legibility only, with nothing permitted to depend on it*. The stated reason: **no machine is ever on
+two tailnets**, so a collision is never resolved on a host.
+
+That premise still holds **per host**. What coexistence introduces is a **cluster-scope consumer**:
+one cluster with pods on two tailnets, where telling the ranges apart stops being a convenience and
+becomes a correctness condition for anything matching on `100.x`.
+
+[IMPORTANT]
+====
+So the caveat needs a condition rather than a deletion: *the carve is legibility-only **until** two
+tailnets coexist inside one cluster; from that point something does depend on it.*
+
+ⓘ The pleasant part: nothing new has to be allocated. A carve written for legibility turns out to be
+the **enabling condition** for coexistence — which is the opposite of the usual outcome, where a
+decision taken "just for readability" has to be undone.
+====
 
 == Verdict
 
