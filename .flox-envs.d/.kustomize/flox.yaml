@@ -1,0 +1,544 @@
+apiVersion: kpt.dev/v1
+kind: Kptfile
+metadata:
+  name: flox-manifests
+pipeline:
+  mutators:
+    - image: ghcr.io/kptdev/krm-functions-catalog/apply-setters:v0.2
+      configPath: setters.yaml
+---
+apiVersion: flox.dev/v1alpha1
+kind: FloxEnvironment
+metadata:
+  name: asciidoc
+spec:
+  manifest:
+    version: 1
+    install:
+      asciidoctor-with-extensions:
+        pkg-path: asciidoctor-with-extensions
+      plantuml:
+        pkg-path: plantuml
+      graphviz:
+        pkg-path: graphviz
+      jdk:
+        pkg-path: jdk
+      nodejs:
+        pkg-path: nodejs
+      pnpm:
+        pkg-path: pnpm
+      antora:
+        pkg-path: antora
+      antora-ui-default:
+        pkg-path: antora-ui-default
+      antora-lunr-extension:
+        pkg-path: antora-lunr-extension
+    profile:
+      common: |
+        export ANTORA_CACHE_DIR="${FLOX_ENV_PROJECT}/.cache/antora"
+        export DOCS_BUILD_DIR="${FLOX_ENV_PROJECT}/.output/docs"
+    include:
+      environments:
+        - dir: /var/lib/git/seedmatic/fleet/flox/keyhole # kpt-set: ${fleet-base-dir}/keyhole
+    options:
+      systems:
+        - aarch64-darwin
+        - aarch64-linux
+  env:
+    name: asciidoc
+    version: 1
+---
+apiVersion: flox.dev/v1alpha1
+kind: FloxEnvironment
+metadata:
+  name: dns-tools
+spec:
+  manifest:
+    version: 1
+    install:
+      dnsmasq:
+        pkg-path: dnsmasq
+      dig:
+        pkg-path: dig
+    include:
+      environments:
+        - dir: /var/lib/git/seedmatic/fleet/flox/keyhole # kpt-set: ${fleet-base-dir}/keyhole
+    options:
+      systems:
+        - aarch64-darwin
+        - x86_64-darwin
+  env:
+    name: asciidoc
+    version: 1
+---
+apiVersion: flox.dev/v1alpha1
+kind: FloxEnvironment
+metadata:
+  name: editor
+spec:
+  manifest:
+    version: 1
+    install:
+      emacs-nox:
+        pkg-path: emacs-nox
+      vim:
+        pkg-path: vim
+    options: {}
+  env:
+    name: editor
+    version: 1
+---
+apiVersion: flox.dev/v1alpha1
+kind: FloxEnvironment
+metadata:
+  name: git
+spec:
+  manifest:
+    version: 1
+    install:
+      git:
+        pkg-path: git
+      git-town:
+        pkg-path: git-town
+      gitflow:
+        pkg-path: gitflow
+      gh:
+        pkg-path: gh
+    hook:
+      on-activate: |
+        if [ -d "${FLOX_ENV_PROJECT}/.github" ]; then
+          remote=$(git -C "${FLOX_ENV_PROJECT}" remote get-url origin 2>/dev/null || true)
+          if [ -n "${remote}" ]; then
+            remote_host="github.com"
+            case "${remote}" in
+              git@*:* )
+                remote_host=$(printf '%s' "${remote}" | cut -d'@' -f 2 | cut -d':' -f 1)
+                ;;
+              http://*|https://*)
+                remote_host=$(printf '%s' "${remote}" | cut -d'/' -f 3)
+                ;;
+              ssh://*)
+                remote_host=$(printf '%s' "${remote}" | cut -d'/' -f 3 | cut -d':' -f 1)
+                ;;
+            esac
+
+            if [ -n "${GH_TOKEN:-}" ] && ! gh auth status --hostname "${remote_host}" >/dev/null 2>&1; then
+              echo "Detected GH_TOKEN, logging in gh for ${remote_host}..." >&2
+              printf '%s' "${GH_TOKEN}" | gh auth login --with-token --hostname "${remote_host}" >/dev/null 2>&1 || true
+            fi
+
+            if gh auth status --hostname "${remote_host}" >/dev/null 2>&1; then
+              gh auth setup-git --hostname "${remote_host}" >/dev/null 2>&1 || true
+            fi
+          fi
+        fi
+    profile:
+      common: |
+        if [ -d "${FLOX_ENV_PROJECT}/.github" ]; then
+          gh_login=""
+          if [ -n "${GH_TOKEN:-}" ]; then
+            gh_login=$(gh api user --jq '.login' 2>/dev/null || true)
+          elif command -v pass >/dev/null 2>&1; then
+            gh_secret=$(pass show coding/github@work 2>/dev/null | head -n 1 || true)
+            if [ -n "${gh_secret}" ]; then
+              gh_login=$(env GH_TOKEN="${gh_secret}" gh api user --jq '.login' 2>/dev/null || true)
+            fi
+          fi
+          if [ -n "${gh_login}" ]; then
+            remote=$(git -C "${FLOX_ENV_PROJECT}" remote get-url origin 2>/dev/null || true)
+            if [ -n "${remote}" ]; then
+              owner=$(printf '%s' "${remote}" | cut -d'/' -f 4)
+              repo_name=$(printf '%s' "${remote}" | cut -d'/' -f 5 | cut -d'.' -f 1)
+              export GITHUB_LOGIN="${gh_login}"
+              export GITHUB_OWNER="${owner}"
+              export GITHUB_REPOSITORY="${owner}/${repo_name}"
+            fi
+          fi
+        fi
+    include:
+      environments:
+        - dir: /var/lib/git/seedmatic/fleet/flox/keyhole # kpt-set: ${fleet-base-dir}/keyhole
+    options: {}
+  env:
+    name: git
+    version: 1
+---
+apiVersion: flox.dev/v1alpha1
+kind: FloxEnvironment
+metadata:
+  name: gnumake
+spec:
+  manifest:
+    version: 1
+    install:
+      gnumake:
+        pkg-path: gnumake
+      remake:
+        pkg-path: remake
+    options: {}
+  env:
+    name: gnumake
+    version: 1
+---
+apiVersion: flox.dev/v1alpha1
+kind: FloxEnvironment
+metadata:
+  name: home
+spec:
+  manifest:
+    version: 1
+    install:
+      direnv:
+        pkg-path: direnv
+      linux-builder:
+        pkg-path: darwin.linux-builder
+        systems:
+          - aarch64-darwin
+      lldpd:
+        pkg-path: lldpd
+    options:
+      systems:
+        - aarch64-darwin
+        - aarch64-linux
+    include:
+      environments:
+        - dir: /var/lib/git/seedmatic/fleet/flox/xdg # kpt-set: ${fleet-base-dir}/xdg
+        - dir: /var/lib/git/seedmatic/fleet/flox/keyhole # kpt-set: ${fleet-base-dir}/keyhole
+  env:
+    name: home
+    version: 1
+---
+apiVersion: flox.dev/v1alpha1
+kind: FloxEnvironment
+metadata:
+  name: k8s
+spec:
+  manifest:
+    version: 1
+    install:
+      ceph-client:
+        pkg-path: ceph-client
+        pkg-group: kubectl-tools
+        systems:
+          - aarch64-linux
+      cilium-cli:
+        pkg-path: cilium-cli
+        pkg-group: kubectl-tools
+      etcdctl:
+        pkg-path: etcdctl
+        version: ^3.3.27
+        pkg-group: etcd-tools
+      fluxcd:
+        pkg-path: fluxcd
+        pkg-group: kubectl-tools
+      helmfile:
+        pkg-path: helmfile
+        pkg-group: kubectl-tools
+      kubernetes-helm:
+        pkg-path: kubernetes-helm
+        pkg-group: kubectl-tools
+      kubectl:
+        pkg-path: kubectl
+        pkg-group: kubectl-tools
+      krew:
+        pkg-path: krew
+        pkg-group: kubectl-tools
+      kubectl-ai:
+        pkg-path: kubectl-ai
+        pkg-group: kubectl-plugins
+      kubectl-ktop:
+        pkg-path: kubectl-ktop
+        pkg-group: kubectl-plugins
+      kubectl-neat:
+        pkg-path: kubectl-neat
+        pkg-group: kubectl-plugins
+      kubectl-tree:
+        pkg-path: kubectl-tree
+        pkg-group: kubectl-plugins
+      kubectl-graph:
+        pkg-path: kubectl-graph
+        pkg-group: kubectl-plugins
+      kubecectl-doctor:
+        pkg-path: kubectl-doctor
+        pkg-group: kubectl-plugins
+      kubectl-explore:
+        pkg-path: kubectl-explore
+        pkg-group: kubectl-plugins
+      kubectl-rook-ceph:
+        pkg-path: kubectl-rook-ceph
+        pkg-group: kubectl-plugins
+      kubectl-view-secret:
+        pkg-path: kubectl-view-secret
+        pkg-group: kubectl-plugins
+      tubekit:
+        pkg-path: tubekit
+        pkg-group: kubectl-tools
+      kpt:
+        pkg-path: kpt
+        pkg-group: kpt-tools
+    include:
+      environments:
+        - dir: /var/lib/git/seedmatic/fleet/flox/manifest-tools # kpt-set: ${fleet-base-dir}/manifest-tools
+  env:
+    name: k8s
+    version: 1
+---
+apiVersion: flox.dev/v1alpha1
+kind: FloxEnvironment
+metadata:
+  name: keyhole
+spec:
+  manifest:
+    version: 1
+    install:
+      age:
+        pkg-path: age
+      gnupg:
+        pkg-path: gnupg
+      keychain:
+        pkg-path: keychain
+      pass:
+        pkg-path: pass
+      sops:
+        pkg-path: sops
+      openssh:
+        pkg-path: openssh
+      openssl:
+        pkg-path: openssl
+      ssh-to-age:
+        pkg-path: ssh-to-age
+    profile:
+      common: |
+        if [[ -r $XDG_STATE_HOME/ssh-keys.d/github_signing ]]; then
+          set -a
+          SOPS_AGE_KEY="$( ssh-to-age -private-key < $XDG_STATE_HOME/ssh-keys.d/github_signing )"
+          set +a
+        fi
+    options: {}
+  env:
+    name: keyhole
+    version: 1
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - asciidoc.yaml
+  - git.yaml
+  - gmake.yaml
+  - home.yaml
+  - k8s.yaml
+  - keyhole.yaml
+  - lima.yaml
+  - nix.yaml
+  - xdg.yaml
+---
+apiVersion: flox.dev/v1alpha1
+kind: FloxEnvironment
+metadata:
+  name: lima
+spec:
+  manifest:
+    version: 1
+    install:
+      lima:
+        pkg-path: lima
+      vmnet:
+        pkg-path: darwin.apple_sdk.frameworks.vmnet
+    options:
+      systems:
+        - aarch64-darwin
+        - x86_64-darwin
+  env:
+    name: lima
+    version: 1
+---
+apiVersion: flox.dev/v1alpha1
+kind: FloxEnvironment
+metadata:
+  name: manifest-tools
+spec:
+  manifest:
+    version: 1
+    install:
+      dasel:
+        pkg-path: dasel
+        version: ^2.8.1
+        pkg-group: yaml-tools
+      yq-go:
+        pkg-path: yq-go
+        pkg-group: yaml-tools
+    options:
+      systems:
+        - aarch64-darwin
+        - aarch64-linux
+  env:
+    name: manifest-tools
+    version: 1
+---
+apiVersion: flox.dev/v1alpha1
+kind: FloxEnvironment
+metadata:
+  name: maven
+spec:
+  manifest:
+    version: 1
+    install:
+      maven:
+        pkg-path: maven
+      jre-headless:
+        pkg-path: jre_headless
+    profile:
+      common: |
+        mvnw_path="${FLOX_ENV_PROJECT}/mvnw"
+        if [ -x "${mvnw_path}" ]; then
+          maven_user_config="${FLOX_ENV_PROJECT}/.m2"
+          mkdir -p "${maven_user_config}"
+          export MAVEN_USER_CONFIG="${maven_user_config}"
+          export MAVEN_SETTINGS="${MAVEN_USER_CONFIG}/settings.xml"
+
+          if [ -n "${MAVEN_ARGS:-}" ]; then
+            case " ${MAVEN_ARGS} " in
+              *"--settings="*) ;;
+              *) export MAVEN_ARGS="${MAVEN_ARGS} --settings=${MAVEN_SETTINGS}" ;;
+            esac
+          else
+            export MAVEN_ARGS="--settings=${MAVEN_SETTINGS}"
+          fi
+
+          if [ -d "${FLOX_ENV_PROJECT}/.mvnrepository" ]; then
+            export MAVEN_LOCAL_REPOSITORY="${FLOX_ENV_PROJECT}/.mvnrepository"
+          elif [ -d "${FLOX_ENV_PROJECT}/.m2/repo" ]; then
+            export MAVEN_LOCAL_REPOSITORY="${FLOX_ENV_PROJECT}/.m2/repo"
+          fi
+
+          maven_version_output=$("${mvnw_path}" -N -q -DmavenVersion=3.9.9 \
+            -Dexpression=maven.version -Doutput=/dev/stdout help:evaluate 2>/dev/null | grep -v '^[[]' | tail -n 1)
+          if [ -n "${maven_version_output}" ]; then
+            export MAVEN_VERSION="${maven_version_output}"
+          fi
+        fi
+    options:
+      systems:
+        - aarch64-darwin
+        - aarch64-linux
+  env:
+    name: maven
+    version: 1
+---
+apiVersion: flox.dev/v1alpha1
+kind: FloxEnvironment
+metadata:
+  name: net-tools
+spec:
+  manifest:
+    version: 1
+    install:
+      dhcp:
+        pkg-path: dhcp
+        systems:
+          - aarch64-linux
+      ethtool:
+        pkg-path: ethtool
+        systems:
+          - aarch64-linux
+      ipcalc:
+        pkg-path: ipcalc
+        version: '^1.0.3'
+      iptstate:
+        pkg-path: iptstate
+        systems:
+          - aarch64-linux
+      netplan:
+        pkg-path: netplan
+        systems:
+          - aarch64-linux
+      nmap:
+        pkg-path: nmap
+      tshark:
+        pkg-path: tshark
+    include:
+      environments:
+        - dir: /var/lib/git/seedmatic/fleet/flox/keyhole # kpt-set: ${fleet-base-dir}/keyhole
+    options:
+      systems:
+        - aarch64-darwin
+        - aarch64-linux
+  env:
+    name: net-tools
+    version: 1
+---
+apiVersion: flox.dev/v1alpha1
+kind: FloxEnvironment
+metadata:
+  name: nix
+spec:
+  manifest:
+    version: 1
+    install:
+      nixd:
+        pkg-path: nixd
+      nix-tree:
+        pkg-path: nix-tree
+      nixfmt-rfc-style:
+        pkg-path: nixfmt-rfc-style
+      statix:
+        pkg-path: statix
+      deadnix:
+        pkg-path: deadnix
+      nix-output-monitor:
+        pkg-path: nix-output-monitor
+      nix-eval-jobs:
+        pkg-path: nix-eval-jobs
+      cachix:
+        pkg-path: cachix
+      watchexec:
+        pkg-path: watchexec
+      nvfetcher:
+        pkg-path: nvfetcher
+      nix-fast-build:
+        pkg-path: nix-fast-build
+    profile:
+    include:
+      environments:
+        - dir: /var/lib/git/seedmatic/fleet/flox/keyhole # kpt-set: ${fleet-base-dir}/keyhole
+    options: {}
+  env:
+    name: nix
+    version: 1
+---
+apiVersion: fn.kpt.dev/v1alpha1
+kind: ApplySetters
+metadata:
+  name: fleet-base-dir
+data:
+  fleet-base-dir: /var/lib/git/seedmatic/fleet/flox
+---
+apiVersion: flox.dev/v1alpha1
+kind: FloxEnvironment
+metadata:
+  name: xdg
+spec:
+  manifest:
+    version: 1
+    install:
+      xdg-user-dirs:
+        pkg-path: xdg-user-dirs
+      xdg-utils:
+        pkg-path: xdg-utils
+      xdg-ninja:
+        pkg-path: xdg-ninja
+    profile:
+      common: |
+        set -a
+
+        XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-$HOME/.config}
+        XDG_CACHE_HOME=${XDG_CACHE_HOME:-$HOME/.cache}
+        XDG_DATA_HOME=${XDG_DATA_HOME:-$HOME/.local/share}
+        XDG_STATE_HOME=${XDG_STATE_HOME:-$HOME/.local/state}
+        XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-$HOME/.xdg}
+
+        set +a
+    options: {}
+  env:
+    name: xdg
+    version: 1

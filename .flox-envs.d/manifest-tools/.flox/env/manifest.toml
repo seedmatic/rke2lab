@@ -1,0 +1,16 @@
+schema-version = "1.14.0"
+
+[install]
+  [install.dasel]
+    pkg-group = "manifest-tools-yaml-tools"
+    pkg-path = "dasel"
+    version = "^2.8.1"
+outputs = "all"
+
+  [install.yq-go]
+    pkg-group = "manifest-tools-yaml-tools"
+    pkg-path = "yq-go"
+outputs = "all"
+
+[options]
+  systems = ['aarch64-darwin', 'aarch64-linux']
