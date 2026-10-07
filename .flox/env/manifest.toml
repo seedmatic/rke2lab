@@ -151,11 +151,17 @@ on-activate = """
     { dir = "./.flox-envs.d/jdk" },
     { dir = "./.flox-envs.d/k8s" },
     { dir = "./.flox-envs.d/keyhole" },
-    ## `nix` carries the flake-input registry indirection — the hook that puts this repo's
-    ## `flake-registry.json`, or the gitignored `flake-registry.local.json` when one is present,
-    ## into nix's GLOBAL registry slot. It is what makes `url = "ndh"` resolvable and re-aimable
-    ## by a LOCAL edit. It replaces the copy this seat's own [hook] used to carry.
-    { dir = "./.flox-envs.d/nix" },
+    ## `flake-registry` carries the flake-input registry indirection — one hook, no packages —
+    ## that puts this repo's `flake-registry.json`, or the gitignored `flake-registry.local.json`
+    ## when one is present, into nix's GLOBAL registry slot. It is what makes `url = "ndh"`
+    ## resolvable and re-aimable by a LOCAL edit. It replaces the copy this seat's own [hook]
+    ## used to carry.
+    ##
+    ## ⓘ Not `nix`, which also offers it: this seat did not include `nix` before the registry
+    ## chantier, so it takes the registry alone rather than inheriting a nix toolchain through a
+    ## registry change. If the toolchain is wanted here, that is its own include, decided for
+    ## its own sake.
+    { dir = "./.flox-envs.d/flake-registry" },
     { dir = "./.flox-envs.d/pulumi" },
     { dir = "./.flox-envs.d/shell" },
   ]
