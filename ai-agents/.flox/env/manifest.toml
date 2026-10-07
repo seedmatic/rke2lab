@@ -26,20 +26,6 @@ claude-agent-acp.pkg-path = "claude-agent-acp"
 ##  ... run by _bash_ shell when you run 'flox activate'.
 ## -------------------------------------------------------------------
 [hook]
-  on-activate = '''
-    AI_SECRETS_FILE="${FLOX_ENV_PROJECT}/.flox/env/.secrets"
-    CLAUDE_JSON_FILE="${HOME}/.claude.json"
-    : "Ensure claude json file existing"
-    [[ -f "${CLAUDE_JSON_FILE}" ]] || 
-      yq --null-input --output-format=json '{}' > "${CLAUDE_JSON_FILE}"
-    : "Merge secrets inside"
-    yq -i -p=json -o=json -I=2 eval-all \
-      '. as $item ireduce ({}; . * $item )' \
-      "${CLAUDE_JSON_FILE}" <( 
-        yq -p=yaml -o=json '.claude-code' "${AI_SECRETS_FILE}"
-      )
-  '''  
-
 # on-activate = '''
 #   # -> Set variables, create files and directories
 #   # -> Perform initialization steps, e.g. create a python venv
