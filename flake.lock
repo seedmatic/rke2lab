@@ -983,11 +983,11 @@
         "treefmt-nix": "treefmt-nix_2"
       },
       "locked": {
-        "lastModified": 1791397119,
-        "narHash": "sha256-7bKY4r4S8JlkXz+AdaKlRGxQg61sJVfkVoW9sP8bEZQ=",
+        "lastModified": 1791405026,
+        "narHash": "sha256-1QuMcLOmCD+MlEbfR+CHYpEfq6oPYvSYv1Q/GIOB9Gw=",
         "owner": "seedmatic",
         "repo": "ndh",
-        "rev": "45d89089135b0ba739a6a411720d1bd30753ec86",
+        "rev": "f7f459b5403cff2e692766d84179b30643122eb3",
         "type": "github"
       },
       "original": {
@@ -1431,11 +1431,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1791392709,
-        "narHash": "sha256-fQMu3OxlU9apmmYOp5g/UxTOe4SVZKHZnLCs93fZNYQ=",
+        "lastModified": 1791397681,
+        "narHash": "sha256-pLlc19wwZhpzncKi4BZIslARYILR2adA2+x++6gQQCI=",
         "owner": "seedmatic",
         "repo": "nnh",
-        "rev": "ca7917558989a91943e69ef3868e63c889151594",
+        "rev": "dfb46cf3fe6e3813414dc769176a432f5ef3dfde",
         "type": "github"
       },
       "original": {
