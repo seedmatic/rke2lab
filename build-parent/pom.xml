@@ -1044,7 +1044,6 @@
           <formats>
             <format>
               <includes>
-                <include>AGENTS.md</include>
                 <include>README.adoc</include>
                 <include>docs/**/*.adoc</include>
                 <include>docs/**/*.md</include>
