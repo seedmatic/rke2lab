@@ -103,9 +103,9 @@ on-activate = """
   if command -v javac >/dev/null 2>&1; then
     export JAVA_HOME="$(dirname "$(dirname "$(command -v javac)")")"
   fi
-  if command -v gh >/dev/null 2>&1 && [ -z "${GH_TOKEN:-}" ]; then
-    export GH_TOKEN="$(gh auth token 2>/dev/null)"
-  fi
+  # No GH_TOKEN export here, on purpose: a copy taken at activation goes stale at the next
+  # `gh auth refresh`, and every process launched from this shell (VS Code, agent sessions)
+  # inherits it and shadows the fresh keyring token. gh reads the keyring itself when unset.
   export KUBECONFIG="${FLOX_ENV_PROJECT}/.local.d/kubeconfig.yaml"
 """
 
