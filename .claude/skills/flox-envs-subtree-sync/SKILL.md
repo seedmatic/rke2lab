@@ -72,8 +72,9 @@ after every pull here, and before every republication in fleet.
 
 ## Republish the branch (only after editing envs in fleet)
 
-**First re-lock in fleet's own seat**, where the envs were edited, so a manifest that no longer locks is caught
-before it leaves. Then publish what has **landed** on `develop` — never what a checkout happens to hold. Split the
+**First re-lock in fleet**, where the envs were edited, so a manifest that no longer locks is caught before it leaves.
+fleet has no seat of its own: run `flox upgrade --dir flox/<env>` for each env you changed, **without activating** —
+its locks are gitignored, so nothing is committed; the point is the proof that they lock. Then publish what has **landed** on `develop` — never what a checkout happens to hold. Split the
 remote trunk, not `HEAD`, so a worktree carrying unmerged commits cannot publish unreviewed work:
 
 ```bash
