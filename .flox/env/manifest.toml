@@ -70,21 +70,27 @@ schema-version = "1.14.0"
 ## ... environments to create a composed environment
 ## ------------------------------------------------------------------
 [include]
-## This seat INCLUDES fleet's shared envs. `nix` carries the flake-input registry indirection:
-## its hook puts this repo's `flake-registry.json` — or the gitignored
+## This seat INCLUDES fleet's `flake-registry` env, and nothing else from fleet. That env carries
+## one hook and no packages: it puts this repo's `flake-registry.json` — or the gitignored
 ## `flake-registry.local.json` when one is present — into nix's GLOBAL registry slot. That is
 ## what lets a seedmatic input be declared as an INDIRECT id (`url = "ndh"`) and re-aimed by a
 ## LOCAL edit, instead of a branch named in flake.nix that can only be changed by pushing.
 ##
+## ⓘ It is `flake-registry` and not `nix` on purpose. The hook first lived in `nix`, and
+## including that env for the registry dragged eleven nix tools across two systems into a seat
+## that never asked for them. A seat that included `nix` BEFORE the registry chantier wanted the
+## toolchain and keeps it; this one gained it only for the registry, so it takes the registry
+## alone.
+##
 ## ⓘ The hook does nothing when the repo has no registry file, so including it is harmless
-## before this repo migrates its own inputs. That property is why it can be wired everywhere now.
+## before this repo migrates its own inputs.
 ##
 ## `.flox-envs.d/` is fleet's env tree vendored in as a git subtree, so these paths stay INSIDE
 ## the worktree — reaching outside it would make where this checkout lives a precondition of
 ## activating it. Never edit it here: edits go to fleet and come back through the
 ## `flox-envs-subtree-sync` procedure, which also covers the mandatory re-lock after a pull.
 environments = [
-    { dir = "./.flox-envs.d/nix" },
+    { dir = "./.flox-envs.d/flake-registry" },
 ]
 
 
