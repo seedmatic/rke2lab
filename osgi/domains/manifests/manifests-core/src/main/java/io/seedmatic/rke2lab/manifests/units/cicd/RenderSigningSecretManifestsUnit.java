@@ -73,9 +73,7 @@ public final class RenderSigningSecretManifestsUnit extends AbstractManifestsUni
                     ApiObjectMetadata.builder()
                         .name(SECRET_NAME)
                         .namespace(NAMESPACE)
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "|Secret|" + NAMESPACE + "|" + SECRET_NAME))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
 

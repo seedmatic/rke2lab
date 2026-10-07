@@ -75,8 +75,7 @@ public final class GithubAppSecretManifestsUnit extends AbstractManifestsUnit {
                     ApiObjectMetadata.builder()
                         .name("githubapp")
                         .namespace("flux-system")
-                        .annotations(
-                            packageProfile.packageAnnotations("|Secret|flux-system|githubapp"))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
 

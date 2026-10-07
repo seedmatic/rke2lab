@@ -241,7 +241,6 @@ public final class RuntimeRke2ConfigManifestsUnit extends AbstractManifestsUnit 
                         .namespace(namespace)
                         .annotations(
                             profile.packageAnnotations(
-                                "|ConfigMap|" + namespace + "|" + name,
                                 Map.of(ManifestAnnotation.RKE2_CONFIG.key(), "true")))
                         .build())
                 .build());

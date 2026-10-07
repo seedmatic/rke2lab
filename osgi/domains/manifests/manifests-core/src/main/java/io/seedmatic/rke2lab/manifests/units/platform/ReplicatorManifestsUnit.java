@@ -129,7 +129,7 @@ public final class ReplicatorManifestsUnit extends AbstractManifestsUnit {
                 .metadata(
                     ApiObjectMetadata.builder()
                         .name("kubernetes-replicator")
-                        .annotations(packageProfile.packageAnnotationsWithoutUpstream())
+                        .annotations(packageProfile.packageAnnotations())
                         .labels(commonLabels(replicatorVersion))
                         .build())
                 .build());
@@ -176,7 +176,7 @@ public final class ReplicatorManifestsUnit extends AbstractManifestsUnit {
                     ApiObjectMetadata.builder()
                         .name("kubernetes-replicator")
                         .namespace("kube-system")
-                        .annotations(packageProfile.packageAnnotationsWithoutUpstream())
+                        .annotations(packageProfile.packageAnnotations())
                         .labels(commonLabels(replicatorVersion))
                         .build())
                 .build());
@@ -200,7 +200,7 @@ public final class ReplicatorManifestsUnit extends AbstractManifestsUnit {
                 .metadata(
                     ApiObjectMetadata.builder()
                         .name("kubernetes-replicator")
-                        .annotations(packageProfile.packageAnnotationsWithoutUpstream())
+                        .annotations(packageProfile.packageAnnotations())
                         .labels(commonLabels(replicatorVersion))
                         .build())
                 .build());
@@ -244,7 +244,7 @@ public final class ReplicatorManifestsUnit extends AbstractManifestsUnit {
                     ApiObjectMetadata.builder()
                         .name("kubernetes-replicator")
                         .namespace("kube-system")
-                        .annotations(packageProfile.packageAnnotationsWithoutUpstream())
+                        .annotations(packageProfile.packageAnnotations())
                         .labels(commonLabels(replicatorVersion))
                         .build())
                 .build());
@@ -272,7 +272,7 @@ public final class ReplicatorManifestsUnit extends AbstractManifestsUnit {
                     "metadata",
                     Map.of(
                         "annotations",
-                        packageProfile.packageAnnotationsWithoutUpstream(),
+                        packageProfile.packageAnnotations(),
                         "labels",
                         Map.of(
                             "app.kubernetes.io/instance",

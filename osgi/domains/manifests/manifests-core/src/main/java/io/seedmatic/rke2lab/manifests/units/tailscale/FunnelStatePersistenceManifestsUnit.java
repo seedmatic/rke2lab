@@ -96,7 +96,6 @@ public final class FunnelStatePersistenceManifestsUnit extends AbstractManifests
                         .name(funnel.proxyClass())
                         .annotations(
                             packageProfile.packageAnnotations(
-                                "",
                                 Map.of(
                                     ManifestAnnotation.MANIFEST_LAYER.key(),
                                     ManifestLayer.OPERATORS.value())))
@@ -133,7 +132,6 @@ public final class FunnelStatePersistenceManifestsUnit extends AbstractManifests
                     .namespace(NAMESPACE)
                     .annotations(
                         packageProfile.packageAnnotations(
-                            "",
                             Map.of(
                                 ManifestAnnotation.MANIFEST_LAYER.key(),
                                 ManifestLayer.OPERATORS.value())))
@@ -161,7 +159,6 @@ public final class FunnelStatePersistenceManifestsUnit extends AbstractManifests
                         .namespace(NAMESPACE)
                         .annotations(
                             packageProfile.packageAnnotations(
-                                "",
                                 Map.of(
                                     ManifestAnnotation.MANIFEST_LAYER.key(),
                                     ManifestLayer.OPERATORS.value())))
@@ -192,7 +189,6 @@ public final class FunnelStatePersistenceManifestsUnit extends AbstractManifests
                         .namespace(NAMESPACE)
                         .annotations(
                             packageProfile.packageAnnotations(
-                                "",
                                 Map.of(
                                     ManifestAnnotation.MANIFEST_LAYER.key(),
                                     ManifestLayer.OPERATORS.value())))
@@ -272,7 +268,6 @@ public final class FunnelStatePersistenceManifestsUnit extends AbstractManifests
                         .namespace(NAMESPACE)
                         .annotations(
                             packageProfile.packageAnnotations(
-                                "",
                                 Map.of(
                                     ManifestAnnotation.MANIFEST_LAYER.key(),
                                     ManifestLayer.WORKLOADS.value())))

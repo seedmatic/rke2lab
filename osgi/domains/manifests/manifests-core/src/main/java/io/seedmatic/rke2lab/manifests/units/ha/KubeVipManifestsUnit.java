@@ -60,9 +60,7 @@ public final class KubeVipManifestsUnit extends AbstractManifestsUnit {
                 .metadata(
                     ApiObjectMetadata.builder()
                         .name("kube-vip")
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "|Namespace|default|${kube-vip-namespace}"))
+                        .annotations(packageProfile.packageAnnotations())
                         .labels(Map.of("name", "kube-vip"))
                         .build())
                 .build());
@@ -81,9 +79,7 @@ public final class KubeVipManifestsUnit extends AbstractManifestsUnit {
                     ApiObjectMetadata.builder()
                         .name("kube-vip")
                         .namespace("kube-vip")
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "|ServiceAccount|${kube-vip-namespace}|kube-vip"))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
     serviceAccount.addDependency(namespace);
@@ -103,7 +99,7 @@ public final class KubeVipManifestsUnit extends AbstractManifestsUnit {
                         .name("system:kube-vip-role")
                         .annotations(
                             packageProfile.packageAnnotations(
-                                "", Map.of("rbac.authorization.kubernetes.io/autoupdate", "true")))
+                                Map.of("rbac.authorization.kubernetes.io/autoupdate", "true")))
                         .build())
                 .build());
 
@@ -141,9 +137,7 @@ public final class KubeVipManifestsUnit extends AbstractManifestsUnit {
                 .metadata(
                     ApiObjectMetadata.builder()
                         .name("system:kube-vip-binding")
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "rbac.authorization.k8s.io|ClusterRoleBinding|default|system:kube-vip-binding"))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
     clusterRoleBinding.addDependency(clusterRole);
@@ -185,9 +179,7 @@ public final class KubeVipManifestsUnit extends AbstractManifestsUnit {
                         .name("kube-vip-ds")
                         .namespace("kube-vip")
                         .labels(Map.of("app", "kube-vip"))
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "apps|DaemonSet|${kube-vip-namespace}|kube-vip-ds"))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
 
@@ -206,7 +198,7 @@ public final class KubeVipManifestsUnit extends AbstractManifestsUnit {
                     "metadata",
                     Map.of(
                         "annotations",
-                        packageProfile.packageAnnotationsWithoutUpstream(),
+                        packageProfile.packageAnnotations(),
                         "labels",
                         Map.of("app", "kube-vip", "name", "kube-vip-ds")),
                     "spec",
@@ -301,9 +293,7 @@ public final class KubeVipManifestsUnit extends AbstractManifestsUnit {
                         .name("control-plane-nodeport")
                         .namespace("kube-system")
                         .labels(Map.of("backup-service", "true"))
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "|Service|kube-system|control-plane-nodeport"))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
 

@@ -82,7 +82,7 @@ public final class KdnsManifestsUnit extends AbstractManifestsUnit {
                 .metadata(
                     ApiObjectMetadata.builder()
                         .name("kdns-ingress-reader")
-                        .annotations(packageProfile.packageAnnotationsWithoutUpstream())
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
 
@@ -122,7 +122,7 @@ public final class KdnsManifestsUnit extends AbstractManifestsUnit {
                     ApiObjectMetadata.builder()
                         .name("kdns")
                         .namespace(KDNS_NAMESPACE)
-                        .annotations(packageProfile.packageAnnotationsWithoutUpstream())
+                        .annotations(packageProfile.packageAnnotations())
                         .labels(
                             Map.of(
                                 "app.kubernetes.io/instance",
@@ -153,7 +153,7 @@ public final class KdnsManifestsUnit extends AbstractManifestsUnit {
                     ApiObjectMetadata.builder()
                         .name("kdns-ingress-reader-binding")
                         .namespace(KDNS_NAMESPACE)
-                        .annotations(packageProfile.packageAnnotationsWithoutUpstream())
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
 
@@ -189,9 +189,7 @@ public final class KdnsManifestsUnit extends AbstractManifestsUnit {
                     ApiObjectMetadata.builder()
                         .name("kdns-dlv-script")
                         .namespace(KDNS_NAMESPACE)
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "|ConfigMap|${target-namespace}|kdns-dlv-script"))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
 
@@ -216,9 +214,7 @@ public final class KdnsManifestsUnit extends AbstractManifestsUnit {
                     ApiObjectMetadata.builder()
                         .name("kdns")
                         .namespace(KDNS_NAMESPACE)
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "apps|Deployment|${target-namespace}|kdns"))
+                        .annotations(packageProfile.packageAnnotations())
                         .labels(
                             Map.of(
                                 "app.kubernetes.io/instance",

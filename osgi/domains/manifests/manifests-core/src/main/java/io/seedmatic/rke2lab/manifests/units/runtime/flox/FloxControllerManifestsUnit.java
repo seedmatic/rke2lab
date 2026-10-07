@@ -146,7 +146,6 @@ public final class FloxControllerManifestsUnit extends AbstractManifestsUnit {
                         .labels(Map.of("app.kubernetes.io/replicated", "true"))
                         .annotations(
                             packageProfile.packageAnnotations(
-                                "|Secret|" + namespace + "|" + secretName,
                                 Map.of(
                                     "replicator.v1.mittwald.de/replicate-from",
                                     ClusterRefs.SECRETS_NAMESPACE + "/" + secretName)))
@@ -172,9 +171,7 @@ public final class FloxControllerManifestsUnit extends AbstractManifestsUnit {
                     ApiObjectMetadata.builder()
                         .name(NAME)
                         .namespace(namespace)
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "|ServiceAccount|" + namespace + "|" + NAME))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
     serviceAccount.addDependency(resolver.require(ClusterRefs.RUNTIME_SYSTEM_NAMESPACE));
@@ -192,9 +189,7 @@ public final class FloxControllerManifestsUnit extends AbstractManifestsUnit {
                 .metadata(
                     ApiObjectMetadata.builder()
                         .name(NAME)
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "rbac.authorization.k8s.io|ClusterRoleBinding||" + NAME))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
     binding.addJsonPatch(
@@ -350,9 +345,7 @@ public final class FloxControllerManifestsUnit extends AbstractManifestsUnit {
                     ApiObjectMetadata.builder()
                         .name(NAME)
                         .namespace(namespace)
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "apps|DaemonSet|" + namespace + "|" + NAME))
+                        .annotations(packageProfile.packageAnnotations())
                         .labels(podLabels)
                         .build())
                 .build());

@@ -105,7 +105,6 @@ public final class ClusterKubeconfigManifestsUnit extends AbstractManifestsUnit 
                     .name(namespace)
                     .annotations(
                         packageProfile.packageAnnotations(
-                            "|Namespace||" + namespace,
                             Map.of(ManifestAnnotation.NODE_BOOTSTRAP.key(), "true")))
                     .build())
             .build());
@@ -143,7 +142,6 @@ public final class ClusterKubeconfigManifestsUnit extends AbstractManifestsUnit 
                         .namespace(namespace)
                         .annotations(
                             packageProfile.packageAnnotations(
-                                "|Secret|" + namespace + "|" + name,
                                 Map.of(ManifestAnnotation.LOCAL_CONFIG.key(), "true")))
                         .build())
                 .build());
@@ -184,7 +182,6 @@ public final class ClusterKubeconfigManifestsUnit extends AbstractManifestsUnit 
                         .labels(Map.of("cluster.x-k8s.io/cluster-name", clusterName))
                         .annotations(
                             packageProfile.packageAnnotations(
-                                "|Secret|" + namespace + "|" + name,
                                 Map.of(ManifestAnnotation.NODE_BOOTSTRAP.key(), "true")))
                         .build())
                 .build());

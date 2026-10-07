@@ -59,7 +59,7 @@ public final class TektonPipelinesManifestsUnit extends AbstractManifestsUnit {
             .metadata(
                 ApiObjectMetadata.builder()
                     .name("tekton-pipelines")
-                    .annotations(packageProfile.packageAnnotations("|Namespace||tekton-pipelines"))
+                    .annotations(packageProfile.packageAnnotations())
                     .build())
             .build());
   }
@@ -75,9 +75,7 @@ public final class TektonPipelinesManifestsUnit extends AbstractManifestsUnit {
                 .metadata(
                     ApiObjectMetadata.builder()
                         .name("config")
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "operator.tekton.dev|TektonConfig|default|config"))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
 

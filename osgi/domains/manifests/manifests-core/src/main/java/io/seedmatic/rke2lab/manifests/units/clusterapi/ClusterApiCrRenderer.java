@@ -50,7 +50,7 @@ public final class ClusterApiCrRenderer {
             .metadata(
                 ApiObjectMetadata.builder()
                     .name(namespace)
-                    .annotations(profile.packageAnnotations("|Namespace||" + namespace))
+                    .annotations(profile.packageAnnotations())
                     .build())
             .build());
   }
@@ -101,9 +101,7 @@ public final class ClusterApiCrRenderer {
                         .name(name)
                         .namespace(namespace)
                         .labels(Map.of("cluster.x-k8s.io/cluster-name", cluster))
-                        .annotations(
-                            profile.packageAnnotations(
-                                "|Secret|" + namespace + "|" + name, Map.of()))
+                        .annotations(profile.packageAnnotations(Map.of()))
                         .build())
                 .build());
     secret.addDependency(branchNamespace);
@@ -152,9 +150,7 @@ public final class ClusterApiCrRenderer {
                         .name(name)
                         .namespace(namespace)
                         .labels(Map.of("cluster.x-k8s.io/cluster-name", cluster))
-                        .annotations(
-                            profile.packageAnnotations(
-                                "|Secret|" + namespace + "|" + name, Map.of()))
+                        .annotations(profile.packageAnnotations(Map.of()))
                         .build())
                 .build());
     secret.addDependency(branchNamespace);
@@ -245,9 +241,7 @@ public final class ClusterApiCrRenderer {
                     ApiObjectMetadata.builder()
                         .name(identitySecret)
                         .namespace(namespace)
-                        .annotations(
-                            profile.packageAnnotations(
-                                "|Secret|" + namespace + "|" + identitySecret, Map.of()))
+                        .annotations(profile.packageAnnotations(Map.of()))
                         .build())
                 .build());
     secret.addDependency(branchNamespace);
@@ -330,12 +324,7 @@ public final class ClusterApiCrRenderer {
                     ApiObjectMetadata.builder()
                         .name(cluster)
                         .namespace(namespace)
-                        .annotations(
-                            profile.packageAnnotations(
-                                "cluster.seedmatic.io|ClusterIntention|"
-                                    + namespace
-                                    + "|"
-                                    + cluster))
+                        .annotations(profile.packageAnnotations())
                         .build())
                 .build());
     intention.addDependency(branchNamespace);
@@ -403,9 +392,7 @@ public final class ClusterApiCrRenderer {
                     ApiObjectMetadata.builder()
                         .name(name)
                         .namespace(namespace)
-                        .annotations(
-                            profile.packageAnnotations(
-                                "cluster.seedmatic.io|NodeImage|" + namespace + "|" + name))
+                        .annotations(profile.packageAnnotations())
                         .build())
                 .build());
     nodeImage.addDependency(branchNamespace);
@@ -474,9 +461,7 @@ public final class ClusterApiCrRenderer {
                     ApiObjectMetadata.builder()
                         .name(poolName)
                         .namespace(namespace)
-                        .annotations(
-                            profile.packageAnnotations(
-                                "cluster.seedmatic.io|PoolIntention|" + namespace + "|" + poolName))
+                        .annotations(profile.packageAnnotations())
                         .build())
                 .build());
     poolIntention.addDependency(clusterIntention);

@@ -89,10 +89,7 @@ public final class FloxCatalogManifestsUnit extends AbstractManifestsUnit {
                     ApiObjectMetadata.builder()
                         .name(GIT_REPOSITORY_NAME)
                         .namespace("flux-system")
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "source.toolkit.fluxcd.io|GitRepository|flux-system|"
-                                    + GIT_REPOSITORY_NAME))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
     gitRepo.addJsonPatch(
@@ -132,12 +129,7 @@ public final class FloxCatalogManifestsUnit extends AbstractManifestsUnit {
                     ApiObjectMetadata.builder()
                         .name(FLOX_CATALOG_NAME)
                         .namespace(namespace)
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "flox.seedmatic.io|FloxCatalog|"
-                                    + namespace
-                                    + "|"
-                                    + FLOX_CATALOG_NAME))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
     floxCatalog.addDependency(resolver.require(ClusterRefs.RUNTIME_SYSTEM_NAMESPACE));

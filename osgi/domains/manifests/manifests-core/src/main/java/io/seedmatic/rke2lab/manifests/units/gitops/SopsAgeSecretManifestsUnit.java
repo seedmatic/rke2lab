@@ -88,7 +88,6 @@ public final class SopsAgeSecretManifestsUnit extends AbstractManifestsUnit {
                         // of how sops-age itself reaches flux-system (the Stage-A bootstrap path).
                         .annotations(
                             packageProfile.packageAnnotations(
-                                "|Secret|flux-system|" + SECRET_NAME,
                                 Map.of(
                                     "replicator.v1.mittwald.de/replication-allowed",
                                     "true",
@@ -124,10 +123,6 @@ public final class SopsAgeSecretManifestsUnit extends AbstractManifestsUnit {
                         .labels(Map.of("app.kubernetes.io/replicated", "true"))
                         .annotations(
                             packageProfile.packageAnnotations(
-                                "|Secret|"
-                                    + ClusterRefs.RUNTIME_SYSTEM_NAMESPACE.name()
-                                    + "|"
-                                    + SECRET_NAME,
                                 Map.of(
                                     "replicator.v1.mittwald.de/replicate-from",
                                     "flux-system/" + SECRET_NAME)))

@@ -85,9 +85,7 @@ public final class ClusterIssuerManifestsUnit extends AbstractManifestsUnit {
                 .metadata(
                     ApiObjectMetadata.builder()
                         .name(ISSUER_NAME)
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "cert-manager.io|ClusterIssuer||" + ISSUER_NAME))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
     issuer.addJsonPatch(JsonPatch.add("/spec", Map.of("ca", Map.of("secretName", CA_SECRET_NAME))));
@@ -110,7 +108,6 @@ public final class ClusterIssuerManifestsUnit extends AbstractManifestsUnit {
                         .namespace(CA_SECRET_NAMESPACE)
                         .annotations(
                             packageProfile.packageAnnotations(
-                                "|Secret|" + CA_SECRET_NAMESPACE + "|" + CA_SECRET_NAME,
                                 Map.of(ManifestAnnotation.NODE_BOOTSTRAP.key(), "true")))
                         .build())
                 .build());

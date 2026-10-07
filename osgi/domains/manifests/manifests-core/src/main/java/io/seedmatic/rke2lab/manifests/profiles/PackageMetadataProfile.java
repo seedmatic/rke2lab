@@ -56,17 +56,12 @@ public final class PackageMetadataProfile {
     return Map.copyOf(annotations);
   }
 
-  public Map<String, String> packageAnnotations(final String upstreamIdentifier) {
+  public Map<String, String> packageAnnotations() {
     return stamp(Map.of());
   }
 
-  public Map<String, String> packageAnnotations(
-      final String upstreamIdentifier, final Map<String, String> extraAnnotations) {
+  public Map<String, String> packageAnnotations(final Map<String, String> extraAnnotations) {
     return stamp(extraAnnotations);
-  }
-
-  public Map<String, String> packageAnnotationsWithoutUpstream() {
-    return stamp(Map.of());
   }
 
   public Map<String, String> templateAnnotations(final Map<String, String> extraAnnotations) {

@@ -90,7 +90,7 @@ public final class OpenebsZfsManifestsUnit extends AbstractManifestsUnit {
             .metadata(
                 ApiObjectMetadata.builder()
                     .name("openebs")
-                    .annotations(packageProfile.packageAnnotationsWithoutUpstream())
+                    .annotations(packageProfile.packageAnnotations())
                     .build())
             .build());
   }
@@ -145,7 +145,7 @@ public final class OpenebsZfsManifestsUnit extends AbstractManifestsUnit {
                     ApiObjectMetadata.builder()
                         .name("openebs-zfs")
                         .namespace("openebs")
-                        .annotations(packageProfile.packageAnnotationsWithoutUpstream())
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
 

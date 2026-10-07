@@ -49,9 +49,7 @@ public final class CiliumConfigManifestsUnit extends AbstractManifestsUnit {
                 ApiObjectMetadata.builder()
                     .name("clustermesh-remote-users")
                     .namespace("kube-system")
-                    .annotations(
-                        packageProfile.packageAnnotations(
-                            "|ConfigMap|kube-system|clustermesh-remote-users"))
+                    .annotations(packageProfile.packageAnnotations())
                     .build())
             .build());
   }
@@ -79,9 +77,7 @@ public final class CiliumConfigManifestsUnit extends AbstractManifestsUnit {
                     ApiObjectMetadata.builder()
                         .name("rke2-cilium")
                         .namespace("kube-system")
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "helm.cattle.io|HelmChartConfig|kube-system|rke2-cilium"))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
 

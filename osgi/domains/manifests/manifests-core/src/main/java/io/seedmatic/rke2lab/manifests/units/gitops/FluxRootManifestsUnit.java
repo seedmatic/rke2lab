@@ -82,10 +82,7 @@ public final class FluxRootManifestsUnit extends AbstractManifestsUnit {
                     ApiObjectMetadata.builder()
                         .name(GIT_REPOSITORY_NAME)
                         .namespace("flux-system")
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "source.toolkit.fluxcd.io|GitRepository|flux-system|"
-                                    + GIT_REPOSITORY_NAME))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
 
@@ -143,9 +140,7 @@ public final class FluxRootManifestsUnit extends AbstractManifestsUnit {
                     ApiObjectMetadata.builder()
                         .name(name)
                         .namespace("flux-system")
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "kustomize.toolkit.fluxcd.io|Kustomization|flux-system|" + name))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
 

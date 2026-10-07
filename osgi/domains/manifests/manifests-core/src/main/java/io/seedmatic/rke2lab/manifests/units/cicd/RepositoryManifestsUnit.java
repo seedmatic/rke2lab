@@ -72,12 +72,7 @@ public final class RepositoryManifestsUnit extends AbstractManifestsUnit {
                     ApiObjectMetadata.builder()
                         .name(REPOSITORY_NAME)
                         .namespace(NAMESPACE)
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "pipelinesascode.tekton.dev|Repository|"
-                                    + NAMESPACE
-                                    + "|"
-                                    + REPOSITORY_NAME))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
 

@@ -40,9 +40,7 @@ public final class TailscaleSystemNamespaceManifestsUnit extends AbstractManifes
             .metadata(
                 ApiObjectMetadata.builder()
                     .name(TailscaleRefs.SYSTEM_NAMESPACE.name())
-                    .annotations(
-                        packageProfile.packageAnnotations(
-                            "|Namespace|default|" + TailscaleRefs.SYSTEM_NAMESPACE.name()))
+                    .annotations(packageProfile.packageAnnotations())
                     .build())
             .build());
   }

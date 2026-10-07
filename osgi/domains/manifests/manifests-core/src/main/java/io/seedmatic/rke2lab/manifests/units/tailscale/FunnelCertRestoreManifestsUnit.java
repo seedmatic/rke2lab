@@ -138,7 +138,6 @@ public final class FunnelCertRestoreManifestsUnit extends AbstractManifestsUnit 
                         .namespace(NAMESPACE)
                         .annotations(
                             packageProfile.packageAnnotations(
-                                "",
                                 Map.of(
                                     ManifestAnnotation.MANIFEST_LAYER.key(),
                                     ManifestLayer.OPERATORS.value())))
@@ -180,7 +179,6 @@ public final class FunnelCertRestoreManifestsUnit extends AbstractManifestsUnit 
                         .namespace(NAMESPACE)
                         .annotations(
                             packageProfile.packageAnnotations(
-                                "",
                                 Map.of(
                                     ManifestAnnotation.MANIFEST_LAYER.key(),
                                     ManifestLayer.OPERATORS.value())))
@@ -213,7 +211,6 @@ public final class FunnelCertRestoreManifestsUnit extends AbstractManifestsUnit 
                     .namespace(NAMESPACE)
                     .annotations(
                         packageProfile.packageAnnotations(
-                            "",
                             Map.of(
                                 ManifestAnnotation.MANIFEST_LAYER.key(),
                                 ManifestLayer.OPERATORS.value())))
@@ -238,7 +235,6 @@ public final class FunnelCertRestoreManifestsUnit extends AbstractManifestsUnit 
                         .namespace(NAMESPACE)
                         .annotations(
                             packageProfile.packageAnnotations(
-                                "",
                                 Map.of(
                                     ManifestAnnotation.MANIFEST_LAYER.key(),
                                     ManifestLayer.OPERATORS.value())))
@@ -269,7 +265,6 @@ public final class FunnelCertRestoreManifestsUnit extends AbstractManifestsUnit 
                         .namespace(NAMESPACE)
                         .annotations(
                             packageProfile.packageAnnotations(
-                                "",
                                 Map.of(
                                     ManifestAnnotation.MANIFEST_LAYER.key(),
                                     ManifestLayer.OPERATORS.value())))
@@ -357,7 +352,6 @@ public final class FunnelCertRestoreManifestsUnit extends AbstractManifestsUnit 
                         .namespace(NAMESPACE)
                         .annotations(
                             packageProfile.packageAnnotations(
-                                "",
                                 Map.of(
                                     ManifestAnnotation.MANIFEST_LAYER.key(),
                                     ManifestLayer.OPERATORS.value())))

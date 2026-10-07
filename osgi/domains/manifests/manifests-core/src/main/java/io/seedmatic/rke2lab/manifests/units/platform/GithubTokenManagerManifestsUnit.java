@@ -126,7 +126,6 @@ public final class GithubTokenManagerManifestsUnit extends AbstractManifestsUnit
                         .namespace("kube-system")
                         .annotations(
                             packageProfile.packageAnnotations(
-                                "helm.cattle.io|HelmChart|kube-system|github-token-manager",
                                 Map.of(
                                     ManifestAnnotation.MANIFEST_LAYER.key(),
                                     ManifestLayer.OPERATORS.value())))
@@ -157,9 +156,7 @@ public final class GithubTokenManagerManifestsUnit extends AbstractManifestsUnit
                     ApiObjectMetadata.builder()
                         .name(APP_KEY_SECRET)
                         .namespace(namespace)
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "|Secret|" + namespace + "|" + APP_KEY_SECRET))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
     secret.addJsonPatch(JsonPatch.add("/type", "Opaque"));
@@ -190,9 +187,7 @@ public final class GithubTokenManagerManifestsUnit extends AbstractManifestsUnit
                     ApiObjectMetadata.builder()
                         .name(APP_NAME)
                         .namespace(namespace)
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "github.as-code.io|App|" + namespace + "|" + APP_NAME))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
     // appID / installationID are INTs in the CRD (GithubAppMaterial carries them as strings).
@@ -238,9 +233,7 @@ public final class GithubTokenManagerManifestsUnit extends AbstractManifestsUnit
                 .metadata(
                     ApiObjectMetadata.builder()
                         .name(secretName)
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "github.as-code.io|ClusterToken||" + secretName))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
     token.addJsonPatch(

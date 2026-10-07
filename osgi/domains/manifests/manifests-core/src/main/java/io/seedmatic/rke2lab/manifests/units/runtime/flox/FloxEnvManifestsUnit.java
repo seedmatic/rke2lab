@@ -200,9 +200,7 @@ public final class FloxEnvManifestsUnit extends AbstractManifestsUnit {
                     ApiObjectMetadata.builder()
                         .name(name)
                         .namespace(namespace)
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "flox.seedmatic.io|FloxEnv|" + namespace + "|" + name))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
     env.addDependency(resolver.require(ClusterRefs.RUNTIME_SYSTEM_NAMESPACE));

@@ -171,7 +171,6 @@ public final class RenderPipelineManifestsUnit extends AbstractManifestsUnit {
                         .namespace(NAMESPACE)
                         .annotations(
                             packageProfile.packageAnnotations(
-                                "",
                                 Map.of(
                                     ManifestAnnotation.MANIFEST_LAYER.key(),
                                     ManifestLayer.OPERATORS.value())))
@@ -207,9 +206,7 @@ public final class RenderPipelineManifestsUnit extends AbstractManifestsUnit {
                     ApiObjectMetadata.builder()
                         .name(MAVEN_CACHE_PVC)
                         .namespace(NAMESPACE)
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "|PersistentVolumeClaim|" + NAMESPACE + "|" + MAVEN_CACHE_PVC))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
     // RWO on the EXCLUSIVE persist class, and pre-bound by name to the static PV the
@@ -250,9 +247,7 @@ public final class RenderPipelineManifestsUnit extends AbstractManifestsUnit {
                     ApiObjectMetadata.builder()
                         .name("git-fetch")
                         .namespace(NAMESPACE)
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "tekton.dev|Task|" + NAMESPACE + "|git-fetch"))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
     task.addJsonPatch(
@@ -305,9 +300,7 @@ public final class RenderPipelineManifestsUnit extends AbstractManifestsUnit {
                     ApiObjectMetadata.builder()
                         .name("render-publish")
                         .namespace(NAMESPACE)
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "tekton.dev|Task|" + NAMESPACE + "|render-publish"))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
     task.addJsonPatch(
@@ -584,9 +577,7 @@ public final class RenderPipelineManifestsUnit extends AbstractManifestsUnit {
                     ApiObjectMetadata.builder()
                         .name(PIPELINE_NAME)
                         .namespace(NAMESPACE)
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "tekton.dev|Pipeline|" + NAMESPACE + "|" + PIPELINE_NAME))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
     pipeline.addJsonPatch(
