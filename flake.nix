@@ -13,6 +13,30 @@
     flake-commons.url = "flake-commons";
     nixpkgs.follows = "flake-commons/nixpkgs";
     flake-utils.follows = "flake-commons/flake-utils";
+
+    # Every flake-commons input this flake does not consume is CUT (`follows = ""`, the ecosystem's
+    # idiom, as seat-roster and nnh use). Only nixpkgs and flake-utils are borrowed, and never an
+    # output of flake-commons, so nothing here evaluates what these inputs would have fed.
+    flake-commons.inputs.bird.follows = "";
+    flake-commons.inputs.chromium-bin.follows = "";
+    flake-commons.inputs.darwin.follows = "";
+    flake-commons.inputs.determinate.follows = "";
+    flake-commons.inputs.disko.follows = "";
+    flake-commons.inputs.extra-container.follows = "";
+    flake-commons.inputs.flake-compat.follows = "";
+    flake-commons.inputs.flox.follows = "";
+    flake-commons.inputs.home-manager.follows = "";
+    flake-commons.inputs.impermanence.follows = "";
+    flake-commons.inputs.lix-module.follows = "";
+    flake-commons.inputs.maven-mvnd.follows = "";
+    flake-commons.inputs.nix.follows = "";
+    flake-commons.inputs.nix-snapshotter.follows = "";
+    flake-commons.inputs.nixos-generators.follows = "";
+    flake-commons.inputs.nixos-hardware.follows = "";
+    flake-commons.inputs.nixpkgs-unstable.follows = "";
+    flake-commons.inputs.nvfetcher.follows = "";
+    flake-commons.inputs.sops-nix.follows = "";
+    flake-commons.inputs.treefmt-nix.follows = "";
   };
 
   outputs = { self, nixpkgs, flake-utils, ... }:
