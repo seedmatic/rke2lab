@@ -172,40 +172,10 @@ M file2.java
 3. Copy checkpoint content to new session to resume work
 4. Draft files are ephemeral - don't rely on them for recovery (they're merged into checkpoints)
 
-## Config home and session recovery
+## Session recovery
 
-Two pieces that keep this worktree's session history findable. They exist because of a
-measurement taken on 2026-10-02: of the **7 folders** in `develop.code-workspace`, exactly
-**one** satisfies the condition that gives this worktree its own config home. The other 6 are
-worktrees of three other repos, and a session launched from one of them falls back to
-`~/.claude` — where `/resume` in this workspace will never offer it.
-
-### `config-home-guard.sh` — SessionStart hook, and the answer to "which model is in force?"
-
-```bash
-.claude/bin/config-home-guard.sh explain    # read the live system and say
-```
-
-Asserts that `CLAUDE_CONFIG_DIR` resolves to *this* worktree's `.claude`, that
-`.claude/hub` exists (the wrapper's guard needs it), and that the worktree is still the
-**first** folder of the `.code-workspace` — the unwritten invariant that makes the extension
-launch with the right cwd. As a hook it is silent when healthy and emits a `systemMessage`
-otherwise; `explain` prints the mechanism, the three checks and the 1-of-7 count.
-
-**Why `explain` exists.** This wiring already drifted once: project memory described a
-"clean-split" model — wrapper disabled, config home set by `claudeCode.environmentVariables` —
-that was not what ran, and nothing re-checked the claim for months. Prose can stay wrong for a
-long time, so the authority is a command that re-measures on demand, not a document. If the two
-ever disagree again, the command wins and the document is the thing to fix.
-
-Checked at start because the transcript's location is fixed when the process launches: a
-session that landed in the wrong config home cannot be redirected.
-
-The config home itself is set by claude-hub's `claude-config-home-wrapper.sh`, delivered by
-home-manager and wired through `claudeCode.claudeProcessWrapper` in the `.code-workspace`. It
-falls through **silently** by design (the extension also invokes it for `auth status --json`
-with `cwd=/`), and fixing that at the source costs a claude-hub commit, an outward push, an
-ndh flake-lock bump and a home-manager switch — so the assertion lives here instead.
+Transcripts are filed under a directory named after the encoded cwd, so finding a session, or
+recovering one after a worktree moved, means knowing that encoding. One manual command does it.
 
 ### `claude-sessions.sh` — manual command
 

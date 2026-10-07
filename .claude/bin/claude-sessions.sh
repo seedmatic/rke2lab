@@ -30,13 +30,12 @@ root="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}
 #   -> -Volumes-git-worktree-store-seedmatic-rke2lab-d-develop
 encode() { printf '%s' "$1" | sed 's/[^a-zA-Z0-9]/-/g'; }
 
-# ★ Anchored to the WORKTREE, never to CLAUDE_CONFIG_DIR. That variable falls back to
-# ~/.claude whenever the config home is misrouted — the very case config-home-guard.sh
-# exists to catch — and `relink --apply` reads every directory it finds here. Pointed at
-# ~/.claude it would move EVERY other project's transcripts under this worktree's name. The
-# default dry run would have softened that, not prevented it. Anchoring removes the
-# possibility instead of guarding it: every directory under a worktree's own config home
-# belongs to that worktree.
+# ★ Anchored to the WORKTREE, never to CLAUDE_CONFIG_DIR. That variable falls back to ~/.claude
+# whenever the config home is misrouted, and `relink --apply` reads every directory it finds here.
+# Pointed at ~/.claude it would move EVERY other project's transcripts under this worktree's name.
+# The default dry run would have softened that, not prevented it. Anchoring removes the
+# possibility instead of guarding it: every directory under a worktree's own config home belongs
+# to that worktree.
 projects="$root/.claude/projects"
 rootslug="$(encode "$root")"
 here="$projects/$rootslug"
@@ -45,7 +44,7 @@ here="$projects/$rootslug"
 if [[ -n "${CLAUDE_CONFIG_DIR:-}" ]] &&
   [[ "$(cd "$CLAUDE_CONFIG_DIR" 2>/dev/null && pwd -P)" != "$(cd "$root/.claude" 2>/dev/null && pwd -P)" ]]; then
   echo "warning: CLAUDE_CONFIG_DIR is '$CLAUDE_CONFIG_DIR', not this worktree — the running" >&2
-  echo "         session writes elsewhere and is absent below. See: config-home-guard.sh explain" >&2
+  echo "         session writes elsewhere and is absent below." >&2
 fi
 
 # A "user" entry is not the same thing as something the user said: the harness replays IDE

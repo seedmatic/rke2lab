@@ -136,8 +136,8 @@ setup() { setup_fake_seat; }
 }
 
 # The integration session's finding: reading the projects directory from CLAUDE_CONFIG_DIR meant
-# that a misrouted session — the very case the guard exists to detect — would have moved every
-# other project's transcripts under this worktree's name.
+# that a misrouted session would have moved every other project's transcripts under this
+# worktree's name.
 @test "relink is anchored to the worktree, never to CLAUDE_CONFIG_DIR" {
   FOREIGN="$BATS_TEST_TMPDIR/foreign/.claude"
   mkdir -p "$FOREIGN/projects/-a-totally-different-project"
