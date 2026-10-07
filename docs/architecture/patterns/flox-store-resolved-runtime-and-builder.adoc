@@ -784,7 +784,7 @@ There are three nix-build entities; this design targets exactly one.
 | Entity | What it is | Use here?
 
 | vz-host embedded `linux-builder` VM
-| The QEMU/Lima `aarch64-linux` VM `linux-builder.nix` spins up *on the darwin
+| The QEMU `aarch64-linux` VM `linux-builder.nix` spins up *on the darwin
   host* so darwin can cross-build Linux. A different role.
 | *No*
 

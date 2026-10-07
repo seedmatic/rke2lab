@@ -61,7 +61,7 @@ sont écrivables par `<user>` (pas besoin de sudo pour poser à la main).
 2. gcroot posé à la main sous per-user/stephane.lacoin :
    `ln -sfn <bundle 1nd23y4…> /nix/var/nix/gcroots/per-user/stephane.lacoin/tart-nerd-nixos-materialize`
    → `nix-store --query --roots <run.sh>` renvoie enfin une racine.
-3. gcroots morts purgés (lima ×2, ancien per-image `tart-nerd-nixos.raw.img`, profils
+3. gcroots morts purgés (2 de l'ancien provider de VM, ancien per-image `tart-nerd-nixos.raw.img`, profils
    orphelins io-nxmatic + `nerd-nixos-bringup-runtime`) + `sudo nix store gc` → 14,8 GiB.
 
 ⚠️ Le gcroot manuel épingle **ce** hash de bundle ; un re-materialize changeant le hash
