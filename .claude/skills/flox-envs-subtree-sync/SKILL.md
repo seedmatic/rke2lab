@@ -21,7 +21,7 @@ with the checkout instead of being reached through a path outside it.
 
 ```
 fleet  develop:flox            ← the LIVING copy. Edits land here.
-         │  git subtree split  (make flox-publish)
+         │  git subtree split  of origin/develop:flox
          ▼
 fleet  origin/flox-subtree  ← a DERIVED split. Never edit it directly.
          │  git subtree pull
@@ -32,13 +32,10 @@ rke2lab .flox-envs.d/       ← the vendored copy. Never edit it directly.
 Edits go in `fleet/flox/<env>/`, **never** in `.flox-envs.d/` and **never** on the
 `flox-subtree` branch. A local edit under `.flox-envs.d/` is lost at the next pull.
 
-⛔ **Why this is stated so loudly:** for nine months `fleet`'s Makefile had only a
-`pull`, no way to publish. So edits went into the working copy, the branch froze
-(2025-12-14 against a tree from 2026-09-29), and `make flox-update` became
-**destructive** — it would pull the stale source over the living copy and drop 8 envs,
-3 of them included by this seat. A subtree without a named procedure freezes: both of
-fleet's froze the same week, and the only live one in this perimeter is the one with a
-skill. That is what this file is for.
+⛔ **Why this is stated so loudly:** a subtree without a named procedure freezes. Edits pile up
+in the working copy, the derived branch stops moving, and pulling it back over the living copy
+becomes **destructive** — measured once, it would have dropped 8 envs, 3 of them included by this
+seat. That is what this file is for.
 
 ## Pull the envs down (the common case)
 
@@ -68,26 +65,18 @@ The error above, after a pull, always means this step was skipped.
 
 ## Republish the branch (only after editing envs in fleet)
 
-In fleet's worktree, with `flox/` committed:
+Publish what has **landed** on `develop` — never what a checkout happens to hold. Split the
+remote trunk, not `HEAD`, so a worktree carrying unmerged commits cannot publish unreviewed work:
 
 ```bash
-make flox-publish      # re-split + push with --force-with-lease
+git -C <fleet> fetch --prune origin develop flox-subtree
+split="$(git -C <fleet> subtree split --prefix=flox origin/develop)"
+lease="$(git -C <fleet> rev-parse --verify --quiet origin/flox-subtree || true)"
+git -C <fleet> push origin "$split:refs/heads/flox-subtree" --force-with-lease="flox-subtree:$lease"
 ```
 
-It re-splits `develop:flox` and force-pushes, because the branch is derived: a re-split
-rewrites it and cannot fast-forward. The lease is what still refuses to clobber a
-push that arrived since the fetch.
-
-⚠️ **`make` must be GNU Make 4.x.** The Makefile uses `.ONESHELL`, which **3.81 ignores
-in silence** — and 3.81 is what macOS ships at `/usr/bin/make`. Each recipe line then runs
-in its own shell, so the multi-line `if` in `ensure-subtree-context` dies on
-`syntax error: unexpected end of file`, and **nothing is published**. fleet ships
-`flox/gnumake` for exactly this but has no seat of its own to activate it, so reach for a
-make explicitly:
-
-```bash
-nix run nixpkgs#gnumake -- -C <fleet> flox-publish
-```
+The push is forced because the branch is derived: a re-split rewrites it and cannot
+fast-forward. The lease is what still refuses to clobber a push that arrived since the fetch.
 
 ⚠️ Then check that the result is what you meant — the first republication (2026-10-02) had
 **disjoint** histories, the branch having frozen and been reconciled by an unrelated local
@@ -96,7 +85,7 @@ commit, so the force was total. The check is **tree-hash equality**:
 ```bash
 git -C <fleet> fetch --prune origin flox-subtree
 [ "$(git -C <fleet> rev-parse origin/flox-subtree^{tree})" \
-= "$(git -C <fleet> rev-parse develop:flox)" ] && echo identical
+= "$(git -C <fleet> rev-parse origin/develop:flox)" ] && echo identical
 ```
 
 ★ It used to be `diff <(git ls-tree --name-only …) <(…)`, and that was **worthless for
@@ -132,6 +121,12 @@ nothing ever re-resolves one until you ask.
 - **fleet's internal includes are all relative** (`../keyhole`, `../xdg`, …), which is
   what makes the tree relocatable at all. If one ever becomes absolute, vendoring
   breaks and the lock will hide it — see the verification note above.
+- **A fresh worktree has no lock for `flake-registry`**, and `flox activate -- true` still
+  passes — only `flox include upgrade` fails, on « manifest and lockfile are out of sync ». Run
+  `nix run .#lock-flox-envs` first. The gate is `flox include upgrade`, not activation.
+- **`flox activate -d <env>` used as a check MIGRATES the manifest** to the newer schema
+  (`schema-version = "1.14.0"`, double quotes). Undo it with `git checkout -- <env>` before
+  committing, or the check becomes a change.
 - **Never check `flox-subtree` out inside `fleet.d/develop`.** It carries the envs at its
   ROOT, with no `flox/` directory, so the checkout would remove `fleet/flox` and break
   every consumer reaching it. Use a dedicated worktree.
