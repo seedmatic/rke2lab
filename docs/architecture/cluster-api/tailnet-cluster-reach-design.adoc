@@ -533,7 +533,9 @@ which had to be repointed at this branch for the same reason.
 
 * ndh `docs/network-topology-c4.adoc#authorisation` — the tailnet policy, the Services
   mechanism, and why the home LAN is no longer routed.
-* `docs/architecture/cluster-api/management-workload-topology.adoc` — the
+* xref:management-workload-topology.adoc[Management / Workload Topology] — the
   cp-endpoint-reach section this note would supersede if (C) is chosen.
-* `docs/architecture/cluster-api/clustermesh-trust-and-peering.adoc` — the MGMT
+* xref:clustermesh-trust-and-peering.adoc[Clustermesh — trust domains and declarative peering] — the MGMT
   clustermesh (ids 1 ↔ 3), whose first second member is `nikopol-mgmt`.
+* xref:../atlas/headscale-scope-and-switch-cost.adoc[Atlas — Headscale scope and the cost of switching] — what
+  moving the control plane to headscale changes for this reach question.

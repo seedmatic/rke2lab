@@ -342,5 +342,5 @@ a design input for step 12 — to be answered **before** that step is planned, n
 
 * xref:fabric-control-plane.adoc[Fabric Control Plane — the migration] — step 12 points here
 * ndh `docs/fabric-control-plane-spec.adoc` — the target model for the **infrastructure** tailnet
-* `.claude/tailnet-cluster-reach-design.adoc` — the still-open scratchpad on cluster reach (host
-  routing versus operator forms), which this intersects
+* xref:../cluster-api/tailnet-cluster-reach-design.adoc[Cross-cluster reach — host routing vs the Tailscale operator] — the
+  still-open design on cluster reach (host routing versus operator forms), which this intersects
