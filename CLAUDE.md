@@ -433,7 +433,3 @@ When writing or updating architecture/design docs (AsciiDoc under `docs/`), the
 C4/Mermaid quality bar, ✅/❌ usage patterns, cross-referencing + `docs/README.adoc`
 upkeep, and the pre-completion checklist. It auto-loads for documentation tasks;
 invoke `/doc-standards` if it doesn't.
-
-# Common instructions (shared via the claude-hub subtree)
-
-@.claude/hub/instructions.md
