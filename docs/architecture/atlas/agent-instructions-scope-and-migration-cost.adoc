@@ -6,6 +6,10 @@ toc::[]
 
 **Status:** 📋 decision input, 2026-10-07. **Priority set by the operator; nothing here is executed.**
 
+ⓘ This is a statement of work for the **operator**, not a hand-off: it measures, costs and lists the
+choices, and decides none of them. It becomes the content of a hand-off to a working session once
+the operator has chosen — not before, or the hand-off would assign work on an option nobody picked.
+
 == Why this document exists
 
 The operator decided on 2026-10-07 to move away from distributing Claude's configuration through
@@ -251,33 +255,111 @@ Raising the threshold makes this rarer, not sound.
 Cheapest mitigation: read `trigger` and **stamp it in the checkpoint header**, so a reader knows
 whether the instant was chosen.
 
-== What came from HylandExperience — not visible from here
+== What `nikopol` actually applies — two mechanisms, measured
 
-The operator mentioned skills imported from the `HylandExperience` organisation. **Nothing of it is
-on `bioskop`:** no trace in `~/.agents`, `~/.claude`, `~/.copilot` or `~/.codex`, and the
-organisation API answers **403 (SAML enforcement)** with and without the session's `GH_TOKEN`. The 8
-skills in `~/.agents/skills/` date from 2026-04-15 and carry no provenance.
+The operator named the two repositories applied on `nikopol`: `HylandSoftware/swf-registry` and
+`HylandExperience/cin-content-lake-tooling`. Both were read once SAML access was unlocked. They are
+**two independent mechanisms**, not an installer and its content: `swf-registry` never references
+`cin-content-lake-tooling`.
 
-So the import happened on `nikopol` and has not reached this machine. It matters for one reason: if
-it brought a **mechanism** — `gh skill install` of organisation-shared skills — it is evidence for
-option C.
+[cols="1,2,2",options="header"]
+|===
+| | `cl ai` — shipped inside `cin-content-lake-tooling` | `hy-reg` — `HylandSoftware/swf-registry`
+
+| What it is
+| a Go binary distributed by the repository it belongs to; it reads that repo's own
+`agent-tooling/` folder from GitHub
+| a registry of **references** to agent resources in other repositories, *"referenced at a pinned
+commit rather than copied"*; content converted per target with `rulesync`
+
+| Declares content in
+| `agent-tooling/bundles/resources.json` (resources keyed `<kind>/<slug>`, each with `targets` and
+a path per target) and `bundles.json` (named bundles)
+| `registry/*.toml`, pinned by `registry.lock.json` — commit, source-tree hash and descriptor hash
+per resource
+
+| Where instructions land
+| ⚠️ into the **user-level** `~/.claude/CLAUDE.md` (and OpenCode's `AGENTS.md`), as fragments
+between markers. An existing file is kept; only the marked regions belong to the installer
+| ⚠️ as **separate rule files** (`.claude/rules/<name>.md` for Claude Code). It **refuses** to claim a
+project's root instruction file
+
+| Across repositories?
+| ❌ one repository → many machines
+| ✅ a central catalogue that references many repositories
+
+| Pinned?
+| ❌ follows `main` by default
+| ✅ commit + hashes, in a lock
+
+| Drift detection
+| `cl ai diff` — local versus source, per file
+| `install --check` — a CI gate failing when output would change; `lock diff` between two pins
+
+| Hooks and `settings.json`
+| ❌ copies hook scripts; **wiring them is a manual step**
+| ❌ **refuses** for Claude Code (*"needs a `hooks.json` merge"*)
+|===
+
+=== What this changes
+
+1. ⛔ *"Instructions as `AGENTS.md` in the repositories" is **not** what either tool does.* `cl`
+   composes at **user level**; `hy-reg` writes rule files beside the root file and never the root
+   file itself. Neither generates a repository's `AGENTS.md`. The operator's intent needs restating
+   before a choice is made — and `nikopol`'s `~/.claude/CLAUDE.md` would show the actual result.
+2. ✅ **`hy-reg` is the measured shape of option C**: pinned references across repositories, hashes
+   in a lock, a `--check` gate, seven targets. ⚠️ Its gap: **the lock lives in the registry, never in
+   the consumer.** A repository receives generated files and keeps no record of what it received or
+   at which commit, so drift is measurable only from the registry side.
+3. ⛔ **The `CLAUDE_CONFIG_DIR` trap applies to `cl` directly.** It writes to a hardcoded
+   `~/.claude`, while Claude Code on this machine loads from `rke2lab.d/develop/.claude`. Anything
+   `cl` installed here would be **written and never loaded**. ⬜ Whether `hy-reg --global` honours
+   `CLAUDE_CONFIG_DIR` is unverified.
+4. ⛔ **Neither tool solves family 3.** Both ship hook scripts and leave the wiring to the user — the
+   same shape as our hub's inert `settings.json`. The deny-list decision stays ours.
+
+=== ⛔ How the access was blocked — and the cause is now removed
+
+Reaching these organisations failed for an hour with *SAML enforcement* (HTTP 403), even after the
+operator granted access. The cause was not the grant. `rke2lab`'s flox seat ran
+`export GH_TOKEN="$(gh auth token)"` at activation — a **copy** of the keyring token, inherited by
+VS Code and by every agent session launched from it. A `gh auth refresh` produced a fresh, authorised
+keyring token; the inherited copy stayed the old one and **shadowed** it.
+
+Two distinct authorisations were also in play, which made it hard to see: an organisation can allow
+the GitHub CLI application (*"Allowed"*) while a **given token** has never been validated in an SSO
+session. Only the refresh produced a token validated for `HylandSoftware`.
+
+✅ The export is removed from the seat (this commit). ⚠️ Processes already running keep the copy
+until VS Code is restarted from a shell where it is unset.
 
 === In scope: which HylandExperience skills seedmatic should import
 
-Added by the operator on 2026-10-07: as part of this alignment, review the skills the
-HylandExperience organisation publishes and pick the ones seedmatic would benefit from.
+Added by the operator on 2026-10-07. The organisation publishes about 496 `SKILL.md` files, almost
+all inside product repositories, often copied once per tool. About 85 % are tied to Hyland products,
+to .NET or Angular, or to Jira.
 
-⛔ *Blocked from this machine, and the block has to be lifted first.* The organisation is
-SAML-enforced, and the token this host's `gh` holds is not authorised for it: the 403 also reports a
-missing `admin:org` scope, so this is **not only** the known `GH_TOKEN`-shadows-the-keyring trap.
-Two ways through, both the operator's:
+[cols="1,1,2",options="header"]
+|===
+| Skill | Verdict | Why
 
-* run the inventory **from `nikopol`**, where the import already worked;
-* or authorise this host's token for the organisation (`gh auth refresh` with SSO granted), then
-  list with `env -u GH_TOKEN -u GITHUB_TOKEN gh skill search …` so the session token cannot shadow
-  it.
+| `grilling` | **import** | questions in rounds over a tree of decisions until both sides agree —
+no topology or tool assumption, and it fits how this project designs
+| `rfc-research` | **import** | gathers the earlier decisions relevant to a new one; point it at
+`docs/architecture/` and the atlas. Clean provenance: a normal `skills/` path
+| `threat-model` | **adapt** | the STRIDE/DREAD method is general; its control mapping is a Hyland
+catalogue. Relevant after the leaked-key incident and the tailnet ACL work
+| `linearize-shared-branch` | **adapt carefully** | its safety steps are good, but it **rewrites
+shared history** — against `develop` as trunk and `--no-ff` merges down. Keep the safety steps only
+| `sync-agent-customizations` | **adapt the idea** | the only skill about distributing agent
+configuration. "One body, thin per-tool stubs" — but **within one repository**, and it copies root
+instruction files in full per tool. That is option B inside each repo, not evidence for C
+| `git-worktree` | **skip** | puts worktrees in `<root>/.worktrees/` — the same layout rejected for
+`.claude/worktrees/`
+| the rest | **skip** | product-specific, Jira-bound, or duplicating a seedmatic skill
+|===
 
-How to judge each candidate, once visible — the criteria this evening's work produced:
+How each candidate was judged — the criteria this evening's work produced:
 
 [cols="1,2",options="header"]
 |===
@@ -301,12 +383,19 @@ leaves the others reading a different instruction set
   modes activates Copilot-era instructions.
 . **Test whether `AGENTS.md` resolves an `@`-include** — one scratch repository settles it, and it
   decides whether option A exists at all.
-. **Look at `nikopol`** — what the HylandExperience import is, and by which mechanism.
+. **Look at `nikopol`'s `~/.claude/CLAUDE.md`** — the actual result of `cl`'s composition, which is
+  what "the new model" produces in practice.
 
 == Questions that are the operator's
 
+. ★ **What "instructions as `AGENTS.md` in the repositories" means for you**, given that neither tool
+  applied on `nikopol` writes a repository's `AGENTS.md`: per-repo root files, user-level composed
+  sections (`cl`), or per-repo rule files from a registry (`hy-reg`)? This decides the shape of
+  everything else.
 . Which `instructionFiles` mode do you want?
-. Option A, B or C — and, if C, is `CLAUDE_CONFIG_DIR` pointing into a worktree deliberate?
+. Option A, B or C — and, if C, **`hy-reg` as is**, accepting that consumers keep no lock? And is
+  `CLAUDE_CONFIG_DIR` pointing into a worktree deliberate, given that it makes `cl` write where
+  Claude Code never reads?
 . Should the seven repositories that have no agent configuration at all receive one? If the real
   goal is *coverage*, a one-file-per-repo convention is plainly cheaper than a subtree they never
   had.
