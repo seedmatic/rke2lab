@@ -29,13 +29,13 @@
       "description": "GNU Bourne-Again Shell, the de facto standard shell on Linux (for interactive use)",
       "install_id": "bash",
       "license": "GPL-3.0-or-later",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=151fa4e8ddfdd8dd25d945ad94ed54a13de9f6e4",
       "name": "bash-interactive-5.3p15",
       "pname": "bash",
-      "rev": "b4fd65b198c599cbe814fcb9f42d25d021595ec9",
-      "rev_count": 1082427,
-      "rev_date": "2026-09-29T13:38:46Z",
-      "scrape_date": "2026-10-01T05:38:36.095894Z",
+      "rev": "151fa4e8ddfdd8dd25d945ad94ed54a13de9f6e4",
+      "rev_count": 1086391,
+      "rev_date": "2026-10-06T04:29:54Z",
+      "scrape_date": "2026-10-07T05:31:52.011353Z",
       "stabilities": [
         "unstable"
       ],
@@ -43,6 +43,7 @@
       "version": "5.3p15",
       "outputs_to_install": [
         "man",
+        "out",
         "out"
       ],
       "outputs": {
@@ -64,19 +65,21 @@
       "description": "GNU Core Utilities",
       "install_id": "coreutils",
       "license": "GPL-3.0-or-later",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=151fa4e8ddfdd8dd25d945ad94ed54a13de9f6e4",
       "name": "coreutils-9.11",
       "pname": "coreutils",
-      "rev": "b4fd65b198c599cbe814fcb9f42d25d021595ec9",
-      "rev_count": 1082427,
-      "rev_date": "2026-09-29T13:38:46Z",
-      "scrape_date": "2026-10-01T05:38:36.696308Z",
+      "rev": "151fa4e8ddfdd8dd25d945ad94ed54a13de9f6e4",
+      "rev_count": 1086391,
+      "rev_date": "2026-10-06T04:29:54Z",
+      "scrape_date": "2026-10-07T05:31:52.605562Z",
       "stabilities": [
         "unstable"
       ],
       "unfree": false,
       "version": "9.11",
       "outputs_to_install": [
+        "out",
+        "out",
         "out"
       ],
       "outputs": {
@@ -90,12 +93,12 @@
     },
     {
       "install_id": "tailscale",
-      "locked-url": "path:/private/var/lib/git/seedmatic/rke2lab.d/flox-catalogue?lastModified=1790865445&narHash=sha256-IBaHLs5Opb3e6nSFDwZB6So6/ruAJYBtADMhO7oIfmM%3D",
+      "locked-url": "path:/Volumes/git-worktree-store/seedmatic/rke2lab.d/flox-catalog?lastModified=1791387028&narHash=sha256-xcHsCIX4SksxCuT6PB4xLzIWdTaHkN61BhAa6iMrXnM%3D",
       "flake-description": "Flox runtime env catalog: per-workload packages (kdns, tailscale) the flox-nri-plugin injects. The plugin itself now lives in github:seedmatic/flox-nri-plugin (consumed as the flox-runtime input of the rke2lab flake).",
       "locked-flake-attr-path": "packages.aarch64-linux.tailscale",
-      "derivation": "/nix/store/5yx6lsn6s3d16zj5d0bdc2fcj1w4ibf9-tailscale.drv",
+      "derivation": "/nix/store/5zr4xksmi9m32qrrjlghrixy5xsnrr36-tailscale.drv",
       "outputs": {
-        "out": "/nix/store/bnh70zj7whh5ikmdldg3q2azxj21abd0-tailscale"
+        "out": "/nix/store/lk2pd6x9ppsb7qb472zp9mfz1y4a2cfg-tailscale"
       },
       "output-names": [
         "out"
