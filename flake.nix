@@ -1146,10 +1146,11 @@ USAGE
       #
       # The chain is push-gated: a `github:` input only sees a revision once pushed, so each hop
       # pushes before the next resolves it.
-      # The IMPLEMENTATION is `lib.mkRelockApp` — shared, so every repo in the chain applies the SAME
-      # rule rather than a copy that can drift exactly where it matters: the derivation-impact guard
-      # that TERMINATES the rke2lab <-> ndh cycle. This call supplies only what is rke2lab's OWN.
-      relockApp = import ./nix/relock.nix {
+      # The IMPLEMENTATION is nix-flake-commons' `lib.mkRelockApp` — shared from the root every
+      # seedmatic flake already consumes, so every repo in the chain applies the SAME rule rather
+      # than a copy that can drift exactly where it matters: the derivation-impact guard that
+      # TERMINATES the rke2lab <-> ndh cycle. This call supplies only what is rke2lab's OWN.
+      relockApp = inputs.flake-commons.lib.mkRelockApp {
         inherit pkgs;
         name = "rke2lab";
         slug = "seedmatic/rke2lab";
@@ -1165,6 +1166,10 @@ USAGE
         # The branch that pins rke2lab and carries the flox envs.
         catalogBranch = "flox-catalog";
         selfPinName = "rke2lab";
+        aliases = {
+          plans = "regen-dataplan";
+          netplan = "regen-blueprint";
+        };
       };
       in {
         packages = {
@@ -1475,11 +1480,6 @@ USAGE
         dataplan = dataplanData;
         # Raw YAML store path for inspection (the pinned, canonical build).
         networkBlueprintYamlPath = "${networkBlueprintYaml}/network-blueprint.yaml";
-
-        # The `relock` app factory — exported so every repo in the chain applies the SAME rule
-        # instead of a copy of it. ndh reads this exactly as it already reads networkBlueprint and
-        # dataplan, so it adds no edge and no new cycle. Arguments documented at the factory.
-        mkRelockApp = import ./nix/relock.nix;
       };
 
       # TEMP federation probe (Phase 1): proves rke2lab sees ndh's home-LAN facts
