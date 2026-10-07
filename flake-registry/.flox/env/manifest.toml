@@ -1,0 +1,59 @@
+schema-version = "1.11.0"
+
+## The flake-input registry indirection, and NOTHING else. No packages — this env exists so a
+## seat can say "I want the registry" without also buying a toolchain.
+##
+## It was first written into the `nix` env, which made including it drag eleven nix tools across
+## two systems: measured, +23 packages in a seat that wanted one hook. Welcome in a repo that
+## works on nix, pointless in `claude-hub` or `seat-roster`. `nix` now includes THIS, so the
+## bundle still exists for whoever wants both, and the two intentions stop being stapled
+## together.
+##
+## ★ What the hook does: a seat's seedmatic-owned inputs are INDIRECT ids (`url = "ndh"`)
+## resolved through nix's registry rather than naming a branch in flake.nix. Re-aiming one is
+## then a LOCAL edit, never a flake edit that has to be pushed before the rest of the chain can
+## see it — and the chain is push-gated, so a branch named in a flake rots silently. The worst
+## form is `/develop`: it never disappears, so it never errors, it just supplies whatever
+## develop holds instead of the line being worked on.
+##
+## `<seat>/flake-registry.json` is COMMITTED and holds the default, branchless targets. It has to
+## be committed because of `relock`: it CLONES the repo to reconcile it, so it only ever sees
+## committed files.
+##
+## `<seat>/flake-registry.local.json` is GITIGNORED and REPLACES it wholesale when present. Not
+## merged — a merge would need jq here, and a stale local copy missing a newly added id fails
+## LOUDLY (`cannot find flake 'flake:x' in the flake registries`) instead of quietly resolving
+## the wrong thing. Copy the committed file and edit the lines you want: aim an id at another
+## BRANCH to follow it, or at `git+file:///…/<repo>.d/<branch>` to build your own UNPUSHED
+## commits.
+##
+## ⓘ `relock` reads the same precedence — local override first, committed file otherwise — so the
+## two carriers agree. What keeps a machine-local lock from being committed is relock's own
+## guard, which refuses a lock resolving to the local filesystem; a re-aim at another branch
+## locks a PUSHED revision and is therefore fetchable by everyone.
+##
+## ⓘ A seat with NO registry file is left untouched, so including this env is harmless before a
+## seat has migrated its inputs. That property is what let it be wired into every flake repo at
+## once instead of ordering ten migrations.
+##
+## It takes nix's GLOBAL registry slot, measured to cost nothing: `nixpkgs` keeps resolving
+## through the SYSTEM registry, which nix-darwin pins at higher precedence, and nothing in this
+## perimeter ever relied on a channels.nixos.org indirect id.
+[hook]
+on-activate = '''
+  _flox_nix_registry=""
+  if [ -f "${FLOX_ENV_PROJECT}/flake-registry.local.json" ]; then
+    _flox_nix_registry="${FLOX_ENV_PROJECT}/flake-registry.local.json"
+  elif [ -f "${FLOX_ENV_PROJECT}/flake-registry.json" ]; then
+    _flox_nix_registry="${FLOX_ENV_PROJECT}/flake-registry.json"
+  fi
+  if [ -n "$_flox_nix_registry" ]; then
+    # nix.conf settings are newline-separated and NIX_CONFIG may already carry some — notably
+    # the access-tokens for the private inputs, which have to survive this.
+    _flox_nix_nl='
+'
+    export NIX_CONFIG="${NIX_CONFIG:+${NIX_CONFIG}${_flox_nix_nl}}flake-registry = $_flox_nix_registry"
+    unset _flox_nix_nl
+  fi
+  unset _flox_nix_registry
+'''
