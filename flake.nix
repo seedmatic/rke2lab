@@ -3,8 +3,14 @@
 
   # Follow the seedmatic aggregator so the whole closure resolves to one nixpkgs
   # (same discipline as flox-controller / flox-nri-plugin).
+  # Every SEEDMATIC-owned input below is an INDIRECT id (`url = "flake-commons"`), resolved through
+  # nix's registry: the branch-less default target lives in the committed flake-registry.json, and
+  # the operator re-aims it by dropping a flake-registry.local.json beside it (see the [include] in
+  # .flox/env/manifest.toml). A branch named here could only be re-aimed by pushing an edit to this
+  # file; naming none means naming nothing that can be deleted. The lock still records a revision,
+  # so evaluating from it needs no registry at all.
   inputs = {
-    flake-commons.url = "github:seedmatic/nix-flake-commons/develop";
+    flake-commons.url = "flake-commons";
     nixpkgs.follows = "flake-commons/nixpkgs";
     flake-utils.follows = "flake-commons/flake-utils";
   };
