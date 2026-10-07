@@ -979,21 +979,16 @@
         ],
         "nnh": "nnh",
         "rke2lab": [],
-        "socket-vmnet": [
-          "ndh",
-          "flake-commons",
-          "socket-vmnet"
-        ],
         "sops-nix": "sops-nix_2",
         "tailscale-fork": "tailscale-fork",
         "treefmt-nix": "treefmt-nix_2"
       },
       "locked": {
-        "lastModified": 1791376800,
-        "narHash": "sha256-7ZH3BLQkMe3PB/bQEK0G8NRj/7pZVKRyyS06Kb66wKI=",
+        "lastModified": 1791384750,
+        "narHash": "sha256-NMxu4eAiEz9P0THk/x3o4MOgHjpYimLM1PM/gnt2ylw=",
         "owner": "seedmatic",
         "repo": "ndh",
-        "rev": "b953d62e60074e22caf7a7a71041905b57a2447b",
+        "rev": "c62bd4cf0382304fa872927af0cdf0d5993644e8",
         "type": "github"
       },
       "original": {
@@ -1437,11 +1432,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1790929062,
-        "narHash": "sha256-HvWRPDHjdwk8E9ZW0Vx4hVosOUzbMRXjPrPrh2DCwOM=",
+        "lastModified": 1791382184,
+        "narHash": "sha256-szoCfUE3batOtBpuCZsiwlr9rtsqpqAgotnWspUzBRs=",
         "owner": "seedmatic",
         "repo": "nnh",
-        "rev": "a9387f873e694a0e275da0649891711a7f536789",
+        "rev": "f74b94e6296d7d4033ddb5522a966b2c3872aa25",
         "type": "github"
       },
       "original": {
