@@ -37,6 +37,11 @@
       "bats": {
         "pkg-path": "bats"
       },
+      "cachix": {
+        "pkg-path": "cachix",
+        "pkg-group": "nix",
+        "outputs": "all"
+      },
       "cdk8s-cli": {
         "pkg-path": "cdk8s-cli"
       },
@@ -56,6 +61,11 @@
       },
       "dasel": {
         "pkg-path": "dasel"
+      },
+      "deadnix": {
+        "pkg-path": "deadnix",
+        "pkg-group": "nix",
+        "outputs": "all"
       },
       "etcdctl": {
         "pkg-path": "etcdctl",
@@ -198,6 +208,14 @@
       "lazygit": {
         "pkg-path": "lazygit"
       },
+      "linux-builder-vz": {
+        "pkg-path": "darwin.linux-builder-vz",
+        "pkg-group": "home",
+        "systems": [
+          "aarch64-darwin"
+        ],
+        "outputs": "all"
+      },
       "manage-tailnet": {
         "flake": "github:seedmatic/rke2lab#manage-tailnet",
         "systems": [
@@ -213,9 +231,44 @@
       "moreutils": {
         "pkg-path": "moreutils"
       },
+      "nix-eval-jobs": {
+        "pkg-path": "nix-eval-jobs",
+        "pkg-group": "nix",
+        "outputs": "all"
+      },
+      "nix-fast-build": {
+        "pkg-path": "nix-fast-build",
+        "pkg-group": "nix",
+        "outputs": "all"
+      },
+      "nix-output-monitor": {
+        "pkg-path": "nix-output-monitor",
+        "pkg-group": "nix",
+        "outputs": "all"
+      },
+      "nix-tree": {
+        "pkg-path": "nix-tree",
+        "pkg-group": "nix",
+        "outputs": "all"
+      },
+      "nixd": {
+        "pkg-path": "nixd",
+        "pkg-group": "nix",
+        "outputs": "all"
+      },
+      "nixfmt-rfc-style": {
+        "pkg-path": "nixfmt-rfc-style",
+        "pkg-group": "nix",
+        "outputs": "all"
+      },
       "nodejs": {
         "pkg-path": "nodejs",
         "pkg-group": "asciidoc",
+        "outputs": "all"
+      },
+      "nvfetcher": {
+        "pkg-path": "nvfetcher",
+        "pkg-group": "nix",
         "outputs": "all"
       },
       "openssh": {
@@ -280,6 +333,11 @@
         "pkg-path": "ssh-to-age",
         "pkg-group": "keyhole"
       },
+      "statix": {
+        "pkg-path": "statix",
+        "pkg-group": "nix",
+        "outputs": "all"
+      },
       "tektoncd-cli": {
         "pkg-path": "tektoncd-cli"
       },
@@ -290,6 +348,11 @@
       },
       "visualvm": {
         "pkg-path": "visualvm"
+      },
+      "watchexec": {
+        "pkg-path": "watchexec",
+        "pkg-group": "nix",
+        "outputs": "all"
       },
       "yq-go": {
         "pkg-path": "yq-go",
@@ -312,10 +375,10 @@
       "PULUMI_HOME": "${XDG_STATE_HOME:-$HOME/.local/state}/pulumi"
     },
     "hook": {
-      "on-activate": "    if [ -z \"${PUPPETEER_EXECUTABLE_PATH:-}\" ]; then\n      for _shell in \"$HOME\"/.cache/puppeteer/chrome-headless-shell/*/chrome-headless-shell-*/chrome-headless-shell; do\n        [ -x \"$_shell\" ] && export PUPPETEER_EXECUTABLE_PATH=\"$_shell\"\n      done\n      unset _shell\n    fi\n  \n    if [ -d \"${FLOX_ENV_PROJECT}/.github\" ]; then\n      remote=$(git -C \"${FLOX_ENV_PROJECT}\" remote get-url origin 2>/dev/null || true)\n      if [ -n \"${remote}\" ]; then\n        remote_host=\"github.com\"\n        case \"${remote}\" in\n          git@*:* )\n            remote_host=$(printf '%s' \"${remote}\" | cut -d'@' -f 2 | cut -d':' -f 1)\n            ;;\n          http://*|https://*)\n            remote_host=$(printf '%s' \"${remote}\" | cut -d'/' -f 3)\n            ;;\n          ssh://*)\n            remote_host=$(printf '%s' \"${remote}\" | cut -d'/' -f 3 | cut -d':' -f 1)\n            ;;\n        esac\n    \n        if [ -n \"${GH_TOKEN:-}\" ] && ! gh auth status --hostname \"${remote_host}\" >/dev/null 2>&1; then\n          echo \"Detected GH_TOKEN, logging in gh for ${remote_host}...\" >&2\n          printf '%s' \"${GH_TOKEN}\" | gh auth login --with-token --hostname \"${remote_host}\" >/dev/null 2>&1 || true\n        fi\n    \n        if gh auth status --hostname \"${remote_host}\" >/dev/null 2>&1; then\n          gh auth setup-git --hostname \"${remote_host}\" >/dev/null 2>&1 || true\n        fi\n      fi\n    fi\n  \n    mkdir -p \"$PULUMI_HOME\"\n  \n  _rke_registry=\"${FLOX_ENV_PROJECT}/flake-registry.json\"\n  if [ -f \"${FLOX_ENV_PROJECT}/flake-registry.local.json\" ]; then\n    _rke_registry=\"${FLOX_ENV_PROJECT}/flake-registry.local.json\"\n  fi\n  # nix.conf settings are newline-separated, and NIX_CONFIG may already carry some.\n  _rke_nl='\n'\n  export NIX_CONFIG=\"${NIX_CONFIG:+${NIX_CONFIG}${_rke_nl}}flake-registry = $_rke_registry\"\n  unset _rke_registry _rke_nl\n\n  mkdir -p \"${PULUMI_HOME}\"\n  mkdir -p \"${FLOX_ENV_PROJECT}/.pulumi-state\"\n  if command -v javac >/dev/null 2>&1; then\n    export JAVA_HOME=\"$(dirname \"$(dirname \"$(command -v javac)\")\")\"\n  fi\n  # No GH_TOKEN export here, on purpose: a copy taken at activation goes stale at the next\n  # `gh auth refresh`, and every process launched from this shell (VS Code, agent sessions)\n  # inherits it and shadows the fresh keyring token. gh reads the keyring itself when unset.\n  export KUBECONFIG=\"${FLOX_ENV_PROJECT}/.local.d/kubeconfig.yaml\"\n"
+      "on-activate": "    if [ -z \"${PUPPETEER_EXECUTABLE_PATH:-}\" ]; then\n      for _shell in \"$HOME\"/.cache/puppeteer/chrome-headless-shell/*/chrome-headless-shell-*/chrome-headless-shell; do\n        [ -x \"$_shell\" ] && export PUPPETEER_EXECUTABLE_PATH=\"$_shell\"\n      done\n      unset _shell\n    fi\n  \n    if [ -d \"${FLOX_ENV_PROJECT}/.github\" ]; then\n      remote=$(git -C \"${FLOX_ENV_PROJECT}\" remote get-url origin 2>/dev/null || true)\n      if [ -n \"${remote}\" ]; then\n        remote_host=\"github.com\"\n        case \"${remote}\" in\n          git@*:* )\n            remote_host=$(printf '%s' \"${remote}\" | cut -d'@' -f 2 | cut -d':' -f 1)\n            ;;\n          http://*|https://*)\n            remote_host=$(printf '%s' \"${remote}\" | cut -d'/' -f 3)\n            ;;\n          ssh://*)\n            remote_host=$(printf '%s' \"${remote}\" | cut -d'/' -f 3 | cut -d':' -f 1)\n            ;;\n        esac\n    \n        if [ -n \"${GH_TOKEN:-}\" ] && ! gh auth status --hostname \"${remote_host}\" >/dev/null 2>&1; then\n          echo \"Detected GH_TOKEN, logging in gh for ${remote_host}...\" >&2\n          printf '%s' \"${GH_TOKEN}\" | gh auth login --with-token --hostname \"${remote_host}\" >/dev/null 2>&1 || true\n        fi\n    \n        if gh auth status --hostname \"${remote_host}\" >/dev/null 2>&1; then\n          gh auth setup-git --hostname \"${remote_host}\" >/dev/null 2>&1 || true\n        fi\n      fi\n    fi\n  \n  _flox_nix_registry=\"\"\n  if [ -f \"${FLOX_ENV_PROJECT}/flake-registry.local.json\" ]; then\n    _flox_nix_registry=\"${FLOX_ENV_PROJECT}/flake-registry.local.json\"\n  elif [ -f \"${FLOX_ENV_PROJECT}/flake-registry.json\" ]; then\n    _flox_nix_registry=\"${FLOX_ENV_PROJECT}/flake-registry.json\"\n  fi\n  if [ -n \"$_flox_nix_registry\" ]; then\n    # nix.conf settings are newline-separated and NIX_CONFIG may already carry some — notably\n    # the access-tokens for the private inputs, which have to survive this.\n    _flox_nix_nl='\n'\n    export NIX_CONFIG=\"${NIX_CONFIG:+${NIX_CONFIG}${_flox_nix_nl}}flake-registry = $_flox_nix_registry\"\n    unset _flox_nix_nl\n  fi\n  unset _flox_nix_registry\n\n    mkdir -p \"$PULUMI_HOME\"\n  \n  mkdir -p \"${PULUMI_HOME}\"\n  mkdir -p \"${FLOX_ENV_PROJECT}/.pulumi-state\"\n  if command -v javac >/dev/null 2>&1; then\n    export JAVA_HOME=\"$(dirname \"$(dirname \"$(command -v javac)\")\")\"\n  fi\n  # No GH_TOKEN export here, on purpose: a copy taken at activation goes stale at the next\n  # `gh auth refresh`, and every process launched from this shell (VS Code, agent sessions)\n  # inherits it and shadows the fresh keyring token. gh reads the keyring itself when unset.\n  export KUBECONFIG=\"${FLOX_ENV_PROJECT}/.local.d/kubeconfig.yaml\"\n"
     },
     "profile": {
-      "common": "    GITHUB_SIGNING_KEYFILE=\"$HOME\"/.ssh/keys.d/github-signing\n    if [[ -r \"$GITHUB_SIGNING_KEYFILE\" ]]; then\n      set -a\n      SOPS_AGE_KEY=$( ssh-to-age -private-key < \"$GITHUB_SIGNING_KEYFILE\" )\n      set +a\n    else\n      echo no signing key\n    fi\n  \n    export ANTORA_CACHE_DIR=\"${FLOX_ENV_PROJECT}/.cache/antora\"\n    export DOCS_BUILD_DIR=\"${FLOX_ENV_PROJECT}/.output/docs\"\n  \n    GITHUB_SIGNING_KEYFILE=\"$HOME\"/.ssh/keys.d/github-signing\n    if [[ -r \"$GITHUB_SIGNING_KEYFILE\" ]]; then\n      set -a\n      SOPS_AGE_KEY=$( ssh-to-age -private-key < \"$GITHUB_SIGNING_KEYFILE\" )\n      set +a\n    else\n      echo no signing key\n    fi\n  \n    if [ -d \"${FLOX_ENV_PROJECT}/.github\" ]; then\n      gh_login=\"\"\n      if [ -n \"${GH_TOKEN:-}\" ]; then\n        gh_login=$(gh api user --jq '.login' 2>/dev/null || true)\n      elif command -v pass >/dev/null 2>&1; then\n        gh_secret=$(pass show coding/github@work 2>/dev/null | head -n 1 || true)\n        if [ -n \"${gh_secret}\" ]; then\n          gh_login=$(env GH_TOKEN=\"${gh_secret}\" gh api user --jq '.login' 2>/dev/null || true)\n        fi\n      fi\n      if [ -n \"${gh_login}\" ]; then\n        remote=$(git -C \"${FLOX_ENV_PROJECT}\" remote get-url origin 2>/dev/null || true)\n        if [ -n \"${remote}\" ]; then\n          owner=$(printf '%s' \"${remote}\" | cut -d'/' -f 4)\n          repo_name=$(printf '%s' \"${remote}\" | cut -d'/' -f 5 | cut -d'.' -f 1)\n          export GITHUB_LOGIN=\"${gh_login}\"\n          export GITHUB_OWNER=\"${owner}\"\n          export GITHUB_REPOSITORY=\"${owner}/${repo_name}\"\n        fi\n      fi\n    fi\n  \n    GITHUB_SIGNING_KEYFILE=\"$HOME\"/.ssh/keys.d/github-signing\n    if [[ -r \"$GITHUB_SIGNING_KEYFILE\" ]]; then\n      set -a\n      SOPS_AGE_KEY=$( ssh-to-age -private-key < \"$GITHUB_SIGNING_KEYFILE\" )\n      set +a\n    else\n      echo no signing key\n    fi\n  "
+      "common": "    GITHUB_SIGNING_KEYFILE=\"$HOME\"/.ssh/keys.d/github-signing\n    if [[ -r \"$GITHUB_SIGNING_KEYFILE\" ]]; then\n      set -a\n      SOPS_AGE_KEY=$( ssh-to-age -private-key < \"$GITHUB_SIGNING_KEYFILE\" )\n      set +a\n    else\n      echo no signing key\n    fi\n  \n    export ANTORA_CACHE_DIR=\"${FLOX_ENV_PROJECT}/.cache/antora\"\n    export DOCS_BUILD_DIR=\"${FLOX_ENV_PROJECT}/.output/docs\"\n  \n    GITHUB_SIGNING_KEYFILE=\"$HOME\"/.ssh/keys.d/github-signing\n    if [[ -r \"$GITHUB_SIGNING_KEYFILE\" ]]; then\n      set -a\n      SOPS_AGE_KEY=$( ssh-to-age -private-key < \"$GITHUB_SIGNING_KEYFILE\" )\n      set +a\n    else\n      echo no signing key\n    fi\n  \n    if [ -d \"${FLOX_ENV_PROJECT}/.github\" ]; then\n      gh_login=\"\"\n      if [ -n \"${GH_TOKEN:-}\" ]; then\n        gh_login=$(gh api user --jq '.login' 2>/dev/null || true)\n      elif command -v pass >/dev/null 2>&1; then\n        gh_secret=$(pass show coding/github@work 2>/dev/null | head -n 1 || true)\n        if [ -n \"${gh_secret}\" ]; then\n          gh_login=$(env GH_TOKEN=\"${gh_secret}\" gh api user --jq '.login' 2>/dev/null || true)\n        fi\n      fi\n      if [ -n \"${gh_login}\" ]; then\n        remote=$(git -C \"${FLOX_ENV_PROJECT}\" remote get-url origin 2>/dev/null || true)\n        if [ -n \"${remote}\" ]; then\n          owner=$(printf '%s' \"${remote}\" | cut -d'/' -f 4)\n          repo_name=$(printf '%s' \"${remote}\" | cut -d'/' -f 5 | cut -d'.' -f 1)\n          export GITHUB_LOGIN=\"${gh_login}\"\n          export GITHUB_OWNER=\"${owner}\"\n          export GITHUB_REPOSITORY=\"${owner}/${repo_name}\"\n        fi\n      fi\n    fi\n  \n    GITHUB_SIGNING_KEYFILE=\"$HOME\"/.ssh/keys.d/github-signing\n    if [[ -r \"$GITHUB_SIGNING_KEYFILE\" ]]; then\n      set -a\n      SOPS_AGE_KEY=$( ssh-to-age -private-key < \"$GITHUB_SIGNING_KEYFILE\" )\n      set +a\n    else\n      echo no signing key\n    fi\n  \n    GITHUB_SIGNING_KEYFILE=\"$HOME\"/.ssh/keys.d/github-signing\n    if [[ -r \"$GITHUB_SIGNING_KEYFILE\" ]]; then\n      set -a\n      SOPS_AGE_KEY=$( ssh-to-age -private-key < \"$GITHUB_SIGNING_KEYFILE\" )\n      set +a\n    else\n      echo no signing key\n    fi\n  "
     },
     "options": {
       "systems": [
@@ -1096,6 +1159,34 @@
       },
       "system": "aarch64-linux",
       "group": "git",
+      "priority": 5
+    },
+    {
+      "attr_path": "darwin.linux-builder-vz",
+      "broken": false,
+      "derivation": "/nix/store/bbc6kglmj3lgcl2r3v0z9jlxxlm58b51-create-builder.drv",
+      "description": "Create a Linux builder VM for macOS",
+      "install_id": "linux-builder-vz",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=494ce7fd23ff6a5dff39e1fb11e9b6f2ac74bf25",
+      "name": "create-builder",
+      "pname": "linux-builder-vz",
+      "rev": "494ce7fd23ff6a5dff39e1fb11e9b6f2ac74bf25",
+      "rev_count": 1085777,
+      "rev_date": "2026-10-05T05:43:54Z",
+      "scrape_date": "2026-10-06T05:00:37.888451Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "create-builder",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/hlsrpvz1bm2ixj3r5716fgp1wh8l52il-create-builder"
+      },
+      "system": "aarch64-darwin",
+      "group": "home",
       "priority": 5
     },
     {
@@ -2768,6 +2859,650 @@
       },
       "system": "aarch64-linux",
       "group": "manifest-tools-yaml-tools",
+      "priority": 5
+    },
+    {
+      "attr_path": "cachix",
+      "broken": false,
+      "derivation": "/nix/store/jxf9kvkv8497pc3nnp8pk4w6v38r7nln-cachix-1.12.1.drv",
+      "description": "Command-line client for Nix binary cache hosting https://cachix.org",
+      "install_id": "cachix",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "name": "cachix-1.12.1",
+      "pname": "cachix",
+      "rev": "b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "rev_count": 1082427,
+      "rev_date": "2026-09-29T13:38:46Z",
+      "scrape_date": "2026-10-01T05:03:32.822243Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.12.1",
+      "outputs_to_install": [
+        "bin"
+      ],
+      "outputs": {
+        "bin": "/nix/store/k3nkjfdwxzd0bm2yk7gq5vxsmwxr4cj3-cachix-1.12.1-bin",
+        "out": "/nix/store/ablpqifsqp7fr2yzsq4v15i2sj619x4z-cachix-1.12.1"
+      },
+      "system": "aarch64-darwin",
+      "group": "nix",
+      "priority": 5
+    },
+    {
+      "attr_path": "cachix",
+      "broken": false,
+      "derivation": "/nix/store/bfi9bggpdjcr32xqd2q4mq36dkfcp2zb-cachix-1.12.1.drv",
+      "description": "Command-line client for Nix binary cache hosting https://cachix.org",
+      "install_id": "cachix",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "name": "cachix-1.12.1",
+      "pname": "cachix",
+      "rev": "b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "rev_count": 1082427,
+      "rev_date": "2026-09-29T13:38:46Z",
+      "scrape_date": "2026-10-01T05:38:36.234751Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.12.1",
+      "outputs_to_install": [
+        "bin"
+      ],
+      "outputs": {
+        "bin": "/nix/store/cjd9b2l57rzv153fp28v5zqns6ks2ipz-cachix-1.12.1-bin",
+        "out": "/nix/store/n2x1pjnyd8aq149wdcqwli0j9ksjifl0-cachix-1.12.1"
+      },
+      "system": "aarch64-linux",
+      "group": "nix",
+      "priority": 5
+    },
+    {
+      "attr_path": "deadnix",
+      "broken": false,
+      "derivation": "/nix/store/anccdksiij1b3zxdv1g7xkdgpnf80999-deadnix-1.3.2.drv",
+      "description": "Find and remove unused code in .nix source files",
+      "install_id": "deadnix",
+      "license": "GPL-3.0-only",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "name": "deadnix-1.3.2",
+      "pname": "deadnix",
+      "rev": "b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "rev_count": 1082427,
+      "rev_date": "2026-09-29T13:38:46Z",
+      "scrape_date": "2026-10-01T05:03:33.296492Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.3.2",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/lrxy6ly28d1237r7890ps0kw6zd3df2j-deadnix-1.3.2"
+      },
+      "system": "aarch64-darwin",
+      "group": "nix",
+      "priority": 5
+    },
+    {
+      "attr_path": "deadnix",
+      "broken": false,
+      "derivation": "/nix/store/mmz4bqpxf0kn6l204a44h8zvaq6lwjwf-deadnix-1.3.2.drv",
+      "description": "Find and remove unused code in .nix source files",
+      "install_id": "deadnix",
+      "license": "GPL-3.0-only",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "name": "deadnix-1.3.2",
+      "pname": "deadnix",
+      "rev": "b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "rev_count": 1082427,
+      "rev_date": "2026-09-29T13:38:46Z",
+      "scrape_date": "2026-10-01T05:38:36.886650Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.3.2",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/mljwz6yf0q6mkh1fgdj3p894pvfg2cz8-deadnix-1.3.2"
+      },
+      "system": "aarch64-linux",
+      "group": "nix",
+      "priority": 5
+    },
+    {
+      "attr_path": "nix-eval-jobs",
+      "broken": false,
+      "derivation": "/nix/store/r71jkwhk8r82wyszyrg1fkm346zs6jvj-nix-eval-jobs-2.35.4.drv",
+      "description": "Hydra's builtin hydra-eval-jobs as a standalone",
+      "install_id": "nix-eval-jobs",
+      "license": "GPL-3.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "name": "nix-eval-jobs-2.35.4",
+      "pname": "nix-eval-jobs",
+      "rev": "b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "rev_count": 1082427,
+      "rev_date": "2026-09-29T13:38:46Z",
+      "scrape_date": "2026-10-01T05:03:57.713412Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2.35.4",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "dev": "/nix/store/8jm2c20q024bdckhx59fb19ixzxv23l8-nix-eval-jobs-2.35.4-dev",
+        "out": "/nix/store/pjrgw4qp9qyxp337g51lxgzpqlxm63ii-nix-eval-jobs-2.35.4"
+      },
+      "system": "aarch64-darwin",
+      "group": "nix",
+      "priority": 5
+    },
+    {
+      "attr_path": "nix-eval-jobs",
+      "broken": false,
+      "derivation": "/nix/store/z6midf24x3h6yvhci1bfc4j9sisy0xqd-nix-eval-jobs-2.35.4.drv",
+      "description": "Hydra's builtin hydra-eval-jobs as a standalone",
+      "install_id": "nix-eval-jobs",
+      "license": "GPL-3.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "name": "nix-eval-jobs-2.35.4",
+      "pname": "nix-eval-jobs",
+      "rev": "b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "rev_count": 1082427,
+      "rev_date": "2026-09-29T13:38:46Z",
+      "scrape_date": "2026-10-01T05:39:13.919676Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2.35.4",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "dev": "/nix/store/06h28zp2fljnirny22qsqir1sg7zv0fn-nix-eval-jobs-2.35.4-dev",
+        "out": "/nix/store/q9i0sg55vl1nb8xxg33q1ziml4qxgr0r-nix-eval-jobs-2.35.4"
+      },
+      "system": "aarch64-linux",
+      "group": "nix",
+      "priority": 5
+    },
+    {
+      "attr_path": "nix-fast-build",
+      "broken": false,
+      "derivation": "/nix/store/xf2shlggcqk1sb769qa332icpd7hik8y-nix-fast-build-2.0.3.drv",
+      "description": "Speed-up your Nix evaluation and building process by running them in parallel",
+      "install_id": "nix-fast-build",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "name": "nix-fast-build-2.0.3",
+      "pname": "nix-fast-build",
+      "rev": "b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "rev_count": 1082427,
+      "rev_date": "2026-09-29T13:38:46Z",
+      "scrape_date": "2026-10-01T05:03:57.715246Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2.0.3",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "dist": "/nix/store/9j13s77km1bfj2054nk7az9qpjp9wdcx-nix-fast-build-2.0.3-dist",
+        "out": "/nix/store/931j8x59w7yjsnp3w54idbv5d99c9whn-nix-fast-build-2.0.3"
+      },
+      "system": "aarch64-darwin",
+      "group": "nix",
+      "priority": 5
+    },
+    {
+      "attr_path": "nix-fast-build",
+      "broken": false,
+      "derivation": "/nix/store/nn3d17cqchxc501dd06dhh13rhxxpnk5-nix-fast-build-2.0.3.drv",
+      "description": "Speed-up your Nix evaluation and building process by running them in parallel",
+      "install_id": "nix-fast-build",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "name": "nix-fast-build-2.0.3",
+      "pname": "nix-fast-build",
+      "rev": "b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "rev_count": 1082427,
+      "rev_date": "2026-09-29T13:38:46Z",
+      "scrape_date": "2026-10-01T05:39:13.921381Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2.0.3",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "dist": "/nix/store/4sphx31m6whdlgym9axwrzp8wdszh56b-nix-fast-build-2.0.3-dist",
+        "out": "/nix/store/jbay70a2nkfxwcx5ylph2jf16l4gzlm1-nix-fast-build-2.0.3"
+      },
+      "system": "aarch64-linux",
+      "group": "nix",
+      "priority": 5
+    },
+    {
+      "attr_path": "nix-output-monitor",
+      "broken": false,
+      "derivation": "/nix/store/j8i9xb4w5wvxw0iqz9y5cnfnfqfm3qby-nix-output-monitor-2.2.0.drv",
+      "description": "Processes output of Nix commands to show helpful and pretty information",
+      "install_id": "nix-output-monitor",
+      "license": "EUPL-1.2",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "name": "nix-output-monitor-2.2.0",
+      "pname": "nix-output-monitor",
+      "rev": "b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "rev_count": 1082427,
+      "rev_date": "2026-09-29T13:38:46Z",
+      "scrape_date": "2026-10-01T05:03:57.737503Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2.2.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/jcdwkhzi04y1vxv9fp9a6rd70wsnbvmv-nix-output-monitor-2.2.0"
+      },
+      "system": "aarch64-darwin",
+      "group": "nix",
+      "priority": 5
+    },
+    {
+      "attr_path": "nix-output-monitor",
+      "broken": false,
+      "derivation": "/nix/store/0ygwkk7b21p1skn4zl16apf29g6lacnz-nix-output-monitor-2.2.0.drv",
+      "description": "Processes output of Nix commands to show helpful and pretty information",
+      "install_id": "nix-output-monitor",
+      "license": "EUPL-1.2",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "name": "nix-output-monitor-2.2.0",
+      "pname": "nix-output-monitor",
+      "rev": "b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "rev_count": 1082427,
+      "rev_date": "2026-09-29T13:38:46Z",
+      "scrape_date": "2026-10-01T05:39:13.952107Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2.2.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/q5pjnm966winbha9mwnxrh5wmyr6kx89-nix-output-monitor-2.2.0"
+      },
+      "system": "aarch64-linux",
+      "group": "nix",
+      "priority": 5
+    },
+    {
+      "attr_path": "nix-tree",
+      "broken": false,
+      "derivation": "/nix/store/i0frj4v44d5mj6pwimc73fz93mxxyfs3-nix-tree-0.8.0.drv",
+      "description": "Interactively browse a Nix store paths dependencies",
+      "install_id": "nix-tree",
+      "license": "BSD-3-Clause",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "name": "nix-tree-0.8.0",
+      "pname": "nix-tree",
+      "rev": "b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "rev_count": 1082427,
+      "rev_date": "2026-09-29T13:38:46Z",
+      "scrape_date": "2026-10-01T05:03:57.779500Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.8.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/pgi23ic1ygj0wy814sc3z5vjw7b6l50q-nix-tree-0.8.0"
+      },
+      "system": "aarch64-darwin",
+      "group": "nix",
+      "priority": 5
+    },
+    {
+      "attr_path": "nix-tree",
+      "broken": false,
+      "derivation": "/nix/store/ghc51j341ldp9fji9jpirrs5xsij4l5w-nix-tree-0.8.0.drv",
+      "description": "Interactively browse a Nix store paths dependencies",
+      "install_id": "nix-tree",
+      "license": "BSD-3-Clause",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "name": "nix-tree-0.8.0",
+      "pname": "nix-tree",
+      "rev": "b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "rev_count": 1082427,
+      "rev_date": "2026-09-29T13:38:46Z",
+      "scrape_date": "2026-10-01T05:39:14.010135Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.8.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/glbykizhacw4snydn1z7pn7mzghl5anc-nix-tree-0.8.0"
+      },
+      "system": "aarch64-linux",
+      "group": "nix",
+      "priority": 5
+    },
+    {
+      "attr_path": "nixd",
+      "broken": false,
+      "derivation": "/nix/store/9bf3pw89pj1d82qmjnpmaga2z8n9b579-nixd-2.9.2.drv",
+      "description": "Feature-rich Nix language server interoperating with C++ nix",
+      "install_id": "nixd",
+      "license": "LGPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "name": "nixd-2.9.2",
+      "pname": "nixd",
+      "rev": "b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "rev_count": 1082427,
+      "rev_date": "2026-09-29T13:38:46Z",
+      "scrape_date": "2026-10-01T05:03:57.806995Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2.9.2",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/nx14q9sw1xl819yxhacw11lxqswkkj46-nixd-2.9.2"
+      },
+      "system": "aarch64-darwin",
+      "group": "nix",
+      "priority": 5
+    },
+    {
+      "attr_path": "nixd",
+      "broken": false,
+      "derivation": "/nix/store/k0k19mrw9fw53n6i68k40gqsx20snxx2-nixd-2.9.2.drv",
+      "description": "Feature-rich Nix language server interoperating with C++ nix",
+      "install_id": "nixd",
+      "license": "LGPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "name": "nixd-2.9.2",
+      "pname": "nixd",
+      "rev": "b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "rev_count": 1082427,
+      "rev_date": "2026-09-29T13:38:46Z",
+      "scrape_date": "2026-10-01T05:39:14.047701Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2.9.2",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/g309sfwbgjw4lpdp2xplzppa9vnxvg82-nixd-2.9.2"
+      },
+      "system": "aarch64-linux",
+      "group": "nix",
+      "priority": 5
+    },
+    {
+      "attr_path": "nixfmt-rfc-style",
+      "broken": false,
+      "derivation": "/nix/store/rpp3f1aqddyvqpspcm167hbqsgvr24rp-nixfmt-1.5.0.drv",
+      "description": "Official formatter for Nix code",
+      "install_id": "nixfmt-rfc-style",
+      "license": "MPL-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "name": "nixfmt-1.5.0",
+      "pname": "nixfmt-rfc-style",
+      "rev": "b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "rev_count": 1082427,
+      "rev_date": "2026-09-29T13:38:46Z",
+      "scrape_date": "2026-10-01T05:03:57.815318Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.5.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/g3fqjg0dbfz5mzzg16l6hqwwff4kym3s-nixfmt-1.5.0"
+      },
+      "system": "aarch64-darwin",
+      "group": "nix",
+      "priority": 5
+    },
+    {
+      "attr_path": "nixfmt-rfc-style",
+      "broken": false,
+      "derivation": "/nix/store/4hqlw9n8qswlfznpnmq1m0hgg3n8i60f-nixfmt-1.5.0.drv",
+      "description": "Official formatter for Nix code",
+      "install_id": "nixfmt-rfc-style",
+      "license": "MPL-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "name": "nixfmt-1.5.0",
+      "pname": "nixfmt-rfc-style",
+      "rev": "b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "rev_count": 1082427,
+      "rev_date": "2026-09-29T13:38:46Z",
+      "scrape_date": "2026-10-01T05:39:14.057837Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.5.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/gfws7fimfbhxkc10spia4cj03z860jmk-nixfmt-1.5.0"
+      },
+      "system": "aarch64-linux",
+      "group": "nix",
+      "priority": 5
+    },
+    {
+      "attr_path": "nvfetcher",
+      "broken": false,
+      "derivation": "/nix/store/xp0c2k7fqc1m05bhcd2mhmi1h6316s8g-nvfetcher-0.8.0.0.drv",
+      "description": "Generate nix sources expr for the latest version of packages",
+      "install_id": "nvfetcher",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "name": "nvfetcher-0.8.0.0",
+      "pname": "nvfetcher",
+      "rev": "b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "rev_count": 1082427,
+      "rev_date": "2026-09-29T13:38:46Z",
+      "scrape_date": "2026-10-01T05:03:58.447511Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.8.0.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/gdgjzh3ddpbr637brmnpvszsgch19v1f-nvfetcher-0.8.0.0"
+      },
+      "system": "aarch64-darwin",
+      "group": "nix",
+      "priority": 5
+    },
+    {
+      "attr_path": "nvfetcher",
+      "broken": false,
+      "derivation": "/nix/store/7f3ay6nvq8i0bfbd733h3k52rjsibmdc-nvfetcher-0.8.0.0.drv",
+      "description": "Generate nix sources expr for the latest version of packages",
+      "install_id": "nvfetcher",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "name": "nvfetcher-0.8.0.0",
+      "pname": "nvfetcher",
+      "rev": "b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "rev_count": 1082427,
+      "rev_date": "2026-09-29T13:38:46Z",
+      "scrape_date": "2026-10-01T05:39:14.949573Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.8.0.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/pdjjr3ck21w977kyhm90fl32zw117j2p-nvfetcher-0.8.0.0"
+      },
+      "system": "aarch64-linux",
+      "group": "nix",
+      "priority": 5
+    },
+    {
+      "attr_path": "statix",
+      "broken": false,
+      "derivation": "/nix/store/f793h94bnbj5qblaqynpqjw2hb3afi3l-statix-0.5.8-unstable-2026-07-17.drv",
+      "description": "Lints and suggestions for the nix programming language",
+      "install_id": "statix",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "name": "statix-0.5.8-unstable-2026-07-17",
+      "pname": "statix",
+      "rev": "b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "rev_count": 1082427,
+      "rev_date": "2026-09-29T13:38:46Z",
+      "scrape_date": "2026-10-01T05:05:31.510144Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2026-07-17",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/925b3zxz1j0984ywkl3y35v0bbrda2k9-statix-0.5.8-unstable-2026-07-17"
+      },
+      "system": "aarch64-darwin",
+      "group": "nix",
+      "priority": 5
+    },
+    {
+      "attr_path": "statix",
+      "broken": false,
+      "derivation": "/nix/store/nxcqb0sv2c1jshaxc1axnyqvksmjzqj5-statix-0.5.8-unstable-2026-07-17.drv",
+      "description": "Lints and suggestions for the nix programming language",
+      "install_id": "statix",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "name": "statix-0.5.8-unstable-2026-07-17",
+      "pname": "statix",
+      "rev": "b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "rev_count": 1082427,
+      "rev_date": "2026-09-29T13:38:46Z",
+      "scrape_date": "2026-10-01T05:41:09.792406Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2026-07-17",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/w9s5sw6pdlfwnpxh2s1jmbmlwligwwa2-statix-0.5.8-unstable-2026-07-17"
+      },
+      "system": "aarch64-linux",
+      "group": "nix",
+      "priority": 5
+    },
+    {
+      "attr_path": "watchexec",
+      "broken": false,
+      "derivation": "/nix/store/v53m79x3mbfkp52mhy5bghz04y595w0i-watchexec-2.5.1.drv",
+      "description": "Executes commands in response to file modifications",
+      "install_id": "watchexec",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "name": "watchexec-2.5.1",
+      "pname": "watchexec",
+      "rev": "b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "rev_count": 1082427,
+      "rev_date": "2026-09-29T13:38:46Z",
+      "scrape_date": "2026-10-01T05:06:31.969122Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2.5.1",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/g33f3vlc56fby9msb1dwnlri8mkcvsfi-watchexec-2.5.1"
+      },
+      "system": "aarch64-darwin",
+      "group": "nix",
+      "priority": 5
+    },
+    {
+      "attr_path": "watchexec",
+      "broken": false,
+      "derivation": "/nix/store/czbkkfaa269qrm4ww2p6s653ycz5hm2v-watchexec-2.5.1.drv",
+      "description": "Executes commands in response to file modifications",
+      "install_id": "watchexec",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "name": "watchexec-2.5.1",
+      "pname": "watchexec",
+      "rev": "b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+      "rev_count": 1082427,
+      "rev_date": "2026-09-29T13:38:46Z",
+      "scrape_date": "2026-10-01T05:42:26.759804Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2.5.1",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/0sp2c0fayli3m2y6iwh3ywkg0yjrf5nd-watchexec-2.5.1"
+      },
+      "system": "aarch64-linux",
+      "group": "nix",
       "priority": 5
     },
     {
@@ -4704,7 +5439,7 @@
         "PULUMI_HOME": "${XDG_STATE_HOME:-$HOME/.local/state}/pulumi"
       },
       "hook": {
-        "on-activate": "  _rke_registry=\"${FLOX_ENV_PROJECT}/flake-registry.json\"\n  if [ -f \"${FLOX_ENV_PROJECT}/flake-registry.local.json\" ]; then\n    _rke_registry=\"${FLOX_ENV_PROJECT}/flake-registry.local.json\"\n  fi\n  # nix.conf settings are newline-separated, and NIX_CONFIG may already carry some.\n  _rke_nl='\n'\n  export NIX_CONFIG=\"${NIX_CONFIG:+${NIX_CONFIG}${_rke_nl}}flake-registry = $_rke_registry\"\n  unset _rke_registry _rke_nl\n\n  mkdir -p \"${PULUMI_HOME}\"\n  mkdir -p \"${FLOX_ENV_PROJECT}/.pulumi-state\"\n  if command -v javac >/dev/null 2>&1; then\n    export JAVA_HOME=\"$(dirname \"$(dirname \"$(command -v javac)\")\")\"\n  fi\n  # No GH_TOKEN export here, on purpose: a copy taken at activation goes stale at the next\n  # `gh auth refresh`, and every process launched from this shell (VS Code, agent sessions)\n  # inherits it and shadows the fresh keyring token. gh reads the keyring itself when unset.\n  export KUBECONFIG=\"${FLOX_ENV_PROJECT}/.local.d/kubeconfig.yaml\"\n"
+        "on-activate": "  mkdir -p \"${PULUMI_HOME}\"\n  mkdir -p \"${FLOX_ENV_PROJECT}/.pulumi-state\"\n  if command -v javac >/dev/null 2>&1; then\n    export JAVA_HOME=\"$(dirname \"$(dirname \"$(command -v javac)\")\")\"\n  fi\n  # No GH_TOKEN export here, on purpose: a copy taken at activation goes stale at the next\n  # `gh auth refresh`, and every process launched from this shell (VS Code, agent sessions)\n  # inherits it and shadows the fresh keyring token. gh reads the keyring itself when unset.\n  export KUBECONFIG=\"${FLOX_ENV_PROJECT}/.local.d/kubeconfig.yaml\"\n"
       },
       "profile": {},
       "options": {},
@@ -4724,6 +5459,9 @@
           },
           {
             "dir": "./.flox-envs.d/keyhole"
+          },
+          {
+            "dir": "./.flox-envs.d/nix"
           },
           {
             "dir": "./.flox-envs.d/pulumi"
@@ -5148,6 +5886,129 @@
       },
       {
         "manifest": {
+          "schema-version": "1.11.0",
+          "install": {
+            "age": {
+              "pkg-path": "age",
+              "pkg-group": "keyhole"
+            },
+            "cachix": {
+              "pkg-path": "cachix",
+              "pkg-group": "nix",
+              "outputs": "all"
+            },
+            "deadnix": {
+              "pkg-path": "deadnix",
+              "pkg-group": "nix",
+              "outputs": "all"
+            },
+            "gnupg": {
+              "pkg-path": "gnupg",
+              "pkg-group": "keyhole"
+            },
+            "go-2fa": {
+              "pkg-path": "go-2fa"
+            },
+            "keychain": {
+              "pkg-path": "keychain",
+              "pkg-group": "keyhole"
+            },
+            "linux-builder-vz": {
+              "pkg-path": "darwin.linux-builder-vz",
+              "pkg-group": "home",
+              "systems": [
+                "aarch64-darwin"
+              ],
+              "outputs": "all"
+            },
+            "nix-eval-jobs": {
+              "pkg-path": "nix-eval-jobs",
+              "pkg-group": "nix",
+              "outputs": "all"
+            },
+            "nix-fast-build": {
+              "pkg-path": "nix-fast-build",
+              "pkg-group": "nix",
+              "outputs": "all"
+            },
+            "nix-output-monitor": {
+              "pkg-path": "nix-output-monitor",
+              "pkg-group": "nix",
+              "outputs": "all"
+            },
+            "nix-tree": {
+              "pkg-path": "nix-tree",
+              "pkg-group": "nix",
+              "outputs": "all"
+            },
+            "nixd": {
+              "pkg-path": "nixd",
+              "pkg-group": "nix",
+              "outputs": "all"
+            },
+            "nixfmt-rfc-style": {
+              "pkg-path": "nixfmt-rfc-style",
+              "pkg-group": "nix",
+              "outputs": "all"
+            },
+            "nvfetcher": {
+              "pkg-path": "nvfetcher",
+              "pkg-group": "nix",
+              "outputs": "all"
+            },
+            "openssh": {
+              "pkg-path": "openssh",
+              "pkg-group": "keyhole",
+              "outputs": "all"
+            },
+            "openssl": {
+              "pkg-path": "openssl",
+              "pkg-group": "keyhole",
+              "outputs": "all"
+            },
+            "pass": {
+              "pkg-path": "pass",
+              "pkg-group": "keyhole"
+            },
+            "pwgen-secure": {
+              "pkg-path": "pwgen-secure",
+              "pkg-group": "keyhole",
+              "outputs": "all"
+            },
+            "sops": {
+              "pkg-path": "sops",
+              "pkg-group": "keyhole"
+            },
+            "ssh-to-age": {
+              "pkg-path": "ssh-to-age",
+              "pkg-group": "keyhole"
+            },
+            "statix": {
+              "pkg-path": "statix",
+              "pkg-group": "nix",
+              "outputs": "all"
+            },
+            "watchexec": {
+              "pkg-path": "watchexec",
+              "pkg-group": "nix",
+              "outputs": "all"
+            }
+          },
+          "hook": {
+            "on-activate": "  _flox_nix_registry=\"\"\n  if [ -f \"${FLOX_ENV_PROJECT}/flake-registry.local.json\" ]; then\n    _flox_nix_registry=\"${FLOX_ENV_PROJECT}/flake-registry.local.json\"\n  elif [ -f \"${FLOX_ENV_PROJECT}/flake-registry.json\" ]; then\n    _flox_nix_registry=\"${FLOX_ENV_PROJECT}/flake-registry.json\"\n  fi\n  if [ -n \"$_flox_nix_registry\" ]; then\n    # nix.conf settings are newline-separated and NIX_CONFIG may already carry some — notably\n    # the access-tokens for the private inputs, which have to survive this.\n    _flox_nix_nl='\n'\n    export NIX_CONFIG=\"${NIX_CONFIG:+${NIX_CONFIG}${_flox_nix_nl}}flake-registry = $_flox_nix_registry\"\n    unset _flox_nix_nl\n  fi\n  unset _flox_nix_registry\n"
+          },
+          "profile": {
+            "common": "    GITHUB_SIGNING_KEYFILE=\"$HOME\"/.ssh/keys.d/github-signing\n    if [[ -r \"$GITHUB_SIGNING_KEYFILE\" ]]; then\n      set -a\n      SOPS_AGE_KEY=$( ssh-to-age -private-key < \"$GITHUB_SIGNING_KEYFILE\" )\n      set +a\n    else\n      echo no signing key\n    fi\n  "
+          },
+          "options": {}
+        },
+        "name": "nix",
+        "descriptor": {
+          "dir": "./.flox-envs.d/nix"
+        }
+      },
+      {
+        "manifest": {
           "schema-version": "1.10.0",
           "install": {
             "pulumi": {
@@ -5403,6 +6264,96 @@
           ]
         },
         "higher_priority_name": "keyhole"
+      },
+      {
+        "warning": {
+          "Overriding": [
+            "install",
+            "age"
+          ]
+        },
+        "higher_priority_name": "nix"
+      },
+      {
+        "warning": {
+          "Overriding": [
+            "install",
+            "gnupg"
+          ]
+        },
+        "higher_priority_name": "nix"
+      },
+      {
+        "warning": {
+          "Overriding": [
+            "install",
+            "go-2fa"
+          ]
+        },
+        "higher_priority_name": "nix"
+      },
+      {
+        "warning": {
+          "Overriding": [
+            "install",
+            "keychain"
+          ]
+        },
+        "higher_priority_name": "nix"
+      },
+      {
+        "warning": {
+          "Overriding": [
+            "install",
+            "openssh"
+          ]
+        },
+        "higher_priority_name": "nix"
+      },
+      {
+        "warning": {
+          "Overriding": [
+            "install",
+            "openssl"
+          ]
+        },
+        "higher_priority_name": "nix"
+      },
+      {
+        "warning": {
+          "Overriding": [
+            "install",
+            "pass"
+          ]
+        },
+        "higher_priority_name": "nix"
+      },
+      {
+        "warning": {
+          "Overriding": [
+            "install",
+            "pwgen-secure"
+          ]
+        },
+        "higher_priority_name": "nix"
+      },
+      {
+        "warning": {
+          "Overriding": [
+            "install",
+            "sops"
+          ]
+        },
+        "higher_priority_name": "nix"
+      },
+      {
+        "warning": {
+          "Overriding": [
+            "install",
+            "ssh-to-age"
+          ]
+        },
+        "higher_priority_name": "nix"
       },
       {
         "warning": {

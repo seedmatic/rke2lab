@@ -97,35 +97,12 @@ flox-mcp-server.pkg-group = "flox-mcp-server"
 ##  ... run by _bash_ shell when you run 'flox activate'.
 ## -------------------------------------------------------------------
 [hook]
-## The flake-input registry indirection. This repo's seedmatic inputs are INDIRECT ids
-## (`url = "ndh"`), resolved through nix's registry instead of naming a branch in flake.nix —
-## so re-aiming one is a LOCAL edit, never a flake edit that has to be pushed before the rest
-## of the chain can see it. FOUR of the five named `/develop`, which is the sneakiest form of
-## the rot: a branch that will never be deleted, so it never errors — it just silently gives
-## "whatever develop holds" instead of "what we are working on".
-##
-## `flake-registry.json` is COMMITTED and carries the default targets. It has to be committed
-## because of `relock`: it CLONES the repo to reconcile it, so it only ever sees committed
-## files. A gitignored `flake-registry.local.json` REPLACES it wholesale when present — not
-## merged, because a merge needs jq and a stale local copy missing a newly added id fails
-## LOUDLY rather than resolving the wrong thing. Copy the committed file and edit the lines you
-## want: aim `ndh` at `git+file:///…/ndh.d/develop` to follow a ndh branch, or even your own
-## UNPUSHED commits, which is what this was asked for.
-##
-## It takes the GLOBAL registry slot, measured to cost nothing: `nixpkgs` keeps resolving
-## through the SYSTEM registry (higher precedence, pinned by nix-darwin) and nothing here ever
-## relied on a channels.nixos.org indirect id.
+## ⓘ The flake-input registry indirection used to be written out here, by hand. It now lives in
+## fleet's `nix` env, included below — the logic was identical in every seat and only
+## `$FLOX_ENV_PROJECT` differed, so a copy per repo was a copy that could drift. And half the
+## seedmatic repos with a flake had no seat at all, which made a per-seat hook structurally
+## unable to be uniform.
 on-activate = """
-  _rke_registry="${FLOX_ENV_PROJECT}/flake-registry.json"
-  if [ -f "${FLOX_ENV_PROJECT}/flake-registry.local.json" ]; then
-    _rke_registry="${FLOX_ENV_PROJECT}/flake-registry.local.json"
-  fi
-  # nix.conf settings are newline-separated, and NIX_CONFIG may already carry some.
-  _rke_nl='
-'
-  export NIX_CONFIG="${NIX_CONFIG:+${NIX_CONFIG}${_rke_nl}}flake-registry = $_rke_registry"
-  unset _rke_registry _rke_nl
-
   mkdir -p "${PULUMI_HOME}"
   mkdir -p "${FLOX_ENV_PROJECT}/.pulumi-state"
   if command -v javac >/dev/null 2>&1; then
@@ -174,6 +151,11 @@ on-activate = """
     { dir = "./.flox-envs.d/jdk" },
     { dir = "./.flox-envs.d/k8s" },
     { dir = "./.flox-envs.d/keyhole" },
+    ## `nix` carries the flake-input registry indirection — the hook that puts this repo's
+    ## `flake-registry.json`, or the gitignored `flake-registry.local.json` when one is present,
+    ## into nix's GLOBAL registry slot. It is what makes `url = "ndh"` resolvable and re-aimable
+    ## by a LOCAL edit. It replaces the copy this seat's own [hook] used to carry.
+    { dir = "./.flox-envs.d/nix" },
     { dir = "./.flox-envs.d/pulumi" },
     { dir = "./.flox-envs.d/shell" },
   ]
