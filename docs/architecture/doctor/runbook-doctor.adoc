@@ -990,8 +990,8 @@ symptom today; the `Set<Symptom>` shape is ready for more when an independent pa
 
 The user's call: the Doctor must be *an actor of the system — a generic module plugged into
 seed-outcluster, reusable in other contexts*. This settles the long-open question recorded in
-link:../../../.claude/memory/config-restructuring-state.md[config-restructuring-state] /
-link:../../../.claude/memory/domain-registry-abstraction.md[domain-registry-abstraction]: the doctor
+memory `config-restructuring-state` /
+memory `domain-registry-abstraction`: the doctor
 core is a *neutral module*, not seed-outcluster-bound. Rule of three is reached — (1) runbook
 checkpoints, (2) config missing-input remediation (config's "Increment 2", the doctor's first
 non-runbook use case), (3) future contexts.

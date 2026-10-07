@@ -34,9 +34,9 @@ hors du chemin de 2B.
    que 2B ait intégré. La spec ne touche aucun pom, donc aucun risque de conflit de code ; le seul
    risque est de bruiter la branche de 2B.
 
-3. **Crée une note mémoire** `.claude/memory/osgi-aggregator-layout-spec-state.md` (frontmatter
+3. **Crée une note mémoire** `osgi-aggregator-layout-spec-state.md` dans la mémoire du projet (frontmatter
    `name` / `description` / `metadata type: project`) résumant les décisions VÉRIFIÉES, et **ajoute sa
-   ligne d'index** dans `.claude/memory/MEMORY.md`, section
+   ligne d'index** dans le `MEMORY.md` de la mémoire du projet, section
    `## OSGi cleanup / module layout — SHIPPED slices`. Ligne suggérée (~200 char, condense si besoin) :
 
    ```
@@ -64,7 +64,7 @@ mécanique de migration, et les sous-décisions §5.1–§5.7).
 **1. Worktree dédié — NE PAS implémenter dans `feature/cluster-edge`.** Ce checkout est PARTAGÉ avec la
 conversation qui commite activement le world-gateway 2B, laquelle touche `gateway-port` (renommé par
 cette spec). Muter le layout ici = collision frontale. Créer un worktree externe (recette
-`.claude/hub/instructions.md` § Workspace isolation) — MAIS la base est **`feature/cluster-edge`, PAS
+de la règle partagée `seedmatic-workflow` § Workspace isolation) — MAIS la base est **`feature/cluster-edge`, PAS
 `origin/main`** : `osgi/gateway`, `world-gateway`, les domaines récents N'EXISTENT QUE sur
 `feature/cluster-edge` (vérifié : `origin/main` n'a même pas `osgi/gateway`). Donc :
 `git worktree add -b refactor/osgi-layout <repo>.d/refactor/osgi-layout feature/cluster-edge`,

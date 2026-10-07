@@ -30,7 +30,7 @@ reviews, a posteriori, whether treatments were effective, and reports. In our mo
 the `DriftSpecialist` was groping toward without a name.
 
 The real driver is the upcoming *efficacy-first gate*
-(link:../../../.claude/memory/efficacy-first-prescription-provisional.md[provisional]): before
+(provisional — memory `efficacy-first-prescription-provisional`): before
 re-prescribing a remedy, consult whether it actually worked. That decision needs an honest efficacy
 *report* — which is what the médecin-conseil produces.
 
@@ -139,7 +139,7 @@ exactly which fields — is deferred; the spirit is settled):
 . *dated* `measuredAt` — taken at an instant; re-measurable later as another report.
 . *keeps references, not copies* — each finding POINTS to the problem consultation and the resolved
   symptom (same spirit as the path-addressing in
-  link:../../../.claude/memory/multiplexor-two-models-design.md[the multiplexor design]), and keeps
+  the multiplexor design — memory `multiplexor-two-models-design`), and keeps
   the *why* — the explanation the `DriftSpecialist`'s returned `ReferralReply` letters carry today
   and which `reviewOpenProblems`' caller currently *discards*.
 

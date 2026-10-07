@@ -4,6 +4,10 @@
 
 toc::[]
 
+⚠️ **Superseded state.** This measures the repos *before* the cutover of 2026-10-07: the hub subtree is gone,
+the shared rules and skills install per user from a hy-reg registry, and the config home is `~/.claude`. The
+decisions and the step-by-step order are in project memory, `agent-config-cutover-plan`.
+
 **Status:** 📋 decision input, 2026-10-07. **Priority set by the operator; nothing here is executed.**
 
 ⓘ This is a statement of work for the **operator**, not a hand-off: it measures, costs and lists the

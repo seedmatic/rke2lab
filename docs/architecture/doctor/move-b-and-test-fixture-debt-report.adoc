@@ -308,6 +308,5 @@ NetworkSpecialist,ClinicalAccess,GrantPolicy,Grant}` in `seed-outcluster/src/mai
 
 == Related
 
-* `.claude/plans/doctor-internal-edge-placement2-plan.md` — the Placement 2 plan (Move A done)
 * memory `doctor-internal-edge-debt`, `declare-what-you-import`, `shared-test-fixtures-module`
 * `docs/architecture/patterns/frontier-playability-model.adoc` — internal/external edge model
