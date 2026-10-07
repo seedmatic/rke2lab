@@ -348,9 +348,15 @@ gpg-agent into the guests over SSH (the guests sign nothing with GPG, and whethe
 Tailscale SSH is unverified), and the commented-out `importGpgKeys` activation in
 `modules/home-manager/gpg.nix` reads a `gpg.d/keys.yaml` that fits no current model
 
-| 12 — later
-| the clusters move to headscale by flipping `OPERATOR_LOGIN_SERVER`
-| headscale 0.30.0 — `/api/v2` + OAuth — unreleased on 2026-10-06
+| 12 — later, and **not decided**
+| ⛔ *An earlier revision of this row said "the clusters move to headscale by flipping
+`OPERATOR_LOGIN_SERVER`". That was wrong in kind, not merely optimistic* — it presented an
+arbitration as a flag flip. The **Funnel cannot move at all**, and two upstream constraints have to
+be answered before the step can be designed.
+| The scope, the cost and the open arbitrations are a document of their own:
+xref:headscale-scope-and-switch-cost.adoc[Headscale — Scope and the Cost of Switching]. Read it
+before planning this step; nothing here is executable today, because **headscale 0.30 is not
+released**.
 |===
 
 === The password-store ownership split — the cleanup that closes the migration

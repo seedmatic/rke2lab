@@ -1,0 +1,250 @@
+= Headscale — Scope and the Cost of Switching
+:toc: macro
+:toclevels: 3
+
+toc::[]
+
+**Status:** 📋 decision input, 2026-10-07. **Nothing here is a plan to execute.**
+
+== Why this document exists
+
+The operator asked for the *scope of headscale* and *the consequences of switching* — explicitly not
+for a switch. So this answers two questions and stops:
+
+. what headscale gives us, and what it does **not**;
+. what moving the **clusters** onto it would actually cost, as opposed to what it looks like it
+  would cost.
+
+The infrastructure side is already decided and specified elsewhere — see
+xref:fabric-control-plane.adoc[the fabric control-plane migration] and ndh's
+`docs/fabric-control-plane-spec.adoc`. This document is about the part that is **not** decided:
+step 12, the clusters.
+
+== What headscale is, for us
+
+A self-hosted Tailscale **control plane**: it registers nodes, distributes policy, and answers the
+coordination traffic that `tailscaled` would otherwise send to Tailscale's SaaS. The **data plane is
+unchanged** — it is still WireGuard between the same clients, because we run the same `tailscaled`.
+
+[mermaid]
+....
+flowchart LR
+  subgraph OURS["What headscale replaces"]
+    CP["control plane\nregistration · policy · DNS · routes"]
+  end
+  subgraph SAME["What it does NOT touch"]
+    DP["data plane\nWireGuard, the same tailscaled"]
+  end
+  CP -. "coordination only" .-> DP
+
+  classDef ours fill:#d9f2e0,stroke:#2d7a4b,stroke-width:2px;
+  classDef same fill:#f3f4f6,stroke:#9ca3af;
+  class CP ours
+  class DP same
+....
+
+That boundary is the whole reason a switch is even thinkable: we are not replacing the network, only
+who tells it what it may do.
+
+=== The scope — what we get
+
+[cols="1,2",options="header"]
+|===
+| Capability | What it gives us
+
+| **Node registration** | pre-auth keys and a device list we own, so a machine joins without a
+vendor account
+| **Policy: `grants` + `ssh` rules** | the access model the fabric rests on — access becomes a grant
+instead of a key. ⚠️ `grants` arrive in **0.29.0**; this is the reason for the version floor
+| **Split DNS** | `dns.nameservers.split` points a domain at a chosen resolver, which is how a
+member resolves the fabric zone served by its segment's dnsmasq
+| **Subnet routes** | a member advertises a CIDR and others accept it — how the `vmnet` and fabric
+spans are reached
+| **Tailscale SSH** | keyless SSH mediated by policy. ⚠️ Our fork intercepts it on port 2222; the
+port is ours, not upstream's
+|===
+
+=== ❌ The scope — what we do NOT get, and must not assume
+
+Each of these was measured against the upstream project, not inferred:
+
+[cols="1,2",options="header"]
+|===
+| Absent | Evidence, and the consequence
+
+| **Funnel** | a **SaaS** feature: public ingress through Tailscale's own edge. headscale has no
+equivalent and cannot have one — it does not operate an edge. ⛔ *This is the single biggest cost of
+a cluster switch; see below.*
+| **Tailscale Services** | no equivalent. Our screen access therefore uses **subnet routes + grants**
+instead of `svc:` targets
+| **Federation** | `#1973`, closed **not-planned**. Two control planes do not know about each other —
+hence the WireGuard bridge between the gateways
+| **HA** | `#2695`; the maintainer's answer is *"The short answer is no"*. One control plane per
+bare-metal is a consequence, not a preference
+| **`tailscale cert`** | `#2137`, open. headscale issues no certificates, so the control URL's TLS
+leaf is ours to mint and distribute
+|===
+
+IMPORTANT: Four of these five absences are already **designed around** in the infrastructure plan.
+Only the Funnel has no design around it, because only the clusters use it.
+
+== The version floor is now a deadline, not a defect
+
+`modules/.common.d/headscale-pkg.nix` pins the band `>= 0.29, < 0.30`. The ceiling was written as a
+tripwire — *we deliberately do not need `/api/v2` + OAuth while the clusters stay on the SaaS.*
+
+⚠️ That reasoning is correct **today and only today**. `0.30` is precisely the release that makes the
+Kubernetes operator able to drive headscale, so the ceiling is the thing gating step 12. It stops
+being a guard rail and becomes an **expiry date**.
+
+=== What changed upstream, measured 2026-10-07
+
+[cols="1,3",options="header"]
+|===
+| Item | State
+
+| `juanfont/headscale#1202` — *"support the Kubernetes operator"*
+| opened 2023-02-03, closed **`wontfix`** in 2023-05 (*"out of scope for this project"*), then
+**implemented and closed `completed` on 2026-06-26**, milestone **v0.30**. ⚠️ The `wontfix` label is
+still attached and is now **stale** — the same maintainer who applied it did the milestone and the
+close
+| `#3334` — OAuth clients and scopes on the v2 API
+| merged into `main` 2026-06-26. The v2 API authenticates by OAuth 2.0 client-credentials like the
+rest of the Tailscale ecosystem; scopes bound the operations, tags bound the devices created. New
+`headscale oauth-clients` CLI. Its changelog says this lets *"the Tailscale Terraform provider and
+Kubernetes operator drive Headscale unchanged"*
+| `#3337` — a k3s + operator CI dimension
+| merged the same day. Not a claim but a test: `TestK8sOperator` stands up k3s in a container,
+installs the **upstream Helm chart** with the **real** operator and proxy images, and drives
+`Connector` / `ProxyGroup`
+| **v0.30 itself**
+| ❌ **not released.** Latest is `v0.29.4` (2026-09-23). The milestone has 21 closed and **25 still
+open**, with no date
+|===
+
+ⓘ A third-party datapoint, dated 2026-10-02, titles an issue literally *"add Tailscale Kubernetes
+Operator app (blocked on Headscale 0.30.0)"*. We are not alone at this wall.
+
+== The cost of switching the clusters
+
+=== ✅ What is already in place — the part that genuinely is a flag
+
+[cols="1,2",options="header"]
+|===
+| Piece | State
+
+| The operator honours a custom login server
+| `cmd/k8s-operator/operator.go` on upstream `main` reads `OPERATOR_LOGIN_SERVER` and propagates it
+to the resources it manages. The historical blocker — *"the operator does not pass a custom login
+server to the proxy containers"* — **no longer exists**
+| The chart exposes it
+| a top-level `loginServer`, from chart **1.98.4**. We pin `Component.TAILSCALE = "1.102.3"`, so **we
+already have it**
+| We already feed the operator an OAuth client
+| `TailscaleManifestsUnit` deploys the chart, and the `operator-oauth` Secret is served by
+`TailscaleOauthClientGateway` from a `tskey-client-…` that **ndh** mints and mirrors — today against
+the SaaS
+|===
+
+⚠️ **Do not look for that capability through the PRs the upstream issue cites.**
+`tailscale/tailscale#11627` (*"add basic support for Headscale"*) and `#10223` (*"base URL env var"*)
+are **both closed without merge**. Searching by them finds nothing and reads as "unsupported"; the
+capability arrived another way.
+
+So the mechanical delta is small: a `loginServer` in `valuesContent`, and a gateway pointed at a
+client minted by `headscale oauth-clients` with scopes and tags.
+
+=== ⛔ What makes it an arbitration rather than a port
+
+**The Funnel is SaaS-only, and we use it.** *Measured in this repo:* `Funnel`, `FunnelLeaf`,
+`PacWebhookFunnel` and `FunnelCertIssuance` are ingress-domain types, and `TailscaleManifestsUnit`
+imports `FunnelCertIssuance` with an apparatus of cert restore and state persistence around it —
+`FunnelCertRestoreManifestsUnit`, `FunnelStatePersistenceManifestsUnit`.
+
+[cols="1,2",options="header"]
+|===
+| Option | What it means
+
+| **Keep the funnel path on the SaaS**
+| ✅ Consistent with a decision already taken: *the SaaS is not a participant in the carve, it is a
+vendor given.* The clusters would then be **split** — funnel ingress on the vendor's control plane,
+everything else on ours. Two `tailscaled` identities per cluster, or a boundary drawn at the
+workload
+| **Replace it**
+| what replaces public ingress-through-a-vendor-edge is not a headscale feature but an
+**architecture**: our own edge, our own certificates, our own DNS. That is a chantier, not a switch
+| **Give it up**
+| the honest third option, and it has to be stated: whatever the funnel serves publicly stops being
+served publicly
+|===
+
+IMPORTANT: This is the decision the switch actually requires, and it is **not technical**. No
+upstream release unblocks it.
+
+=== ⛔ Two hard constraints, read in headscale's own test harness
+
+Both come from `integration/k3sic/` — upstream's own notes on making this work, which is a stronger
+source than a feature list.
+
+**A private CA does not work for pods.** `tailscaled` verifies against the **system** trust store,
+and there is no way to project a CA file into a proxy pod:
+
+* `ProxyClass.spec.statefulSet.pod` has no `volumes`;
+* `tailscaleContainer` has no `volumeMounts`;
+* its `env` is a reduced schema — `name`/`value`, no `valueFrom`;
+* `operatorConfig` has `extraEnv` but no `extraVolumes`;
+* `SSL_CERT_FILE` *is* honoured — and wants a file you cannot mount.
+
+Upstream's conclusion is to **bake the CA into derived images** (operator + proxy), import them into
+containerd, and force `imagePullPolicy: Never` through a `ProxyClass`. In practice **they gave up and
+serve headscale over plain HTTP** in the test.
+
+[IMPORTANT]
+====
+*Scope — this does not touch the infrastructure plan.* Steps 2–6 of
+xref:fabric-control-plane.adoc[the migration] put headscale's members on **our machines**, where we
+own the system trust store (`security.pki.certificates` on NixOS, the System keychain on darwin).
+That is exactly why a leaf from the private `mammoth-skate-tls` root works there.
+
+The constraint bites **only when pods become members** — step 12. It is a design input for *that*
+step, not a reason to revisit the container's TLS today.
+====
+
+**DERP, or no data plane.** A pod's only endpoint is an unroutable pod IP, so its sole path to an
+off-cluster node is **DERP**. A proxy composes DERP over HTTPS, so a DERP without usable TLS relays
+nothing. Upstream injects `TS_DEBUG_DERP_WS_CLIENT` + `TS_DEBUG_USE_DERP_HTTP` through a
+`ProxyClass`. Without that, ingress and egress proxies have **no data plane at all** — not degraded,
+absent.
+
+ⓘ A smaller trap worth keeping: the chart interpolates `oauth.clientId` / `clientSecret`
+**unquoted**, so an all-digits identifier becomes a YAML number and the apiserver rejects it.
+Upstream creates the Secret with `--from-literal`. We create the Secret ourselves, so this costs
+nothing — provided the values stay strings.
+
+== Verdict
+
+[cols="1,2",options="header"]
+|===
+| Question | Answer
+
+| Is it technically blocked upstream?
+| **No longer.** The operator capability is merged, tested in upstream CI, and the chart version we
+already pin exposes it
+| Is it usable today?
+| ❌ **No.** `0.30` is unreleased, the milestone has 25 open issues and no date, and the ndh version
+band excludes `0.30` by construction — so even release day needs a band re-aim, not a bump
+| Is the remaining work small?
+| The **code** delta is small. The **decision** is not: the Funnel has no headscale equivalent, and
+choosing among keep-on-SaaS / replace / give-up is an architecture call
+| What should change today?
+| Nothing executable. Three things become *known*: the target stops being speculative and becomes a
+calendar question; the version ceiling becomes an expiry date; and the private-CA constraint becomes
+a design input for step 12 — to be answered **before** that step is planned, not during it
+|===
+
+== Related
+
+* xref:fabric-control-plane.adoc[Fabric Control Plane — the migration] — step 12 points here
+* ndh `docs/fabric-control-plane-spec.adoc` — the target model for the **infrastructure** tailnet
+* `.claude/tailnet-cluster-reach-design.adoc` — the still-open scratchpad on cluster reach (host
+  routing versus operator forms), which this intersects
