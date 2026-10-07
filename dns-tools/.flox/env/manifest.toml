@@ -1,0 +1,17 @@
+version = 1
+
+[include]
+  [[include.environments]]
+    dir = '../keyhole'
+
+[install]
+  [install.dig]
+    pkg-group = 'dns-tools'
+    pkg-path = 'dig'
+
+  [install.dnsmasq]
+    pkg-group = 'dns-tools'
+    pkg-path = 'dnsmasq'
+
+[options]
+  systems = ['aarch64-darwin', 'aarch64-linux', 'x86_64-linux', 'x86_64-darwin']

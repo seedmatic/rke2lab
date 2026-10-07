@@ -1,0 +1,83 @@
+schema-version = "1.10.0"
+
+[include]
+  [[include.environments]]
+    dir = '../keyhole'
+
+[install]
+html2text.pkg-path = "html2text"
+html2text.outputs = "all"
+zgrviewer.pkg-path = "zgrviewer"
+mermaid-cli.pkg-path = "mermaid-cli"
+  [install.antora]
+    pkg-group = "asciidoc"
+    pkg-path = "antora"
+outputs = "all"
+
+  [install.antora-lunr-extension]
+    pkg-group = "asciidoc"
+    pkg-path = "antora-lunr-extension"
+outputs = "all"
+
+  [install.antora-ui-default]
+    pkg-group = "asciidoc"
+    pkg-path = "antora-ui-default"
+outputs = "all"
+
+  [install.asciidoctor-with-extensions]
+    pkg-group = "asciidoc"
+    pkg-path = "asciidoctor-with-extensions"
+outputs = "all"
+
+  [install.graphviz]
+    pkg-group = "asciidoc"
+    pkg-path = "graphviz"
+outputs = "all"
+
+  [install.jdk]
+    pkg-group = "asciidoc"
+    pkg-path = "jdk"
+outputs = "all"
+
+  [install.nodejs]
+    pkg-group = "asciidoc"
+    pkg-path = "nodejs"
+outputs = "all"
+
+  [install.plantuml]
+    pkg-group = "asciidoc"
+    pkg-path = "plantuml"
+outputs = "all"
+
+  [install.pnpm]
+    pkg-group = "asciidoc"
+    pkg-path = "pnpm"
+outputs = "all"
+
+[options]
+systems = ["aarch64-darwin", "aarch64-linux", "x86_64-linux", "x86_64-darwin"]
+
+[profile]
+  common = """
+    export ANTORA_CACHE_DIR="${FLOX_ENV_PROJECT}/.cache/antora"
+    export DOCS_BUILD_DIR="${FLOX_ENV_PROJECT}/.output/docs"
+  """
+
+[hook]
+  # mermaid-cli (mmdc) drives a headless browser through puppeteer, which bundles NO binary
+  # here: nixpkgs has no chromium for aarch64-darwin, so puppeteer looks in its own cache and
+  # aborts with "Could not find chrome-headless-shell (ver. X)" naming a version it never
+  # downloaded. Point it at whatever IS cached instead of the version it asks for — mmdc needs
+  # a CDP endpoint, not that exact build. Left UNSET when nothing is cached, so the failure
+  # stays puppeteer's own clear message rather than an exec error on a path we invented.
+  #
+  # on-activate, NOT [profile]: `flox activate -- <cmd>` runs no profile script (its own --help
+  # says so), and that non-interactive form is how the doc gate is actually invoked.
+  on-activate = """
+    if [ -z "${PUPPETEER_EXECUTABLE_PATH:-}" ]; then
+      for _shell in "$HOME"/.cache/puppeteer/chrome-headless-shell/*/chrome-headless-shell-*/chrome-headless-shell; do
+        [ -x "$_shell" ] && export PUPPETEER_EXECUTABLE_PATH="$_shell"
+      done
+      unset _shell
+    fi
+  """
