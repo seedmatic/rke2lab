@@ -1,9 +1,0 @@
--include: ../../bundle-parent/annotations.bnd
-Import-Package: ${annotation-noimports}, *
-Bundle-SymbolicName: io.seedmatic.rke2lab.scenario.probe
-
-# Export the package so the same-package -test fragment can be authored against it. The
-# package-private member stays invisible across the export — only the fragment, sharing this
-# bundle's classloader and package, reaches it white-box.
-Export-Package: io.seedmatic.rke2lab.scenario.probe;version=0.1.0
-

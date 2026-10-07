@@ -1,9 +1,0 @@
-# Single source for the compile-only, RUNTIME-retained analysis annotations no bundle may
-# runtime-import (provided / analysis-only: a runtime import would make system.packages.extra
-# export a package absent from the host flat classpath and fail the embedded boot). Every bundle
-# -includes this file EXPLICITLY and writes `Import-Package: ${annotation-noimports}, *` (a bundle
-# with extra import directives extends that line, keeping the reference). Extend the exclusion list
-# HERE — the one place. Explicit -include (not silent pom-<bnd> inheritance) so the exclusion is
-# visible when reading a module's bnd.bnd.
-annotation-noimports: !org.jspecify.annotations, !org.checkerframework.*
--noimportjava: true

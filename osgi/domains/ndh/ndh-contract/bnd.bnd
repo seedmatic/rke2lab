@@ -1,7 +1,0 @@
--include: ../../../bundle-parent/annotations.bnd
-Import-Package: ${annotation-noimports}, *
-Bundle-SymbolicName: io.seedmatic.rke2lab.ndh.contract
-Export-Package: io.seedmatic.rke2lab.ndh.contract
-# type=contract — the OSGi-only seam toward the ndh key inventory (NdhKeystoreReader), realised by
-# ndh-core and consumed bundle-to-bundle by manifests-core / cluster-pki-core.
-Provide-Capability: io.seedmatic.rke2lab.embed; type=contract

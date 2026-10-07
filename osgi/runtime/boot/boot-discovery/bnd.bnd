@@ -1,2 +1,0 @@
--include: ../../../bundle-parent/annotations.bnd
-Import-Package: ${annotation-noimports}, *

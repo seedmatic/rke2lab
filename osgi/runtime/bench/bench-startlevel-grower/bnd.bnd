@@ -1,3 +1,0 @@
-Bundle-SymbolicName: io.seedmatic.rke2lab.osgibench.startlevel.grower
-# Test fixture, selected by installMatching via LDAP filter over these attributes (not by file name).
-Provide-Capability: io.seedmatic.rke2lab.embed; type=fixture; suite=startlevel; role=grower

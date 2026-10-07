@@ -1,2 +1,0 @@
-Bundle-SymbolicName: io.seedmatic.rke2lab.benchcellar.staticclean
-Provide-Capability: io.seedmatic.rke2lab.embed; type=fixture; suite=cellar; role=clean-static

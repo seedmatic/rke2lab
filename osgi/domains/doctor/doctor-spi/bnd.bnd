@@ -1,9 +1,0 @@
--include: ../../../bundle-parent/annotations.bnd
-Import-Package: ${annotation-noimports}, *
-Bundle-SymbolicName: io.seedmatic.rke2lab.doctor.spi
-Export-Package: \
-    io.seedmatic.rke2lab.doctor.spi
-# The inter-domain SPI: another OSGi domain (e.g. cluster) implements Specialist to plug into the
-# doctor. Exported OSGi-side, installed as a bundle (type=model) — NOT a host seam: the host never
-# calls these. See docs/architecture/osgi/seed-broker-spec.adoc.
-Provide-Capability: io.seedmatic.rke2lab.embed; type=model; model=doctor

@@ -1,3 +1,0 @@
-Bundle-SymbolicName: io.seedmatic.rke2lab.benchcellar.recipient.late
-# Installed at runtime by the additivity proof, selected by its own role.
-Provide-Capability: io.seedmatic.rke2lab.embed; type=fixture; suite=cellar; role=recipient-late

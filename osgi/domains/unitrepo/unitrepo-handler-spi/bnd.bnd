@@ -1,7 +1,0 @@
--include: ../../../bundle-parent/annotations.bnd
-Import-Package: ${annotation-noimports}, *
-Bundle-SymbolicName: io.seedmatic.rke2lab.unitrepo.handler.spi
-Export-Package: io.seedmatic.rke2lab.unitrepo.handler.spi
-# Embeddable model bundle: the UnitHandler SPI + the unitrepo.handler extender capability. Staged
-# like the other domains so it installs in the framework rather than sitting flat on the host JCL.
-Provide-Capability: io.seedmatic.rke2lab.embed; type=model; model=unitrepo-handler-spi

@@ -1,8 +1,0 @@
--include: ../../../bundle-parent/annotations.bnd
-Import-Package: ${annotation-noimports}, *
-Bundle-SymbolicName: io.seedmatic.rke2lab.ndh.core
-# type=model — the ndh domain's reader logic, installed as a bundle. No Export-Package: the impl is
-# bundle-private, the seam (NdhKeystoreReader) lives in ndh-contract. DefaultNdhKeystoreReader
-# (@Component) publishes it; SCR reads Service-Component, the wildcard picks up the descriptor.
-Provide-Capability: io.seedmatic.rke2lab.embed; type=model; model=ndh-core
-Service-Component: OSGI-INF/*.xml

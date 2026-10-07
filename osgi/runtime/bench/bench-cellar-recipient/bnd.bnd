@@ -1,3 +1,0 @@
-Bundle-SymbolicName: io.seedmatic.rke2lab.benchcellar.recipient
-# Test fixture, selected by installMatching via LDAP filter over these attributes (not by file name).
-Provide-Capability: io.seedmatic.rke2lab.embed; type=fixture; suite=cellar; role=recipient

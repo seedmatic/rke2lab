@@ -1,5 +1,0 @@
--XepDisableAllChecks
--XepExcludedPaths:(.*/src/test/.*)|(.*-test/src/.*)|(.*-testkit/src/.*)
--XepOpt:NullAway:OnlyNullMarked=true
--XepOpt:NullAway:JSpecifyMode=true
--XepOpt:NullAway:ExcludedFieldAnnotations=com.tngtech.jgiven.annotation.ProvidedScenarioState,com.tngtech.jgiven.annotation.ExpectedScenarioState,com.tngtech.jgiven.annotation.ScenarioState,com.tngtech.jgiven.annotation.ScenarioStage,org.mockito.Mock,org.mockito.InjectMocks,org.mockito.Captor,org.osgi.service.component.annotations.Reference
