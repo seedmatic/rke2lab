@@ -39,42 +39,52 @@ seat. That is what this file is for.
 
 ## Pull the envs down (the common case)
 
-Run from this repo's worktree root:
+Run from this repo's worktree root, **and activate nothing until the last step**:
 
 ```bash
 git remote add fleet https://github.com/seedmatic/fleet.git   # once per clone
 git subtree pull --prefix=.flox-envs.d fleet flox-subtree --squash
-nix run .#lock-flox-envs                                      # MANDATORY, see below
+nix run .#lock-flox-envs                                      # locks what has no lock
+flox upgrade --dir .flox-envs.d/<env>                         # EACH env whose manifest changed
+flox include upgrade                                          # recompose the seat
+git add .flox/env/manifest.lock && git commit -m "chore(flox): re-lock the seat after the subtree pull"
+flox activate -- true                                         # only now
 ```
 
-### The re-lock is not optional
+### Why each step, and why that order
 
-fleet ignores `*/.flox/env/manifest.lock`, so **the locks never travel**. A lock is
-what makes an env includable, so freshly vendored envs make the seat refuse to
-activate:
+fleet ignores `*/.flox/env/manifest.lock`, so **the locks never travel**: a lock is bound to the checkout it was
+produced in (a `path:` or local include is recorded ABSOLUTE in `locked-url`). Re-lock at every change of seat —
+after every pull here, and before every republication in fleet.
+
+- `lock-flox-envs` locks every env that has **no** lock, dependency-first. It does **not** refresh a lock that
+  exists but went stale — hence `flox upgrade --dir` on each env whose manifest the pull changed.
+- **The seat's lock is tracked and freezes the composition, hooks included.** Measured 2026-10-07: after a pull that
+  removed a hook from the `git` env, a `flox activate` run BEFORE `flox include upgrade` still executed the old hook
+  (it rewrote `~/.gitconfig`). Recompose and commit first; activate last.
+- The gate is `flox include upgrade` reporting « No included environments have changes », not a passing activation.
+  A seat whose included env has no lock fails with:
 
 ```
 ✘ ERROR: failed to fetch environment './.flox-envs.d/asciidoc':
   cannot include environment since its manifest and lockfile are out of sync
 ```
 
-`nix run .#lock-flox-envs` walks the seat's include graph (and each env's own
-`../<env>` includes, dependency-first) and locks whatever has no lock. The locks stay
-gitignored on purpose: fleet publishes manifests, each checkout realises its own lock.
-The error above, after a pull, always means this step was skipped.
-
 ## Republish the branch (only after editing envs in fleet)
 
-Publish what has **landed** on `develop` — never what a checkout happens to hold. Split the
+**First re-lock in fleet's own seat**, where the envs were edited, so a manifest that no longer locks is caught
+before it leaves. Then publish what has **landed** on `develop` — never what a checkout happens to hold. Split the
 remote trunk, not `HEAD`, so a worktree carrying unmerged commits cannot publish unreviewed work:
 
 ```bash
 git -C <fleet> fetch --prune origin       # a FULL fetch: with explicit refspecs, origin/develop was left stale
 split="$(git -C <fleet> subtree split --prefix=flox origin/develop)"
 lease="$(git -C <fleet> rev-parse --verify --quiet origin/flox-subtree || true)"
-git -C <fleet> push origin "$split:refs/heads/flox-subtree" --force-with-lease="flox-subtree:$lease"
+git -C <fleet> push origin "${split}:refs/heads/flox-subtree" --force-with-lease="flox-subtree:${lease}"
 ```
 
+⚠️ Brace every variable that precedes a `:` — under zsh, `"$split:refs/…"` applies the `:r` modifier and the refspec
+becomes `<sha>efs/…` (« src refspec … does not match any »). That, not GitHub, was the « failed to push » once measured.
 Read the push's whole output — never through `tail`: a first attempt failed showing only « failed to
 push some refs », its cause cut away, and passed when re-run with the same split and lease.
 
