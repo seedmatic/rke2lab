@@ -74,22 +74,38 @@ else
   echo "relock(@repoName@): cloned at $cur"
 fi
 
-# The registry that resolves a repo's INDIRECT inputs, pinned to its COMMITTED file — by a CLI
-# flag rather than NIX_CONFIG. Measured 2026-10-06: `--flake-registry` beats a NIX_CONFIG aimed
-# elsewhere, and leaving NIX_CONFIG alone matters because that is where access-tokens for the
-# private inputs live.
+# The registry that resolves a repo's INDIRECT inputs, pinned by a CLI flag rather than left to
+# NIX_CONFIG. Measured 2026-10-06: `--flake-registry` beats a NIX_CONFIG aimed elsewhere, and
+# leaving NIX_CONFIG alone matters because that is where access-tokens for the private inputs
+# live. What it points AT is the repo's EFFECTIVE registry — the operator's gitignored
+# flake-registry.local.json when one exists, the committed flake-registry.json otherwise.
 #
-# Why pin at all: an operator's shell aims this setting at their own gitignored
-# flake-registry.local.json, so without the pin we would re-lock through THEIR local re-aim and
-# commit the result — a lock that resolves on their machine and nowhere else. The clone path makes
-# it worse, not better: a fresh clone has no local file, so the ambient one would be the only one.
+# ★ That precedence is the whole point of the indirection, and an earlier version of this
+# function defeated it: it pinned the committed file unconditionally, so re-locking through a
+# local re-aim was impossible — which is the one thing the registry exists to make possible.
+# Re-aiming an input at the branch you are working on, and having a relock FOLLOW you there, is
+# the use case; naming that branch in flake.nix is what we removed.
 #
-# A repo that has not moved to indirect inputs carries no such file: nothing to pin, and the
-# local-lock guard in relock_input covers it regardless. Uniform across the chain either way.
+# What made the over-caution look reasonable was imagining the local file as somebody ELSE's.
+# It cannot be: relock reconciles either the operator's own checkout or a FRESH CLONE, and a
+# fresh clone has no gitignored file at all, so it falls back to the committed one by
+# construction. The only flake-registry.local.json relock can ever read is the one belonging to
+# whoever ran it.
+#
+# Safety is the GUARD's job, not this pin's, and the guard already draws the right line —
+# between a re-aim at another BRANCH, whose locked rev is pushed and therefore fetchable by
+# everyone, and a re-aim at a local CHECKOUT, whose rev exists on one machine. It refuses the
+# second and lets the first through. Pinning the committed file as well bought nothing and cost
+# the feature.
+#
+# A repo that carries neither file gets no flag: nothing to point at, and the guard covers it
+# regardless. Uniform across the chain whether a given repo has migrated its inputs or not.
 registry_flag=()
 set_registry_flag() { # $1 checkout dir
   registry_flag=()
-  if [ -f "$1/flake-registry.json" ]; then
+  if [ -f "$1/flake-registry.local.json" ]; then
+    registry_flag=(--flake-registry "$1/flake-registry.local.json")
+  elif [ -f "$1/flake-registry.json" ]; then
     registry_flag=(--flake-registry "$1/flake-registry.json")
   fi
 }
@@ -203,8 +219,8 @@ relock_input() { # $1 input name
     git -C "$RKE" checkout -q -- flake.lock
     echo "LOCAL lock REFUSED -> $locked_at"
     echo "relock: that revision resolves only on this machine, so the lock would be unfetchable" >&2
-    echo "        for every other consumer. Aim the registry at a pushed ref — the committed" >&2
-    echo "        flake-registry.json, not a flake-registry.local.json — and run again." >&2
+    echo "        for every other consumer. Aim this id at a PUSHED ref and run again — another" >&2
+    echo "        branch is fine (its revisions are on the remote), a local checkout is not." >&2
     return 1
   fi
   local after
