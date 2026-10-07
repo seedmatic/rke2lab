@@ -29,7 +29,6 @@ jgiven-reports/
 flake-registry.local.json
 
 # Local files
-.local.d
 result
 # Created by https://www.toptal.com/developers/gitignore/api/java
 # Edit at https://www.toptal.com/developers/gitignore?templates=java
