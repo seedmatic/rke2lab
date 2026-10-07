@@ -69,11 +69,14 @@ Publish what has **landed** on `develop` — never what a checkout happens to ho
 remote trunk, not `HEAD`, so a worktree carrying unmerged commits cannot publish unreviewed work:
 
 ```bash
-git -C <fleet> fetch --prune origin develop flox-subtree
+git -C <fleet> fetch --prune origin       # a FULL fetch: with explicit refspecs, origin/develop was left stale
 split="$(git -C <fleet> subtree split --prefix=flox origin/develop)"
 lease="$(git -C <fleet> rev-parse --verify --quiet origin/flox-subtree || true)"
 git -C <fleet> push origin "$split:refs/heads/flox-subtree" --force-with-lease="flox-subtree:$lease"
 ```
+
+Read the push's whole output — never through `tail`: a first attempt failed showing only « failed to
+push some refs », its cause cut away, and passed when re-run with the same split and lease.
 
 The push is forced because the branch is derived: a re-split rewrites it and cannot
 fast-forward. The lease is what still refuses to clobber a push that arrived since the fetch.
@@ -83,7 +86,7 @@ fast-forward. The lease is what still refuses to clobber a push that arrived sin
 commit, so the force was total. The check is **tree-hash equality**:
 
 ```bash
-git -C <fleet> fetch --prune origin flox-subtree
+git -C <fleet> fetch --prune origin
 [ "$(git -C <fleet> rev-parse origin/flox-subtree^{tree})" \
 = "$(git -C <fleet> rev-parse origin/develop:flox)" ] && echo identical
 ```
