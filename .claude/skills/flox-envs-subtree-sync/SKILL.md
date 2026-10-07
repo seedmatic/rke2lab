@@ -20,7 +20,7 @@ with the checkout instead of being reached through a path outside it.
 ## The direction of truth — get this right or you destroy envs
 
 ```
-fleet  main:flox            ← the LIVING copy. Edits land here.
+fleet  develop:flox            ← the LIVING copy. Edits land here.
          │  git subtree split  (make flox-publish)
          ▼
 fleet  origin/flox-subtree  ← a DERIVED split. Never edit it directly.
@@ -74,7 +74,7 @@ In fleet's worktree, with `flox/` committed:
 make flox-publish      # re-split + push with --force-with-lease
 ```
 
-It re-splits `main:flox` and force-pushes, because the branch is derived: a re-split
+It re-splits `develop:flox` and force-pushes, because the branch is derived: a re-split
 rewrites it and cannot fast-forward. The lease is what still refuses to clobber a
 push that arrived since the fetch.
 
@@ -96,7 +96,7 @@ commit, so the force was total. The check is **tree-hash equality**:
 ```bash
 git -C <fleet> fetch --prune origin flox-subtree
 [ "$(git -C <fleet> rev-parse origin/flox-subtree^{tree})" \
-= "$(git -C <fleet> rev-parse main:flox)" ] && echo identical
+= "$(git -C <fleet> rev-parse develop:flox)" ] && echo identical
 ```
 
 ★ It used to be `diff <(git ls-tree --name-only …) <(…)`, and that was **worthless for
@@ -132,6 +132,6 @@ nothing ever re-resolves one until you ask.
 - **fleet's internal includes are all relative** (`../keyhole`, `../xdg`, …), which is
   what makes the tree relocatable at all. If one ever becomes absolute, vendoring
   breaks and the lock will hide it — see the verification note above.
-- **Never check `flox-subtree` out inside `fleet.d/main`.** It carries the envs at its
+- **Never check `flox-subtree` out inside `fleet.d/develop`.** It carries the envs at its
   ROOT, with no `flox/` directory, so the checkout would remove `fleet/flox` and break
   every consumer reaching it. Use a dedicated worktree.
