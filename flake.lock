@@ -640,11 +640,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1791305930,
-        "narHash": "sha256-J3IrJtV2pvA0CMYYG1OUAYGkUwsRRwqEbFa/6WH72wQ=",
+        "lastModified": 1791384871,
+        "narHash": "sha256-q+sRlqv7FxUpF6wIt+zsDjWOKKXQefdNKka3xLiTGn8=",
         "owner": "seedmatic",
         "repo": "flox-nri-plugin",
-        "rev": "f34fe5a13de29dd6546af07061f3e7f35b357a98",
+        "rev": "87bec44404c99d60f045feeae7c33f2a27e10612",
         "type": "github"
       },
       "original": {
