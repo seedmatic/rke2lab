@@ -1,35 +1,5 @@
 schema-version = "1.10.0"
 
-[hook]
-  on-activate = """
-    if [ -d "${FLOX_ENV_PROJECT}/.github" ]; then
-      remote=$(git -C "${FLOX_ENV_PROJECT}" remote get-url origin 2>/dev/null || true)
-      if [ -n "${remote}" ]; then
-        remote_host="github.com"
-        case "${remote}" in
-          git@*:* )
-            remote_host=$(printf '%s' "${remote}" | cut -d'@' -f 2 | cut -d':' -f 1)
-            ;;
-          http://*|https://*)
-            remote_host=$(printf '%s' "${remote}" | cut -d'/' -f 3)
-            ;;
-          ssh://*)
-            remote_host=$(printf '%s' "${remote}" | cut -d'/' -f 3 | cut -d':' -f 1)
-            ;;
-        esac
-    
-        if [ -n "${GH_TOKEN:-}" ] && ! gh auth status --hostname "${remote_host}" >/dev/null 2>&1; then
-          echo "Detected GH_TOKEN, logging in gh for ${remote_host}..." >&2
-          printf '%s' "${GH_TOKEN}" | gh auth login --with-token --hostname "${remote_host}" >/dev/null 2>&1 || true
-        fi
-    
-        if gh auth status --hostname "${remote_host}" >/dev/null 2>&1; then
-          gh auth setup-git --hostname "${remote_host}" >/dev/null 2>&1 || true
-        fi
-      fi
-    fi
-  """
-
 [include]
   [[include.environments]]
     dir = '../keyhole'
