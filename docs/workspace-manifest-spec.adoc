@@ -394,7 +394,7 @@ The generator therefore **asserts**, and fails **hard**, naming the culprit.
 [source]
 ----
 $ workspace verify
-  dangling include: ndh/develop -> /var/lib/git/…/flox/lima — not found
+  dangling include: ndh/develop -> /var/lib/git/…/flox/keyhole — not found
   dangling include: ndh/develop -> /var/lib/git/…/flox/nix  — not found
   override a dangling include with SEED_ALLOW_DANGLING_INCLUDES=1
 FATAL: 4 failed assertion(s)
