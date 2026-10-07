@@ -66,4 +66,56 @@ outputs = "all"
     systems = ['aarch64-darwin']
 outputs = "all"
 
+[hook]
+## The flake-input registry indirection, for EVERY seat that includes this env.
+##
+## A seat's seedmatic-owned inputs are INDIRECT ids (`url = "ndh"`) resolved through nix's
+## registry instead of naming a branch in its flake.nix — so re-aiming one is a LOCAL edit,
+## never a flake edit that has to be pushed before the rest of the chain can see it. That
+## matters because the chain is push-gated, and a branch named in a flake rots silently: the
+## worst form is `/develop`, which never disappears and therefore never errors, it just
+## supplies whatever develop holds instead of the line being worked on.
+##
+## It lives HERE rather than in each seat because the logic is identical everywhere and only
+## `$FLOX_ENV_PROJECT` differs — the same shape as the `git` env's gh-auth hook. Two seats
+## (ndh, rke2lab) carried a hand-written copy first; they drop it when they include this.
+##
+## `<seat>/flake-registry.json` is COMMITTED and holds the default, branch-less targets. It has
+## to be committed because of `relock`: it CLONES the repo to reconcile it, so it only ever sees
+## committed files.
+##
+## `<seat>/flake-registry.local.json` is GITIGNORED and REPLACES it wholesale when present. Not
+## merged — a merge would need jq here, and a stale local copy missing a newly added id fails
+## LOUDLY (`cannot find flake 'flake:x' in the flake registries`) instead of quietly resolving
+## the wrong thing. Copy the committed file and edit the lines you want: aim an id at
+## `git+file:///…/<repo>.d/<branch>` to build your own UNPUSHED commits.
+##
+## ⓘ The two carriers are complementary, not alternatives. This hook makes a local re-aim take
+## effect for building and exploring; `relock` deliberately pins the COMMITTED file instead, so
+## a local re-aim can never reach a lock that other machines must be able to fetch.
+##
+## ⓘ A seat with NO registry file is left untouched, so including this env is harmless before a
+## seat has migrated its inputs. That is what lets every flake repo include it today.
+##
+## It takes nix's GLOBAL registry slot, measured to cost nothing: `nixpkgs` keeps resolving
+## through the SYSTEM registry, which nix-darwin pins at higher precedence, and nothing in this
+## perimeter ever relied on a channels.nixos.org indirect id.
+on-activate = '''
+  _flox_nix_registry=""
+  if [ -f "${FLOX_ENV_PROJECT}/flake-registry.local.json" ]; then
+    _flox_nix_registry="${FLOX_ENV_PROJECT}/flake-registry.local.json"
+  elif [ -f "${FLOX_ENV_PROJECT}/flake-registry.json" ]; then
+    _flox_nix_registry="${FLOX_ENV_PROJECT}/flake-registry.json"
+  fi
+  if [ -n "$_flox_nix_registry" ]; then
+    # nix.conf settings are newline-separated and NIX_CONFIG may already carry some — notably
+    # the access-tokens for the private inputs, which have to survive this.
+    _flox_nix_nl='
+'
+    export NIX_CONFIG="${NIX_CONFIG:+${NIX_CONFIG}${_flox_nix_nl}}flake-registry = $_flox_nix_registry"
+    unset _flox_nix_nl
+  fi
+  unset _flox_nix_registry
+'''
+
 [options]
