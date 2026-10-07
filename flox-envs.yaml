@@ -103,16 +103,6 @@ environments: []
 apiVersion: nxmatic.dev/v1alpha1
 kind: FloxEnvironmentDescriptor
 environments:
-  - name: lima
-    source: lima.yaml
-    manifest: flox/lima/.flox/env/manifest.toml
-    envJson: flox/lima/.flox/env.json
-    includes: []
-    localIncludes: []
----
-apiVersion: nxmatic.dev/v1alpha1
-kind: FloxEnvironmentDescriptor
-environments:
   - name: manifest-tools
     source: manifest-tools.yaml
     manifest: flox/manifest-tools/.flox/env/manifest.toml
