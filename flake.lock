@@ -983,11 +983,11 @@
         "treefmt-nix": "treefmt-nix_2"
       },
       "locked": {
-        "lastModified": 1791384750,
-        "narHash": "sha256-NMxu4eAiEz9P0THk/x3o4MOgHjpYimLM1PM/gnt2ylw=",
+        "lastModified": 1791390466,
+        "narHash": "sha256-PCt3Uepla1PZ3JOU9FCNvClHUVqpulwCNDaK5+MFEsU=",
         "owner": "seedmatic",
         "repo": "ndh",
-        "rev": "c62bd4cf0382304fa872927af0cdf0d5993644e8",
+        "rev": "0cfe9f5c0e577721211402c194e229377715602e",
         "type": "github"
       },
       "original": {
