@@ -6,10 +6,8 @@ target~nxmatic/
 target~claude/
 # jGiven report JSON emitted by scenario runs (regenerable)
 jgiven-reports/
-# Claude scratch working area (never committed)
-.claude/scratch/
-# Claude usage telemetry (local only, not content)
-.claude/usage-data/
+# Claude Code's own per-checkout files (settings.local.json, the history link): nothing under .claude/ is tracked
+/.claude/
 
 # OS
 .DS_Store
@@ -598,7 +596,6 @@ docs/architecture/**/diag-*.svg
 
 # Superpowers skill defaults to docs/superpowers/; our plans/specs live in wip/ (flat wip/plans, wip/specs).
 docs/superpowers/
-.claude/policy-limits.json
 /.secrets
 
 # Local render/dev artifacts — `nix run .#render-manifests` (+ the dev-loop mvn) write
