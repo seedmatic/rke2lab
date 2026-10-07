@@ -72,7 +72,7 @@
     seed-incluster,
     flox,
     ...
-  }:
+  } @ inputs:
     flake-utils.lib.eachSystem [
       "aarch64-darwin"
       "aarch64-linux"
@@ -259,6 +259,24 @@
         type = "app";
         program = "${lockEnvsApp}/bin/lock-envs";
         meta.description = "Re-lock env manifest.lock files under environment.d/ via flox lock-manifest (run from the catalog repo root)";
+      };
+
+      # relock — THIS flake's locks, by the shared implementation in nix-flake-commons'
+      # `lib.mkRelockApp`. This flake is the `flox-catalog` orphan branch of rke2lab, so it names
+      # its `branch`: the slug alone would take any rke2lab checkout for this one. No `consumers`:
+      # no flake pins this branch; rke2lab's own relock re-pins it here (its catalog hop).
+      apps.relock = {
+        type = "app";
+        program = "${
+          inputs.flake-commons.lib.mkRelockApp {
+            inherit pkgs;
+            name = "flox-catalog";
+            slug = "seedmatic/rke2lab";
+            url = "https://github.com/seedmatic/rke2lab.git";
+            branch = "flox-catalog";
+          }
+        }/bin/relock";
+        meta.description = "Reconcile THIS flake's locks: bump each input, DROP any bump that moves no exported derivation, push — impl: nix-flake-commons lib.mkRelockApp";
       };
 
       packages = {
