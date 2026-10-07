@@ -130,11 +130,6 @@
         "pkg-path": "keychain",
         "pkg-group": "keyhole"
       },
-      "kpt": {
-        "pkg-path": "kpt",
-        "pkg-group": "k8s-kpt-tools",
-        "outputs": "all"
-      },
       "krew": {
         "pkg-path": "krew",
         "pkg-group": "k8s-kubectl-tools",
@@ -312,7 +307,7 @@
       "PULUMI_HOME": "${XDG_STATE_HOME:-$HOME/.local/state}/pulumi"
     },
     "hook": {
-      "on-activate": "    if [ -z \"${PUPPETEER_EXECUTABLE_PATH:-}\" ]; then\n      for _shell in \"$HOME\"/.cache/puppeteer/chrome-headless-shell/*/chrome-headless-shell-*/chrome-headless-shell; do\n        [ -x \"$_shell\" ] && export PUPPETEER_EXECUTABLE_PATH=\"$_shell\"\n      done\n      unset _shell\n    fi\n  \n    if [ -d \"${FLOX_ENV_PROJECT}/.github\" ]; then\n      remote=$(git -C \"${FLOX_ENV_PROJECT}\" remote get-url origin 2>/dev/null || true)\n      if [ -n \"${remote}\" ]; then\n        remote_host=\"github.com\"\n        case \"${remote}\" in\n          git@*:* )\n            remote_host=$(printf '%s' \"${remote}\" | cut -d'@' -f 2 | cut -d':' -f 1)\n            ;;\n          http://*|https://*)\n            remote_host=$(printf '%s' \"${remote}\" | cut -d'/' -f 3)\n            ;;\n          ssh://*)\n            remote_host=$(printf '%s' \"${remote}\" | cut -d'/' -f 3 | cut -d':' -f 1)\n            ;;\n        esac\n    \n        if [ -n \"${GH_TOKEN:-}\" ] && ! gh auth status --hostname \"${remote_host}\" >/dev/null 2>&1; then\n          echo \"Detected GH_TOKEN, logging in gh for ${remote_host}...\" >&2\n          printf '%s' \"${GH_TOKEN}\" | gh auth login --with-token --hostname \"${remote_host}\" >/dev/null 2>&1 || true\n        fi\n    \n        if gh auth status --hostname \"${remote_host}\" >/dev/null 2>&1; then\n          gh auth setup-git --hostname \"${remote_host}\" >/dev/null 2>&1 || true\n        fi\n      fi\n    fi\n  \n  _flox_nix_registry=\"\"\n  if [ -f \"${FLOX_ENV_PROJECT}/flake-registry.local.json\" ]; then\n    _flox_nix_registry=\"${FLOX_ENV_PROJECT}/flake-registry.local.json\"\n  elif [ -f \"${FLOX_ENV_PROJECT}/flake-registry.json\" ]; then\n    _flox_nix_registry=\"${FLOX_ENV_PROJECT}/flake-registry.json\"\n  fi\n  if [ -n \"$_flox_nix_registry\" ]; then\n    # nix.conf settings are newline-separated and NIX_CONFIG may already carry some — notably\n    # the access-tokens for the private inputs, which have to survive this.\n    _flox_nix_nl='\n'\n    export NIX_CONFIG=\"${NIX_CONFIG:+${NIX_CONFIG}${_flox_nix_nl}}flake-registry = $_flox_nix_registry\"\n    unset _flox_nix_nl\n  fi\n  unset _flox_nix_registry\n\n    mkdir -p \"$PULUMI_HOME\"\n  \n  mkdir -p \"${PULUMI_HOME}\"\n  mkdir -p \"${FLOX_ENV_PROJECT}/.pulumi-state\"\n  if command -v javac >/dev/null 2>&1; then\n    export JAVA_HOME=\"$(dirname \"$(dirname \"$(command -v javac)\")\")\"\n  fi\n  # No GH_TOKEN export here, on purpose: a copy taken at activation goes stale at the next\n  # `gh auth refresh`, and every process launched from this shell (VS Code, agent sessions)\n  # inherits it and shadows the fresh keyring token. gh reads the keyring itself when unset.\n  export KUBECONFIG=\"${FLOX_ENV_PROJECT}/.local.d/kubeconfig.yaml\"\n"
+      "on-activate": "    if [ -z \"${PUPPETEER_EXECUTABLE_PATH:-}\" ]; then\n      for _shell in \"$HOME\"/.cache/puppeteer/chrome-headless-shell/*/chrome-headless-shell-*/chrome-headless-shell; do\n        [ -x \"$_shell\" ] && export PUPPETEER_EXECUTABLE_PATH=\"$_shell\"\n      done\n      unset _shell\n    fi\n  \n  _flox_nix_registry=\"\"\n  if [ -f \"${FLOX_ENV_PROJECT}/flake-registry.local.json\" ]; then\n    _flox_nix_registry=\"${FLOX_ENV_PROJECT}/flake-registry.local.json\"\n  elif [ -f \"${FLOX_ENV_PROJECT}/flake-registry.json\" ]; then\n    _flox_nix_registry=\"${FLOX_ENV_PROJECT}/flake-registry.json\"\n  fi\n  if [ -n \"$_flox_nix_registry\" ]; then\n    # nix.conf settings are newline-separated and NIX_CONFIG may already carry some — notably\n    # the access-tokens for the private inputs, which have to survive this.\n    _flox_nix_nl='\n'\n    export NIX_CONFIG=\"${NIX_CONFIG:+${NIX_CONFIG}${_flox_nix_nl}}flake-registry = $_flox_nix_registry\"\n    unset _flox_nix_nl\n  fi\n  unset _flox_nix_registry\n\n    mkdir -p \"$PULUMI_HOME\"\n  \n  mkdir -p \"${PULUMI_HOME}\"\n  mkdir -p \"${FLOX_ENV_PROJECT}/.pulumi-state\"\n  if command -v javac >/dev/null 2>&1; then\n    export JAVA_HOME=\"$(dirname \"$(dirname \"$(command -v javac)\")\")\"\n  fi\n  # No GH_TOKEN export here, on purpose: a copy taken at activation goes stale at the next\n  # `gh auth refresh`, and every process launched from this shell (VS Code, agent sessions)\n  # inherits it and shadows the fresh keyring token. gh reads the keyring itself when unset.\n  export KUBECONFIG=\"${FLOX_ENV_PROJECT}/.local.d/kubeconfig.yaml\"\n"
     },
     "profile": {
       "common": "    GITHUB_SIGNING_KEYFILE=\"$HOME\"/.ssh/keys.d/github-signing\n    if [[ -r \"$GITHUB_SIGNING_KEYFILE\" ]]; then\n      set -a\n      SOPS_AGE_KEY=$( ssh-to-age -private-key < \"$GITHUB_SIGNING_KEYFILE\" )\n      set +a\n    else\n      echo no signing key\n    fi\n  \n    export ANTORA_CACHE_DIR=\"${FLOX_ENV_PROJECT}/.cache/antora\"\n    export DOCS_BUILD_DIR=\"${FLOX_ENV_PROJECT}/.output/docs\"\n  \n    GITHUB_SIGNING_KEYFILE=\"$HOME\"/.ssh/keys.d/github-signing\n    if [[ -r \"$GITHUB_SIGNING_KEYFILE\" ]]; then\n      set -a\n      SOPS_AGE_KEY=$( ssh-to-age -private-key < \"$GITHUB_SIGNING_KEYFILE\" )\n      set +a\n    else\n      echo no signing key\n    fi\n  \n    if [ -d \"${FLOX_ENV_PROJECT}/.github\" ]; then\n      gh_login=\"\"\n      if [ -n \"${GH_TOKEN:-}\" ]; then\n        gh_login=$(gh api user --jq '.login' 2>/dev/null || true)\n      elif command -v pass >/dev/null 2>&1; then\n        gh_secret=$(pass show coding/github@work 2>/dev/null | head -n 1 || true)\n        if [ -n \"${gh_secret}\" ]; then\n          gh_login=$(env GH_TOKEN=\"${gh_secret}\" gh api user --jq '.login' 2>/dev/null || true)\n        fi\n      fi\n      if [ -n \"${gh_login}\" ]; then\n        remote=$(git -C \"${FLOX_ENV_PROJECT}\" remote get-url origin 2>/dev/null || true)\n        if [ -n \"${remote}\" ]; then\n          owner=$(printf '%s' \"${remote}\" | cut -d'/' -f 4)\n          repo_name=$(printf '%s' \"${remote}\" | cut -d'/' -f 5 | cut -d'.' -f 1)\n          export GITHUB_LOGIN=\"${gh_login}\"\n          export GITHUB_OWNER=\"${owner}\"\n          export GITHUB_REPOSITORY=\"${owner}/${repo_name}\"\n        fi\n      fi\n    fi\n  \n    GITHUB_SIGNING_KEYFILE=\"$HOME\"/.ssh/keys.d/github-signing\n    if [[ -r \"$GITHUB_SIGNING_KEYFILE\" ]]; then\n      set -a\n      SOPS_AGE_KEY=$( ssh-to-age -private-key < \"$GITHUB_SIGNING_KEYFILE\" )\n      set +a\n    else\n      echo no signing key\n    fi\n  "
@@ -1158,64 +1153,6 @@
       },
       "system": "aarch64-linux",
       "group": "k8s-etcd-tools",
-      "priority": 5
-    },
-    {
-      "attr_path": "kpt",
-      "broken": false,
-      "derivation": "/nix/store/21m8qkbvxjzh0hxq7100skqs00g98bxj-kpt-1.0.0-beta.55.drv",
-      "description": "Automate Kubernetes Configuration Editing",
-      "install_id": "kpt",
-      "license": "Apache-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "name": "kpt-1.0.0-beta.55",
-      "pname": "kpt",
-      "rev": "e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "rev_count": 1079315,
-      "rev_date": "2026-09-25T08:03:29Z",
-      "scrape_date": "2026-09-26T04:58:37.324412Z",
-      "stabilities": [
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "1.0.0-beta.55",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/0qcpkizpdmwd73dgx57y7f94b4x9s8fv-kpt-1.0.0-beta.55"
-      },
-      "system": "aarch64-darwin",
-      "group": "k8s-kpt-tools",
-      "priority": 5
-    },
-    {
-      "attr_path": "kpt",
-      "broken": false,
-      "derivation": "/nix/store/ryamg4g7gbz1hw4q06xbwqwcn6fq5f0v-kpt-1.0.0-beta.55.drv",
-      "description": "Automate Kubernetes Configuration Editing",
-      "install_id": "kpt",
-      "license": "Apache-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "name": "kpt-1.0.0-beta.55",
-      "pname": "kpt",
-      "rev": "e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "rev_count": 1079315,
-      "rev_date": "2026-09-25T08:03:29Z",
-      "scrape_date": "2026-09-26T05:30:02.437845Z",
-      "stabilities": [
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "1.0.0-beta.55",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/ifmkkvwbhj1qwmgd8qg86vs3hvhwsxnl-kpt-1.0.0-beta.55"
-      },
-      "system": "aarch64-linux",
-      "group": "k8s-kpt-tools",
       "priority": 5
     },
     {
@@ -4930,9 +4867,6 @@
               "pkg-group": "keyhole"
             }
           },
-          "hook": {
-            "on-activate": "    if [ -d \"${FLOX_ENV_PROJECT}/.github\" ]; then\n      remote=$(git -C \"${FLOX_ENV_PROJECT}\" remote get-url origin 2>/dev/null || true)\n      if [ -n \"${remote}\" ]; then\n        remote_host=\"github.com\"\n        case \"${remote}\" in\n          git@*:* )\n            remote_host=$(printf '%s' \"${remote}\" | cut -d'@' -f 2 | cut -d':' -f 1)\n            ;;\n          http://*|https://*)\n            remote_host=$(printf '%s' \"${remote}\" | cut -d'/' -f 3)\n            ;;\n          ssh://*)\n            remote_host=$(printf '%s' \"${remote}\" | cut -d'/' -f 3 | cut -d':' -f 1)\n            ;;\n        esac\n    \n        if [ -n \"${GH_TOKEN:-}\" ] && ! gh auth status --hostname \"${remote_host}\" >/dev/null 2>&1; then\n          echo \"Detected GH_TOKEN, logging in gh for ${remote_host}...\" >&2\n          printf '%s' \"${GH_TOKEN}\" | gh auth login --with-token --hostname \"${remote_host}\" >/dev/null 2>&1 || true\n        fi\n    \n        if gh auth status --hostname \"${remote_host}\" >/dev/null 2>&1; then\n          gh auth setup-git --hostname \"${remote_host}\" >/dev/null 2>&1 || true\n        fi\n      fi\n    fi\n  "
-          },
           "profile": {
             "common": "    GITHUB_SIGNING_KEYFILE=\"$HOME\"/.ssh/keys.d/github-signing\n    if [[ -r \"$GITHUB_SIGNING_KEYFILE\" ]]; then\n      set -a\n      SOPS_AGE_KEY=$( ssh-to-age -private-key < \"$GITHUB_SIGNING_KEYFILE\" )\n      set +a\n    else\n      echo no signing key\n    fi\n  \n    if [ -d \"${FLOX_ENV_PROJECT}/.github\" ]; then\n      gh_login=\"\"\n      if [ -n \"${GH_TOKEN:-}\" ]; then\n        gh_login=$(gh api user --jq '.login' 2>/dev/null || true)\n      elif command -v pass >/dev/null 2>&1; then\n        gh_secret=$(pass show coding/github@work 2>/dev/null | head -n 1 || true)\n        if [ -n \"${gh_secret}\" ]; then\n          gh_login=$(env GH_TOKEN=\"${gh_secret}\" gh api user --jq '.login' 2>/dev/null || true)\n        fi\n      fi\n      if [ -n \"${gh_login}\" ]; then\n        remote=$(git -C \"${FLOX_ENV_PROJECT}\" remote get-url origin 2>/dev/null || true)\n        if [ -n \"${remote}\" ]; then\n          owner=$(printf '%s' \"${remote}\" | cut -d'/' -f 4)\n          repo_name=$(printf '%s' \"${remote}\" | cut -d'/' -f 5 | cut -d'.' -f 1)\n          export GITHUB_LOGIN=\"${gh_login}\"\n          export GITHUB_OWNER=\"${owner}\"\n          export GITHUB_REPOSITORY=\"${owner}/${repo_name}\"\n        fi\n      fi\n    fi\n  "
           },
@@ -4998,11 +4932,6 @@
             "helmfile": {
               "pkg-path": "helmfile",
               "pkg-group": "k8s-kubectl-tools",
-              "outputs": "all"
-            },
-            "kpt": {
-              "pkg-path": "kpt",
-              "pkg-group": "k8s-kpt-tools",
               "outputs": "all"
             },
             "krew": {
