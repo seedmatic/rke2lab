@@ -328,29 +328,8 @@ resources:
   - home.yaml
   - k8s.yaml
   - keyhole.yaml
-  - lima.yaml
   - nix.yaml
   - xdg.yaml
----
-apiVersion: flox.dev/v1alpha1
-kind: FloxEnvironment
-metadata:
-  name: lima
-spec:
-  manifest:
-    version: 1
-    install:
-      lima:
-        pkg-path: lima
-      vmnet:
-        pkg-path: darwin.apple_sdk.frameworks.vmnet
-    options:
-      systems:
-        - aarch64-darwin
-        - x86_64-darwin
-  env:
-    name: lima
-    version: 1
 ---
 apiVersion: flox.dev/v1alpha1
 kind: FloxEnvironment
