@@ -38,7 +38,6 @@
     flake-commons.inputs.nixos-hardware.follows = "nixpkgs";
     flake-commons.inputs.nixpkgs-unstable.follows = "nixpkgs";
     flake-commons.inputs.nvfetcher.follows = "nixpkgs";
-    flake-commons.inputs.socket-vmnet.follows = "nixpkgs";
     flake-commons.inputs.sops-nix.follows = "nixpkgs";
     flake-commons.inputs.treefmt-nix.follows = "nixpkgs";
   };
