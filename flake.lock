@@ -22889,18 +22889,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1787133300,
-        "narHash": "sha256-AOcgCHAkv06I31Xi2Hii2n2Um81nXH6m/mxb3CFTiPw=",
+        "lastModified": 1791305389,
+        "narHash": "sha256-aHfjuT0XeTk+2oLp4SNrJhtQN2HdHIX3j0aMW6v6Cv8=",
         "owner": "seedmatic",
         "repo": "claude-hub",
-        "rev": "64ca588df427cd2f06d02cb8c7fe5f806937b6dc",
+        "rev": "19675081ba9975cf5e3dbafee73464a85f7656c5",
         "type": "github"
       },
       "original": {
-        "owner": "seedmatic",
-        "ref": "main",
-        "repo": "claude-hub",
-        "type": "github"
+        "id": "claude-hub",
+        "type": "indirect"
       }
     },
     "crane": {
@@ -103083,18 +103081,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1790593895,
-        "narHash": "sha256-LikDOT2ucj2LkyxMcI3tSOrcX13OZ0EXkfOmw1yyzCM=",
+        "lastModified": 1791384868,
+        "narHash": "sha256-PBlNzxAMSQ5IqgSunBRltKkWhRwcolL71SpZvdAO2A8=",
         "owner": "seedmatic",
         "repo": "flox-controller",
-        "rev": "ca151e53170fc373e632da391ab314e827f0b179",
+        "rev": "c0c16a6ab3df75a0cd2d759c848ad7eb1b50b0c6",
         "type": "github"
       },
       "original": {
-        "owner": "seedmatic",
-        "ref": "develop",
-        "repo": "flox-controller",
-        "type": "github"
+        "id": "flox-controller",
+        "type": "indirect"
       }
     },
     "flox-runtime": {
@@ -103113,18 +103109,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1790805818,
-        "narHash": "sha256-J3IrJtV2pvA0CMYYG1OUAYGkUwsRRwqEbFa/6WH72wQ=",
+        "lastModified": 1791384871,
+        "narHash": "sha256-q+sRlqv7FxUpF6wIt+zsDjWOKKXQefdNKka3xLiTGn8=",
         "owner": "seedmatic",
         "repo": "flox-nri-plugin",
-        "rev": "dc872115ca119008e4cc5bbbe495af68233c76e1",
+        "rev": "87bec44404c99d60f045feeae7c33f2a27e10612",
         "type": "github"
       },
       "original": {
-        "owner": "seedmatic",
-        "ref": "develop",
-        "repo": "flox-nri-plugin",
-        "type": "github"
+        "id": "flox-runtime",
+        "type": "indirect"
       }
     },
     "flox_10": {
@@ -153066,12 +153060,6 @@
           "flake-commons",
           "bird"
         ],
-        "cachix": [
-          "rke2lab",
-          "ndh",
-          "flake-commons",
-          "cachix"
-        ],
         "chromium-bin": [
           "rke2lab",
           "ndh",
@@ -153125,12 +153113,6 @@
           "flake-commons",
           "impermanence"
         ],
-        "incus-compose": [
-          "rke2lab",
-          "ndh",
-          "flake-commons",
-          "incus-compose"
-        ],
         "lix-module": [
           "rke2lab",
           "ndh",
@@ -153168,44 +153150,24 @@
           "nixpkgs-unstable"
         ],
         "nnh": "nnh",
-        "ripvcs": [
-          "rke2lab",
-          "ndh",
-          "flake-commons",
-          "ripvcs"
-        ],
         "rke2lab": [
           "rke2lab"
         ],
-        "socket-vmnet": [
-          "rke2lab",
-          "ndh",
-          "flake-commons",
-          "socket-vmnet"
-        ],
         "sops-nix": "sops-nix_2",
         "tailscale-fork": "tailscale-fork",
-        "treefmt-nix": "treefmt-nix_230",
-        "zen-browser": [
-          "rke2lab",
-          "ndh",
-          "flake-commons",
-          "zen-browser"
-        ]
+        "treefmt-nix": "treefmt-nix_230"
       },
       "locked": {
-        "lastModified": 1790864968,
-        "narHash": "sha256-TOg6ikuKXiBgfdPD1ydR60yHT9P+np0dR0YbCOC7Qhc=",
+        "lastModified": 1791384750,
+        "narHash": "sha256-NMxu4eAiEz9P0THk/x3o4MOgHjpYimLM1PM/gnt2ylw=",
         "owner": "seedmatic",
         "repo": "ndh",
-        "rev": "deeb1ebb91b1d0f8f1e0d66102995cb6ea0e02fb",
+        "rev": "c62bd4cf0382304fa872927af0cdf0d5993644e8",
         "type": "github"
       },
       "original": {
-        "owner": "seedmatic",
-        "ref": "develop",
-        "repo": "ndh",
-        "type": "github"
+        "id": "ndh",
+        "type": "indirect"
       }
     },
     "nix": {
@@ -248345,18 +248307,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1790236883,
-        "narHash": "sha256-+z2JsmvirMDL7l1FJlLcvIfk216yjjeY0Ytv0vbwtfQ=",
+        "lastModified": 1791382184,
+        "narHash": "sha256-szoCfUE3batOtBpuCZsiwlr9rtsqpqAgotnWspUzBRs=",
         "owner": "seedmatic",
         "repo": "nnh",
-        "rev": "66b3f1754e16dd288cdcf7d71857b6c0eded0306",
+        "rev": "f74b94e6296d7d4033ddb5522a966b2c3872aa25",
         "type": "github"
       },
       "original": {
-        "owner": "seedmatic",
-        "ref": "main",
-        "repo": "nnh",
-        "type": "github"
+        "id": "nnh",
+        "type": "indirect"
       }
     },
     "nvfetcher": {
@@ -282546,11 +282506,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1791305373,
-        "narHash": "sha256-+WT6TJR8p46WSkUpBz/Jbh+2NX7oyYeUSDN/aD4VwOs=",
+        "lastModified": 1791385502,
+        "narHash": "sha256-ZnZ7gbk7NN1l9vMGqJqHOHTjK/bBUN14sGJaA51mVQ4=",
         "owner": "seedmatic",
         "repo": "rke2lab",
-        "rev": "5495e02c83a5cdd0cd136730d8ae9c051e235e2c",
+        "rev": "b6ca5500367c41f0edcd8d66a23ed046764bed32",
         "type": "github"
       },
       "original": {
@@ -284890,18 +284850,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1790789415,
-        "narHash": "sha256-QmkjdUYekBX620EF5BL0Kl+CdQq5VVv0+6qKeYC0BcI=",
+        "lastModified": 1791384882,
+        "narHash": "sha256-YV65ip/P/ThD1FJt+CB0k3Wz5G5UI6VTDUlUBzc6ToQ=",
         "owner": "seedmatic",
         "repo": "rke2lab",
-        "rev": "5071741ac616adb3c9ebd5ad1e58c5bb5e208401",
+        "rev": "0eff58e1f0596c9ea413ce079c4e3980f275ef23",
         "type": "github"
       },
       "original": {
-        "owner": "seedmatic",
-        "ref": "seed-incluster",
-        "repo": "rke2lab",
-        "type": "github"
+        "id": "seed-incluster",
+        "type": "indirect"
       }
     },
     "socket-vmnet": {
