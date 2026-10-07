@@ -9,7 +9,7 @@ package io.seedmatic.rke2lab.manifests.contract;
  * node-bootstrap lane. Values for {@link #MANIFEST_LAYER} come from {@link ManifestLayer}.
  *
  * <p>Unlike a single-namespace enum, each key carries its full value: most are on {@code
- * io.seedmatic.rke2lab/…}, {@link #LOCAL_CONFIG} is the kpt {@code config.kubernetes.io}
+ * io.seedmatic.rke2lab/…}, {@link #LOCAL_CONFIG} is the KRM {@code config.kubernetes.io}
  * convention, and {@link #NODE_FLOX_RUNTIME_LABEL} is on the {@code flox.seedmatic.io} domain
  * (shared with the CRD group; migrated from the upstream {@code flox.dev/enabled}).
  */
@@ -22,7 +22,7 @@ public enum ManifestAnnotation {
   PACKAGE("io.seedmatic.rke2lab/package"),
 
   /**
-   * Marks a manifest the cluster must not apply (kpt convention). {@code
+   * Marks a manifest the cluster must not apply (KRM convention). {@code
    * rke2lab-manifests-install.sh} skips symlinking these; the exploder writes them as dotfiles.
    */
   LOCAL_CONFIG("config.kubernetes.io/local-config"),

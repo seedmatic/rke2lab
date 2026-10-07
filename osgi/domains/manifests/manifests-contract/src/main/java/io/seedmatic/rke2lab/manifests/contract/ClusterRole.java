@@ -101,13 +101,6 @@ public enum ClusterRole {
             catalog.highAvailability(),
             catalog.tailscale(),
             catalog.cicd());
-    // REMOVED 2026-09-27: `catalog.mesh()` (Headscale/Headplane) was WRKLD's exclusive domain.
-    // Hibernated at the fabric renumbering, then deleted outright — units, registrar, the domain id
-    // and the four flox envs. What settled it was not the pause but its CONTENT: the unit carried
-    // kpt setters with no substitution pass left in the synthesis, so `${cluster-lan-headscale-
-    // inetaddr}` would have rendered verbatim as a DNS value, and the addresses had moved to the
-    // fabric pool. Waking it meant redesigning it, so there was nothing to keep warm. Git holds it.
-    //
     // ⚠️ `FloxEnvFolder.MESH` and the `mesh` DEBUG facet SURVIVE, and conflating either with this
     // domain is the standing trap: tailscale/tailnet live in the mesh FOLDER and are gated by that
     // facet, while belonging to the tailscale domain, which is live. The folder is not the owner.

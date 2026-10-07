@@ -30,7 +30,7 @@ import software.constructs.Construct;
  *       <cluster>-<node>.local}), the endpoint seed-outcluster reaches the master over. Carried in
  *       a {@code local-config} Secret so the exploder lands it as a hidden dotfile RKE2 never
  *       applies; the manifests scion reads it host-side and writes it to {@code kubeconfigRef} (the
- *       readiness probe's kubeconfig). The kpt-convention twin of the incus NoCloud cloud-config
+ *       readiness probe's kubeconfig). The local-config twin of the incus NoCloud cloud-config
  *       seed.
  *   <li><b>The CAPI kubeconfig Secret</b> — endpoint = the kube-vip VIP, the stable cluster
  *       endpoint new nodes join over. The canonical Cluster API {@code <cluster>-kubeconfig} Secret

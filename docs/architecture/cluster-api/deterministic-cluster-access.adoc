@@ -187,7 +187,7 @@ imported — that would violate the invariant that nix-darwin-home is never a fl
 == Delivery: the kubeconfig as a synthesized local-config manifest
 
 The kubeconfigs ride the ONE synthesis pipeline the rest of the cluster's manifests already ride — a
-`kind: Config` is a real (client-side) Kubernetes resource, so cdk8s models it natively and the kpt
+`kind: Config` is a real (client-side) Kubernetes resource, so cdk8s models it natively and the KRM
 `config.kubernetes.io/local-config` annotation is the standard discriminator between "apply into the
 cluster" and "materialize, don't apply." No cdk8s extension is needed (this is the lesson of the
 retired `systemd-cdk8s`: only genuine k8s resources belong in the synthesis; a kubeconfig qualifies,

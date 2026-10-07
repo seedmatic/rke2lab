@@ -78,18 +78,6 @@ This inventory maps all 17 env variable sections to their owning layer domains, 
 
 ---
 
-### 6. **CICD/GitOps Layer Domain** (Future)
-**Responsibility:** Kubernetes Resource Model (KRM) and manifest automation  
-**Materialization:** GitOps operator setup, manifest reconciliation
-
-| Section | Variables | Count | Purpose | Status |
-|---------|-----------|-------|---------|--------|
-| **kpt.env** | `KRM_FN_RUNTIME` | 1 | KRM function container runtime | 🔄 Create `GitOpsLayerEnvContributor` |
-
-**Total: 1 variable**
-
----
-
 ## Ownership Summary
 
 | Layer | Sections | Variables | Phase |
@@ -99,8 +87,7 @@ This inventory maps all 17 env variable sections to their owning layer domains, 
 | **HA** | network-vip | 4 | Phase 2b (ready) |
 | **Storage** | etcdctl | 8 | Phase 2c (ready) |
 | **Runtime** | rke2, config, containerd, cri, helm, kubectl, user | 17 | Phase 2d (ready) |
-| **CICD/GitOps** | kpt | 1 | Phase 3 (deferred) |
-| **Total** | **17 sections** | **63 variables** | — |
+| **Total** | **16 sections** | **62 variables** | — |
 
 ---
 
@@ -122,7 +109,6 @@ This inventory maps all 17 env variable sections to their owning layer domains, 
 - **HA config** (VIP) needed for control plane redundancy → contribute early in control plane setup
 - **Storage (etcd)** config depends on control plane paths → contribute after Controlplane, before Runtime
 - **Runtime tooling** (helm, kubectl, containerd) are operational defaults → contribute at any time post-bootstrap
-- **CICD/GitOps** deps on cluster existing → Phase 3, after all other layers stable
 
 ---
 
@@ -153,7 +139,3 @@ Update `IncusResourceBootstrap`:
 - [ ] Collect all `LayerEnvContributor` implementations
 - [ ] Merge contributions in order (storage → networking → ha → runtime)
 - [ ] Write aggregated 99-configmap-env-section-layer-contributions.yml during bootstrap
-
-### Phase 3: GitOps/CICD Layer (deferred)
-Create `io.seedmatic.rke2lab.manifests.layers.gitops.GitOpsLayerEnvContributor`:
-- [ ] Contribute `kpt.env` after cluster is operational

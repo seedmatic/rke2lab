@@ -136,16 +136,8 @@ public final class FloxEnvManifestsUnit extends AbstractManifestsUnit {
     // env exists. It survives the mesh DOMAIN's removal because the envs below still use it — the
     // facet is named after the FOLDER, and the folder is not the owner.
     final boolean mesh = policy.meshEnabled();
-    // headscale/headplane used to be created here behind a domain gate. The mesh domain was
-    // REMOVED on 2026-09-27: hibernated since the fabric renumbering, it also carried dead kpt
-    // setters (no substitution pass survives, so `${cluster-lan-headscale-inetaddr}` would render
-    // verbatim as a DNS value) and its addresses had moved to the fabric pool — waking it meant
-    // redesigning it, so there was nothing to keep warm. Their four flox envs go with it; before
-    // the domain gate existed they were realised on EVERY node for nobody, paying their closure at
-    // each cold start.
-    //
-    // tailscale/tailnet stay: they sit in the mesh FOLDER (a node-side GC-root path) but belong to
-    // the tailscale domain, which is live.
+    // tailscale/tailnet sit in the mesh FOLDER (a node-side GC-root path) but belong to the
+    // tailscale domain.
     createEnv(scope, resolver, "tailscale", FloxEnvFolder.MESH, tailscaleManifest(false));
     // The tailnet-admin env for the stale-device prune Job (mesh-tailnet-purge): manage-tailnet +
     // yq-go (the retry loop parses its --format=json JSON Lines). Always prod — an ops tool, no

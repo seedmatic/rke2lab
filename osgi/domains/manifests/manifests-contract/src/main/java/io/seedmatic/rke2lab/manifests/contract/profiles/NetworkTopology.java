@@ -3,9 +3,8 @@ package io.seedmatic.rke2lab.manifests.contract.profiles;
 
 /**
  * Cluster network topology slice published to synth-time layers via {@link
- * io.seedmatic.rke2lab.manifests.ManifestSynthesisContext}. Centralizes the CIDRs and interface
- * names previously templated by kpt setters ({@code ${cluster-cidr}}, {@code
- * ${node-host-inetaddr}}, {@code ${cluster-vip-cidr}}, …).
+ * io.seedmatic.rke2lab.manifests.ManifestSynthesisContext}. Centralizes the cluster CIDRs and
+ * interface names.
  *
  * <p>Stage B (CAPN-managed nodes) will read most of these to produce {@code LXCMachineTemplate} /
  * {@code Cluster} resources, so the slice is shaped to match what the Cluster API provider needs.

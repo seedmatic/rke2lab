@@ -95,7 +95,6 @@ public final class RuntimeRke2ConfigManifestsUnit extends AbstractManifestsUnit 
         namespace,
         profile,
         "cidrs.yaml",
-        "Network CIDRs fragment",
         orderedMap(
             entry("kube-controller-manager-arg", List.of("node-cidr-mask-size-ipv4=24")),
             entry("service-cidr", blueprint.serviceCidrDualStack()),
@@ -106,7 +105,6 @@ public final class RuntimeRke2ConfigManifestsUnit extends AbstractManifestsUnit 
         namespace,
         profile,
         "core.yaml",
-        "Core RKE2 settings",
         // cni is NOT set here: it is STATIC (cilium on every node) and lives in the node-base's
         // `services.rke2.cni = "cilium"` (nixos/rke2.nix). rke2 CONCATENATES list-valued flags like
         // --cni across config.yaml + config.yaml.d, so setting it in both produced `[cilium,
@@ -119,7 +117,6 @@ public final class RuntimeRke2ConfigManifestsUnit extends AbstractManifestsUnit 
         namespace,
         profile,
         "debug.yaml",
-        "Enable RKE2 debug logging for manifest watcher",
         orderedMap(entry("v", "4"), entry("debug", "false")));
     createConfigMap(
         scope,
@@ -127,7 +124,6 @@ public final class RuntimeRke2ConfigManifestsUnit extends AbstractManifestsUnit 
         namespace,
         profile,
         "disable.yaml",
-        "Disable list fragment",
         Map.of(
             "disable",
             List.of(
@@ -147,7 +143,6 @@ public final class RuntimeRke2ConfigManifestsUnit extends AbstractManifestsUnit 
         namespace,
         profile,
         "etcd-metrics.yaml",
-        "Etcd metrics fragment",
         Map.of("etcd-expose-metrics", true));
     createConfigMap(
         scope,
@@ -155,7 +150,6 @@ public final class RuntimeRke2ConfigManifestsUnit extends AbstractManifestsUnit 
         namespace,
         profile,
         "etcd.yaml",
-        "Etcd settings fragment",
         // node-name dropped: it is the node's own hostname (a per-node fact) — rke2 derives it on
         // the node; not rendered here.
         orderedMap(entry("with-node-id", false), entry("etcd-expose-metrics", false)));
@@ -165,7 +159,6 @@ public final class RuntimeRke2ConfigManifestsUnit extends AbstractManifestsUnit 
         namespace,
         profile,
         "tls-san.yaml",
-        "TLS SAN fragment (all-nodes superset)",
         Map.of("tls-san", tlsSanSuperset(cluster, blueprint)));
   }
 
@@ -230,7 +223,6 @@ public final class RuntimeRke2ConfigManifestsUnit extends AbstractManifestsUnit 
       final String namespace,
       final PackageMetadataProfile profile,
       final String name,
-      final String description,
       final Map<String, Object> data) {
     // One RKE2_CONFIG ConfigMap fragment (payload under /data). RKE2_CONFIG marks it for the boot-
     // time install-rke2-config app; NO LOCAL_CONFIG, so Flux applies it as a real ConfigMap that
@@ -250,11 +242,7 @@ public final class RuntimeRke2ConfigManifestsUnit extends AbstractManifestsUnit 
                         .annotations(
                             profile.packageAnnotations(
                                 "|ConfigMap|" + namespace + "|" + name,
-                                Map.of(
-                                    ManifestAnnotation.RKE2_CONFIG.key(),
-                                    "true",
-                                    "description.kpt.dev",
-                                    description)))
+                                Map.of(ManifestAnnotation.RKE2_CONFIG.key(), "true")))
                         .build())
                 .build());
 

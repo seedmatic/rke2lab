@@ -21,7 +21,7 @@ public record ManifestAnnotations() {
   public static final String PACKAGE = "io.seedmatic.rke2lab/package";
 
   /**
-   * Marks a manifest that the cluster must not apply (kpt convention). {@code
+   * Marks a manifest that the cluster must not apply (KRM convention). {@code
    * rke2lab-manifests-install.sh} skips symlinking these into the RKE2 server manifests dir, and
    * the exploder writes them as hidden dotfiles by default.
    */
