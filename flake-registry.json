@@ -1,0 +1,9 @@
+{
+  "version": 2,
+  "flakes": [
+    {
+      "from": { "type": "indirect", "id": "flake-commons" },
+      "to": { "type": "github", "owner": "seedmatic", "repo": "nix-flake-commons" }
+    }
+  ]
+}

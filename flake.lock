@@ -92,10 +92,8 @@
         "type": "github"
       },
       "original": {
-        "owner": "seedmatic",
-        "ref": "develop",
-        "repo": "nix-flake-commons",
-        "type": "github"
+        "id": "flake-commons",
+        "type": "indirect"
       }
     },
     "flake-utils": {
