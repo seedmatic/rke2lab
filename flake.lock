@@ -301,16 +301,15 @@
         "nixpkgs": "nixpkgs_11",
         "nixpkgs-unstable": "nixpkgs-unstable",
         "nvfetcher": "nvfetcher",
-        "socket-vmnet": "socket-vmnet",
         "sops-nix": "sops-nix",
         "treefmt-nix": "treefmt-nix"
       },
       "locked": {
-        "lastModified": 1791375952,
-        "narHash": "sha256-iPat/fHlm1M/co4wVfAcGMANBYYdyGdGmMtRkHtOTUQ=",
+        "lastModified": 1791384865,
+        "narHash": "sha256-a7/XntDeIKFyjjkRebE/PVrnh99Sd2tQrNUqrXckQKA=",
         "owner": "seedmatic",
         "repo": "nix-flake-commons",
-        "rev": "12788923b2a09af5a0b4b890bd1358278757ebe9",
+        "rev": "ebca4ced4fe600851a5d90a52935732e85998bbb",
         "type": "github"
       },
       "original": {
@@ -1553,51 +1552,6 @@
       "original": {
         "id": "seed-incluster",
         "type": "indirect"
-      }
-    },
-    "socket-vmnet": {
-      "inputs": {
-        "flake-commons": [
-          "flake-commons"
-        ],
-        "flake-compat": [
-          "flake-commons",
-          "socket-vmnet",
-          "flake-commons",
-          "flake-compat"
-        ],
-        "nixpkgs": [
-          "flake-commons",
-          "socket-vmnet",
-          "flake-commons",
-          "nixpkgs"
-        ],
-        "nvfetcher": [
-          "flake-commons",
-          "socket-vmnet",
-          "flake-commons",
-          "nvfetcher"
-        ],
-        "utils": [
-          "flake-commons",
-          "socket-vmnet",
-          "flake-commons",
-          "flake-utils"
-        ]
-      },
-      "locked": {
-        "lastModified": 1760312638,
-        "narHash": "sha256-jDuQtZ4JGay3L96oq6ZkWW9eXVxZ+Z5jEA+55ltvTKY=",
-        "owner": "nxmatic",
-        "repo": "nix-socket-vmnet",
-        "rev": "0cfbc260852a1e200b5c651c21e304b7c55fee65",
-        "type": "github"
-      },
-      "original": {
-        "owner": "nxmatic",
-        "ref": "develop",
-        "repo": "nix-socket-vmnet",
-        "type": "github"
       }
     },
     "sops-nix": {
