@@ -26,11 +26,11 @@
         "treefmt-nix": []
       },
       "locked": {
-        "lastModified": 1791383425,
-        "narHash": "sha256-B7a3EPhm428HB0JI5FzbVY+SzaZa4VdViVd6awoDYXI=",
+        "lastModified": 1791459738,
+        "narHash": "sha256-JO0L9WMlZFjXW4/8pNKErD5B40wIss/hK9pLdUD0lTc=",
         "owner": "seedmatic",
         "repo": "nix-flake-commons",
-        "rev": "34585124b091e6777939f25052691f6f0c2c629c",
+        "rev": "5d1a9b5334f5e70aa3b10a4a28837f9044cb5eff",
         "type": "github"
       },
       "original": {
@@ -58,12 +58,12 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1789114715,
-        "narHash": "sha256-ugpsyk3NM2s87vXfUiIIiibbJ4Pp0JPS5p/3mfs+q+c=",
-        "rev": "21a67dc470149f337cecafbe965d8d252a390518",
-        "revCount": 1013883,
+        "lastModified": 1791353474,
+        "narHash": "sha256-v72qr4LsSz61tQki/41nHKZKPY6NSeZavtGlAInOCng=",
+        "rev": "2efa67fd26b6df417c33e4603185c701f260dd83",
+        "revCount": 1015818,
         "type": "tarball",
-        "url": "https://api.flakehub.com/f/pinned/NixOS/nixpkgs/0.2605.1013883%2Brev-21a67dc470149f337cecafbe965d8d252a390518/01a0941f-eef0-70e0-93ac-63af13618393/source.tar.gz"
+        "url": "https://api.flakehub.com/f/pinned/NixOS/nixpkgs/0.2605.1015818%2Brev-2efa67fd26b6df417c33e4603185c701f260dd83/01a11777-646c-7ac3-9a38-941658c52e27/source.tar.gz"
       },
       "original": {
         "type": "tarball",
