@@ -363,7 +363,7 @@ anything moves.
 [source,nix]
 ----
 consumers = [ "github:seedmatic/ndh" ];   # ❌ rke2lab saying who pins it
-lib.relockChain.pins = [ "ndh" ];         # ✅ ndh saying, in ndh, that it pins rke2lab
+lib.relockChain.pins = [ "rke2lab" ];     # ✅ ndh saying, in ndh, that it pins rke2lab
 ----
 
 A seat knows what it pins; its lock proves it. What pins *it* is somebody else's fact.
