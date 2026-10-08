@@ -339,6 +339,12 @@ monotone before/after figures.
   residue. The node-bootstrap seam is shipped; CAPN-grown fleet is the open gate. See
   link:nixos-substrate/substrate-model.adoc[the substrate model].
 
+* link:atlas/flake-chain.adoc[Flake chain view] — how a change travels between the seedmatic flakes:
+  inputs named by indirect id through a branchless committed registry, and one shared `relock`
+  (`lib.mkRelockApp`) whose impact guard drops what moves nothing exported and whose `--downstream`
+  walks the consumers transitively, each repo once per pass. Measured against
+  link:patterns/flake-lock-propagation.adoc[the propagation design], with the gaps that remain.
+
 == Related documentation
 
 * link:cluster-api/deterministic-cluster-access.adoc[Deterministic cluster access] — the target where

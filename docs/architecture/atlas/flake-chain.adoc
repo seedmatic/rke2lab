@@ -1,0 +1,546 @@
+= Atlas — The flake chain, as delivered
+:toc: macro
+:toclevels: 3
+
+toc::[]
+
+**Status:** ✅ shipped on `develop`, measured 2026-10-08. The shared implementation is
+nix-flake-commons `ce32c5b`; the heads read are rke2lab `25452f842`, ndh `e54805c6`, nnh `2e8ec1e`,
+nch `651362a`, flox-controller `49f52f9`, flox-nri-plugin `60b3a3a`, and rke2lab's orphans
+`flox-catalog` `771d6834f` and `seed-incluster` `82e7d60b2`.
+
+== Overview
+
+Every seedmatic repo carries a flake, and several carry each other as inputs. A change therefore has
+to *travel*: a revision is visible to a `github:` input only once pushed, and reaches a consumer only
+once that consumer's lock is bumped. Two mechanisms carry it, and this atlas describes both as they
+are in the code today:
+
+. **The indirect registry** — inputs name an *id* (`url = "ndh"`), never a branch. The id is resolved
+  through a committed, branchless `flake-registry.json`; re-aiming it is a local, gitignored edit.
+. **`relock`** — one shell implementation, `lib.mkRelockApp` in nix-flake-commons, exposed by every
+  repo as `apps.<system>.relock`. It bumps a repo's own inputs, drops the bumps that move nothing it
+  exports, pushes, and with `--downstream` asks each repo that pins it to do the same — transitively,
+  each repo once per pass.
+
+The design these implement is link:../patterns/flake-lock-propagation.adoc[Flake lock propagation].
+This atlas is the measured distance between that design and the code: where the code follows it,
+where it had to depart, and the gaps that remain.
+
+== Figure A — the chain at a glance
+
+Solid arrows are *pins* (an input in `flake.nix`). Dotted arrows are *requests*: the `consumers` a
+repo's relock calls on `--downstream`. Every seedmatic flake also pins nix-flake-commons; those edges
+are drawn once, from the root.
+
+[mermaid]
+....
+flowchart LR
+  NFC["nix-flake-commons\nlib.mkRelockApp"]
+  RK["rke2lab\n(develop)"]
+  SI["seed-incluster\n(orphan of rke2lab)"]
+  FC["flox-catalog\n(orphan of rke2lab)"]
+  NDH["ndh"]
+  NNH["nnh"]
+  NCH["nch"]
+  CTL["flox-controller"]
+  NRI["flox-nri-plugin\n(input id flox-runtime)"]
+
+  RK -->|pins| NDH
+  RK -->|pins| SI
+  RK -->|pins| CTL
+  RK -->|pins| NRI
+  NDH -->|pins| RK
+  NDH -->|pins| NNH
+  NNH -->|pins| NDH
+  NCH -->|pins| NDH
+  FC -->|pins| RK
+  NFC -. "pinned by every flake" .- RK
+
+  RK -. "consumers" .-> NDH
+  NDH -. "consumers" .-> RK
+  NDH -. "consumers" .-> NNH
+  NDH -. "consumers" .-> NCH
+  NNH -. "consumers" .-> NDH
+  SI -. "consumers" .-> RK
+  CTL -. "consumers" .-> RK
+  NRI -. "consumers" .-> RK
+  RK == "catalog hop" ==> FC
+
+  classDef root fill:#fde68a,stroke:#b45309,stroke-width:2px;
+  classDef repo fill:#d9f2e0,stroke:#2d7a4b,stroke-width:2px;
+  classDef orphan fill:#e0e7ff,stroke:#4338ca;
+  classDef leaf fill:#f3f4f6,stroke:#6b7280;
+  class NFC root
+  class RK,NDH,NNH repo
+  class SI,FC orphan
+  class NCH,CTL,NRI leaf
+....
+
+[cols="1,3",options="header"]
+|===
+| Colour | Meaning
+
+| amber | the root: carries the implementation and pins no seedmatic flake. Its own `relock` (for nixpkgs
+  and the other inputs it aggregates) declares no `consumers`, so it requests nobody
+| green | a repo inside a cycle (rke2lab ↔ ndh, ndh ↔ nnh)
+| indigo | an orphan branch of rke2lab, a flake of its own (`branch` named in its `mkRelockApp`)
+| grey | a repo outside every cycle
+|===
+
+How to read it again: `git -C <bare> show origin/develop:flake.nix | grep -nE 'url = "|consumers'`
+in each repo, and `git … show origin/<orphan>:flake.nix` for the two orphans.
+
+== Figure B — vision and code, before and after
+
+[mermaid]
+....
+flowchart TB
+  subgraph VISION["Design — flake-lock-propagation.adoc, 2026-09-30"]
+    V1["terminate a cycle by DERIVATION impact:\na bump that moves nothing is dropped"]
+    V2["projection = the derivations a consumer USES"]
+    V3["consumers: option (a), declared per repo"]
+    V4["update-flox-envs: a hard-coded three-hop chain"]
+  end
+  subgraph CODE["Code — nix-flake-commons ce32c5b"]
+    C1["terminate a pass by a VISITED LIST:\neach repo once, NOTE for the drift left"]
+    C2["projection = every exported package\nAND every app program"]
+    C3["consumers declared per repo, a default\nbranch refused at evaluation"]
+    C4["one relock per repo, --downstream\ntransitive from wherever it starts"]
+  end
+  V1 ==> C1
+  V2 ==> C2
+  V3 ==> C3
+  V4 ==> C4
+
+  classDef vision fill:#f3f4f6,stroke:#9ca3af;
+  classDef code fill:#d9f2e0,stroke:#2d7a4b,stroke-width:2px;
+  class V1,V2,V3,V4 vision
+  class C1,C2,C3,C4 code
+....
+
+[cols="1,2,2,1",options="header"]
+|===
+| Concern | Design | Code | Commit
+
+| What ends a cycle
+| the impact guard alone: a cycle stops at its first value-sensitive hop
+| the guard still drops impact-free bumps, but a pass ENDS on the visited list. The guard could not
+  end it alone: rke2lab's Maven jars and ndh's `nerd-tart-*` move on any tracked-file edit (see
+  <<gaps>>), so a lock bump always "moves" something
+| `1290b3b`, `32ab2ea`
+
+| What the guard measures
+| the derivations the consumer actually uses
+| every `packages.<system>` derivation **and** every `apps.<system>` program, by its string context.
+  An app had to count: a bump that changes only `relock` itself was otherwise dropped, and the tool
+  could never reach the repos it runs in
+| `497f37c`
+
+| Who is requested
+| option (a), a list declared in each repo
+| as designed. A consumer naming its default branch is refused at evaluation time
+| `32ab2ea`
+
+| How far a request goes
+| one hop
+| transitive: each requested relock runs with `--downstream` itself
+| `32ab2ea`
+|===
+
+== The indirect registry
+
+=== The ids, per repo
+
+Read with `git -C <bare> show origin/develop:flake-registry.json | jq -c '.flakes[]'`:
+
+[cols="1,3",options="header"]
+|===
+| Repo | Ids → targets (all `github:seedmatic/…`, no branch unless named)
+
+| rke2lab
+| `flake-commons` → nix-flake-commons · `flox-runtime` → flox-nri-plugin · `flox-controller` →
+  flox-controller · `ndh` → ndh · `seed-incluster` → rke2lab, `ref = seed-incluster`
+
+| ndh
+| `flake-commons` · `rke2lab` · `nnh`
+
+| nnh
+| `flake-commons` · `ndh`
+
+| nch
+| `flake-commons` · `ndh`
+
+| flox-controller, flox-nri-plugin
+| `flake-commons`
+
+| nix-flake-commons
+| none — the root pins no seedmatic flake
+|===
+
+=== Three carriers, one precedence
+
+[mermaid]
+....
+flowchart LR
+  F["flake.nix\nurl = id"]
+  L["flake-registry.local.json\ngitignored, REPLACES"]
+  C["flake-registry.json\ncommitted, branchless"]
+  E["flox env flake-registry\nhook sets NIX_CONFIG"]
+  R["relock\nset_registry_flag"]
+  N["nix --flake-registry"]
+
+  F --> N
+  L -->|"present: wins"| E
+  C -->|"otherwise"| E
+  L -->|"present: wins"| R
+  C -->|"otherwise"| R
+  E --> N
+  R --> N
+....
+
+* **Committed and branchless.** `flake-registry.json` must be committed because a requested relock
+  *clones* the repo and sees only committed files. It names no branch, so it names nothing that can be
+  deleted or silently stop moving.
+* **The local overlay replaces, never merges.** `flake-registry.local.json` is gitignored in all four
+  repos (`.gitignore` line 27 in rke2lab, 26 in ndh, 10 in nnh, 15 in nch). A stale overlay missing a
+  new id fails loudly (`cannot find flake 'flake:x'`) instead of resolving the wrong thing.
+* **The seat** gets the registry from fleet's `flake-registry` flox env (vendored at
+  `.flox-envs.d/flake-registry`): its `on-activate` hook appends `flake-registry = <file>` to
+  `NIX_CONFIG`, keeping the access tokens already there.
+* **relock** reads the same precedence itself (`set_registry_flag`, `relock.sh:227`) and passes
+  `--flake-registry` on the command line, which beats `NIX_CONFIG`.
+* **The GitHub default branch carries the load.** A branchless target resolves the default branch:
+  `gh api repos/seedmatic/<repo> --jq .default_branch` answers `develop` for all seven repos.
+* **Orphans are named explicitly**, everywhere they are targeted: `ref = seed-incluster` in rke2lab's
+  registry, and `branch = "seed-incluster"` / `branch = "flox-catalog"` in those flakes'
+  `mkRelockApp`, so one repo's several flakes stop reading as one (`3458512`).
+
+== `lib.mkRelockApp` — one implementation
+
+`nix/relock.nix` builds `relock.sh` with `writeShellApplication` (coreutils, gitMinimal, jq, nix),
+substituting what is the repo's own:
+
+[cols="1,3",options="header"]
+|===
+| Parameter | Meaning
+
+| `name`, `slug`, `url` | the repo; a checkout counts as its own only if `origin` ends with the slug
+| `consumers` | who to request on `--downstream` — those that pin this repo
+| `branch` | the branch this flake lives on, for an orphan; `""` for the default branch
+| `pushFirstBranch` | an orphan pushed BEFORE inputs resolve (rke2lab: `seed-incluster`)
+| `catalogBranch`, `selfPinName` | the orphan that pins this repo and carries the flox envs
+  (rke2lab: `flox-catalog`), and this repo's input name in it
+| `ownedArtifacts` | generated files the dirty-guard must not read as operator edits
+| `aliases` | the repo's own words for its regen apps (`plans = "regen-dataplan"`)
+|===
+
+[mermaid]
+....
+sequenceDiagram
+  participant O as operator
+  participant R as relock (repo X)
+  participant G as GitHub
+  participant K as flox-catalog worktree
+  participant C as consumer relock
+  O->>R: relock --downstream inputs
+  R->>R: visited list — X recorded, or exit if seen
+  R->>G: push the push-first orphan
+  loop each root input
+    R->>G: nix flake update (token from gh)
+    R->>R: projection before vs after
+  end
+  R->>R: retry the deferred inputs once
+  R->>G: push X
+  R->>K: re-pin X, then lock-envs, assert the pin
+  K->>G: push flox-catalog
+  loop each consumer not yet visited
+    R->>C: build and run its relock --downstream
+    C-->>R: exit status — counted if non-zero
+  end
+  R-->>O: DONE, or FAILED with the list
+....
+
+=== The impact guard
+
+`evalmap` (`relock.sh:301`) projects the flake to what it exports, and a bump is carried only if the
+projection moved:
+
+* **A flake with `packages`** — each package's `drvPath`, plus each app's program, as the attribute
+  names of `builtins.getContext a.program` (`497f37c`). `apps or { }` answers only *absence*: an app
+  that fails to evaluate aborts the measure.
+* **An aggregator** (no `packages`, nix-flake-commons' shape) — the revision each *root* input is
+  locked at. A `follows` root input is left out: its target is counted where it is defined.
+* **Presence is tested without evaluating** `packages`, and a failure stays fatal: a broken
+  `packages` must not read as an aggregator.
+
+Output: `BUMPED — derivations moved`, or `moved, NO derivation impact -> dropped` (`relock.sh:483`),
+the lock restored.
+
+=== Inputs that fail, couple, or come from a cache
+
+`nix_update` (`relock.sh:376`) returns a code the caller acts on:
+
+[cols="1,2,1",options="header"]
+|===
+| Code | Meaning | Commit
+
+| 1 | nix failed — `FAILED to resolve`, lock restored |
+| 2 | nix exited 0 but printed `using cached version` / `unable to download` — a FAILURE, never
+  "already current" | `6482d15`
+| 3 | `follows a non-existent input` — the bump is coupled to another input's: set aside, retried
+  once after every other target (`retrying=1`, `relock.sh:602`), only then a failure | `2ab80c6`
+|===
+
+A lock resolving to the local filesystem is refused (`LOCAL lock REFUSED`, `relock.sh:464`): it would
+be unfetchable for every other consumer.
+
+=== The token, at invocation
+
+`gh auth token` is read at each run and appended as `extra-access-tokens` to `NIX_CONFIG` for
+relock's **own** nix calls only, inside a `nix()` function (`relock.sh:107–116`). It is never
+exported and never reaches the programs those calls build: regen apps, `lock-envs` and a consumer's
+relock are built with it, then run without it (`app_program`, `relock.sh:124`) (`0f0fe0b`).
+
+=== `--no-push` and `landed()`
+
+`--no-push` commits in the operator's checkout and stops before anything leaves it (`bd41a92`). It is
+refused for a requested run, because unpushed commits in a throwaway clone would be lost with it, and
+it contradicts `--downstream`.
+
+The catalog hop pins what the REMOTE answers, so under `--no-push` it runs only when that revision is
+already there. `landed()` (`relock.sh:630`) fetches, then reads `git rev-list @{u}..HEAD`: empty means
+landed, anything else means skipped with the resume command, and a failed fetch or a missing upstream
+is **fatal** — never read as landed (`0e69137`).
+
+=== The catalog hop
+
+When this run committed, or `envs` / `catalog` was asked, and the repo has a `catalogBranch`
+(`relock.sh:683–716`):
+
+. re-pin `selfPinName` in the catalog worktree's `flake.lock`, and commit it;
+. run the catalog's own `lock-envs`, which applies the same guard one level down and commits only
+  real env bumps;
+. **assert the landing** — the pinned rev must equal the rev this run pushed, or `MISMATCH`, exit 1;
+. push the catalog branch (or, under `--no-push`, say where its commits are and how to resume).
+
+=== A requested run — clone canonical and shallow
+
+Started outside its own checkout, relock clones its repo (`relock.sh:190–195`):
+
+* at `realpath "$(mktemp -d)"` — nix refuses a `git+file` flake whose path crosses a symlink once its
+  tree is dirty, and `TMPDIR` may cross one (`/tmp → private/tmp`) (`1de1378`, `ce32c5b`);
+* with `--depth=1` — it bumps the tip and pushes it, and reads no history. Measured with nix 2.34: a
+  shallow clone evaluates as `git+file://…#`, as `<path>#…` and through `builtins.getFlake`, clean and
+  dirty, without `?shallow=1`, and a commit on its tip pushes fast-forward (`ce32c5b`).
+
+=== Failures, counted up to the root
+
+Every failed target — an input after its retry, a regen, a consumer that cannot be evaluated or exits
+non-zero — is appended to `failed` and named by `finish` (`relock.sh:400`), which exits 1. A dropped
+bump, a deferred input before its retry, a consumer without `#relock` and a consumer already visited
+are not failures. What succeeded stays pushed: nothing is rolled back. A requesting run therefore
+prints `^ FAILED` and counts that consumer in its own list, up to the run the operator started
+(`1de1378`).
+
+== `--downstream`, transitive
+
+=== Who is a consumer
+
+`consumers` lists the repos that **pin this one** — a lock says who I consume, never who consumes me,
+so that is the one fact a repo has to declare. Reciprocity arises only inside a cycle, where the
+reverse edge *is* a forward edge for the other side:
+
+[cols="1,2,2",options="header"]
+|===
+| Repo | `consumers` | Why
+
+| rke2lab | ndh | ndh pins rke2lab — cycle, cut at the lock by `ndh.inputs.rke2lab.follows = ""`
+  (rke2lab `flake.nix:132`)
+| ndh | rke2lab, nnh, nch | all three pin ndh; ndh pins rke2lab and nnh back (`inputs.ndh.follows =
+  ""`, ndh `flake.nix:101`, `:112`) — nch is a plain edge (`2734a367`)
+| nnh | ndh | ndh pins nnh — cycle, cut by `inputs.nnh.follows = ""` (nnh `flake.nix:49`)
+| nch | none | nobody pins nch
+| seed-incluster | rke2lab | rke2lab pins it as its `seed-incluster` input
+| flox-controller, flox-nri-plugin | rke2lab | rke2lab pins them as `flox-controller`, `flox-runtime`
+| flox-catalog | none | nobody pins it; rke2lab's catalog hop re-pins it
+|===
+
+A consumer reference may name a branch **only for an orphan**: the visited list keys a consumer by
+`owner/repo[:<branch>]`, and relock cannot know a consumer's default branch, so
+`github:owner/repo/develop` would never match `owner/repo`. `relock.nix` refuses it at evaluation
+(`assert offending == [ ]`), proved by `checks.relock-refuses-default-branch`.
+
+How to see a repo's built list: `nix eval --raw .#apps.aarch64-darwin.relock.program`, build its
+context, then `grep '^consumers=' <program>`.
+
+=== The visited list
+
+The first relock of a pass creates `RELOCK_VISITED_FILE` (`relock.sh:83`), exports it, and removes it
+on exit; every requested relock inherits it. Each run records its key — `owner/repo`, or
+`owner/repo:<branch>` for an orphan — and exits `already visited in this pass — skipped` if the key is
+already there. A consumer is pre-checked through `ref_key` (`relock.sh:749`) before being launched, so
+it is not even built. An inherited list that no longer exists fails the run instead of starting over.
+
+When a run committed but one of its consumers was already visited, that consumer pins a repo that just
+moved, so the gap is said rather than left to be noticed (`relock.sh:788`):
+
+----
+NOTE: github:seedmatic/ndh was not relaunched (already visited in this pass) although nnh moved:
+run its relock on the next pass
+----
+
+The cycle ends; the drift stays visible. One more pass closes it.
+
+=== A real pass
+
+The third live pass of 2026-10-07, `nix run .#relock -- --downstream inputs` from rke2lab:
+
+[mermaid]
+....
+sequenceDiagram
+  participant RK as rke2lab
+  participant FC as flox-catalog
+  participant NDH as ndh (clone)
+  participant NNH as nnh (clone)
+  participant NCH as nch (clone)
+  RK->>RK: flake-commons, ndh BUMPED — push 85d75c880
+  RK->>FC: pin 85d75c880 — 4 envs unchanged — push
+  RK->>NDH: relock --downstream
+  NDH->>NDH: flake-commons, nnh, rke2lab BUMPED — push f5da04cf
+  NDH-->>RK: already visited — not relaunched
+  NDH->>NNH: relock --downstream
+  NNH->>NNH: flake-commons BUMPED, ndh dropped — push faa1ee1
+  NNH-->>NDH: already visited — NOTE
+  NDH->>NCH: relock --downstream
+  NCH->>NCH: flake-commons BUMPED, ndh dropped — push e519941
+  NDH-->>RK: NOTE — rke2lab not relaunched although ndh moved
+....
+
+No `FAILED`, two `NOTE`s, each repo visited once.
+
+== Usage patterns
+
+=== ✅ Reconcile the chain from any repo
+
+[source,bash]
+----
+git pull --ff-only                       # the push is fast-forward or nothing
+nix run .#relock -- --downstream inputs  # one run, the whole reachable chain
+----
+
+=== ✅ Review before anything leaves
+
+[source,bash]
+----
+nix run .#relock -- --no-push inputs     # commits here, pushes nothing
+git log --stat @{u}..HEAD                # what the guard kept
+----
+
+=== ❌ Naming a branch in `flake.nix`
+
+[source,nix]
+----
+ndh.url = "github:seedmatic/ndh/develop";   # ❌ re-aiming it means pushing a flake edit
+ndh.url = "ndh";                            # ✅ re-aim locally in flake-registry.local.json
+----
+
+`/develop` is the worst form: it never disappears, so it never errors — it supplies whatever develop
+holds instead of the line being worked on.
+
+=== ❌ Naming a default branch in `consumers`
+
+`"github:seedmatic/ndh/develop"` would never match the key `seedmatic/ndh` that ndh's relock
+records, so a cycle through it would never be seen as visited. Evaluation refuses it.
+
+=== ❌ Rewriting `TMPDIR` to suit a tool
+
+`TMPDIR=/tmp/.nxmatic` is kept short on purpose: it hosts ssh ControlMaster sockets, and macOS caps
+`sun_path` at 104 bytes. A tool that hands a temporary path to nix canonicalises it itself, as relock
+does with `realpath`.
+
+[[gaps]]
+== Remaining gaps
+
+[cols="2,3,2",options="header"]
+|===
+| Gap | Consequence | How to see it
+
+| **The guard does not measure `nixosConfigurations` / `darwinConfigurations`**
+| a bump reported `moved, NO derivation impact -> dropped` may still change a host. And measuring them
+  as they are would not help: ndh sets `system.configurationRevision = self.rev or self.dirtyRev`
+  (ndh `flake.nix:395`), so 9 of its 12 configurations move on every commit
+| `nix eval .#nixosConfigurations.<h>.config.system.build.toplevel.drvPath` across a bump
+
+| **Self-sensitive set S** — derivations that move on ANY tracked-file edit
+| a bump that moves only S is carried although nothing consumed changed. rke2lab: 8 of 27 packages
+  (`src = ./.` for Maven, `flake.nix:341`, `:360`, `:542`) and the apps `regen-blueprint`,
+  `regen-dataplan`; ndh: 6 of 25 (`nerd-tart-*`); nnh and nch: none (measured 2026-10-07)
+| add a newline to a tracked non-nix file in a clone, compare the projection
+
+| **Go `src = ./.`** in flox-controller (`flake.nix:76`)
+| its controller derivation moves on any file edit of that repo — the same shape as S
+| as above, in flox-controller
+
+| **Flakes no pass reaches**
+| `--downstream` walks *consumers*, and the root's relock declares none. flox-controller and flox-nri-plugin
+  still pin flake-commons `85e86f5`, `flox-catalog` `2ab80c6` (the hop re-pins only rke2lab),
+  `seed-incluster` `3458512`
+| `git … show origin/<b>:flake.lock \| jq -r '.nodes["flake-commons"].locked.rev'`
+
+| **Locks in `flox-catalog` are seat-bound**
+| `path:` includes are recorded ABSOLUTE in `locked-url`; `lock-envs` drops that churn and commits
+  only real bumps
+| `jq '.packages[]."locked-url"' <env>/manifest.lock`
+|===
+
+== Troubleshooting
+
+[cols="2,2,3",options="header"]
+|===
+| Symptom | Cause | Fix
+
+| `error: path '//tmp' is a symlink` in a requested run
+| a tool older than `1de1378` cloned under a symlinked `TMPDIR`
+| the consumer's own pinned relock runs — bump its flake-commons, or for one run
+  `TMPDIR=/private/tmp/… nix run .#relock …`
+
+| `FAILED to fetch — nix fell back to a cached copy`
+| a private input fetched without a token (404 on the API)
+| `gh auth status`; relock takes the token from `gh auth token`
+
+| `deferred — it is coupled to another input's bump`
+| an input follows something only the other input's new revision has
+| none needed: retried once after the others. If it still fails, `nix flake update <both>`
+
+| `catalog hop SKIPPED` under `--no-push`
+| the checkout has commits its remote does not have
+| push, then `nix run .#relock -- envs`
+
+| `MISMATCH: the catalog pinned … but this run pushed …`
+| the push did not land, or the catalog tracks another branch
+| check `git ls-remote origin <branch>` against the run's pushed head
+
+| `refusing to start over` — the visited list is gone
+| an inherited `RELOCK_VISITED_FILE` was deleted mid-pass
+| start a new pass from the top; do not export the variable by hand
+|===
+
+== Proofs
+
+* **The implementation:** `nix flake check` in nix-flake-commons runs `checks.relock` — 59 bats cases
+  on the BUILT script with a fake `nix`, local bare remotes and a `file://` insteadOf, so the clone
+  is really shallow — and `checks.relock-refuses-default-branch`.
+* **The registry:** `git -C <bare> show origin/develop:flake-registry.json | jq`, and
+  `gh api repos/seedmatic/<repo> --jq .default_branch`.
+* **The graph:** the `url = "…"` and `consumers` lines of each `flake.nix`, and the `follows = ""`
+  cuts quoted above.
+
+== Related Documentation
+
+* link:../patterns/flake-lock-propagation.adoc[Flake lock propagation] - the design: who owns which
+  lock, the derivation-impact rule, consumers option (a). This atlas measures the code against it
+* link:../patterns/flake-build-entry-point.adoc[Flake build entry point] - the flake rke2lab builds from
+* link:nixos-substrate.adoc[Atlas — NixOS substrate] - the nixos configurations the guard does not
+  measure yet
+* link:../integration-atlas.adoc[Integration Atlas] - L0, where this L1 view is listed

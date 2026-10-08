@@ -337,6 +337,9 @@ pipeline already had to solve once, with a token scoped to extra repos.
 
 == Related Documentation
 
+* link:../atlas/flake-chain.adoc[Atlas — The flake chain, as delivered] - this design measured against
+  the code: what `relock` and the registry do today, where they departed from it, and the gaps left
+
 * link:flake-build-entry-point.adoc[Flake build entry point] — how a build is entered, the other half
   of the flake story
 * link:flox-store-resolved-runtime-and-builder.adoc[Flox store-resolved runtime and builder] — why the
