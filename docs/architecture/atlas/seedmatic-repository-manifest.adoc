@@ -285,6 +285,13 @@ branch:
 
 == Open questions
 
+* **`pins` declared, or derived from the lock by `original.id`?** `relations.pins` repeats what the
+  repo's `flake.lock` already says. Any reader that orders work reads the remote locks anyway, to check
+  `pins` against them (the plan's `verified.locks`). The field is therefore a second source of truth
+  that adds nothing, and the argument "what ordering needs without the network" does not hold, since
+  that reader is on the network. Only `id`, `branch` and `hopOf` say what the lock cannot say. The
+  relock design depends on the answer: its contribution is written as "only what its lock cannot say"
+  (link:relock-across-levels.adoc[relock across the platform's levels], § A seat's contribution).
 * **Token reach.** Does the GitHub App installation, or gtm's write token, cover every repo? seat-roster
   appears in no document read for this vision.
 * **Workspaces and worktrees.** No document says how a workspace pod gets its git worktrees.
