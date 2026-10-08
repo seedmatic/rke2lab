@@ -1,0 +1,356 @@
+= Atlas — The seedmatic repository manifest
+:toc: macro
+:toclevels: 3
+
+toc::[]
+
+**Status:** 📐 vision, open for brainstorming. Nothing here is built. Seeded on 2026-10-08 from the
+specifications first written for link:relock-across-levels.adoc[relock across the platform's levels].
+That design is paused on this one and will be rebased on it.
+
+== Overview
+
+Every seedmatic repo is reached from other repos: it is pinned as a flake input, its outputs are read
+(the netplan contributions, the CRDs staged into the synthesis), and its relock is requested. What a
+repo *is*, and how it relates to the others, is today scattered. Part of it is in `flake.nix`
+(inputs, `lib.*`), part in `flake-registry.json`, part in the arguments each repo passes to
+`lib.mkRelockApp` — including `consumers`, a list a repo writes about repos that pin *it* — and
+part in committed JSON at the root of rke2lab (`dataplan.json`, `network-blueprint.json`).
+
+The vision: **each repository owns one manifest that describes it, in a directory of its own.**
+
+[source]
+----
+.github/          what GitHub reads about the repo
+.seedmatic.d/     what seedmatic reads about the repo
+  repository.json   the repo's manifest — owned by the repo, introspected by its consumers
+  relock.json       the trace of the last relock that changed something
+  netplan.json      a contribution (today rke2lab's network-blueprint.json)
+  dataplan.json     a contribution (today rke2lab's dataplan.json)
+----
+
+A consumer introspects a repo's manifest to learn its relations with the other repos. Nobody writes
+another repo's relations.
+
+== Principles
+
+. **One owner per manifest.** A repo's `repository.json` is written in that repo only. The relations
+  it states are the ones *it* holds — what it pins, what it is the hop of — never who pins it. The
+  inverse is computed by whoever reads all the manifests.
+. **A claim, checked against the fact.** A declared relation is a claim; the repo's `flake.lock` is
+  the fact. Every reader that orders work by the manifests checks them against the locks first.
+. **Tool-independent.** The manifests are JSON, so nix (`builtins.fromJSON`), Java (the synthesis)
+  and a cluster pipeline (the GitHub API) all read them without evaluating anything else.
+. **GitHub is the channel.** A manifest is visible to the others once pushed. A reader reads the
+  pushed head, with nix's cache refused.
+. **Changes carry their trace.** A commit that changes derived state carries its context in
+  `.seedmatic.d/` in that same commit, never in a commit of its own.
+
+`.seedmatic.d/` is not ignored by git (checked on 2026-10-08: no global or repo rule matches it), so it
+is committed and part of a flake's source. It follows the existing style of `.flox-envs.d` and
+`.ndh-ssh.d`.
+
+== `repository.json` — a first draft of its schema
+
+[source,json]
+----
+{
+  "schema": "seedmatic.repository/v0",
+  "slug": "seedmatic/rke2lab",
+  "branch": null,
+  "id": "rke2lab",
+  "relations": {
+    "pins": [ "nix-flake-commons", "flox-controller", "flox-nri-plugin", "ndh", "seed-incluster" ],
+    "hopOf": null
+  },
+  "contributes": {
+    "netplan": ".seedmatic.d/netplan.json",
+    "dataplan": ".seedmatic.d/dataplan.json"
+  },
+  "commands": [ "relock" ]
+}
+----
+
+[cols="2,5",options="header"]
+|===
+| Field | Meaning
+
+| `slug`, `branch`
+| `owner/repo`, and the orphan branch for a flake that is not its repo's default one. The request
+reference (`github:<slug>[/<branch>]`) and the visited-list key (`<slug>[:<branch>]`) derive from
+them.
+
+| `id`
+| the flake-registry id, when it is not the repo's name (`flox-runtime` for flox-nri-plugin). A lock
+names an input by `original.id`, and an orphan's `locked` carries no `ref`, so the id is how a lock
+is matched to a manifest.
+
+| `relations.pins`
+| the repos this one pins as root inputs, by name. Checked against the lock.
+
+| `relations.hopOf`
+| a repo whose relock reconciles this one, so it is never run on its own (flox-catalog: rke2lab).
+
+| `contributes`
+| the files this repo publishes for others to read.
+
+| `commands`
+| what the repo exposes under the uniform names (`#relock` today).
+|===
+
+Open on this draft: whether `slug` and `branch` belong in a manifest that already lives in that very
+repo; how a repo with several flakes (rke2lab and its two orphans) carries one manifest per branch;
+how the schema versions.
+
+== `relock.json` — the trace of a change
+
+Rewritten in the commit that carries a change, never alone:
+
+[source,json]
+----
+{
+  "pass": "2026-10-08T18:40:12Z-nix-flake-commons-5d1a9b5",
+  "tool": "98003774…",
+  "start": "nix-flake-commons",
+  "position": 5,
+  "seat": "ndh",
+  "bumped": { "flake-commons": [ "83c2364", "5d1a9b5" ], "rke2lab": [ "3827e57", "5e32b50" ] },
+  "dropped": [ "nixpkgs" ],
+  "catalog": null
+}
+----
+
+The file states the last change at the head; `git log -- .seedmatic.d/relock.json` gives the
+history. The NixOS guests and the nodes provision from the head of `develop`, so this is how the
+level that *consumes* a change learns which pass made it.
+
+== The levels that read the manifests
+
+The same platform reads differently depending on where you stand. Three machines are stacked under
+the clusters:
+
+. **the Mac** — bioskop, nikopol — under nix-darwin from ndh, hosting the operator's seats;
+. **the NixOS guest** `<host>-nixos`, a Tart VM that boots from the generic image `nerd-nixos` and
+  then takes its host's name; it is the Incus host;
+. **the Incus instances**, NixOS `lxc-container` images built by rke2lab, which are the RKE2 nodes.
+
+Above them run the **clusters**, management and workload, and later the **workspaces**.
+
+=== Figure A — who stands where
+
+[mermaid]
+....
+flowchart TB
+  subgraph MAC["Mac — bioskop, nikopol (nix-darwin, ndh)"]
+    SEAT["operator seat\nflox + gh auth token\nworktrees on /Volumes/git-worktree-store"]
+  end
+  subgraph GUEST["NixOS guest {host}-nixos (Tart, Incus host)"]
+    GNIX["nix + nixos-rebuild\nstores mounted by sshfs"]
+  end
+  subgraph NODES["Incus instances = RKE2 nodes"]
+    NNIX["nix store per node\nflox-controller: read-only token"]
+  end
+  subgraph CLUSTERS["Clusters — mgmt, wrkld"]
+    PAC["PaC / Tekton\nGitHub App token\nwarm nix-store PVC"]
+    FLUX["Flux\nGitRepository + Receiver"]
+    WS["workspaces (planned)\nche-code, flox toolchain"]
+  end
+  GH[("GitHub\n.seedmatic.d/ at the head of develop")]
+
+  SEAT -->|"writes, reads"| GH
+  PAC -->|"reads, writes (designed)"| GH
+  GH -->|"webhook"| PAC
+  GH -->|"pull"| FLUX
+  GH -->|"provisioning builds develop"| GNIX
+  GNIX --> NNIX
+  WS -. "a seat checkout" .-> PAC
+
+  classDef built fill:#d4edda,stroke:#155724
+  classDef designed fill:#fff3cd,stroke:#856404
+  classDef planned fill:#f8d7da,stroke:#721c24
+  class SEAT built
+  class PAC designed
+  class WS planned
+....
+
+Legend: green = acts on the manifests today; yellow = designed, not built; red = planned elsewhere
+and not started.
+
+=== What each level can do today
+
+[cols="2,2,3,3",options="header"]
+|===
+| Level | nix | GitHub credential, push | Acts on the manifests
+
+| Mac seat
+| yes, flox seat
+| `gh auth token`, read and write
+| **reads and writes — the only place today**
+
+| NixOS guest
+| yes
+| only `nixos-rebuild-gh`, interactive; no push documented
+| consumes what `develop` carries
+
+| Incus node
+| store and cache
+| `access-tokens` planned through sops but never written; flox-controller holds a read-only token
+| consumes, through the guest's build; holds `contents:read` only, by design
+
+| Cluster
+| yes, in the render pod
+| PaC's per-run App token, or gtm's `github-token-write`
+| designed: reads, and writes through a pipeline
+
+| Workspace
+| planned, through the flox NRI plugin
+| not designed
+| later, through the cluster's pipeline
+|===
+
+== What any writer must provide
+
+A writer is anything that commits to a repo on the operator's behalf: an operator seat today, a
+pipeline later.
+
+[cols="2,4",options="header"]
+|===
+| Need | Why
+
+| `nix`, with network to GitHub
+| what it builds is fetched from GitHub
+
+| a GitHub token with `contents:write` on **every** repo it writes
+| a token that reaches only some repos stops the work halfway
+
+| a canonical `TMPDIR`
+| nix refuses a `git+file` flake that crosses a symlink once it is dirty (measured: `/tmp` on macOS)
+
+| a nix cache it can **isolate** for proofs
+| nix caches `revCount` by revision: a warm cache can hide a failure (measured 2026-10-08)
+
+| a git identity, and signing where a branch requires it
+| the commits are the trace
+|===
+
+== Reading the manifests without the cache
+
+A manifest read from a stale cache would make every reader lie, silently. A reader therefore reads
+with `--refresh`, and treats nix's own fallback messages (`using cached version`,
+`unable to download`) as a failure. That is the rule `relock` already applies to a bump.
+
+It must be **proven**, not asserted:
+
+. **bats:** the fake `nix` emits the fallback warning on a manifest read. The reader must fail and
+  name the repo. A mutation that drops the stderr check must fail that case.
+. **real nix, cache isolated:** read a manifest with `XDG_CACHE_HOME` pointed at an empty directory,
+  then push a new one and read it again through the operator's warm cache with `--refresh`. Both reads
+  must return the pushed value.
+
+== Option studied — projecting the manifests through rke2lab's synthesis
+
+rke2lab already projects state into cluster manifests that Flux reconciles, and it sees most repos
+through its inputs. Could it project the repos' `.seedmatic.d/` into the clusters too?
+
+What exists:
+
+* rke2lab's synthesis reads nix only through **classpath staging**: store paths copied into
+  `manifests-core/target/generated-resources/{crds,rbac,image-refs}`, then read by a `ManifestsUnit`.
+  `dataplan.json` and `network-blueprint.json` flow the other way, from Java into nix.
+* rke2lab's input closure holds nix-flake-commons, flox-controller, flox-nri-plugin, seed-incluster,
+  ndh, and nnh through ndh. **nch and seat-roster are not in it**: nch pins ndh but is pinned by
+  nobody, and seat-roster pins only flake-commons.
+
+Consequences, measured from that:
+
+* Two repos would be invisible to the projection unless rke2lab took them as new inputs. Taking nch
+  creates no cycle, since nch pins ndh and not rke2lab. Taking seat-roster adds an input that rke2lab
+  does not otherwise use.
+* The projected state would be what rke2lab *locked*, one pass behind the heads.
+* It needs a new staged directory, a resource entry and a `ManifestsUnit`, all in rke2lab, for a
+  view that git already gives.
+
+The projection is useful only if a cluster object must *react* to a manifest. Decision: ⬜ operator.
+
+== Migrating what exists
+
+The convention changes the place of files that exist today. That is a chantier of its own, on its own
+branch:
+
+* rke2lab's `dataplan.json` and `network-blueprint.json` move to `.seedmatic.d/`. The move touches the
+  `regen-*` apps that write them, relock's `ownedArtifacts`, the `*-fresh` checks, and the Java code
+  that writes them. ndh reads them through `rke2lab.lib.*`, so ndh is not touched.
+* The `consumers` argument of `lib.mkRelockApp` goes, replaced by the inverse of the manifests'
+  `pins`.
+
+== Open questions
+
+* **Token reach.** Does the GitHub App installation, or gtm's write token, cover every repo? seat-roster
+  appears in no document read for this vision.
+* **Workspaces and worktrees.** No document says how a workspace pod gets its git worktrees.
+* **Status back to GitHub.** No Flux Alert or commit status reports anything today, although the App
+  holds `statuses` and `checks`.
+* **Several flakes in one repo.** rke2lab carries three: `develop` and its orphans `seed-incluster`
+  and `flox-catalog`. One manifest per branch, or one per repo that names its branches?
+* **The schema's home and versioning.** Where `seedmatic.repository/v0` is defined, and who validates
+  it.
+
+== Docs to correct
+
+Found while reviewing the platform's documents for this vision. They are **not** corrected here and
+need a branch of their own.
+
+[cols="3,4",options="header"]
+|===
+| Where | Why
+
+| `.tekton/render.yaml:26`, `cluster-api/pac-in-cluster-render-spec.adoc:828`
+| ⚠️ **live defect:** `on-target-branch` is `feature/viewpoint-separation`, which the remote no longer
+has, so pushes trigger no render PipelineRun. The fabric builds `develop`.
+
+| `patterns/flake-lock-propagation.adoc:15-16,30,61,214-250,305`
+| still describes `update-flox-envs` and the dead branch; relock replaced the first
+
+| `patterns/flake-lock-propagation.adoc:100-118`
+| says the cycle needs no cut; the chain cuts it with `follows = ""` and bounds it by the visited list
+
+| `cluster-api/pac-in-cluster-render-spec.adoc:466-479`, `:63`, `:806-823`
+| "no PaC webhook yet", a 1m poll, and `mvn … verify`: the webhook is live, the interval is 10m, the
+pipeline runs `nix run .#render-manifests`
+
+| `cluster-api/pac-in-cluster-render-spec.adoc:119` vs `:530,584`
+| two namespaces for the signing Secret
+
+| `cluster-api/pac-in-cluster-render-spec.adoc:95-97`
+| names `.tekton/render-manifests.yaml`; the file is `render.yaml`
+
+| `cluster-api/github-credential-model.adoc:81-84,169,197-200,39-41`
+| names another GitHub App operator than the gtm the code uses, and says "single-repo App"
+
+| `nixos-substrate/substrate-model.adoc:24-27`
+| describes the flox runtime as a DaemonSet baked into the image; the FloxEnv CRD design supersedes it
+
+| `atlas/nixos-substrate.adoc:173` vs `atlas/seed.adoc:697-721`
+| one says the host-tree promotion is deleted, the other still designs it
+
+| `atlas/cluster-seeding.adoc:163`
+| broken link; should point to `../cluster-api/management-workload-topology.adoc`
+
+| `patterns/flox-store-resolved-runtime-and-builder.adoc:721-723`
+| "controller never re-locks", contradicted by a measurement on 2026-10-07
+
+| docs and ndh files citing `/var/lib/git` (e.g. `guides/diagram-preview-kroki.adoc:157`)
+| the stores moved to `/Volumes/git-{bare,worktree}-store` on 2026-10-02
+|===
+
+== Related Documentation
+
+* link:relock-across-levels.adoc[Atlas — Relock across the platform's levels] - the first consumer of
+  these manifests, paused on this vision
+* link:flake-chain.adoc[Atlas — The flake chain, as delivered] - the chain the relations describe
+* link:netplan.adoc[Atlas — Netplan address-plane] - the contribution precedent, and the three
+  machines of the stack
+* link:manifests.adoc[Atlas — Manifests] - the synthesis the option studied would extend
+* link:nixos-substrate.adoc[Atlas — NixOS substrate] - the levels that consume `develop`
+* link:../cluster-api/pac-in-cluster-render-spec.adoc[PaC in-cluster render] - the pipeline a cluster
+  writer would reuse
