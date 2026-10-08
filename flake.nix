@@ -2,7 +2,9 @@
   description = "Flox runtime env catalog: per-workload packages (kdns, tailscale) the flox-nri-plugin injects. The plugin itself now lives in github:seedmatic/flox-nri-plugin (consumed as the flox-runtime input of the rke2lab flake).";
 
   inputs = {
-    flake-commons.url = "flake-commons";
+    # Follows rke2lab's pin, the same rule as ndh and seed-incluster below: the envs build rke2lab
+    # THROUGH this flake, so they must see rke2lab's flake-commons.
+    flake-commons.follows = "rke2lab/flake-commons";
     nixpkgs.follows = "flake-commons/nixpkgs";
     flake-utils.follows = "flake-commons/flake-utils";
 
@@ -43,7 +45,6 @@
     # the propagation path. It had rotted onto `feature/nixos-node-substrate` that way. So repoint it
     # when a chantier ends — once per chantier, not per checkpoint.
     rke2lab.url = "rke2lab";
-    rke2lab.inputs.flake-commons.follows = "flake-commons";
 
     # ndh (public) carries manage-tailnet + the tailscale fork
     # (packages.<sys>.tailscale). Follows rke2lab's pin — see above.
