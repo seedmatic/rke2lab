@@ -11,8 +11,7 @@ toc::[]
 ⏸ **Paused on the repository manifest.** Each repo will own a manifest, `.seedmatic.d/repository.json`,
 whose consumers introspect its relations to the other repos. Its schema is being designed first, in an
 atlas of its own. This design will then be rebased on it. Until then, the form `lib.relockChain`
-written below (D3) is provisional: the relations will be part of `repository.json`, and the trace
-`relock.manifest.json` will become `.seedmatic.d/relock.json`.
+written below (D3) is provisional: the relations will be part of `repository.json`.
 
 == Overview
 
@@ -74,8 +73,8 @@ cycle, no giant lock, and no root commit per pass. GitHub is the exchange channe
 | 📐
 
 | D6
-| **Gitops trace.** A relock that commits a change rewrites `relock.manifest.json` *in that same
-commit*. No commit is made for the manifest alone, and there are no trailers.
+| **Gitops trace.** A relock that commits a change rewrites `.seedmatic.d/relock.json` *in that
+same commit*. No commit is made for the manifest alone, and there are no trailers.
 | 📐
 
 | D7
@@ -89,94 +88,14 @@ operator decides.
 | ⬜ open
 |===
 
-== The levels, and what each can do today
+== The levels
 
-The same platform reads differently depending on where you stand. Three machines are stacked under
-the clusters:
-
-. **the Mac** — bioskop, nikopol — under nix-darwin from ndh, hosting the operator's seats;
-. **the NixOS guest** `<host>-nixos`, a Tart VM that boots from the generic image `nerd-nixos` and
-  then takes its host's name; it is the Incus host;
-. **the Incus instances**, NixOS `lxc-container` images built by rke2lab, which are the RKE2 nodes.
-
-Above them run the **clusters**, management and workload, and later the **workspaces** where work
-sessions run with the worktrees they need.
-
-=== Figure A — who stands where
-
-[mermaid]
-....
-flowchart TB
-  subgraph MAC["Mac — bioskop, nikopol (nix-darwin, ndh)"]
-    SEAT["operator seat\nflox + gh auth token\nworktrees on /Volumes/git-worktree-store"]
-  end
-  subgraph GUEST["NixOS guest {host}-nixos (Tart, Incus host)"]
-    GNIX["nix + nixos-rebuild\nstores mounted by sshfs"]
-  end
-  subgraph NODES["Incus instances = RKE2 nodes"]
-    NNIX["nix store per node\nflox-controller: read-only token"]
-  end
-  subgraph CLUSTERS["Clusters — mgmt, wrkld"]
-    PAC["PaC / Tekton\nGitHub App token\nwarm nix-store PVC"]
-    FLUX["Flux\nGitRepository + Receiver"]
-    WS["workspaces (planned)\nche-code, flox toolchain"]
-  end
-  GH[("GitHub\nhead of develop per seat")]
-
-  SEAT -->|"relock: executor 1, built"| GH
-  PAC -->|"relock: executor 2, designed"| GH
-  GH -->|"webhook"| PAC
-  GH -->|"pull"| FLUX
-  GH -->|"provisioning builds develop"| GNIX
-  GNIX --> NNIX
-  WS -. "start node: a seat checkout" .-> PAC
-
-  classDef built fill:#d4edda,stroke:#155724
-  classDef designed fill:#fff3cd,stroke:#856404
-  classDef planned fill:#f8d7da,stroke:#721c24
-  class SEAT built
-  class PAC designed
-  class WS planned
-....
-
-Legend: green = runs a relock today; yellow = designed here, not built; red = planned elsewhere and
-not started.
-
-=== What each level can run
-
-[cols="2,2,3,3",options="header"]
-|===
-| Level | nix | GitHub credential, push | Can start a relock
-
-| Mac seat
-| yes, flox seat
-| `gh auth token`, read and write
-| **yes — the only place today**
-
-| NixOS guest
-| yes
-| only `nixos-rebuild-gh`, interactive; no push documented
-| no
-
-| Incus node
-| store and cache
-| `access-tokens` planned through sops but never written; flox-controller holds a read-only token
-| no, by design: a node holds `contents:read` only
-
-| Cluster
-| yes, in the render pod
-| PaC's per-run App token, or gtm's `github-token-write`
-| designed here (executor 2)
-
-| Workspace
-| planned, through the flox NRI plugin
-| not designed
-| later, as a start node for executor 2
-|===
-
-The guest and the nodes never start a relock. They *consume* what a pass pushed, when the next
-provisioning builds the head of `develop`. That asymmetry is the reason the trace has to live in git
-(D6): the level that consumes a change is never the level that made it.
+The platform's levels — the Mac seat, the NixOS guest `<host>-nixos`, the Incus nodes, the clusters,
+the workspaces — and what each can do today are described in link:seedmatic-repository-manifest.adoc[the seedmatic repository manifest]. For relock, two facts
+matter: **only an operator seat on the Mac starts a relock today**, and the guest and the nodes never
+start one. They *consume* what a pass pushed, when the next provisioning builds the head of `develop`.
+That asymmetry is why the trace lives in git (D6): the level that consumes a change is never the level
+that made it.
 
 == The contract
 
@@ -292,51 +211,19 @@ of its own lock, drops a bump that moves nothing it exports, commits, and pushes
 repos stays a request: the relock of a seat is that seat's own `#relock`, never an edit of its lock
 by someone else.
 
-=== The trace — `relock.manifest.json`
+=== The trace — `.seedmatic.d/relock.json`
 
-Rewritten in the commit that carries a change, never alone:
-
-[source,json]
-----
-{
-  "pass": "2026-10-08T18:40:12Z-nix-flake-commons-5d1a9b5",
-  "tool": "98003774…",
-  "start": "nix-flake-commons",
-  "position": 5,
-  "seat": "ndh",
-  "bumped": { "flake-commons": [ "83c2364", "5d1a9b5" ], "rke2lab": [ "3827e57", "5e32b50" ] },
-  "dropped": [ "nixpkgs" ],
-  "catalog": null
-}
-----
-
-The file states the last relock at the head; `git log -- relock.manifest.json` gives the history.
-Because the guest and the nodes provision from `develop`, this is the answer to "which pass made
-this", read from the level that consumes the change.
+A relock that commits a change rewrites `.seedmatic.d/relock.json` in that same commit: the pass, the
+tool, the seat it started from, the position in the plan, the pins before and after, the bumps
+dropped. Its schema is in link:seedmatic-repository-manifest.adoc[the seedmatic repository manifest].
 
 === What an executor must provide
 
-[cols="2,4",options="header"]
-|===
-| Need | Why
+What any writer must provide — nix with network to GitHub, a token with `contents:write` on every
+seat's repo, a canonical `TMPDIR`, a nix cache it can isolate, a git identity — is listed in
+link:seedmatic-repository-manifest.adoc[the seedmatic repository manifest]. An executor of relock is such a writer.
 
-| `nix`, with network to GitHub
-| every seat's relock is built on the pass's tool, fetched from GitHub
-
-| a GitHub token with `contents:write` on **every** seat's repo
-| each seat pushes its own commit; a token that reaches only some seats stops the relay
-
-| a canonical `TMPDIR`
-| nix refuses a `git+file` flake that crosses a symlink once it is dirty (measured: `/tmp` on macOS)
-
-| a nix cache it can **isolate** for proofs
-| nix caches `revCount` by revision: a warm cache can hide a failure (measured 2026-10-08)
-
-| a git identity, and signing where a branch requires it
-| the commits are the trace
-|===
-
-== Figure B — the relay
+== Figure A — the relay
 
 [mermaid]
 ....
@@ -372,17 +259,9 @@ cycle, and the plan names the cut.
 
 == Reading at pass start, without the cache
 
-A contribution read from a stale cache would make the plan lie, silently. The root therefore reads
-with `--refresh` and treats nix's own fallback messages (`using cached version`,
-`unable to download`) as a failure. That is the rule `nix_update` already applies to a bump.
-
-It must be **proven**, not asserted:
-
-. **bats:** the fake `nix` emits the fallback warning on a contribution read. The plan must fail and
-  name the seat. A mutation that drops the stderr check must fail that case.
-. **real nix, cache isolated:** read a seat's contribution with `XDG_CACHE_HOME` pointed at an empty
-  directory, then push a new contribution and read it again through the operator's warm cache with
-  `--refresh`. Both reads must return the pushed value.
+The root reads every seat's relations with `--refresh` and fails on nix's own fallback messages, the
+rule `nix_update` already applies to a bump. The rule, and the two proofs it needs (a bats case with
+its mutation, and a real read through an isolated cache), are in link:seedmatic-repository-manifest.adoc[the seedmatic repository manifest].
 
 == Executor 1 — the provisioning layer, now
 
@@ -415,7 +294,7 @@ Two shapes are possible, and the choice is open (Q2):
 . **one PipelineRun per pass**, which runs the same relay as executor 1 inside one pod. This is the
   same contract with another host.
 . **one PipelineRun per seat**, triggered by the previous seat's push to `develop`. The pass context
-  travels in that commit's `relock.manifest.json`, so GitHub is literally the channel. This shape has
+  travels in that commit's `.seedmatic.d/relock.json`, so GitHub is literally the channel. This shape has
   a gap of its own: a seat that commits nothing pushes nothing, and its successor never hears of the
   pass.
 
@@ -431,7 +310,7 @@ observing and does not trigger relocks: an object has one owner.
 | the root seat (Mac)
 | the whole seat list, every contribution, fresh
 | a full pass
-| the report, then each seat's `relock.manifest.json`
+| the report, then each seat's `.seedmatic.d/relock.json`
 
 | any other seat (Mac)
 | the same list, from its own flake-commons pin
@@ -462,33 +341,10 @@ observing and does not trigger relocks: an object has one owner.
 Every row reads the *same* seat list through the *same* tool. Two places that run the same tool
 therefore compute the same plan, and a pass cannot mix two views of the chain.
 
-== Option studied — projecting the manifests through rke2lab's synthesis
+== Option studied — projecting through rke2lab's synthesis
 
-The operator's question: rke2lab already projects state into cluster manifests that Flux reconciles,
-and it sees most seats through its inputs. Could it project the seats' `relock.manifest.json` into
-the clusters too?
-
-What exists:
-
-* rke2lab's synthesis reads nix only through **classpath staging**: store paths copied into
-  `manifests-core/target/generated-resources/{crds,rbac,image-refs}`, then read by a `ManifestsUnit`.
-  `dataplan.json` and `network-blueprint.json` flow the other way, from Java into nix.
-* rke2lab's input closure holds nix-flake-commons, flox-controller, flox-nri-plugin, seed-incluster,
-  ndh, and nnh through ndh. **nch and seat-roster are not in it**: nch pins ndh but is pinned by
-  nobody, and seat-roster pins only flake-commons.
-
-Consequences, measured from that:
-
-* Two seats would be invisible to the projection unless rke2lab took them as new inputs. Taking nch
-  creates no cycle, since nch pins ndh and not rke2lab. Taking seat-roster adds an input that rke2lab
-  does not otherwise use.
-* The projected state would be what rke2lab *locked*, one pass behind. That is the same lag D4 was
-  chosen to avoid for the plan.
-* It needs a new staged directory, a resource entry and a `ManifestsUnit`, all in rke2lab, for a
-  view that git already gives.
-
-The projection is useful only if a cluster object must *react* to a relock. Decision: ⬜ operator
-(Q3).
+Studied in link:seedmatic-repository-manifest.adoc[the seedmatic repository manifest], with its measured consequences (nch and seat-roster lie outside rke2lab's
+input closure). Decision: ⬜ operator.
 
 == Usage patterns
 
@@ -554,67 +410,19 @@ inside a pass
 
 == Open questions
 
-* **Q1 — token reach.** Does the GitHub App installation, or gtm's write token, cover every seat's
-  repo? seat-roster appears in no document read for this design.
-* **Q2 — the cluster executor's shape:** one PipelineRun per pass, or one per seat, triggered by a
-  push.
-* **Q3 — the projection** through rke2lab's synthesis (section above).
-* **Q4 — workspaces and worktrees.** No document says how a workspace pod gets its git worktrees.
-  Executor 2 does not need one, since a relock clones what it reconciles. A workspace that starts a
-  pass would.
-* **Q5 — status back to GitHub.** No Flux Alert or commit status reports anything today, although the
-  App holds `statuses` and `checks`.
+* **The cluster executor's shape:** one PipelineRun per pass, or one per seat, triggered by a push.
+* The questions this design shares with every reader of the manifests — the token's reach over every
+  repo, how a workspace gets its worktrees, status back to GitHub — are in link:seedmatic-repository-manifest.adoc[the seedmatic repository manifest].
 
 == Docs to correct
 
-Found while reviewing for this design. They are **not** corrected in this change and need a branch of
-their own.
-
-[cols="3,4",options="header"]
-|===
-| Where | Why
-
-| `.tekton/render.yaml:26`, `cluster-api/pac-in-cluster-render-spec.adoc:828`
-| ⚠️ **live defect:** `on-target-branch` is `feature/viewpoint-separation`, which the remote no longer
-has, so pushes trigger no render PipelineRun. The fabric builds `develop`.
-
-| `patterns/flake-lock-propagation.adoc:15-16,30,61,214-250,305`
-| still describes `update-flox-envs` and the dead branch; relock replaced the first
-
-| `patterns/flake-lock-propagation.adoc:100-118`
-| says the cycle needs no cut; the chain cuts it with `follows = ""` and bounds it by the visited list
-
-| `cluster-api/pac-in-cluster-render-spec.adoc:466-479`, `:63`, `:806-823`
-| "no PaC webhook yet", a 1m poll, and `mvn … verify`: the webhook is live, the interval is 10m, the
-pipeline runs `nix run .#render-manifests`
-
-| `cluster-api/pac-in-cluster-render-spec.adoc:119` vs `:530,584`
-| two namespaces for the signing Secret
-
-| `cluster-api/pac-in-cluster-render-spec.adoc:95-97`
-| names `.tekton/render-manifests.yaml`; the file is `render.yaml`
-
-| `cluster-api/github-credential-model.adoc:81-84,169,197-200,39-41`
-| names another GitHub App operator than the gtm the code uses, and says "single-repo App"
-
-| `nixos-substrate/substrate-model.adoc:24-27`
-| describes the flox runtime as a DaemonSet baked into the image; the FloxEnv CRD design supersedes it
-
-| `atlas/nixos-substrate.adoc:173` vs `atlas/seed.adoc:697-721`
-| one says the host-tree promotion is deleted, the other still designs it
-
-| `atlas/cluster-seeding.adoc:163`
-| broken link; should point to `../cluster-api/management-workload-topology.adoc`
-
-| `patterns/flox-store-resolved-runtime-and-builder.adoc:721-723`
-| "controller never re-locks", contradicted by a measurement on 2026-10-07
-
-| docs and ndh files citing `/var/lib/git` (e.g. `guides/diagram-preview-kroki.adoc:157`)
-| the stores moved to `/Volumes/git-{bare,worktree}-store` on 2026-10-02
-|===
+The stale passages found while reviewing for this design — one a live defect, the in-cluster render
+triggering on a branch that no longer exists — are listed in link:seedmatic-repository-manifest.adoc[the seedmatic repository manifest].
 
 == Related Documentation
 
+* link:seedmatic-repository-manifest.adoc[Atlas — The seedmatic repository manifest] - the
+  manifests this design reads and writes; its base
 * link:flake-chain.adoc[Atlas — The flake chain, as delivered] - relock as it runs today; this
   document designs what it becomes
 * link:../patterns/flake-lock-propagation.adoc[Flake lock propagation] - the lock-ownership rule both
