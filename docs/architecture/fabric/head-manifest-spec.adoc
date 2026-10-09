@@ -1,0 +1,936 @@
+= Spec — The seedmatic head manifest
+:toc: macro
+:toclevels: 3
+
+toc::[]
+
+**Status:** 📐 spec — the vision, decided by the operator on 2026-10-08 and 2026-10-09 after a
+brainstorm, a post-mortem and three reviews by the integration session. The last review replaced a
+design that made a cyclic graph safe with a graph that is acyclic by construction. How today's code
+moves to it (before and after) is in link:../atlas/flake-chain.adoc[the flake-chain atlas]. Nothing here
+is built except one tool per pass (nix-flake-commons `fd6f361`). The first increment is the relock in the
+nix provisioning layer (§ <<first-increment>>); everything in the cluster comes after it.
+
+== Overview
+
+Every seedmatic flake is reached from other flakes: it is pinned as an input, its outputs are read
+(the netplan contributions, the CRDs staged into the synthesis), and its relock is requested. Today what
+a flake *is*, and how it relates to the others, is scattered across `flake.nix`, `flake-registry.json`,
+the arguments each repo passes to `lib.mkRelockApp` (including `consumers`, a list a repo writes about
+repos that pin *it*, and the catalog hop), and committed JSON at the root of rke2lab. Two of the pin
+relations are cycles (rke2lab ↔ ndh, ndh ↔ nnh), which the chain cuts with `follows = ""` and bounds with
+a visited list.
+
+The vision has three parts:
+
+. **Each branch has its place and its role.** The unit is the *head* of a branch, `(repo, branch)`. The
+  work branches (a repo's gitflow, and each orphan project's) carry code and its lock, nothing else. What
+  seedmatic reads about the fabric (the list of heads, the contributions, the trace of relock) lives
+  apart, on `fabric/*` orphans of the repo that owns it, one per facet. The first segment of a branch's
+  name says which it is.
+. **The pin graph is acyclic by construction.** A contribution, a datum one head publishes for another to
+  aggregate, lives on its own `fabric/` orphan, published by development and never by a relock. The
+  only edge left is the pin of a lock, and the pins form a DAG without anything being declared or proved.
+. **One local rule, two modes.** Every head applies the same rule with the same tool. While the fabric
+  is bootstrapped, heads are inert and the rule runs as an *execution plan played as a call tree*. Once
+  the clusters live, heads are peers and the rule runs *peer to peer*.
+
+== Decisions
+
+[cols="1,5",options="header"]
+|===
+| # | Decision
+
+| V1
+| **The first segment of a branch is a namespace: a project or a role.** No prefix: the gitflow of the
+repo's main project (`develop`, `feature/*`, `docs/*`). `<project>/`: the gitflow of an orphan project
+kept in the repo (`seed-incluster/develop`, `seed-incluster/feature/x`). `fabric/`: the repo's share of
+the fabric, what seedmatic reads. `manifests/`: the render, read by Flux. `split/`: subtree vehicles. A
+worktree follows the same path, `<repo>.d/<namespace>/<branch>`. The key of a head is `slug:branch`.
+
+| V2
+| **The manifests live apart from the work branches, one `fabric/*` orphan per facet.** A work branch,
+and therefore a session branch, carries no manifest. A facet is a small orphan that holds only its data
+(no code, no lock), so that a pin of it moves only when that facet moves. `fabric/heads`
+(nix-flake-commons), `fabric/plan` (rke2lab), `fabric/contribution` (nnh), `fabric/relock` (each head
+that relocks).
+
+| V3
+| **One edge type: the pin of a lock.** A root input of `flake.lock` that is a string, matched to a head
+by `original.id`, is an edge; a list is a `follows`, not an edge. Nobody declares an edge.
+
+| V4
+| **A contribution lives on a `fabric/` orphan.** rke2lab's (`network-blueprint.json`,
+`dataplan.json`) on `rke2lab:fabric/plan`; nnh's (its fabric segments, today a literal) on
+`nnh:fabric/contribution`. The aggregator pins them as data (`flake = false`), and so does the contributor
+itself, which keeps **one copy**: the files leave rke2lab's root, and `lib.networkBlueprint` becomes
+`fromJSON` of the pinned file, with rke2lab's own helpers (`vmnetSupernet`, `deriveMacs`) computed over
+it in rke2lab. ndh reads only the data.
+
+| V5
+| **A contribution changes by development, never by a relock.** It is a function of its head's sources
+only, so a relock pass never has to regenerate it. `nix run .#publish-plan` regenerates it, commits it
+on the orphan, pushes the orphan, and bumps the contributor's own pin of it, in the developer's change.
+A relock never writes an orphan that something pins: that would be a hop under another name. The only
+branch it writes besides its own head is its trace, `fabric/relock`, which nothing pins.
+
+| V6
+| **A mandatory pre-push hook fails hard, with what is needed to fix it.** rke2lab's `.githooks/pre-push`,
+chained by the global `core.hooksPath` dispatcher, refuses the push while the published contribution is
+not what the pushed sources produce, or while rke2lab's lock does not pin the orphan's head. The same
+checks are flake checks (`blueprint-fresh`, `dataplan-fresh`), for CI and for the plan.
+
+| V7
+| **The regeneration does not depend on ndh.** It is the one cycle the locks cannot show: ndh pins
+`fabric-plan`, produced by code built from rke2lab's flake, which pins ndh. A check proves it, cheaply:
+the `drvPath` of the regeneration is the same with the `ndh` input **and** rke2lab's own `fabric-plan`
+input overridden by an empty flake. The second override keeps a contribution from being produced from
+its own previous publication; nothing reads it that way today (rke2lab `flake.nix:441`, « Regeneration
+only (NOT on the consumed data path) »), so it is a guard rail. `publish-plan` runs it before
+publishing, and it is a flake check.
+
+| V8
+| **The impact guard measures `packages`, `apps`, and the configurations.** The `drvPath` of each
+`nixosConfigurations` and `darwinConfigurations` top level, evaluated with `system.configurationRevision`
+neutralised (ndh sets it to `self.rev or self.dirtyRev`, `flake.nix:395`, which moves 9 of its 12
+configurations on every commit). A contribution reaches the hosts only through the configurations; a
+moved `fabric-plan` pin is therefore carried like any other bump. Measured stable on 2 of the 12
+configurations; 1a sweeps the 12.
+
+| V9
+| **The list of heads is `nix-flake-commons:fabric/heads`**, the fabric's manifest: each id (the one the
+locks name in `original.id`) maps to its repository, its branch and its kind, `code` (it has a relock,
+the plan runs it) or `data` (a leaf, the plan never calls it). A lock cannot tell two flakes of one repo
+apart (`locked` names the repo, not the branch), so the id is the only key. The plan reads the list at
+each pass, through the GitHub API, and an id pinned by a known head and absent from the list is a hard
+failure. No seat registry lists every head today, and nothing lists seat-roster, nch or flox-catalog.
+
+| V10
+| **flox-catalog is an ordinary head.** It pins rke2lab, so the plan reaches it as a dependent of
+rke2lab. Its own `#relock` re-locks its envs **after** its inputs, through an "after inputs" artifact of
+the tool. There is no hop: no head's relock carries another.
+
+| V11
+| **One tool per pass.** The tool is known by its code (`lib.relockToolId`); every head's relock in a
+pass is built on it, and a relock of other code refuses. ✅ Built, nix-flake-commons `fd6f361`.
+
+| V12
+| **Fail hard, with the context going up.** A pin cycle, an unknown id, a stale contribution, or a
+failed relock is an error that names the head, the edge or the file, and the command that fixes it.
+
+| V13
+| **Bootstrap first.** The first increment is the relock in the nix provisioning layer, in call-tree
+mode. The cluster mode comes after, and waits on two other chantiers (§ <<dependencies>>).
+
+| V14
+| **In the cluster, Tekton runs, Flux applies.** A relock is a pipeline. Flux applies the rendered
+manifests and never runs one.
+
+| V15
+| **seed-incluster is the fabric's delegate in the cluster.** It adopts the heads (the change of mode
+is an adoption), and plays the integration of work sessions.
+|===
+
+== Figure A — two layers, one channel
+
+[mermaid]
+....
+flowchart TB
+  OP(["Operator"])
+  subgraph GH["GitHub — the channel"]
+    direction LR
+    R1[("head A\ncode + flake.lock")]
+    R2[("head B\ncode + flake.lock")]
+    R3[("fabric/* orphans\nwhat seedmatic reads")]
+  end
+  subgraph PROV["Provisioning layer — nix (built now)"]
+    SEAT["Operator seat (Mac)\npublish-plan, relock: the relay"]
+  end
+  subgraph CLU["Cluster layer — gitops (designed, later)"]
+    PAC["Tekton — its own door (PaC)\nruns the relock and render pipelines"]
+    FLUX["Flux\napplies the rendered manifests"]
+  end
+  subgraph CONS["Consumers of develop"]
+    GUEST["NixOS guest {host}-nixos\nprovisions develop"]
+    NODES["Incus nodes\nbuilt by the guest"]
+  end
+  OP -->|"push, relock --plan / --downstream"| SEAT
+  OP -. "push, later a workspace" .-> PAC
+  SEAT <-->|"reads locks, pushes commits"| GH
+  PAC <-->|"same rule, same tool"| GH
+  GH -->|"rendered branch"| FLUX
+  GH -->|"head of develop"| GUEST
+  GUEST --> NODES
+....
+
+== The heads and their manifests
+
+=== The namespaces
+
+[cols="2,3,3",options="header"]
+|===
+| Namespace | What lives there | Examples
+
+| _(none)_
+| the gitflow of the repo's main project
+| `develop`, `main`, `feature/x`, `docs/y`
+
+| `<project>/`
+| the gitflow of an orphan project kept in the repo
+| rke2lab `seed-incluster/develop`, `flox-catalog/develop`, `workspace/develop`,
+`seed-incluster/feature/remove-lima`
+
+| `fabric/`
+| the repo's share of the fabric: what seedmatic reads, one orphan per facet
+| nix-flake-commons `fabric/heads`, rke2lab `fabric/plan`, nnh `fabric/contribution`, `fabric/relock`
+
+| `manifests/`
+| the render, read by Flux
+| rke2lab `manifests/bioskop-mgmt`
+
+| `split/`
+| subtree vehicles
+| rke2lab `split/rke2lab/dot-claude`
+|===
+
+Git refuses a branch `x` beside a branch `x/develop`, so an orphan project moves under its namespace
+(`seed-incluster` becomes `seed-incluster/develop`), and a session of it follows (`feature/remove-lima-seed-incluster`
+becomes `seed-incluster/feature/remove-lima`). The worktrees follow the same path,
+`rke2lab.d/seed-incluster/develop`.
+
+=== Figure B — work branches carry code, the fabric is read apart
+
+[mermaid]
+....
+flowchart LR
+  subgraph ROOT["nix-flake-commons"]
+    MK["develop\nlib.mkRelockApp, lib.relockToolId\nthe one tool"]
+    HD[("fabric/heads\nheads.json: id, repo, branch, kind")]
+  end
+  subgraph HEAD["any repo — rke2lab here"]
+    WD["develop, feature/*\ncode + flake.lock"]
+    WP["seed-incluster/develop, flox-catalog/develop\ncode + flake.lock"]
+    FP[("fabric/plan\na contribution")]
+    FR[("fabric/relock\nthe trace, pinned by nobody")]
+  end
+  WD -->|"imports"| MK
+  MK -->|"reads at each pass, API"| HD
+  MK -->|"derives the edges from each lock"| WD
+  MK -->|"writes the trace"| FR
+  WD -->|"publish-plan, by development"| FP
+  classDef code fill:#cfe2ff,stroke:#084298
+  classDef data fill:#fff3cd,stroke:#856404
+  class MK,WD,WP code
+  class HD,FP,FR data
+....
+
+=== The facets
+
+[source,json]
+----
+// nix-flake-commons:fabric/heads — heads.json, the fabric's manifest
+{
+  "schema": "seedmatic.fabric-heads/v1",
+  "heads": {
+    "flake-commons":  { "repo": "seedmatic/nix-flake-commons", "branch": "develop",               "kind": "code" },
+    "rke2lab":        { "repo": "seedmatic/rke2lab",           "branch": "develop",               "kind": "code" },
+    "seed-incluster": { "repo": "seedmatic/rke2lab",           "branch": "seed-incluster/develop", "kind": "code" },
+    "flox-catalog":   { "repo": "seedmatic/rke2lab",           "branch": "flox-catalog/develop",   "kind": "code" },
+    "fabric-plan":    { "repo": "seedmatic/rke2lab",           "branch": "fabric/plan",            "kind": "data" },
+    "ndh":            { "repo": "seedmatic/ndh",               "branch": "develop",               "kind": "code" }
+  }
+}
+
+// rke2lab:fabric/relock — relock.json, rewritten at each change of the head it traces
+{
+  "schema": "seedmatic.relock/v1",
+  "head":   "rke2lab", "rev": "5e32b50a9…",
+  "status": { "wave": "…", "tool": "98003774…",
+              "bumped": { "flake-commons": [ "83c2364", "5d1a9b5" ] }, "dropped": [ "nixpkgs" ] }
+}
+----
+
+The rules:
+
+. A facet has **one owner**, the logic that writes it, and its own versioned schema.
+. A facet's orphan holds **only its data**: no code, no lock. It stays a few kilobytes, so reading it
+  and pinning it cost nothing (§ <<no-cache>>).
+. A trace is written only by its logic, after the change it traces is pushed, and names that change's
+  revision. Nothing pins a trace.
+. A reader **ignores** a field it does not know; a version of a facet it knows badly is an error.
+. What the lock says is never copied.
+. A manifest is **data, never a command**: no field makes an automation run something.
+
+=== Figure C — the model
+
+[mermaid]
+....
+classDiagram
+  class Branch {
+    <<abstract>>
+    repo
+    namespace / name
+  }
+  class WorkBranch {
+    gitflow of a project
+    code + flake.lock, no manifest
+  }
+  class FabricFacet {
+    <<abstract>>
+    fabric/facet-name
+    data only, one owner, versioned schema
+  }
+  class Heads {
+    nix-flake-commons:fabric/heads
+    id to repo, branch, kind
+  }
+  class Contribution {
+    fabric/plan, fabric/contribution
+    written by publish-plan only
+    pinned with flake = false
+  }
+  class RelockTrace {
+    fabric/relock
+    written by relock, pinned by nobody
+  }
+  class Lock {
+    flake.lock root inputs
+    a string is an edge, by original.id
+  }
+  Branch <|-- WorkBranch
+  Branch <|-- FabricFacet
+  FabricFacet <|-- Heads
+  FabricFacet <|-- Contribution
+  FabricFacet <|-- RelockTrace
+  WorkBranch *-- Lock
+  Lock ..> Heads : each id resolved through
+  Lock ..> Contribution : pins, flake = false
+  RelockTrace ..> WorkBranch : traces a revision of
+....
+
+=== Figure D — the pin graph, a DAG by construction
+
+[mermaid]
+....
+flowchart LR
+  RK["rke2lab:develop\ncode"]
+  PLAN[("rke2lab:fabric/plan\nnetwork-blueprint.json\ndataplan.json")]
+  NDH["ndh:develop\ncode + catalog"]
+  NNH["nnh:develop\ncode"]
+  NNHC[("nnh:fabric/contribution\nits fabric segments")]
+  NCH["nch:develop"]
+  FC["rke2lab:flox-catalog/develop\nan ordinary head"]
+  RK -->|"pins"| NDH
+  RK -->|"pins its own contribution"| PLAN
+  NDH -->|"pins data"| PLAN
+  NDH -->|"pins data"| NNHC
+  NNH -->|"pins: reads the catalog"| NDH
+  NCH -->|"pins: reads the catalog"| NDH
+  FC -->|"pins"| RK
+  RK -. "publish-plan, by development" .-> PLAN
+  NNH -. "publish, by development" .-> NNHC
+  classDef data fill:#fff3cd,stroke:#856404
+  class PLAN,NNHC data
+....
+
+The two cycles of today disappear without a cut: ndh no longer pins rke2lab nor nnh, only their data
+heads. The checks on 2026-10-09 (ndh `7bc6de4d`, rke2lab `5e32b50a9`, nnh `020d76d`) hold the
+construction up:
+
+* ndh reads of rke2lab and nnh only `inputs.rke2lab.lib.networkBlueprint`,
+  `inputs.rke2lab.lib.dataplan` and `inputs.nnh.lib.networkBlueprint` (ndh `flake.nix:157,158,166`),
+  nothing passed to a module;
+* rke2lab's contribution is produced by its `plan` jar from its own sources; the two values its
+  `lib.networkBlueprint` adds in nix (`vmnetSupernet`, the function `deriveMacs`) are used by rke2lab
+  only (`nixos/network.nix:131`);
+* nnh and nch read ndh's aggregate (`ndh.catalog.netplan.*`), so their pin of ndh stays;
+* no other pin cycle exists among the heads.
+
+=== Figure E — publishing a contribution
+
+[mermaid]
+....
+sequenceDiagram
+  autonumber
+  participant DEV as Developer (rke2lab:develop)
+  participant PUB as nix run .#publish-plan
+  participant ORP as rke2lab:fabric/plan
+  participant HK as .githooks/pre-push
+  participant GH as GitHub
+  DEV->>DEV: change the model (rke2lab sources)
+  DEV->>PUB: publish
+  PUB->>PUB: check — the regeneration's drvPath is the same with ndh overridden
+  PUB->>ORP: regenerate, commit network-blueprint.json, dataplan.json
+  PUB->>GH: push the orphan
+  PUB->>DEV: bump the fabric-plan pin, staged with the change
+  DEV->>HK: git push
+  HK->>HK: published = expected? lock pins the orphan's head?
+  alt stale or unpinned
+    HK--xDEV: REFUSING — both fingerprints, what changed, the fix
+  else fresh
+    HK->>GH: push develop
+  end
+....
+
+=== The hook's message
+
+A hook that only says « stale » sends the developer looking. The refusal carries the contribution, its
+file and its orphan; **both fingerprints, each with what it measures (`of`: head, revision, file) and how
+(`method`: the command that produces it)**; the keys that differ, not only that the files differ; and
+the exact command that fixes it.
+
+[source]
+----
+REFUSING push: the contribution `network-blueprint.json` on rke2lab:fabric/plan is stale.
+
+  published : sha256-3f2a…  of rke2lab:fabric/plan @ 8c41d02 — network-blueprint.json
+  expected  : sha256-91bc…  of rke2lab:develop @ 5e32b50 — nix build .#networkBlueprintJson
+  changed   : segments[vmnet].cidr, clusters.bioskop-wrkld
+
+  Your change to rke2lab's model alters what ndh will read.
+  Fix:   nix run .#publish-plan      # regenerates, commits on rke2lab:fabric/plan, pushes it
+  then:  git push                    # again
+----
+
+[source]
+----
+REFUSING push: rke2lab pins rke2lab:fabric/plan @ 8c41d02, but its head is 1e77a90.
+
+  rke2lab would read one contribution and ndh another.
+  Fix:   nix flake update fabric-plan && git commit --amend --no-edit flake.lock
+  then:  git push                    # again
+----
+
+The hook needs the network: it reads the orphan's head on GitHub, with `--refresh`, and treats a
+fallback to nix's cache as a failure (§ <<no-cache>>).
+
+== One local rule, two modes
+
+The rule, the same in every head and in both modes:
+
+[quote]
+____
+When an input I depend on changes, I relock myself with the pass's tool: I bump, the impact guard drops
+what moves nothing I export, I commit my change, I write its trace on my `fabric/relock`, I push, and
+the heads that pin me are reached next.
+____
+
+A data head has no relock: it moves only by `publish-plan`. Its dependents see it move as an ordinary
+pin, and the guard carries the bump when a configuration moves.
+
+=== Bootstrap — an execution plan played as a call tree
+
+While the fabric is bootstrapped, no head can react. The head that starts computes the plan: the heads
+from `fabric/heads`, the edges from their locks, both read through the GitHub API. The edges must form a
+DAG, else the plan fails with the cycle, naming each edge and its head. The order is the topological
+order of the DAG; the starting head plays it, which may run its own relock after others. After a
+`publish-plan`, the start is the contributor, and the plan covers the dependents of the contributor
+**and of its orphans**: after rke2lab's, ndh runs first (it pins `fabric-plan`), then nnh and nch, then
+rke2lab (it pins ndh), then flox-catalog.
+
+Each head's relock calls the next: the call tree is also the path an error travels back up, with its
+context, to whoever knows. Each head runs at most once per plan.
+
+==== Figure F — the call tree
+
+[mermaid]
+....
+sequenceDiagram
+  autonumber
+  participant OP as Operator
+  participant A as head A (starts)
+  participant B as head B (pins A)
+  participant C as head C (pins B)
+  OP->>A: relock --downstream (bootstrap, heads inert)
+  Note over A: plan — heads from fabric/heads, edges from the locks, a DAG or fail
+  A->>A: same local rule — bump, impact guard, trace
+  A->>B: call B's #relock (same tool, once per plan)
+  B->>B: same local rule — commit, push
+  B->>C: call C's #relock
+  C->>C: an error — e.g. a stale contribution check
+  C--xB: throw — the head, the step, the fix
+  B--xA: throw, context kept
+  A--xOP: error — who knows fixes it, nothing hidden
+....
+
+==== A dry run of the wave
+
+A wave can be started dry, to see where it goes before anything is pushed. Each head is relocked in a
+local clone with no push remote. A downstream head sees the upstream head's unpushed result through
+`--override-input <id> path:<clone>`, on **every** path where that head appears in its lock, transitive
+ones included. The output is the predicted wave: the heads that would commit, their bumps, and the
+noise of derivations with `src = ./.` marked as such. Before any real push, a lock that contains a
+`path:` or `git+file:` entry is refused.
+
+===== Figure G — a dry run
+
+[mermaid]
+....
+sequenceDiagram
+  autonumber
+  participant OP as Operator
+  participant W as Wave (dry-run, 1b)
+  participant A as clone of head A
+  participant B as clone of head B
+  participant C as clone of head C
+  OP->>W: wave --dry-run from A
+  W->>A: relock in a clone — commit locally, no push remote
+  W->>B: relock, A overridden on every path in B's lock
+  Note over B: B sees A's unpushed result
+  W->>C: relock, B overridden on every path
+  C-->>W: the guard dropped every bump — nothing to commit
+  W->>OP: predicted wave — heads that commit, bumps, noise of src = ./. marked
+  Note over OP,W: a lock containing path: is refused before any real push
+....
+
+=== Cluster — peer to peer
+
+Once the clusters live, every head is a peer that reacts to its inputs moving. **Tekton runs, Flux
+applies**: a relock is a pipeline, run through Tekton's own entry point (PaC), and the rendered
+manifests reach the cluster through Flux. « Relock → render → Flux applies » is an order of pipelines. A
+publication stays a development act: in the cluster it is made from a workspace, with the same hook.
+
+==== Figure H — relock in the cluster
+
+[mermaid]
+....
+sequenceDiagram
+  autonumber
+  participant OP as Operator
+  participant GH as GitHub
+  participant TK as Tekton (PaC door)
+  participant A as head A relock
+  participant B as head B relock
+  participant FX as Flux
+  OP->>GH: push a change on an input of head A
+  GH->>TK: webhook — its own door, separate from Flux
+  Note over TK: who decides the next PipelineRun stays open
+  TK->>A: PipelineRun — nix run github:A#relock
+  A->>GH: push A — or nothing, the impact guard dropped it
+  GH->>TK: webhook
+  TK->>B: PipelineRun — B pins A
+  B->>GH: push B, or nothing
+  TK->>GH: render pipeline — rke2lab manifests branch
+  GH->>FX: rendered revision
+  Note over FX: applies the manifests, including a new seed-incluster — never runs a pipeline
+....
+
+==== The delegate, the heads, the workspaces, the integration
+
+**seed-incluster is the fabric's delegate in the cluster.** It already adopts running clusters, writes
+to git through its reflector, and holds gtm's write token. It **adopts the heads** too: before the
+adoption, the fabric moves them in call-tree mode; after it, they are peers. Each head is a `GitHead`
+object in the cluster, its `spec` from its manifest and its `status` owned by the delegate.
+
+[mermaid]
+....
+flowchart LR
+  GH[("GitHub\nheads + fabric/heads")]
+  subgraph RK["rke2lab synthesis — rendered manifests"]
+    PROJ["one GitHead + one GitRepository\nper head, from fabric/heads"]
+  end
+  subgraph CL["Cluster"]
+    FX["Flux\napplies rendered manifests\nowns GitHead.spec"]
+    GHR["GitHead CR\nthe peer, in the cluster"]
+    CTL["seed-incluster\nfabric's delegate in the cluster\nowns GitHead.status"]
+    JOB["Tekton PipelineRun\nnix, warm store, write token"]
+  end
+  GH -->|"render"| PROJ
+  PROJ -->|"manifests branch"| FX
+  FX -->|"applies spec"| GHR
+  GH -->|"webhook — Tekton's own door"| JOB
+  CTL -->|"reads"| GHR
+  CTL -. "starts? open" .-> JOB
+  JOB -->|"nix run github:head#relock, push"| GH
+  CTL -->|"writes status: wave, result"| GHR
+....
+
+**The workspaces need the heads.** The delegate keeps a bare mirror of the heads (the equivalent of
+`/Volumes/git-bare-store`), and a workspace mounts worktrees from it with the layout used on the Mac,
+`<repo>.d/<namespace>/<branch>`. The reactive relock touches only the heads the infrastructure
+provisions (`develop` and its orphans); session heads are relocked inside their workspace, in call-tree
+mode or dry.
+
+[mermaid]
+....
+flowchart LR
+  GH[("GitHub\nheads + fabric/heads")]
+  subgraph CL["Cluster (management plane)"]
+    SI["seed-incluster\nfabric's delegate"]
+    BARE[("bare mirror of the heads\nPVC, like /Volumes/git-bare-store")]
+    GHR["GitHead CRs\none per head"]
+    subgraph WS["Workspace — a work session"]
+      WT["worktrees\n{repo}.d/{namespace}/{branch}"]
+      SESS["session\nflox toolchain via NRI"]
+    end
+  end
+  GH <-->|"fetch, push"| SI
+  SI -->|"maintains"| BARE
+  SI -->|"discovers, owns"| GHR
+  GHR -->|"which heads to mount"| WS
+  BARE -->|"worktree add"| WT
+  SESS --> WT
+  WT -->|"a session branch is a new head"| GH
+  SI -. "reactive relock: develop and orphans only" .-> GH
+  SESS -. "session heads: call tree or dry-run, in the workspace" .-> WT
+....
+
+**The integration of work sessions.** The way we work today (one shared worktree, stacks of branches
+and PRs, an integration that assigns and orders) is carried by the delegate too. The **mechanics** are
+deterministic and fail hard: the lead is a `Lease` per worktree, the stacks are tracked, a re-stack runs
+under a `prepush/` tag, and the order of pushes comes from the same pin graph as the relock. The
+**judgement** belongs to an agent, inside those invariants. Each workspace has its own agent for its
+increment. The agents reach Bedrock through the nch relay on the corporate bare-metal.
+
+[mermaid]
+....
+flowchart TB
+  OP(["Operator\nquestions only, through the agents"])
+  GH[("GitHub\nheads, PR stacks")]
+  subgraph CL["Cluster (management plane)"]
+    subgraph SI["seed-incluster — integration"]
+      MECH["mechanics, fail hard\nLease per worktree = the lead\nstack tracking, prepush tags\npush order from the pin graph"]
+      IA["integration agent\njudgment within the invariants"]
+    end
+    subgraph W1["Workspace 1"]
+      A1["agent\none increment"]
+      T1["worktrees"]
+    end
+    subgraph W2["Workspace 2"]
+      A2["agent\none increment"]
+      T2["worktrees"]
+    end
+  end
+  IA -->|"assigns branch + Lease"| A1
+  IA -->|"assigns branch + Lease"| A2
+  A1 -->|"writes only under its Lease"| T1
+  A2 -->|"writes only under its Lease"| T2
+  A1 -->|"asks review"| IA
+  MECH -->|"pushes in order, re-stacks"| GH
+  IA --- MECH
+  IA -. "a decision that is the operator's" .-> OP
+  A1 -. "same" .-> OP
+....
+
+== The levels, and what each can do today
+
+The same platform reads differently depending on where you stand. Three machines are stacked under the
+clusters: **the Mac** (bioskop, nikopol), under nix-darwin from ndh, hosting the operator's seats; **the
+NixOS guest** `<host>-nixos`, a Tart VM that boots from the generic image `nerd-nixos` and then takes its
+host's name, and that is the Incus host; **the Incus instances**, NixOS `lxc-container` images built by
+rke2lab, which are the RKE2 nodes.
+
+[cols="2,2,3,3",options="header"]
+|===
+| Level | nix | GitHub credential, push | Role
+
+| Mac seat
+| yes, flox seat
+| `gh auth token`, read and write
+| publishes contributions and starts the bootstrap mode — **the only writer today**
+
+| NixOS guest
+| yes
+| only `nixos-rebuild-gh`, interactive
+| consumes `develop`
+
+| Incus node
+| store and cache
+| `contents:read` only, by design
+| consumes `develop`, through the guest's build
+
+| Cluster
+| in pods, through the flox NRI plugin
+| PaC's per-run App token, or gtm's `github-token-write`
+| runs the peer-to-peer mode (later)
+
+| Workspace
+| through the flox NRI plugin (planned)
+| not designed
+| a work session, with its agent (later)
+|===
+
+The guest and the nodes never start anything: they build the head of `develop`. That is why the trace
+lives in git, in the commit of each change.
+
+== What any writer must provide
+
+[cols="2,4",options="header"]
+|===
+| Need | Why
+
+| `nix`, with network to GitHub
+| what it builds is fetched from GitHub; the hook reads the orphan's head there
+
+| a GitHub token with `contents:write` on **every** repo it writes
+| a token that reaches only some repos stops the work halfway
+
+| a canonical `TMPDIR`
+| nix refuses a `git+file` flake that crosses a symlink once it is dirty (measured: `/tmp` on macOS)
+
+| a nix cache it can **isolate** for proofs
+| nix caches `revCount` by revision: a warm cache can hide a failure (measured 2026-10-08)
+
+| a git identity, and signing where a branch requires it
+| the commits are the trace
+|===
+
+[[no-cache]]
+== Reading the heads without the cache, and at what cost
+
+The plan reads `fabric/heads` and each head's `flake.lock` **through the GitHub API**, one file per
+call, rather than through nix, which downloads the head's whole tree to read one file. Measured on
+2026-10-09 from bioskop:
+
+[cols="3,1,2",options="header"]
+|===
+| Read | Time | Volume
+
+| `git ls-remote`, a head's revision
+| ~0.5 s
+| a few bytes
+
+| GitHub API, one file (`flake.lock`)
+| ~0.45 s
+| a few kilobytes
+
+| `nix flake metadata --refresh`, rke2lab `develop`
+| 2.3 s
+| a 3.9 MB tarball
+
+| the same, on a small orphan (`seed-incluster`)
+| 1.1 s
+| a 109 KB tarball
+|===
+
+A pass over a dozen heads costs a few seconds of reads; the API's quota (5,000 calls an hour) is not
+approached. An API error is a failure, never a fallback. nix still fetches what it builds, during each
+head's relock, and a `fabric/` orphan that holds only its data stays a few kilobytes to its pinners.
+
+A lock or an orphan read by nix from a stale cache makes every reader lie, silently. nix's reads are
+therefore made with `--refresh`, and treats nix's fallback messages (`using cached version`, `unable to download`) as a
+failure, the rule relock already applies to a bump. It is proved, not asserted: a bats case in which the
+fake `nix` emits the fallback warning, with the mutation that drops the check; and a real read with
+`XDG_CACHE_HOME` pointed at an empty directory, then again through a warm cache with `--refresh` after a
+push. Both reads must return the pushed value.
+
+[[first-increment]]
+== The first increment — relock in the provisioning layer
+
+**1a**:
+
+* the renames to the namespaces (V1), done by the integration before the code: the orphan projects
+  under `<project>/`, their sessions after them, and the constant that names the catalog branch
+  (rke2lab `FloxCatalogManifestsUnit.java:47`);
+* `nix-flake-commons:fabric/heads`, the list of heads with their kind (V9);
+* the `fabric/` orphans `rke2lab:fabric/plan` and `nnh:fabric/contribution`, ndh's pins of them
+  (`flake = false`) in place of its pins of rke2lab and nnh, and rke2lab's and nnh's own pins (V4);
+* `publish-plan` in rke2lab (and its twin in nnh), the regeneration check against ndh and
+  `fabric-plan` (V5, V7);
+* rke2lab's `.githooks/pre-push` and its message; the `*-fresh` checks compare the orphan (V6);
+* rke2lab's relock no longer regenerates its contributions: `ownedArtifacts` goes (V5);
+* the impact guard over packages, apps and the 12 configurations with their revision neutralised (V8);
+* flox-catalog's own `#relock` (its call site exists, flox-catalog `flake.nix:269`) re-locks its envs
+  as an "after inputs" step; the catalog hop leaves the tool (V10);
+* the trace on each head's `fabric/relock` (V2);
+* the plan: heads from `fabric/heads`, edges from the locks, a DAG or fail, an unknown id a failure; the call tree, failing hard
+  with its context, once per head per plan (V3, V12).
+
+**1b**: the dry run of the wave.
+
+**Out of the increment**: everything in the cluster.
+
+**Tests that bite**, each with its mutation: a pin cycle → an error naming each edge and its head; a
+changed contribution → the guard carries ndh's bump (fails today: the guard projects only `packages` and
+`apps`); a stale orphan or an unpinned orphan head → the hook refuses with its message; a regeneration
+that reads ndh → `publish-plan` refuses; a relock of rke2lab → no contribution file written.
+
+**Migration.** The ten `mkRelockApp` call sites move by ordinary commits, one per head, pushed in stack
+order: nix-flake-commons first, then each consumer locked on it. The orphans are pushed before ndh's pins
+of them. In nnh and nch, the bump of `ndh` past `050c8188` goes in the same commit, which removes the
+transitive `claude-hub` node. No relock pass runs until all ten are pushed.
+
+[[dependencies]]
+== Dependencies on other chantiers
+
+[cols="3,2,4",options="header"]
+|===
+| Chantier | State | What depends on it here
+
+| Bedrock relay (nch, on the corporate bare-metal)
+| in progress, another session
+| the agents in the cluster: integration and workspaces
+
+| In-cluster workspaces (che-code, toolchain through the flox NRI plugin)
+| in progress; sequenced after the credentials relay
+| the worktrees served by the delegate, the workspaces' agents
+
+| The in-cluster render trigger (`.tekton/render.yaml:26`)
+| ⚠️ broken: it fires on a branch that no longer exists
+| the cluster mode's « relock → render → Flux applies »; to repair now, in parallel
+|===
+
+Order: the Bedrock relay, then the workspaces, then the cluster mode of this vision. The bootstrap mode
+depends on none of them.
+
+== Usage patterns
+
+=== ✅ A contribution is published with the change that alters it
+
+[source,bash]
+----
+nix run .#publish-plan    # regenerate, commit on rke2lab:fabric/plan, push it, bump the pin
+git push                  # the hook checks the orphan and the pin
+----
+
+=== ❌ Writing another head's relations
+
+[source,nix]
+----
+consumers = [ "github:seedmatic/ndh" ];   # ❌ rke2lab saying who pins it
+----
+
+A head knows what it pins, and its lock says it. What pins *it* is somebody else's fact.
+
+=== ❌ An aggregator pinning a contributor's code
+
+[source,nix]
+----
+rke2lab.url = "rke2lab";       # ❌ in ndh: a pin of rke2lab's code, back to the cycle
+fabric-plan = { url = "fabric-plan"; flake = false; };   # ✅ the data only
+----
+
+=== ❌ Reading a `follows` as a pin
+
+[source,json]
+----
+"inputs": { "rke2lab": "rke2lab", "ndh": [ "rke2lab", "ndh" ] }
+----
+
+`rke2lab` is a pin (a string). `ndh` is a `follows` (a list): it moves with `rke2lab`, and is not an
+edge of its own.
+
+=== ❌ A manifest that commands
+
+A field that makes an automation run something turns a branch into an attack surface: with V1, every
+session branch carries a manifest. A manifest states facts; the tool decides what to do with them.
+
+== Troubleshooting
+
+[cols="2,3,3",options="header"]
+|===
+| Symptom | Cause | Fix
+
+| the plan names a pin cycle, with its edges
+| a head pins the code of a head that pins it
+| move the datum it reads onto a `fabric/` orphan, and pin that
+
+| `REFUSING push: the contribution … is stale`
+| the model changed, the orphan was not republished
+| `nix run .#publish-plan`, then push again
+
+| `REFUSING push: rke2lab pins rke2lab:fabric/plan @ …`
+| the orphan moved, rke2lab's pin did not
+| `nix flake update fabric-plan`, amend, push again
+
+| `publish-plan` says the regeneration depends on ndh
+| the `plan` jar's build reads something of ndh
+| remove that read: it would close a value cycle the locks cannot show
+
+| a blueprint change does not reach the hosts
+| the guard does not measure the configurations (before V8)
+| V8
+
+| `using cached version` while reading a lock or an orphan
+| nix served a cached answer
+| retry with the network; never accept a cached plan
+
+| a lock that contains `path:` before a push
+| a dry run's override leaked
+| redo the relock without the override
+|===
+
+== Open questions
+
+. **Who starts a relock's PipelineRun** in the cluster: the PaC door on a push (one App, one webhook,
+  so one entry through the root), or seed-incluster through the Kubernetes API?
+. **Where `GitHead` objects come from**: rendered by rke2lab's synthesis (but nch and seat-roster are
+  outside rke2lab's input closure), or discovered by the delegate on GitHub?
+. **One source for the ids**: three lists map an id to a repository today (each seat's committed
+  `flake-registry.json`, fleet's `flake-registry` env that points nix at it, and `fabric/heads`). The
+  operator wants the registry **derived** from `fabric/heads`. A lead: nix accepts a URL for
+  `flake-registry`, so fleet's env could point at the registry published on `fabric/heads`, each seat's
+  `flake-registry.local.json` staying its override and the committed files going. To measure: nix's
+  cache of a remote registry, and a relock in a clone, which has no flox env. Until then, an eval check:
+  every entry of a seat's registry equals its entry in `fabric/heads`.
+. **Adoption**: where the fact that a head is adopted lives (a facet written by seed-incluster alone?),
+  so that the Mac never relocks an adopted head at the same time.
+. **seed-incluster's load**: separate the deterministic mechanics from the agent's host; keep its own
+  head out of the reactive relock, since it redeploys itself only through rke2lab's render.
+. **Security**: the boundary « reactive only on provisioned heads » must be a rule of the delegate. (A
+  session branch no longer carries a manifest, V2.)
+. **Token reach, cost and pace of a wave**: whether the App and gtm tokens cover every repo; the time
+  and API cost of a wave over ten heads that evaluate their configurations.
+. **Other peer-to-peer logics**, each with its facet.
+
+== Docs to correct
+
+Found while reviewing the platform's documents for this vision. They are **not** corrected here and
+need a branch of their own.
+
+[cols="3,4",options="header"]
+|===
+| Where | Why
+
+| `.tekton/render.yaml:26`, `cluster-api/pac-in-cluster-render-spec.adoc:828`
+| ⚠️ **live defect:** `on-target-branch` is `feature/viewpoint-separation`, which the remote no longer
+has, so pushes trigger no render PipelineRun. The fabric builds `develop`.
+
+| `patterns/flake-lock-propagation.adoc:15-16,30,61,214-250,305`
+| still describes `update-flox-envs` and the dead branch; relock replaced the first
+
+| `patterns/flake-lock-propagation.adoc:100-118`
+| says the cycle needs no cut; the chain cuts it with `follows = ""` and bounds it by the visited list,
+and this spec removes it
+
+| `cluster-api/pac-in-cluster-render-spec.adoc:466-479`, `:63`, `:806-823`
+| "no PaC webhook yet", a 1m poll, and `mvn … verify`: the webhook is live, the interval is 10m, the
+pipeline runs `nix run .#render-manifests`
+
+| `cluster-api/pac-in-cluster-render-spec.adoc:119` vs `:530,584`
+| two namespaces for the signing Secret
+
+| `cluster-api/pac-in-cluster-render-spec.adoc:95-97`
+| names `.tekton/render-manifests.yaml`; the file is `render.yaml`
+
+| `cluster-api/github-credential-model.adoc:81-84,169,197-200,39-41`
+| names another GitHub App operator than the gtm the code uses, and says "single-repo App"
+
+| `nixos-substrate/substrate-model.adoc:24-27`
+| describes the flox runtime as a DaemonSet baked into the image; the FloxEnv CRD design supersedes it
+
+| `atlas/nixos-substrate.adoc:173` vs `atlas/seed.adoc:697-721`
+| one says the host-tree promotion is deleted, the other still designs it
+
+| `atlas/cluster-seeding.adoc:163`
+| broken link; should point to `../cluster-api/management-workload-topology.adoc`
+
+| `patterns/flox-store-resolved-runtime-and-builder.adoc:721-723`
+| "controller never re-locks", contradicted by a measurement on 2026-10-07
+
+| docs and ndh files citing `/var/lib/git` (e.g. `guides/diagram-preview-kroki.adoc:157`)
+| the stores moved to `/Volumes/git-{bare,worktree}-store` on 2026-10-02
+|===
+
+== Related Documentation
+
+* link:relock-bootstrap-spec.adoc[Spec — Relock in the provisioning layer] - the first increment of
+  this vision
+* link:../atlas/flake-chain.adoc[Atlas — The flake chain] - the chain as delivered, and its move to
+  this spec
+* link:../atlas/netplan.adoc[Atlas — Netplan address-plane] - the contributions ndh aggregates, and the
+  three machines of the stack
+* link:../atlas/manifests.adoc[Atlas — Manifests] - the synthesis and its render
+* link:../atlas/nixos-substrate.adoc[Atlas — NixOS substrate] - the levels that consume `develop`
+* link:../atlas/cluster-seeding.adoc[Atlas — Cluster seeding] - seed-incluster, the delegate
+* link:../cluster-api/pac-in-cluster-render-spec.adoc[PaC in-cluster render] - Tekton's entry point
