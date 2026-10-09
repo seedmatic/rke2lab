@@ -1162,9 +1162,9 @@ USAGE
           "network-blueprint.json"
         ];
         # Pushed BEFORE inputs resolve: a `github:` input sees only what is pushed.
-        pushFirstBranch = "seed-incluster";
+        pushFirstBranch = "seed-incluster/develop";
         # The branch that pins rke2lab and carries the flox envs.
-        catalogBranch = "flox-catalog";
+        catalogBranch = "flox-catalog/develop";
         selfPinName = "rke2lab";
         aliases = {
           plans = "regen-dataplan";

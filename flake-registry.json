@@ -23,7 +23,7 @@
         "type": "github",
         "owner": "seedmatic",
         "repo": "rke2lab",
-        "ref": "seed-incluster"
+        "ref": "seed-incluster/develop"
       }
     }
   ]

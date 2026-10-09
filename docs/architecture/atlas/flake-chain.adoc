@@ -214,7 +214,7 @@ flowchart LR
   `gh api repos/seedmatic/<repo> --jq .default_branch` answers `develop` for all seven repos.
 * **Orphans are named explicitly**, everywhere they are targeted: `ref = seed-incluster` in rke2lab's
   registry, and `branch = "seed-incluster"` / `branch = "flox-catalog"` in those flakes'
-  `mkRelockApp`, so one repo's several flakes stop reading as one (`3458512`).
+  `mkRelockApp`, so one repo's several flakes stop reading as one (`3458512`). Renamed `seed-incluster/develop` and `flox-catalog/develop` on 2026-10-09, when branches became namespaced.
 
 == `lib.mkRelockApp` — one implementation
 

@@ -44,7 +44,7 @@ public final class FloxCatalogManifestsUnit extends AbstractManifestsUnit {
   /**
    * Dedicated branch carrying the catalog flake at its root (maintained directly on the branch).
    */
-  public static final String CATALOG_BRANCH = "flox-catalog";
+  public static final String CATALOG_BRANCH = "flox-catalog/develop";
 
   /** The single catalog FloxCatalog, referenced as {@code floxcatalog:rke2lab-system/catalog#…}. */
   public static final String FLOX_CATALOG_NAME = "catalog";
