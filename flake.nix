@@ -117,7 +117,7 @@
         };
 
         # relock — THIS flake's locks, by the shared implementation in nix-flake-commons'
-        # `lib.mkRelockApp`. This flake is the `seed-incluster` orphan branch of rke2lab, so it
+        # `lib.mkRelockApp`. This flake is the `seed-incluster/develop` orphan branch of rke2lab, so it
         # names its `branch`: the slug alone would take any rke2lab checkout for this one.
         # `consumers` names rke2lab, which pins this branch as its `seed-incluster` input.
         apps.relock = {
@@ -128,7 +128,7 @@
               name = "seed-incluster";
               slug = "seedmatic/rke2lab";
               url = "https://github.com/seedmatic/rke2lab.git";
-              branch = "seed-incluster";
+              branch = "seed-incluster/develop";
               consumers = [ "github:seedmatic/rke2lab" ];
             }
           }/bin/relock";
