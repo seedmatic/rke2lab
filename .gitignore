@@ -9,3 +9,10 @@
 /result
 /result-*
 /.gotmp
+
+# Operator's local re-aim of the flake-input registry. REPLACES the committed
+# flake-registry.json when present (see the [include] in .flox/env/manifest.toml).
+# Ignored rather than tracked so a local re-aim never reads as a dirty tree to
+# relock's guard rail — which is also why it cannot simply be `git add -f`'ed:
+# .gitignore stops protecting a file the moment it is tracked.
+flake-registry.local.json

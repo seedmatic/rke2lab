@@ -1,0 +1,55 @@
+schema-version = "1.10.0"
+
+[include]
+  [[include.environments]]
+    dir = '../keyhole'
+
+[install]
+dig.pkg-path = "dig"
+dig.outputs = "all"
+lsof.pkg-path = "lsof"
+godns.pkg-path = "godns"
+  [install.dhcp]
+    pkg-group = "net-tools"
+    pkg-path = "dhcp"
+    systems = ["aarch64-linux"]
+
+  [install.ethtool]
+    pkg-group = "net-tools"
+    pkg-path = "ethtool"
+    systems = ["aarch64-linux"]
+
+  [install.ipcalc]
+    pkg-group = "net-tools"
+    pkg-path = "ipcalc"
+    version = "^1.0.3"
+
+  [install.iperf3]
+    pkg-group = "net-tools"
+    pkg-path = "iperf3"
+  
+  [install.iptstate]
+    pkg-group = "net-tools"
+    pkg-path = "iptstate"
+    systems = ["aarch64-linux"]
+
+  [install.netplan]
+    pkg-group = "net-tools"
+    pkg-path = "netplan"
+    systems = ["aarch64-linux"]
+
+  [install.nmap]
+    pkg-group = "net-tools"
+    pkg-path = "nmap"
+
+  [install.speedtest]
+    pkg-group = "net-tools"
+    pkg-path = "speedtest-go"
+
+  [install.tshark]
+    pkg-group = "net-tools"
+    pkg-path = "tshark"
+outputs = "all"
+
+[options]
+systems = ["aarch64-darwin", "aarch64-linux", "x86_64-linux", "x86_64-darwin"]

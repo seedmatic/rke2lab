@@ -5,9 +5,6 @@
         "bird": [
           "nixpkgs"
         ],
-        "cachix": [
-          "nixpkgs"
-        ],
         "chromium-bin": [
           "nixpkgs"
         ],
@@ -15,9 +12,6 @@
           "nixpkgs"
         ],
         "determinate": [
-          "nixpkgs"
-        ],
-        "devenv": [
           "nixpkgs"
         ],
         "disko": [
@@ -37,9 +31,6 @@
           "nixpkgs"
         ],
         "impermanence": [
-          "nixpkgs"
-        ],
-        "incus-compose": [
           "nixpkgs"
         ],
         "lix-module": [
@@ -67,35 +58,24 @@
         "nvfetcher": [
           "nixpkgs"
         ],
-        "ripvcs": [
-          "nixpkgs"
-        ],
-        "socket-vmnet": [
-          "nixpkgs"
-        ],
         "sops-nix": [
           "nixpkgs"
         ],
         "treefmt-nix": [
           "nixpkgs"
-        ],
-        "zen-browser": [
-          "nixpkgs"
         ]
       },
       "locked": {
-        "lastModified": 1789286053,
-        "narHash": "sha256-GkIN9sn8RhM3D+c9DXdnXL6z9VUhm6Y0ZFofB7WCm7M=",
+        "lastModified": 1791383425,
+        "narHash": "sha256-B7a3EPhm428HB0JI5FzbVY+SzaZa4VdViVd6awoDYXI=",
         "owner": "seedmatic",
         "repo": "nix-flake-commons",
-        "rev": "783718f167110b140925c51ccf473234b8dd181c",
+        "rev": "34585124b091e6777939f25052691f6f0c2c629c",
         "type": "github"
       },
       "original": {
-        "owner": "seedmatic",
-        "ref": "develop",
-        "repo": "nix-flake-commons",
-        "type": "github"
+        "id": "flake-commons",
+        "type": "indirect"
       }
     },
     "flake-utils": {

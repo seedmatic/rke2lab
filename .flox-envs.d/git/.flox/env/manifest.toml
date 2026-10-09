@@ -1,0 +1,52 @@
+schema-version = "1.10.0"
+
+[include]
+  [[include.environments]]
+    dir = '../keyhole'
+
+[install]
+actionlint.pkg-path = "actionlint"
+lazygit.pkg-path = "lazygit"
+  [install.gh]
+    pkg-group = "git"
+    pkg-path = "gh"
+
+  [install.git]
+    pkg-group = "git"
+    pkg-path = "git"
+outputs = "all"
+
+  [install.git-town]
+    pkg-group = "git"
+    pkg-path = "git-town"
+
+  [install.gitflow]
+    pkg-group = "git"
+    pkg-path = "gitflow"
+
+[options]
+
+[profile]
+  common = """
+    if [ -d "${FLOX_ENV_PROJECT}/.github" ]; then
+      gh_login=""
+      if [ -n "${GH_TOKEN:-}" ]; then
+        gh_login=$(gh api user --jq '.login' 2>/dev/null || true)
+      elif command -v pass >/dev/null 2>&1; then
+        gh_secret=$(pass show coding/github@work 2>/dev/null | head -n 1 || true)
+        if [ -n "${gh_secret}" ]; then
+          gh_login=$(env GH_TOKEN="${gh_secret}" gh api user --jq '.login' 2>/dev/null || true)
+        fi
+      fi
+      if [ -n "${gh_login}" ]; then
+        remote=$(git -C "${FLOX_ENV_PROJECT}" remote get-url origin 2>/dev/null || true)
+        if [ -n "${remote}" ]; then
+          owner=$(printf '%s' "${remote}" | cut -d'/' -f 4)
+          repo_name=$(printf '%s' "${remote}" | cut -d'/' -f 5 | cut -d'.' -f 1)
+          export GITHUB_LOGIN="${gh_login}"
+          export GITHUB_OWNER="${owner}"
+          export GITHUB_REPOSITORY="${owner}/${repo_name}"
+        fi
+      fi
+    fi
+  """

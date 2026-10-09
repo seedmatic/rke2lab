@@ -1,0 +1,99 @@
+schema-version = "1.10.0"
+
+[include]
+  [[include.environments]]
+    dir = '../manifest-tools'
+
+[install]
+  [install.cilium-cli]
+    pkg-group = "k8s-kubectl-tools"
+    pkg-path = "cilium-cli"
+outputs = "all"
+
+  [install.etcdctl]
+    pkg-group = "k8s-etcd-tools"
+    pkg-path = "etcdctl"
+    version = "^3.3.27"
+outputs = "all"
+
+  [install.fluxcd]
+    pkg-group = "k8s-kubectl-tools"
+    pkg-path = "fluxcd"
+outputs = "all"
+
+  [install.helmfile]
+    pkg-group = "k8s-kubectl-tools"
+    pkg-path = "helmfile"
+outputs = "all"
+
+  [install.krew]
+    pkg-group = "k8s-kubectl-tools"
+    pkg-path = "krew"
+outputs = "all"
+
+  [install.kubecectl-doctor]
+    pkg-group = "k8s-kubectl-plugins"
+    pkg-path = "kubectl-doctor"
+outputs = "all"
+
+  [install.kubectl]
+    pkg-group = "k8s-kubectl-tools"
+    pkg-path = "kubectl"
+outputs = "all"
+
+  [install.kubectl-ai]
+    pkg-group = "k8s-kubectl-plugins"
+    pkg-path = "kubectl-ai"
+outputs = "all"
+
+  [install.kubectl-explore]
+    pkg-group = "k8s-kubectl-plugins"
+    pkg-path = "kubectl-explore"
+outputs = "all"
+
+  [install.kubectl-graph]
+    pkg-group = "k8s-kubectl-plugins"
+    pkg-path = "kubectl-graph"
+outputs = "all"
+
+  [install.kubectl-ktop]
+    pkg-group = "k8s-kubectl-plugins"
+    pkg-path = "kubectl-ktop"
+outputs = "all"
+
+  [install.kubectl-neat]
+    pkg-group = "k8s-kubectl-plugins"
+    pkg-path = "kubectl-neat"
+outputs = "all"
+
+  [install.kubectl-rook-ceph]
+    pkg-group = "k8s-kubectl-plugins"
+    pkg-path = "kubectl-rook-ceph"
+outputs = "all"
+
+  [install.kubectl-tree]
+    pkg-group = "k8s-kubectl-plugins"
+    pkg-path = "kubectl-tree"
+outputs = "all"
+
+  [install.kubectl-view-secret]
+    pkg-group = "k8s-kubectl-plugins"
+    pkg-path = "kubectl-view-secret"
+outputs = "all"
+
+  [install.kubernetes-helm]
+    pkg-group = "k8s-kubectl-tools"
+    pkg-path = "kubernetes-helm"
+outputs = "all"
+
+  [install.tubekit]
+    pkg-group = "k8s-kubectl-tools"
+    pkg-path = "tubekit"
+outputs = "all"
+
+  [install.podman-wrapper]
+flake = "git+https://github.com/seedmatic/fleet?dir=flox/k8s/.flox/flakes/podman-wrapper"
+outputs = "all"
+
+[options]
+systems = ["aarch64-darwin", "aarch64-linux"]

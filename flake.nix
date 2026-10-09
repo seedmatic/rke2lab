@@ -9,24 +9,27 @@
   # a flake.lock of 320 983 lines / 8.5 MB — the full transitive closure of every tool the
   # aggregator carries — while the same input set collapsed this way weighs 164 lines. This
   # tool needs Go and nothing else, and the branch is meant to stay light.
+  # Every SEEDMATIC-owned input below is an INDIRECT id (`url = "flake-commons"`), resolved through
+  # nix's registry: the branch-less default target lives in the committed flake-registry.json, and
+  # the operator re-aims it by dropping a flake-registry.local.json beside it (see the [include] in
+  # .flox/env/manifest.toml). A branch named here could only be re-aimed by pushing an edit to this
+  # file; naming none means naming nothing that can be deleted. The lock still records a revision,
+  # so evaluating from it needs no registry at all.
   inputs = {
-    flake-commons.url = "github:seedmatic/nix-flake-commons/develop";
+    flake-commons.url = "flake-commons";
     nixpkgs.follows = "flake-commons/nixpkgs";
     flake-utils.follows = "flake-commons/flake-utils";
 
     flake-commons.inputs.bird.follows = "nixpkgs";
-    flake-commons.inputs.cachix.follows = "nixpkgs";
     flake-commons.inputs.chromium-bin.follows = "nixpkgs";
     flake-commons.inputs.darwin.follows = "nixpkgs";
     flake-commons.inputs.determinate.follows = "nixpkgs";
-    flake-commons.inputs.devenv.follows = "nixpkgs";
     flake-commons.inputs.disko.follows = "nixpkgs";
     flake-commons.inputs.extra-container.follows = "nixpkgs";
     flake-commons.inputs.flake-compat.follows = "nixpkgs";
     flake-commons.inputs.flox.follows = "nixpkgs";
     flake-commons.inputs.home-manager.follows = "nixpkgs";
     flake-commons.inputs.impermanence.follows = "nixpkgs";
-    flake-commons.inputs.incus-compose.follows = "nixpkgs";
     flake-commons.inputs.lix-module.follows = "nixpkgs";
     flake-commons.inputs.maven-mvnd.follows = "nixpkgs";
     flake-commons.inputs.nix.follows = "nixpkgs";
@@ -35,14 +38,11 @@
     flake-commons.inputs.nixos-hardware.follows = "nixpkgs";
     flake-commons.inputs.nixpkgs-unstable.follows = "nixpkgs";
     flake-commons.inputs.nvfetcher.follows = "nixpkgs";
-    flake-commons.inputs.ripvcs.follows = "nixpkgs";
-    flake-commons.inputs.socket-vmnet.follows = "nixpkgs";
     flake-commons.inputs.sops-nix.follows = "nixpkgs";
     flake-commons.inputs.treefmt-nix.follows = "nixpkgs";
-    flake-commons.inputs.zen-browser.follows = "nixpkgs";
   };
 
-  outputs = { self, nixpkgs, flake-utils, ... }:
+  outputs = inputs@{ self, nixpkgs, flake-utils, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
@@ -73,6 +73,17 @@
             vendorHash = "sha256-2SXAu1fxiRbuMOKOoB8OVzTmtR3Os423j80En+SHnzU=";
 
             subPackages = [ "cmd/workspace" ];
+
+            # ⚠️ `subPackages` restricts the CHECK phase as well as the build, so the default
+            # check ran the 4 tests of `cmd/workspace` and silently skipped the 48 in
+            # `internal/workspace` — where the assertions live. Measured 2026-10-03: the build
+            # log held exactly one `ok` line. Override the phase so the gate covers the module
+            # it is supposed to gate.
+            checkPhase = ''
+              runHook preCheck
+              go test ./...
+              runHook postCheck
+            '';
             env.CGO_ENABLED = 0;
             ldflags = [ "-s" "-w" "-X main.version=${version}" ];
             meta.mainProgram = "workspace";
@@ -99,6 +110,24 @@
             program = "${pkgs.writeShellScript "verify" ''
               exec ${self.packages.${system}.workspace}/bin/workspace verify "$@"
             ''}";
+          };
+
+          # relock — THIS flake's locks, by the shared implementation in nix-flake-commons'
+          # `lib.mkRelockApp`. This flake is the `feature/ssot-manifest` orphan branch of rke2lab,
+          # so it names its `branch`: the slug alone would take any rke2lab checkout for this one.
+          # No `consumers`: no seedmatic flake pins this branch.
+          relock = {
+            type = "app";
+            program = "${
+              inputs.flake-commons.lib.mkRelockApp {
+                inherit pkgs;
+                name = "ssot-manifest";
+                slug = "seedmatic/rke2lab";
+                url = "https://github.com/seedmatic/rke2lab.git";
+                branch = "feature/ssot-manifest";
+              }
+            }/bin/relock";
+            meta.description = "Reconcile THIS flake's locks: bump each input, DROP any bump that moves no exported derivation, push — impl: nix-flake-commons lib.mkRelockApp";
           };
 
           default = materialize;
