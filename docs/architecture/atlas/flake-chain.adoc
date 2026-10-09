@@ -9,6 +9,10 @@ nix-flake-commons `ce32c5b`; the heads read are rke2lab `25452f842`, ndh `e54805
 nch `651362a`, flox-controller `49f52f9`, flox-nri-plugin `60b3a3a`, and rke2lab's orphans
 `flox-catalog` `771d6834f` and `seed-incluster` `82e7d60b2`.
 
+**Where it goes:** link:../fabric/head-manifest-spec.adoc[the seedmatic head manifest] (📐 spec), whose
+first increment is link:../fabric/relock-bootstrap-spec.adoc[relock in the provisioning layer]. The move
+from today's code to it is § <<to-the-head-manifest>>, measured on 2026-10-09.
+
 == Overview
 
 Every seedmatic repo carries a flake, and several carry each other as inputs. A change therefore has
@@ -146,6 +150,140 @@ flowchart TB
 | one hop
 | transitive: each requested relock runs with `--downstream` itself
 | `32ab2ea`
+|===
+
+[[to-the-head-manifest]]
+== Figure C — the chain and the head-manifest spec, before and after
+
+Measured on 2026-10-09 at nix-flake-commons `87a679b`, rke2lab `5e32b50a9` and ndh `7bc6de4d`. The spec
+is link:../fabric/head-manifest-spec.adoc[the seedmatic head manifest] (V1–V15), its first increment
+link:../fabric/relock-bootstrap-spec.adoc[relock in the provisioning layer] (R1–R9). The move is mostly
+**removal**: once the contributions leave the code heads, the pin graph is a DAG, and what the tool did
+to survive the cycles goes.
+
+[mermaid]
+....
+flowchart TB
+  subgraph TODAY["Code today — nix-flake-commons 87a679b, rke2lab 5e32b50a9"]
+    T1["two pin cycles, rke2lab-ndh and ndh-nnh\ncut by follows = empty"]
+    T2["consumers lists, written by each repo\nabout the repos that pin it"]
+    T3["a pass ends on a VISITED LIST\nthe gap left is a NOTE"]
+    T4["contributions at rke2lab's root\nregenerated during a pass"]
+    T5["the catalog hop: rke2lab's special case\ncatalogBranch, selfPinName, pushFirstBranch"]
+    T6["the guard projects packages + apps"]
+    T7["no description of a head"]
+  end
+  subgraph SPEC["Spec — the seedmatic head manifest"]
+    S1["contributions on orphan data heads\nthe pin graph is a DAG by construction"]
+    S2["heads from the registry\nedges from the locks"]
+    S3["a call tree in the DAG's order\nonce per head, fail hard"]
+    S4["published by development: publish-plan\na pre-push hook fails hard, with the fix"]
+    S5["flox-catalog an ordinary head\nits envs after its inputs"]
+    S6["+ the configurations\nconfigurationRevision neutralised"]
+    S7[".seedmatic/git-head.json\nthe trace in relock.json"]
+  end
+  T1 ==> S1
+  T2 ==> S2
+  T3 ==> S3
+  T4 ==> S4
+  T5 ==> S5
+  T6 ==> S6
+  T7 ==> S7
+
+  classDef today fill:#f3f4f6,stroke:#9ca3af
+  classDef spec fill:#fff3cd,stroke:#856404,stroke-width:2px
+  class T1,T2,T3,T4,T5,T6,T7 today
+  class S1,S2,S3,S4,S5,S6,S7 spec
+....
+
+[cols="2,3,3,1",options="header"]
+|===
+| Concern | Today, measured | Spec | When
+
+| The cycles
+| rke2lab ↔ ndh and ndh ↔ nnh: ndh pins rke2lab and nnh for three values (ndh `flake.nix:157,158,166`),
+both pin ndh; cut by `inputs.ndh.follows = ""` (ndh `flake.nix:101`, `:112`)
+| gone: ndh pins the data heads `rke2lab:fabric-plan` and `nnh:contribution` (`flake = false`), and no
+code head (V4)
+| 1a
+
+| Where a contribution lives
+| rke2lab's root, `network-blueprint.json` and `dataplan.json` (rke2lab `flake.nix:433`, `:439`), with
+computed fields added in nix (`networkBlueprint = networkBlueprintData // { … }`, `:450`); nnh's is a
+literal in its flake
+| on its data head, one copy, pinned by the aggregator and by the contributor; rke2lab's helpers
+(`vmnetSupernet`, `deriveMacs`) stay in rke2lab, over the pinned data (V4)
+| 1a
+
+| Who writes a contribution
+| relock: rke2lab's `regen-blueprint` and `regen-dataplan`, discovered as `regen-*` (`relock.sh:387-389`,
+`:622-626`), their files exempted from the dirty guard as `ownedArtifacts` (rke2lab `flake.nix:1160`)
+| development only: `publish-plan`; the tool's artifact step, `ownedArtifacts` and `aliases` go (V5, R5)
+| 1a
+
+| A stale contribution
+| `blueprint-fresh`, `dataplan-fresh` (rke2lab `flake.nix:1424`, `:1436`) fail the flake's checks,
+over the root files
+| a mandatory pre-push hook refuses the push, with both fingerprints, the keys that changed and the fix;
+the same checks, over the orphan (V6)
+| 1a
+
+| The regeneration reading ndh
+| unchecked (it does not today, measured)
+| `publish-plan` checks the regeneration's `drvPath` with `ndh` overridden by an empty flake (V7)
+| 1a
+
+| Who is requested
+| a `consumers` list per repo, about the repos that pin it: rke2lab `flake.nix:1123`, the root's list in
+nix-flake-commons `flake.nix`; spliced into `relock.sh:803`
+| the inverse of the edges, computed by the plan from the registry and the locks; `consumers` goes
+(V9, R2, R8)
+| 1a
+
+| What ends a pass
+| the visited list (`relock.sh:83`, `:103`, `:107`): each repo once, and `NOTE: … was not relaunched`
+(`:849`) for the drift left — a cycle terminates, it does not converge
+| a DAG, played as a call tree in its order, once per head, failing hard with its context (V12, R2, R3)
+| 1a
+
+| The catalog hop
+| a special case of rke2lab: `pushFirstBranch`, `catalogBranch`, `selfPinName` (rke2lab
+`flake.nix:1165-1168`; `relock.sh:167-168`, `:743-765`); flox-catalog's own relock (flox-catalog
+`flake.nix:269-279`) never runs `lock-envs`
+| gone: flox-catalog is a head of the registry, its relock runs `lock-envs` in `afterInputs`;
+`seed-incluster` runs before rke2lab by the plan's order (V10, R6)
+| 1a
+
+| What the guard measures
+| `packages` and `apps` (`relock.sh:362-369`): a change of a contribution is dropped
+| also the `drvPath` of every nixos/darwin configuration, `configurationRevision` neutralised (ndh
+`flake.nix:395` moves 9 of 12 otherwise); measured on 2 of 12 (V8, R4)
+| 1a
+
+| A head's description
+| none: no repo carries `.seedmatic/`
+| `.seedmatic/git-head.json`, and one file per facet when a logic needs one (V2)
+| 1a
+
+| The tool of a pass
+| one tool per pass, known by its code
+| as built (V11, R1)
+| ✅ `fd6f361`
+
+| The trace of a change
+| the commit message
+| `.seedmatic/relock.json`, rewritten in the commit of the change (R7)
+| 1a
+
+| Seeing where a pass goes
+| `--no-push`, one repo at a time
+| a dry run of the whole wave, in chained local clones (R9)
+| 1b
+
+| In the clusters
+| nothing
+| peer to peer: Tekton runs, Flux applies, seed-incluster is the delegate (V14, V15)
+| after 1b
 |===
 
 == The indirect registry
@@ -470,7 +608,8 @@ does with `realpath`.
 | a bump reported `moved, NO derivation impact -> dropped` may still change a host. And measuring them
   as they are would not help: ndh sets `system.configurationRevision = self.rev or self.dirtyRev`
   (ndh `flake.nix:395`), so 9 of its 12 configurations move on every commit
-| `nix eval .#nixosConfigurations.<h>.config.system.build.toplevel.drvPath` across a bump
+| `nix eval .#nixosConfigurations.<h>.config.system.build.toplevel.drvPath` across a bump. The spec
+  measures them with the revision neutralised (§ <<to-the-head-manifest>>, V8)
 
 | **Self-sensitive set S** — derivations that move on ANY tracked-file edit
 | a bump that moves only S is carried although nothing consumed changed. rke2lab: 8 of 27 packages
@@ -486,7 +625,9 @@ does with `realpath`.
 | `--downstream` walks *consumers*, and the root's relock declares none. flox-controller and flox-nri-plugin
   still pin flake-commons `85e86f5`, `flox-catalog` `2ab80c6` (the hop re-pins only rke2lab),
   `seed-incluster` `3458512`
-| `git … show origin/<b>:flake.lock \| jq -r '.nodes["flake-commons"].locked.rev'`
+| `git … show origin/<b>:flake.lock \| jq -r '.nodes["flake-commons"].locked.rev'`. The root
+  lists its consumers since nix-flake-commons `8603656`; the spec replaces the lists by a plan read
+  from the registry and the locks (§ <<to-the-head-manifest>>)
 
 | **Locks in `flox-catalog` are seat-bound**
 | `path:` includes are recorded ABSOLUTE in `locked-url`; `lock-envs` drops that churn and commits
@@ -538,6 +679,10 @@ does with `realpath`.
 
 == Related Documentation
 
+* link:../fabric/head-manifest-spec.adoc[Spec — The seedmatic head manifest] - where the chain goes;
+  the before/after is § <<to-the-head-manifest>>
+* link:../fabric/relock-bootstrap-spec.adoc[Spec — Relock in the provisioning layer] - the first
+  increment of that spec
 * link:../patterns/flake-lock-propagation.adoc[Flake lock propagation] - the design: who owns which
   lock, the derivation-impact rule, consumers option (a). This atlas measures the code against it
 * link:../patterns/flake-build-entry-point.adoc[Flake build entry point] - the flake rke2lab builds from
