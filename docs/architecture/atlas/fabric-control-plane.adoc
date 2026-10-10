@@ -495,7 +495,9 @@ set.
 | realised on each node by the flox controller, which GC-roots them. The node collects on disk
 pressure (`nixos/nix-env.nix`: `min-free = 128MB`, `max-free = 1GB`).
 | built once by the builder from the pushed `flox-catalog` lock. A node that collected one
-re-substitutes it instead of rebuilding.
+re-substitutes it **through its nerd-nixos builder** instead of rebuilding, holding no attic token.
+The flox controller realises with `flox activate` in the node's namespace, so it follows the
+node-base nix configuration.
 
 | pod store
 | `flox-nri-overlay-hook.sh`: the lower is a read-only bind of the node's **live** `/nix`, the upper a
@@ -525,7 +527,7 @@ flowchart TB
   c4["c4 · a watch-store on every host — a write token each, Linux fill on nerd-nixos, keep-alive"]
   c5["c5 · hosts substitute from attic — a nikopol switch builds nothing truly ours"]
   c6["c6 · darwin fill job on bioskop — dedicated user, both darwin configurations"]
-  c7["c7 · cluster nodes on the EROFS layers — node and env closures in the live set"]
+  c7["c7 · cluster nodes on the EROFS layers, building through their nerd-nixos — no attic token"]
   c8["c8 · pod tier — decide its lower"]:::later
   c9["c9 · remove the cachix-watch-store modules, decide the nxmatic cache"]
   c0 --> c1 --> c2 --> c3 --> c4 --> c5 --> c6 --> c7 --> c9
@@ -552,7 +554,8 @@ and the purge would have broken ndh's evaluation had the relock not come first.
 
 | c3 — attic-nixos
 | the shared ndh container module, with project and target stated; `services.atticd` plus
-PostgreSQL; `tank/nerd/attic` with `quota=32G`; the cache created **without** `--public`, a read
+SQLite with a GC every 15 minutes (no database service; PostgreSQL as the fallback);
+`tank/nerd/attic` with `quota=32G`; the cache created **without** `--public`, a read
 token per consumer class
 | SQLite reaps 500 chunks per GC run: a weekly nixpkgs bump would orphan ~111 000 chunks, more than
 SQLite can reap. `tank` has 168 GiB available (raidz1). The test that closes the step: an anonymous
@@ -581,8 +584,18 @@ from a pushed revision; bioskop's watch-store uploads them, so the job holds no 
 | the two darwin closures share 0.97 GiB of the 1.17 GiB that is ours
 
 | c7 — cluster nodes
-| the nodes take the EROFS layers as lowers; the node and `FloxEnv` closures join the live set
-| the reachability of attic from the `vmnet` segments, and across the bridge, has to be stated first
+| the nodes take the EROFS layers as lowers; the node and `FloxEnv` closures join the live set.
+Nodes and pods write and read **through the nerd-nixos of their bare-metal** (operator, 2026-10-10):
+the node-base nix configuration carries `builders = ssh-ng://…`, `max-jobs = 0`,
+`builders-use-substitutes = true` and `require-sigs = true`, and the NRI plugin mounts the same for
+pods. **No attic token in a cluster**; what nodes and pods hold is an identity to reach their builder.
+| ⚠️ *design only*: measured 2026-10-10, nothing declares `builders`, `max-jobs` or
+`builders-use-substitutes`, neither `nixos/*.nix` nor flox-nri-plugin. That configuration is
+**rke2lab's follow-up**. The build clients must not be `trusted-users` of the builder: nix 2.34 then
+forces signature checks on their imports and builds their derivations itself (ndh spec,
+_cluster-builds_). The three builder tests decide between this and fallback B (nodes never build).
+A pod that builds into its own store is shared only if it delegates; the in-cluster render's Maven
+closure, built into a PVC today, is the case in point.
 |===
 
 === What the transition deletes
