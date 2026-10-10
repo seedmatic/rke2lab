@@ -7,7 +7,11 @@ schema-version = "1.10.0"
 ##  $ flox show gum     <- show all versions of a package
 ## -------------------------------------------------------------------
 [install]
-pulumi.pkg-path = "pulumi-bin"
+# The Go-built CLI plus the Java language host, both served by cache.nixos.org. Not `pulumi-bin`:
+# Hydra never builds it (`hydraPlatforms = [ ]`, "Output limit exceeded"), so every host assembled its
+# 4.6 GiB of bundled providers locally. Resource providers are fetched by pulumi at runtime.
+pulumi.pkg-path = "pulumi"
+pulumi-java.pkg-path = "pulumiPackages.pulumi-java"
 pulumictl.pkg-path = "pulumictl"
 # gum.pkg-path = "gum"
 # gum.version = "^0.14.5"
