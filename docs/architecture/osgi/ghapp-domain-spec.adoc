@@ -49,7 +49,7 @@ The domain follows the standard `contract` / `edge` / `bdd` layout (like `auth`,
   the App JWT and mints scoped installation tokens; `GithubAppWebhookConfigurerEdge` PATCHes the App's
   webhook config. Both `cultivating`-gated.
 * *ghapp-bdd* (`@SeedScenario`) — `GithubAppScenario`, a *pure rehydrate*: seal the credentials into
-  the run from the cellar or from the `.secrets` `githubApp` block (via the read-only
+  the run from the cellar or from the `.secrets` `github.app` block (via the read-only
   `SecretsGateway`). No browser, no registration. And `GithubAppWebhookScenario` (+ its
   `GithubAppWebhookRunbookHandler` / `GithubAppWebhookAmendReflector`) — the grow-sown reconcile of the
   App's webhook to the current funnel.
@@ -97,7 +97,7 @@ operator clicks *Create GitHub App* and *Generate a private key* (PEM → `~/Dow
 
 |`ghapp seed <appId> [pemPath]`
 |Forges the App JWT from the PEM (JDK-only: PKCS#1→PKCS#8 wrap + `SHA256withRSA`), resolves the
-installation id via `GET /app/installations`, and writes the `githubApp` block into `.secrets`
+installation id via `GET /app/installations`, and writes the `github.app` block into `.secrets`
 (`appId` / `installationId` in the clear, `privateKeyPem` marked `# sops:encrypted`). `pemPath`
 defaults to the newest `*.pem` in `~/Downloads`.
 |===
@@ -140,7 +140,7 @@ sequenceDiagram
   OP->>GH: Install on seedmatic (select repos)
   OP->>CLI: ghapp seed <appId>
   CLI->>GH: JWT → GET /app, GET /app/installations
-  CLI->>CLI: write githubApp block → .secrets (privateKeyPem # sops:encrypted)
+  CLI->>CLI: write github.app → .secrets (privateKeyPem # sops:encrypted)
 ----
 
 == The grow rehydrates — GithubAppScenario
@@ -149,7 +149,7 @@ The grow sows `GithubAppScenario`. It is a *pure rehydrate* — it never declare
 browser, never hard-fails:
 
 . *cellar hit* — the `GithubAppCredentials` were already sealed this run → no-op (idempotent-keep).
-. *`.secrets` hit* — the `githubApp` block is present (via the read-only `SecretsGateway`) →
+. *`.secrets` hit* — the `github.app` block is present (via the read-only `SecretsGateway`) →
   rehydrate: seal to the cellar. This is the steady state once the operator has run `ghapp seed`.
 . *miss* — neither present → seals nothing. That is the honest local skip: a required-credential
   absence is a HARD fail at the CONSUMPTION site (the writer mint / the Flux-Secret render), never
@@ -410,7 +410,7 @@ human ceremony is host-side, out of the pulumi-driven grow.
   by *token scope* (a reader never mints write) and short lifetime (≈1 h); revocation is
   suspend-the-App or rotate-the-key.
 * *Read-only secrets seam.* The in-container `SecretsGateway` only READS `.secrets`; the one write
-  (the `githubApp` block) is the host-side `ghapp seed` command, not a scion.
+  (the `github.app` block) is the host-side `ghapp seed` command, not a scion.
 
 == Related documentation
 

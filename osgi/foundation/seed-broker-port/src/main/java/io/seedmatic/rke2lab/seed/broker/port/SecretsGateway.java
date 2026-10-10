@@ -18,7 +18,7 @@ import java.util.Optional;
 public interface SecretsGateway {
 
   /**
-   * The JSON of the {@code .secrets} subtree at {@code dottedPath} (e.g. {@code "githubApp"}), or
+   * The JSON of the {@code .secrets} subtree at {@code dottedPath} (e.g. {@code "github"}), or
    * empty when the block is absent. The worktree copy is smudged plaintext, so the JSON is
    * readable.
    */
