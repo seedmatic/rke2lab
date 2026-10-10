@@ -107,7 +107,7 @@ public final class GrowNetworkResolver {
     // hand out EUI-64 addresses node-ip cannot name. NAT off — the vmnet is internal.
     config.put(
         "ipv6.address",
-        local.nodeNetwork().nodeGatewayInetaddr6().getHostAddress()
+        local.nodeNetwork().nodeCidr6().text(local.nodeNetwork().nodeGatewayInetaddr6())
             + "/"
             + local.nodeNetwork().nodeCidr6().prefixLength());
     config.put("ipv6.nat", "false");
@@ -152,7 +152,10 @@ public final class GrowNetworkResolver {
                         + ","
                         + blueprint.nodeNetwork().nodeHostInetaddr().getHostAddress()
                         + ",["
-                        + blueprint.nodeNetwork().nodeHostInetaddr6().getHostAddress()
+                        + blueprint
+                            .nodeNetwork()
+                            .nodeCidr6()
+                            .text(blueprint.nodeNetwork().nodeHostInetaddr6())
                         + "],"
                         + cluster
                         + "-"
