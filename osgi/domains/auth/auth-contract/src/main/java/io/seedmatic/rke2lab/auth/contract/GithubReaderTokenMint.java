@@ -1,5 +1,7 @@
 package io.seedmatic.rke2lab.auth.contract;
 
+import io.seedmatic.rke2lab.ghapp.contract.GithubAppCredentials;
+
 /**
  * The auth domain's on-demand GitHub READ-token verb — the least-privilege twin of {@link
  * GithubWriterTokenMint}: from the durable one-org-owned App credentials (revealed by a consumer
@@ -12,8 +14,8 @@ package io.seedmatic.rke2lab.auth.contract;
  *
  * <p>Same contract as the writer verb otherwise: the App is the single source of trust; the token
  * is ephemeral (≈1 h) and MUST NOT be stored durably — mint it close to use and let a transient
- * cellar tier evict it at the run's drain. Pure-JDK signature (credential fields cross as plain
- * strings, no {@code ghapp-contract} type dragged into the mirroring consumer); the realised {@code
+ * cellar tier evict it at the run's drain. Like its twin it takes the owner's {@link
+ * GithubAppCredentials}, which {@link GithubAppTokens} reads from its owner; the realised {@code
  * auth-edge} impl delegates to the ghapp minter with the {@code READER} scope.
  *
  * <p>Fail-loud at this frontier (the twin of the writer verb): an inability to produce a usable
@@ -28,5 +30,5 @@ public interface GithubReaderTokenMint {
    * A fresh {@code contents:read} installation token for the one org-owned App. Throws when a
    * usable token cannot be minted (an empty or failed mint) — never returns a blank credential.
    */
-  String mint(String appId, String installationId, String privateKeyPem);
+  String mint(GithubAppCredentials app);
 }

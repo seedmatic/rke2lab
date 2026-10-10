@@ -79,6 +79,15 @@
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>manifests-contract</artifactId>
     </dependency>
+    <!-- GithubAppTokens.PIPELINE_TOKEN_ENV: the render-pipeline step EXPORTS the variable the token
+         revealer reads, so the shell names it through the revealer's constant — one spelling for
+         the writer and the reader of the same variable. Compile-time only, measured: javac inlines
+         a static final String, so the bundle's manifest imports nothing from auth.contract and no
+         runtime wiring exists to look for. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>auth-contract</artifactId>
+    </dependency>
     <!-- The dual-realm host face carrying ComponentVersions: ManifestSynthesisContext + every unit's
          componentVersions() name it. Declared directly (not leaned on transitively via -contract). -->
     <dependency>

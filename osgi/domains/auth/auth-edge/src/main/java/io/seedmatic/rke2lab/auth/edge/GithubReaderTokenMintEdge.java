@@ -31,17 +31,14 @@ public final class GithubReaderTokenMintEdge implements GithubReaderTokenMint {
   }
 
   @Override
-  public String mint(String appId, String installationId, String privateKeyPem) {
-    final String token =
-        minter
-            .mint(new GithubAppCredentials(appId, installationId, privateKeyPem), TokenScope.READER)
-            .token();
+  public String mint(GithubAppCredentials app) {
+    final String token = minter.mint(app, TokenScope.READER).token();
     if (token == null || token.isBlank()) {
       throw new IllegalStateException(
           "the GitHub App READER (contents:read) mint returned an empty token for app "
-              + appId
+              + app.appId()
               + " installation "
-              + installationId
+              + app.installationId()
               + " — the App credentials or the GitHub minter are at fault, not the caller");
     }
     return token;

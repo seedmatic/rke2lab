@@ -23,11 +23,26 @@
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>domain-annotations</artifactId>
     </dependency>
-    <!-- SeedContract / SeedCoordinate for the sealed GitHub-token cellar case (GithubToken +
-         AuthCoordinate) the auth-seal files and the rendered-branch force-push reveals. -->
+    <!-- Cellar + Parcel: GithubAppTokens reads the sealed App credentials from the run's cellar.
+         (This comment used to cite GithubToken + AuthCoordinate, the durable token seal — removed
+         when the token became minted at the point of use; neither type exists any more.) -->
     <dependency>
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>seed-broker-port</artifactId>
+    </dependency>
+    <!-- The App material's OWNER: GhAppCoordinate.GITHUB_APP + GithubAppCredentials, which
+         GithubAppTokens reads and both mints take. Not a new coupling: auth-edge already imported
+         these types to delegate to ghapp's GithubAppMinter, the only JWT signer — this lifts an
+         existing edge-level link to the contract. No cycle: ghapp-contract depends only on
+         domain-annotations + seed-broker-port. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>ghapp-contract</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>seed-broker-testkit</artifactId>
+      <scope>test</scope>
     </dependency>
   </dependencies>
 

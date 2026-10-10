@@ -1,5 +1,6 @@
 package io.seedmatic.rke2lab.manifests.units.cicd;
 
+import io.seedmatic.rke2lab.auth.contract.GithubAppTokens;
 import io.seedmatic.rke2lab.dataplan.contract.DataplanLayout;
 import io.seedmatic.rke2lab.dataplan.contract.DataplanLayout.ClusterDataplan;
 import io.seedmatic.rke2lab.manifests.AbstractManifestsUnit;
@@ -81,8 +82,8 @@ import software.constructs.Construct;
  * a Maven local repo, build-cache, and the nix store are not multi-writer safe.
  *
  * <p>The push token is wired: the {@code render-publish} step extracts PaC's App token from the
- * mounted {@code git_auth} secret into {@code RKE2LAB_PUSH_TOKEN}, which the in-cluster {@code
- * publish} reveals for the ff-push (container-aware {@code
+ * mounted {@code git_auth} secret into {@link GithubAppTokens#PIPELINE_TOKEN_ENV}, which the
+ * in-cluster {@code publish} reveals for the ff-push (container-aware {@code
  * ManifestSynthesisScenario.revealGithubToken} — on-demand App mint OPERATOR, env IN_CLUSTER).
  */
 public final class RenderPipelineManifestsUnit extends AbstractManifestsUnit {
@@ -387,15 +388,15 @@ public final class RenderPipelineManifestsUnit extends AbstractManifestsUnit {
                       set -euxo pipefail
                       : "The publish narrates live to stdout: it runs STANDALONE (not seed-outcluster under Pulumi), so PaxLogbackConfigurer keeps its console appender on and the render/delivery logs land in this container's logs"
                       GIT_AUTH_DIR="$(workspaces.basic-auth.path)"
-                      : "PaC mints the App token into the git_auth secret's git-provider-token key; read it RAW (not scraped from the .git-credentials URL) into RKE2LAB_PUSH_TOKEN for the ff-push (the scion reveals it in-container, ManifestSynthesisScenario.revealGithubToken) + nix + maven. Backticks, not the dollar-paren form, so Tekton does not claim the substitution as one of its own vars"
+                      : "PaC mints the App token into the git_auth secret's git-provider-token key; read it RAW (not scraped from the .git-credentials URL) into @PUSH_TOKEN_ENV@ for the ff-push (the scion reveals it in-container, ManifestSynthesisScenario.revealGithubToken) + nix + maven. Backticks, not the dollar-paren form, so Tekton does not claim the substitution as one of its own vars"
                       : "The same App token authenticates .mvn/settings.xml to GitHub Packages (the env.GH_TOKEN placeholder) so the reactor resolves the private seedmatic release java-systemd. Requires the App to carry packages:read"
                       : "nix must authenticate its flake-input fetches: the closure pulls a PRIVATE input, seedmatic/claude-hub transitively via ndh; the flox NRI sets NIX_CONFIG but no access-tokens, so an unauthenticated github fetch 404s on the private repo. Append the App token so nix reads it AS the App. Requires PaC to scope the git_auth token to include claude-hub via secret-github-app-scope-extra-repos"
                       : "xtrace is disabled across the next block so the App token is never echoed to the logs"
                       set +x
                       if [ -f "$GIT_AUTH_DIR/git-provider-token" ]; then
-                        export RKE2LAB_PUSH_TOKEN=`cat "$GIT_AUTH_DIR/git-provider-token"`
-                        export GH_TOKEN="$RKE2LAB_PUSH_TOKEN"
-                        export NIX_CONFIG="${NIX_CONFIG:-}"$'\\n'"access-tokens = github.com=$RKE2LAB_PUSH_TOKEN"
+                        export @PUSH_TOKEN_ENV@=`cat "$GIT_AUTH_DIR/git-provider-token"`
+                        export GH_TOKEN="$@PUSH_TOKEN_ENV@"
+                        export NIX_CONFIG="${NIX_CONFIG:-}"$'\\n'"access-tokens = github.com=$@PUSH_TOKEN_ENV@"
                       fi
                       set -x
                       : "OVERLAY over the cache: everyone READS the shared base, only the end of the run WRITES it. M2_REPO names the base because the flake bakes it as maven.repo.local.tail (a READ-THROUGH tail, ignoreAvailability=true) — Maven 3.9's chained local repository, verified present in maven-core-3.9.12. MAVEN_BUILD_CACHE names this run's own root, which the flake turns into maven.repo.local, so every write Maven makes lands in incoming/<run>/ and the base cannot be corrupted by a build — nor by one that is killed halfway. Both knobs already existed; in-cluster they pointed at the SAME directory, so the chained repo was wired to itself and bought nothing"
@@ -411,7 +412,8 @@ public final class RenderPipelineManifestsUnit extends AbstractManifestsUnit {
                       : "The flox NRI plugin put nix on PATH, injected NIX_CONFIG (daemonless single-user) and hosts the /nix store overlay on the assigned persistent PVC, so there is no flox env and no flox activate. nix run .#render-manifests from the source checkout is the ONE render definition shared with dev and release: it builds manifests-cli, signs, and ff-pushes manifests/<cluster>; the exe locates its render worktree at .local.d/worktrees/manifests/<cluster>"
                       nix run .#render-manifests -- "$(params.cluster)" "$(params.node)"
                       """
-                          .replace("@MAVEN_CACHE@", MAVEN_CACHE_PATH)),
+                          .replace("@MAVEN_CACHE@", MAVEN_CACHE_PATH)
+                          .replace("@PUSH_TOKEN_ENV@", GithubAppTokens.PIPELINE_TOKEN_ENV)),
                   cachePublishStep()
                 })));
   }
