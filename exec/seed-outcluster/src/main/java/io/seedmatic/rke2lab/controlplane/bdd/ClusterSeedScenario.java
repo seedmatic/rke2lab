@@ -619,7 +619,7 @@ public class ClusterSeedScenario
       // jgit.
       sowAndGraft
           .sowing("worktree", gardening, hostScenario, hostTree)
-          .the_scion_is_sown_and_grafted("the worktree is surveyed");
+          .the_scion_is_sown_and_grafted();
       return self();
     }
 
@@ -632,7 +632,7 @@ public class ClusterSeedScenario
       // back from there. A pure derivation, no live system: it runs in both modes.
       sowAndGraft
           .sowing("netplan", gardening, hostScenario, hostTree)
-          .the_scion_is_sown_and_grafted("the netplan is projected");
+          .the_scion_is_sown_and_grafted();
       return self();
     }
 
@@ -661,7 +661,7 @@ public class ClusterSeedScenario
               hostScenario,
               hostTree,
               Map.of(Amendment.WORKLOAD_TARGETS, workloadClusterNames))
-          .the_scion_is_sown_and_grafted("the cluster CA is sealed");
+          .the_scion_is_sown_and_grafted();
       return self();
     }
 
@@ -685,7 +685,7 @@ public class ClusterSeedScenario
               hostScenario,
               hostTree,
               Map.of(Amendment.INCUS_IDENTITY, incusIdentityHostCreds))
-          .the_scion_is_sown_and_grafted("the incus identity is sealed");
+          .the_scion_is_sown_and_grafted();
       return self();
     }
 
@@ -704,7 +704,7 @@ public class ClusterSeedScenario
       // the writer push and the reader render need them.
       sowAndGraft
           .sowing("ghapp", gardening, hostScenario, hostTree)
-          .the_scion_is_sown_and_grafted("the github app is registered");
+          .the_scion_is_sown_and_grafted();
       return self();
     }
 
@@ -720,7 +720,7 @@ public class ClusterSeedScenario
       // trigger.
       sowAndGraft
           .sowing("replicator-secrets", gardening, hostScenario, hostTree)
-          .the_scion_is_sown_and_grafted("the replicator secrets are sealed");
+          .the_scion_is_sown_and_grafted();
       return self();
     }
 
@@ -747,7 +747,7 @@ public class ClusterSeedScenario
               hostScenario,
               hostTree,
               Map.of(Amendment.FUNNEL, funnelUrl))
-          .the_scion_is_sown_and_grafted("the github app webhook is reconciled");
+          .the_scion_is_sown_and_grafted();
       return self();
     }
 
@@ -769,7 +769,7 @@ public class ClusterSeedScenario
               hostScenario,
               hostTree,
               Map.of(Amendment.IMAGE, imageScalars))
-          .the_scion_is_sown_and_grafted("the instance is provisioned");
+          .the_scion_is_sown_and_grafted();
       return self();
     }
 
@@ -1090,7 +1090,7 @@ public class ClusterSeedScenario
       // closing gate (the THEN) fails the run overall if either ended FAILED.
       sowAndGraft
           .sowing("systemd", gardening, hostScenario, hostTree)
-          .the_scion_is_sown_and_grafted_tolerating_failure("the systemd adapter is launched");
+          .the_scion_is_sown_and_grafted_tolerating_failure();
       return self();
     }
 
@@ -1102,7 +1102,7 @@ public class ClusterSeedScenario
       // closing gate in the THEN enforces the overall verdict.
       sowAndGraft
           .sowing("cluster", gardening, hostScenario, hostTree)
-          .the_scion_is_sown_and_grafted_tolerating_failure("the cluster becomes ready");
+          .the_scion_is_sown_and_grafted_tolerating_failure();
       return self();
     }
   }

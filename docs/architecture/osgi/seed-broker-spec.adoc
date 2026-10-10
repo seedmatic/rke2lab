@@ -739,7 +739,7 @@ its own loader is ordinary. The host is left with one door and a soil name:
 ----
   broker.sow(new RunbookCoordinate(soil), trigger)   // one door; soil is a String, no domain type
      → reaps a SeedEnvelope (the runbook as neutral JSON)
-     → ScenarioGraft.rebuild(payload) + graftUnder(hostScenario, hostTree, step)   // graft where the runbook is owned
+     → ScenarioGraft.rebuild(payload) + graftUnder(hostScenario, hostTree, soil, scion)   // under the executing step, where the runbook is owned
 ----
 
 So the SOW half of a sow-and-graft caller (link:../bdd/bdd.adoc#clusterseed-scenario-map[the scenario
@@ -758,8 +758,15 @@ carrying the rootstock step), while the scion `tagMap` merges into the `ReportMo
 (`getScenario().getModel()`, whose tag map is live and which the host reads back via `graftedValue`).
 Reading the host scenario from `getModel().getScenarios()` mid-run was the "no scenario to graft"
 defect — green in every isolated test (they played the host to completion before reading its model),
-fatal on the first live run. `ScenarioGraft.graftUnder(hostScenario, hostTree, rootstock, scion)`
+fatal on the first live run. `ScenarioGraft.graftUnder(hostScenario, hostTree, soil, scion)`
 takes both handles; `ScenarioGraft` stays report-model-pure, the caller supplies the two.
+
+NOTE: *The rootstock is FOUND, never named.* jGiven records a step when it is invoked and does not
+record the stage calls nested in it, so while a crossing step runs, the executing step is the live
+case's last top-level step — that is the rootstock, and `graftUnder` returns its name for the
+verdict's label. A name passed beside the step could disagree with it, and only a run reaching the
+crossing would say so: the publish crossings once grafted four names under one step that bore none
+of them. A graft from outside any host step finds no step and fails loudly.
 
 [[the-scenario-outcome-channel]]
 ==== How the played model comes back — the `ScenarioOutcome` channel, not a static holder
