@@ -723,7 +723,8 @@ applied by nothing and sits outside every Flux `Kustomization` path. The branch 
 *Transmission — the synthesis reads that manifest from the branch HEAD.* The render prepares its
 linked worktree on `manifests/<cluster>` (`LinkedWorktrees.prepare`, which first fast-forwards the
 LOCAL branch to origin's tip so a fresh clone — the in-cluster Tekton `--depth 1` checkout — reuses
-the pushed history instead of orphaning it), then the synthesis (`ManifestSynthesisScenario`) reads
+the pushed history instead of orphaning it; the fetch authenticates as the App, with the pipeline's
+token in-cluster, never through a credential helper), then the synthesis (`ManifestSynthesisScenario`) reads
 the recorded facet at HEAD THROUGH the worktree edge (`Worktree.readAtHead("manifest.yaml")`) — jgit
 is already in the boat, so there is no wrapper `git show` plumbing and no `-D` facet file. The read is
 robust to the delivery EMPTYING the working tree (it reads the COMMITTED blob, not the checkout). No
@@ -1306,7 +1307,7 @@ Stated plainly because two tempting justifications are false:
   plaintext yields no apiserver update, hence no watch event, hence nothing downstream restarts.
 * ❌ *the render pipeline pays for the history* — it should not: the SOURCE fetch is already
   `--depth 1` (`RenderPipelineManifestsUnit`), and the RENDERED BRANCH fetch is not
-  (`GitCli` — `git fetch origin +<ref>:<ref>`). History is never read to render, so shallow-fetching
+  (`JgitCheckout.fetchBranch` — a full `+<ref>:<ref>` fetch). History is never read to render, so shallow-fetching
   the branch is correct independently of this fix.
 * ✅ what it really buys: **diff legibility** (a human can see what a render changed), a branch that
   stops growing ~28 incompressible blobs per render, and — decisively — condition 2 above

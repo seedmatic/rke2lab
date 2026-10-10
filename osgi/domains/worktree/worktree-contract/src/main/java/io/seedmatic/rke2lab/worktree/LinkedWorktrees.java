@@ -1,6 +1,7 @@
 package io.seedmatic.rke2lab.worktree;
 
 import java.nio.file.Path;
+import java.util.Optional;
 
 /**
  * Fabricates a LINKED git worktree of a branch — the delivery channel for a rendered tree. Where
@@ -32,6 +33,13 @@ public interface LinkedWorktrees {
    * LinkedWorktree#commit commits}, {@link LinkedWorktree#push pushes}, and {@link
    * LinkedWorktree#close removes}. {@code git worktree} is shelled (jgit exposes no worktree
    * porcelain), sealed behind the implementation.
+   *
+   * <p>Before the worktree is added, the branch is fetched from {@code origin} so the render
+   * accretes on its pushed history. The fetch authenticates with {@code fetchToken} when one is
+   * given, and otherwise goes anonymous — never through a credential the machine happens to hold (a
+   * git credential helper, a personal token): the identity a fetch uses is the caller's to name. No
+   * origin, or no such branch there, is the first render and is skipped; any other fetch failure
+   * throws, since a render that silently orphaned its base would lose the history it accretes on.
    */
-  LinkedWorktree prepare(Path worktreePath, String branch);
+  LinkedWorktree prepare(Path worktreePath, String branch, Optional<String> fetchToken);
 }

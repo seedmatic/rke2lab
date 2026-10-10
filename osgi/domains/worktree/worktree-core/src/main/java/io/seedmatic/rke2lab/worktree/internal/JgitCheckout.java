@@ -27,7 +27,10 @@ import org.eclipse.jgit.lib.ObjectLoader;
 import org.eclipse.jgit.lib.ObjectReader;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
+import org.eclipse.jgit.transport.CredentialItem;
+import org.eclipse.jgit.transport.CredentialsProvider;
 import org.eclipse.jgit.transport.RefSpec;
+import org.eclipse.jgit.transport.URIish;
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
 import org.eclipse.jgit.treewalk.CanonicalTreeParser;
 import org.eclipse.jgit.treewalk.TreeWalk;
@@ -182,6 +185,86 @@ final class JgitCheckout {
           .call();
     } catch (GitAPIException ex) {
       throw new IllegalStateException("cannot push " + branch + " from " + worktree, ex);
+    }
+  }
+
+  /** Whether this repository has a local {@code refs/heads/<branch>}. */
+  boolean hasBranch(String branch) {
+    try (Repository repository = open()) {
+      return repository.exactRef(Constants.R_HEADS + branch) != null;
+    } catch (IOException ex) {
+      throw new UncheckedIOException("cannot read " + branch + " at " + worktree, ex);
+    }
+  }
+
+  /**
+   * Fast-forward the LOCAL {@code refs/heads/<branch>} to origin's tip, so a render accretes on the
+   * branch's real (pushed) history instead of orphaning it. A render cut from a fresh clone
+   * (in-cluster the Tekton {@code FETCH_HEAD} checkout) or an operator checkout that never tracked
+   * the branch has only a remote ref — without this {@link #hasBranch} is false and the linked
+   * worktree is added on a fresh null base, LOSING the facet the grow recorded at HEAD (the
+   * mesh-drop footgun) and rejecting the follow-up fast-forward push. Forced ({@code +src:dst}) so
+   * a stale or diverged local ref is reset to origin: the render must sit on origin's tip for that
+   * push to land.
+   *
+   * <p>The credential is EXPLICIT: {@code x-access-token} with {@code token} when given, else a
+   * provider that answers nothing, so jgit never falls back to a default one and no credential the
+   * machine holds can answer an authentication challenge. Skipped when there is no {@code origin}
+   * (a pure-local repo) or origin has no such branch (the genuine first render); any other failure
+   * throws, because swallowing it would orphan the base exactly as above.
+   */
+  void fetchBranch(String branch, Optional<String> token, Duration timeout) {
+    final String ref = Constants.R_HEADS + branch;
+    final CredentialsProvider credentials =
+        token
+            .<CredentialsProvider>map(
+                value -> new UsernamePasswordCredentialsProvider("x-access-token", value))
+            .orElseGet(
+                () ->
+                    new CredentialsProvider() {
+                      @Override
+                      public boolean isInteractive() {
+                        return false;
+                      }
+
+                      @Override
+                      public boolean supports(CredentialItem... items) {
+                        return false;
+                      }
+
+                      @Override
+                      public boolean get(URIish uri, CredentialItem... items) {
+                        return false;
+                      }
+                    });
+    try (Repository repository = open();
+        Git git = new Git(repository)) {
+      if (repository.getConfig().getString("remote", Constants.DEFAULT_REMOTE_NAME, "url")
+          == null) {
+        return;
+      }
+      final boolean published =
+          git
+              .lsRemote()
+              .setRemote(Constants.DEFAULT_REMOTE_NAME)
+              .setHeads(true)
+              .setCredentialsProvider(credentials)
+              .setTimeout((int) timeout.toSeconds())
+              .call()
+              .stream()
+              .anyMatch(remote -> ref.equals(remote.getName()));
+      if (!published) {
+        return;
+      }
+      git.fetch()
+          .setRemote(Constants.DEFAULT_REMOTE_NAME)
+          .setRefSpecs(new RefSpec("+" + ref + ":" + ref))
+          .setCredentialsProvider(credentials)
+          .setTimeout((int) timeout.toSeconds())
+          .call();
+    } catch (GitAPIException ex) {
+      throw new IllegalStateException(
+          "cannot fetch " + branch + " from origin into " + worktree, ex);
     }
   }
 

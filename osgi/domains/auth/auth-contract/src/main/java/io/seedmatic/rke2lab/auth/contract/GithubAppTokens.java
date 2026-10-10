@@ -19,9 +19,9 @@ import java.util.Optional;
  *
  * <p>The lanes are named, not merged, because their callers legitimately differ: {@link #writer}
  * mints only, {@link #writerOrPipeline} falls back to the pipeline's token when there is no App to
- * mint from (a render inside Tekton), and {@link #reader} mints the read-only token a grown node
- * fetches its config with. Flattening them would silently give the version bumper a fallback it
- * never had.
+ * mint from (a render inside Tekton), {@link #reader} mints the read-only token a grown node
+ * fetches its config with, and {@link #readerOrPipeline} is the fetch's lane, falling back the same
+ * way. Flattening them would silently give the version bumper a fallback it never had.
  *
  * <p>A record because it holds collaborators and no state of its own, and because a {@code
  * type=contract} bundle exports only records, enums, sealed types and interfaces. It is built where
@@ -74,6 +74,17 @@ public record GithubAppTokens(
   /** A fresh {@code contents:read} token minted from the sealed App, or empty. */
   public Optional<String> reader(Cellar cellar, Optional<Parcel> parcel) {
     return readerMint.flatMap(mint -> app(cellar, parcel).map(mint::mint));
+  }
+
+  /**
+   * {@link #reader}, and failing that the token the pipeline handed in — the lane a fetch
+   * authenticates with, so it is the App's identity wherever one exists: Pipelines-as-Code mints
+   * the pipeline token from the same App. That token is {@code contents:write}, more than a fetch
+   * needs, and acceptable because it is what that environment holds; a run that can mint never
+   * reaches it, and nothing here mints a write token for a read.
+   */
+  public Optional<String> readerOrPipeline(Cellar cellar, Optional<Parcel> parcel) {
+    return reader(cellar, parcel).or(this::pipeline);
   }
 
   private Optional<GithubAppCredentials> app(Cellar cellar, Optional<Parcel> parcel) {

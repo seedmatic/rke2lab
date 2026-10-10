@@ -8,6 +8,7 @@ import com.tngtech.jgiven.annotation.ProvidedScenarioState;
 import com.tngtech.jgiven.base.ScenarioTestBase;
 import com.tngtech.jgiven.impl.Scenario;
 import io.seedmatic.rke2lab.auth.contract.GithubAppTokens;
+import io.seedmatic.rke2lab.auth.contract.GithubReaderTokenMint;
 import io.seedmatic.rke2lab.auth.contract.GithubWriterTokenMint;
 import io.seedmatic.rke2lab.dataplan.ingress.DataplanIngressCoordinate;
 import io.seedmatic.rke2lab.fabric.contract.FabricDelivery;
@@ -60,9 +61,10 @@ import org.junit.jupiter.api.extension.RegisterExtension;
  * edge the frontier filtered out) the commit stays local, unsigned when there is no key-store, and
  * is never pushed. The push is a fast-forward: the branch accretes, it is never rewritten.
  *
- * <p>The MINT-only lane, not the pipeline fallback: no Tekton run publishes a plan, so a pipeline
+ * <p>The MINT-only lanes, not the pipeline fallback: no Tekton run publishes a plan, so a pipeline
  * token in the environment has no legitimate meaning here, and honouring it would let a stray
- * variable push.
+ * variable push. The revealer is therefore built over an empty environment, and the fetch's lane —
+ * which elsewhere falls back to the pipeline token — is the reader mint alone here.
  */
 @SeedScenario
 public class FabricDeliveryScenario
@@ -95,9 +97,12 @@ public class FabricDeliveryScenario
   @OsgiService(await = false)
   private Optional<LinkedWorktrees> linkedWorktrees = Optional.empty();
 
-  // The ndh key-store the commit's bot identity and signing key come from. Absent in a run whose
-  // sops key-store is unreadable — the commit is then unsigned, which is honest only because such a
-  // commit is never pushed: a token without a key-store is refused.
+  // The ndh key-store the commit's bot identity and signing key come from. ABSENT — no key-store
+  // service at all — the commit is unsigned, which is honest only because such a commit is never
+  // pushed: a token without a key-store is refused. PRESENT but unreadable (the sops file still
+  // encrypted, or missing from the worktree) is a fault and fails the run; it never degrades to an
+  // unsigned commit. So the unsigned path is not reachable on an operator machine, whose key-store
+  // service is always there.
   @OsgiService(await = false)
   private Optional<NdhKeystoreReader> keystore = Optional.empty();
 
@@ -105,6 +110,10 @@ public class FabricDeliveryScenario
   // token is minted and nothing is pushed.
   @OsgiService(await = false)
   private Optional<GithubWriterTokenMint> writerTokenMint = Optional.empty();
+
+  // The contents:read mint the fetch of fabric/plan authenticates with, gated the same way.
+  @OsgiService(await = false)
+  private Optional<GithubReaderTokenMint> readerTokenMint = Optional.empty();
 
   @Override
   public Scenario<Given, When, Then> getScenario() {
@@ -128,12 +137,15 @@ public class FabricDeliveryScenario
     given().the_runbook_input(facet);
     final Cellar harvest =
         Objects.requireNonNull(cellar, "the cellar was not injected before the body");
-    final Optional<String> token =
-        new GithubAppTokens(writerTokenMint, Optional.empty(), Map.of()).writer(harvest, parcel);
+    final GithubAppTokens tokens = new GithubAppTokens(writerTokenMint, readerTokenMint, Map.of());
     when()
         .the_harvested_plan_is_read(harvest, parcel)
         .and()
-        .the_delivery_is_written(linkedWorktrees, keystore, token);
+        .the_delivery_is_written(
+            linkedWorktrees,
+            keystore,
+            tokens.readerOrPipeline(harvest, parcel),
+            tokens.writer(harvest, parcel));
     then().the_delivery_carries_both_files();
   }
 
@@ -181,30 +193,32 @@ public class FabricDeliveryScenario
     }
 
     /**
-     * Write both files, commit, and push when a token was revealed. The token is a {@code @Hidden}
-     * argument and never scenario state, so it reaches neither the scenario report nor anything the
-     * run persists: it exists between the reveal and the push, and nowhere else.
+     * Fetch the branch, write both files, commit, and push when a push token was revealed. The
+     * tokens are {@code @Hidden} arguments and never scenario state, so they reach neither the
+     * scenario report nor anything the run persists: each exists between its reveal and its use,
+     * and nowhere else.
      */
     public When the_delivery_is_written(
         @Hidden Optional<LinkedWorktrees> worktrees,
         @Hidden Optional<NdhKeystoreReader> keystore,
-        @Hidden Optional<String> token) {
+        @Hidden Optional<String> fetchToken,
+        @Hidden Optional<String> pushToken) {
       this.delivery = FabricDelivery.canonical();
       final LinkedWorktrees mechanism =
           worktrees.orElseThrow(
               () -> new FabricDeliveryError(FabricDeliveryError.Reason.NO_WORKTREES));
-      if (token.isPresent() && keystore.isEmpty()) {
+      if (pushToken.isPresent() && keystore.isEmpty()) {
         throw new FabricDeliveryError(FabricDeliveryError.Reason.UNSIGNABLE);
       }
       final LinkedWorktree linked =
-          mechanism.prepare(soil().resolve(delivery.branch()), delivery.branch());
+          mechanism.prepare(soil().resolve(delivery.branch()), delivery.branch(), fetchToken);
       this.worktree = linked;
       write(linked.path().resolve(delivery.netplanFile()), read(netplan, delivery.netplanFile()));
       write(
           linked.path().resolve(delivery.dataplanFile()), read(dataplan, delivery.dataplanFile()));
       linked.stageAll();
       this.deliveredSha = linked.commit(message(), identity(keystore), signingKey(keystore));
-      token.ifPresent(linked::push);
+      pushToken.ifPresent(linked::push);
       return self();
     }
 
