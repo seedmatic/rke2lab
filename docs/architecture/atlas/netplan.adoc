@@ -739,6 +739,17 @@ that design — the hash at the top, a legible derivation underneath, each host 
 verbatim in the low 32 bits (`fd96:6924:3693:<CC><RR>::a.b.c.d`) so you can *read the v4 out of the v6*.
 Collision resistance and legibility at once, because each is applied at the layer that can carry it.
 
+That legibility only holds if everyone spells an address the same way, and for a long time nobody did:
+the export published 18 addresses TWICE — `fd96:6924:3693:120::10.80.8.10` in a node's `ips` and
+`fd96:6924:3693:120:0:0:a50:80a` in the segment carrying it — plus every `/64` uncompressed
+(`fd96:…:120:0:0:0:0/64`), because each site rendered its own way: `Cidr.toString()` through
+`InetAddress.getHostAddress()`, a private `mixed()` helper in the export, raw `getHostAddress()`
+elsewhere. No consumer could match the two blocks by string. One renderer now owns the notation —
+`Cidr.text(InetAddress)`, RFC 5952 with the embedded IPv4 kept (a deliberate departure from §5, which
+reserves the mixed form for IPv4-mapped addresses) — and `Cidr.toString()` is derived from it, so a
+network and a host of that network cannot disagree. A site that renders an address its own way fails
+`NetplanProjectionHarvestTest`.
+
 == Verdict — does it hold?
 
 *Nothing here is implemented.* This view is vision, with one exception: the ndh half of the substrate is
