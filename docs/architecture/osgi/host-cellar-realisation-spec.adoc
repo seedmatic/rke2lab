@@ -764,6 +764,27 @@ all the host face holds, `type=dual-realm` like `incus-ingress-contract` and for
 (`netplan-contract` is OSGi-only, a host-side slug is the magic-string anti-pattern). A missing harvest is a
 broken run: the host throws, it never falls back to a file.
 
+*The dataplan layout — the same harvest, and why it is NOT a second host face (2026-10-10).* The dataset
+tree (`DataplanLayout.canonical()`, the `tank/rke2lab/*` plane) is harvested the same way: `DataplanScenario`
+files it under `DataplanCoordinate.LAYOUT` (slug `dataplan-layout`) when the run publishes a `Parcel`, and
+files nothing when it does not. But the coordinate stays in `dataplan-contract`, OSGi-only, where
+`DataplanCoordinate` already owns the domain's meta-coordinates — it is that enum's first value, and the
+sentence in its javadoc saying dataplan "stores no harvest behind the cellar" is what this slice makes
+false.
+
+That asymmetry with `netplan-ingress-contract` is the rule, not an exception to it: a value coordinate
+earns a dual-realm module **iff the host fetches it**, which is what `NetplanCoordinate`'s own javadoc
+already said. netplan's host does — `ClusterSeedScenario` reads the addressing at three call sites (a
+node's fabric FQDN, a cluster's kube-vip endpoint, a node's IPs) for the operator's kubeconfig contexts, so
+the enum must exist flat host-side. Nothing host-side reads the dataset tree: measured, zero references to
+`DataplanLayout` or `tank/rke2lab` outside the bundle realm, its readers being the three storage manifests
+units and the fabric delivery, all OSGi. A dual-realm module there would stage a bundle flat host-side for
+no consumer — built first in this slice, then deleted, which is how the rule got written down.
+
+The harvest's reader is the `fabric` scion, which writes `netplan.json` and `dataplan.json` into the
+`fabric/plan` worktree from the two harvests — so between this slice and that one the coordinate is written
+and not yet read, on purpose: the harvest is what the delivery is built on.
+
 *The scion-side producers (incus-core, OSGi-only).* Collaborators assemble the plan, each named
 by `IncusProvisionScenario`'s PREPARE beats: `GrowNetworkResolver` (resolves `NetplanSynthesisService`
 → the `GrowNetworkView`), `GrowIdentityResolver` (same blueprint → the `GrowIdentityView`, the four
