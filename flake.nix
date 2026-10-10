@@ -1171,7 +1171,7 @@ USAGE
           netplan = "regen-blueprint";
         };
       };
-      in {
+      in pkgs.lib.recursiveUpdate {
         packages = {
           inherit planJar networkBlueprintYaml networkBlueprintJson dataplanJson seedOutclusterJar;
           seed-outcluster = seedOutclusterJar;
@@ -1213,7 +1213,7 @@ USAGE
         # tailnet one, "which is what a renew changes". Measured 2026-09-27: a factory-reset
         # nikopol-nixos came back on a new tailnet address under a new device, and this app was
         # unaffected while `tailscale ssh` to the same host failed on a stale host key.
-        apps.nikopol-incus-cluster-join = inputs.ndh.apps.${system}.nikopol-incus-cluster-join;
+        # (the re-export itself is merged in at the end of this block, for the systems ndh serves)
 
         apps.grow = {
           type = "app";
@@ -1446,6 +1446,12 @@ USAGE
             '';
         };
       }
+      # Re-exported ONLY where ndh provides it: ndh declares its apps for aarch64-darwin alone
+      # (its defaultSystems), and an unconditional `inputs.ndh.apps.${system}` broke every
+      # evaluation of another system — `nix flake show` first among them.
+      (pkgs.lib.optionalAttrs (inputs.ndh.apps ? ${system}) {
+        apps.nikopol-incus-cluster-join = inputs.ndh.apps.${system}.nikopol-incus-cluster-join;
+      })
     )) // {
       # The NixOS node substrate — the immutable Incus container image every RKE2 node
       # boots from (docs/architecture/nixos-substrate/substrate-model.adoc). System-pinned to
