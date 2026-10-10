@@ -6,11 +6,12 @@ import java.util.Objects;
 
 /**
  * The mittwald-replicator SOURCE secrets published to synth-time layers via {@code
- * ManifestSynthesisContext} — the manifests-side MIRROR of the credentials the {@code
- * replicator-secrets} seal rehydrates from {@code .secrets} host-side ({@code tekton.git}, {@code
- * tekton.docker}, {@code tailscale.oauth}) and files SEALED in the cellar, revealed in-container by
- * the manifests scion. The exact twin of {@link GithubAppMaterial}'s treatment: a blind mirror
- * naming no other domain's type, so no {@code .secrets} shape leaks into the manifests domain.
+ * ManifestSynthesisContext} — the credentials the {@code replicator-secrets} seal rehydrates from
+ * {@code .secrets} host-side ({@code tekton.git}, {@code tekton.docker}, {@code tailscale.oauth})
+ * and files SEALED in the cellar, revealed in-container by the manifests scion. MANIFESTS OWNS this
+ * record: the seal that files it lives in manifests-bdd, so it mirrors nothing. It used to call
+ * itself "the manifests-side MIRROR" and "the exact twin" of the GitHub App material's treatment —
+ * false, and the five records that WERE mirrors of another domain's were deleted on 2026-10-10.
  *
  * <p>Each {@link SourceSecret} is rendered by {@code ReplicatorManifestsUnit} into {@link
  * SourceSecret#namespace()} on the node-bootstrap lane, annotated so the mittwald replicator fans

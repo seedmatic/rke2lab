@@ -1,17 +1,17 @@
 package io.seedmatic.rke2lab.manifests.contract;
 
+import io.seedmatic.rke2lab.clusterpki.contract.AdminCredentials;
+import io.seedmatic.rke2lab.clusterpki.contract.ClusterIssuerCa;
+import io.seedmatic.rke2lab.clusterpki.contract.ManagementClusterCa;
+import io.seedmatic.rke2lab.clusterpki.contract.WorkloadClusterCas;
+import io.seedmatic.rke2lab.ghapp.contract.GithubAppCredentials;
 import io.seedmatic.rke2lab.manifests.contract.profiles.BootstrapIdentity;
-import io.seedmatic.rke2lab.manifests.contract.profiles.ClusterIssuerCaMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.FloxDebugPolicy;
-import io.seedmatic.rke2lab.manifests.contract.profiles.GithubAppMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ImageState;
 import io.seedmatic.rke2lab.manifests.contract.profiles.IncusIdentityMaterial;
-import io.seedmatic.rke2lab.manifests.contract.profiles.ManagementClusterCaMaterial;
-import io.seedmatic.rke2lab.manifests.contract.profiles.OperatorPkiMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ReplicatorSourceSecretsMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.TlsAuthorityCaMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.WorkloadBootstrapBundlesMaterial;
-import io.seedmatic.rke2lab.manifests.contract.profiles.WorkloadClusterCasMaterial;
 import io.seedmatic.rke2lab.manifests.ingress.ComponentVersions;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -41,13 +41,13 @@ public record ManifestSynthesisRequest(
      */
     Optional<String> fabricBridgeParent,
     Optional<IncusIdentityMaterial> incusIdentity,
-    Optional<OperatorPkiMaterial> operatorPki,
-    Optional<GithubAppMaterial> githubApp,
+    Optional<AdminCredentials> operatorPki,
+    Optional<GithubAppCredentials> githubApp,
     Optional<ReplicatorSourceSecretsMaterial> replicatorSources,
-    Optional<ClusterIssuerCaMaterial> clusterIssuerCa,
+    Optional<ClusterIssuerCa> clusterIssuerCa,
     Optional<TlsAuthorityCaMaterial> tlsAuthorityCa,
-    Optional<WorkloadClusterCasMaterial> workloadCas,
-    Optional<ManagementClusterCaMaterial> managementCas,
+    Optional<WorkloadClusterCas> workloadCas,
+    Optional<ManagementClusterCa> managementCas,
     Optional<WorkloadBootstrapBundlesMaterial> workloadBootstrapBundles,
     Optional<ClusterFleet> clusterFleet)
     implements ManifestDomainPolicyAware {
@@ -145,11 +145,11 @@ public record ManifestSynthesisRequest(
     return toBuilder().incusIdentity(Optional.of(material)).build();
   }
 
-  public ManifestSynthesisRequest withOperatorPki(OperatorPkiMaterial material) {
+  public ManifestSynthesisRequest withOperatorPki(AdminCredentials material) {
     return toBuilder().operatorPki(Optional.of(material)).build();
   }
 
-  public ManifestSynthesisRequest withGithubApp(GithubAppMaterial material) {
+  public ManifestSynthesisRequest withGithubApp(GithubAppCredentials material) {
     return toBuilder().githubApp(Optional.of(material)).build();
   }
 
@@ -157,7 +157,7 @@ public record ManifestSynthesisRequest(
     return toBuilder().replicatorSources(Optional.of(material)).build();
   }
 
-  public ManifestSynthesisRequest withClusterIssuerCa(ClusterIssuerCaMaterial material) {
+  public ManifestSynthesisRequest withClusterIssuerCa(ClusterIssuerCa material) {
     return toBuilder().clusterIssuerCa(Optional.of(material)).build();
   }
 
@@ -165,11 +165,11 @@ public record ManifestSynthesisRequest(
     return toBuilder().tlsAuthorityCa(Optional.of(material)).build();
   }
 
-  public ManifestSynthesisRequest withWorkloadCas(WorkloadClusterCasMaterial material) {
+  public ManifestSynthesisRequest withWorkloadCas(WorkloadClusterCas material) {
     return toBuilder().workloadCas(Optional.of(material)).build();
   }
 
-  public ManifestSynthesisRequest withManagementCas(ManagementClusterCaMaterial material) {
+  public ManifestSynthesisRequest withManagementCas(ManagementClusterCa material) {
     return toBuilder().managementCas(Optional.of(material)).build();
   }
 
@@ -240,13 +240,13 @@ public record ManifestSynthesisRequest(
     private Optional<ImageState> imageState = Optional.empty();
     private Optional<String> fabricBridgeParent = Optional.empty();
     private Optional<IncusIdentityMaterial> incusIdentity = Optional.empty();
-    private Optional<OperatorPkiMaterial> operatorPki = Optional.empty();
-    private Optional<GithubAppMaterial> githubApp = Optional.empty();
+    private Optional<AdminCredentials> operatorPki = Optional.empty();
+    private Optional<GithubAppCredentials> githubApp = Optional.empty();
     private Optional<ReplicatorSourceSecretsMaterial> replicatorSources = Optional.empty();
-    private Optional<ClusterIssuerCaMaterial> clusterIssuerCa = Optional.empty();
+    private Optional<ClusterIssuerCa> clusterIssuerCa = Optional.empty();
     private Optional<TlsAuthorityCaMaterial> tlsAuthorityCa = Optional.empty();
-    private Optional<WorkloadClusterCasMaterial> workloadCas = Optional.empty();
-    private Optional<ManagementClusterCaMaterial> managementCas = Optional.empty();
+    private Optional<WorkloadClusterCas> workloadCas = Optional.empty();
+    private Optional<ManagementClusterCa> managementCas = Optional.empty();
     private Optional<WorkloadBootstrapBundlesMaterial> workloadBootstrapBundles = Optional.empty();
     private Optional<ClusterFleet> clusterFleet = Optional.empty();
 
@@ -290,12 +290,12 @@ public record ManifestSynthesisRequest(
       return this;
     }
 
-    public Builder operatorPki(final Optional<OperatorPkiMaterial> v) {
+    public Builder operatorPki(final Optional<AdminCredentials> v) {
       this.operatorPki = v;
       return this;
     }
 
-    public Builder githubApp(final Optional<GithubAppMaterial> v) {
+    public Builder githubApp(final Optional<GithubAppCredentials> v) {
       this.githubApp = v;
       return this;
     }
@@ -305,7 +305,7 @@ public record ManifestSynthesisRequest(
       return this;
     }
 
-    public Builder clusterIssuerCa(final Optional<ClusterIssuerCaMaterial> v) {
+    public Builder clusterIssuerCa(final Optional<ClusterIssuerCa> v) {
       this.clusterIssuerCa = v;
       return this;
     }
@@ -315,12 +315,12 @@ public record ManifestSynthesisRequest(
       return this;
     }
 
-    public Builder workloadCas(final Optional<WorkloadClusterCasMaterial> v) {
+    public Builder workloadCas(final Optional<WorkloadClusterCas> v) {
       this.workloadCas = v;
       return this;
     }
 
-    public Builder managementCas(final Optional<ManagementClusterCaMaterial> v) {
+    public Builder managementCas(final Optional<ManagementClusterCa> v) {
       this.managementCas = v;
       return this;
     }

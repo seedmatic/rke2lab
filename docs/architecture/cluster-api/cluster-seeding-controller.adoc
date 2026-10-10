@@ -1982,7 +1982,8 @@ one, **so the management admin certificate opens nothing there**." The host side
 **never crosses the membrane** — the realm has `workloadCas()` but no `workloadAdmins()` equivalent.
 
 The fix therefore needs plumbing, not a precedence: a per-cluster admin material sown from the seal
-and selected by subject. `WorkloadClusterCasMaterial` is the exact template to copy.
+and selected by subject. `WorkloadClusterCas` (cluster-pki), which the synthesis now takes as it is
+and looks up with `forCluster`, is the exact template to copy.
 
 ⏸️ **Or the duplicate is retired instead.** bioskop's CAPI has ALREADY fully adopted nikopol-mgmt
 (`Machine` Running, `LXCMachine` provisioned). Its self-adoption is the <<scaffold-duplication,

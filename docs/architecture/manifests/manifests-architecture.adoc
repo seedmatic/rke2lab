@@ -758,12 +758,11 @@ Immutable configuration objects the runtime units build their pod specs from.
   `kubernetes.io/tls` Secret (`flox-controller-webhook-tls`), the `flox-controller-webhook` Service
   fronting the DaemonSet pods (the mutation is stateless → any pod serves, so no separate
   Deployment), and the `MutatingWebhookConfiguration` routing pod `CREATE` to it. The serving cert is
-  minted by the cluster-pki `server-ca` and revealed onto the synthesis as `WebhookServingMaterial`
-  (see xref:../cluster-api/deterministic-cluster-access.adoc[deterministic cluster access]); the
-  Service name/namespace must match the cert's SAN. `failurePolicy: Ignore` + system-namespace
-  exclusion bound the blast radius; the unit renders only when the serving material is present (a
-  real seal), matching `FloxControllerManifestsUnit`'s `--enable-webhook` guard. On the `operators`
-  layer.
+  minted and renewed IN-CLUSTER by cert-manager from the `rke2lab-ca` `ClusterIssuer`, and its
+  ca-injector fills the `caBundle` (since 2026-09-06, `9949119f7`); the Service name/namespace must
+  match the cert's SAN. `failurePolicy: Ignore` + system-namespace exclusion bound the blast radius.
+  This row used to say the cert was seal-minted and revealed as `WebhookServingMaterial`, a type that
+  no longer exists. On the `operators` layer.
 |===
 
 == Anti-Patterns

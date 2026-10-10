@@ -41,7 +41,11 @@ crosses no frontier.
   edge filtered out under a survey/preview) is the caller's empty `Optional`, so the caller skips the
   push. Its least-privilege twin `GithubReaderTokenMint` mints a `contents:read` token — for a consumer
   that only READS a private repo (a node fetching its rendered `manifests/<cluster>` branch to install
-  its rke2 config), where a write-scoped token is over-privileged.
+  its rke2 config), where a write-scoped token is over-privileged. This SUPERSEDES the former
+  durable auth-seal (`GithubToken` filed SEALED at an `AuthCoordinate` and revealed on fetch): an
+  installation token is ephemeral (≈1 h), so a token sealed before provisioning had gone stale by
+  the reveal after the cluster came up — mint-on-demand is the fix. `GithubToken` and
+  `AuthCoordinate` are deleted.
 +
 Both take the owner's `GithubAppCredentials` (ghapp-contract). They used to take three plain strings,
 "so no `ghapp-contract` type is dragged into a consumer that mirrors the App material" — but the edges
@@ -57,11 +61,9 @@ node's reader token, and the version bump's release-query token — each grown o
 The lanes stay named because the callers differ: the bump never fell back to the pipeline token, and
 folding the copies must not give it one (a test pins it). auth-contract therefore depends on
 ghapp-contract; that is not a new coupling, since auth-edge already imported those types to delegate
-to the minter. The manifests synthesis keeps its mirror (`GhAppCase` + `GithubAppMaterial`) for what
-it RENDERS, the `githubapp` Secret, uniform with its six sibling mirrors: only the token path moved. This SUPERSEDES the former durable auth-seal
-  (`GithubToken` filed SEALED at an `AuthCoordinate` and revealed on fetch): an installation token is
-  ephemeral (≈1 h), so a token sealed before provisioning had gone stale by the reveal after the cluster
-  came up — mint-on-demand is the fix. `GithubToken` and `AuthCoordinate` are deleted.
+to the minter. The manifests synthesis renders the same owner record for the `githubapp` Secret: its
+manifests-side copy (`GhAppCase` + `GithubAppMaterial`) was deleted right after, with the four other
+copies of foreign sealed records, once their reason was found dead.
 * *auth-edge* (`type=edge`, `@Component`): `CliAuthTokenContact` — maps `FLOXHUB → flox auth token`,
   and shells nothing else. Pure `ProcessBuilder` over the JDK, no embedded
   jars, mirroring incus-edge's ssh contact. Its sibling `GithubWriterTokenMintEdge` realises

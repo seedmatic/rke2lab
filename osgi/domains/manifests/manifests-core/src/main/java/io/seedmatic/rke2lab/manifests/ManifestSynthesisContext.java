@@ -1,25 +1,25 @@
 // @codebase
 package io.seedmatic.rke2lab.manifests;
 
+import io.seedmatic.rke2lab.clusterpki.contract.AdminCredentials;
+import io.seedmatic.rke2lab.clusterpki.contract.ClusterIssuerCa;
+import io.seedmatic.rke2lab.clusterpki.contract.ManagementClusterCa;
+import io.seedmatic.rke2lab.clusterpki.contract.WorkloadClusterCas;
+import io.seedmatic.rke2lab.ghapp.contract.GithubAppCredentials;
 import io.seedmatic.rke2lab.manifests.contract.ClusterCoordinate;
 import io.seedmatic.rke2lab.manifests.contract.ClusterFleet;
 import io.seedmatic.rke2lab.manifests.contract.ControlPlaneShape;
 import io.seedmatic.rke2lab.manifests.contract.ManifestSynthesisRequest;
 import io.seedmatic.rke2lab.manifests.contract.profiles.BootstrapIdentity;
-import io.seedmatic.rke2lab.manifests.contract.profiles.ClusterIssuerCaMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.FloxDebugPolicy;
-import io.seedmatic.rke2lab.manifests.contract.profiles.GithubAppMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ImageState;
 import io.seedmatic.rke2lab.manifests.contract.profiles.IncusIdentityMaterial;
-import io.seedmatic.rke2lab.manifests.contract.profiles.ManagementClusterCaMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.NetworkTopology;
-import io.seedmatic.rke2lab.manifests.contract.profiles.OperatorPkiMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ReplicatorSourceSecretsMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.SigningKeyMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.SopsAgeMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.TlsAuthorityCaMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.WorkloadBootstrapBundlesMaterial;
-import io.seedmatic.rke2lab.manifests.contract.profiles.WorkloadClusterCasMaterial;
 import io.seedmatic.rke2lab.manifests.ingress.ComponentVersions;
 import io.seedmatic.rke2lab.manifests.node.DefaultNodeEnvContext;
 import java.nio.file.Path;
@@ -256,11 +256,11 @@ public final class ManifestSynthesisContext {
     return request.incusIdentity();
   }
 
-  public Optional<OperatorPkiMaterial> operatorPki() {
+  public Optional<AdminCredentials> operatorPki() {
     return request.operatorPki();
   }
 
-  public Optional<ClusterIssuerCaMaterial> clusterIssuerCa() {
+  public Optional<ClusterIssuerCa> clusterIssuerCa() {
     return request.clusterIssuerCa();
   }
 
@@ -268,11 +268,11 @@ public final class ManifestSynthesisContext {
     return request.tlsAuthorityCa();
   }
 
-  public Optional<WorkloadClusterCasMaterial> workloadCas() {
+  public Optional<WorkloadClusterCas> workloadCas() {
     return request.workloadCas();
   }
 
-  public Optional<ManagementClusterCaMaterial> managementCas() {
+  public Optional<ManagementClusterCa> managementCas() {
     return request.managementCas();
   }
 
@@ -284,7 +284,7 @@ public final class ManifestSynthesisContext {
     return request.workloadBootstrapBundles();
   }
 
-  public Optional<GithubAppMaterial> githubApp() {
+  public Optional<GithubAppCredentials> githubApp() {
     return request.githubApp();
   }
 

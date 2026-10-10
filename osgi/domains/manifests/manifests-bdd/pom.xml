@@ -76,6 +76,19 @@
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>auth-contract</artifactId>
     </dependency>
+    <!-- The OWNERS of the sealed material manifests renders: ghapp-contract (GithubAppCredentials,
+         GhAppCoordinate) and cluster-pki-contract (AdminCredentials, the cluster CAs, OperatorKubeconfig,
+         ClusterPkiCoordinate). Named directly since 2026-10-10: the manifests-side mirrors of these
+         records were deleted, their reason — a staging gate retired on 2026-08-09 — being dead.
+         cluster-pki-contract is type=dual-realm; it stages as a bundle wherever only bundles name it. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>ghapp-contract</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>cluster-pki-contract</artifactId>
+    </dependency>
     <dependency>
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>ndh-contract</artifactId>

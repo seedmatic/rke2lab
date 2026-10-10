@@ -2,6 +2,8 @@ package io.seedmatic.rke2lab.clusterpki.contract;
 
 import io.seedmatic.rke2lab.seed.broker.port.SeedContract;
 import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
 
 /**
  * The workload clusters' deterministic CA sets — one CAPRKE2 bring-your-own-CA hierarchy per
@@ -20,16 +22,21 @@ import java.util.List;
  * the FULL chain (leaf CA + intermediate + mammoth-skate root), identical to the mgmt node's {@code
  * server/tls/*-ca.crt}; {@link Pair#keyPem()} is the CA private key.
  *
- * <p>A blind mirror — its manifests-side twin {@code WorkloadClusterCasMaterial} shares its exact
- * component shape, so the codec decodes this straight into the mirror with no {@code cluster-pki}
- * type crossing into manifests. See docs/architecture/cluster-api/deterministic-cluster-access.adoc
- * and the caprke2-byo-ca-secret-contract memory.
+ * <p>The manifests synthesis renders it as it is, and looks a cluster's set up with {@link
+ * #forCluster}, which moved here from the manifests-side copy of this record deleted on 2026-10-10.
+ * See docs/architecture/cluster-api/deterministic-cluster-access.adoc and the
+ * caprke2-byo-ca-secret-contract memory.
  */
 @SeedContract("workload-cluster-cas")
 public record WorkloadClusterCas(List<Entry> entries) {
 
   public WorkloadClusterCas {
     entries = entries == null ? List.of() : List.copyOf(entries);
+  }
+
+  /** The CA set for {@code clusterName}, if this case carries one. */
+  public Optional<Entry> forCluster(String clusterName) {
+    return entries.stream().filter(entry -> entry.clusterName().equals(clusterName)).findFirst();
   }
 
   /**
@@ -41,6 +48,14 @@ public record WorkloadClusterCas(List<Entry> entries) {
   public record Entry(
       String clusterName, Pair serverCa, Pair clientCa, Pair etcdServerCa, Pair etcdPeerCa) {}
 
-  /** A CA cert chain + its private key, both PEM. */
-  public record Pair(String certChainPem, String keyPem) {}
+  /**
+   * A CA cert chain + its private key, both PEM. Guarded: the manifests units embed it as it is, so
+   * a field missing from the sealed case would otherwise render as an empty Secret value, silently.
+   */
+  public record Pair(String certChainPem, String keyPem) {
+    public Pair {
+      Objects.requireNonNull(certChainPem, "certChainPem");
+      Objects.requireNonNull(keyPem, "keyPem");
+    }
+  }
 }

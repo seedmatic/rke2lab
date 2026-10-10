@@ -1456,7 +1456,7 @@ off the opaque envelope the backend hands back). It is a capability, not a core 
 black-hole `EphemeralCellar` (`seed-bdd`) — stores nothing, reveals nothing. So a reveal of a value the
 OPERATOR sealed at the grow (into its `PulumiCellar`) returns empty in-cluster, unless that same run
 re-sealed it into the overlay. Two branch secrets are exactly in this trap: `IncusIdentityCase.INCUS_IDENTITY`
-and `ClusterPkiCase.WORKLOAD_CLUSTER_CAS` — sealed operator-side (host-world incus creds / the operator sops
+and `ClusterPkiCoordinate.WORKLOAD_CLUSTER_CAS` — sealed operator-side (host-world incus creds / the operator sops
 key inventory), rendered ON THE BRANCH sops-encrypted (NOT `NODE_BOOTSTRAP`), and referenced by the CAPI CRs'
 `secretRef`. A secret-blind in-cluster re-render finds no material, emits no Secret → Flux PRUNES the ones
 the operator grow had populated → CAPN loses its `secretRef` and cannot authenticate to incus.

@@ -1,12 +1,12 @@
 package io.seedmatic.rke2lab.manifests.units.platform;
 
+import io.seedmatic.rke2lab.clusterpki.contract.ClusterIssuerCa;
 import io.seedmatic.rke2lab.manifests.AbstractManifestsUnit;
 import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
 import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
 import io.seedmatic.rke2lab.manifests.contract.ManifestAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.ManifestLayer;
-import io.seedmatic.rke2lab.manifests.contract.profiles.ClusterIssuerCaMaterial;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
@@ -42,10 +42,9 @@ import software.constructs.Construct;
  *       omits it, so nothing on the branch is stripped.
  * </ul>
  *
- * <p>The manifests scion reveals the cluster-pki {@code ClusterIssuerCa} from the cellar and
- * translates it to {@link ClusterIssuerCaMaterial} on the synthesis request — no {@code
- * cluster-pki} type crosses into manifests. Absent material (a bare survey / secret-blind render) →
- * only the {@code ClusterIssuer} renders.
+ * <p>The manifests scion reveals the cluster-pki {@link ClusterIssuerCa} from the cellar and hands
+ * the record to the synthesis request as it is. Absent material (a bare survey / secret-blind
+ * render) → only the {@code ClusterIssuer} renders.
  */
 public final class ClusterIssuerManifestsUnit extends AbstractManifestsUnit {
 
@@ -94,7 +93,7 @@ public final class ClusterIssuerManifestsUnit extends AbstractManifestsUnit {
   // The CA key-pair, delivered into kube-system via the NODE_BOOTSTRAP lane (node-side at grow),
   // never on the reconciled branch — a secret-blind render omits it (no material) rather than
   // stripping it.
-  private void renderCaSecret(final Construct scope, final ClusterIssuerCaMaterial material) {
+  private void renderCaSecret(final Construct scope, final ClusterIssuerCa material) {
     final ApiObject secret =
         new ApiObject(
             scope,

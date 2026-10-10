@@ -1,5 +1,7 @@
 package io.seedmatic.rke2lab.manifests.units.clusterapi;
 
+import io.seedmatic.rke2lab.clusterpki.contract.AdminCredentials;
+import io.seedmatic.rke2lab.clusterpki.contract.OperatorKubeconfig;
 import io.seedmatic.rke2lab.manifests.AbstractManifestsUnit;
 import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
 import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
@@ -7,7 +9,6 @@ import io.seedmatic.rke2lab.manifests.contract.ManifestAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.profiles.BootstrapIdentity;
 import io.seedmatic.rke2lab.manifests.contract.profiles.NetworkTopology;
-import io.seedmatic.rke2lab.manifests.contract.profiles.OperatorPkiMaterial;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
@@ -21,7 +22,7 @@ import org.cdk8s.JsonPatch;
 import software.constructs.Construct;
 
 /**
- * Renders the admin kubeconfig two ways from one {@link OperatorPkiMaterial}, discriminated by the
+ * Renders the admin kubeconfig two ways from one {@link AdminCredentials}, discriminated by the
  * {@code config.kubernetes.io/local-config} annotation — no cdk8s extension, no host-side render
  * outside the synthesis pipeline:
  *
@@ -44,11 +45,10 @@ import software.constructs.Construct;
  *       needs no such lane — it is consumed host-side at the grow, never a cluster resource.
  * </ul>
  *
- * <p>The unit only RENDERS. The manifests scion reveals the cluster-pki {@code AdminCredentials}
- * from the cellar in-container and translates it to {@link OperatorPkiMaterial} on the synthesis
- * request, so no {@code cluster-pki} type crosses into the manifests domain — the same channel
- * {@code IncusIdentityMaterial} / {@code SopsAgeMaterial} use. Absent material (a bare survey) or
- * an unknown cluster → the unit renders nothing.
+ * <p>The unit only RENDERS. The manifests scion reveals the cluster-pki {@link AdminCredentials}
+ * from the cellar in-container and hands the record to the synthesis request as it is; the unit
+ * renders it through {@link OperatorKubeconfig}, the one kubeconfig renderer. Absent material (a
+ * bare survey) or an unknown cluster → the unit renders nothing.
  */
 public final class ClusterKubeconfigManifestsUnit extends AbstractManifestsUnit {
 
@@ -67,12 +67,12 @@ public final class ClusterKubeconfigManifestsUnit extends AbstractManifestsUnit 
   protected void doSynthesize(final Construct scope, final ManifestsUnitContext context) {
     final ManifestSynthesisContext synth = ManifestSynthesisContext.current();
     final String clusterName = synth.bootstrapIdentity().clusterName();
-    final Optional<OperatorPkiMaterial> maybeMaterial = synth.operatorPki();
+    final Optional<AdminCredentials> maybeMaterial = synth.operatorPki();
 
     if (BootstrapIdentity.UNKNOWN.equals(clusterName) || maybeMaterial.isEmpty()) {
       return;
     }
-    final OperatorPkiMaterial material = maybeMaterial.orElseThrow();
+    final AdminCredentials material = maybeMaterial.orElseThrow();
     final String nodeName = synth.bootstrapIdentity().nodeName();
     final NetworkTopology topology = synth.networkTopology();
 
@@ -122,7 +122,7 @@ public final class ClusterKubeconfigManifestsUnit extends AbstractManifestsUnit 
   // single source, and it used to be an mDNS `.local` name that only a same-L2 asker could resolve.
   private void renderOperatorKubeconfig(
       final Construct scope,
-      final OperatorPkiMaterial material,
+      final AdminCredentials material,
       final String clusterName,
       final String namespace,
       final String nodeFabricFqdn) {
@@ -149,7 +149,7 @@ public final class ClusterKubeconfigManifestsUnit extends AbstractManifestsUnit 
     secret.addJsonPatch(JsonPatch.add("/type", "Opaque"));
     secret.addJsonPatch(
         JsonPatch.add(
-            "/data", Map.of("kubeconfig.yaml", base64(material.kubeconfig(clusterName, server)))));
+            "/data", Map.of("kubeconfig.yaml", base64(kubeconfig(material, clusterName, server)))));
   }
 
   // The canonical CAPI <cluster>-kubeconfig Secret over the VIP: CAPI reads it in-cluster to seed
@@ -160,7 +160,7 @@ public final class ClusterKubeconfigManifestsUnit extends AbstractManifestsUnit 
   // off the branch. It dependsOn the namespace so the bootstrap file lists the Namespace first.
   private void renderCapiKubeconfigSecret(
       final Construct scope,
-      final OperatorPkiMaterial material,
+      final AdminCredentials material,
       final String clusterName,
       final String namespace,
       final String vipHostInetAddr,
@@ -189,7 +189,23 @@ public final class ClusterKubeconfigManifestsUnit extends AbstractManifestsUnit 
     secret.addDependency(namespaceObject);
     secret.addJsonPatch(JsonPatch.add("/type", "cluster.x-k8s.io/secret"));
     secret.addJsonPatch(
-        JsonPatch.add("/data", Map.of("value", base64(material.kubeconfig(clusterName, server)))));
+        JsonPatch.add("/data", Map.of("value", base64(kubeconfig(material, clusterName, server)))));
+  }
+
+  /**
+   * One cluster, one way in whose context bears the cluster's name — the single-endpoint case of
+   * {@link OperatorKubeconfig}, the one kubeconfig renderer. Both Secrets this unit renders differ
+   * only by the endpoint they dial.
+   */
+  private String kubeconfig(
+      final AdminCredentials material, final String clusterName, final String server) {
+    return new OperatorKubeconfig(
+            List.of(
+                new OperatorKubeconfig.ClusterAccess(
+                    clusterName,
+                    material,
+                    List.of(new OperatorKubeconfig.Access(clusterName, server)))))
+        .render();
   }
 
   private static String base64(final String value) {

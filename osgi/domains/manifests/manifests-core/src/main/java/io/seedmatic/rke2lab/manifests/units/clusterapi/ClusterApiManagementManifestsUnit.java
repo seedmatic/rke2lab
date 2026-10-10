@@ -1,5 +1,7 @@
 package io.seedmatic.rke2lab.manifests.units.clusterapi;
 
+import io.seedmatic.rke2lab.clusterpki.contract.ManagementClusterCa;
+import io.seedmatic.rke2lab.clusterpki.contract.WorkloadClusterCas;
 import io.seedmatic.rke2lab.incus.ingress.NodeDeviceSet;
 import io.seedmatic.rke2lab.manifests.AbstractManifestsUnit;
 import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
@@ -8,8 +10,6 @@ import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.profiles.BootstrapIdentity;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ImageState;
 import io.seedmatic.rke2lab.manifests.contract.profiles.IncusIdentityMaterial;
-import io.seedmatic.rke2lab.manifests.contract.profiles.ManagementClusterCaMaterial;
-import io.seedmatic.rke2lab.manifests.contract.profiles.WorkloadClusterCasMaterial;
 import io.seedmatic.rke2lab.manifests.node.DefaultNodeEnvContext;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import io.seedmatic.rke2lab.netplan.contract.ClusterNetworkBlueprint;
@@ -47,8 +47,8 @@ import software.constructs.Construct;
  * encrypts their {@code data} at commit; Flux decrypts). They are rendered only when their material
  * is revealed (a secret-full render); the controller GUARDS on their presence before it acts, so a
  * secret-blind render that omits them simply leaves the controller waiting. The four BYO-CA are the
- * mgmt cluster's OWN LIVE CA ({@link ManagementClusterCaMaterial}) so CAPRKE2 adopts the running
- * control plane without rotating it.
+ * mgmt cluster's OWN LIVE CA ({@link ManagementClusterCa}) so CAPRKE2 adopts the running control
+ * plane without rotating it.
  */
 public final class ClusterApiManagementManifestsUnit extends AbstractManifestsUnit {
 
@@ -209,14 +209,13 @@ public final class ClusterApiManagementManifestsUnit extends AbstractManifestsUn
     if (!ManifestSynthesisContext.current().adopts(cluster)) {
       return;
     }
-    final Optional<WorkloadClusterCasMaterial.Entry> subjectCas =
+    final Optional<WorkloadClusterCas.Entry> subjectCas =
         ManifestSynthesisContext.current().workloadCas().flatMap(all -> all.forCluster(cluster));
-    final Optional<ManagementClusterCaMaterial> ownCas =
-        ManifestSynthesisContext.current().managementCas();
+    final Optional<ManagementClusterCa> ownCas = ManifestSynthesisContext.current().managementCas();
     final Optional<IncusIdentityMaterial> identity =
         ManifestSynthesisContext.current().incusIdentity();
     if (subjectCas.isPresent()) {
-      final WorkloadClusterCasMaterial.Entry ca = subjectCas.orElseThrow();
+      final WorkloadClusterCas.Entry ca = subjectCas.orElseThrow();
       renderer.caSecrets(
           scope,
           cluster,

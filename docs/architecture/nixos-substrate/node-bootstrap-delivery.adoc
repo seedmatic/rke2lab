@@ -284,8 +284,8 @@ this runs *pre*-rke2), `jq` (absent; the fleet convention is `yq`), and a regist
 | The mittwald-replicator SOURCE secrets (git basic-auth, docker dockerconfigjson, tailscale
   oauth) the `replicator-secrets` seal rehydrates from `.secrets` and files SEALED; revealed
   in-container and rendered by `ReplicatorManifestsUnit` onto THIS lane, so the real credentials
-  are seeded node-side and never committed to the branch. A blind manifests-side mirror (the
-  `GithubAppMaterial` treatment).
+  are seeded node-side and never committed to the branch. Manifests owns the record: the seal that
+  files it is a manifests scion.
 |===
 
 The *replicator source secrets* ride the bootstrap lane rather than the branch precisely because

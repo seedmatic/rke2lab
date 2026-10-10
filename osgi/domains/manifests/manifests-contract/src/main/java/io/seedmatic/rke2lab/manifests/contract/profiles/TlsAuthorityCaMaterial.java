@@ -23,12 +23,13 @@ import java.util.Objects;
  * the steady state. A host-only read would give the operator's render a CA and the cluster's render
  * none — and once {@code server-crt} is empty, "none" is a provider that trusts nothing we signed.
  *
- * <p>So it is the LAST certificate of {@link ClusterIssuerCaMaterial#caCertChainPem()}, which
- * {@code ClusterCaGenerator} assembles as {@code chainPem(issuerCa, intermediate, root)} with
- * {@code root} being exactly {@code keystore.authorityCert(TLS_AUTHORITY)}. That material is
- * cellar-borne, so it is present in BOTH realms, and the derivation states the invariant that
- * actually matters: the CA we ask a pod to trust is the root our own chain ends at. Two independent
- * reads could disagree; this one cannot.
+ * <p>So it is the LAST certificate of {@link
+ * io.seedmatic.rke2lab.clusterpki.contract.ClusterIssuerCa#caCertChainPem()}, which {@code
+ * ClusterCaGenerator} assembles as {@code chainPem(issuerCa, intermediate, root)} with {@code root}
+ * being exactly {@code keystore.authorityCert(TLS_AUTHORITY)}. That material is cellar-borne, so it
+ * is present in BOTH realms, and the derivation states the invariant that actually matters: the CA
+ * we ask a pod to trust is the root our own chain ends at. Two independent reads could disagree;
+ * this one cannot.
  *
  * <p>Unlike its neighbours this record carries no private key, and must not grow one — a CA
  * certificate is public by construction, and the signing side has its own path ({@code

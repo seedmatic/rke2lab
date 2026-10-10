@@ -1,10 +1,10 @@
 package io.seedmatic.rke2lab.manifests.units.cicd;
 
+import io.seedmatic.rke2lab.ghapp.contract.GithubAppCredentials;
 import io.seedmatic.rke2lab.manifests.AbstractManifestsUnit;
 import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
 import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
-import io.seedmatic.rke2lab.manifests.contract.profiles.GithubAppMaterial;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import io.seedmatic.rke2lab.manifests.units.gitops.FluxReceiverManifestsUnit;
 import java.nio.charset.StandardCharsets;
@@ -22,7 +22,7 @@ import software.constructs.Construct;
 /**
  * The {@code pipelines-as-code-secret} that configures Pipelines-as-Code with OUR baked GitHub App
  * — the CI twin of {@link io.seedmatic.rke2lab.manifests.units.gitops.GithubAppSecretManifestsUnit}
- * (which configures Flux's native App auth). Both consume the SAME {@link GithubAppMaterial} the
+ * (which configures Flux's native App auth). Both consume the SAME {@link GithubAppCredentials} the
  * manifests scion reveals from the sealed {@code github-app} cellar case; both ride the {@code
  * NODE_BOOTSTRAP} lane (real App key, never on the reconciled branch). PaC reads this secret to act
  * AS the App: verify webhooks, clone, set commit statuses, and mint the {@code git_auth_secret} it
@@ -47,8 +47,8 @@ import software.constructs.Construct;
  * too (twin of {@link PacWebhookManifestsUnit}'s funnel backend).
  *
  * <p>Absence — no App credentials sealed (ephemeral / survey runs) — is an empty {@code
- * Optional<GithubAppMaterial>} and the unit renders nothing (the honest local-render skip, as its
- * gitops twin).
+ * Optional<GithubAppCredentials>} and the unit renders nothing (the honest local-render skip, as
+ * its gitops twin).
  */
 public final class PacSecretManifestsUnit extends AbstractManifestsUnit {
 
@@ -67,12 +67,12 @@ public final class PacSecretManifestsUnit extends AbstractManifestsUnit {
 
   @Override
   protected void doSynthesize(final Construct scope, final ManifestsUnitContext context) {
-    final Optional<GithubAppMaterial> maybeMaterial =
+    final Optional<GithubAppCredentials> maybeMaterial =
         ManifestSynthesisContext.current().githubApp();
     if (maybeMaterial.isEmpty()) {
       return;
     }
-    final GithubAppMaterial material = maybeMaterial.orElseThrow();
+    final GithubAppCredentials material = maybeMaterial.orElseThrow();
 
     final ApiObject secret =
         new ApiObject(

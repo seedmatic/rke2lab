@@ -1,5 +1,6 @@
 package io.seedmatic.rke2lab.manifests.units.clusterapi;
 
+import io.seedmatic.rke2lab.clusterpki.contract.WorkloadClusterCas;
 import io.seedmatic.rke2lab.incus.ingress.NodeDeviceSet;
 import io.seedmatic.rke2lab.manifests.AbstractManifestsUnit;
 import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
@@ -10,7 +11,6 @@ import io.seedmatic.rke2lab.manifests.contract.ControlPlaneShape;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ImageState;
 import io.seedmatic.rke2lab.manifests.contract.profiles.IncusIdentityMaterial;
-import io.seedmatic.rke2lab.manifests.contract.profiles.WorkloadClusterCasMaterial;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import io.seedmatic.rke2lab.netplan.contract.ClusterNetworkBlueprint;
 import java.util.List;
@@ -275,7 +275,7 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
     }
     final Optional<IncusIdentityMaterial> identity =
         ManifestSynthesisContext.current().incusIdentity();
-    final Optional<WorkloadClusterCasMaterial.Entry> workloadCa =
+    final Optional<WorkloadClusterCas.Entry> workloadCa =
         ManifestSynthesisContext.current().workloadCas().flatMap(cas -> cas.forCluster(cluster));
     identity.ifPresent(
         material ->
