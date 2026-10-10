@@ -1236,6 +1236,27 @@ USAGE
           meta.description = "Mint a short-lived packages:read GitHub App installation token from .secrets (github.app)";
         };
 
+        # Derive the plan and DELIVER it: `nix run .#publish-plan`, from the repo root. The plan jar's
+        # `publish` verb sows and grafts ghapp → netplan → dataplan → fabric; the fabric scion writes
+        # netplan.json + dataplan.json into the .local.d/worktrees/fabric/plan linked worktree, signs
+        # the commit and fast-forward pushes fabric/plan with a token minted from the App. git: the
+        # linked worktree; openssh: ssh-keygen signs the commit (SshCommitSigner → jgit).
+        apps.publish-plan = {
+          type = "app";
+          program = toString (pkgs.writeShellApplication {
+            name = "publish-plan";
+            runtimeInputs = [ pkgs.coreutils pkgs.git pkgs.jdk25 pkgs.openssh ];
+            text = ''
+              if [ ! -f pom.xml ] || [ ! -f flake.nix ]; then
+                echo "error: run from the rke2lab repo root" >&2
+                exit 1
+              fi
+              exec java -jar ${planJar}/share/java/rke2lab-plan.jar publish
+            '';
+          } + "/bin/publish-plan");
+          meta.description = "Derive the plan and deliver it to fabric/plan (signed commit, fast-forward push)";
+        };
+
         # Regenerate the committed network-blueprint.json from the netplan jar. Run on a
         # jar-capable host (bioskop/darwin) from the repo root: `nix run .#regen-blueprint`.
         # The Java stays the source of truth; this materializes it into the checked-in file
