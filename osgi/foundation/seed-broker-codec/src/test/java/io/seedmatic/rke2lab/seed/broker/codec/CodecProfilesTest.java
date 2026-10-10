@@ -1,7 +1,13 @@
 package io.seedmatic.rke2lab.seed.broker.codec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -143,5 +149,102 @@ class CodecProfilesTest {
     assertEquals(
         "{\"known\":\"k\",\"absent\":null}",
         codec.wire().writeJson(new Peer("k", Optional.empty())));
+  }
+
+  @Test
+  void canonical_yaml_sorts_a_tree_which_has_no_declared_order() {
+    final CanonicalCodec canonical = codec.canonical();
+    assertEquals(
+        """
+        a:
+          c: 3
+          d: 4
+        b: 1
+        """,
+        canonical.writeYaml(canonical.readJson("{\"b\":1,\"a\":{\"d\":4,\"c\":3}}")));
+  }
+
+  /**
+   * The manifests are read by Go (sigs.k8s.io/yaml), a YAML 1.1 reader: unquoted, these strings
+   * would come back as a boolean, a null, an octal number or nothing at all.
+   */
+  @Test
+  void canonical_yaml_quotes_what_a_yaml_1_1_reader_would_not_read_as_the_same_string() {
+    final CanonicalCodec canonical = codec.canonical();
+    final Map<String, String> tricky = new LinkedHashMap<>();
+    for (final String value : List.of("yes", "no", "on", "off", "null", "~", "", "0755")) {
+      tricky.put("k" + tricky.size(), value);
+    }
+    final String yaml = canonical.writeYaml(tricky);
+
+    assertEquals(
+        """
+        k0: "yes"
+        k1: "no"
+        k2: "on"
+        k3: "off"
+        k4: "null"
+        k5: "~"
+        k6: ""
+        k7: "0755"
+        """,
+        yaml);
+    assertEquals(tricky, canonical.readYaml(yaml, new TypeReference<Map<String, String>>() {}));
+  }
+
+  record Nullable(String kept, String dropped) {}
+
+  @Test
+  void canonical_drops_a_null_component_as_it_drops_an_empty_optional() {
+    final CanonicalCodec canonical = codec.canonical();
+    assertEquals("{\n  \"kept\": \"k\"\n}\n", canonical.writeJson(new Nullable("k", null)));
+    assertEquals("kept: k\n", canonical.writeYaml(new Nullable("k", null)));
+  }
+
+  @Test
+  void a_tree_follows_its_profile_and_binds_back_like_its_text() {
+    final Peer peer = new Peer("k", Optional.empty());
+
+    assertEquals("{\"known\":\"k\",\"absent\":null}", codec.reading().toTree(peer).toString());
+    assertEquals("{\"known\":\"k\"}", codec.canonical().toTree(peer).toString());
+    assertEquals(peer, codec.reading().convert(codec.canonical().toTree(peer), Peer.class));
+  }
+
+  @Test
+  void yaml_documents_are_separated_by_a_line_and_read_back_in_order() {
+    final CanonicalCodec canonical = codec.canonical();
+    final String stream = canonical.writeYamlDocuments(List.of(new Known("a"), new Known("b")));
+
+    assertEquals("known: a\n---\nknown: b\n", stream);
+    assertEquals(
+        List.of(new Known("a"), new Known("b")),
+        canonical.readYamlDocuments(utf8(stream), Known.class).toList());
+  }
+
+  record Holder(Map<String, String> labels) {}
+
+  /**
+   * A stray separator yields an empty document; inside a stream it binds as null and is skipped.
+   * The coercion is the stream's alone: read as one document, "" is still no map.
+   */
+  @Test
+  void a_stray_separator_is_skipped_in_a_stream_and_only_there() {
+    final ReadingCodec reading = codec.reading();
+
+    assertEquals(
+        List.of(Map.of("a", "1"), Map.of("b", "2")),
+        reading
+            .readYamlDocuments(
+                utf8("a: \"1\"\n---\n---\nb: \"2\"\n"), new TypeReference<Map<String, String>>() {})
+            .toList());
+    assertEquals(
+        List.of(new Holder(null)),
+        reading.readYamlDocuments(utf8("labels: \"\"\n"), Holder.class).toList());
+    assertThrows(
+        UncheckedIOException.class, () -> reading.readYaml("labels: \"\"\n", Holder.class));
+  }
+
+  private static InputStream utf8(String text) {
+    return new ByteArrayInputStream(text.getBytes(StandardCharsets.UTF_8));
   }
 }

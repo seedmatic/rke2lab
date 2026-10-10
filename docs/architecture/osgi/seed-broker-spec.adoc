@@ -1104,10 +1104,12 @@ APIs we call do, and they reach jackson through the same instance, by three prof
 holds — never a mapper of their own:
 
 * `canonical()` → `CanonicalCodec` — the files we write and read back, in JSON and YAML: map entries
-  and JSON trees sorted by key, a record in its declared component order, an empty `Optional` dropped,
-  two-space indent, `"k": v`, one element per line, a final newline; YAML without a document marker,
-  quoting only what would not read back as the same string. The same value always yields the same
-  bytes, so a diff of a committed file shows only what changed.
+  and JSON trees sorted by key, a record in its declared component order, a null or empty `Optional`
+  dropped (so no reader of this form may need the key present), two-space indent, `"k": v`, one
+  element per line, a final newline; YAML without a document marker (a multi-document stream
+  separated by `---`), quoting only what would not read back as the same string, a YAML 1.1 reader
+  such as Go's included. The same value always yields the same bytes, so a diff of a committed file
+  shows only what changed.
 * `reading()` → `ReadingCodec` — JSON and YAML we only parse (config, secrets, other tools' files),
   tolerant of unknown keys and of documents above SnakeYAML's 3 MiB default.
 * `wire()` → `WireCodec` — bodies exchanged with external APIs: compact JSON, nothing reordered or

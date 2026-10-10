@@ -12,14 +12,17 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator;
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.util.stream.StreamSupport;
 
 /**
  * The {@link SeedCodec#canonical()} profile: the one form of the files we write and read back, so
  * the same value always yields the same bytes and a diff shows only what changed. Map entries and
- * JSON trees are sorted by key; a record keeps its declared component order; an empty {@code
- * Optional} drops its key. JSON is indented by two spaces, {@code "k": v}, one element per line,
- * {@code \n} line ends; YAML has no document marker, quotes only what would not read back as the
- * same string, and writes multi-line strings as literal blocks. Both end with a newline.
+ * JSON trees are sorted by key; a record keeps its declared component order; a null or empty {@code
+ * Optional} drops its key — a reader that needs the key present must not read this form. JSON is
+ * indented by two spaces, {@code "k": v}, one element per line, {@code \n} line ends; YAML has no
+ * document marker (a multi-document stream separates its documents by {@code ---}), quotes only
+ * what would not read back as the same string — a YAML 1.1 reader, such as Go's, included — and
+ * writes multi-line strings as literal blocks. Both end with a newline.
  */
 public final class CanonicalCodec extends ReadingCodec {
 
@@ -77,5 +80,15 @@ public final class CanonicalCodec extends ReadingCodec {
     } catch (IOException ex) {
       throw new UncheckedIOException("Failed to write canonical YAML", ex);
     }
+  }
+
+  /**
+   * {@code documents} as one multi-document YAML stream: each in this profile's form, separated by
+   * a {@code ---} line, the first without one — as a single document has none.
+   */
+  public String writeYamlDocuments(Iterable<?> documents) {
+    return String.join(
+        "---\n",
+        StreamSupport.stream(documents.spliterator(), false).map(this::writeYaml).toList());
   }
 }
