@@ -9,9 +9,11 @@ import io.seedmatic.rke2lab.seed.broker.port.SeedCoordinate;
  * {@code manifests-cli} assembly). The {@code slug}/{@code domain} here MUST match {@code
  * GhAppCoordinate.GITHUB_APP}; the cellar matches a read case by slug.
  *
- * <p>Shared by the two manifests consumers of the App material — the reader Secret render ({@code
- * ManifestSynthesisScenario#revealGithubApp}) and the on-demand push-token mint (both the synthesis
- * push and the version-bump release query) — so the neutral coordinate is declared once.
+ * <p>Its one consumer is the SYNTHESIS: the {@code githubapp} Secret render ({@code
+ * ManifestSynthesisScenario#revealGithubApp}), the same treatment every foreign sealed material the
+ * synthesis renders gets. Tokens no longer come through here: {@code GithubAppTokens}
+ * (auth-contract) reads the App from its owner, {@code GhAppCoordinate.GITHUB_APP}, for the
+ * render's push, the node's reader token and the version bump alike.
  */
 public enum GhAppCase implements SeedCoordinate {
   GITHUB_APP;

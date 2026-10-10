@@ -13,6 +13,7 @@ import com.tngtech.jgiven.annotation.Hidden;
 import com.tngtech.jgiven.annotation.ProvidedScenarioState;
 import com.tngtech.jgiven.base.ScenarioTestBase;
 import com.tngtech.jgiven.impl.Scenario;
+import io.seedmatic.rke2lab.auth.contract.GithubAppTokens;
 import io.seedmatic.rke2lab.auth.contract.GithubReaderTokenMint;
 import io.seedmatic.rke2lab.auth.contract.GithubWriterTokenMint;
 import io.seedmatic.rke2lab.manifests.contract.ClusterCoordinate;
@@ -741,44 +742,25 @@ public class ManifestSynthesisScenario
   }
 
   /**
-   * The GitHub token for the force-push, resolved by CONTAINER (the two lanes the {@code
-   * host/host-runtime} {@code ExecutionEnclosure} FACT names):
-   *
-   * <ul>
-   *   <li>OPERATOR — mint a FRESH {@code WRITER} installation token HERE, at the moment of the
-   *       push, from the durable App credentials revealed at {@link GhAppCase} (the ghapp
-   *       registration sealed them). The {@code auth} {@link GithubWriterTokenMint} edge holds the
-   *       mint; the token is ephemeral (≈1 h) and never sealed, so it cannot go stale between a
-   *       mint and a much later reveal (the trap a pre-provisioning seal fell into — minted before
-   *       the cluster came up, dead by the time the push ran).
-   *   <li>IN_CLUSTER — the renderer runs inside a Tekton PipelineRun; there is no cellar and the
-   *       mint edge is absent. Pipelines-as-Code has already minted an App token and the {@code
-   *       render-publish} step extracts it from the mounted {@code git_auth} secret into {@code
-   *       RKE2LAB_PUSH_TOKEN}. Read in-container — the token never crosses the host↔OSGi membrane
-   *       (no seam word), the twin locality of the mint.
-   * </ul>
-   *
-   * <p>Empty when neither is present (a survey / preview, where the {@code cultivating}-gated mint
-   * edge is filtered out; or a render that isn't a push) — the push is then simply skipped. The
-   * OPERATOR mint wins when both are reachable (an operator run never sets the env).
+   * The GitHub token for the fast-forward push, resolved by CONTAINER (the two lanes the {@code
+   * host/host-runtime} {@code ExecutionEnclosure} FACT names) through {@link GithubAppTokens}, the
+   * one revealer every consumer shares: OPERATOR mints a fresh {@code WRITER} token from the sealed
+   * App at the moment of the push; IN_CLUSTER there is no cellar and no mint edge, and the token is
+   * the one Pipelines-as-Code minted and the {@code render-publish} step exported. Empty when
+   * neither is present (a survey / preview, or a render that isn't a push) — the push is then
+   * skipped. The OPERATOR mint wins when both are reachable.
    */
   private Optional<String> revealGithubToken() {
-    // The edge (writerTokenMint) and the App credentials (revealGithubApp) are each Optional —
-    // absent
-    // in a survey/preview or an enclosure that does not mint. But mint itself returns a token or
-    // THROWS (GithubWriterTokenMintEdge fails loud on a blank), so once both are present the value
-    // is
-    // a real token — no empty-token case to filter here.
-    final Optional<String> minted =
-        writerTokenMint.flatMap(
-            mint ->
-                revealGithubApp()
-                    .map(app -> mint.mint(app.appId(), app.installationId(), app.privateKeyPem())));
-    return minted.or(
-        () ->
-            Optional.ofNullable(System.getenv("RKE2LAB_PUSH_TOKEN"))
-                .map(String::trim)
-                .filter(token -> !token.isEmpty()));
+    final GithubAppTokens tokens = tokens();
+    return cellar == null ? tokens.pipeline() : tokens.writerOrPipeline(cellar, parcel);
+  }
+
+  /**
+   * The token revealer, built from this scenario's injected mints: they are only known once the
+   * stage creator has resolved them, so it is built at use rather than held.
+   */
+  private GithubAppTokens tokens() {
+    return new GithubAppTokens(writerTokenMint, readerTokenMint, System.getenv());
   }
 
   /** The rendered-branch delivery plan carried from the scenario into the THEN. */
@@ -1129,12 +1111,9 @@ public class ManifestSynthesisScenario
         Persistence.TRANSIENT);
   }
 
-  /** Mint the node's fresh {@code contents:read} token from the revealed App creds, or empty. */
+  /** The node's fresh {@code contents:read} token, minted from the sealed App, or empty. */
   private Optional<String> revealNodeGithubToken() {
-    return readerTokenMint.flatMap(
-        mint ->
-            revealGithubApp()
-                .map(app -> mint.mint(app.appId(), app.installationId(), app.privateKeyPem())));
+    return cellar == null ? Optional.empty() : tokens().reader(cellar, parcel);
   }
 
   /**

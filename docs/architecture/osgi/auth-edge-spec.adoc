@@ -21,16 +21,32 @@ shells nothing any more: what remains are the two mint verbs, delegated to ghapp
 == The contract — two mint verbs
 
 `auth-contract` (`type=contract`) declares the GitHub token mints a consumer calls AT THE POINT OF USE,
-from the durable App credentials it reveals from its own cellar case:
+from the App's durable credentials:
 
-* `GithubWriterTokenMint` — `mint(appId, installationId, privateKeyPem) → String`, a FRESH
-  `contents:write` installation token (the rendered-branch force-push, the version bump's bot commit).
+* `GithubWriterTokenMint` — `mint(GithubAppCredentials) → String`, a FRESH `contents:write`
+  installation token (the rendered-branch force-push, the version bump's bot commit).
 * `GithubReaderTokenMint` — the least-privilege twin, same signature, a `contents:read` token for a
   consumer that only READS a private repo (a node fetching its rendered `manifests/<cluster>` branch).
 
-The credential fields cross as plain strings, so no `ghapp-contract` type is dragged into a consumer
-that mirrors the App material. Both throw when no usable token can be minted — a caller that must not
-mint (a survey/preview, an enclosure without App credentials) never resolves the edge.
+Both throw when no usable token can be minted — a caller that must not mint (a survey/preview, an
+enclosure without App credentials) never resolves the edge.
+
+Both take the owner's `GithubAppCredentials` (ghapp-contract). They used to take three plain strings,
+"so no `ghapp-contract` type is dragged into a consumer that mirrors the App material" — but the edges
+re-packed those strings into that very record before delegating to ghapp's `GithubAppMinter`. The
+strings were a round trip through a mirror, and they went with the change below.
+
+*`GithubAppTokens` — the one place a GitHub token is obtained (2026-10-10).* A record holding the two
+mints and the process environment, with three lanes: `writer` (mint only), `writerOrPipeline` (mint,
+else the token Pipelines-as-Code exported in a Tekton run, under `PIPELINE_TOKEN_ENV`) and `reader`. It
+reads the App from its OWNER, `GhAppCoordinate.GITHUB_APP`, never from a consumer's mirror. It
+replaced three copies of "reveal the App, then mint" — the manifests render's push token, the grown
+node's reader token, and the version bump's release-query token — each grown on the manifests mirror.
+The lanes stay named because the callers differ: the bump never fell back to the pipeline token, and
+folding the copies must not give it one (a test pins it). auth-contract therefore depends on
+ghapp-contract; that is not a new coupling, since auth-edge already imported those types to delegate
+to the minter. The manifests synthesis keeps its mirror (`GhAppCase` + `GithubAppMaterial`) for what
+it RENDERS, the `githubapp` Secret, uniform with its six sibling mirrors: only the token path moved.
 
 This SUPERSEDES the former durable auth-seal (`GithubToken` filed SEALED at an `AuthCoordinate` and
 revealed on fetch): an installation token is ephemeral (≈1 h), so a token sealed before provisioning
@@ -48,7 +64,7 @@ flowchart LR
   world["EXTERNAL<br/>GitHub API (installation tokens)"]
   ghapp["ghapp domain — EDGE<br/>GithubAppMinter (JWT-signed)"]
   edge["auth domain — EDGE<br/>auth-edge: GithubWriterTokenMintEdge,<br/>GithubReaderTokenMintEdge"]
-  aport["auth domain — PORT<br/>auth-contract: GithubWriterTokenMint,<br/>GithubReaderTokenMint"]
+  aport["auth domain — PORT<br/>auth-contract: GithubAppTokens,<br/>GithubWriterTokenMint, GithubReaderTokenMint"]
   consumer["manifests domain — SCION<br/>synthesis push, version bump"]
   consumer -->|mint at the point of use| aport
   edge -.->|implements| aport
