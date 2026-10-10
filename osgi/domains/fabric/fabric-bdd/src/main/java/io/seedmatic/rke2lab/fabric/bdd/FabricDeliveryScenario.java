@@ -9,7 +9,7 @@ import com.tngtech.jgiven.base.ScenarioTestBase;
 import com.tngtech.jgiven.impl.Scenario;
 import io.seedmatic.rke2lab.auth.contract.GithubAppTokens;
 import io.seedmatic.rke2lab.auth.contract.GithubWriterTokenMint;
-import io.seedmatic.rke2lab.dataplan.contract.DataplanCoordinate;
+import io.seedmatic.rke2lab.dataplan.ingress.DataplanIngressCoordinate;
 import io.seedmatic.rke2lab.fabric.contract.FabricDelivery;
 import io.seedmatic.rke2lab.fabric.contract.FabricRunbookInput;
 import io.seedmatic.rke2lab.ndh.contract.NdhKeystoreCatalog;
@@ -175,7 +175,7 @@ public class FabricDeliveryScenario
               .orElseThrow(() -> new FabricDeliveryError(FabricDeliveryError.Reason.NO_NETPLAN));
       this.dataplan =
           cellar
-              .fetch(run, DataplanCoordinate.LAYOUT, JsonNode.class)
+              .fetch(run, DataplanIngressCoordinate.LAYOUT, JsonNode.class)
               .orElseThrow(() -> new FabricDeliveryError(FabricDeliveryError.Reason.NO_DATAPLAN));
       return self();
     }

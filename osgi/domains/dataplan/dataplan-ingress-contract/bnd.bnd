@@ -1,0 +1,12 @@
+-include: ../../../bundle-parent/annotations.bnd
+Import-Package: ${annotation-noimports}, *
+Bundle-SymbolicName: io.seedmatic.rke2lab.dataplan.ingress
+Export-Package: io.seedmatic.rke2lab.dataplan.ingress
+# type=dual-realm — the dataplan domain's host face: the coordinate both realms reference, the scion
+# (OSGi) to store the layout, the host (the plan CLI's export) to fetch it. Staged as a bundle
+# OSGi-side AND kept flat host-side, so its exported package legitimately lives in two realms and
+# DUPLICATE_REALM_CLASS exempts it. Producer and consumer are the SAME domain: intra-domain
+# dual-realm, orthogonal to the contract-purity guard. It depends only on the JDK and the seed-broker
+# seam, so REALM_BOUNDARY holds by construction. It carries no @Component, so it does NOT Require
+# the SCR extender.
+Provide-Capability: io.seedmatic.rke2lab.embed; type=dual-realm

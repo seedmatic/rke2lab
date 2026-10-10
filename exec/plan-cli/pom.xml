@@ -81,6 +81,17 @@
       <artifactId>pax-logback-config</artifactId>
       <scope>runtime</scope>
     </dependency>
+    <!-- The two harvests the export reads back, by their coordinates: compile scope, because the
+         host NAMES them (that is what earns each a dual-realm ingress module — it is staged as a
+         bundle for the scions AND kept flat for this host). Never a slug literal. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>netplan-ingress-contract</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>dataplan-ingress-contract</artifactId>
+    </dependency>
     <!-- The netplan SCION bundle (embed type=model): serves the `netplan` coordinates and grows
          NetplanBlueprintScenario in-container. Staged INTACT; it pulls netplan-contract into the
          staged world via its import closure (no flat host copy). The `network` plane's door. -->

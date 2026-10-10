@@ -21,6 +21,7 @@
 
   <modules>
     <module>dataplan-contract</module>
+    <module>dataplan-ingress-contract</module>
     <module>dataplan-bdd</module>
   </modules>
 </project>

@@ -6,7 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import io.seedmatic.rke2lab.dataplan.contract.DataplanCoordinate;
+import io.seedmatic.rke2lab.dataplan.ingress.DataplanIngressCoordinate;
 import io.seedmatic.rke2lab.fabric.contract.FabricDelivery;
 import io.seedmatic.rke2lab.fabric.contract.FabricRunbookInput;
 import io.seedmatic.rke2lab.ndh.contract.NdhKeystoreReader;
@@ -175,7 +175,7 @@ class FabricDeliveryTest {
       cellar.store(PARCEL, NetplanIngressCoordinate.PROJECTION, tree(netplan));
     }
     if (dataplan != null) {
-      cellar.store(PARCEL, DataplanCoordinate.LAYOUT, tree(dataplan));
+      cellar.store(PARCEL, DataplanIngressCoordinate.LAYOUT, tree(dataplan));
     }
     return cellar;
   }

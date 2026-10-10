@@ -3,8 +3,8 @@ package io.seedmatic.rke2lab.dataplan.bdd;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import io.seedmatic.rke2lab.dataplan.contract.DataplanCoordinate;
 import io.seedmatic.rke2lab.dataplan.contract.DataplanLayout;
+import io.seedmatic.rke2lab.dataplan.ingress.DataplanIngressCoordinate;
 import io.seedmatic.rke2lab.seed.broker.port.Parcel;
 import io.seedmatic.rke2lab.seed.broker.testkit.InMemoryCellar;
 import java.util.Objects;
@@ -36,7 +36,7 @@ class DataplanLayoutHarvestTest {
     then.the_layout_is_harvested(cellar, Optional.of(PARCEL));
 
     final Optional<DataplanLayout> harvested =
-        cellar.fetch(PARCEL, DataplanCoordinate.LAYOUT, DataplanLayout.class);
+        cellar.fetch(PARCEL, DataplanIngressCoordinate.LAYOUT, DataplanLayout.class);
     assertTrue(harvested.isPresent());
     assertEquals(then.layout, harvested.orElseThrow());
   }
@@ -47,6 +47,7 @@ class DataplanLayoutHarvestTest {
 
     derived().the_layout_is_harvested(cellar, Optional.empty());
 
-    assertTrue(cellar.fetch(PARCEL, DataplanCoordinate.LAYOUT, DataplanLayout.class).isEmpty());
+    assertTrue(
+        cellar.fetch(PARCEL, DataplanIngressCoordinate.LAYOUT, DataplanLayout.class).isEmpty());
   }
 }

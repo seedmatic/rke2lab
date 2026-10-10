@@ -1,20 +1,25 @@
 package io.seedmatic.rke2lab.plan.cli;
 
+import io.seedmatic.rke2lab.dataplan.ingress.DataplanIngressCoordinate;
+import io.seedmatic.rke2lab.netplan.ingress.NetplanIngressCoordinate;
+import io.seedmatic.rke2lab.seed.broker.port.SeedCoordinate;
+
 /**
  * The planes the {@code plan} CLI exports — the genus/species split that motivates the unified CLI:
  * {@code plan} is the genus, {@link #NETWORK} (netplan) and {@link #DATASET} (dataplan) the
- * species. Each plane names the broker coordinate its {@code export} sows, the export file its
- * in-container scion writes into the SOIL, and how the reaped host-neutral JSON is rendered to
+ * species. Each plane names the broker coordinate its {@code export} sows, the HARVEST its
+ * in-container scion files in the run's cellar, and how that host-neutral JSON is rendered to
  * stdout.
  *
- * <p>The coordinate slug is a plain string, NOT the domain's {@code *Coordinate.DOMAIN} constant:
+ * <p>The sow coordinate is a plain string, NOT the domain's {@code *Coordinate.DOMAIN} constant:
  * those live in {@code type=contract} bundles the flat host cannot reference (the realm-boundary
- * law), so the CLI sows the literal slug — the same host-flat discipline the former netplan CLI
- * held.
+ * law). The harvest is the opposite case and is named by its coordinate, never a slug: a value the
+ * host fetches has its coordinate in a dual-realm {@code *-ingress-contract} for exactly that
+ * reason, so the host can reach it.
  */
 public enum Plane {
-  NETWORK("netplan", "blueprint.json", Format.YAML),
-  DATASET("dataplan", "dataplan.json", Format.JSON);
+  NETWORK("netplan", NetplanIngressCoordinate.PROJECTION, Format.YAML),
+  DATASET("dataplan", DataplanIngressCoordinate.LAYOUT, Format.JSON);
 
   /** How the reaped host-neutral JSON is rendered to stdout. */
   public enum Format {
@@ -23,12 +28,12 @@ public enum Plane {
   }
 
   private final String coordinate;
-  private final String exportFile;
+  private final SeedCoordinate harvest;
   private final Format format;
 
-  Plane(String coordinate, String exportFile, Format format) {
+  Plane(String coordinate, SeedCoordinate harvest, Format format) {
     this.coordinate = coordinate;
-    this.exportFile = exportFile;
+    this.harvest = harvest;
     this.format = format;
   }
 
@@ -37,9 +42,9 @@ public enum Plane {
     return coordinate;
   }
 
-  /** The file the in-container scion writes into the SOIL, read back by the CLI. */
-  public String exportFile() {
-    return exportFile;
+  /** Where the in-container scion files what it derived, read back by the CLI within the run. */
+  public SeedCoordinate harvest() {
+    return harvest;
   }
 
   /** The stdout rendering of the reaped export. */
