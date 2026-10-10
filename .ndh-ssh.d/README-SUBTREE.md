@@ -151,7 +151,7 @@ touches only the TLS side.
 `keys.yaml` is SOPS-encrypted, with 3 age recipients — the `.sops.yaml` of the owning repository is
 the source; recompute a host line with `ssh-to-age < <key>.pub` rather than trusting this list:
 
-- `age1stxd...` — the **operator** key. Standalone: generated on its own, derived from nothing, present
+- `age1hlvu...` — the **operator** key. Standalone: generated on its own, derived from nothing, present
   in no `keys.yaml`. A key that opens this file must not live inside it.
 - `age1trxp...` — **bioskop's SSH host key** (`/etc/ssh/ssh_host_ed25519_key.pub` on that host), which
   is how sops-nix decrypts there at activation. Not an operator key.
