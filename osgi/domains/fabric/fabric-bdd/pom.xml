@@ -25,17 +25,17 @@
       <artifactId>fabric-contract</artifactId>
     </dependency>
     <!-- The two harvests the delivery reads, named by their OWNERS' coordinates and never by a
-         literal slug: netplan-ingress-contract (NetplanIngressCoordinate.PROJECTION, dual-realm
-         because the host fetches it too) and dataplan-contract (DataplanCoordinate.LAYOUT, OSGi-only
-         because nothing host-side reads the dataset tree). Their VALUES cross as JsonNode — fabric
-         binds neither domain's types. -->
+         literal slug: netplan-ingress-contract (NetplanIngressCoordinate.PROJECTION) and
+         dataplan-ingress-contract (DataplanIngressCoordinate.LAYOUT), both dual-realm because the plan
+         CLI's export fetches them host-side too. Their VALUES cross as JsonNode — fabric binds neither
+         domain's types. -->
     <dependency>
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>netplan-ingress-contract</artifactId>
     </dependency>
     <dependency>
       <groupId>io.seedmatic.rke2lab</groupId>
-      <artifactId>dataplan-contract</artifactId>
+      <artifactId>dataplan-ingress-contract</artifactId>
     </dependency>
     <!-- The git MECHANISM and the bot identity: LinkedWorktrees makes the delivery's checkout,
          GitBotIdentities mints the identity every automated commit of this project reads. -->

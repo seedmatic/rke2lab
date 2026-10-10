@@ -6,9 +6,9 @@ import com.tngtech.jgiven.annotation.Hidden;
 import com.tngtech.jgiven.annotation.ProvidedScenarioState;
 import com.tngtech.jgiven.base.ScenarioTestBase;
 import com.tngtech.jgiven.impl.Scenario;
-import io.seedmatic.rke2lab.dataplan.contract.DataplanCoordinate;
 import io.seedmatic.rke2lab.dataplan.contract.DataplanLayout;
 import io.seedmatic.rke2lab.dataplan.contract.DataplanRunbookInput;
+import io.seedmatic.rke2lab.dataplan.ingress.DataplanIngressCoordinate;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.CellarReceiver;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.InputReceiver;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.OsgiService;
@@ -170,10 +170,10 @@ public class DataplanScenario
 
   /**
    * Then: the export landed — {@code dataplan.json} exists and is non-empty — and, in a seed run,
-   * the same layout is filed at {@link DataplanCoordinate#LAYOUT} under the run's parcel, where the
-   * fabric delivery reads the dataset tree instead of a file. The layout is what the dataplan CODE
-   * derives, never a file it publishes (fabric/plan's {@code dataplan.json} is the delivery of this
-   * same derivation, for nix).
+   * the same layout is filed at {@link DataplanIngressCoordinate#LAYOUT} under the run's parcel,
+   * where the fabric delivery reads the dataset tree instead of a file. The layout is what the
+   * dataplan CODE derives, never a file it publishes (fabric/plan's {@code dataplan.json} is the
+   * delivery of this same derivation, for nix).
    */
   public static class Then extends Stage<Then> {
 
@@ -198,7 +198,7 @@ public class DataplanScenario
     }
 
     public Then the_layout_is_harvested(@Hidden Cellar cellar, @Hidden Optional<Parcel> parcel) {
-      parcel.ifPresent(run -> cellar.store(run, DataplanCoordinate.LAYOUT, layout));
+      parcel.ifPresent(run -> cellar.store(run, DataplanIngressCoordinate.LAYOUT, layout));
       return self();
     }
   }

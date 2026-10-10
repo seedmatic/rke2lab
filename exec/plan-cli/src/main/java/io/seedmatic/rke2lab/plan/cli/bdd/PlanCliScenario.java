@@ -6,23 +6,28 @@ import com.tngtech.jgiven.Stage;
 import com.tngtech.jgiven.annotation.As;
 import com.tngtech.jgiven.annotation.Hidden;
 import com.tngtech.jgiven.annotation.ProvidedScenarioState;
+import com.tngtech.jgiven.annotation.ScenarioStage;
 import com.tngtech.jgiven.annotation.ScenarioState;
 import com.tngtech.jgiven.base.ScenarioTestBase;
 import com.tngtech.jgiven.impl.Scenario;
+import com.tngtech.jgiven.report.model.ReportModel;
+import com.tngtech.jgiven.report.model.ScenarioModel;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.ConnectionReceiver;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.OsgiConnection;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.SeedRuntime;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.CellarReceiver;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.ScenarioCellar;
-import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.ScenarioGraft;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.SeedScenario;
 import io.seedmatic.rke2lab.seed.bdd.EphemeralCellar;
 import io.seedmatic.rke2lab.seed.bdd.SeedReceiver;
 import io.seedmatic.rke2lab.seed.bdd.SessionSeed;
+import io.seedmatic.rke2lab.seed.bdd.SowAndGraftStage;
 import io.seedmatic.rke2lab.seed.bdd.sow.Gardening;
 import io.seedmatic.rke2lab.seed.broker.port.Amendment;
 import io.seedmatic.rke2lab.seed.broker.port.Cellar;
 import io.seedmatic.rke2lab.seed.broker.port.OpaqueCellar;
+import io.seedmatic.rke2lab.seed.broker.port.Parcel;
+import io.seedmatic.rke2lab.seed.broker.port.SeedCoordinate;
 import java.util.Hashtable;
 import java.util.Map;
 import java.util.Objects;
@@ -93,18 +98,21 @@ public class PlanCliScenario
         Objects.requireNonNull(
             cellar, "the ScenarioCellar was not injected before the scenario ran");
     given().i_have_access_to_the_open_gardening(seedRun, world, tx);
-    when().the_plan_is_sown();
-    then().the_runbook_is_reaped();
+    when().the_plan_is_sown(getScenario().getScenarioModel(), getScenario().getModel());
+    then().the_harvest_is_handed_back(seedRun);
   }
 
   /**
-   * The GIVEN opens the gardening over the world extension's connection and holds the run's soil +
-   * the plane's coordinate.
+   * The GIVEN opens the gardening over the world extension's connection, publishes the run's {@link
+   * Parcel}, and holds the run's soil + the plane's coordinate. The parcel is published
+   * synchronously, before any sow, the way the seed host does: a scion harvests only when the run
+   * publishes one, and the export reads that harvest back.
    */
   public static class Given extends Stage<Given> {
 
     @ProvidedScenarioState Gardening gardening;
     @ProvidedScenarioState Cellar cellar;
+    @ProvidedScenarioState Parcel parcel;
     @ProvidedScenarioState Optional<String> materializationRoot;
     @ProvidedScenarioState String coordinate;
 
@@ -116,54 +124,70 @@ public class PlanCliScenario
       this.materializationRoot = run.materializationRoot();
       this.coordinate = run.plane().coordinate();
       // Publish the run's durable backend for the ROOT drain ScenarioCellarExtension performs at
+      // the end. plan-cli is a standalone export with no persistent commissioner (no Pulumi), so
+      // the backend is the offline EphemeralCellar, the black hole: the scion's harvest lives in
       // the
-      // end. plan-cli is a standalone export with no persistent commissioner (no Pulumi), so the
-      // backend is the offline EphemeralCellar — the scion persists nothing to a cellar; its
-      // harvest
-      // is the materialised export file.
+      // run's transactional overlay, is read back before the drain, and persists nowhere.
       world.context().registerService(OpaqueCellar.class, new EphemeralCellar(), new Hashtable<>());
+      this.parcel = new Parcel("rke2lab", "plan");
+      world.context().registerService(Parcel.class, parcel, new Hashtable<>());
       return self();
     }
   }
 
-  /** The WHEN sows the plane's coordinate through the broker and reaps its runbook. */
+  /**
+   * The WHEN sows the plane's coordinate and GRAFTS the reaped scion into this run's trunk, through
+   * the same {@link SowAndGraftStage} every host crossing uses. The graft is what brings the
+   * scion's harvest into this run's cellar overlay, and it propagates the scion's verdict: a failed
+   * export fails the run.
+   */
   public static class When extends Stage<When> {
 
+    @ScenarioStage SowAndGraftStage sowAndGraft;
+
     @ScenarioState Gardening gardening;
-    @ScenarioState Cellar cellar;
     @ScenarioState Optional<String> materializationRoot;
     @ScenarioState String coordinate;
-    @ProvidedScenarioState String runbook;
 
     @As("the plan is sown")
-    public When the_plan_is_sown() {
-      // The only amendment the CLI carries is the SOIL — the plot the scion writes its export into,
-      // and the runbook input's only component (an Optional; absent → the scion's temp dir). The
-      // export itself is produced in-container, so there is nothing else to sow.
+    public When the_plan_is_sown(@Hidden ScenarioModel hostScenario, @Hidden ReportModel hostTree) {
+      // The only amendment the CLI carries is the SOIL — the plot the scion writes its own export
+      // file into (nothing reads it), and the runbook input's only component.
       final Map<String, JsonNode> amendments =
           materializationRoot
               .map(root -> Map.<String, JsonNode>of(Amendment.SOIL, TextNode.valueOf(root)))
               .orElseGet(Map::of);
-      this.runbook = gardening.sow(coordinate, amendments, cellar);
+      sowAndGraft
+          .sowing(coordinate, gardening, hostScenario, hostTree, amendments)
+          .the_scion_is_sown_and_grafted("the plan is sown");
       return self();
     }
   }
 
-  /** The THEN asserts the scion reaped a runbook — the sow grew the in-container export. */
+  /**
+   * The THEN hands the harvest the scion filed back to the CLI, read from the run's own cellar —
+   * the CLI renders what the scion DERIVED. The scion's verdict was already enforced by the graft.
+   */
   public static class Then extends Stage<Then> {
 
-    @ScenarioState String runbook;
+    @ScenarioState Cellar cellar;
+    @ScenarioState Parcel parcel;
 
-    @As("the runbook is reaped")
-    public Then the_runbook_is_reaped() {
-      if (runbook == null || runbook.isBlank()) {
-        throw new AssertionError("the plan sow reaped no runbook — the scion did not grow");
-      }
-      // A non-blank runbook is not enough: a FAILED in-container export still reaps its runbook.
-      // This
-      // CLI grafts into no host tree, so it asserts the scion passed here — the assert throws the
-      // scion's own reason (message + stack) on a FAILED sow, else the CLI exits GREEN on it.
-      new ScenarioGraft().assertPassed(runbook, "the plan export");
+    @As("the harvest is handed back")
+    public Then the_harvest_is_handed_back(@Hidden PlanCliRun run) {
+      final SeedCoordinate harvest = run.plane().harvest();
+      run.reaped()
+          .accept(
+              cellar
+                  .fetch(parcel, harvest, JsonNode.class)
+                  .orElseThrow(
+                      () ->
+                          new AssertionError(
+                              "the "
+                                  + run.plane().coordinate()
+                                  + " scion filed no harvest at "
+                                  + harvest.slug()
+                                  + " in this run")));
       return self();
     }
   }

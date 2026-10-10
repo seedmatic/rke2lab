@@ -764,26 +764,28 @@ all the host face holds, `type=dual-realm` like `incus-ingress-contract` and for
 (`netplan-contract` is OSGi-only, a host-side slug is the magic-string anti-pattern). A missing harvest is a
 broken run: the host throws, it never falls back to a file.
 
-*The dataplan layout — the same harvest, and why it is NOT a second host face (2026-10-10).* The dataset
-tree (`DataplanLayout.canonical()`, the `tank/rke2lab/*` plane) is harvested the same way: `DataplanScenario`
-files it under `DataplanCoordinate.LAYOUT` (slug `dataplan-layout`) when the run publishes a `Parcel`, and
-files nothing when it does not. But the coordinate stays in `dataplan-contract`, OSGi-only, where
-`DataplanCoordinate` already owns the domain's meta-coordinates — it is that enum's first value, and the
-sentence in its javadoc saying dataplan "stores no harvest behind the cellar" is what this slice makes
-false.
+*The dataplan layout — the same harvest, and the rule that placed it, applied both ways.* The dataset
+tree (`DataplanLayout.canonical()`, the `tank/rke2lab/*` plane) is harvested the same way:
+`DataplanScenario` files it under `DataplanIngressCoordinate.LAYOUT` (slug `dataplan-layout`) when the run
+publishes a `Parcel`, and files nothing when it does not.
 
-That asymmetry with `netplan-ingress-contract` is the rule, not an exception to it: a value coordinate
-earns a dual-realm module **iff the host fetches it**, which is what `NetplanCoordinate`'s own javadoc
-already said. netplan's host does — `ClusterSeedScenario` reads the addressing at three call sites (a
-node's fabric FQDN, a cluster's kube-vip endpoint, a node's IPs) for the operator's kubeconfig contexts, so
-the enum must exist flat host-side. Nothing host-side reads the dataset tree: measured, zero references to
-`DataplanLayout` or `tank/rke2lab` outside the bundle realm, its readers being the three storage manifests
-units and the fabric delivery, all OSGi. A dual-realm module there would stage a bundle flat host-side for
-no consumer — built first in this slice, then deleted, which is how the rule got written down.
+Where that coordinate lives follows one rule: a value coordinate earns a dual-realm module **iff the host
+fetches it** — what `NetplanCoordinate`'s own javadoc already said. netplan's host does
+(`ClusterSeedScenario` reads the addressing for the operator's kubeconfig contexts), so
+`NetplanIngressCoordinate` lives in a dual-realm `netplan-ingress-contract`. When the layout was first
+harvested, nothing host-side read it, so its coordinate went into the OSGi-only `DataplanCoordinate`; a
+dual-realm module built for it at the time was deleted, for that reason. Then the plan CLI's `export`
+started rendering from the harvests instead of re-reading the soil file the scion wrote, which makes the
+host a reader — and the same rule moved the coordinate to a dual-realm `dataplan-ingress-contract`,
+`DataplanCoordinate` going back to an empty enum of meta-coordinates. The rule did not change; the fact
+it tests did.
 
-The harvest's reader is the `fabric` scion, which writes `netplan.json` and `dataplan.json` into the
-`fabric/plan` worktree from the two harvests — so between this slice and that one the coordinate is written
-and not yet read, on purpose: the harvest is what the delivery is built on.
+The harvests have two readers now. The `fabric` scion writes `netplan.json` and `dataplan.json` into the
+`fabric/plan` worktree from them; the plan CLI's `export` reads both back within its own run and renders
+them. That run publishes a `Parcel` at its GIVEN, synchronously, before any sow, or the scions would file
+nothing; its durable side is the `EphemeralCellar`, so the harvest lives only in the run's transactional
+overlay — read back before the drain, and gone after it. Publishing a parcel did not make the export
+persist anything.
 
 *The fabric domain — the two harvests become one commit (2026-10-10).* `fabric` is what seedmatic READS
 of rke2lab, and it is a domain because the DELIVERY is one commit carrying both files, so it has one

@@ -23,6 +23,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.engine.JupiterTestEngine;
 import org.junit.platform.engine.discovery.DiscoverySelectors;
 import org.junit.platform.launcher.listeners.SummaryGeneratingListener;
@@ -40,10 +41,11 @@ import org.slf4j.LoggerFactory;
  * sows the plane's coordinate through the broker; that grows the domain scion in-container ({@code
  * NetplanBlueprintScenario} for {@code network}, {@code DataplanScenario} for {@code dataset}),
  * where the {@code type=contract} bundle record (which the flat host cannot reference) is
- * reachable. The scion writes the plane's export file into a SOIL temp dir; this CLI reads that
- * host-neutral JSON back and renders it (YAML for network — nix-darwin-home re-parses via {@code yq
- * -o=json}; raw JSON for dataset — ndh reads it via {@code fromJSON}). No contract type ever
- * crosses to the host.
+ * reachable. The scion files what it derived in the run's cellar; the scenario reads that harvest
+ * back within the run and hands it to this CLI, which renders it (YAML for network, which nix
+ * re-parses via {@code yq -o=json}; raw JSON for dataset, which ndh reads via {@code fromJSON}).
+ * The CLI renders what the scion DERIVED, never a file it wrote. No contract type ever crosses to
+ * the host.
  *
  * <p>The domains stay separate (each its own coordinate + scion); only this ingress is shared.
  */
@@ -79,17 +81,25 @@ public final class PlanCli {
   }
 
   /**
-   * Drive {@link PlanCliScenario} to grow the plane's export in-container into a SOIL temp dir,
-   * then read that export file (generic JSON) and stream it to stdout in the plane's format. The
-   * scenario noise stays off stdout at its own source — {@code ScenarioOutcomeExtension} silences
-   * jGiven's console report (the outcome is the harvested runbook), and the framework log rides its
-   * file appender — so stdout carries only the export.
+   * Drive {@link PlanCliScenario} to grow the plane's export in-container, take the harvest the
+   * scenario hands back, and stream it to stdout in the plane's format. The SOIL temp dir is still
+   * given to the scion, which writes its own export file there, and deleted after — nothing reads
+   * it; it only keeps the scion from leaving a temp dir of its own behind. The scenario noise stays
+   * off stdout at its own source — {@code ScenarioOutcomeExtension} silences jGiven's console
+   * report (the outcome is the harvested runbook), and the framework log rides its file appender —
+   * so stdout carries only the export.
    */
   private static void export(Plane plane) {
     final Path soil = freshExportDir(plane);
     try {
-      playExport(PlanCliRun.of(plane, Optional.of(soil.toString())));
-      final JsonNode reaped = readExport(plane, soil.resolve(plane.exportFile()));
+      final AtomicReference<JsonNode> harvest = new AtomicReference<>();
+      playExport(new PlanCliRun(plane, Optional.of(soil.toString()), harvest::set));
+      final JsonNode reaped =
+          Optional.ofNullable(harvest.get())
+              .orElseThrow(
+                  () ->
+                      new IllegalStateException(
+                          "the " + plane.coordinate() + " export handed back no harvest"));
       switch (plane.format()) {
         case YAML -> writeYaml(reaped, System.out);
         case JSON -> writeJson(reaped, System.out);
@@ -135,18 +145,6 @@ public final class PlanCli {
     } catch (InterruptedException interrupted) {
       Thread.currentThread().interrupt();
       throw new IllegalStateException("the plan-cli run was interrupted", interrupted);
-    }
-  }
-
-  private static JsonNode readExport(Plane plane, Path exportFile) {
-    if (!Files.exists(exportFile)) {
-      throw new IllegalStateException(
-          "the " + plane.coordinate() + " scion reaped no export at " + exportFile);
-    }
-    try {
-      return new ObjectMapper().readTree(Files.readString(exportFile));
-    } catch (IOException ex) {
-      throw new UncheckedIOException("cannot read the plan export " + exportFile, ex);
     }
   }
 
