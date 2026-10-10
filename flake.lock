@@ -1472,6 +1472,10 @@
           "flake-commons",
           "nixpkgs"
         ],
+        "nixpkgs-unstable": [
+          "flake-commons",
+          "nixpkgs-unstable"
+        ],
         "seed-incluster": "seed-incluster",
         "sops-nix": [
           "flake-commons",

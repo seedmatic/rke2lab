@@ -72,6 +72,9 @@
 
     # Follow flake-commons versions
     nixpkgs.follows = "flake-commons/nixpkgs";
+    # The unstable nixpkgs flake-commons already locks, for the tools the stable line lags on: the
+    # pulumi toolchain (26.05 stable has pulumi 3.192 and no pulumi-java).
+    nixpkgs-unstable.follows = "flake-commons/nixpkgs-unstable";
     flake-utils.follows = "flake-commons/flake-utils";
     # flox baked into the NixOS node substrate (nixosConfigurations.rke2-node-base) as a nix
     # derivation, replacing the Debian-era runtime installer. Same source the family already
@@ -190,6 +193,15 @@
       # `which`, so without it the gate fails even though shfmt is on PATH; the
       # dev loop never hit this because flox/the system provides `which`.
       mavenToolchain = pkgs: { inherit (pkgs) jdk25 maven shfmt shellcheck which; };
+      # The operator toolchain: what the flox seat installs as `github:seedmatic/rke2lab#…` and the
+      # apps (the grow) run, so the two cannot diverge. Applied to the UNSTABLE nixpkgs below — the
+      # stable line has pulumi 3.192 and no pulumi-java. Not `pulumi-bin`: Hydra never builds it
+      # ("Output limit exceeded"), so every host assembled 4.6 GiB of providers this repo does not
+      # use. Resource providers (`command`, `incus`) are fetched by pulumi at runtime.
+      operatorToolchain = pkgs: {
+        inherit (pkgs) pulumi pulumictl cdk8s-cli tektoncd-cli clusterctl k9s dasel graphviz;
+        pulumi-java = pkgs.pulumiPackages.pulumi-java;
+      };
       mavenBuildInputs = pkgs: builtins.attrValues (mavenToolchain pkgs);
 
       # Host ~/.m2 reuse for the Maven-in-nix builds. These read the host env at eval
@@ -624,10 +636,12 @@
         # `incus.passthru.client` needs just Go + cmd/incus. That reasoning now lives once, in ndh.)
         incusClient = inputs.ndh.packages.${system}.incus-client;
 
-        # Prebuilt pulumi CLI for the deploy wrapper (matches the flox env's
-        # `pulumi.pkg-path = "pulumi-bin"`); the `-bin` variant avoids a Go
-        # compile and tracks the same release line the dev loop uses.
-        pulumiPkg = pkgs.pulumi-bin;
+        # The operator toolchain (see `operatorToolchain`), from the unstable nixpkgs flake-commons
+        # locks: pulumi 3.263 and pulumi-java 1.37.2, the versions fleet's `pulumi` env takes from the
+        # flox catalog. The grow takes pulumi and its Java language host from this same set.
+        operatorToolchainPackages = operatorToolchain inputs.nixpkgs-unstable.legacyPackages.${system};
+        pulumiPkg = operatorToolchainPackages.pulumi;
+        pulumiJavaPkg = operatorToolchainPackages.pulumi-java;
 
         # NRI plugin (+ debug) re-exported from the flox runtime flake, so the
         # aarch64-linux Go binary builds through this entry point at build time
@@ -837,6 +851,7 @@
             pkgs.nix
             pkgs.git
             pulumiPkg
+            pulumiJavaPkg
             pkgs.jdk25
             incusClient
             mintGhAppTokenApp
@@ -1189,6 +1204,7 @@ USAGE
         // floxControllerPackages
         // seedInclusterPackages
         // toolchainPackages
+        // operatorToolchainPackages
         # manage-tailnet (darwin-only): rke2lab OVER-SEEDS ndh's bare package with its own context —
         # the OAuth client ndh user-mirrors at ~/.local/share/ndh/tailnet.tailscale.client
         # (TailscaleOauthClientGateway.NDH_CLIENT_PATH). The wrapper pre-supplies --client-secret-file
