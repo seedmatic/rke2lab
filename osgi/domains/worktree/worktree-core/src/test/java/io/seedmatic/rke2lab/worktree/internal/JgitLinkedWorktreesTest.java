@@ -8,8 +8,8 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import io.seedmatic.rke2lab.worktree.GitIdentity;
 import io.seedmatic.rke2lab.worktree.LinkedWorktree;
+import io.seedmatic.rke2lab.worktree.LinkedWorktrees;
 import io.seedmatic.rke2lab.worktree.Provenance;
-import io.seedmatic.rke2lab.worktree.RenderedBranch;
 import io.seedmatic.rke2lab.worktree.WorkingState;
 import io.seedmatic.rke2lab.worktree.Worktree;
 import jakarta.servlet.http.HttpServletRequest;
@@ -32,11 +32,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The RenderedBranch socle, proven against real git. Each test reads as a step of the one gesture —
- * {@code prepare} a linked worktree on a branch seeded with a null-commit base, materialise a tree,
- * seal it with an SSH-SIGNED commit, fast-forward push, RE-render (accretion), and {@code close} —
- * because the plumbing (a stand-in GitHub, a work repo, a signing key, every {@code git} shell-out)
- * lives in the {@link GitGround} fixture, opened per test in a try-with-resources.
+ * The LinkedWorktrees socle, proven against real git. Each test reads as a step of the one gesture
+ * — {@code prepare} a linked worktree on a branch seeded with a null-commit base, materialise a
+ * tree, seal it with an SSH-SIGNED commit, fast-forward push, RE-render (accretion), and {@code
+ * close} — because the plumbing (a stand-in GitHub, a work repo, a signing key, every {@code git}
+ * shell-out) lives in the {@link GitGround} fixture, opened per test in a try-with-resources.
  *
  * <p>The stand-in origin is served over a loopback HTTP {@code GitServlet}, NOT a {@code file://}
  * path or a {@code git://} daemon: jgit's push DEADLOCKS on those duplex transports (the push waits
@@ -47,7 +47,7 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>Needs {@code git} and {@code ssh-keygen} on PATH (the flox runtime provides both); absence
  * aborts (skips) rather than fails.
  */
-class JgitRenderedBranchTest {
+class JgitLinkedWorktreesTest {
 
   private static final String CLUSTER = "nikopol-mgmt";
   private static final String BRANCH = "manifests/" + CLUSTER;
@@ -67,7 +67,7 @@ class JgitRenderedBranchTest {
     try (GitGround ground = new GitGround(tmp)) {
       final Path worktreePath = ground.renderPath(CLUSTER);
 
-      final LinkedWorktree linked = ground.renderedBranch().prepare(worktreePath, BRANCH);
+      final LinkedWorktree linked = ground.linkedWorktrees().prepare(worktreePath, BRANCH);
 
       assertEquals(worktreePath.toRealPath(), linked.path(), "checked out at the asked path");
       assertEquals(BRANCH, linked.branch());
@@ -82,7 +82,7 @@ class JgitRenderedBranchTest {
   void a_render_accretes_is_ssh_signed_and_pushes() throws Exception {
     try (GitGround ground = new GitGround(tmp)) {
       final Path worktreePath = ground.renderPath(CLUSTER);
-      final LinkedWorktree linked = ground.renderedBranch().prepare(worktreePath, BRANCH);
+      final LinkedWorktree linked = ground.linkedWorktrees().prepare(worktreePath, BRANCH);
 
       Files.writeString(linked.path().resolve("cluster.yaml"), "kind: Cluster\n");
       linked.stageAll();
@@ -94,6 +94,49 @@ class JgitRenderedBranchTest {
 
       linked.push(TOKEN);
       assertEquals(sha, ground.originTip(BRANCH), "origin advanced to the pushed render");
+    }
+  }
+
+  @Test
+  void a_worktree_s_local_directory_is_never_committed() throws Exception {
+    // Dog-fooding the worktree convention: a render keeps its intermediates in the worktree's own
+    // .local.d, ignored by the .gitignore it commits, so the branch (and Flux) sees only the tree.
+    try (GitGround ground = new GitGround(tmp)) {
+      final LinkedWorktree linked =
+          ground.linkedWorktrees().prepare(ground.renderPath(CLUSTER), BRANCH);
+      Files.writeString(linked.path().resolve(".gitignore"), ".local.d/\n.scratchpad.d/\n");
+      Files.writeString(linked.path().resolve("cluster.yaml"), "kind: Cluster\n");
+      Files.createDirectories(linked.path().resolve(".local.d/.bootstrap"));
+      Files.writeString(linked.path().resolve(".local.d/manifests.yaml"), "kind: List\n");
+      Files.writeString(
+          linked.path().resolve(".local.d/.bootstrap/rke2lab-bootstrap.yaml"), "kind: Secret\n");
+
+      linked.stageAll();
+      final String sha = linked.commit("render " + CLUSTER, BOT, Optional.of(ground.signingKey()));
+
+      assertEquals(
+          List.of(".gitignore", "cluster.yaml"),
+          ground.committedPaths(linked.path(), sha),
+          "the intermediates under .local.d never reach the branch");
+    }
+  }
+
+  @Test
+  void prepare_drops_a_previous_render_s_intermediates() throws Exception {
+    // A re-render must never read the last run's carve: prepare removes the whole worktree
+    // (ignored files included) before re-adding it.
+    try (GitGround ground = new GitGround(tmp)) {
+      final Path worktreePath = ground.renderPath(CLUSTER);
+      final LinkedWorktree first = ground.linkedWorktrees().prepare(worktreePath, BRANCH);
+      final Path stale = first.path().resolve(".local.d/.bootstrap/rke2lab-bootstrap.yaml");
+      Files.createDirectories(stale.getParent());
+      Files.writeString(stale, "kind: Secret\n");
+
+      final LinkedWorktree again = ground.linkedWorktrees().prepare(worktreePath, BRANCH);
+
+      assertFalse(
+          Files.exists(again.path().resolve(".local.d/.bootstrap/rke2lab-bootstrap.yaml")),
+          "the previous render's intermediates are gone");
     }
   }
 
@@ -110,7 +153,7 @@ class JgitRenderedBranchTest {
       ground.setWorkConfig("filter.stub.clean", "tr a-z A-Z");
 
       final Path worktreePath = ground.renderPath(CLUSTER);
-      final LinkedWorktree linked = ground.renderedBranch().prepare(worktreePath, BRANCH);
+      final LinkedWorktree linked = ground.linkedWorktrees().prepare(worktreePath, BRANCH);
 
       Files.writeString(linked.path().resolve(".gitattributes"), "secret.txt filter=stub\n");
       Files.writeString(linked.path().resolve("secret.txt"), "hello\n");
@@ -130,7 +173,7 @@ class JgitRenderedBranchTest {
   void re_preparing_reuses_the_branch_so_renders_accrete_as_fast_forwards() throws Exception {
     try (GitGround ground = new GitGround(tmp)) {
       final Path worktreePath = ground.renderPath(CLUSTER);
-      final RenderedBranch branch = ground.renderedBranch();
+      final LinkedWorktrees branch = ground.linkedWorktrees();
 
       // render 1 — accretes on the null base, pushed.
       final LinkedWorktree first = branch.prepare(worktreePath, BRANCH);
@@ -163,7 +206,7 @@ class JgitRenderedBranchTest {
     try (GitGround ground = new GitGround(tmp)) {
       // render 1 at the OLD leaf, committed — the branch is now checked out there.
       final Path oldPath = ground.renderPath(CLUSTER);
-      final LinkedWorktree first = ground.renderedBranch().prepare(oldPath, BRANCH);
+      final LinkedWorktree first = ground.linkedWorktrees().prepare(oldPath, BRANCH);
       Files.writeString(first.path().resolve("cluster.yaml"), "kind: Cluster\n");
       first.stageAll();
       first.commit("render " + CLUSTER, BOT, Optional.of(ground.signingKey()));
@@ -173,7 +216,7 @@ class JgitRenderedBranchTest {
       // stale
       // worktree, re-add here — not fail "already used by worktree at …". The accretion survives.
       final Path newPath = ground.renderPath("bioskop-mgmt");
-      final LinkedWorktree again = ground.renderedBranch().prepare(newPath, BRANCH);
+      final LinkedWorktree again = ground.linkedWorktrees().prepare(newPath, BRANCH);
 
       assertEquals(
           newPath.toRealPath(),
@@ -191,7 +234,7 @@ class JgitRenderedBranchTest {
   void close_removes_the_linked_worktree_but_keeps_the_branch() throws Exception {
     try (GitGround ground = new GitGround(tmp)) {
       final Path worktreePath = ground.renderPath(CLUSTER);
-      final LinkedWorktree linked = ground.renderedBranch().prepare(worktreePath, BRANCH);
+      final LinkedWorktree linked = ground.linkedWorktrees().prepare(worktreePath, BRANCH);
 
       linked.close();
 
@@ -260,8 +303,8 @@ class JgitRenderedBranchTest {
     }
 
     /** A rendered branch cut from this ground's work repository. */
-    RenderedBranch renderedBranch() {
-      return new JgitRenderedBranch(new SeedWorktree(work));
+    LinkedWorktrees linkedWorktrees() {
+      return new JgitLinkedWorktrees(new SeedWorktree(work));
     }
 
     /** The render-worktree path for a cluster leaf under the (would-be gitignored) render root. */
@@ -277,6 +320,11 @@ class JgitRenderedBranchTest {
     /** The sha origin's {@code branch} points at, read straight from the bare repo. */
     String originTip(String branch) throws Exception {
       return git(origin, "rev-parse", "refs/heads/" + branch).trim();
+    }
+
+    /** The paths a commit's tree holds, sorted — what the branch actually carries. */
+    List<String> committedPaths(Path worktree, String sha) throws Exception {
+      return git(worktree, "ls-tree", "-r", "--name-only", sha).lines().sorted().toList();
     }
 
     /** Commits reachable from the worktree's HEAD — the branch's history depth. */
@@ -393,7 +441,7 @@ class JgitRenderedBranchTest {
   }
 
   /**
-   * A {@link Worktree} that knows only its root — all {@link RenderedBranch#prepare} asks of it.
+   * A {@link Worktree} that knows only its root — all {@link LinkedWorktrees#prepare} asks of it.
    */
   private record SeedWorktree(Path root) implements Worktree {
 

@@ -1196,8 +1196,8 @@ letting load-bearing facts hide in unrendered state.
   `fromLocalWorktree → HostSlotSelector.nextStaging → asStagingView.manifestsRoot()` to resolve the
   SOIL and forwards THAT to the manifests scion it consults, so the synthesis materialises under
   `host.N.staging.d/rke2-manifests.d` — a temp dir only when the scalars are blank (a bare survey). The
-  intermediate `manifests.yaml` sits a level ABOVE the synthesis root (sibling of `rke2-manifests.d`),
-  outside the checksummed/mounted subtree.
+  intermediate `manifests.yaml` now sits in the synthesis root's ignored `.local.d/` (the render
+  worktree keeps its intermediates the way any worktree does), never in the committed tree.
 * The reconcile (I6) — DESIGNED, NOT YET WIRED (verified 2026-09). The design below is the target; the
   ONLY thing that ships today is the routing SOIL — `IncusScenario.RECONCILE("incus-reconcile")` is
   declared as an enum value (`osgi/domains/incus/incus-bdd/IncusScenario`), but NOTHING references it:

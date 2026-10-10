@@ -1,7 +1,7 @@
 package io.seedmatic.rke2lab.worktree.internal;
 
 import io.seedmatic.rke2lab.worktree.LinkedWorktree;
-import io.seedmatic.rke2lab.worktree.RenderedBranch;
+import io.seedmatic.rke2lab.worktree.LinkedWorktrees;
 import io.seedmatic.rke2lab.worktree.Worktree;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -11,7 +11,7 @@ import org.osgi.service.component.annotations.Component;
 import org.osgi.service.component.annotations.Reference;
 
 /**
- * The jgit/{@code git worktree}-backed {@link RenderedBranch} — the factory that makes a linked
+ * The jgit/{@code git worktree}-backed {@link LinkedWorktrees} — the factory that makes a linked
  * worktree of a branch. It takes the seed {@link Worktree} by {@code @Reference} to learn the repo
  * ROOT (instance-passing: the root flows in, it is not re-located here), builds a {@link GitCli}
  * bound to that root, adds the linked worktree, and wires the returned {@link JgitLinkedWorktree}
@@ -19,13 +19,13 @@ import org.osgi.service.component.annotations.Reference;
  * domain-neutral: the branch name and the worktree path are the caller's, so no consumer vocabulary
  * enters. {@code git worktree} and jgit stay sealed in the collaborators it composes.
  */
-@Component(service = RenderedBranch.class)
-public final class JgitRenderedBranch implements RenderedBranch {
+@Component(service = LinkedWorktrees.class)
+public final class JgitLinkedWorktrees implements LinkedWorktrees {
 
   private final Worktree worktree;
 
   @Activate
-  public JgitRenderedBranch(@Reference Worktree worktree) {
+  public JgitLinkedWorktrees(@Reference Worktree worktree) {
     this.worktree = worktree;
   }
 

@@ -61,8 +61,8 @@ import io.seedmatic.rke2lab.seed.broker.port.SeedCoordinate;
 import io.seedmatic.rke2lab.seed.broker.port.Sensitivity;
 import io.seedmatic.rke2lab.worktree.GitIdentity;
 import io.seedmatic.rke2lab.worktree.LinkedWorktree;
+import io.seedmatic.rke2lab.worktree.LinkedWorktrees;
 import io.seedmatic.rke2lab.worktree.Provenance;
-import io.seedmatic.rke2lab.worktree.RenderedBranch;
 import io.seedmatic.rke2lab.worktree.Worktree;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -168,14 +168,15 @@ public class ManifestSynthesisScenario
   // provisioning run (worktree-core + ndh-core embedded), where the render lands in the linked
   // worktree the GROW mounts and is sealed with a signed commit.
   @OsgiService(await = false)
-  private Optional<RenderedBranch> renderedBranch = Optional.empty();
+  private Optional<LinkedWorktrees> linkedWorktrees = Optional.empty();
 
   // The SOURCE worktree — the checkout the process runs in (the Tekton FETCH_HEAD clone in-cluster,
   // the grow's worktree otherwise). Its jgit provenance (HEAD sha + dirty) stamps the render's
   // commit subject and the recorded manifest, so a rendered branch is traceable to the exact
   // rke2lab
   // rev that synthesised it — no wrapper plumbing, jgit is already in the boat. Same await=false
-  // shape as renderedBranch: present together (RenderedBranch is built @Reference Worktree), absent
+  // shape as linkedWorktrees: present together (LinkedWorktrees is built @Reference Worktree),
+  // absent
   // on a bare survey.
   @OsgiService(await = false)
   private Optional<Worktree> sourceWorktree = Optional.empty();
@@ -341,8 +342,14 @@ public class ManifestSynthesisScenario
   private static final String RENDER_TOOL = "manifests-render";
   private static final String BRANCH_PREFIX = "manifests/";
 
-  // The cluster's FIRST control node — the one a per-target pass renders as, and the leaf of its
-  // render plot. Taken from the blueprint's canonical roster, never spelled "master" here.
+  // What a worktree keeps for itself, the same rule every worktree of this project follows. The
+  // render commits it into its branch, so a render in-cluster (no operator-side ignore) keeps its
+  // intermediates out of the branch too.
+  private static final String WORKTREE_IGNORE =
+      NodeBootstrapArtifact.LOCAL_DIR + "/\n" + ".scratchpad.d/\n";
+
+  // The cluster's FIRST control node — the one a per-target pass renders as. Taken from the
+  // blueprint's canonical roster, never spelled "master" here.
   private static final String FIRST_CONTROL_NODE =
       ClusterNetworkBlueprint.CANONICAL_NODE_NAMES.get(0);
 
@@ -355,7 +362,7 @@ public class ManifestSynthesisScenario
    * temp dir, with no branch and no commit.
    */
   private Optional<LinkedWorktree> prepareRenderWorktree(ManifestsRunbookInput facet) {
-    if (renderedBranch.isEmpty()
+    if (linkedWorktrees.isEmpty()
         || facet.materializationRoot().isEmpty()
         || facet.identity().isEmpty()) {
       return Optional.empty();
@@ -363,7 +370,8 @@ public class ManifestSynthesisScenario
     final String cluster = facet.identity().orElseThrow().clusterId();
     final Path worktreePath =
         Path.of(facet.materializationRoot().orElseThrow()).toAbsolutePath().normalize();
-    return Optional.of(renderedBranch.orElseThrow().prepare(worktreePath, BRANCH_PREFIX + cluster));
+    return Optional.of(
+        linkedWorktrees.orElseThrow().prepare(worktreePath, BRANCH_PREFIX + cluster));
   }
 
   // Reads the branch HEAD's recorded facet — a plain YAMLMapper, native record binding (jackson
@@ -792,12 +800,19 @@ public class ManifestSynthesisScenario
     }
 
     /**
-     * Seal {@code worktree} with this plan: stage the whole rendered tree, commit it SIGNED as the
-     * rke2lab bot, and force-push only when the operator armed the push AND the token was revealed
-     * (the gardening gate). Behaviour of the plan itself, so the managing branch's THEN and each
+     * Seal {@code worktree} with this plan: write the worktree convention's {@code .gitignore} (its
+     * intermediates stay local), stage the whole rendered tree, commit it SIGNED as the rke2lab
+     * bot, and force-push only when the operator armed the push AND the token was revealed (the
+     * gardening gate). Behaviour of the plan itself, so the managing branch's THEN and each
      * per-target pass deliver through ONE path — a change to the push discipline has one site.
      */
     void seal(LinkedWorktree worktree) {
+      try {
+        Files.writeString(worktree.path().resolve(".gitignore"), WORKTREE_IGNORE);
+      } catch (IOException ex) {
+        throw new UncheckedIOException(
+            "cannot write the render's .gitignore in " + worktree.path(), ex);
+      }
       worktree.stageAll();
       worktree.commit(message, identity, Optional.of(signingKey));
       if (push) {
@@ -976,17 +991,11 @@ public class ManifestSynthesisScenario
    * produce a branch and a bundle. Present ⟹ a {@link Delivery} was resolved (both hang off the
    * same worktree seam), so each target's plan is the managing one re-subjected to its own branch.
    *
-   * <p>Each target renders at {@code <render-root>/<cluster>/<cluster>-<first-control-node>} — a
-   * directory of its OWN under the shared render root, its leaf on the same {@code
-   * <cluster>-<node>} convention the managing SOIL uses.
-   *
-   * <p>The extra level is REQUIRED, not tidiness: the consolidated {@code manifests.yaml} and the
-   * carved {@code .bootstrap/rke2lab-bootstrap.yaml} sit one level ABOVE their tree (see {@link
-   * NodeBootstrapArtifact}), so two passes sharing a parent write the SAME two files — the target's
-   * carve would overwrite the manager's bundle and {@link #fileNodeBootstrap} would seal a
-   * WORKLOAD's bundle as the managing node's. A flat sibling of the managing SOIL is exactly that
-   * case. The managing pass keeps its historical path (it is the plot the GROW mounts), so the
-   * asymmetry is forced.
+   * <p>Each target renders at {@code <worktrees-root>/<cluster>} — beside the managing worktree,
+   * each on its own branch {@code manifests/<cluster>}. The render's intermediates (the
+   * consolidated {@code manifests.yaml}, the carved {@code .bootstrap/rke2lab-bootstrap.yaml}) live
+   * in each tree's own ignored {@link NodeBootstrapArtifact#LOCAL_DIR}, so two passes never write
+   * the same file and a target's carve can never be sealed as the managing node's bundle.
    *
    * <p>Not closed, for the same reason the managing worktree is not — and {@code prepare} is
    * idempotent, so a re-run starts clean while the last render stays inspectable on disk.
@@ -1035,16 +1044,16 @@ public class ManifestSynthesisScenario
     if (rendered.isEmpty() || delivery.isEmpty() || children.isEmpty()) {
       return List.of();
     }
-    final Path renderRoot = rendered.orElseThrow().path().getParent();
-    if (renderRoot == null) {
+    final Path worktreesRoot = rendered.orElseThrow().path().getParent();
+    if (worktreesRoot == null) {
       return List.of();
     }
-    final RenderedBranch branch = renderedBranch.orElseThrow();
+    final LinkedWorktrees branch = linkedWorktrees.orElseThrow();
     final Delivery plan = delivery.orElseThrow();
     final List<TargetPass> passes = new ArrayList<>();
     for (final ClusterCoordinate child : children) {
       final String cluster = child.clusterName();
-      final Path soil = renderRoot.resolve(cluster).resolve(cluster + "-" + FIRST_CONTROL_NODE);
+      final Path soil = worktreesRoot.resolve(cluster);
       passes.add(
           new TargetPass(
               child,
@@ -1519,10 +1528,9 @@ public class ManifestSynthesisScenario
      * {@code materials} are the run's, revealed once and identical for every pass — the units
      * decide what each role actually renders from them.
      *
-     * <p>{@code manifests.yaml} is the INTERMEDIATE aggregate, not part of the mounted/checksummed
-     * tree — it sits a level ABOVE the synthesis root (sibling of {@code rke2-manifests.d}), so the
-     * staging replica the scion checksums holds only the manifest units, never the merged file. It
-     * falls back into the root when the root has no usable parent (a bare temp dir).
+     * <p>{@code manifests.yaml} is the INTERMEDIATE aggregate, never part of the committed tree: it
+     * sits in the root's ignored {@link NodeBootstrapArtifact#LOCAL_DIR}, beside the carved
+     * bootstrap set.
      */
     private ManifestSynthesisResult synthesize(Pass pass, Materials materials) {
       final ManifestsRunbookInput.DebugFacet debug = facet.facets().debug();
@@ -1531,8 +1539,8 @@ public class ManifestSynthesisScenario
               debug.mesh().enabled(),
               debug.networking().enabled(),
               debug.nriPlugins().flox().enabled());
-      final Path parent = pass.root().getParent();
-      final Path manifestFile = (parent == null ? pass.root() : parent).resolve("manifests.yaml");
+      final Path manifestFile =
+          pass.root().resolve(NodeBootstrapArtifact.LOCAL_DIR).resolve("manifests.yaml");
       final ManifestSynthesisRequest request =
           ManifestSynthesisRequest.builder(pass.root(), manifestFile)
               .manifestDomainPolicy(Optional.of(pass.policy()))

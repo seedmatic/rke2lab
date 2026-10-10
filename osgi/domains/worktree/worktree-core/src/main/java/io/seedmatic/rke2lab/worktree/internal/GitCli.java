@@ -17,7 +17,7 @@ import java.util.concurrent.TimeUnit;
  * OPEN a linked worktree but not CREATE the {@code .git/worktrees/<name>} administrative files).
  * The single spot that runs {@code git} as a subprocess in this domain, the way {@link
  * SshCommitSigner} is the single spot that shells {@code ssh-keygen}. Constructed by {@link
- * JgitRenderedBranch} from the seed's root and threaded into the {@link JgitLinkedWorktree} it
+ * JgitLinkedWorktrees} from the seed's root and threaded into the {@link JgitLinkedWorktree} it
  * makes, so add (at prepare) and remove (at close) run against the same repo.
  */
 final class GitCli {
@@ -41,11 +41,11 @@ final class GitCli {
    *
    * <p>A branch can live in only ONE worktree, so before claiming it here we INTROSPECT where it is
    * currently checked out and release that worktree if it sits elsewhere — a render leaf renamed
-   * out from under us (e.g. the branch renamed on the remote, leaving the old {@code render/<slug>}
-   * holding it) would otherwise make {@code worktree add} fail {@code "already used by worktree at
-   * …"}. The branch itself survives (worktree remove ≠ branch delete), so its accretion history is
-   * reused; only the stale checkout is dropped and the branch re-materialised at the requested SOIL
-   * path where the host expects the render output.
+   * out from under us (e.g. the branch renamed on the remote, leaving an old path holding it) would
+   * otherwise make {@code worktree add} fail {@code "already used by worktree at …"}. The branch
+   * itself survives (worktree remove ≠ branch delete), so its accretion history is reused; only the
+   * stale checkout is dropped and the branch re-materialised at the requested SOIL path where the
+   * host expects the render output.
    */
   void worktreeAdd(Path worktreePath, String branch) {
     final String path = worktreePath.toString();

@@ -721,7 +721,7 @@ applied by nothing and sits outside every Flux `Kustomization` path. The branch 
 `git show manifests/<cluster>:manifest.yaml | yq .facet` shows the facet that produced it.
 
 *Transmission — the synthesis reads that manifest from the branch HEAD.* The render prepares its
-linked worktree on `manifests/<cluster>` (`RenderedBranch.prepare`, which first fast-forwards the
+linked worktree on `manifests/<cluster>` (`LinkedWorktrees.prepare`, which first fast-forwards the
 LOCAL branch to origin's tip so a fresh clone — the in-cluster Tekton `--depth 1` checkout — reuses
 the pushed history instead of orphaning it), then the synthesis (`ManifestSynthesisScenario`) reads
 the recorded facet at HEAD THROUGH the worktree edge (`Worktree.readAtHead("manifest.yaml")`) — jgit

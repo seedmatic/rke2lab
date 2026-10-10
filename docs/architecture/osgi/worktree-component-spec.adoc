@@ -8,7 +8,7 @@ OSGi-side), AND the final fold of `worktree-contract-host` into an OSGi-only `wo
 
 This spec discharges the `SPEC_COVERAGE` obligation of the worktree contract packages by naming every
 exported type: `Worktree`, `GatePolicy`, `WorktreeRunbookInput`, `WorktreeFacts`, `WorktreeCoordinate`,
-`Provenance`, `WorkingState`, `GitIdentity`, `RenderedBranch`, `LinkedWorktree`.
+`Provenance`, `WorkingState`, `GitIdentity`, `LinkedWorktrees`, `LinkedWorktree`.
 
 toc::[]
 
@@ -31,13 +31,13 @@ The domain has three modules:
 
 | `worktree-contract` (`type=contract`, pkg `io.seedmatic.rke2lab.worktree`)
 | The jgit-free `Worktree` service interface (OSGi consumers `@Reference` it — the incus scion), the
-`RenderedBranch` factory + its `LinkedWorktree` handle (the rendered-branch delivery seam), the
+`LinkedWorktrees` factory + its `LinkedWorktree` handle (the rendered-branch delivery seam), the
 entry-gate wire types `GatePolicy` and `WorktreeRunbookInput` (`@SeedContract("runbook")`), AND the
 cellar-harvested wire types folded in from the former `worktree-contract-host` (see <<refinement>>):
 `WorktreeFacts`, `WorktreeCoordinate`, `Provenance`, `WorkingState`. OSGi-only.
 
 | `worktree-core` (pkg `io.seedmatic.rke2lab.worktree.internal`)
-| `JgitWorktree` and `JgitRenderedBranch` `@Component`s, composing the jgit-holder `JgitCheckout` (all
+| `JgitWorktree` and `JgitLinkedWorktrees` `@Component`s, composing the jgit-holder `JgitCheckout` (all
 git facts + write verbs for one worktree path), the `GitCli` (the sole `git worktree` shell), the
 `JgitLinkedWorktree` handle, and the `SshCommitSigner`. jgit lives only here.
 
@@ -93,18 +93,18 @@ so only JDK types cross:
   staged changes authored AND committed as `identity`, optionally SSH-signed with the caller's OpenSSH
   private key (git SSHSIG, `git` namespace, via an injected `ssh-keygen` signer since jgit ships
   none), returning the new commit sha. LOCAL to the seed's OWN worktree — pushing a rendered branch is
-  the separate `RenderedBranch` service below.
+  the separate `LinkedWorktrees` service below.
 
-=== The rendered-branch delivery — `RenderedBranch` / `LinkedWorktree`
+=== The rendered-branch delivery — `LinkedWorktrees` / `LinkedWorktree`
 
 Where `Worktree` is "the worktree the seed IS" (it self-locates and reports its own facts),
-`RenderedBranch` is "a worktree the seed MAKES": the delivery seam that carries a rendered tree to a
+`LinkedWorktrees` is "a worktree the seed MAKES": the delivery seam that carries a rendered tree to a
 `manifests/<host>-<role>` branch (see
 link:../cluster-api/manifests-rendered-branches.adoc[Manifests Rendered Branches]). It is the socle
 that replaces the old host-staging rotation/promotion (`host.N.staging.d` → `host.live.d`) with a
 render-then-force-push of a git branch.
 
-* **`RenderedBranch`** (contract) — the factory: `prepare(Path worktreePath, String branch)` shells
+* **`LinkedWorktrees`** (contract) — the factory: `prepare(Path worktreePath, String branch)` shells
   `git worktree add --orphan -b <branch> <worktreePath>` (jgit exposes no worktree porcelain —
   verified against 7.7.x, which can OPEN a linked worktree but not CREATE one), an ORPHAN worktree
   (empty tree, unborn branch) so the rendered branch carries only the rendered YAML, never the source.
@@ -112,8 +112,8 @@ render-then-force-push of a git branch.
   pruned first, then a fresh orphan is checked out — a rendered branch is regenerated as a single root
   commit each render, never accreted). Domain-neutral like `Worktree`/`GatePolicy`:
   the caller supplies the branch name (`manifests/<host>-<role>`) and the path
-  (`.local.d/render/<host>-<role>/`), so no consumer vocabulary leaks in. Published as an
-  `@Component(service = RenderedBranch.class)` that `@Reference`s `Worktree` to learn the repo root
+  (`.local.d/worktrees/manifests/<host>-<role>/`), so no consumer vocabulary leaks in. Published as an
+  `@Component(service = LinkedWorktrees.class)` that `@Reference`s `Worktree` to learn the repo root
   (instance-passing — the root flows in, it is not re-located).
 * **`LinkedWorktree`** (contract) — the `AutoCloseable` handle `prepare` returns: `path()` (the render
   target), `branch()`, `stage(List<Path>)` and `commit(…)` (the same signed-commit mechanism as
