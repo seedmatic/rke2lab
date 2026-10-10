@@ -12,9 +12,9 @@
   <artifactId>ndh-core</artifactId>
   <name>osgi/domains/ndh/ndh-core</name>
   <description>The ndh reader: the @Component DefaultNdhKeystoreReader publishing NdhKeystoreReader —
-    it opens .ndh-ssh.d/keys.yaml (the smudged plaintext worktree copy) and navigates it by authority
-    / key name. Like worktree-core reads git, this reads the operator key inventory: a pure-Java
-    contact (no tool shelled), so a core, not an edge.</description>
+    it opens .ndh-ssh.d/keys.yaml, sops-encrypted at rest, in memory through sops, and navigates it
+    by authority / key name. Like worktree-core reads git, this reads the operator key inventory, so a
+    core, not an edge.</description>
 
   <dependencies>
     <dependency>

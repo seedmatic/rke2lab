@@ -9,13 +9,14 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.UnaryOperator;
 import org.osgi.service.component.annotations.Component;
 
 /**
  * The realised ndh reader — the single door to the operator's key inventory ({@code
  * .ndh-ssh.d/keys.yaml}). Like {@code worktree-core} reads git, it reads the inventory: a pure-Java
- * contact, CWD-relative (the readers run in the host JVM rooted at the worktree, where the smudge
- * filter laid the plaintext copy). The YAML is parsed per call — it is tiny, and reading fresh
+ * contact, CWD-relative (the readers run in the host JVM rooted at the worktree). The file stays
+ * sops-encrypted at rest and is opened in memory at each call — it is tiny, and reading fresh
  * avoids any staleness across a run.
  *
  * <p>The inventory is ndh's v2 shape: key material lives in dated generations, {@code
@@ -34,8 +35,8 @@ import org.osgi.service.component.annotations.Component;
  * v1 flat {@code public}/{@code private}: an entry without slots raises, naming the shape.
  *
  * <p>{@link #present()} is the fail-soft gate; the accessors are fail-fast — a
- * present-but-malformed store (unparseable, sops-encrypted at rest, or a missing field) raises, a
- * defect to surface.
+ * present-but-malformed store (unparseable, PLAINTEXT at rest, or a missing field) raises, a defect
+ * to surface.
  */
 @Component(service = NdhKeystoreReader.class)
 public final class DefaultNdhKeystoreReader implements NdhKeystoreReader {
@@ -43,13 +44,15 @@ public final class DefaultNdhKeystoreReader implements NdhKeystoreReader {
   private static final Path DEFAULT_PATH = Path.of(".ndh-ssh.d/keys.yaml");
 
   private final Path path;
+  private final UnaryOperator<String> decryptor;
 
   public DefaultNdhKeystoreReader() {
-    this(DEFAULT_PATH);
+    this(DEFAULT_PATH, new SopsCommandDecryptor());
   }
 
-  DefaultNdhKeystoreReader(final Path path) {
+  DefaultNdhKeystoreReader(final Path path, final UnaryOperator<String> decryptor) {
     this.path = path;
+    this.decryptor = decryptor;
   }
 
   @Override
@@ -138,20 +141,28 @@ public final class DefaultNdhKeystoreReader implements NdhKeystoreReader {
   private JsonNode read() {
     if (!Files.isReadable(path)) {
       throw new IllegalStateException(
-          "ndh key-store not readable at " + path + " (run from the worktree root; smudged?)");
+          "ndh key-store not readable at " + path + " (run from the worktree root)");
     }
-    final JsonNode root;
+    final String envelope;
     try {
-      root = new ObjectMapper(new YAMLFactory()).readTree(path.toFile());
+      envelope = Files.readString(path);
+    } catch (Exception ex) {
+      throw new IllegalStateException("failed to read " + path, ex);
+    }
+    if (!parse(envelope).has("sops")) {
+      throw new IllegalStateException(
+          path
+              + " is plaintext at rest; it must stay sops-encrypted "
+              + "(.gitattributes must not declare a sops filter for it).");
+    }
+    return parse(decryptor.apply(envelope));
+  }
+
+  private JsonNode parse(final String yaml) {
+    try {
+      return new ObjectMapper(new YAMLFactory()).readTree(yaml);
     } catch (Exception ex) {
       throw new IllegalStateException("failed to parse " + path, ex);
     }
-    if (root.has("sops")) {
-      throw new IllegalStateException(
-          path
-              + " appears sops-encrypted at rest; the worktree copy must be plaintext "
-              + "(check .gitattributes declares filter=sops-yaml and the smudge ran).");
-    }
-    return root;
   }
 }

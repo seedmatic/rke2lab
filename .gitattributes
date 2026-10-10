@@ -8,5 +8,4 @@
 # Safe when the key is absent: the textconv then exits non-zero and git falls back to the raw blob.
 # It is deliberately NOT allowed to render empty, which would show two differing secrets as identical.
 .secrets filter=sops-yaml diff=sops-yaml
-.ndh-ssh.d/keys.yaml filter=sops-yaml diff=sops-yaml
 **/01-secret-*.yaml filter=sops-yaml diff=sops-yaml

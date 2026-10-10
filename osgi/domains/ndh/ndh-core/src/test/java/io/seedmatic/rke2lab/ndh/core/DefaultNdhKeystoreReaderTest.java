@@ -14,7 +14,8 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * The v2 inventory shape, read the way ndh means it. The two generations are deliberately written
  * NEWEST FIRST in the document, so a reader that took document order instead of sorting the dated
- * slots would fail here.
+ * slots would fail here. The store is written envelope, and the decryptor stands in for sops by
+ * stripping the envelope.
  */
 class DefaultNdhKeystoreReaderTest {
 
@@ -44,12 +45,14 @@ class DefaultNdhKeystoreReaderTest {
           private: v1-priv
       """;
 
+  private static final String ENVELOPE = "sops:\n  version: 3.13.3\n";
+
   @TempDir Path dir;
 
   private DefaultNdhKeystoreReader reader(final String yaml) throws IOException {
     final Path file = dir.resolve("keys.yaml");
-    Files.writeString(file, yaml);
-    return new DefaultNdhKeystoreReader(file);
+    Files.writeString(file, yaml + ENVELOPE);
+    return new DefaultNdhKeystoreReader(file, envelope -> envelope.replace(ENVELOPE, ""));
   }
 
   @Test
@@ -93,15 +96,23 @@ class DefaultNdhKeystoreReaderTest {
   }
 
   @Test
-  void aStoreStillEncryptedAtRestIsRefused() throws IOException {
-    final DefaultNdhKeystoreReader keystore = reader(V2 + "sops:\n  version: 3.9.0\n");
+  void aStorePlaintextAtRestIsRefusedBeforeAnyDecryption() throws IOException {
+    final Path file = dir.resolve("keys.yaml");
+    Files.writeString(file, V2);
+    final DefaultNdhKeystoreReader keystore =
+        new DefaultNdhKeystoreReader(
+            file,
+            envelope -> {
+              throw new AssertionError("a plaintext store must not reach the decryptor");
+            });
     final IllegalStateException raised =
         assertThrows(IllegalStateException.class, () -> keystore.sshPublic("rke2-cluster"));
-    assertTrue(raised.getMessage().contains("sops-encrypted"), raised.getMessage());
+    assertTrue(raised.getMessage().contains("plaintext at rest"), raised.getMessage());
   }
 
   @Test
   void anAbsentStoreIsNotPresent() {
-    assertFalse(new DefaultNdhKeystoreReader(dir.resolve("nowhere.yaml")).present());
+    assertFalse(
+        new DefaultNdhKeystoreReader(dir.resolve("nowhere.yaml"), envelope -> envelope).present());
   }
 }
