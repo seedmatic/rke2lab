@@ -463,8 +463,8 @@ flowchart TB
   subgraph AFTER["After — build once, substitute everywhere"]
     direction TB
     a1["one builder per platform — pushed revision, allow-dirty false"]:::ok
-    a2["fill — upstream narinfo filter, secret guard, explicit push"]:::ok
-    a3["attic-nixos on bioskop — fabric only, latest per host"]:::ok
+    a2["fill — watch-store on the Linux builder, explicit push on darwin, upstream key names"]:::ok
+    a3["attic-nixos on bioskop — every read needs a token, latest per host"]:::ok
     a4["tiers — nerd-nixos EROFS, then containers and nodes, then pods — each substitutes its delta"]:::ok
     a1 --- a2 --- a3 --- a4
   end
@@ -502,7 +502,9 @@ re-substitutes it instead of rebuilding.
 2 GiB tmpfs or a PVC. The DB is reconciled at every container start (`--dump-db \| --load-db`, then
 `--verify`), after a defect measured on 2026-09-30.
 | unchanged in mechanism; it reads the env closures the node substituted. Remote builds of unknown
-packages (`max-jobs = 0` → `{bioskop,nikopol}-nixos`) are not fills and are never pushed.
+packages (`max-jobs = 0` → `{bioskop,nikopol}-nixos`) **are** uploaded when they run on
+bioskop-nixos, by its watch-store. That is accepted under authenticated reads. Recommended: no attic
+token in pods, since the remote builder substitutes for them (`builders-use-substitutes = true`).
 |===
 
 ⚠️ The pod tier's lower is the node's live store, which the controller grows and the node's GC
@@ -517,10 +519,10 @@ decision is rke2lab's.
 ....
 flowchart TB
   c0["c0 · watch-store disabled on every host — DONE, ndh 395b34a1"]:::done
-  c1["c1 · re-lock ndh's rke2lab input from GitHub — BEFORE the purge"]
-  c2["c2 · purge the 52 plaintext paths from nxmatic.cachix.org — operator"]
-  c3["c3 · ndh container module, attic-nixos on bioskop — target stated, PostgreSQL, quota 32G"]
-  c4["c4 · Linux fill on nerd-nixos — pushed revision, filters, keep-alive"]
+  c1["c1 · re-lock ndh's rke2lab input from GitHub — DONE, ndh 3492ca41"]:::done
+  c2["c2 · purge the plaintext paths from nxmatic.cachix.org — DONE, 173 of 173 answer 404"]:::done
+  c3["c3 · attic-nixos on bioskop — private cache, read tokens, an anonymous read gets 401"]
+  c4["c4 · Linux fill on nerd-nixos — pushed revision, attic watch-store, keep-alive"]
   c5["c5 · hosts substitute from attic — a nikopol switch builds nothing truly ours"]
   c6["c6 · darwin fill job on bioskop — dedicated user, both darwin configurations"]
   c7["c7 · cluster nodes on the EROFS layers — node and env closures in the live set"]
@@ -538,29 +540,32 @@ flowchart TB
 | Step | Content | Precondition / measured fact
 
 | c1 — re-lock ndh's rke2lab input
-| relock the `rke2lab` node of ndh's `flake.lock` from GitHub, as a clean revision
-| *measured 2026-10-10*: that node (`github:seedmatic/rke2lab`, rev `372f6578`) carries the
-narHash of a **plaintext** copy, `8qizqgcj…-source`, one of the 52, still served by the public cache.
-GitHub's archive is encrypted and cannot produce that hash. So every evaluation of ndh currently
-substitutes the plaintext copy from the public cache, and **the purge would break ndh's evaluation**
-unless the relock comes first.
+| ✅ *DONE, ndh `3492ca41`*: the `rke2lab` node of ndh's `flake.lock` relocked from its GitHub archive
+| *measured 2026-10-10*: that node (`github:seedmatic/rke2lab`, rev `372f6578`) carried the narHash
+of a **plaintext** copy, `8qizqgcj…-source`, one of the 52. GitHub's archive is encrypted and cannot
+produce that hash. So every evaluation of ndh substituted the plaintext copy from the public cache,
+and the purge would have broken ndh's evaluation had the relock not come first.
 
 | c2 — purge
-| the operator deletes the 52 paths
+| ✅ *DONE by the operator*: 173 of the 173 listed paths answer 404 on `nxmatic.cachix.org`
 | the list is held outside the repo (counts and paths only). Rotations are the operator's gestures.
 
 | c3 — attic-nixos
 | the shared ndh container module, with project and target stated; `services.atticd` plus
-PostgreSQL; `tank/nerd/attic` with `quota=32G`
+PostgreSQL; `tank/nerd/attic` with `quota=32G`; the cache created **without** `--public`, a read
+token per consumer class
 | SQLite reaps 500 chunks per GC run: a weekly nixpkgs bump would orphan ~111 000 chunks, more than
-SQLite can reap. `tank` has 168 GiB available (raidz1).
+SQLite can reap. `tank` has 168 GiB available (raidz1). The test that closes the step: an anonymous
+narinfo request gets **401**, a request with a read token gets 200.
 
 | c4 — Linux fill
-| build every Linux configuration from a pushed revision; drop the paths cache.nixos.org serves;
-the secret guard; `attic push --no-closure`; a keep-alive download of the live set
-| attic's signature filter would push 297 paths (0.66 GiB) that upstream serves, because the EROFS
-registration carries no signature. Truly ours: 1.56 GiB of systems, 5.25 GiB of flox environments,
-zstd-8 ratio 0.26.
+| build every Linux configuration from a pushed revision; an `attic watch-store` on bioskop-nixos
+uploads; a keep-alive download of the live set
+| the operator allowed the watch-store on 2026-10-10, on the condition of c3's authenticated reads.
+It skips `.drv` and `-source` by name only and pushes closures, so it also uploads the dev seats'
+and pods' remote builds. Its key-name list is the upstream substituters plus the layer key, never
+the fleet's build key. Truly ours: 1.56 GiB of systems, 5.25 GiB of flox environments, zstd-8
+ratio 0.26.
 
 | c5 — hosts substitute
 | attic's fabric URL and key in each host's `nix.conf`, after cache.nixos.org
@@ -591,13 +596,14 @@ configurations
 | Question | Answer
 
 | Is the move monotone?
-| Yes, with one hard order: c1 before c2. Purging first breaks ndh's evaluation.
+| Yes. Its one hard order, c1 before c2, has been kept: the relock landed before the purge.
 
 | Does it fix the leak?
-| No. It removes the publication path and the dirty evaluation from the builders. A dirty
+| No, it **confines** it. Plaintext can still reach the cache, through the watch-store and the remote
+builds it sees, but only token holders can read it, and those are machines of the fabric. A dirty
 evaluation on a dev seat still copies plaintext into that seat's local store; the Maven build of
-manifests-core does it on every run. The root fix, no plaintext on disk in a flake tree, is still the
-operator's decision.
+manifests-core does it on every run. The real fix is an attic fork that refuses secret-bearing paths
+at upload (ndh spec, _The real fix_), and upstream of it, no plaintext on disk in a flake tree.
 
 | What stays out of reach?
 | the size of the package outputs and of the node and env closures, since none is realised in any
@@ -612,7 +618,7 @@ store today; and the pod tier's lower, which is rke2lab's decision.
 * link:../nixos-substrate/erofs-store-layer-stack.adoc[The EROFS layer stack] — the immutable base
   the containers and the nodes inherit.
 * link:../patterns/flox-store-resolved-runtime-and-builder.adoc[Flox Store-Resolved Runtime] — the
-  pod tier: the NRI overlay and the remote builder whose builds are never pushed.
+  pod tier: the NRI overlay, and the remote builder whose builds bioskop-nixos's watch-store uploads.
 * ndh `docs/ssh-keys-architecture.adoc` and `docs/ssh-keys-renewal-spec.adoc` — the keys that remain.
 * link:cellar-secrets.adoc[Cellar secrets atlas] — the ndh boundary, whose projection is step 10.
 * link:../cluster-api/management-workload-topology.adoc[Management / workload topology] — the cluster
