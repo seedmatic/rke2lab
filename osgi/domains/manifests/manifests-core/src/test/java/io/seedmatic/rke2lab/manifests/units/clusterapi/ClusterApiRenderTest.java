@@ -63,15 +63,16 @@ class ClusterApiRenderTest {
   private static final String MANAGEMENT_CLUSTER = "bioskop-mgmt";
 
   /**
-   * The live fleet. The children this render emits are DERIVED from it by the owner rule — {@code
-   * bioskop-wrkld} (host-local) and {@code nikopol-mgmt} (the one cross-host hop) — which is
-   * exactly the pair {@code manifests/bioskop-mgmt} carries today.
+   * The live fleet — shared with {@code SealedMaterialUnitsGoldenTest}, which renders the units
+   * that embed sealed material against the same cluster. The children this render emits are DERIVED
+   * from it by the owner rule — {@code bioskop-wrkld} (host-local) and {@code nikopol-mgmt} (the
+   * one cross-host hop) — which is exactly the pair {@code manifests/bioskop-mgmt} carries today.
    */
-  private static final ClusterFleet FLEET =
+  static final ClusterFleet FLEET =
       new ClusterFleet(List.of("bioskop", "nikopol"), "bioskop", ControlPlaneShape.HA);
 
   /** The operator's host declaration the render cannot derive — see NodeDeviceSet. */
-  private static final String FABRIC_BRIDGE = "fabric-br";
+  static final String FABRIC_BRIDGE = "fabric-br";
 
   /** Only the domains under test — a policy is required, and an absent one renders nothing. */
   private static final ManifestDomainPolicy POLICY =
@@ -85,7 +86,7 @@ class ClusterApiRenderTest {
    * present because {@link ImageState} requires it — a recording without it is undecodable, which
    * is the point of that requirement.
    */
-  private static ImageState imageState() {
+  static ImageState imageState() {
     return new ImageState(
         "node-base",
         "0f7a1c9d2b3e4f5a6b7c8d9e0f1a2b3c4d5e6f708192a3b4c5d6e7f809a1b2c3",
@@ -102,7 +103,7 @@ class ClusterApiRenderTest {
             true));
   }
 
-  private static BootstrapIdentity identity() {
+  static BootstrapIdentity identity() {
     return new BootstrapIdentity(
         MANAGEMENT_CLUSTER,
         1,

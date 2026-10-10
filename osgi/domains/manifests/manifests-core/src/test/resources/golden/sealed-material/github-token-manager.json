@@ -1,0 +1,132 @@
+[
+  {
+    "apiVersion": "helm.cattle.io/v1",
+    "kind": "HelmChart",
+    "metadata": {
+      "annotations": {
+        "io.seedmatic.rke2lab/domain": "platform",
+        "io.seedmatic.rke2lab/layer": "operators",
+        "io.seedmatic.rke2lab/package": "github-token-manager"
+      },
+      "name": "github-token-manager",
+      "namespace": "kube-system"
+    },
+    "spec": {
+      "chart": "oci://ghcr.io/isometry/charts/github-token-manager",
+      "targetNamespace": "rke2lab-system",
+      "version": "1.6.1"
+    }
+  },
+  {
+    "apiVersion": "v1",
+    "data": {
+      "private-key.pem": "RkFLRS1HSVRIVUItQVBQLVBSSVZBVEUtS0VZ"
+    },
+    "kind": "Secret",
+    "metadata": {
+      "annotations": {
+        "io.seedmatic.rke2lab/domain": "platform",
+        "io.seedmatic.rke2lab/package": "github-token-manager"
+      },
+      "name": "github-app-private-key",
+      "namespace": "rke2lab-system"
+    },
+    "type": "Opaque"
+  },
+  {
+    "apiVersion": "github.as-code.io/v1",
+    "kind": "App",
+    "metadata": {
+      "annotations": {
+        "io.seedmatic.rke2lab/domain": "platform",
+        "io.seedmatic.rke2lab/package": "github-token-manager"
+      },
+      "name": "github-app",
+      "namespace": "rke2lab-system"
+    },
+    "spec": {
+      "appID": 1001,
+      "installationID": 2002,
+      "keyRef": {
+        "name": "github-app-private-key"
+      },
+      "provider": "secret"
+    }
+  },
+  {
+    "apiVersion": "github.as-code.io/v1",
+    "kind": "ClusterToken",
+    "metadata": {
+      "annotations": {
+        "io.seedmatic.rke2lab/domain": "platform",
+        "io.seedmatic.rke2lab/package": "github-token-manager"
+      },
+      "name": "github-token"
+    },
+    "spec": {
+      "appRef": {
+        "name": "github-app",
+        "namespace": "rke2lab-system"
+      },
+      "permissions": {
+        "contents": "read",
+        "metadata": "read"
+      },
+      "refreshInterval": "45m",
+      "secret": {
+        "annotations": {
+          "replicator.v1.mittwald.de/replication-allowed": "true",
+          "replicator.v1.mittwald.de/replication-allowed-namespaces": "rke2lab-system"
+        },
+        "name": "github-token",
+        "namespace": "rke2lab-secrets"
+      }
+    }
+  },
+  {
+    "apiVersion": "github.as-code.io/v1",
+    "kind": "ClusterToken",
+    "metadata": {
+      "annotations": {
+        "io.seedmatic.rke2lab/domain": "platform",
+        "io.seedmatic.rke2lab/package": "github-token-manager"
+      },
+      "name": "github-token-write"
+    },
+    "spec": {
+      "appRef": {
+        "name": "github-app",
+        "namespace": "rke2lab-system"
+      },
+      "permissions": {
+        "contents": "write",
+        "metadata": "read"
+      },
+      "refreshInterval": "45m",
+      "secret": {
+        "annotations": {
+          "replicator.v1.mittwald.de/replication-allowed": "true",
+          "replicator.v1.mittwald.de/replication-allowed-namespaces": "rke2lab-system"
+        },
+        "name": "github-token-write",
+        "namespace": "rke2lab-secrets"
+      }
+    }
+  },
+  {
+    "apiVersion": "v1",
+    "data": {
+      "members": "helm.cattle.io/v1|HelmChart|kube-system|github-token-manager\nv1|Secret|rke2lab-system|github-app-private-key\ngithub.as-code.io/v1|App|rke2lab-system|github-app\ngithub.as-code.io/v1|ClusterToken||github-token\ngithub.as-code.io/v1|ClusterToken||github-token-write"
+    },
+    "kind": "ConfigMap",
+    "metadata": {
+      "annotations": {
+        "config.kubernetes.io/local-config": "true",
+        "io.seedmatic.rke2lab/domain": "platform",
+        "io.seedmatic.rke2lab/manifest-group": "true",
+        "io.seedmatic.rke2lab/package": "github-token-manager"
+      },
+      "name": "github-token-manager.group"
+    }
+  }
+]

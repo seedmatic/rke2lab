@@ -1,0 +1,794 @@
+[
+  {
+    "apiVersion": "v1",
+    "kind": "Namespace",
+    "metadata": {
+      "annotations": {
+        "io.seedmatic.rke2lab/domain": "cluster-api",
+        "io.seedmatic.rke2lab/package": "cluster-api-management"
+      },
+      "name": "rke2lab-bioskop-mgmt"
+    }
+  },
+  {
+    "apiVersion": "cluster.seedmatic.io/v1alpha1",
+    "kind": "NodeImage",
+    "metadata": {
+      "annotations": {
+        "io.seedmatic.rke2lab/domain": "cluster-api",
+        "io.seedmatic.rke2lab/package": "cluster-api-management"
+      },
+      "name": "bioskop-mgmt-node-base",
+      "namespace": "rke2lab-bioskop-mgmt"
+    },
+    "spec": {
+      "alias": "node-base",
+      "buildChecksum": "sha256-buildinputs",
+      "fingerprint": "0f7a1c9d2b3e4f5a6b7c8d9e0f1a2b3c4d5e6f708192a3b4c5d6e7f809a1b2c3",
+      "rke2Version": "v1.34.1+rke2r1",
+      "runtime": {
+        "kernelModules": [
+          "ip_vs",
+          "xfrm_user",
+          "nft_compat"
+        ],
+        "rawLXC": "lxc.mount.auto = proc:rw sys:rw cgroup:rw",
+        "security": {
+          "interceptBPF": true,
+          "interceptBPFDevices": true,
+          "nesting": true,
+          "privileged": true
+        }
+      },
+      "source": {
+        "endpoint": "https://nixos.bioskop:8443",
+        "project": "rke2lab"
+      }
+    }
+  },
+  {
+    "apiVersion": "cluster.seedmatic.io/v1alpha1",
+    "kind": "ClusterIntention",
+    "metadata": {
+      "annotations": {
+        "io.seedmatic.rke2lab/domain": "cluster-api",
+        "io.seedmatic.rke2lab/package": "cluster-api-management"
+      },
+      "name": "bioskop-mgmt",
+      "namespace": "rke2lab-bioskop-mgmt"
+    },
+    "spec": {
+      "adoptedBy": "bioskop-mgmt",
+      "clusterName": "bioskop-mgmt",
+      "clusterNetwork": {
+        "podCIDRs": [
+          "10.44.0.0/16"
+        ],
+        "serviceCIDRs": [
+          "10.48.0.0/16"
+        ],
+        "serviceDomain": "cluster.local"
+      },
+      "controlPlaneEndpoint": {
+        "host": "10.80.7.10",
+        "port": 6443
+      },
+      "kind": "management",
+      "namespace": "rke2lab-bioskop-mgmt",
+      "remote": {
+        "endpoint": "https://nixos.bioskop:8443",
+        "identitySecretName": "bioskop-incus-identity"
+      }
+    }
+  },
+  {
+    "apiVersion": "cluster.seedmatic.io/v1alpha1",
+    "kind": "PoolIntention",
+    "metadata": {
+      "annotations": {
+        "io.seedmatic.rke2lab/domain": "cluster-api",
+        "io.seedmatic.rke2lab/package": "cluster-api-management"
+      },
+      "name": "bioskop-mgmt-control-node",
+      "namespace": "rke2lab-bioskop-mgmt"
+    },
+    "spec": {
+      "adoptedBy": "bioskop-mgmt",
+      "clusterRef": "bioskop-mgmt",
+      "controlPlaneEndpoint": {
+        "host": "10.80.7.10",
+        "port": 6443
+      },
+      "devices": [
+        "root,type=disk,path=/,pool=default",
+        "kmsg.dev,type=unix-char,source=/dev/kmsg,path=/dev/kmsg",
+        "zfs.dev,type=unix-char,source=/dev/zfs,path=/dev/zfs",
+        "fabric0,type=nic,name=fabric0,nictype=bridged,parent=fabric-br",
+        "vmnet0,type=nic,name=vmnet0,nictype=bridged,parent=vmnet-mgmt"
+      ],
+      "image": {
+        "name": "bioskop-mgmt-node-base"
+      },
+      "namespace": "rke2lab-bioskop-mgmt",
+      "nature": "pet",
+      "nodeLabels": [
+        "flox.seedmatic.io/enabled=true"
+      ],
+      "nodes": [
+        {
+          "name": "bioskop-mgmt-master"
+        }
+      ],
+      "pool": "control-node",
+      "replicas": 1,
+      "rke2Version": "v1.34.1+rke2r1",
+      "role": "control-plane",
+      "target": "bioskop"
+    }
+  },
+  {
+    "apiVersion": "v1",
+    "data": {
+      "tls.crt": "RkFLRS1NR01ULVNFUlZFUi1DQS1DRVJULUNIQUlO",
+      "tls.key": "RkFLRS1NR01ULVNFUlZFUi1DQS1LRVk="
+    },
+    "kind": "Secret",
+    "metadata": {
+      "annotations": {
+        "io.seedmatic.rke2lab/domain": "cluster-api",
+        "io.seedmatic.rke2lab/package": "cluster-api-management"
+      },
+      "labels": {
+        "cluster.x-k8s.io/cluster-name": "bioskop-mgmt"
+      },
+      "name": "bioskop-mgmt-ca",
+      "namespace": "rke2lab-bioskop-mgmt"
+    },
+    "type": "cluster.x-k8s.io/secret"
+  },
+  {
+    "apiVersion": "v1",
+    "data": {
+      "tls.crt": "RkFLRS1NR01ULUNMSUVOVC1DQS1DRVJULUNIQUlO",
+      "tls.key": "RkFLRS1NR01ULUNMSUVOVC1DQS1LRVk="
+    },
+    "kind": "Secret",
+    "metadata": {
+      "annotations": {
+        "io.seedmatic.rke2lab/domain": "cluster-api",
+        "io.seedmatic.rke2lab/package": "cluster-api-management"
+      },
+      "labels": {
+        "cluster.x-k8s.io/cluster-name": "bioskop-mgmt"
+      },
+      "name": "bioskop-mgmt-cca",
+      "namespace": "rke2lab-bioskop-mgmt"
+    },
+    "type": "cluster.x-k8s.io/secret"
+  },
+  {
+    "apiVersion": "v1",
+    "data": {
+      "tls.crt": "RkFLRS1NR01ULUVUQ0QtU0VSVkVSLUNBLUNFUlQtQ0hBSU4=",
+      "tls.key": "RkFLRS1NR01ULUVUQ0QtU0VSVkVSLUNBLUtFWQ=="
+    },
+    "kind": "Secret",
+    "metadata": {
+      "annotations": {
+        "io.seedmatic.rke2lab/domain": "cluster-api",
+        "io.seedmatic.rke2lab/package": "cluster-api-management"
+      },
+      "labels": {
+        "cluster.x-k8s.io/cluster-name": "bioskop-mgmt"
+      },
+      "name": "bioskop-mgmt-etcd",
+      "namespace": "rke2lab-bioskop-mgmt"
+    },
+    "type": "cluster.x-k8s.io/secret"
+  },
+  {
+    "apiVersion": "v1",
+    "data": {
+      "tls.crt": "RkFLRS1NR01ULUVUQ0QtUEVFUi1DQS1DRVJULUNIQUlO",
+      "tls.key": "RkFLRS1NR01ULUVUQ0QtUEVFUi1DQS1LRVk="
+    },
+    "kind": "Secret",
+    "metadata": {
+      "annotations": {
+        "io.seedmatic.rke2lab/domain": "cluster-api",
+        "io.seedmatic.rke2lab/package": "cluster-api-management"
+      },
+      "labels": {
+        "cluster.x-k8s.io/cluster-name": "bioskop-mgmt"
+      },
+      "name": "bioskop-mgmt-peer-etcd",
+      "namespace": "rke2lab-bioskop-mgmt"
+    },
+    "type": "cluster.x-k8s.io/secret"
+  },
+  {
+    "apiVersion": "v1",
+    "data": {
+      "members": "v1|Namespace||rke2lab-bioskop-mgmt\ncluster.seedmatic.io/v1alpha1|NodeImage|rke2lab-bioskop-mgmt|bioskop-mgmt-node-base\ncluster.seedmatic.io/v1alpha1|ClusterIntention|rke2lab-bioskop-mgmt|bioskop-mgmt\ncluster.seedmatic.io/v1alpha1|PoolIntention|rke2lab-bioskop-mgmt|bioskop-mgmt-control-node\nv1|Secret|rke2lab-bioskop-mgmt|bioskop-mgmt-ca\nv1|Secret|rke2lab-bioskop-mgmt|bioskop-mgmt-cca\nv1|Secret|rke2lab-bioskop-mgmt|bioskop-mgmt-etcd\nv1|Secret|rke2lab-bioskop-mgmt|bioskop-mgmt-peer-etcd"
+    },
+    "kind": "ConfigMap",
+    "metadata": {
+      "annotations": {
+        "config.kubernetes.io/local-config": "true",
+        "io.seedmatic.rke2lab/domain": "cluster-api",
+        "io.seedmatic.rke2lab/manifest-group": "true",
+        "io.seedmatic.rke2lab/package": "cluster-api-management"
+      },
+      "name": "cluster-api-management.group"
+    }
+  },
+  {
+    "apiVersion": "v1",
+    "kind": "Namespace",
+    "metadata": {
+      "annotations": {
+        "io.seedmatic.rke2lab/domain": "cluster-api",
+        "io.seedmatic.rke2lab/package": "cluster-api-workload"
+      },
+      "name": "rke2lab-bioskop-wrkld"
+    }
+  },
+  {
+    "apiVersion": "cluster.seedmatic.io/v1alpha1",
+    "kind": "NodeImage",
+    "metadata": {
+      "annotations": {
+        "io.seedmatic.rke2lab/domain": "cluster-api",
+        "io.seedmatic.rke2lab/package": "cluster-api-workload"
+      },
+      "name": "bioskop-wrkld-node-base",
+      "namespace": "rke2lab-bioskop-wrkld"
+    },
+    "spec": {
+      "alias": "node-base",
+      "buildChecksum": "sha256-buildinputs",
+      "fingerprint": "0f7a1c9d2b3e4f5a6b7c8d9e0f1a2b3c4d5e6f708192a3b4c5d6e7f809a1b2c3",
+      "rke2Version": "v1.34.1+rke2r1",
+      "runtime": {
+        "kernelModules": [
+          "ip_vs",
+          "xfrm_user",
+          "nft_compat"
+        ],
+        "rawLXC": "lxc.mount.auto = proc:rw sys:rw cgroup:rw",
+        "security": {
+          "interceptBPF": true,
+          "interceptBPFDevices": true,
+          "nesting": true,
+          "privileged": true
+        }
+      },
+      "source": {
+        "endpoint": "https://nixos.bioskop:8443",
+        "project": "rke2lab"
+      }
+    }
+  },
+  {
+    "apiVersion": "cluster.seedmatic.io/v1alpha1",
+    "kind": "ClusterIntention",
+    "metadata": {
+      "annotations": {
+        "io.seedmatic.rke2lab/domain": "cluster-api",
+        "io.seedmatic.rke2lab/package": "cluster-api-workload"
+      },
+      "name": "bioskop-wrkld",
+      "namespace": "rke2lab-bioskop-wrkld"
+    },
+    "spec": {
+      "adoptedBy": "bioskop-mgmt",
+      "clusterName": "bioskop-wrkld",
+      "clusterNetwork": {
+        "podCIDRs": [
+          "10.45.0.0/16"
+        ],
+        "serviceCIDRs": [
+          "10.49.0.0/16"
+        ],
+        "serviceDomain": "cluster.local"
+      },
+      "controlPlaneEndpoint": {
+        "host": "10.80.15.10",
+        "port": 6443
+      },
+      "kind": "workload",
+      "namespace": "rke2lab-bioskop-wrkld",
+      "remote": {
+        "endpoint": "https://nixos.bioskop:8443",
+        "identitySecretName": "bioskop-incus-identity"
+      }
+    }
+  },
+  {
+    "apiVersion": "cluster.seedmatic.io/v1alpha1",
+    "kind": "PoolIntention",
+    "metadata": {
+      "annotations": {
+        "io.seedmatic.rke2lab/domain": "cluster-api",
+        "io.seedmatic.rke2lab/package": "cluster-api-workload"
+      },
+      "name": "bioskop-wrkld-control-node",
+      "namespace": "rke2lab-bioskop-wrkld"
+    },
+    "spec": {
+      "adoptedBy": "bioskop-mgmt",
+      "clusterRef": "bioskop-wrkld",
+      "controlPlaneEndpoint": {
+        "host": "10.80.15.10",
+        "port": 6443
+      },
+      "devices": [
+        "root,type=disk,path=/,pool=default",
+        "kmsg.dev,type=unix-char,source=/dev/kmsg,path=/dev/kmsg",
+        "zfs.dev,type=unix-char,source=/dev/zfs,path=/dev/zfs",
+        "fabric0,type=nic,name=fabric0,nictype=bridged,parent=fabric-br",
+        "vmnet0,type=nic,name=vmnet0,nictype=bridged,parent=vmnet-wrkld"
+      ],
+      "image": {
+        "name": "bioskop-wrkld-node-base"
+      },
+      "namespace": "rke2lab-bioskop-wrkld",
+      "nature": "cattle",
+      "nodeLabels": [
+        "flox.seedmatic.io/enabled=true"
+      ],
+      "nodes": [
+        {
+          "name": "bioskop-wrkld-master"
+        },
+        {
+          "name": "bioskop-wrkld-peer1"
+        },
+        {
+          "name": "bioskop-wrkld-peer2"
+        }
+      ],
+      "pool": "control-node",
+      "replicas": 3,
+      "rke2Version": "v1.34.1+rke2r1",
+      "role": "control-plane",
+      "target": "bioskop"
+    }
+  },
+  {
+    "apiVersion": "v1",
+    "data": {
+      "tls.crt": "RkFLRS1CSU9TS09QLVdSS0xELVNFUlZFUi1DQS1DRVJULUNIQUlO",
+      "tls.key": "RkFLRS1CSU9TS09QLVdSS0xELVNFUlZFUi1DQS1LRVk="
+    },
+    "kind": "Secret",
+    "metadata": {
+      "annotations": {
+        "io.seedmatic.rke2lab/domain": "cluster-api",
+        "io.seedmatic.rke2lab/package": "cluster-api-workload"
+      },
+      "labels": {
+        "cluster.x-k8s.io/cluster-name": "bioskop-wrkld"
+      },
+      "name": "bioskop-wrkld-ca",
+      "namespace": "rke2lab-bioskop-wrkld"
+    },
+    "type": "cluster.x-k8s.io/secret"
+  },
+  {
+    "apiVersion": "v1",
+    "data": {
+      "tls.crt": "RkFLRS1CSU9TS09QLVdSS0xELUNMSUVOVC1DQS1DRVJULUNIQUlO",
+      "tls.key": "RkFLRS1CSU9TS09QLVdSS0xELUNMSUVOVC1DQS1LRVk="
+    },
+    "kind": "Secret",
+    "metadata": {
+      "annotations": {
+        "io.seedmatic.rke2lab/domain": "cluster-api",
+        "io.seedmatic.rke2lab/package": "cluster-api-workload"
+      },
+      "labels": {
+        "cluster.x-k8s.io/cluster-name": "bioskop-wrkld"
+      },
+      "name": "bioskop-wrkld-cca",
+      "namespace": "rke2lab-bioskop-wrkld"
+    },
+    "type": "cluster.x-k8s.io/secret"
+  },
+  {
+    "apiVersion": "v1",
+    "data": {
+      "tls.crt": "RkFLRS1CSU9TS09QLVdSS0xELUVUQ0QtU0VSVkVSLUNBLUNFUlQtQ0hBSU4=",
+      "tls.key": "RkFLRS1CSU9TS09QLVdSS0xELUVUQ0QtU0VSVkVSLUNBLUtFWQ=="
+    },
+    "kind": "Secret",
+    "metadata": {
+      "annotations": {
+        "io.seedmatic.rke2lab/domain": "cluster-api",
+        "io.seedmatic.rke2lab/package": "cluster-api-workload"
+      },
+      "labels": {
+        "cluster.x-k8s.io/cluster-name": "bioskop-wrkld"
+      },
+      "name": "bioskop-wrkld-etcd",
+      "namespace": "rke2lab-bioskop-wrkld"
+    },
+    "type": "cluster.x-k8s.io/secret"
+  },
+  {
+    "apiVersion": "v1",
+    "data": {
+      "tls.crt": "RkFLRS1CSU9TS09QLVdSS0xELUVUQ0QtUEVFUi1DQS1DRVJULUNIQUlO",
+      "tls.key": "RkFLRS1CSU9TS09QLVdSS0xELUVUQ0QtUEVFUi1DQS1LRVk="
+    },
+    "kind": "Secret",
+    "metadata": {
+      "annotations": {
+        "io.seedmatic.rke2lab/domain": "cluster-api",
+        "io.seedmatic.rke2lab/package": "cluster-api-workload"
+      },
+      "labels": {
+        "cluster.x-k8s.io/cluster-name": "bioskop-wrkld"
+      },
+      "name": "bioskop-wrkld-peer-etcd",
+      "namespace": "rke2lab-bioskop-wrkld"
+    },
+    "type": "cluster.x-k8s.io/secret"
+  },
+  {
+    "apiVersion": "v1",
+    "kind": "Namespace",
+    "metadata": {
+      "annotations": {
+        "io.seedmatic.rke2lab/domain": "cluster-api",
+        "io.seedmatic.rke2lab/package": "cluster-api-workload"
+      },
+      "name": "rke2lab-nikopol-mgmt"
+    }
+  },
+  {
+    "apiVersion": "cluster.seedmatic.io/v1alpha1",
+    "kind": "NodeImage",
+    "metadata": {
+      "annotations": {
+        "io.seedmatic.rke2lab/domain": "cluster-api",
+        "io.seedmatic.rke2lab/package": "cluster-api-workload"
+      },
+      "name": "nikopol-mgmt-node-base",
+      "namespace": "rke2lab-nikopol-mgmt"
+    },
+    "spec": {
+      "alias": "node-base",
+      "buildChecksum": "sha256-buildinputs",
+      "fingerprint": "0f7a1c9d2b3e4f5a6b7c8d9e0f1a2b3c4d5e6f708192a3b4c5d6e7f809a1b2c3",
+      "rke2Version": "v1.34.1+rke2r1",
+      "runtime": {
+        "kernelModules": [
+          "ip_vs",
+          "xfrm_user",
+          "nft_compat"
+        ],
+        "rawLXC": "lxc.mount.auto = proc:rw sys:rw cgroup:rw",
+        "security": {
+          "interceptBPF": true,
+          "interceptBPFDevices": true,
+          "nesting": true,
+          "privileged": true
+        }
+      },
+      "source": {
+        "endpoint": "https://nixos.bioskop:8443",
+        "project": "rke2lab"
+      }
+    }
+  },
+  {
+    "apiVersion": "cluster.seedmatic.io/v1alpha1",
+    "kind": "ClusterIntention",
+    "metadata": {
+      "annotations": {
+        "io.seedmatic.rke2lab/domain": "cluster-api",
+        "io.seedmatic.rke2lab/package": "cluster-api-workload"
+      },
+      "name": "nikopol-mgmt",
+      "namespace": "rke2lab-nikopol-mgmt"
+    },
+    "spec": {
+      "adoptedBy": "bioskop-mgmt",
+      "clusterName": "nikopol-mgmt",
+      "clusterNetwork": {
+        "podCIDRs": [
+          "10.46.0.0/16"
+        ],
+        "serviceCIDRs": [
+          "10.50.0.0/16"
+        ],
+        "serviceDomain": "cluster.local"
+      },
+      "controlPlaneEndpoint": {
+        "host": "10.80.23.10",
+        "port": 6443
+      },
+      "kind": "management",
+      "namespace": "rke2lab-nikopol-mgmt",
+      "remote": {
+        "endpoint": "https://nixos.bioskop:8443",
+        "identitySecretName": "nikopol-incus-identity"
+      }
+    }
+  },
+  {
+    "apiVersion": "cluster.seedmatic.io/v1alpha1",
+    "kind": "PoolIntention",
+    "metadata": {
+      "annotations": {
+        "io.seedmatic.rke2lab/domain": "cluster-api",
+        "io.seedmatic.rke2lab/package": "cluster-api-workload"
+      },
+      "name": "nikopol-mgmt-control-node",
+      "namespace": "rke2lab-nikopol-mgmt"
+    },
+    "spec": {
+      "adoptedBy": "bioskop-mgmt",
+      "clusterRef": "nikopol-mgmt",
+      "controlPlaneEndpoint": {
+        "host": "10.80.23.10",
+        "port": 6443
+      },
+      "devices": [
+        "root,type=disk,path=/,pool=default",
+        "kmsg.dev,type=unix-char,source=/dev/kmsg,path=/dev/kmsg",
+        "zfs.dev,type=unix-char,source=/dev/zfs,path=/dev/zfs",
+        "fabric0,type=nic,name=fabric0,nictype=bridged,parent=fabric-br",
+        "vmnet0,type=nic,name=vmnet0,nictype=bridged,parent=vmnet-mgmt"
+      ],
+      "image": {
+        "name": "nikopol-mgmt-node-base"
+      },
+      "namespace": "rke2lab-nikopol-mgmt",
+      "nature": "cattle",
+      "nodeLabels": [
+        "flox.seedmatic.io/enabled=true"
+      ],
+      "nodes": [
+        {
+          "name": "nikopol-mgmt-master"
+        }
+      ],
+      "pool": "control-node",
+      "replicas": 1,
+      "rke2Version": "v1.34.1+rke2r1",
+      "role": "control-plane",
+      "target": "nikopol"
+    }
+  },
+  {
+    "apiVersion": "v1",
+    "data": {
+      "tls.crt": "RkFLRS1OSUtPUE9MLU1HTVQtU0VSVkVSLUNBLUNFUlQtQ0hBSU4=",
+      "tls.key": "RkFLRS1OSUtPUE9MLU1HTVQtU0VSVkVSLUNBLUtFWQ=="
+    },
+    "kind": "Secret",
+    "metadata": {
+      "annotations": {
+        "io.seedmatic.rke2lab/domain": "cluster-api",
+        "io.seedmatic.rke2lab/package": "cluster-api-workload"
+      },
+      "labels": {
+        "cluster.x-k8s.io/cluster-name": "nikopol-mgmt"
+      },
+      "name": "nikopol-mgmt-ca",
+      "namespace": "rke2lab-nikopol-mgmt"
+    },
+    "type": "cluster.x-k8s.io/secret"
+  },
+  {
+    "apiVersion": "v1",
+    "data": {
+      "tls.crt": "RkFLRS1OSUtPUE9MLU1HTVQtQ0xJRU5ULUNBLUNFUlQtQ0hBSU4=",
+      "tls.key": "RkFLRS1OSUtPUE9MLU1HTVQtQ0xJRU5ULUNBLUtFWQ=="
+    },
+    "kind": "Secret",
+    "metadata": {
+      "annotations": {
+        "io.seedmatic.rke2lab/domain": "cluster-api",
+        "io.seedmatic.rke2lab/package": "cluster-api-workload"
+      },
+      "labels": {
+        "cluster.x-k8s.io/cluster-name": "nikopol-mgmt"
+      },
+      "name": "nikopol-mgmt-cca",
+      "namespace": "rke2lab-nikopol-mgmt"
+    },
+    "type": "cluster.x-k8s.io/secret"
+  },
+  {
+    "apiVersion": "v1",
+    "data": {
+      "tls.crt": "RkFLRS1OSUtPUE9MLU1HTVQtRVRDRC1TRVJWRVItQ0EtQ0VSVC1DSEFJTg==",
+      "tls.key": "RkFLRS1OSUtPUE9MLU1HTVQtRVRDRC1TRVJWRVItQ0EtS0VZ"
+    },
+    "kind": "Secret",
+    "metadata": {
+      "annotations": {
+        "io.seedmatic.rke2lab/domain": "cluster-api",
+        "io.seedmatic.rke2lab/package": "cluster-api-workload"
+      },
+      "labels": {
+        "cluster.x-k8s.io/cluster-name": "nikopol-mgmt"
+      },
+      "name": "nikopol-mgmt-etcd",
+      "namespace": "rke2lab-nikopol-mgmt"
+    },
+    "type": "cluster.x-k8s.io/secret"
+  },
+  {
+    "apiVersion": "v1",
+    "data": {
+      "tls.crt": "RkFLRS1OSUtPUE9MLU1HTVQtRVRDRC1QRUVSLUNBLUNFUlQtQ0hBSU4=",
+      "tls.key": "RkFLRS1OSUtPUE9MLU1HTVQtRVRDRC1QRUVSLUNBLUtFWQ=="
+    },
+    "kind": "Secret",
+    "metadata": {
+      "annotations": {
+        "io.seedmatic.rke2lab/domain": "cluster-api",
+        "io.seedmatic.rke2lab/package": "cluster-api-workload"
+      },
+      "labels": {
+        "cluster.x-k8s.io/cluster-name": "nikopol-mgmt"
+      },
+      "name": "nikopol-mgmt-peer-etcd",
+      "namespace": "rke2lab-nikopol-mgmt"
+    },
+    "type": "cluster.x-k8s.io/secret"
+  },
+  {
+    "apiVersion": "v1",
+    "kind": "Namespace",
+    "metadata": {
+      "annotations": {
+        "io.seedmatic.rke2lab/domain": "cluster-api",
+        "io.seedmatic.rke2lab/package": "cluster-api-workload"
+      },
+      "name": "rke2lab-nikopol-wrkld"
+    }
+  },
+  {
+    "apiVersion": "cluster.seedmatic.io/v1alpha1",
+    "kind": "NodeImage",
+    "metadata": {
+      "annotations": {
+        "io.seedmatic.rke2lab/domain": "cluster-api",
+        "io.seedmatic.rke2lab/package": "cluster-api-workload"
+      },
+      "name": "nikopol-wrkld-node-base",
+      "namespace": "rke2lab-nikopol-wrkld"
+    },
+    "spec": {
+      "alias": "node-base",
+      "buildChecksum": "sha256-buildinputs",
+      "fingerprint": "0f7a1c9d2b3e4f5a6b7c8d9e0f1a2b3c4d5e6f708192a3b4c5d6e7f809a1b2c3",
+      "rke2Version": "v1.34.1+rke2r1",
+      "runtime": {
+        "kernelModules": [
+          "ip_vs",
+          "xfrm_user",
+          "nft_compat"
+        ],
+        "rawLXC": "lxc.mount.auto = proc:rw sys:rw cgroup:rw",
+        "security": {
+          "interceptBPF": true,
+          "interceptBPFDevices": true,
+          "nesting": true,
+          "privileged": true
+        }
+      },
+      "source": {
+        "endpoint": "https://nixos.bioskop:8443",
+        "project": "rke2lab"
+      }
+    }
+  },
+  {
+    "apiVersion": "cluster.seedmatic.io/v1alpha1",
+    "kind": "ClusterIntention",
+    "metadata": {
+      "annotations": {
+        "io.seedmatic.rke2lab/domain": "cluster-api",
+        "io.seedmatic.rke2lab/package": "cluster-api-workload"
+      },
+      "name": "nikopol-wrkld",
+      "namespace": "rke2lab-nikopol-wrkld"
+    },
+    "spec": {
+      "adoptedBy": "nikopol-mgmt",
+      "clusterName": "nikopol-wrkld",
+      "clusterNetwork": {
+        "podCIDRs": [
+          "10.47.0.0/16"
+        ],
+        "serviceCIDRs": [
+          "10.51.0.0/16"
+        ],
+        "serviceDomain": "cluster.local"
+      },
+      "controlPlaneEndpoint": {
+        "host": "10.80.31.10",
+        "port": 6443
+      },
+      "kind": "workload",
+      "namespace": "rke2lab-nikopol-wrkld",
+      "remote": {
+        "endpoint": "https://nixos.bioskop:8443",
+        "identitySecretName": "nikopol-incus-identity"
+      }
+    }
+  },
+  {
+    "apiVersion": "cluster.seedmatic.io/v1alpha1",
+    "kind": "PoolIntention",
+    "metadata": {
+      "annotations": {
+        "io.seedmatic.rke2lab/domain": "cluster-api",
+        "io.seedmatic.rke2lab/package": "cluster-api-workload"
+      },
+      "name": "nikopol-wrkld-control-node",
+      "namespace": "rke2lab-nikopol-wrkld"
+    },
+    "spec": {
+      "adoptedBy": "nikopol-mgmt",
+      "clusterRef": "nikopol-wrkld",
+      "controlPlaneEndpoint": {
+        "host": "10.80.31.10",
+        "port": 6443
+      },
+      "devices": [
+        "root,type=disk,path=/,pool=default",
+        "kmsg.dev,type=unix-char,source=/dev/kmsg,path=/dev/kmsg",
+        "zfs.dev,type=unix-char,source=/dev/zfs,path=/dev/zfs",
+        "fabric0,type=nic,name=fabric0,nictype=bridged,parent=fabric-br",
+        "vmnet0,type=nic,name=vmnet0,nictype=bridged,parent=vmnet-wrkld"
+      ],
+      "image": {
+        "name": "nikopol-wrkld-node-base"
+      },
+      "namespace": "rke2lab-nikopol-wrkld",
+      "nature": "cattle",
+      "nodeLabels": [
+        "flox.seedmatic.io/enabled=true"
+      ],
+      "nodes": [
+        {
+          "name": "nikopol-wrkld-master"
+        },
+        {
+          "name": "nikopol-wrkld-peer1"
+        },
+        {
+          "name": "nikopol-wrkld-peer2"
+        }
+      ],
+      "pool": "control-node",
+      "replicas": 3,
+      "rke2Version": "v1.34.1+rke2r1",
+      "role": "control-plane",
+      "target": "nikopol"
+    }
+  },
+  {
+    "apiVersion": "v1",
+    "data": {
+      "members": "v1|Namespace||rke2lab-bioskop-wrkld\ncluster.seedmatic.io/v1alpha1|NodeImage|rke2lab-bioskop-wrkld|bioskop-wrkld-node-base\ncluster.seedmatic.io/v1alpha1|ClusterIntention|rke2lab-bioskop-wrkld|bioskop-wrkld\ncluster.seedmatic.io/v1alpha1|PoolIntention|rke2lab-bioskop-wrkld|bioskop-wrkld-control-node\nv1|Secret|rke2lab-bioskop-wrkld|bioskop-wrkld-ca\nv1|Secret|rke2lab-bioskop-wrkld|bioskop-wrkld-cca\nv1|Secret|rke2lab-bioskop-wrkld|bioskop-wrkld-etcd\nv1|Secret|rke2lab-bioskop-wrkld|bioskop-wrkld-peer-etcd\nv1|Namespace||rke2lab-nikopol-mgmt\ncluster.seedmatic.io/v1alpha1|NodeImage|rke2lab-nikopol-mgmt|nikopol-mgmt-node-base\ncluster.seedmatic.io/v1alpha1|ClusterIntention|rke2lab-nikopol-mgmt|nikopol-mgmt\ncluster.seedmatic.io/v1alpha1|PoolIntention|rke2lab-nikopol-mgmt|nikopol-mgmt-control-node\nv1|Secret|rke2lab-nikopol-mgmt|nikopol-mgmt-ca\nv1|Secret|rke2lab-nikopol-mgmt|nikopol-mgmt-cca\nv1|Secret|rke2lab-nikopol-mgmt|nikopol-mgmt-etcd\nv1|Secret|rke2lab-nikopol-mgmt|nikopol-mgmt-peer-etcd\nv1|Namespace||rke2lab-nikopol-wrkld\ncluster.seedmatic.io/v1alpha1|NodeImage|rke2lab-nikopol-wrkld|nikopol-wrkld-node-base\ncluster.seedmatic.io/v1alpha1|ClusterIntention|rke2lab-nikopol-wrkld|nikopol-wrkld\ncluster.seedmatic.io/v1alpha1|PoolIntention|rke2lab-nikopol-wrkld|nikopol-wrkld-control-node"
+    },
+    "kind": "ConfigMap",
+    "metadata": {
+      "annotations": {
+        "config.kubernetes.io/local-config": "true",
+        "io.seedmatic.rke2lab/domain": "cluster-api",
+        "io.seedmatic.rke2lab/manifest-group": "true",
+        "io.seedmatic.rke2lab/package": "cluster-api-workload"
+      },
+      "name": "cluster-api-workload.group"
+    }
+  }
+]
