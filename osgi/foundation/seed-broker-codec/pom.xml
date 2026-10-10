@@ -9,7 +9,7 @@
   </parent>
   <artifactId>seed-broker-codec</artifactId>
   <name>osgi/foundation/seed-broker-codec</name>
-  <description>The Document payload codec (DocumentCodec), written once and loaded per realm — our own
+  <description>The payload codec (SeedCodec) and the file / wire profiles, written once and loaded per realm — our own
     dual-realm library (embed; type=dual-realm, jackson's treatment for our code): staged as a bundle
     OSGi-side (importing the OSGi jackson + seed-broker seam, exporting seed.broker.codec) AND
     shaded flat host-side (binding the host jackson). No codec type crosses the String-only seam;
@@ -29,7 +29,7 @@
       <groupId>com.fasterxml.jackson.core</groupId>
       <artifactId>jackson-annotations</artifactId>
     </dependency>
-    <!-- jackson's own official datatype modules, registered EXPLICITLY by DocumentCodec: jsr310's
+    <!-- jackson's own official datatype modules, registered EXPLICITLY by SeedCodec: jsr310's
          JavaTimeModule (Instant ↔ ISO-8601, replacing a hand-rolled module) and jdk8's Jdk8Module
          (Optional). Realm-isolated jackson artifacts imported bundle-to-bundle like jackson-databind
          (NOT nested — explicit registration means no ServiceLoader discovery drives them; the staging
@@ -41,6 +41,16 @@
     <dependency>
       <groupId>com.fasterxml.jackson.datatype</groupId>
       <artifactId>jackson-datatype-jdk8</artifactId>
+    </dependency>
+    <!-- The canonical / reading profiles write and read YAML as well as JSON; imported like
+         jackson-databind (each realm binds its own copy). -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.dataformat</groupId>
+      <artifactId>jackson-dataformat-yaml</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.yaml</groupId>
+      <artifactId>snakeyaml</artifactId>
     </dependency>
     <!-- The wire-contract + WireEnum the codec (de)serializes. provided: the seed-broker seam is
          system-exported OSGi-side and flat host-side in BOTH realms, so the codec compiles against

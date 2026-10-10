@@ -996,10 +996,10 @@ flowchart TB
   The host cannot `== Severity.CRITICAL`, because it holds a string verdict, not a `Severity`.
 * *Egress* — OSGi emits its DAG as a `Document`; the host forwards it opaquely to `pulumi.export`.
 
-The asymmetry reaches into the codec too: OSGi owns the `DocumentCodec` as a DS `@Component` (the twin
-of `YamlMapper`), the host holds a plain instance (no DS); each realm carries its own jackson and maps
-`String` payload ↔ record independently. The rejected symmetric alternative — a rich host-side mapper
-rebuilding doctor types — re-creates a doctor vocabulary on the host, the very leak this closes.
+The asymmetry reaches into the codec too: each realm holds plain `SeedCodec` instances (no DS),
+carries its own jackson and maps `String` payload ↔ record independently. The rejected symmetric
+alternative — a rich host-side mapper rebuilding doctor types — re-creates a doctor vocabulary on the
+host, the very leak this closes.
 
 [[the-seam-types]]
 == The seam types — what actually crosses
@@ -1079,7 +1079,7 @@ drift. The contract is the **wire-record per `Coordinate`** — a flat record (s
 wire-records, seam enums; no jackson annotations) carrying `@DocumentContract(slug)`. Its
 `RecordComponents` ARE the contract: the JSON Schema is a **build-time projection** of them, never
 hand-written — no `FIELD_*` string catalog to keep in step. The wire-record *type* never crosses; only
-the serialized `String` payload does, mapped record↔`String` by each realm's own `DocumentCodec`. The
+the serialized `String` payload does, mapped record↔`String` by each realm's own `SeedCodec`. The
 codec also exposes `toMap(record)` / `fromMap(map, type)` (record ↔ opaque `Map`) and
 `decode(String)→JsonNode` (opaque tree): these are how the HOST reads a plant BY KEY and assembles a
 seed WITHOUT the class — the opacity path § <<contribution-and-opacity>> generalizes.
@@ -1091,6 +1091,23 @@ The codec (`osgi/foundation/seed-broker-codec`, package
 annotation), a `JavaTimeModule` (ISO-8601 `Instant`), and `Jdk8Module` (`Optional<T>` → an absent key,
 dropped from `required`). It carries a `withValidation(boolean)` switch, OFF in the embedded build
 (see § <<remaining-migration>>).
+
+The seam's payloads are never committed, so they need no canonical form. The files we write and the
+APIs we call do, and they reach jackson through the same instance, by three profiles a `SeedCodec`
+holds — never a mapper of their own:
+
+* `canonical()` → `CanonicalCodec` — the files we write and read back, in JSON and YAML: map entries
+  and JSON trees sorted by key, a record in its declared component order, an empty `Optional` dropped,
+  two-space indent, `"k": v`, one element per line, a final newline; YAML without a document marker,
+  quoting only what would not read back as the same string. The same value always yields the same
+  bytes, so a diff of a committed file shows only what changed.
+* `reading()` → `ReadingCodec` — JSON and YAML we only parse (config, secrets, other tools' files),
+  tolerant of unknown keys and of documents above SnakeYAML's 3 MiB default.
+* `wire()` → `WireCodec` — bodies exchanged with external APIs: compact JSON, nothing reordered or
+  dropped (the peer dictates the shape), tolerant of a field the peer adds.
+
+`CanonicalCodec` and `WireCodec` are derived from the instance's `ReadingCodec` (a copy of its mappers,
+reconfigured), so all three read alike and only their writers differ.
 
 === Build-time is the load-bearing contract check (we build on one codebase)
 
@@ -1108,7 +1125,7 @@ the pairing.
 
 Runtime `Document` validation is *designed* but *deferred (YAGNI)* — it earns its keep only when the
 host and the OSGi exec-jar are deployed or versioned **separately** (a remote split), when a semver
-mismatch becomes possible. The `DocumentCodec.withValidation(boolean)` switch reserves its shape:
+mismatch becomes possible. The `SeedCodec.withValidation(boolean)` switch reserves its shape:
 
 * *OSGi side* — validation carried by a **fragment** that attaches to a domain's bundle and validates
   that domain's `Document`s (the proven fragment-contribution pattern). Absent in the embedded build;
@@ -1201,7 +1218,7 @@ ordinary.
 == Contribution + opacity — a domain owns its vocabulary, the host holds none of it
 
 The shipped broker collects `SeedHandler` `@Component`s by DS and dispatches by coordinate — the domain
-already contributes its LOGIC and its own encode/decode (each handler holds a `DocumentCodec` and knows
+already contributes its LOGIC and its own encode/decode (each handler holds a `SeedCodec` and knows
 its own wire-records). Two things are NOT yet contributed, and closing them is what makes a `Document`
 truly opaque to the host:
 
