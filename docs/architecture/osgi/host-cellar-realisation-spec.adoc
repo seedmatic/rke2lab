@@ -785,6 +785,38 @@ The harvest's reader is the `fabric` scion, which writes `netplan.json` and `dat
 `fabric/plan` worktree from the two harvests — so between this slice and that one the coordinate is written
 and not yet read, on purpose: the harvest is what the delivery is built on.
 
+*The fabric domain — the two harvests become one commit (2026-10-10).* `fabric` is what seedmatic READS
+of rke2lab, and it is a domain because the DELIVERY is one commit carrying both files, so it has one
+owner. netplan and dataplan each derive and harvest; neither knows the branch, the other's file, or
+that git is involved. `FabricDeliveryScenario` reads `NetplanIngressCoordinate.PROJECTION` and
+`DataplanCoordinate.LAYOUT` as `JsonNode` — opaque, so no foreign vocabulary enters fabric and this
+seam does not test the realm boundary — and writes them through the codec's `canonical()` profile into
+a linked worktree of `FabricDelivery.branch`.
+
+* **`FabricCoordinate`** — an EMPTY enum, and here the justified case rather than the default one:
+  fabric DELIVERS, it derives nothing, so it files no harvest and owns no value-coordinate. Where
+  `DataplanCoordinate.LAYOUT` exists because the dataplan scion has a derivation to hand on, fabric
+  IS the hand-on. It holds the `AMEND` / `SHAPE` / `RUNBOOK` meta-coordinates only.
+* **`FabricDelivery`** — what the delivery is: branch `fabric/plan`, carrying `netplan.json` (netplan's
+  projection, the file that used to sit at the repository root as `network-blueprint.json`) and
+  `dataplan.json`. Single-sourced because these names are read from three sides — the scion writes
+  them, nix pins the same branch as the `fabric-plan` input and reads the same two files, and the
+  other repos pin it. A name spelled twice is the mismatch class that cost this project the
+  `clusterApi` bug.
+* **`FabricRunbookInput`** — one `SOIL` amendment, `worktreesRoot`: the plot the linked worktree is
+  made under, which only the host knows. WHAT to deliver is deliberately NOT an input — it is the two
+  harvests. A delivery with no harvest to read is a broken run, raised as `FabricDeliveryError` with
+  the link that is missing (`NO_PARCEL` / `NO_NETPLAN` / `NO_DATAPLAN` / `NO_WORKTREES`), never an
+  empty result.
+
+⚠️ The commit is LOCAL in this slice. It is signed when the ndh key-store is reachable — the identity
+minted by the worktree domain's `GitBotIdentities`, the signing key named through `NdhKeystoreCatalog`,
+so neither is re-typed — and it is NOT pushed: a push needs a freshly minted token, which only the
+publishing CLI can reveal, and that CLI is the next slice. Until then the BYTES are the deliverable,
+handed to the integration for republication.
+`FabricDeliveryTest.the_delivery_is_not_pushed_until_a_publishing_cli_can_reveal_a_token` pins that
+limit, so the slice that lifts it has to change a test rather than remember an intention.
+
 *The scion-side producers (incus-core, OSGi-only).* Collaborators assemble the plan, each named
 by `IncusProvisionScenario`'s PREPARE beats: `GrowNetworkResolver` (resolves `NetplanSynthesisService`
 → the `GrowNetworkView`), `GrowIdentityResolver` (same blueprint → the `GrowIdentityView`, the four

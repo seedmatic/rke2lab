@@ -8,7 +8,7 @@ OSGi-side), AND the final fold of `worktree-contract-host` into an OSGi-only `wo
 
 This spec discharges the `SPEC_COVERAGE` obligation of the worktree contract packages by naming every
 exported type: `Worktree`, `GatePolicy`, `WorktreeRunbookInput`, `WorktreeFacts`, `WorktreeCoordinate`,
-`Provenance`, `WorkingState`, `GitIdentity`, `LinkedWorktrees`, `LinkedWorktree`.
+`Provenance`, `WorkingState`, `GitIdentity`, `GitBotIdentities`, `LinkedWorktrees`, `LinkedWorktree`.
 
 toc::[]
 
@@ -80,8 +80,16 @@ amend door that binds the injected `GatePolicy` FACET — the twin of `IncusAmen
 * **`GitIdentity`** — the author/committer a `commit` stamps onto an automated change: a bot identity
   (name + email), so a machine-made commit is attributable to the tool, never the ambient
   `user.name`/`user.email` of whoever ran it. Domain-neutral — the worktree carries no specific
-  identity; the caller supplies one (the manifests version bumper mints `rke2lab:manifests-bumper` /
-  `manifests-bumper@<tailnet-domain>`, the domain single-sourced from the PKI keystore).
+  identity; the caller supplies one.
+* **`GitBotIdentities`** — mints that identity: `rke2lab:<tool>` / `rke2lab+<tool>@<authorityDomain>`,
+  the base OWNED here and the tool supplying only its own discriminator (guarded to a bare suffix, so
+  a tool can add provenance but never replace the base). An INSTANCE holding the one thing that varies
+  by deployment, the tailnet authority domain, read from the ndh key-store rather than re-typed.
+  It moved here from `manifests-bdd` on 2026-10-10, when the fabric delivery became a second automated
+  committer: its javadoc calls itself "the single source of trust for the bot identity", and a single
+  source only ONE domain can reach is not one — fabric would have minted a second convention. It sits
+  beside `GitIdentity` because the identity of a git commit belongs to the domain that owns the git
+  mechanism. Users: the manifests render, the manifests version bumper, the fabric delivery.
 
 The `Worktree` service also carries TWO write verbs — the first the domain gained (survey stayed
 read-only until a consumer needed to cultivate the tree), jgit still sealed behind the implementation

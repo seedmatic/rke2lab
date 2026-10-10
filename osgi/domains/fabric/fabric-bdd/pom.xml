@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>io.seedmatic.rke2lab</groupId>
+    <artifactId>bundle-parent</artifactId>
+    <version>0.0.0-SNAPSHOT</version>
+    <relativePath>../../../bundle-parent/pom.xml</relativePath>
+  </parent>
+
+  <artifactId>fabric-bdd</artifactId>
+  <name>osgi/domains/fabric/fabric-bdd</name>
+  <description>The fabric domain's delivery SCENARIO: it reads the netplan projection and the
+    dataplan layout harvested in the run, writes both in the codec's canonical form into a linked
+    worktree of fabric/plan, and commits. It derives nothing of its own — the delivery is one commit
+    carrying both files, which is why it has one owner rather than each domain pushing its
+    own.</description>
+
+  <dependencies>
+    <!-- The dataplan contract: the layout record (the export derivation builds it), the
+         runbook-input wire-record + the domain coordinates the handlers speak. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>fabric-contract</artifactId>
+    </dependency>
+    <!-- The two harvests the delivery reads, named by their OWNERS' coordinates and never by a
+         literal slug: netplan-ingress-contract (NetplanIngressCoordinate.PROJECTION, dual-realm
+         because the host fetches it too) and dataplan-contract (DataplanCoordinate.LAYOUT, OSGi-only
+         because nothing host-side reads the dataset tree). Their VALUES cross as JsonNode — fabric
+         binds neither domain's types. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>netplan-ingress-contract</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>dataplan-contract</artifactId>
+    </dependency>
+    <!-- The git MECHANISM and the bot identity: LinkedWorktrees makes the delivery's checkout,
+         GitBotIdentities mints the identity every automated commit of this project reads. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>worktree-contract</artifactId>
+    </dependency>
+    <!-- The key-store the commit's authority domain and signing key come from, named through
+         NdhKeystoreCatalog so neither is re-typed as a literal. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>ndh-contract</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>seed-broker-testkit</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!-- The frontier vocabulary: the SeedEnvelope the trigger arrives on + the runbook is reaped on,
+         the AmendmentAssembler the reflector gathers ambient roles from, the Amendment roles. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>seed-broker-port</artifactId>
+    </dependency>
+    <!-- The codec (SeedCodec, AmendmentBinder) the reflector reconciles with + the scion serialises
+         the layout JSON through. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>seed-broker-codec</artifactId>
+    </dependency>
+    <!-- jGiven as a compile dep: the scenario IS jGiven Stages. At runtime these packages resolve to
+         the jgiven-wrap bundle, pulled into the live world by this bundle's import closure. -->
+    <dependency>
+      <groupId>com.tngtech.jgiven</groupId>
+      <artifactId>jgiven-core</artifactId>
+    </dependency>
+    <!-- The scenario declares Jupiter extensions (@RegisterExtension, @Test), so these are compile
+         deps here, not only test. -->
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.platform</groupId>
+      <artifactId>junit-platform-engine</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.tngtech.jgiven</groupId>
+      <artifactId>jgiven-junit5</artifactId>
+    </dependency>
+    <!-- The in-container runner primitives (GenericRunbookHandler, ScenarioPlayer, InputReceiver,
+         ScenarioInputSeed) the handler + scenario extend/use. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>scenario-engine</artifactId>
+    </dependency>
+    <!-- The scion serialises the layout to JSON (SeedCodec returns a String; the JsonNode type the
+         amend reflector names is jackson-databind). -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+    </dependency>
+    <!-- osgi.core: contributed @Component activation + the BundleContext the engine carries. -->
+    <dependency>
+      <groupId>org.osgi</groupId>
+      <artifactId>osgi.core</artifactId>
+      <scope>provided</scope>
+    </dependency>
+    <!-- bnd-consumed construction annotations: DataplanRunbookHandler + DataplanAmendReflector
+         (@Component) publish the SeedHandlers. provided — SCR supplies the runtime. -->
+    <dependency>
+      <groupId>org.osgi</groupId>
+      <artifactId>org.osgi.service.component.annotations</artifactId>
+      <scope>provided</scope>
+    </dependency>
+    <!-- checker-qual: @MonotonicNonNull for the scenario's set-once input. Analysis-only. -->
+    <dependency>
+      <groupId>org.checkerframework</groupId>
+      <artifactId>checker-qual</artifactId>
+      <scope>provided</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>biz.aQute.bnd</groupId>
+        <artifactId>bnd-maven-plugin</artifactId>
+      </plugin>
+    </plugins>
+  </build>
+</project>

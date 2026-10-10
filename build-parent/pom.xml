@@ -486,6 +486,16 @@
       </dependency>
       <dependency>
         <groupId>io.seedmatic.rke2lab</groupId>
+        <artifactId>fabric-contract</artifactId>
+        <version>${rke2lab.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.seedmatic.rke2lab</groupId>
+        <artifactId>fabric-bdd</artifactId>
+        <version>${rke2lab.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.seedmatic.rke2lab</groupId>
         <artifactId>scenario-probe</artifactId>
         <version>${rke2lab.version}</version>
       </dependency>
