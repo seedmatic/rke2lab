@@ -16,10 +16,9 @@ package io.seedmatic.rke2lab.worktree;
  * it — the discriminator is the only per-call input, and it is guarded to a bare suffix (no
  * {@code @}, {@code :}, or whitespace) so it can only ADD provenance, never replace the base.
  *
- * <p>A record because it is one immutable value with behaviour, which is also what lets it live in
- * a {@code type=contract} bundle: the contract-purity law exports only records / enums / sealed
- * ADTs / interfaces, and it refused the concrete class this used to be. The law and the project's
- * "immutability by default" rule asked for the same shape.
+ * <p>A record: one immutable value with behaviour, which is what the project's immutability rule
+ * prescribes, and what lets it live in a {@code type=contract} bundle — the contract-purity law
+ * exports only records, enums, sealed ADTs and interfaces.
  */
 public record GitBotIdentities(String authorityDomain) {
 

@@ -27,8 +27,8 @@ import java.util.Objects;
 public record AdminCredentials(String clientCertPem, String clientKeyPem, String caCertPem) {
 
   // A sealed case missing a field fails at its decode, not as an empty render downstream: the
-  // manifests units now embed this record as it is, and an absent PEM would ride into a Secret as
-  // nothing, silently. The manifests-side mirror used to carry this guard.
+  // manifests units embed this record as it is, and an absent PEM would ride into a Secret as
+  // nothing, silently.
   public AdminCredentials {
     Objects.requireNonNull(clientCertPem, "clientCertPem");
     Objects.requireNonNull(clientKeyPem, "clientKeyPem");

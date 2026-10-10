@@ -9,9 +9,7 @@ import java.nio.file.Path;
  * at a caller-chosen path, into which a producer materialises a rendered tree, then commits and
  * pushes it. The push is a FAST-FORWARD: a rendered branch ACCRETES on a stable null-commit base
  * (see {@link #prepare} and {@link LinkedWorktree#push}), so the remote advances and a divergence
- * fails loudly instead of being clobbered. This paragraph used to say the opposite — a force-push
- * "expected and correct" — describing the orphan-per-render model its own {@code prepare} had
- * already replaced.
+ * fails loudly instead of being clobbered.
  *
  * <p>Domain-neutral, exactly like {@link Worktree} and {@link GatePolicy}: it names no {@code
  * manifests/<host>-<role>} convention and no {@code .local.d} path. The caller supplies the branch

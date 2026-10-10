@@ -16,8 +16,7 @@ import java.util.Objects;
  * <p>Reuses {@link WorkloadClusterCas.Pair} (cert chain + key, both PEM) — the identical shape a
  * workload BYO-CA pair has. NAMELESS: unlike a workload entry, no {@code clusterName} — the render
  * owns the mgmt cluster name (its {@code bootstrapIdentity}), which the seal does not hold. The
- * manifests synthesis renders it as it is; it used to go through a manifests-side copy of this
- * record, deleted on 2026-10-10 once the reason for it was found dead. See
+ * manifests synthesis renders it as it is. See
  * docs/architecture/cluster-api/management-workload-topology.adoc and the
  * caprke2-byo-ca-secret-contract memory.
  */
@@ -29,8 +28,8 @@ public record ManagementClusterCa(
     WorkloadClusterCas.Pair etcdPeerCa) {
 
   // A sealed case missing a field fails at its decode, not as an empty render downstream: the
-  // manifests units now embed this record as it is, and an absent PEM would ride into a Secret as
-  // nothing, silently. The manifests-side mirror used to carry this guard.
+  // manifests units embed this record as it is, and an absent PEM would ride into a Secret as
+  // nothing, silently.
   public ManagementClusterCa {
     Objects.requireNonNull(serverCa, "serverCa");
     Objects.requireNonNull(clientCa, "clientCa");

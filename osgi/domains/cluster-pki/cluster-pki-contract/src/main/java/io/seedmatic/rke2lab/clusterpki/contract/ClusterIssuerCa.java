@@ -30,8 +30,8 @@ import java.util.Objects;
 public record ClusterIssuerCa(String caCertChainPem, String caKeyPem) {
 
   // A sealed case missing a field fails at its decode, not as an empty render downstream: the
-  // manifests units now embed this record as it is, and an absent PEM would ride into a Secret as
-  // nothing, silently. The manifests-side mirror used to carry this guard.
+  // manifests units embed this record as it is, and an absent PEM would ride into a Secret as
+  // nothing, silently.
   public ClusterIssuerCa {
     Objects.requireNonNull(caCertChainPem, "caCertChainPem");
     Objects.requireNonNull(caKeyPem, "caKeyPem");

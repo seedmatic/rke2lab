@@ -23,8 +23,7 @@ import java.util.Objects;
 public record GithubAppCredentials(String appId, String installationId, String privateKeyPem) {
 
   // A sealed case missing a field fails at its decode, not downstream: the manifests units embed
-  // this record as it is, and the token mints hand it to GitHub. The manifests-side mirror used to
-  // carry this guard.
+  // this record as it is, and the token mints hand it to GitHub.
   public GithubAppCredentials {
     Objects.requireNonNull(appId, "appId");
     Objects.requireNonNull(installationId, "installationId");
