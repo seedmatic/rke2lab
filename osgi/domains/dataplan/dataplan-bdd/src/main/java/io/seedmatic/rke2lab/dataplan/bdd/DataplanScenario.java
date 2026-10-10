@@ -6,18 +6,24 @@ import com.tngtech.jgiven.annotation.Hidden;
 import com.tngtech.jgiven.annotation.ProvidedScenarioState;
 import com.tngtech.jgiven.base.ScenarioTestBase;
 import com.tngtech.jgiven.impl.Scenario;
+import io.seedmatic.rke2lab.dataplan.contract.DataplanCoordinate;
 import io.seedmatic.rke2lab.dataplan.contract.DataplanLayout;
 import io.seedmatic.rke2lab.dataplan.contract.DataplanRunbookInput;
+import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.CellarReceiver;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.InputReceiver;
+import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.OsgiService;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.ScenarioInputSeed;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.ScenarioPlayer;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.SeedScenario;
 import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
+import io.seedmatic.rke2lab.seed.broker.port.Cellar;
+import io.seedmatic.rke2lab.seed.broker.port.Parcel;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Objects;
+import java.util.Optional;
 import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -45,7 +51,9 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 @SeedScenario
 public class DataplanScenario
     extends ScenarioTestBase<DataplanScenario.Given, DataplanScenario.When, DataplanScenario.Then>
-    implements InputReceiver<DataplanRunbookInput>, ScenarioPlayer.Playable {
+    implements CellarReceiver<Cellar>,
+        InputReceiver<DataplanRunbookInput>,
+        ScenarioPlayer.Playable {
 
   /**
    * The inbound channel the runbook handler ({@code DataplanRunbookHandler.seedFrom}) seeds the
@@ -59,6 +67,17 @@ public class DataplanScenario
 
   @MonotonicNonNull private DataplanRunbookInput input;
 
+  // The transactional cellar the extension injects before the body; the layout is stored into it so
+  // the fabric delivery reads the dataset tree from the run rather than from a file. Null until
+  // receiveCellar sets it.
+  @MonotonicNonNull private Cellar cellar;
+
+  // The run's parcel, published by the seed host at its GIVEN (synchronously, before any sow), so a
+  // snapshot sees it. The plan CLI publishes none: its run only exports to the soil, and nobody
+  // fetches a layout there. Hence an optional collaborator, never awaited — the netplan treatment.
+  @OsgiService(await = false)
+  private Optional<Parcel> parcel = Optional.empty();
+
   @Override
   public Scenario<Given, When, Then> getScenario() {
     return scenario;
@@ -69,13 +88,20 @@ public class DataplanScenario
     this.input = input;
   }
 
+  @Override
+  public void receiveCellar(Cellar cellar) {
+    this.cellar = cellar;
+  }
+
   @Test
   void the_layout_is_exported_to_the_soil() {
     final DataplanRunbookInput facet =
         Objects.requireNonNull(input, "the dataplan runbook input was not seeded before the body");
     given().the_runbook_input(facet);
     when().the_layout_is_derived().and().the_layout_is_written_as_json();
-    then().the_layout_file_is_written();
+    final Cellar harvest =
+        Objects.requireNonNull(cellar, "the cellar was not injected before the body");
+    then().the_layout_file_is_written().and().the_layout_is_harvested(harvest, parcel);
   }
 
   /** Given: the runbook input carrying the SOIL to materialise into. */
@@ -99,9 +125,9 @@ public class DataplanScenario
 
     private final SeedCodec codec = new SeedCodec();
 
-    // Derived by the first WHEN step, read by the second on the same stage instance — intra-stage,
-    // so a plain field, not a cross-stage @ProvidedScenarioState.
-    @MonotonicNonNull private DataplanLayout layout;
+    // Derived by the first WHEN step, written as JSON by the second, and harvested by the THEN —
+    // so it crosses stages and is scenario state, not a plain field.
+    @ProvidedScenarioState @MonotonicNonNull DataplanLayout layout;
 
     public When the_layout_is_derived() {
       this.layout = DataplanLayout.canonical();
@@ -142,10 +168,18 @@ public class DataplanScenario
     }
   }
 
-  /** Then: the export landed — {@code dataplan.json} exists and is non-empty. */
+  /**
+   * Then: the export landed — {@code dataplan.json} exists and is non-empty — and, in a seed run,
+   * the same layout is filed at {@link DataplanCoordinate#LAYOUT} under the run's parcel, where the
+   * fabric delivery reads the dataset tree instead of a file. The layout is what the dataplan CODE
+   * derives, never a file it publishes (fabric/plan's {@code dataplan.json} is the delivery of this
+   * same derivation, for nix).
+   */
   public static class Then extends Stage<Then> {
 
     @ExpectedScenarioState Path layoutFile;
+
+    @ExpectedScenarioState DataplanLayout layout;
 
     public Then the_layout_file_is_written() {
       if (!Files.exists(layoutFile)) {
@@ -160,6 +194,11 @@ public class DataplanScenario
       if (size <= 0) {
         throw new DataplanExportError(layoutFile, DataplanExportError.Reason.EMPTY);
       }
+      return self();
+    }
+
+    public Then the_layout_is_harvested(@Hidden Cellar cellar, @Hidden Optional<Parcel> parcel) {
+      parcel.ifPresent(run -> cellar.store(run, DataplanCoordinate.LAYOUT, layout));
       return self();
     }
   }

@@ -28,6 +28,11 @@
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>dataplan-contract</artifactId>
     </dependency>
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>seed-broker-testkit</artifactId>
+      <scope>test</scope>
+    </dependency>
     <!-- The frontier vocabulary: the SeedEnvelope the trigger arrives on + the runbook is reaped on,
          the AmendmentAssembler the reflector gathers ambient roles from, the Amendment roles. -->
     <dependency>
