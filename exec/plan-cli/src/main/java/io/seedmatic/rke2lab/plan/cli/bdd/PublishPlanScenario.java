@@ -171,7 +171,7 @@ public class PublishPlanScenario
         @Hidden ScenarioModel hostScenario, @Hidden ReportModel hostTree) {
       sowAndGraft
           .sowing("ghapp", gardening, hostScenario, hostTree)
-          .the_scion_is_sown_and_grafted("the github app is rehydrated");
+          .the_scion_is_sown_and_grafted();
       return self();
     }
 
@@ -179,7 +179,7 @@ public class PublishPlanScenario
         @Hidden ScenarioModel hostScenario, @Hidden ReportModel hostTree) {
       sowAndGraft
           .sowing("netplan", gardening, hostScenario, hostTree, exportSoil())
-          .the_scion_is_sown_and_grafted("the network plan is derived");
+          .the_scion_is_sown_and_grafted();
       return self();
     }
 
@@ -187,7 +187,7 @@ public class PublishPlanScenario
         @Hidden ScenarioModel hostScenario, @Hidden ReportModel hostTree) {
       sowAndGraft
           .sowing("dataplan", gardening, hostScenario, hostTree, exportSoil())
-          .the_scion_is_sown_and_grafted("the dataset plan is derived");
+          .the_scion_is_sown_and_grafted();
       return self();
     }
 
@@ -200,7 +200,7 @@ public class PublishPlanScenario
               hostScenario,
               hostTree,
               Map.of(Amendment.SOIL, TextNode.valueOf(run.worktreesRoot())))
-          .the_scion_is_sown_and_grafted("the plan is delivered");
+          .the_scion_is_sown_and_grafted();
       return self();
     }
 

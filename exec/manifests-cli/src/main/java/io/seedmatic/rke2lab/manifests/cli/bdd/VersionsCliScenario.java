@@ -156,7 +156,7 @@ public class VersionsCliScenario
       final Map<String, JsonNode> amendments = Map.of(Amendment.FACET, facet);
       sowAndGraft
           .sowing("manifests-versions", gardening, hostScenario, hostTree, amendments)
-          .the_scion_is_sown_and_grafted("the component versions are bumped");
+          .the_scion_is_sown_and_grafted();
       return self();
     }
   }

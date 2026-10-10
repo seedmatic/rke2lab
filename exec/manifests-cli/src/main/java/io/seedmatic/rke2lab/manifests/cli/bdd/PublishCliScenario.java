@@ -225,7 +225,7 @@ public class PublishCliScenario
       // token). No amendment (the scion's door defaults).
       sowAndGraft
           .sowing("ghapp", gardening, hostScenario, hostTree)
-          .the_scion_is_sown_and_grafted("the github app is rehydrated");
+          .the_scion_is_sown_and_grafted();
       return self();
     }
 
@@ -241,7 +241,7 @@ public class PublishCliScenario
       amendments.put(Amendment.RENDER_MODE, renderMode);
       sowAndGraft
           .sowing("manifests", gardening, hostScenario, hostTree, amendments)
-          .the_scion_is_sown_and_grafted("the manifests are rendered and delivered");
+          .the_scion_is_sown_and_grafted();
       return self();
     }
 

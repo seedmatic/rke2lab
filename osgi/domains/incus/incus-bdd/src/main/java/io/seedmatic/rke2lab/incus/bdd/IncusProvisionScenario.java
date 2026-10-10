@@ -490,17 +490,14 @@ public class IncusProvisionScenario
       // rendered under its crossing). Pull the runbook JSON the way the host Gardening.sow does,
       // rebuild the model in THIS realm (only flat JSON crosses), and fold it under the rootstock —
       // a scion GRAFTING a sub-scion in-world, the same mechanism the root uses host-side. A
-      // manifests failure rides IN the model: graftUnder marks this step FAILED and fail-fasts the
-      // steps after it, so a broken synthesis is no longer silently green.
+      // manifests failure rides IN the model: graftUnder marks this step FAILED, and asserting the
+      // grafted scion throws, so the secrets, the prep and the grow plan are never produced for a
+      // broken synthesis.
       final SeedEnvelope reaped =
           broker.orElseThrow().sow(new RunbookCoordinate("manifests"), cellar, amended);
-      final String runbookJson = codec.decode(reaped.payload()).path("runbook").asText();
-      graft.graftUnder(
-          hostScenario,
-          hostTree,
-          "manifests",
-          "the manifests are cultivated",
-          graft.rebuild(runbookJson));
+      final ReportModel scion =
+          graft.rebuild(codec.decode(reaped.payload()).path("runbook").asText());
+      graft.assertPassed(scion, graft.graftUnder(hostScenario, hostTree, "manifests", scion));
       return self();
     }
 

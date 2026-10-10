@@ -159,7 +159,7 @@ public class PlanCliScenario
               .orElseGet(Map::of);
       sowAndGraft
           .sowing(coordinate, gardening, hostScenario, hostTree, amendments)
-          .the_scion_is_sown_and_grafted("the plan is sown");
+          .the_scion_is_sown_and_grafted();
       return self();
     }
   }

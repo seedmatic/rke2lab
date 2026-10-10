@@ -168,7 +168,8 @@ SCENARIO: the instance is prepared   (PREPARE beat — sow-and-graft, in-contain
   WHEN the_image_is_built — built, or found current by its recipe-digest cache key       [CODED]
     AND the_manifests_are_cultivated — the manifests SUB-SOW (broker.sow AMEND+RUNBOOK → the SOIL, passing the Cellar that carries the tx),
         then GRAFTS the reaped manifests runbook under this step (ScenarioGraft.rebuild + graftUnder) — a scion grafting a sub-scion in-world,
-        so the manifests synthesis renders as a nested sub-tree, faithful in the runbook (§ decision a: every scion played is rendered).
+        so the manifests synthesis renders as a nested sub-tree, faithful in the runbook (§ decision a: every scion played is rendered),
+        and asserts it: a failed synthesis throws here, so the secrets, the prep and the grow plan are never produced for it.
         The cloud-config content (nocloud user-data/meta-data/network-config) is synthesised by manifests here — there is NO separate
         nocloud-unwrap step in this scenario                                                              [CODED]
     AND the_secrets_are_written (#10 — resolve the auth token contact, upsert gh/flox into <worktree>/.secrets

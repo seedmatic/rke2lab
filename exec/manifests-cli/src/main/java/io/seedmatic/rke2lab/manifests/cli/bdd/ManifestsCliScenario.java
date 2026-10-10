@@ -170,7 +170,7 @@ public class ManifestsCliScenario
       identity.ifPresent(id -> amendments.put(Amendment.IDENTITY, identityNode(id)));
       sowAndGraft
           .sowing("manifests", gardening, hostScenario, hostTree, amendments)
-          .the_scion_is_sown_and_grafted("the manifests are sown");
+          .the_scion_is_sown_and_grafted();
       return self();
     }
 

@@ -117,7 +117,8 @@ only a soil NAME (a `String`) and reaps the runbook as JSON, never naming a `*Co
 reaching a scenario front-door (the play lives INSIDE the domain's `*RunbookHandler`, delegated to the
 shared `ScenarioPlayer`, on its own loader). `RunbookCoordinate` is a neutral value-coordinate in `seed-broker-port` (the twin of
 `SplitCoordinate`), so the seam names nothing a domain owns. The GRAFT half is
-`ScenarioGraft.rebuild(payload)` + `graftUnder(hostTree, step)`, on the runbook owner's side (host-side
+`ScenarioGraft.rebuild(payload)` + `graftUnder(hostScenario, hostTree, soil, scion)`, under the step
+executing the crossing, on the runbook owner's side (host-side
 for the root; a scion owning a sub-runbook grafts in-world — incus grafts manifests). One gesture — one
 door out, one graft home — nine times in the root scenario. `seed-bdd` therefore depends on
 `seed-broker-port` (the `SeedBroker` door + `RunbookCoordinate`) and the neutral `ScenarioGraft` (in the
@@ -139,12 +140,12 @@ classDiagram
     <<Stage, seed.bdd — host-flat>>
     -ScenarioGraft graft
     +sowing(soil, Gardening, ReportModel) hidden
-    +the_scion_is_sown_and_grafted(step)
+    +the_scion_is_sown_and_grafted()
   }
   class ScenarioGraft {
     <<scenario-engine — host-side>>
     +rebuild(json) ReportModel
-    +graftUnder(hostTree, step, scion)
+    +graftUnder(hostScenario, hostTree, soil, scion) rootstockName
   }
   SowAndGraftStage --> Gardening : SOW (realm-agnostic)
   SowAndGraftStage --> ScenarioGraft : GRAFT (tree-local, host)
