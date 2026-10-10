@@ -225,14 +225,12 @@ substituting what is the repo's own:
 |===
 | Parameter | Meaning
 
-| `name`, `slug`, `url` | the repo; a checkout counts as its own only if `origin` ends with the slug
-| `consumers` | who to request on `--downstream` — those that pin this repo
-| `branch` | the branch this flake lives on, for an orphan; `""` for the default branch
-| `pushFirstBranch` | an orphan pushed BEFORE inputs resolve (rke2lab: `seed-incluster`)
-| `catalogBranch`, `selfPinName` | the orphan that pins this repo and carries the flox envs
-  (rke2lab: `flox-catalog`), and this repo's input name in it
-| `ownedArtifacts` | generated files the dirty-guard must not read as operator edits
-| `aliases` | the repo's own words for its regen apps (`plans = "regen-dataplan"`)
+| `name` | the head's id in nix-flake-commons' `fabric/heads` — its repository, branch, order and
+  what it pins come from there, never from the call site (since the 2026-10 landing; the call site
+  used to carry `slug`, `url`, `consumers`, `pushFirstBranch`, `catalogBranch`, `selfPinName`,
+  `ownedArtifacts` and `aliases`)
+| `afterInputs` | apps run after the inputs' bump and before the impact guard measures, because what
+  they produce resolves through the bumped inputs (flox-catalog's `lock-envs`); none for rke2lab
 |===
 
 [mermaid]
@@ -476,7 +474,7 @@ does with `realpath`.
 | a bump that moves only S is carried although nothing consumed changed. rke2lab: its 8 of 27
   packages (`src = ./.` for Maven) left S on 2026-10-10 — the jars' source is now `mavenSource`, the
   Maven build cache's inputs, and a doc-only commit moves 0 of 27 (8 before); the apps
-  `regen-blueprint`, `regen-dataplan` not re-measured; ndh: 6 of 25 (`nerd-tart-*`); nnh and nch:
+  `regen-blueprint`, `regen-dataplan`, never re-measured, left on 2026-10-11 with the files they wrote; ndh: 6 of 25 (`nerd-tart-*`); nnh and nch:
   none (measured 2026-10-07)
 | add a newline to a tracked non-nix file in a clone, compare the projection
 

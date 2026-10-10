@@ -174,15 +174,16 @@ The twin of the netplan *segment* shape. Each entry is:
 
 == The committed projection (anti-IFD)
 
-The dataplan is consumed as a *checked-in* `dataplan.json`, read purely
-(`builtins.fromJSON (builtins.readFile ./dataplan.json)`) and surfaced as a flat,
-system-independent `lib.dataplan`. seed-outcluster regenerates it via `nix build
-.#dataplanJson`.
+The dataplan is consumed as a *delivered* `dataplan.json`: the plan CLI's `publish` verb writes it to
+the `fabric/plan` orphan, rke2lab pins that back as the `fabric-plan` input, reads it purely
+(`builtins.fromJSON (builtins.readFile "${inputs.fabric-plan}/dataplan.json")`) and surfaces it as a
+flat, system-independent `lib.dataplan`. `dataplan-fresh` compares the pin to `nix build
+.#dataplanJson`, what the sources produce. (Until 2026-10-11 it was a checked-in root file.)
 
 This is the *committed-projection* option that
 link:netplan-blueprint-single-source.adoc[the netplan doc] weighed and — in
-practice — the netplan blueprint later adopted (`network-blueprint.json` is read
-purely today). The dataplan starts there: it keeps `nixos-rebuild` on the host off
+practice — the netplan blueprint later adopted (now delivered as `netplan.json` on
+`fabric/plan` and read purely from the pin). The dataplan starts there: it keeps `nixos-rebuild` on the host off
 the Java/Maven hot-path, which matters because ndh materialises the datasets at
 *host provisioning time*, before any cluster exists to run the jar.
 

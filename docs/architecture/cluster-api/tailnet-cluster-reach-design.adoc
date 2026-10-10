@@ -222,7 +222,7 @@ declared targets, the addressing. A controller can then reconcile the objects.
 
 That is already this project's idiom, three times over:
 
-* `network-blueprint.json` — the addressing plan, published so ndh derives from it
+* `netplan.json` on `fabric/plan` — the addressing plan, delivered so ndh derives from it
   rather than re-declaring it;
 * the *image-state ConfigMap* (`ImageStateConfigMapManifestsUnit`) — the grow's
   ImageState handed to the cluster for the Stage A → Stage B handoff;
@@ -241,7 +241,7 @@ flowchart TB
   end
 
   subgraph SEED["Published facts (the seam)"]
-    BP["network-blueprint.json"]
+    BP["fabric/plan netplan.json"]
     IMG["image-state ConfigMap"]
     FACET["manifest.yaml facet<br/>targets + ImageState"]
   end

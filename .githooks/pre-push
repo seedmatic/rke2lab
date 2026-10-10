@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root="$(git rev-parse --show-toplevel)"
+cd "$root"
+# Refuse to push a head whose fabric-plan pin rke2lab could not stand behind.
+#
+# fabric-plan is rke2lab's own delivery, pinned back (flake.nix): netplan.json and dataplan.json
+# on the fabric/plan orphan. Two refusals:
+#   (a) the pinned revision is not on origin's fabric/plan — an unpushed delivery, e.g. locked
+#       through a git+file flake-registry.local.json override: no one else can fetch it;
+#   (b) the pin is stale — its files differ from what the PUSHED tree's sources produce.
+#
+# It judges what is pushed, never the worktree: the export runs on an archive of the pushed
+# commit. And it evaluates NOTHING with nix: a flake evaluation of a dirty tree copies the
+# smudged .secrets into the store. The archive also leaves out every sops-filtered path, which
+# `git archive` would otherwise write decrypted; the plan's build reads none of them.
+#
+# Chained by the global ~/.config/git/hooks/pre-push dispatcher, which replays the push's stdin.
+# A push run with GIT_CONFIG_GLOBAL=/dev/null bypasses the dispatcher, and so this hook.
+
+zero=0000000000000000000000000000000000000000
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+
+# The plan's toolchain is the seat's flox env, ALWAYS: a `java` found on the PATH may be older
+# than the JDK the plan is compiled for, and an export that fails reads as a stale pin.
+run() {
+  flox activate -d "$root" -- "$@"
+}
+
+refused=0
+while read -r local_ref local_sha _remote_ref _remote_sha; do
+  [[ "$local_sha" != "$zero" ]] || continue
+  lock="$(git show "$local_sha:flake.lock" 2>/dev/null || true)"
+  [[ -n "$lock" ]] || continue
+  rev="$(printf '%s' "$lock" | run yq -p=json '.nodes["fabric-plan"].locked.rev // ""')"
+  [[ -n "$rev" ]] || continue
+
+  git fetch -q origin fabric/plan
+  if ! git merge-base --is-ancestor "$rev" FETCH_HEAD 2>/dev/null; then
+    echo "  ⛔ $local_ref pins fabric-plan at ${rev:0:12}, which origin's fabric/plan does not carry." >&2
+    echo "     No one else can fetch it. Push the delivery first (nix run .#publish-plan)," >&2
+    echo "     then relock the pin against origin." >&2
+    refused=1
+    continue
+  fi
+
+  tree="$work/${local_sha:0:12}"
+  mkdir -p "$tree"
+  excludes=()
+  while IFS= read -r path; do excludes+=(":(exclude)$path"); done < <(
+    git ls-tree -r --name-only "$local_sha" | git check-attr --stdin filter | awk -F': ' '$3 ~ /sops/ { print $1 }')
+  git archive "$local_sha" -- . "${excludes[@]}" | tar -x -C "$tree"
+  if ! (cd "$tree" && run ./mvnw -q -pl :plan-cli -am package -DskipTests -Dflox.crd-staging.skip=true) \
+      >"$tree.build.log" 2>&1; then
+    echo "  ⛔ $local_ref: the plan does not build from the pushed tree, so its pin cannot be judged." >&2
+    echo "     See the build: rerun ./mvnw -pl :plan-cli -am package on ${local_sha:0:12}." >&2
+    refused=1
+    continue
+  fi
+  jar="$(ls "$tree"/exec/plan-cli/target/plan-cli-*-exec.jar | head -1)"
+  if ! run bash -c "set -euo pipefail
+      java -jar '$jar' network export | yq -o=json 'sort_keys(..)' >'$tree.netplan.fresh'
+      java -jar '$jar' dataset export | sed -n '/^{/,\$p' | yq -p=json -o=json 'sort_keys(..)' >'$tree.dataplan.fresh'" \
+      2>"$tree.export.log"; then
+    echo "  ⛔ $local_ref: the plan exports nothing from the pushed tree, so its pin cannot be judged:" >&2
+    sed -n '1,15p' "$tree.export.log" | sed 's/^/     /' >&2
+    refused=1
+    continue
+  fi
+
+  for file in netplan dataplan; do
+    if ! git cat-file -e "$rev:$file.json" 2>/dev/null; then
+      echo "  ⛔ $local_ref pins a fabric/plan revision without $file.json (${rev:0:12})." >&2
+      echo "     Deliver the plan (nix run .#publish-plan), then relock the pin." >&2
+      refused=1
+      continue
+    fi
+    git show "$rev:$file.json" | run yq -p=json -o=json 'sort_keys(..)' >"$tree.$file.pinned"
+    if ! cmp -s "$tree.$file.pinned" "$tree.$file.fresh"; then
+      echo "  ⛔ $local_ref pins a STALE fabric/plan: its $file.json differs from what the pushed" >&2
+      echo "     sources produce. Deliver them (nix run .#publish-plan), then relock the pin." >&2
+      refused=1
+    fi
+  done
+done
+exit "$refused"

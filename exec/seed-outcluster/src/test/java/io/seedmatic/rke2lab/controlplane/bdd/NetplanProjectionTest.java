@@ -10,8 +10,6 @@ import io.seedmatic.rke2lab.seed.broker.port.OpaqueCellar;
 import io.seedmatic.rke2lab.seed.broker.port.Parcel;
 import io.seedmatic.rke2lab.seed.broker.port.SeedCoordinate;
 import io.seedmatic.rke2lab.seed.broker.port.SeedEnvelope;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -22,8 +20,7 @@ import org.junit.jupiter.api.Test;
 /**
  * The operator kubeconfig contexts read netplan's addressing from the projection the netplan soil
  * harvested this run — through the real codec cellar, so a record stored scion-side is read back as
- * JSON host-side, the way the realms meet. A missing harvest fails the run, and the checked-in
- * {@code network-blueprint.json} is never a fallback.
+ * JSON host-side, the way the realms meet. A missing harvest fails the run; no file stands in.
  */
 class NetplanProjectionTest {
 
@@ -94,24 +91,13 @@ class NetplanProjectionTest {
   }
 
   @Test
-  void a_missing_harvest_fails_even_with_the_root_file_present() throws Exception {
-    final Path rootFile = Path.of("network-blueprint.json").toAbsolutePath();
-    final boolean planted = !Files.exists(rootFile);
-    if (planted) {
-      Files.writeString(rootFile, "{\"addressing\":{\"bioskop-mgmt\":{}}}");
-    }
-    try {
-      final IllegalStateException refused =
-          assertThrows(
-              IllegalStateException.class,
-              () -> when(new CodecCellar(new KeptCellar(), null)).addressing());
-      assertTrue(
-          refused.getMessage().contains("was not harvested in this run"), refused.getMessage());
-    } finally {
-      if (planted) {
-        Files.delete(rootFile);
-      }
-    }
+  void a_missing_harvest_fails_the_run() {
+    final IllegalStateException refused =
+        assertThrows(
+            IllegalStateException.class,
+            () -> when(new CodecCellar(new KeptCellar(), null)).addressing());
+    assertTrue(
+        refused.getMessage().contains("was not harvested in this run"), refused.getMessage());
   }
 
   @Test

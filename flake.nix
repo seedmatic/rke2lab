@@ -133,6 +133,11 @@
     # proven (a local path during prototyping).
     ndh.url = "ndh";
     ndh.inputs.rke2lab.follows = "";
+
+    # rke2lab's own delivery, pinned back like any head: netplan.json + dataplan.json on the
+    # fabric/plan orphan, which `nix run .#publish-plan` writes. Data, not a flake.
+    fabric-plan.url = "fabric-plan";
+    fabric-plan.flake = false;
     ndh.inputs.flake-commons.follows = "flake-commons";
   };
 
@@ -483,9 +488,9 @@
         };
 
       # The dataplan (ZFS dataset layout) export — the `dataset` plane. The scion writes
-      # dataplan.json (already JSON), so the CLI emits it raw; no yq conversion needed. The
-      # REGEN artifact for the checked-in ./dataplan.json, the storage twin of
-      # networkBlueprintJson; seed-outcluster's DataplanLayout stays the source of truth.
+      # dataplan.json (already JSON), so the CLI emits it raw; no yq conversion needed. What the
+      # sources produce, which dataplan-fresh compares to the pinned delivery — the storage twin
+      # of networkBlueprintJson; seed-outcluster's DataplanLayout stays the source of truth.
       dataplanJsonFor = pkgs:
         let planJar = planJarFor pkgs;
         in pkgs.runCommand "dataplan.json" { buildInputs = [ pkgs.jdk25 ]; } ''
@@ -497,25 +502,16 @@
             | sed -n '/^{/,$p' > $out
         '';
 
-      # The consumed blueprint is PURE committed data — read from the checked-in
-      # network-blueprint.json, no IFD, no build. The reason is NOT "no builder": the
-      # blueprint sits on the eval hot-path of *every* host config — the catalog's
-      # netplan.lan.hosts `//`-merges the addressing map, so reading any host entry
-      # forces the whole JSON. An IFD here would drag a Java/Maven jar build onto that
-      # path and break routine ops that no remote builder fixes: with the darwin-pinned
-      # jar, any aarch64-linux box evaluating locally has no darwin builder to realize
-      # it; drop the pin to per-system instead and the companion's own first bringup
-      # goes circular (its aarch64-linux jar offloads to the very <host>-nixos being
-      # brought up). Committed data has zero infra dependency. The Java stays the
-      # source of truth, materialized into the JSON at regen time on a jar-capable host:
-      #   nix build .#networkBlueprintJson && cp result network-blueprint.json && commit
-      networkBlueprintData = builtins.fromJSON (builtins.readFile ./network-blueprint.json);
-
-      # The consumed dataplan is PURE committed data too — the ZFS dataset layout read from
-      # the checked-in dataplan.json (regen: `nix build .#dataplanJson && cp result
-      # dataplan.json && commit`). ndh pulls this via `lib.dataplan` and unions it into
-      # catalog.datasets; seed-outcluster's DataplanLayout is the source of truth.
-      dataplanData = builtins.fromJSON (builtins.readFile ./dataplan.json);
+      # The consumed plan is rke2lab's own DELIVERY, pinned back: netplan.json and dataplan.json on
+      # the fabric/plan orphan, read as pure data — no IFD, no build. The reason is NOT "no
+      # builder": the blueprint sits on the eval hot-path of *every* host config — the catalog's
+      # netplan.lan.hosts `//`-merges the addressing map, so reading any host entry forces the
+      # whole JSON. An IFD here would drag a Java/Maven jar build onto that path and break routine
+      # ops that no remote builder fixes. The Java stays the source of truth: publish-plan delivers
+      # it, and blueprint-fresh / dataplan-fresh compare the pin to what the sources produce. ndh
+      # pulls both through `lib`; seed-outcluster's DataplanLayout is the dataplan's truth.
+      networkBlueprintData = builtins.fromJSON (builtins.readFile "${inputs.fabric-plan}/netplan.json");
+      dataplanData = builtins.fromJSON (builtins.readFile "${inputs.fabric-plan}/dataplan.json");
 
       # Regeneration only (NOT on the consumed data path): the jar-built YAML on the
       # pinned blueprintSystem, surfaced via networkBlueprintYamlPath for inspection.
@@ -523,9 +519,7 @@
       blueprintPkgs = nixpkgs.legacyPackages.${blueprintSystem};
       networkBlueprintYaml = networkBlueprintYamlFor blueprintPkgs;
 
-      # Export network blueprint with Nix helpers. `deriveMacs` uses the
-      # system-independent `nixpkgs.lib` (pure int/string functions) so the whole
-      # export is platform-agnostic.
+      # The network blueprint, with what its nix consumers search for once here.
       networkBlueprint = networkBlueprintData // {
         # The vmnet SUPERNET — the span every cluster's /21 is carved from, so a node can name
         # "all my sibling clusters on this host" without knowing which cluster it is. Searched
@@ -533,19 +527,8 @@
         # networkd config has no business walking it.
         vmnetSupernet =
           (nixpkgs.lib.findFirst (segment: segment.name == "vmnet")
-            (throw "network-blueprint.json carries no 'vmnet' segment")
+            (throw "fabric-plan's netplan.json carries no 'vmnet' segment")
             networkBlueprintData.segments).cidr;
-        # Helper to derive MACs for a cluster/node pair, using the cluster/node
-        # ID mappings from the Java-generated YAML.
-        deriveMacs = cluster: node:
-          let
-            clusterId = networkBlueprintData.clusters.${cluster};
-            nodeId = networkBlueprintData.nodes.${node};
-            toHex = n: if n < 16 then "0${nixpkgs.lib.toLower (nixpkgs.lib.toHexString n)}" else nixpkgs.lib.toLower (nixpkgs.lib.toHexString n);
-          in {
-            lan = "10:66:6a:4c:${toHex clusterId}:${toHex nodeId}";
-            wan = "52:54:00:${toHex clusterId}:${toHex nodeId}:00";
-          };
       };
     in
     # Force the invariant guard before returning any output, so a forbidden
@@ -677,11 +660,10 @@
           ];
         };
 
-        # Per-system inspectable build of the blueprint YAML, plus its JSON projection.
-        # networkBlueprintJson is the REGEN artifact for the checked-in data file — run
-        # on a jar-capable host (darwin/bioskop): `nix build .#networkBlueprintJson`,
-        # then `cp result network-blueprint.json` and commit. The consumed data reads
-        # that committed JSON purely (see the flat `lib`), so this is off the eval path.
+        # Per-system inspectable build of the blueprint YAML, plus its JSON projection: what the
+        # sources produce, which blueprint-fresh compares to the pinned delivery. Computed from
+        # the sources alone — the generator never reads what it publishes: its drvPath does not
+        # move with ndh or fabric-plan overridden by an empty input. Off the eval path.
         networkBlueprintYaml = networkBlueprintYamlFor pkgs;
         networkBlueprintJson = pkgs.runCommand "network-blueprint.json" {
           nativeBuildInputs = [ pkgs.yq-go ];
@@ -689,8 +671,8 @@
           yq -o=json '.' ${networkBlueprintYamlFor pkgs}/network-blueprint.yaml > $out
         '';
 
-        # The dataplan REGEN artifact — the `dataset` plane emits JSON directly, so this
-        # is the export as-is (no yq). `nix build .#dataplanJson`, then cp to ./dataplan.json.
+        # The dataplan as the sources produce it — the `dataset` plane emits JSON directly, so
+        # this is the export as-is (no yq); dataplan-fresh compares it to the pin.
         dataplanJson = dataplanJsonFor pkgs;
 
         # Darwin-buildable incus client, now OWNED BY ndh and re-exported here.  ndh owns the incus
@@ -1193,65 +1175,13 @@ USAGE
           };
         });
 
-      # The repos that pin US — the one fact a lock cannot answer (it says who I consume,
-      # never who consumes me). DECLARED here rather than discovered, because in a model
-      # where each repo owns its own lock it must also own the list of those it notifies;
-      # discovering it by scanning sibling checkouts would make our behaviour depend on
-      # another repo's working state. See
-      # docs/architecture/patterns/flake-lock-propagation.adoc § who-consumes-me.
-      #
-      # rke2lab's own orphan branches (seed-incluster, flox-catalog) are NOT listed: they
-      # are ours, handled in-tree below, not asked by request.
-      relockConsumers = [ "github:seedmatic/ndh" ];
-
-      # relock — reconcile every DERIVED, COMMITTED artifact of THIS repo, and only this repo's.
-      #
-      # The rule (docs/architecture/patterns/flake-lock-propagation.adoc): bumping an input is
-      # editing YOUR lock; making someone pin YOU is THEIR act. So this touches rke2lab's own
-      # artifacts and its own orphan BRANCHES' (seed-incluster, flox-catalog — branches of this
-      # repo, discovered via `git worktree list`, never hard-coded paths), and crosses a repo
-      # boundary only as a REQUEST (`--downstream` runs the consumer's own `relock`).
-      #
-      # ★ A lock and a generated artifact are the SAME KIND of thing: a committed file derived
-      # from a source that can go stale. `flake.lock` derives from inputs, `dataplan.json` from
-      # DataplanLayout, an env's `manifest.lock` from its manifest. The repo already GATES their
-      # staleness in `nix flake check` and already carries per-artifact regen apps; relock is the
-      # one verb that REPAIRS what those gates only report. Hence targets, not just inputs — the
-      # operator names what to reconcile, and no target means all of it.
-      #
-      # ★ And a lock is a statement about OUTPUTS, not about freshness: an input bump whose
-      # exported derivations do not move is REVERTED, not carried. It adds no information, costs a
-      # revision, and would keep the rke2lab <-> ndh CYCLE turning — a round that changes no
-      # derivation commits nothing, so it notifies nobody and the chain dies. Measured 2026-09-30:
-      # the whole exported package set evaluates to drv paths in ~9s, cheap enough to run PER
-      # INPUT, which also attributes impact per input.
-      #
-      # The chain is push-gated: a `github:` input only sees a revision once pushed, so each hop
-      # pushes before the next resolves it.
-      # The IMPLEMENTATION is nix-flake-commons' `lib.mkRelockApp` — shared from the root every
-      # seedmatic flake already consumes, so every repo in the chain applies the SAME rule rather
-      # than a copy that can drift exactly where it matters: the derivation-impact guard that
-      # TERMINATES the rke2lab <-> ndh cycle. This call supplies only what is rke2lab's OWN.
+      # relock — nix-flake-commons' `lib.mkRelockApp`, the one implementation every seedmatic flake
+      # shares, so every repo in the chain applies the same rule (docs/architecture/patterns/
+      # flake-lock-propagation.adoc). rke2lab supplies its name; the heads, the order and what each
+      # head pins are read from nix-flake-commons:fabric/heads.
       relockApp = inputs.flake-commons.lib.mkRelockApp {
         inherit pkgs;
         name = "rke2lab";
-        slug = "seedmatic/rke2lab";
-        url = "https://github.com/seedmatic/rke2lab.git";
-        consumers = relockConsumers;
-        # Artifacts relock rewrites itself, so the dirty-guard must not read them as operator edits.
-        ownedArtifacts = [
-          "dataplan.json"
-          "network-blueprint.json"
-        ];
-        # Pushed BEFORE inputs resolve: a `github:` input sees only what is pushed.
-        pushFirstBranch = "seed-incluster/develop";
-        # The branch that pins rke2lab and carries the flox envs.
-        catalogBranch = "flox-catalog/develop";
-        selfPinName = "rke2lab";
-        aliases = {
-          plans = "regen-dataplan";
-          netplan = "regen-blueprint";
-        };
       };
       in pkgs.lib.recursiveUpdate {
         packages = {
@@ -1338,33 +1268,6 @@ USAGE
             '';
           } + "/bin/publish-plan");
           meta.description = "Derive the plan and deliver it to fabric/plan (signed commit, fast-forward push)";
-        };
-
-        # Regenerate the committed network-blueprint.json from the netplan jar. Run on a
-        # jar-capable host (bioskop/darwin) from the repo root: `nix run .#regen-blueprint`.
-        # The Java stays the source of truth; this materializes it into the checked-in file
-        # that every system then reads purely (no darwin builder on the consume path).
-        apps.regen-blueprint = {
-          type = "app";
-          program = toString (pkgs.writeShellScript "regen-blueprint" ''
-            set -euo pipefail
-            cat ${networkBlueprintJson} > network-blueprint.json
-            echo "regenerated network-blueprint.json from ${networkBlueprintJson}"
-          '');
-          meta.description = "Regenerate the committed network-blueprint.json from the netplan jar";
-        };
-
-        # Regenerate the committed dataplan.json from the plan jar (`dataset` plane). The storage
-        # twin of regen-blueprint: `nix run .#regen-dataplan` on a jar-capable host, then ndh pulls
-        # the refreshed layout via `lib.dataplan`. seed-outcluster's DataplanLayout stays the truth.
-        apps.regen-dataplan = {
-          type = "app";
-          program = toString (pkgs.writeShellScript "regen-dataplan" ''
-            set -euo pipefail
-            cat ${dataplanJson} > dataplan.json
-            echo "regenerated dataplan.json from ${dataplanJson}"
-          '');
-          meta.description = "Regenerate the committed dataplan.json from the plan jar (dataset plane)";
         };
 
         # The envs vendored under .flox-envs.d arrive WITHOUT their manifest.lock: fleet ignores
@@ -1497,11 +1400,11 @@ USAGE
         apps.relock = {
           type = "app";
           program = "${relockApp}/bin/relock";
-          meta.description = "Reconcile THIS repo's locks: bump each input, DROP any bump that moves no exported derivation, push, then pin+re-lock the flox-catalog branch. --downstream requests each declared consumer's own relock";
+          meta.description = "Relock rke2lab through nix-flake-commons' shared relock: the heads, their order and what each pins come from fabric/heads";
         };
 
-        # Anti-drift gate: fail if the committed JSON diverges from the jar output
-        # (compared canonically via jq -S, so formatting never trips it). Defined ONLY on
+        # Anti-drift gate: fail if the pinned delivery diverges from the jar output
+        # (compared with keys sorted by yq, so formatting never trips it). Defined ONLY on
         # blueprintSystem — absent elsewhere, so `nix flake check` on an aarch64-linux node
         # never realizes the darwin-pinned jar.
         checks = {
@@ -1553,24 +1456,24 @@ USAGE
             '';
         } // pkgs.lib.optionalAttrs (system == blueprintSystem) {
           blueprint-fresh =
-            pkgs.runCommand "blueprint-fresh" { nativeBuildInputs = [ pkgs.jq ]; } ''
-              jq -S . ${./network-blueprint.json} > committed.json
-              jq -S . ${networkBlueprintJson} > fresh.json
-              if ! diff -u committed.json fresh.json; then
-                echo "network-blueprint.json is STALE vs the netplan Java source." >&2
-                echo "Regenerate on this jar-capable host: nix run .#regen-blueprint" >&2
+            pkgs.runCommand "blueprint-fresh" { nativeBuildInputs = [ pkgs.yq-go ]; } ''
+              yq -p=json -o=json 'sort_keys(..)' ${inputs.fabric-plan}/netplan.json > pinned.json
+              yq -p=json -o=json 'sort_keys(..)' ${networkBlueprintJson} > fresh.json
+              if ! diff -u pinned.json fresh.json; then
+                echo "the pinned fabric/plan netplan.json is STALE vs the netplan Java source." >&2
+                echo "Deliver it (nix run .#publish-plan), then relock rke2lab's fabric-plan pin." >&2
                 exit 1
               fi
               touch $out
             '';
-          # The dataplan twin: fail if committed dataplan.json diverges from the plan jar output.
+          # The dataplan twin: fail if the pinned dataplan.json diverges from the plan jar output.
           dataplan-fresh =
-            pkgs.runCommand "dataplan-fresh" { nativeBuildInputs = [ pkgs.jq ]; } ''
-              jq -S . ${./dataplan.json} > committed.json
-              jq -S . ${dataplanJson} > fresh.json
-              if ! diff -u committed.json fresh.json; then
-                echo "dataplan.json is STALE vs the dataplan Java source (DataplanLayout)." >&2
-                echo "Regenerate on this jar-capable host: nix run .#regen-dataplan" >&2
+            pkgs.runCommand "dataplan-fresh" { nativeBuildInputs = [ pkgs.yq-go ]; } ''
+              yq -p=json -o=json 'sort_keys(..)' ${inputs.fabric-plan}/dataplan.json > pinned.json
+              yq -p=json -o=json 'sort_keys(..)' ${dataplanJson} > fresh.json
+              if ! diff -u pinned.json fresh.json; then
+                echo "the pinned fabric/plan dataplan.json is STALE vs the dataplan Java source." >&2
+                echo "Deliver it (nix run .#publish-plan), then relock rke2lab's fabric-plan pin." >&2
                 exit 1
               fi
               touch $out
@@ -1606,14 +1509,12 @@ USAGE
         ];
       };
 
-      # Flat, system-independent export consumed by nix-darwin-home as
-      # `rke2lab.lib.networkBlueprint.deriveMacs` (no `lib.${system}` selector).
-      # Built once on `blueprintSystem`; the data is the same everywhere.
+      # Flat, system-independent export (no `lib.${system}` selector): the data is the same
+      # everywhere. ndh reads networkBlueprint and dataplan from here until it pins fabric/plan.
       lib = {
         inherit networkBlueprint;
         # The ZFS dataset layout ndh pulls into catalog.datasets (the dataplan — storage twin
-        # of networkBlueprint). Pure committed data, system-independent; seed-outcluster's
-        # DataplanLayout is the source of truth, materialised into ./dataplan.json at regen.
+        # of networkBlueprint), read from the pinned delivery like networkBlueprint.
         dataplan = dataplanData;
         # Raw YAML store path for inspection (the pinned, canonical build).
         networkBlueprintYamlPath = "${networkBlueprintYaml}/network-blueprint.yaml";

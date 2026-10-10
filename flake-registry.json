@@ -25,6 +25,10 @@
         "repo": "rke2lab",
         "ref": "seed-incluster/develop"
       }
+    },
+    {
+      "from": { "type": "indirect", "id": "fabric-plan" },
+      "to": { "type": "github", "owner": "seedmatic", "repo": "rke2lab", "ref": "fabric/plan" }
     }
   ]
 }

@@ -988,7 +988,7 @@ public class ClusterSeedScenario
                 + cluster
                 + "/"
                 + node
-                + " — regenerate it with `nix run .#regen-blueprint`");
+                + " — netplan plans no such entry: declare it in ClusterNetworkBlueprint");
       }
       return fqdn.asText();
     }
@@ -1005,7 +1005,7 @@ public class ClusterSeedScenario
         throw new IllegalStateException(
             "the netplan projection describes no cluster "
                 + cluster
-                + " — regenerate it with `nix run .#regen-blueprint`");
+                + " — netplan plans no such entry: declare it in ClusterNetworkBlueprint");
       }
       return apiserver(nodes.iterator().next().path("ips"), "vipHost", cluster);
     }
@@ -1018,7 +1018,7 @@ public class ClusterSeedScenario
                 + field
                 + " for "
                 + cluster
-                + " — regenerate it with `nix run .#regen-blueprint`");
+                + " — netplan plans no such entry: declare it in ClusterNetworkBlueprint");
       }
       return "https://" + address.asText() + ":6443";
     }
@@ -1039,8 +1039,8 @@ public class ClusterSeedScenario
 
     /**
      * The projection's {@code addressing} tree, {@code <cluster>.<node>.ips}, as the netplan soil
-     * harvested it this run. No file is read: the root's {@code network-blueprint.json} is a copy
-     * for nix, and a missing harvest is a broken run, never a reason to fall back to it.
+     * harvested it this run. No file is read, not even the delivered {@code netplan.json}: a
+     * missing harvest is a broken run, never a reason to fall back to a copy.
      */
     JsonNode addressing() {
       final JsonNode addressing =
