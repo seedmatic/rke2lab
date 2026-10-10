@@ -1,8 +1,8 @@
 package io.seedmatic.rke2lab.ghapp.edge;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.seedmatic.rke2lab.ghapp.contract.GithubAppCredentials;
 import io.seedmatic.rke2lab.ghapp.contract.GithubAppMinter;
@@ -10,6 +10,8 @@ import io.seedmatic.rke2lab.ghapp.contract.GithubRepoWebhookConfigurer;
 import io.seedmatic.rke2lab.ghapp.contract.MintedToken;
 import io.seedmatic.rke2lab.ghapp.contract.RepoWebhookConfig;
 import io.seedmatic.rke2lab.ghapp.contract.TokenScope;
+import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
+import io.seedmatic.rke2lab.seed.broker.codec.WireCodec;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.URI;
@@ -43,7 +45,7 @@ public final class GithubRepoWebhookConfigurerEdge implements GithubRepoWebhookC
 
   private final HttpClient http =
       HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(20)).build();
-  private final ObjectMapper mapper = new ObjectMapper();
+  private final WireCodec wire = new SeedCodec().wire();
 
   @Reference private GithubAppMinter minter;
 
@@ -75,7 +77,7 @@ public final class GithubRepoWebhookConfigurerEdge implements GithubRepoWebhookC
    * The GitHub hook body: {@code {name:web, active, events, config:{url,content_type,secret,…}}}.
    */
   private ObjectNode desiredHook(RepoWebhookConfig config) {
-    final ObjectNode body = mapper.createObjectNode();
+    final ObjectNode body = JsonNodeFactory.instance.objectNode();
     body.put("name", "web");
     body.put("active", true);
     final ArrayNode events = body.putArray("events");
@@ -109,8 +111,7 @@ public final class GithubRepoWebhookConfigurerEdge implements GithubRepoWebhookC
       final HttpRequest.BodyPublisher publisher =
           body == null
               ? HttpRequest.BodyPublishers.noBody()
-              : HttpRequest.BodyPublishers.ofString(
-                  mapper.writeValueAsString(body), StandardCharsets.UTF_8);
+              : HttpRequest.BodyPublishers.ofString(wire.writeJson(body), StandardCharsets.UTF_8);
       final HttpRequest request =
           HttpRequest.newBuilder()
               .uri(API.resolve(path))
@@ -129,10 +130,6 @@ public final class GithubRepoWebhookConfigurerEdge implements GithubRepoWebhookC
   }
 
   private JsonNode read(String body) {
-    try {
-      return mapper.readTree(body);
-    } catch (IOException e) {
-      throw new UncheckedIOException("parsing GitHub response failed", e);
-    }
+    return wire.readJson(body);
   }
 }

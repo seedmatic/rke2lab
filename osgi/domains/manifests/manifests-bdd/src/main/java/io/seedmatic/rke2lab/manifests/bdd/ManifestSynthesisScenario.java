@@ -1,12 +1,8 @@
 package io.seedmatic.rke2lab.manifests.bdd;
 
-import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator;
-import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
-import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.tngtech.jgiven.Stage;
 import com.tngtech.jgiven.annotation.ExpectedScenarioState;
 import com.tngtech.jgiven.annotation.Hidden;
@@ -329,24 +325,6 @@ public class ManifestSynthesisScenario
             .prepare(worktreePath, BRANCH_PREFIX + cluster, revealFetchToken()));
   }
 
-  // Reads the branch HEAD's recorded facet — a plain YAMLMapper, native record binding (jackson
-  // reads the record component names). Symmetric with the Then's write of the same {source, facet}.
-  // Tolerant of unknown keys: a branch recorded before the publish facet was removed still carries
-  // a `publish:` sub-map under `facet:`; the domain set is now role-derived, so that key is stale
-  // and ignored rather than failing the replay decode.
-  // UNTYPED only: this parses the recorded yaml into a tree. Turning that tree into a wire record
-  // is
-  // the CODEC's job, because decoding one is a SET of rules — Optional via Jdk8Module, seam enums,
-  // Instant, unknown keys tolerated — and a hand-configured mapper is one more place to get them
-  // wrong. Measured 2026-09-28: it was, the moment a sub-facet component became Optional
-  // (`Optional<NetworkFacet> not supported by default: add Module jackson-datatype-jdk8`).
-  // SeedCodec's
-  // own javadoc names this reader among what it supersedes: its tolerance is "the contract the
-  // hand-rolled *Reader classes had".
-  private static final YAMLMapper FACET_READER =
-      (YAMLMapper)
-          new YAMLMapper().configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-
   /** The ONE set of wire-record decoding rules — never a bare mapper. */
   private static final SeedCodec CODEC = new SeedCodec();
 
@@ -495,7 +473,7 @@ public class ManifestSynthesisScenario
     // Both ends through the CODEC, so the round-trip obeys ONE set of rules: a bare mapper here
     // would
     // drop an Optional sub-facet on the way out and fail to read it back on the way in.
-    final ObjectNode json = FACET_READER.valueToTree(CODEC.toMap(base));
+    final ObjectNode json = (ObjectNode) CODEC.reading().toTree(CODEC.toMap(base));
     overrides.forEach((path, value) -> setBooleanAtPath(json, path, value));
     try {
       return CODEC.fromMap(json, ManifestsRunbookInput.Facets.class);
@@ -533,9 +511,9 @@ public class ManifestSynthesisScenario
    */
   private boolean recordsFacet(String manifestYaml) {
     try {
-      final JsonNode facet = FACET_READER.readTree(manifestYaml).path("facet");
+      final JsonNode facet = CODEC.reading().readYaml(manifestYaml).path("facet");
       return !facet.isMissingNode() && !facet.isNull();
-    } catch (IOException unreadableContext) {
+    } catch (UncheckedIOException unreadableContext) {
       throw new IllegalStateException(
           "the render context recorded at HEAD is unreadable, so whether it records a facet cannot be"
               + " decided; refusing to guess",
@@ -546,8 +524,8 @@ public class ManifestSynthesisScenario
   private Optional<ManifestsRunbookInput.Facets> recordedFacets(String manifestYaml) {
     final JsonNode facet;
     try {
-      facet = FACET_READER.readTree(manifestYaml).path("facet");
-    } catch (IOException unreadableContext) {
+      facet = CODEC.reading().readYaml(manifestYaml).path("facet");
+    } catch (UncheckedIOException unreadableContext) {
       throw new IllegalStateException(
           "the render context recorded at HEAD is unreadable, so the facet it records cannot be"
               + " replayed; refusing to render as though the branch carried no policy",
@@ -577,8 +555,8 @@ public class ManifestSynthesisScenario
   private Optional<ImageState> recordedImage(String manifestYaml) {
     final JsonNode image;
     try {
-      image = FACET_READER.readTree(manifestYaml).path("image");
-    } catch (IOException unreadableContext) {
+      image = CODEC.reading().readYaml(manifestYaml).path("image");
+    } catch (UncheckedIOException unreadableContext) {
       throw new IllegalStateException(
           "the render context recorded at HEAD is unreadable, so the image it records cannot be"
               + " replayed; refusing to render as though the cluster had none",
@@ -1134,11 +1112,11 @@ public class ManifestSynthesisScenario
   private Optional<String> assetEnvelopesJson(String secretYaml) {
     try {
       final JsonNode envelopes =
-          FACET_READER.readTree(secretYaml).path("stringData").path(ASSET_ENVELOPES_KEY);
+          CODEC.reading().readYaml(secretYaml).path("stringData").path(ASSET_ENVELOPES_KEY);
       return envelopes.isMissingNode() || envelopes.isNull()
           ? Optional.empty()
           : Optional.of(envelopes.asText());
-    } catch (IOException ex) {
+    } catch (UncheckedIOException ex) {
       return Optional.empty();
     }
   }
@@ -1148,7 +1126,7 @@ public class ManifestSynthesisScenario
    * plain.
    */
   private void writeInClusterAsset(Path root, String envelopesJson) {
-    final ObjectNode secret = FACET_READER.createObjectNode();
+    final ObjectNode secret = JsonNodeFactory.instance.objectNode();
     secret.put("apiVersion", "v1");
     secret.put("kind", "Secret");
     final ObjectNode metadata = secret.putObject("metadata");
@@ -1157,8 +1135,7 @@ public class ManifestSynthesisScenario
     secret.put("type", "Opaque");
     secret.putObject("stringData").put(ASSET_ENVELOPES_KEY, envelopesJson);
     try {
-      Files.writeString(
-          root.resolve(IN_CLUSTER_ASSET_FILE), FACET_READER.writeValueAsString(secret));
+      Files.writeString(root.resolve(IN_CLUSTER_ASSET_FILE), CODEC.canonical().writeYaml(secret));
     } catch (IOException ex) {
       throw new UncheckedIOException(
           "cannot write the in-cluster cellar asset at the branch root", ex);
@@ -1504,23 +1481,6 @@ public class ManifestSynthesisScenario
     // amend reflector binds, so read → decode → re-serialise is a fixpoint (no empty-commit churn).
     private static final String RENDER_FACET_FILE = "manifest.yaml";
 
-    // A human-readable YAML doc, NOT a ConfigMap: it sits at the branch root, outside every Flux
-    // Kustomization path, so nothing ever applies it — and native YAML reads far better than a JSON
-    // blob stuffed in a scalar. Deterministic serialisation (record component order, no doc-start
-    // marker, minimal quotes) keeps the empty-commit guard's fixpoint: same source + facet →
-    // identical bytes → no commit.
-    private static final YAMLMapper YAML_MAPPER =
-        YAMLMapper.builder()
-            .disable(YAMLGenerator.Feature.WRITE_DOC_START_MARKER)
-            .enable(YAMLGenerator.Feature.MINIMIZE_QUOTES)
-            .enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS)
-            // Jdk8Module so the recorded image (Optional<ImageState>) serialises as its value /
-            // null,
-            // registered EXPLICITLY like SeedCodec (never findAndRegisterModules — OSGi
-            // classloading).
-            .addModule(new Jdk8Module())
-            .build();
-
     private void recordRenderFacet(
         Path root, ManifestsRunbookInput.Facets facets, Optional<ImageState> image) {
       // source: the rke2lab rev that synthesised this tree (worktree jgit provenance — sha +
@@ -1537,7 +1497,9 @@ public class ManifestSynthesisScenario
             sourceWorktree.map(Worktree::provenance).orElse(new Provenance("", false));
         Files.writeString(
             root.resolve(RENDER_FACET_FILE),
-            YAML_MAPPER.writeValueAsString(new RenderContext(source, facets, image)));
+            // A human-readable YAML doc at the branch root, outside every Flux path, so nothing
+            // applies it; canonical, so the same source + facet give the same bytes and no commit.
+            CODEC.canonical().writeYaml(new RenderContext(source, facets, image)));
       } catch (IOException ex) {
         throw new UncheckedIOException("cannot record the render facet at the branch root", ex);
       }

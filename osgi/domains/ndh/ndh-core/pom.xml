@@ -19,6 +19,17 @@
   <dependencies>
     <dependency>
       <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>seed-broker-codec</artifactId>
+    </dependency>
+    <!-- The codec's seam types (provided there: the system-exported port), which its static
+         initialisation loads. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>seed-broker-port</artifactId>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>ndh-contract</artifactId>
     </dependency>
     <dependency>

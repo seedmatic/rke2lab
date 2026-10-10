@@ -1017,7 +1017,7 @@ package `io.seedmatic.rke2lab.seed.broker.port`:
 
 * *The envelope* — `Document(String domain, String coordinate, String payload)`. The payload is a
   serialized `String`, NOT a `JsonNode` — so jackson never crosses the seam; each realm parses the
-  string with its own mapper.
+  string with its own copy of the codec.
 +
 [NOTE]
 ====
@@ -1116,7 +1116,10 @@ holds — never a mapper of their own:
   dropped (the peer dictates the shape), tolerant of a field the peer adds.
 
 `CanonicalCodec` and `WireCodec` are derived from the instance's `ReadingCodec` (a copy of its mappers,
-reconfigured), so all three read alike and only their writers differ.
+reconfigured), so all three read alike and only their writers differ. No mapper is constructed
+anywhere else: the `codec-only` flake check scans every source a jar is built from and refuses one —
+a check rather than a test, because a test is cached on its own module and would never see a mapper
+added in another. A bare `JsonFactory`, a streaming tokenizer, stays allowed.
 
 === Build-time is the load-bearing contract check (we build on one codebase)
 

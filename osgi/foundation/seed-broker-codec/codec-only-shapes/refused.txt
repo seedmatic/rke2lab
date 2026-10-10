@@ -1,0 +1,11 @@
+final ObjectMapper m = new ObjectMapper();
+final ObjectMapper y = new ObjectMapper(new YAMLFactory());
+final YAMLMapper yaml = new YAMLMapper();
+final JsonMapper json = new JsonMapper();
+JsonMapper.builder().build();
+YAMLMapper.builder(YAMLFactory.builder().build()).build();
+final class Mine extends ObjectMapper {
+final ObjectMapper tuned = MAPPER.copy();
+final ObjectMapper tuned = yamlMapper.copy();
+private static final Object PROBE = new com.fasterxml.jackson.databind.ObjectMapper();
+final class Mine extends com.fasterxml.jackson.dataformat.yaml.YAMLMapper {

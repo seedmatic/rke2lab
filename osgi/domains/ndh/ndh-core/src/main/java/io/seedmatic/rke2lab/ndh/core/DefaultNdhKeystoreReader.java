@@ -1,9 +1,8 @@
 package io.seedmatic.rke2lab.ndh.core;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import io.seedmatic.rke2lab.ndh.contract.NdhKeystoreReader;
+import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -160,7 +159,7 @@ public final class DefaultNdhKeystoreReader implements NdhKeystoreReader {
 
   private JsonNode parse(final String yaml) {
     try {
-      return new ObjectMapper(new YAMLFactory()).readTree(yaml);
+      return new SeedCodec().reading().readYaml(yaml);
     } catch (Exception ex) {
       throw new IllegalStateException("failed to parse " + path, ex);
     }

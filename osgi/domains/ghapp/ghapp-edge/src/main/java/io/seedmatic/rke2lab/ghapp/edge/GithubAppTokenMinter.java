@@ -1,12 +1,14 @@
 package io.seedmatic.rke2lab.ghapp.edge;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.seedmatic.rke2lab.ghapp.contract.GithubAppCredentials;
 import io.seedmatic.rke2lab.ghapp.contract.GithubAppMinter;
 import io.seedmatic.rke2lab.ghapp.contract.MintedToken;
 import io.seedmatic.rke2lab.ghapp.contract.TokenScope;
+import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
+import io.seedmatic.rke2lab.seed.broker.codec.WireCodec;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.URI;
@@ -39,13 +41,13 @@ public final class GithubAppTokenMinter implements GithubAppMinter {
 
   private final HttpClient http =
       HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(20)).build();
-  private final ObjectMapper mapper = new ObjectMapper();
+  private final WireCodec wire = new SeedCodec().wire();
 
   @Override
   public MintedToken mint(GithubAppCredentials credentials, TokenScope scope) {
     final PrivateKey key = AppJwt.readPrivateKey(credentials.privateKeyPem());
-    final String jwt = AppJwt.issue(credentials.appId(), key, Instant.now(), mapper);
-    final ObjectNode body = mapper.createObjectNode();
+    final String jwt = AppJwt.issue(credentials.appId(), key, Instant.now(), wire);
+    final ObjectNode body = JsonNodeFactory.instance.objectNode();
     body.set("permissions", permissionsFor(scope));
     final HttpResponse<String> response =
         post("/app/installations/" + credentials.installationId() + "/access_tokens", jwt, body);
@@ -64,7 +66,7 @@ public final class GithubAppTokenMinter implements GithubAppMinter {
   }
 
   private ObjectNode permissionsFor(TokenScope scope) {
-    final ObjectNode permissions = mapper.createObjectNode();
+    final ObjectNode permissions = JsonNodeFactory.instance.objectNode();
     switch (scope) {
       case WRITER -> permissions.put("contents", "write");
       case READER -> permissions.put("contents", "read");
@@ -84,8 +86,7 @@ public final class GithubAppTokenMinter implements GithubAppMinter {
               .header("Accept", "application/vnd.github+json")
               .header("X-GitHub-Api-Version", API_VERSION)
               .POST(
-                  HttpRequest.BodyPublishers.ofString(
-                      mapper.writeValueAsString(body), StandardCharsets.UTF_8))
+                  HttpRequest.BodyPublishers.ofString(wire.writeJson(body), StandardCharsets.UTF_8))
               .build();
       return http.send(request, HttpResponse.BodyHandlers.ofString());
     } catch (IOException e) {
@@ -97,11 +98,7 @@ public final class GithubAppTokenMinter implements GithubAppMinter {
   }
 
   private JsonNode read(String body) {
-    try {
-      return mapper.readTree(body);
-    } catch (IOException e) {
-      throw new UncheckedIOException("could not parse GitHub response", e);
-    }
+    return wire.readJson(body);
   }
 
   private static String requiredText(JsonNode node, String field) {

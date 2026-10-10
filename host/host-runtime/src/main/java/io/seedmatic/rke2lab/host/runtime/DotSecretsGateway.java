@@ -1,9 +1,7 @@
 package io.seedmatic.rke2lab.host.runtime;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.json.JsonMapper;
-import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
+import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
 import io.seedmatic.rke2lab.seed.broker.port.SecretsGateway;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -23,8 +21,7 @@ import java.util.Optional;
  */
 public final class DotSecretsGateway implements SecretsGateway {
 
-  private static final YAMLMapper YAML = new YAMLMapper();
-  private static final ObjectMapper JSON = JsonMapper.builder().build();
+  private static final SeedCodec CODEC = new SeedCodec();
 
   private final Path secretsFile;
 
@@ -42,14 +39,14 @@ public final class DotSecretsGateway implements SecretsGateway {
       return Optional.empty();
     }
     try {
-      JsonNode node = YAML.readTree(secretsFile.toFile());
+      JsonNode node = CODEC.reading().readYaml(Files.readString(secretsFile));
       for (final String part : dottedPath.split("\\.")) {
         node = node == null ? null : node.path(part);
       }
       if (node == null || node.isMissingNode() || node.isNull()) {
         return Optional.empty();
       }
-      return Optional.of(JSON.writeValueAsString(node));
+      return Optional.of(CODEC.encode(node));
     } catch (IOException ex) {
       throw new UncheckedIOException("failed to read the secrets file at " + secretsFile, ex);
     }

@@ -70,6 +70,19 @@ class PulumiCellarCoquilleTest {
     assertEquals(trail, shelved.envelope().trail(), "the sealed value's lineage is readable clear");
   }
 
+  /**
+   * The MAC binds BYTES, not values: an entry a past run stored must still verify. Pinned over a
+   * fixed shell, so a serializer change that moves one byte of the MAC's input fails here rather
+   * than at the first fetch from a live cellar.
+   */
+  @Test
+  void theMacOfAFixedShellIsTheOneAPastRunStored() {
+    final Map<String, Object> shell =
+        cellar.shell("incus", COORDINATE, sampleTrail(), false, "{\"box\":\"nikopol\"}");
+
+    assertEquals("3REcDIcDaER+z0KZUy+FFRPQ1xdgZHkmX1K2NhDNKO0=", shell.get("mac"));
+  }
+
   @Test
   void aTombstoneCoquilleRoundTripsAsFirstClass() {
     final Map<String, Object> shell = cellar.shell("", COORDINATE, Trail.empty(), true, "");

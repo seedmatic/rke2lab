@@ -1524,6 +1524,33 @@ USAGE
             fi
             touch $out
           '';
+          # Every Jackson mapper is a codec profile (seed-broker-codec): none is constructed
+          # anywhere else. A check, not a test: a test in one module is keyed on that module, so a
+          # mapper added in another gets a cache hit on the checker and is never seen. This one is
+          # built from mavenSource, every file it scans, so any such edit re-runs it. A bare
+          # JsonFactory stays allowed — a streaming tokenizer, not a mapper (FlakeLock). The one
+          # pattern serves the scan and its self-test over the codec's shape fixtures: every
+          # refused shape caught, no allowed one.
+          codec-only =
+            let
+              refused = ''new ([a-z0-9_]+\.)*(ObjectMapper|YAMLMapper|JsonMapper|XmlMapper|CsvMapper|YAMLFactory)\(|(JsonMapper|YAMLMapper|JsonFactory|YAMLFactory)\.builder\(|extends ([a-z0-9_]+\.)*(ObjectMapper|YAMLMapper|JsonMapper)\b|(MAPPER|[Mm]apper)\w*\.copy\(\)'';
+              shapes = ./osgi/foundation/seed-broker-codec/codec-only-shapes;
+            in
+            pkgs.runCommand "codec-only" { nativeBuildInputs = [ pkgs.gnugrep ]; } ''
+              missed=$(grep -cvE '${refused}' ${shapes}/refused.txt || true)
+              wrongly=$(grep -cE '${refused}' ${shapes}/allowed.txt || true)
+              if [ "$missed" != 0 ] || [ "$wrongly" != 0 ]; then
+                echo "codec-only pattern: $missed refused shape(s) not caught, $wrongly allowed one(s) caught" >&2
+                exit 1
+              fi
+              if grep -rnE '${refused}' --include='*.java' ${mavenSource} | grep -v '/seed-broker-codec/'; then
+                echo "a Jackson mapper is constructed outside seed-broker-codec. Use a profile of" >&2
+                echo "new SeedCodec(): canonical() for a file we write and read back, reading() for" >&2
+                echo "what we only parse, wire() for an external API's bodies." >&2
+                exit 1
+              fi
+              touch $out
+            '';
         } // pkgs.lib.optionalAttrs (system == blueprintSystem) {
           blueprint-fresh =
             pkgs.runCommand "blueprint-fresh" { nativeBuildInputs = [ pkgs.jq ]; } ''

@@ -1,7 +1,6 @@
 package io.seedmatic.rke2lab.controlplane.bdd;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -269,9 +268,9 @@ public class ClusterSeedScenario
       return JsonNodeFactory.instance.objectNode();
     }
     try {
-      final JsonNode parsed = new ObjectMapper().readTree(raw);
+      final JsonNode parsed = new SeedCodec().reading().readJson(raw);
       return parsed instanceof ObjectNode object ? object : JsonNodeFactory.instance.objectNode();
-    } catch (IOException ex) {
+    } catch (UncheckedIOException ex) {
       throw new IllegalStateException(
           "the rke2lab:manifests: facet is not readable as JSON: " + raw, ex);
     }

@@ -1,10 +1,6 @@
 // @codebase
 package io.seedmatic.rke2lab.manifests.units.runtime.rke2;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
-import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator;
 import io.seedmatic.rke2lab.manifests.AbstractManifestsUnit;
 import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
 import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
@@ -14,6 +10,7 @@ import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.node.DefaultNodeEnvContext;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import io.seedmatic.rke2lab.netplan.contract.ClusterNetworkBlueprint;
+import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -56,7 +53,7 @@ public final class RuntimeRke2ConfigManifestsUnit extends AbstractManifestsUnit 
   /** The one control-plane pool; the branch subtree + the config namespace both key on it. */
   private static final String CONTROL_NODE_POOL = "control-node";
 
-  private static final ObjectMapper YAML_SCALAR_SERIALIZER = createYamlScalarSerializer();
+  private static final SeedCodec CODEC = new SeedCodec();
 
   public RuntimeRke2ConfigManifestsUnit() {
     super(MANIFEST_UNIT_ID, List.of());
@@ -257,21 +254,8 @@ public final class RuntimeRke2ConfigManifestsUnit extends AbstractManifestsUnit 
   }
 
   private static String yamlScalarString(final Object value) {
-    try {
-      final String dumped = YAML_SCALAR_SERIALIZER.writeValueAsString(value);
-      return dumped.endsWith("\n") ? dumped.substring(0, dumped.length() - 1) : dumped;
-    } catch (JsonProcessingException ex) {
-      throw new IllegalStateException("Failed to render YAML scalar for value: " + value, ex);
-    }
-  }
-
-  private static ObjectMapper createYamlScalarSerializer() {
-    final YAMLFactory factory =
-        YAMLFactory.builder()
-            .disable(YAMLGenerator.Feature.WRITE_DOC_START_MARKER)
-            .disable(YAMLGenerator.Feature.SPLIT_LINES)
-            .build();
-    return new ObjectMapper(factory);
+    final String dumped = CODEC.canonical().writeYaml(value);
+    return dumped.endsWith("\n") ? dumped.substring(0, dumped.length() - 1) : dumped;
   }
 
   @SafeVarargs

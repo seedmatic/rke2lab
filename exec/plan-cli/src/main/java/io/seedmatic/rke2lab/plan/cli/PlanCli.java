@@ -1,9 +1,6 @@
 package io.seedmatic.rke2lab.plan.cli;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
-import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator;
 import com.tngtech.jgiven.report.model.ExecutionStatus;
 import com.tngtech.jgiven.report.model.ReportModel;
 import io.seedmatic.rke2lab.osgi.runtime.junit.launcher.JUnitLauncherCore;
@@ -16,6 +13,7 @@ import io.seedmatic.rke2lab.plan.cli.bdd.PlanCliRun;
 import io.seedmatic.rke2lab.plan.cli.bdd.PlanCliScenario;
 import io.seedmatic.rke2lab.plan.cli.bdd.PublishPlanRun;
 import io.seedmatic.rke2lab.plan.cli.bdd.PublishPlanScenario;
+import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.io.UncheckedIOException;
@@ -56,6 +54,8 @@ import org.slf4j.LoggerFactory;
  * <p>The domains stay separate (each its own coordinate + scion); only this ingress is shared.
  */
 public final class PlanCli {
+
+  private final SeedCodec codec = new SeedCodec();
 
   private static final Logger LOG = LoggerFactory.getLogger(PlanCli.class);
 
@@ -187,24 +187,11 @@ public final class PlanCli {
   }
 
   private void writeYaml(JsonNode export, PrintStream out) {
-    final YAMLFactory yamlFactory =
-        YAMLFactory.builder()
-            .disable(YAMLGenerator.Feature.WRITE_DOC_START_MARKER)
-            .enable(YAMLGenerator.Feature.MINIMIZE_QUOTES)
-            .build();
-    try {
-      new ObjectMapper(yamlFactory).writerWithDefaultPrettyPrinter().writeValue(out, export);
-    } catch (IOException ex) {
-      throw new UncheckedIOException("cannot render the plan export as YAML", ex);
-    }
+    out.print(codec.canonical().writeYaml(export));
   }
 
   private void writeJson(JsonNode export, PrintStream out) {
-    try {
-      new ObjectMapper().writerWithDefaultPrettyPrinter().writeValue(out, export);
-    } catch (IOException ex) {
-      throw new UncheckedIOException("cannot render the plan export as JSON", ex);
-    }
+    out.print(codec.canonical().writeJson(export));
   }
 
   private Path freshDir(String prefix) {

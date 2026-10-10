@@ -24,6 +24,10 @@
     contract type crosses to the flat host. The domains stay separate; only the ingress is unified.</description>
 
   <dependencies>
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>seed-broker-codec</artifactId>
+    </dependency>
     <!-- The host-world boot infrastructure: OsgiRuntime + (transitively) the whole boot stack
          (felix.framework + osgi.core compile, felix.scr + felix.resolver + pax-logging + the
          DS-runtime API runtime). The CLI compiles against OsgiRuntime; the felix/pax jars it only

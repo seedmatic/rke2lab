@@ -1,10 +1,11 @@
 package io.seedmatic.rke2lab.manifests.bdd.versions;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.seedmatic.rke2lab.manifests.ingress.BumpLevel;
 import io.seedmatic.rke2lab.manifests.ingress.Component;
 import io.seedmatic.rke2lab.manifests.ingress.ComponentSource;
+import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
+import io.seedmatic.rke2lab.seed.broker.codec.WireCodec;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.URI;
@@ -77,7 +78,7 @@ public final class VersionBumper {
   private final BumpLevel level;
   private final Optional<String> githubToken;
   private final HttpClient http;
-  private final ObjectMapper mapper;
+  private final WireCodec wire;
 
   public VersionBumper(final BumpLevel level, final Optional<String> githubToken) {
     this.level = level;
@@ -87,7 +88,7 @@ public final class VersionBumper {
             .connectTimeout(Duration.ofSeconds(10))
             .followRedirects(HttpClient.Redirect.NORMAL)
             .build();
-    this.mapper = new ObjectMapper();
+    this.wire = new SeedCodec().wire();
   }
 
   public BumpLevel level() {
@@ -323,7 +324,7 @@ public final class VersionBumper {
     if (response.statusCode() != 200) {
       throw new IOException("HTTP " + response.statusCode() + " from " + url);
     }
-    return mapper.readTree(response.body());
+    return wire.readJson(response.body());
   }
 
   private byte[] getBytes(final String url) throws IOException, InterruptedException {

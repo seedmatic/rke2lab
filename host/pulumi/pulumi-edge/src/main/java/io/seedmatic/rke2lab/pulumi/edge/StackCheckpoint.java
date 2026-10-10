@@ -1,11 +1,12 @@
 package io.seedmatic.rke2lab.pulumi.edge;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.pulumi.automation.StackDeployment;
+import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
@@ -24,7 +25,7 @@ import java.nio.file.Path;
  */
 public record StackCheckpoint(Path file) {
 
-  private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+  private static final SeedCodec CODEC = new SeedCodec();
 
   /**
    * Factory method — wraps the given checkpoint file path.
@@ -63,7 +64,7 @@ public record StackCheckpoint(Path file) {
     }
 
     try {
-      JsonNode root = OBJECT_MAPPER.readTree(file.toFile());
+      JsonNode root = CODEC.reading().readJson(Files.readString(file));
 
       JsonNode versionNode = root.get("version");
       if (versionNode == null || !versionNode.isInt()) {
@@ -78,17 +79,17 @@ public record StackCheckpoint(Path file) {
             file, new IllegalStateException("missing checkpoint.latest field"));
       }
 
-      ObjectNode envelope = OBJECT_MAPPER.createObjectNode();
+      ObjectNode envelope = JsonNodeFactory.instance.objectNode();
       envelope.set("version", versionNode);
       envelope.set("deployment", latestNode);
 
-      String envelopeJson = OBJECT_MAPPER.writeValueAsString(envelope);
+      String envelopeJson = CODEC.wire().writeJson(envelope);
 
       StackDeployment deployment = StackDeployment.fromJson(envelopeJson);
 
       return StackSnapshot.of(deployment);
 
-    } catch (JsonProcessingException e) {
+    } catch (UncheckedIOException e) {
       // Malformed JSON — content is broken, never retry
       throw new StackContentException(file, e);
     } catch (IOException e) {

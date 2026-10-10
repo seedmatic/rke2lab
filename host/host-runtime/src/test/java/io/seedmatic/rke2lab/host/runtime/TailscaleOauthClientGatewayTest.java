@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.json.JsonMapper;
+import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
 import io.seedmatic.rke2lab.seed.broker.port.SecretsGateway;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -16,7 +16,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 class TailscaleOauthClientGatewayTest {
 
-  private static final JsonMapper JSON = JsonMapper.builder().build();
+  private static final SeedCodec CODEC = new SeedCodec();
 
   @Test
   void servesTheTailscaleBlockDerivedFromTheNdhClientScalar(@TempDir Path dir) throws IOException {
@@ -24,7 +24,7 @@ class TailscaleOauthClientGatewayTest {
     Files.writeString(client, "tskey-client-kfadHk1iNq11CNTRL-abc123def456\n");
     final SecretsGateway gw = new TailscaleOauthClientGateway(client);
 
-    final JsonNode block = JSON.readTree(gw.read("tailscale").orElseThrow());
+    final JsonNode block = CODEC.decode(gw.read("tailscale").orElseThrow());
     assertEquals("kfadHk1iNq11CNTRL", block.at("/oauth/id").asText());
     // token is the FULL scalar (stripped), the k8s-operator's client_secret
     assertEquals("tskey-client-kfadHk1iNq11CNTRL-abc123def456", block.at("/oauth/token").asText());

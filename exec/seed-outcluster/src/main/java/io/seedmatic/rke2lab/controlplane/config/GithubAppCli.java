@@ -1,9 +1,11 @@
 package io.seedmatic.rke2lab.controlplane.config;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.seedmatic.rke2lab.manifests.ingress.PacWebhookFunnel;
+import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
+import io.seedmatic.rke2lab.seed.broker.codec.WireCodec;
 import java.awt.Desktop;
 import java.awt.GraphicsEnvironment;
 import java.io.IOException;
@@ -101,7 +103,7 @@ public final class GithubAppCli {
       URI.create(
           "https://github.com/organizations/seedmatic/settings/apps/seedmatic-rke2lab/installations");
 
-  private static final ObjectMapper MAPPER = new ObjectMapper();
+  private static final WireCodec WIRE = new SeedCodec().wire();
   private static final Base64.Encoder URL64 = Base64.getUrlEncoder().withoutPadding();
   private static final HttpClient HTTP =
       HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(20)).build();
@@ -270,7 +272,7 @@ public final class GithubAppCli {
         throw new IllegalStateException(
             "GitHub " + path + " -> HTTP " + response.statusCode() + " " + response.body());
       }
-      return MAPPER.readTree(response.body());
+      return WIRE.readJson(response.body());
     } catch (IOException e) {
       throw new UncheckedIOException("GitHub " + path + " failed", e);
     } catch (InterruptedException e) {
@@ -282,24 +284,25 @@ public final class GithubAppCli {
   private static String issueJwt(String appId, String pem) {
     final PrivateKey key = readPrivateKey(pem);
     final Instant now = Instant.now();
-    final ObjectNode header = MAPPER.createObjectNode().put("alg", "RS256").put("typ", "JWT");
+    final ObjectNode header =
+        JsonNodeFactory.instance.objectNode().put("alg", "RS256").put("typ", "JWT");
     final ObjectNode payload =
-        MAPPER
-            .createObjectNode()
+        JsonNodeFactory.instance
+            .objectNode()
             .put("iat", now.getEpochSecond() - 60)
             .put("exp", now.getEpochSecond() + 540)
             .put("iss", appId);
     try {
       final String signingInput =
-          enc(MAPPER.writeValueAsBytes(header)) + "." + enc(MAPPER.writeValueAsBytes(payload));
+          enc(WIRE.writeJson(header).getBytes(StandardCharsets.UTF_8))
+              + "."
+              + enc(WIRE.writeJson(payload).getBytes(StandardCharsets.UTF_8));
       final Signature rsa = Signature.getInstance("SHA256withRSA");
       rsa.initSign(key);
       rsa.update(signingInput.getBytes(StandardCharsets.US_ASCII));
       return signingInput + "." + enc(rsa.sign());
     } catch (GeneralSecurityException e) {
       throw new IllegalStateException("could not sign the App JWT", e);
-    } catch (IOException e) {
-      throw new UncheckedIOException("could not serialise the App JWT", e);
     }
   }
 
