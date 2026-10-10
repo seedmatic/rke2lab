@@ -823,6 +823,20 @@ pushed. The push is a fast-forward: `fabric/plan` accretes, it is never rewritte
 pins all three: no token → no push; token → the signed commit pushed with exactly that token, after
 the commit; token without key-store → refused.
 
+*Who triggers it: the plan CLI's `publish`, by choice.* `nix run .#publish-plan` runs
+`PublishPlanScenario`, four crossings sharing the run's cellar and `Parcel` — `ghapp` (rehydrates the
+App from `.secrets` and seals it in the run), `netplan` and `dataplan` (derive and harvest), `fabric`
+(delivers). EVERY crossing sows AND grafts through `SowAndGraftStage`: the graft is what folds a
+scion's writes into the host's overlay, and the next sow inherits that overlay, so the App the first
+crossing sealed is what the fabric scion's token is minted from. Sown raw, it would stay in the
+ghapp scion's runbook and the push would be skipped in silence — the mechanism
+`ScenarioGraftTest.a_scion_tag_rides_up_with_the_graft_and_the_host_reads_it_back` and
+`ScenarioCellarTrailTest.aSownScionInheritsTheExtendedPathAndAccumulatesTheFullRoute` pin. The CLI is
+the trigger because the operator's run is the only one that publishes a plan; nothing in the
+delivery requires a CLI. The token never reaches the run's record:
+`FabricTokenStaysOutOfTheRunTest` greps the serialised runbook — steps AND the cellar's write set —
+for the minted value.
+
 *The scion-side producers (incus-core, OSGi-only).* Collaborators assemble the plan, each named
 by `IncusProvisionScenario`'s PREPARE beats: `GrowNetworkResolver` (resolves `NetplanSynthesisService`
 → the `GrowNetworkView`), `GrowIdentityResolver` (same blueprint → the `GrowIdentityView`, the four

@@ -9,20 +9,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.seedmatic.rke2lab.dataplan.ingress.DataplanIngressCoordinate;
 import io.seedmatic.rke2lab.fabric.contract.FabricDelivery;
 import io.seedmatic.rke2lab.fabric.contract.FabricRunbookInput;
-import io.seedmatic.rke2lab.ndh.contract.NdhKeystoreReader;
 import io.seedmatic.rke2lab.netplan.ingress.NetplanIngressCoordinate;
 import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
 import io.seedmatic.rke2lab.seed.broker.port.Parcel;
 import io.seedmatic.rke2lab.seed.broker.testkit.InMemoryCellar;
 import io.seedmatic.rke2lab.worktree.GitIdentity;
-import io.seedmatic.rke2lab.worktree.LinkedWorktree;
-import io.seedmatic.rke2lab.worktree.LinkedWorktrees;
-import java.io.IOException;
-import java.io.UncheckedIOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -40,130 +32,6 @@ class FabricDeliveryTest {
   private static final Parcel PARCEL = new Parcel("rke2lab", "bioskop-mgmt");
 
   @TempDir Path tmp;
-
-  /** Records what the delivery asked of the worktree, and keeps the files so they can be read. */
-  private static final class RecordingWorktree implements LinkedWorktree {
-    private final Path path;
-    private final String branch;
-    private final List<String> calls = new ArrayList<>();
-    private Optional<GitIdentity> committedAs = Optional.empty();
-    private Optional<String> signedWith = Optional.empty();
-    private Optional<String> pushedWith = Optional.empty();
-
-    RecordingWorktree(Path path, String branch) {
-      this.path = path;
-      this.branch = branch;
-    }
-
-    @Override
-    public Path path() {
-      return path;
-    }
-
-    @Override
-    public String branch() {
-      return branch;
-    }
-
-    @Override
-    public Optional<String> readAtHead(String file) {
-      // The double commits nothing, so "at HEAD" is what the delivery staged — enough to prove the
-      // committed tree carries both files; that a commit records its tree is jgit's own contract.
-      final Path staged = path.resolve(file);
-      try {
-        return Files.exists(staged) ? Optional.of(Files.readString(staged)) : Optional.empty();
-      } catch (IOException ex) {
-        throw new UncheckedIOException(ex);
-      }
-    }
-
-    @Override
-    public Optional<String> smudgeFromHead(String file) {
-      return readAtHead(file);
-    }
-
-    @Override
-    public void restoreFromHead(String pathspec) {
-      calls.add("restoreFromHead");
-    }
-
-    @Override
-    public void stage(List<Path> paths) {
-      calls.add("stage");
-    }
-
-    @Override
-    public void stageAll() {
-      calls.add("stageAll");
-    }
-
-    @Override
-    public String commit(String message, GitIdentity identity, Optional<String> sshSigningKey) {
-      calls.add("commit:" + message);
-      this.committedAs = Optional.of(identity);
-      this.signedWith = sshSigningKey;
-      return "0000000000000000000000000000000000000000";
-    }
-
-    @Override
-    public void push(String token, Duration timeout) {
-      calls.add("push");
-      this.pushedWith = Optional.of(token);
-    }
-
-    @Override
-    public void close() {
-      calls.add("close");
-    }
-  }
-
-  private static final class RecordingWorktrees implements LinkedWorktrees {
-    private RecordingWorktree made;
-
-    @Override
-    public LinkedWorktree prepare(Path worktreePath, String branch) {
-      try {
-        Files.createDirectories(worktreePath);
-      } catch (IOException ex) {
-        throw new UncheckedIOException(ex);
-      }
-      this.made = new RecordingWorktree(worktreePath, branch);
-      return made;
-    }
-  }
-
-  /** A key-store that answers only what the delivery asks of it. */
-  private static final class FakeKeystore implements NdhKeystoreReader {
-    @Override
-    public boolean present() {
-      return true;
-    }
-
-    @Override
-    public String authorityCert(String authority) {
-      throw new UnsupportedOperationException(authority);
-    }
-
-    @Override
-    public String authorityDomain(String authority) {
-      return "mammoth-skate.example.invalid";
-    }
-
-    @Override
-    public String authorityPrivate(String authority) {
-      throw new UnsupportedOperationException(authority);
-    }
-
-    @Override
-    public String sshPrivate(String keyName) {
-      return "-----BEGIN OPENSSH PRIVATE KEY-----\n" + keyName + "\n";
-    }
-
-    @Override
-    public String sshPublic(String keyName) {
-      throw new UnsupportedOperationException(keyName);
-    }
-  }
 
   private static JsonNode tree(String json) {
     return new SeedCodec().reading().readJson(json);
