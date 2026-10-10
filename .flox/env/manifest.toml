@@ -7,11 +7,6 @@ schema-version = "1.10.0"
 ##  $ flox show gum     <- show all versions of a package
 ## -------------------------------------------------------------------
 [install]
-pulumi.pkg-path = "pulumi-bin"
-pulumictl.pkg-path = "pulumictl"
-cdk8s-cli.pkg-path = "cdk8s-cli"
-dasel.pkg-path = "dasel"
-graphviz.pkg-path = "graphviz"
 ## incus client, for both the Darwin shells (where we run `incus exec master`) and the Linux
 ## NixOS VM. DEFINED IN ndh, which owns the incus daemon's NixOS modules and the operator's trust
 ## to it; the flake ref below is rke2lab RE-EXPORTING it. Why a client-only build at all, and why
@@ -45,6 +40,19 @@ graphviz.pkg-path = "graphviz"
 ## again, its rename must land HERE, in the same change as the branch it names.
 incus-client.flake = "github:seedmatic/rke2lab#incus-client"
 
+## The operator toolchain, from the rke2lab flake (`operatorToolchain` in flake.nix): the apps run
+## these same store paths, so the seat and the grow cannot diverge. Only the agent tools below
+## (claude-code, flox-mcp-server) stay in the catalog.
+pulumi.flake = "github:seedmatic/rke2lab#pulumi"
+pulumi-java.flake = "github:seedmatic/rke2lab#pulumi-java"
+pulumictl.flake = "github:seedmatic/rke2lab#pulumictl"
+cdk8s-cli.flake = "github:seedmatic/rke2lab#cdk8s-cli"
+tektoncd-cli.flake = "github:seedmatic/rke2lab#tektoncd-cli"
+clusterctl.flake = "github:seedmatic/rke2lab#clusterctl"
+k9s.flake = "github:seedmatic/rke2lab#k9s"
+dasel.flake = "github:seedmatic/rke2lab#dasel"
+graphviz.flake = "github:seedmatic/rke2lab#graphviz"
+
 ## Maven-build toolchain consumed from the rke2lab flake, which is the single
 ## source of truth (see `mavenToolchain` / `devShells.default` in flake.nix).
 ## Pinned here so the dev loop is deterministic and identical to the nix store
@@ -67,9 +75,6 @@ flux9s.flake = "github:seedmatic/rke2lab#flux9s"
 # darwin-only: ndh exposes the package for aarch64-darwin (the operator host) alone.
 manage-tailnet.flake = "github:seedmatic/rke2lab#manage-tailnet"
 manage-tailnet.systems = ["aarch64-darwin"]
-k9s.pkg-path = "k9s"
-tektoncd-cli.pkg-path = "tektoncd-cli"
-clusterctl.pkg-path = "clusterctl"
 flox-mcp-server.pkg-path = "flox/flox-mcp-server"
 flox-mcp-server.pkg-group = "flox-mcp-server"
 
@@ -158,7 +163,9 @@ on-activate = """
     ## registry change. If the toolchain is wanted here, that is its own include, decided for
     ## its own sake.
     { dir = "./.flox-envs.d/flake-registry" },
-    { dir = "./.flox-envs.d/pulumi" },
+    ## Not fleet's `pulumi` env any more: its three packages come from the rke2lab flake above,
+    ## and its two vars (PULUMI_CONFIG_PASSPHRASE, PULUMI_HOME) and its `mkdir -p $PULUMI_HOME`
+    ## hook are already this seat's own. Kept, it would only let a catalog pulumi back in.
     { dir = "./.flox-envs.d/shell" },
   ]
 
