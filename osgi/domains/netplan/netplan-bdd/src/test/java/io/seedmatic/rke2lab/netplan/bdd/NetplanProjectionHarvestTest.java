@@ -12,7 +12,9 @@ import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
 import io.seedmatic.rke2lab.seed.broker.port.Parcel;
 import io.seedmatic.rke2lab.seed.broker.testkit.InMemoryCellar;
 import java.net.InetAddress;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -67,9 +69,14 @@ class NetplanProjectionHarvestTest {
 
     final Matcher literals = Pattern.compile("\"([0-9a-fA-F:.]+)(?:/\\d+)?\"").matcher(published);
     final Set<InetAddress> seen = new LinkedHashSet<>();
+    final List<String> rejected = new ArrayList<>();
     while (literals.find()) {
       final IPAddressString candidate = new IPAddressString(literals.group(1));
-      if (!candidate.isValid() || !candidate.getAddress().isIPv6()) {
+      if (!candidate.isValid()) {
+        rejected.add(literals.group(1));
+        continue;
+      }
+      if (!candidate.getAddress().isIPv6()) {
         continue;
       }
       final InetAddress address = candidate.getAddress().toInetAddress();
@@ -80,6 +87,14 @@ class NetplanProjectionHarvestTest {
           "a second spelling of " + address + " reached the projection");
     }
     assertFalse(seen.isEmpty(), "the projection published no IPv6 address at all");
+    // The parser rejects what is no address at all — here, the published MACs. A rejected literal
+    // that is no MAC would be a malformed address, which the spelling check above never sees.
+    final Pattern mac = Pattern.compile("([0-9a-f]{2}:){5}[0-9a-f]{2}");
+    assertFalse(rejected.isEmpty(), "the projection published its MACs");
+    assertEquals(
+        List.of(),
+        rejected.stream().filter(literal -> !mac.matcher(literal).matches()).toList(),
+        "a literal the address parser rejected is no MAC: a malformed address reached the projection");
   }
 
   @Test

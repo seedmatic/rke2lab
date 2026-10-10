@@ -68,12 +68,14 @@ public record Cidr(InetAddress networkAddress, int prefixLength) {
   }
 
   /**
-   * An address of this network, in the one notation this contract publishes: RFC 5952 — the longest
-   * run of zero groups compressed — keeping our ULA mirror's embedded IPv4 readable in the low 32
-   * bits ({@code fd96:…:<cc><rr>::10.80.8.10}), the form {@code
-   * docs/architecture/atlas/netplan.adoc} documents so the v4 can be read out of the v6. RFC 5952
-   * §5 reserves the mixed form for IPv4-mapped addresses, and ours are ULAs that merely carry a v4
-   * verbatim: the deviation is deliberate, taken for readability. A v4 network renders its
+   * An address in the one notation this contract publishes — whichever {@code Cidr} renders it: the
+   * notation is global and the network only its authority, so {@code ula.text(a)} and {@code
+   * node6.text(a)} are the same string and no caller has to find the containing network first. The
+   * notation: RFC 5952 — the longest run of zero groups compressed — keeping our ULA mirror's
+   * embedded IPv4 readable in the low 32 bits ({@code fd96:…:<cc><rr>::10.80.8.10}), the form
+   * {@code docs/architecture/atlas/netplan.adoc} documents so the v4 can be read out of the v6. RFC
+   * 5952 §5 reserves the mixed form for IPv4-mapped addresses, and ours are ULAs that merely carry
+   * a v4 verbatim: the deviation is deliberate, taken for readability. A v4 network renders its
    * addresses unchanged.
    *
    * <p>Rendering is the network's job for the same reason parsing is ({@link #address(String)}):
