@@ -38,7 +38,8 @@ cellar-harvested wire types folded in from the former `worktree-contract-host` (
 
 | `worktree-core` (pkg `io.seedmatic.rke2lab.worktree.internal`)
 | `JgitWorktree` and `JgitLinkedWorktrees` `@Component`s, composing the jgit-holder `JgitCheckout` (all
-git facts + write verbs for one worktree path), the `GitCli` (the sole `git worktree` shell), the
+git facts + write verbs + the network operations for one worktree path), the `GitCli` (the sole
+`git` shell, local operations only), the
 `JgitLinkedWorktree` handle, and the `SshCommitSigner`. jgit lives only here.
 
 | `worktree-bdd`
@@ -112,25 +113,30 @@ link:../cluster-api/manifests-rendered-branches.adoc[Manifests Rendered Branches
 that replaces the old host-staging rotation/promotion (`host.N.staging.d` → `host.live.d`) with a
 render-then-force-push of a git branch.
 
-* **`LinkedWorktrees`** (contract) — the factory: `prepare(Path worktreePath, String branch)` shells
-  `git worktree add --orphan -b <branch> <worktreePath>` (jgit exposes no worktree porcelain —
-  verified against 7.7.x, which can OPEN a linked worktree but not CREATE one), an ORPHAN worktree
-  (empty tree, unborn branch) so the rendered branch carries only the rendered YAML, never the source.
-  Idempotent across re-runs (a prior worktree at the path AND any stale local branch are removed +
-  pruned first, then a fresh orphan is checked out — a rendered branch is regenerated as a single root
-  commit each render, never accreted). Domain-neutral like `Worktree`/`GatePolicy`:
+* **`LinkedWorktrees`** (contract) — the factory: `prepare(Path worktreePath, String branch,
+  Optional<String> fetchToken)`. It releases any worktree holding the branch, FETCHES the branch from
+  `origin` so the render accretes on its pushed history, then adds the linked worktree on it — or, the
+  first time, on a new branch seeded with a null-commit base — and empties the tree, so the rendered
+  branch carries only the rendered YAML, never the source, one commit per render on top of the last.
+  `git worktree` is shelled (jgit exposes no worktree porcelain — verified against 7.7.x, which can
+  OPEN a linked worktree but not CREATE one); the fetch is jgit's, authenticated as `x-access-token`
+  with `fetchToken` (the App's reader token, or the pipeline's in-cluster) and otherwise anonymous —
+  never through a credential helper the machine's git config names. No origin, or no such branch
+  there, is the first render; any other fetch failure throws rather than orphaning the base.
+  Domain-neutral like `Worktree`/`GatePolicy`:
   the caller supplies the branch name (`manifests/<host>-<role>`) and the path
   (`.local.d/worktrees/manifests/<host>-<role>/`), so no consumer vocabulary leaks in. Published as an
   `@Component(service = LinkedWorktrees.class)` that `@Reference`s `Worktree` to learn the repo root
   (instance-passing — the root flows in, it is not re-located).
 * **`LinkedWorktree`** (contract) — the `AutoCloseable` handle `prepare` returns: `path()` (the render
   target), `branch()`, `stage(List<Path>)` and `commit(…)` (the same signed-commit mechanism as
-  `Worktree`, against THIS worktree), `forcePush(String token)` (push `branch()` to `origin` over
-  HTTPS as `x-access-token`:`token` with a forced refspec — a rendered branch is desired-state; the
-  token is a short-lived GitHub token the caller reveals from the sealed cellar, held only in jgit's
-  in-memory credential provider), and `close()` (`git worktree remove --force`). jgit and `git
-  worktree` stay sealed behind `worktree-core`'s `JgitCheckout` (the sole jgit-holder instance both
-  worktrees compose) and `GitCli` (the sole `git worktree` shell); only JDK types cross.
+  `Worktree`, against THIS worktree), `push(String token)` (push `branch()` to `origin` over HTTPS
+  as `x-access-token`:`token`, a FAST-FORWARD — the branch accretes, a divergence is rejected, not
+  clobbered; the token is a short-lived GitHub token the caller reveals, held only in jgit's
+  in-memory credential provider), and `close()` (`git worktree remove --force`). jgit and `git`
+  stay sealed behind `worktree-core`'s `JgitCheckout` (the sole jgit-holder instance both worktrees
+  compose, which owns every network operation) and `GitCli` (the sole `git` shell, local operations
+  only); only JDK types cross.
 
 == The soil crossing — harvest, not push
 

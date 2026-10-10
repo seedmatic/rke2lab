@@ -2,6 +2,7 @@ package io.seedmatic.rke2lab.worktree.internal;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.abort;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
@@ -12,14 +13,20 @@ import io.seedmatic.rke2lab.worktree.LinkedWorktrees;
 import io.seedmatic.rke2lab.worktree.Provenance;
 import io.seedmatic.rke2lab.worktree.WorkingState;
 import io.seedmatic.rke2lab.worktree.Worktree;
+import jakarta.servlet.DispatcherType;
+import jakarta.servlet.Filter;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Base64;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+import org.eclipse.jetty.ee10.servlet.FilterHolder;
 import org.eclipse.jetty.ee10.servlet.ServletContextHandler;
 import org.eclipse.jetty.ee10.servlet.ServletHolder;
 import org.eclipse.jgit.http.server.GitServlet;
@@ -52,6 +59,7 @@ class JgitLinkedWorktreesTest {
   private static final String CLUSTER = "nikopol-mgmt";
   private static final String BRANCH = "manifests/" + CLUSTER;
   private static final String TOKEN = "x-access-token-unused-over-anonymous-http";
+  private static final String FETCH_TOKEN = "SENTINEL-REVEALED-READER-TOKEN";
   private static final GitIdentity BOT =
       new GitIdentity("rke2lab:manifests-bumper", "rke2lab+manifests-bumper@example.invalid");
 
@@ -67,7 +75,8 @@ class JgitLinkedWorktreesTest {
     try (GitGround ground = new GitGround(tmp)) {
       final Path worktreePath = ground.renderPath(CLUSTER);
 
-      final LinkedWorktree linked = ground.linkedWorktrees().prepare(worktreePath, BRANCH);
+      final LinkedWorktree linked =
+          ground.linkedWorktrees().prepare(worktreePath, BRANCH, Optional.empty());
 
       assertEquals(worktreePath.toRealPath(), linked.path(), "checked out at the asked path");
       assertEquals(BRANCH, linked.branch());
@@ -82,7 +91,8 @@ class JgitLinkedWorktreesTest {
   void a_render_accretes_is_ssh_signed_and_pushes() throws Exception {
     try (GitGround ground = new GitGround(tmp)) {
       final Path worktreePath = ground.renderPath(CLUSTER);
-      final LinkedWorktree linked = ground.linkedWorktrees().prepare(worktreePath, BRANCH);
+      final LinkedWorktree linked =
+          ground.linkedWorktrees().prepare(worktreePath, BRANCH, Optional.empty());
 
       Files.writeString(linked.path().resolve("cluster.yaml"), "kind: Cluster\n");
       linked.stageAll();
@@ -103,7 +113,7 @@ class JgitLinkedWorktreesTest {
     // .local.d, ignored by the .gitignore it commits, so the branch (and Flux) sees only the tree.
     try (GitGround ground = new GitGround(tmp)) {
       final LinkedWorktree linked =
-          ground.linkedWorktrees().prepare(ground.renderPath(CLUSTER), BRANCH);
+          ground.linkedWorktrees().prepare(ground.renderPath(CLUSTER), BRANCH, Optional.empty());
       Files.writeString(linked.path().resolve(".gitignore"), ".local.d/\n.scratchpad.d/\n");
       Files.writeString(linked.path().resolve("cluster.yaml"), "kind: Cluster\n");
       Files.createDirectories(linked.path().resolve(".local.d/.bootstrap"));
@@ -127,12 +137,14 @@ class JgitLinkedWorktreesTest {
     // (ignored files included) before re-adding it.
     try (GitGround ground = new GitGround(tmp)) {
       final Path worktreePath = ground.renderPath(CLUSTER);
-      final LinkedWorktree first = ground.linkedWorktrees().prepare(worktreePath, BRANCH);
+      final LinkedWorktree first =
+          ground.linkedWorktrees().prepare(worktreePath, BRANCH, Optional.empty());
       final Path stale = first.path().resolve(".local.d/.bootstrap/rke2lab-bootstrap.yaml");
       Files.createDirectories(stale.getParent());
       Files.writeString(stale, "kind: Secret\n");
 
-      final LinkedWorktree again = ground.linkedWorktrees().prepare(worktreePath, BRANCH);
+      final LinkedWorktree again =
+          ground.linkedWorktrees().prepare(worktreePath, BRANCH, Optional.empty());
 
       assertFalse(
           Files.exists(again.path().resolve(".local.d/.bootstrap/rke2lab-bootstrap.yaml")),
@@ -153,7 +165,8 @@ class JgitLinkedWorktreesTest {
       ground.setWorkConfig("filter.stub.clean", "tr a-z A-Z");
 
       final Path worktreePath = ground.renderPath(CLUSTER);
-      final LinkedWorktree linked = ground.linkedWorktrees().prepare(worktreePath, BRANCH);
+      final LinkedWorktree linked =
+          ground.linkedWorktrees().prepare(worktreePath, BRANCH, Optional.empty());
 
       Files.writeString(linked.path().resolve(".gitattributes"), "secret.txt filter=stub\n");
       Files.writeString(linked.path().resolve("secret.txt"), "hello\n");
@@ -176,7 +189,7 @@ class JgitLinkedWorktreesTest {
       final LinkedWorktrees branch = ground.linkedWorktrees();
 
       // render 1 — accretes on the null base, pushed.
-      final LinkedWorktree first = branch.prepare(worktreePath, BRANCH);
+      final LinkedWorktree first = branch.prepare(worktreePath, BRANCH, Optional.empty());
       Files.writeString(first.path().resolve("cluster.yaml"), "kind: Cluster\n");
       first.stageAll();
       final String firstSha =
@@ -186,7 +199,7 @@ class JgitLinkedWorktreesTest {
       // render 2 — re-prepare REUSES the branch (its history survives), a second commit whose
       // parent
       // is render 1 (a fast-forward, not a fresh orphan).
-      final LinkedWorktree again = branch.prepare(worktreePath, BRANCH);
+      final LinkedWorktree again = branch.prepare(worktreePath, BRANCH, Optional.empty());
       assertEquals(2, ground.commitCount(again.path()), "re-prepare keeps the branch history");
       Files.writeString(again.path().resolve("cluster.yaml"), "kind: Cluster\nversion: 2\n");
       again.stageAll();
@@ -206,7 +219,8 @@ class JgitLinkedWorktreesTest {
     try (GitGround ground = new GitGround(tmp)) {
       // render 1 at the OLD leaf, committed — the branch is now checked out there.
       final Path oldPath = ground.renderPath(CLUSTER);
-      final LinkedWorktree first = ground.linkedWorktrees().prepare(oldPath, BRANCH);
+      final LinkedWorktree first =
+          ground.linkedWorktrees().prepare(oldPath, BRANCH, Optional.empty());
       Files.writeString(first.path().resolve("cluster.yaml"), "kind: Cluster\n");
       first.stageAll();
       first.commit("render " + CLUSTER, BOT, Optional.of(ground.signingKey()));
@@ -216,7 +230,8 @@ class JgitLinkedWorktreesTest {
       // stale
       // worktree, re-add here — not fail "already used by worktree at …". The accretion survives.
       final Path newPath = ground.renderPath("bioskop-mgmt");
-      final LinkedWorktree again = ground.linkedWorktrees().prepare(newPath, BRANCH);
+      final LinkedWorktree again =
+          ground.linkedWorktrees().prepare(newPath, BRANCH, Optional.empty());
 
       assertEquals(
           newPath.toRealPath(),
@@ -234,13 +249,66 @@ class JgitLinkedWorktreesTest {
   void close_removes_the_linked_worktree_but_keeps_the_branch() throws Exception {
     try (GitGround ground = new GitGround(tmp)) {
       final Path worktreePath = ground.renderPath(CLUSTER);
-      final LinkedWorktree linked = ground.linkedWorktrees().prepare(worktreePath, BRANCH);
+      final LinkedWorktree linked =
+          ground.linkedWorktrees().prepare(worktreePath, BRANCH, Optional.empty());
 
       linked.close();
 
       assertFalse(Files.exists(worktreePath), "the linked worktree directory is removed");
       assertFalse(
           ground.registersWorktree(worktreePath), "git no longer lists the linked worktree");
+    }
+  }
+
+  @Test
+  void prepare_fetches_the_published_branch_with_the_revealed_token() throws Exception {
+    // A fresh clone has only origin's branch, not a local one: prepare must FETCH it to accrete on
+    // its history, and origin here refuses a fetch that does not carry the revealed token.
+    try (GitGround ground = new GitGround(tmp, Optional.of(FETCH_TOKEN))) {
+      ground.publishBranch(BRANCH);
+      final Path consulted = tmp.resolve("credential-helper-consulted");
+      ground.poisonCredentialHelper(consulted);
+
+      final LinkedWorktree linked =
+          ground
+              .linkedWorktrees()
+              .prepare(ground.renderPath(CLUSTER), BRANCH, Optional.of(FETCH_TOKEN));
+
+      assertEquals(
+          ground.originTip(BRANCH),
+          ground.headSha(linked.path()),
+          "the render sits on origin's tip, fetched with the revealed token");
+      assertFalse(Files.exists(consulted), "no credential helper was consulted");
+    }
+  }
+
+  @Test
+  void a_fetch_origin_refuses_fails_loudly_and_never_asks_a_credential_helper() throws Exception {
+    // The poisoned helper sits in the repo's LOCAL config. Credential helpers accumulate across
+    // scopes (system, global, local), so a helper there is consulted whenever any would be — the
+    // operator's global `gh auth git-credential` included — without touching the module's JVM
+    // environment.
+    try (GitGround ground = new GitGround(tmp, Optional.of(FETCH_TOKEN))) {
+      ground.publishBranch(BRANCH);
+      final Path consulted = tmp.resolve("credential-helper-consulted");
+      ground.poisonCredentialHelper(consulted);
+
+      final IllegalStateException refused =
+          assertThrows(
+              IllegalStateException.class,
+              () ->
+                  ground
+                      .linkedWorktrees()
+                      .prepare(ground.renderPath(CLUSTER), BRANCH, Optional.empty()));
+
+      assertTrue(refused.getMessage().contains("cannot fetch"), refused.getMessage());
+      assertFalse(
+          ground.localBranchExists(BRANCH), "no null base was seeded in place of origin's history");
+      assertFalse(Files.exists(consulted), "the refused fetch asked no credential helper");
+
+      // The poison is live: the git BINARY, refused the same way, does consult it.
+      ground.binaryFetch(BRANCH);
+      assertTrue(Files.exists(consulted), "the binary's fetch consults the credential helper");
     }
   }
 
@@ -281,6 +349,15 @@ class JgitLinkedWorktreesTest {
     private final AppServer server;
 
     GitGround(Path tmp) throws Exception {
+      this(tmp, Optional.empty());
+    }
+
+    /**
+     * A ground whose origin refuses any fetch that does not carry {@code requiredFetchToken} as
+     * {@code x-access-token} — a private repository — while its push stays anonymous, so the ground
+     * can still seed origin with the binary.
+     */
+    GitGround(Path tmp, Optional<String> requiredFetchToken) throws Exception {
       this.origin = tmp.resolve("origin.git");
       this.work = tmp.resolve("work");
       this.renderRoot = tmp.resolve("render");
@@ -288,7 +365,7 @@ class JgitLinkedWorktreesTest {
 
       git(tmp, "init", "--bare", "-b", "main", origin.toString());
       this.originRepo = new FileRepositoryBuilder().setGitDir(origin.toFile()).build();
-      this.server = serveOverHttp(originRepo);
+      this.server = serveOverHttp(originRepo, requiredFetchToken);
       final String originUrl = server.getURI().resolve("git/origin.git").toString();
 
       git(tmp, "init", "-b", "main", work.toString());
@@ -342,6 +419,49 @@ class JgitLinkedWorktreesTest {
       git(work, "config", key, value);
     }
 
+    /** Publish {@code branch} on origin only — the work repo keeps no local ref of it. */
+    void publishBranch(String branch) throws Exception {
+      git(work, "push", "origin", "main:refs/heads/" + branch);
+    }
+
+    /** The sha a worktree's HEAD points at. */
+    String headSha(Path worktree) throws Exception {
+      return git(worktree, "rev-parse", "HEAD").trim();
+    }
+
+    /** Whether the work repo has a local {@code refs/heads/<branch>}. */
+    boolean localBranchExists(String branch) throws Exception {
+      return !git(work, "for-each-ref", "refs/heads/" + branch).isBlank();
+    }
+
+    /** Make any credential helper consultation leave {@code marker} behind, and fail. */
+    void poisonCredentialHelper(Path marker) throws Exception {
+      git(
+          work,
+          "config",
+          "credential.helper",
+          "!f() { echo consulted >> '" + marker + "'; exit 1; }; f");
+    }
+
+    /**
+     * The git BINARY's fetch of {@code branch}, with no credential: origin answers 401, so git asks
+     * its credential helpers. Refused by design, so its exit is ignored; the terminal prompt is
+     * off, so a refusal cannot block on a tty.
+     */
+    void binaryFetch(String branch) throws Exception {
+      final ProcessBuilder fetch =
+          new ProcessBuilder("git", "fetch", "origin", "refs/heads/" + branch)
+              .directory(work.toFile())
+              .redirectErrorStream(true);
+      fetch.environment().put("GIT_TERMINAL_PROMPT", "0");
+      final Process process = fetch.start();
+      process.getInputStream().readAllBytes();
+      if (!process.waitFor(30, TimeUnit.SECONDS)) {
+        process.destroyForcibly();
+        throw new IllegalStateException("git fetch timed out");
+      }
+    }
+
     /** The STORED blob at {@code rev} (plumbing {@code cat-file -p} — no smudge applied). */
     String showBlob(Path worktree, String rev) throws Exception {
       return git(worktree, "cat-file", "-p", rev);
@@ -381,9 +501,11 @@ class JgitLinkedWorktreesTest {
      * does on the duplex {@code file://} / {@code git://} transports; it is also the shape of
      * production (HTTPS). The resolver hands back the one repo (bumping its open count, since the
      * servlet closes it per request); the {@link ReceivePack} factory makes push anonymous, no
-     * credential exchanged.
+     * credential exchanged. With a {@code requiredFetchToken}, upload-pack (ls-remote, fetch)
+     * answers 401 unless the request carries it, the way a private GitHub repository does.
      */
-    private AppServer serveOverHttp(Repository repo) throws Exception {
+    private AppServer serveOverHttp(Repository repo, Optional<String> requiredFetchToken)
+        throws Exception {
       final GitServlet gitServlet = new GitServlet();
       gitServlet.setRepositoryResolver(
           (HttpServletRequest req, String name) -> {
@@ -396,8 +518,35 @@ class JgitLinkedWorktreesTest {
       final AppServer http = new AppServer(0, -1);
       final ServletContextHandler ctx = http.addContext("/git");
       ctx.addServlet(new ServletHolder(gitServlet), "/*");
+      requiredFetchToken.ifPresent(
+          token ->
+              ctx.addFilter(
+                  new FilterHolder(fetchRequires(token)),
+                  "/*",
+                  EnumSet.of(DispatcherType.REQUEST)));
       http.setUp();
       return http;
+    }
+
+    private static Filter fetchRequires(String token) {
+      final String expected =
+          "Basic "
+              + Base64.getEncoder()
+                  .encodeToString(("x-access-token:" + token).getBytes(StandardCharsets.UTF_8));
+      return (request, response, chain) -> {
+        final HttpServletRequest http = (HttpServletRequest) request;
+        final String query = http.getQueryString();
+        final boolean uploadPack =
+            (query != null && query.contains("service=git-upload-pack"))
+                || http.getRequestURI().endsWith("/git-upload-pack");
+        if (uploadPack && !expected.equals(http.getHeader("Authorization"))) {
+          final HttpServletResponse refused = (HttpServletResponse) response;
+          refused.setHeader("WWW-Authenticate", "Basic realm=\"origin\"");
+          refused.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+          return;
+        }
+        chain.doFilter(request, response);
+      };
     }
 
     private String throwawaySshKey(Path keyFile) throws Exception {

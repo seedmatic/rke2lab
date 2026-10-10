@@ -12,10 +12,20 @@ import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 /**
- * The {@code git worktree} porcelain for ONE repository — an instance bound to that repo's
- * directory, shelled because jgit exposes no worktree porcelain (verified against 7.7.x: it can
- * OPEN a linked worktree but not CREATE the {@code .git/worktrees/<name>} administrative files).
- * The single spot that runs {@code git} as a subprocess in this domain, the way {@link
+ * The {@code git} binary for ONE repository's LOCAL operations — an instance bound to that repo's
+ * directory. Shelled where jgit cannot do the job: it exposes no worktree porcelain (verified
+ * against 7.7.x: it can OPEN a linked worktree but not CREATE the {@code .git/worktrees/<name>}
+ * administrative files), so {@code worktree add / remove / prune / list} run here; and a {@link
+ * #restoreFromHead checkout} must run the configured {@code sops-yaml} smudge filter, which only
+ * the binary does. The other verbs it carries — emptying a linked worktree, seeding its null base,
+ * staging it whole — sit with the worktree add they follow, and are local too.
+ *
+ * <p>Nothing here reaches a remote. The binary reads the machine's git config, so a fetch through
+ * it would answer an authentication challenge with whatever credential helper that config names —
+ * on an operator's machine, a personal token. The domain's one network read, fetching a branch from
+ * origin, is jgit's ({@link JgitCheckout#fetchBranch}) with an explicit credential, as its push is.
+ *
+ * <p>The single spot that runs {@code git} as a subprocess in this domain, the way {@link
  * SshCommitSigner} is the single spot that shells {@code ssh-keygen}. Constructed by {@link
  * JgitLinkedWorktrees} from the seed's root and threaded into the {@link JgitLinkedWorktree} it
  * makes, so add (at prepare) and remove (at close) run against the same repo.
@@ -31,23 +41,16 @@ final class GitCli {
   }
 
   /**
-   * Add a linked worktree at {@code worktreePath} on {@code branch}, on a STABLE base commit. The
-   * first time a {@code branch} is seen it is seeded with a {@link #seedNullBase base commit} — a
-   * shared root Flux can point at and every later render commits ON TOP of (accretion, not
-   * orphan-per-render). On a re-run the existing branch is reused: its tip is checked out (the
-   * accretion parent). Either way the working tree is then emptied, so the fresh render starts
-   * clean and a manifest removed between renders is staged as a deletion. Idempotent: any prior
-   * worktree at the path is removed and pruned first.
-   *
-   * <p>A branch can live in only ONE worktree, so before claiming it here we INTROSPECT where it is
-   * currently checked out and release that worktree if it sits elsewhere — a render leaf renamed
-   * out from under us (e.g. the branch renamed on the remote, leaving an old path holding it) would
-   * otherwise make {@code worktree add} fail {@code "already used by worktree at …"}. The branch
-   * itself survives (worktree remove ≠ branch delete), so its accretion history is reused; only the
-   * stale checkout is dropped and the branch re-materialised at the requested SOIL path where the
-   * host expects the render output.
+   * Free {@code branch} for a checkout at {@code worktreePath}. Idempotent: any prior worktree at
+   * the path is removed and pruned. A branch can live in only ONE worktree, so we also INTROSPECT
+   * where it is currently checked out and release that worktree if it sits elsewhere — a render
+   * leaf renamed out from under us (e.g. the branch renamed on the remote, leaving an old path
+   * holding it) would otherwise make {@code worktree add} fail {@code "already used by worktree at
+   * …"}. The branch itself survives (worktree remove ≠ branch delete), so its accretion history is
+   * reused; only the stale checkout is dropped. Run before the branch is fetched, so the fetch
+   * never targets a checked-out ref.
    */
-  void worktreeAdd(Path worktreePath, String branch) {
+  void release(Path worktreePath, String branch) {
     final String path = worktreePath.toString();
     worktreeOf(branch)
         .filter(existing -> !existing.equals(worktreePath))
@@ -58,17 +61,34 @@ final class GitCli {
             });
     run(false, "worktree", "remove", "--force", path);
     run(false, "worktree", "prune");
-    syncLocalBranchToOrigin(branch);
-    if (branchExists(branch)) {
-      run(true, "worktree", "add", path, branch);
-    } else {
-      run(true, "worktree", "add", "--orphan", "-b", branch, path);
-      seedNullBase(worktreePath, branch);
-    }
-    // Empty the working tree (keep HEAD) so the render starts clean and a manifest dropped since
-    // the
-    // previous render stages as a deletion.
-    run(false, "-C", path, "rm", "-rf", "--quiet", "--ignore-unmatch", ".");
+  }
+
+  /**
+   * Add a linked worktree at {@code worktreePath} on the EXISTING {@code branch} — its tip is
+   * checked out as the accretion parent — and {@link #empty} it.
+   */
+  void worktreeAdd(Path worktreePath, String branch) {
+    run(true, "worktree", "add", worktreePath.toString(), branch);
+    empty(worktreePath);
+  }
+
+  /**
+   * Add a linked worktree at {@code worktreePath} on a NEW {@code branch}, seeded with a {@link
+   * #seedNullBase base commit} — a shared root Flux can point at and every later render commits ON
+   * TOP of (accretion, not orphan-per-render) — and {@link #empty} it.
+   */
+  void worktreeAddOnNullBase(Path worktreePath, String branch) {
+    run(true, "worktree", "add", "--orphan", "-b", branch, worktreePath.toString());
+    seedNullBase(worktreePath, branch);
+    empty(worktreePath);
+  }
+
+  /**
+   * Empty the working tree (keep HEAD) so the render starts clean and a manifest dropped since the
+   * previous render stages as a deletion.
+   */
+  private void empty(Path worktreePath) {
+    run(false, "-C", worktreePath.toString(), "rm", "-rf", "--quiet", "--ignore-unmatch", ".");
   }
 
   /**
@@ -136,32 +156,6 @@ final class GitCli {
   /** Remove the linked worktree at {@code worktreePath} — tolerant of a path already gone. */
   void worktreeRemove(Path worktreePath) {
     run(false, "worktree", "remove", "--force", worktreePath.toString());
-  }
-
-  private boolean branchExists(String branch) {
-    return run(false, "show-ref", "--quiet", "--verify", "refs/heads/" + branch) == 0;
-  }
-
-  /**
-   * Best-effort fast-forward of the LOCAL {@code refs/heads/<branch>} to origin's tip, so a render
-   * accretes on the branch's real (pushed) history instead of orphaning it. A render cut from a
-   * fresh clone (in-cluster the Tekton {@code FETCH_HEAD} checkout) or an operator checkout that
-   * never tracked the manifests branch has only a remote ref — without this the {@link
-   * #branchExists local} check below is false and {@link #worktreeAdd} would {@code --orphan} a
-   * fresh base, LOSING the facet the grow recorded at HEAD (the mesh-drop footgun) and rejecting
-   * the follow-up fast-forward push. Forced ({@code +src:dst}) so a stale/diverged local ref is
-   * reset to origin — the render must sit on origin's tip for that push to land. Silent when there
-   * is no {@code origin} (a pure-local repo / the test ground before its first push) or origin
-   * lacks the branch (the genuine first render) → {@code refs/heads} is left untouched and the
-   * orphan path seeds it. Safe here: any worktree holding the branch was released just above, so
-   * the fetch never targets a checked-out ref.
-   */
-  private void syncLocalBranchToOrigin(String branch) {
-    if (run(false, "remote", "get-url", "origin") != 0) {
-      return;
-    }
-    final String ref = "refs/heads/" + branch;
-    run(false, "fetch", "origin", "+" + ref + ":" + ref);
   }
 
   /**

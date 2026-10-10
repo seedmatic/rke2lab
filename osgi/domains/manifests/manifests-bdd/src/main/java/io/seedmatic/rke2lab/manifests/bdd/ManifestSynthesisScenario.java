@@ -324,7 +324,9 @@ public class ManifestSynthesisScenario
     final Path worktreePath =
         Path.of(facet.materializationRoot().orElseThrow()).toAbsolutePath().normalize();
     return Optional.of(
-        linkedWorktrees.orElseThrow().prepare(worktreePath, BRANCH_PREFIX + cluster));
+        linkedWorktrees
+            .orElseThrow()
+            .prepare(worktreePath, BRANCH_PREFIX + cluster, revealFetchToken()));
   }
 
   // Reads the branch HEAD's recorded facet — a plain YAMLMapper, native record binding (jackson
@@ -708,6 +710,17 @@ public class ManifestSynthesisScenario
   }
 
   /**
+   * The token the rendered branch is FETCHED with, by the same two lanes: OPERATOR mints a fresh
+   * {@code contents:read} token from the sealed App; IN_CLUSTER it is the pipeline's, which
+   * Pipelines-as-Code minted from the same App. Empty when neither is present — the fetch then goes
+   * anonymous, never through a credential the machine holds.
+   */
+  private Optional<String> revealFetchToken() {
+    final GithubAppTokens tokens = tokens();
+    return cellar == null ? tokens.pipeline() : tokens.readerOrPipeline(cellar, parcel);
+  }
+
+  /**
    * The token revealer, built from this scenario's injected mints: they are only known once the
    * stage creator has resolved them, so it is built at use rather than held.
    */
@@ -952,6 +965,7 @@ public class ManifestSynthesisScenario
     }
     final LinkedWorktrees branch = linkedWorktrees.orElseThrow();
     final Delivery plan = delivery.orElseThrow();
+    final Optional<String> fetchToken = revealFetchToken();
     final List<TargetPass> passes = new ArrayList<>();
     for (final ClusterCoordinate child : children) {
       final String cluster = child.clusterName();
@@ -959,7 +973,7 @@ public class ManifestSynthesisScenario
       passes.add(
           new TargetPass(
               child,
-              branch.prepare(soil, BRANCH_PREFIX + cluster),
+              branch.prepare(soil, BRANCH_PREFIX + cluster, fetchToken),
               plan.forBranchOf(renderCommitMessage(cluster))));
     }
     return List.copyOf(passes);

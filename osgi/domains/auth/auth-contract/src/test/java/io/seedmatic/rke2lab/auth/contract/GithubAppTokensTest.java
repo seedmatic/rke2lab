@@ -13,8 +13,9 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 /**
- * The one token revealer: it reads the App from its OWNER's case and mints, and its three lanes
- * keep each caller's behaviour — mint only, mint or the pipeline's token, and the reader scope.
+ * The one token revealer: it reads the App from its OWNER's case and mints, and its lanes keep each
+ * caller's behaviour — mint only, mint or the pipeline's token, the reader scope, and the fetch's
+ * reader or pipeline token.
  */
 class GithubAppTokensTest {
 
@@ -122,5 +123,30 @@ class GithubAppTokensTest {
             .reader(sealed(), Optional.of(PARCEL)));
     assertEquals(List.of(), writer.handed, "a node's config fetch must not hold contents:write");
     assertEquals(List.of(APP), reader.handed);
+  }
+
+  /** The fetch's lane, in order: the reader mint, then the pipeline's token, then nothing. */
+  @Test
+  void the_fetch_lane_is_the_reader_then_the_pipeline_then_nothing() {
+    final Map<String, String> tekton = Map.of(GithubAppTokens.PIPELINE_TOKEN_ENV, "pac-token");
+    final RecordingMint writer = new RecordingMint("write-token");
+    final RecordingMint reader = new RecordingMint("read-token");
+
+    assertEquals(
+        Optional.of("read-token"),
+        new GithubAppTokens(Optional.of(writer), Optional.of(reader), tekton)
+            .readerOrPipeline(sealed(), Optional.of(PARCEL)),
+        "the reader mint wins when the App is there, even with a pipeline token set");
+    assertEquals(
+        Optional.of("pac-token"),
+        new GithubAppTokens(Optional.of(writer), Optional.of(reader), tekton)
+            .readerOrPipeline(new InMemoryCellar(), Optional.of(PARCEL)),
+        "no App to mint from: the pipeline's token");
+    assertEquals(
+        Optional.empty(),
+        new GithubAppTokens(Optional.of(writer), Optional.of(reader), Map.of())
+            .readerOrPipeline(new InMemoryCellar(), Optional.of(PARCEL)),
+        "neither: the fetch goes anonymous");
+    assertEquals(List.of(), writer.handed, "a fetch never mints a write token");
   }
 }

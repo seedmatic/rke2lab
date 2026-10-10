@@ -62,7 +62,8 @@ class FabricDeliveryTest {
     when.the_harvested_plan_is_read(
             harvested("{\"b\":1,\"a\":{\"d\":4,\"c\":3}}", "{\"datasets\":[\"tank/rke2lab\"]}"),
             Optional.of(PARCEL))
-        .the_delivery_is_written(Optional.of(worktrees), Optional.empty(), Optional.empty());
+        .the_delivery_is_written(
+            Optional.of(worktrees), Optional.empty(), Optional.empty(), Optional.empty());
 
     final FabricDelivery delivery = FabricDelivery.canonical();
     assertEquals(
@@ -93,7 +94,8 @@ class FabricDeliveryTest {
 
     when()
         .the_harvested_plan_is_read(harvested("{}", "{}"), Optional.of(PARCEL))
-        .the_delivery_is_written(Optional.of(worktrees), Optional.empty(), Optional.empty());
+        .the_delivery_is_written(
+            Optional.of(worktrees), Optional.empty(), Optional.empty(), Optional.empty());
 
     assertEquals("fabric/plan", worktrees.made.branch());
     assertEquals(tmp.resolve("fabric/plan"), worktrees.made.path());
@@ -106,7 +108,10 @@ class FabricDeliveryTest {
     when()
         .the_harvested_plan_is_read(harvested("{}", "{}"), Optional.of(PARCEL))
         .the_delivery_is_written(
-            Optional.of(worktrees), Optional.of(new FakeKeystore()), Optional.empty());
+            Optional.of(worktrees),
+            Optional.of(new FakeKeystore()),
+            Optional.empty(),
+            Optional.empty());
 
     assertEquals(
         new GitIdentity(
@@ -124,7 +129,8 @@ class FabricDeliveryTest {
 
     when()
         .the_harvested_plan_is_read(harvested("{}", "{}"), Optional.of(PARCEL))
-        .the_delivery_is_written(Optional.of(worktrees), Optional.empty(), Optional.empty());
+        .the_delivery_is_written(
+            Optional.of(worktrees), Optional.empty(), Optional.empty(), Optional.empty());
 
     assertTrue(worktrees.made.calls.contains("stageAll"));
     assertTrue(worktrees.made.calls.stream().anyMatch(call -> call.startsWith("commit:")));
@@ -143,8 +149,15 @@ class FabricDeliveryTest {
     when()
         .the_harvested_plan_is_read(harvested("{}", "{}"), Optional.of(PARCEL))
         .the_delivery_is_written(
-            Optional.of(worktrees), Optional.of(new FakeKeystore()), Optional.of("write-token"));
+            Optional.of(worktrees),
+            Optional.of(new FakeKeystore()),
+            Optional.of("read-token"),
+            Optional.of("write-token"));
 
+    assertEquals(
+        Optional.of("read-token"),
+        worktrees.fetchedWith,
+        "the branch is fetched with the read token, never the write one");
     assertEquals(Optional.of("write-token"), worktrees.made.pushedWith);
     assertTrue(worktrees.made.signedWith.isPresent(), "a pushed delivery is signed");
     final List<String> calls = worktrees.made.calls;
@@ -171,7 +184,10 @@ class FabricDeliveryTest {
                 FabricDeliveryError.class,
                 () ->
                     when.the_delivery_is_written(
-                        Optional.of(worktrees), Optional.empty(), Optional.of("write-token")))
+                        Optional.of(worktrees),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.of("write-token")))
             .reason());
     assertEquals(null, worktrees.made, "nothing was prepared, so nothing was committed or pushed");
   }
@@ -209,7 +225,7 @@ class FabricDeliveryTest {
                 FabricDeliveryError.class,
                 () ->
                     when.the_delivery_is_written(
-                        Optional.empty(), Optional.empty(), Optional.empty()))
+                        Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()))
             .reason());
   }
 }

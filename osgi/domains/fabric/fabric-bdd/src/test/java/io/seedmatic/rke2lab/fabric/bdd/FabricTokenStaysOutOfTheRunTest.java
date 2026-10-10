@@ -39,6 +39,7 @@ class FabricTokenStaysOutOfTheRunTest
         FabricTokenStaysOutOfTheRunTest.Then> {
 
   private static final String SENTINEL = "SENTINEL-MINTED-PUSH-TOKEN-5c";
+  private static final String FETCH_SENTINEL = "SENTINEL-MINTED-FETCH-TOKEN";
   private static final Parcel PARCEL = new Parcel("rke2lab", "plan");
 
   @TempDir Path tmp;
@@ -88,17 +89,23 @@ class FabricTokenStaysOutOfTheRunTest
         .the_harvested_plan_is_read(cellar, Optional.of(PARCEL))
         .and()
         .the_delivery_is_written(
-            Optional.of(worktrees), Optional.of(new FakeKeystore()), Optional.of(SENTINEL));
+            Optional.of(worktrees),
+            Optional.of(new FakeKeystore()),
+            Optional.of(FETCH_SENTINEL),
+            Optional.of(SENTINEL));
 
     final String runbook = new ScenarioJsonWriter(runbookSoFar()).toString();
 
     assertEquals(Optional.of(SENTINEL), worktrees.made.pushedWith, "the token DID reach the push");
+    assertEquals(
+        Optional.of(FETCH_SENTINEL), worktrees.fetchedWith, "the fetch token DID reach the fetch");
     assertTrue(
         runbook.contains("delivery is written"), "the runbook records the step that held it");
     assertTrue(
         runbook.contains(NetplanIngressCoordinate.PROJECTION.slug()),
         "the runbook carries the cellar's write set too, so the grep covers it");
     assertFalse(runbook.contains(SENTINEL), "the token is nowhere in the report or the cellar");
+    assertFalse(runbook.contains(FETCH_SENTINEL), "nor is the fetch token");
     assertFalse(PARCEL.toString().contains(SENTINEL), "nor in the run's parcel");
   }
 }
