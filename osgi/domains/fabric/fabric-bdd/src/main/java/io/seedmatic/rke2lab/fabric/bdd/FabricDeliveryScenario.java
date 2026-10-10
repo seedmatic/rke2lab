@@ -7,6 +7,8 @@ import com.tngtech.jgiven.annotation.Hidden;
 import com.tngtech.jgiven.annotation.ProvidedScenarioState;
 import com.tngtech.jgiven.base.ScenarioTestBase;
 import com.tngtech.jgiven.impl.Scenario;
+import io.seedmatic.rke2lab.auth.contract.GithubAppTokens;
+import io.seedmatic.rke2lab.auth.contract.GithubWriterTokenMint;
 import io.seedmatic.rke2lab.dataplan.contract.DataplanCoordinate;
 import io.seedmatic.rke2lab.fabric.contract.FabricDelivery;
 import io.seedmatic.rke2lab.fabric.contract.FabricRunbookInput;
@@ -30,6 +32,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
@@ -49,12 +52,17 @@ import org.junit.jupiter.api.extension.RegisterExtension;
  * that it holds two opaque JSON trees — it reads them as {@code JsonNode}, never as a netplan or
  * dataplan type, so no foreign vocabulary enters and the realm boundary is not tested by this seam.
  *
- * <p>The commit is LOCAL. Signing happens when the ndh key-store is reachable (the OPERATOR
- * enclosure, the only one that publishes a plan), and the delivery is NOT pushed: the push needs a
- * freshly minted token, which only the publishing CLI can reveal. Until that CLI exists the bytes
- * are the deliverable, handed to the integration for republication — {@code
- * FabricDeliveryTest.the_delivery_is_not_pushed_until_a_publishing_cli_can_reveal_a_token} pins
- * that limit, so the slice that adds the push has to change it rather than remember it.
+ * <p>The delivery is pushed when a token is revealed — a fresh {@code contents:write} token minted
+ * from the sealed App through {@link GithubAppTokens}, the one revealer every consumer shares — and
+ * only then. A pushed delivery is always SIGNED: a token with no key-store to sign with is refused
+ * before anything is committed, because an unsigned bot commit on a branch other repos pin is
+ * exactly what a signature exists to rule out. With no token (a survey, a preview, a run whose mint
+ * edge the frontier filtered out) the commit stays local, unsigned when there is no key-store, and
+ * is never pushed. The push is a fast-forward: the branch accretes, it is never rewritten.
+ *
+ * <p>The MINT-only lane, not the pipeline fallback: no Tekton run publishes a plan, so a pipeline
+ * token in the environment has no legitimate meaning here, and honouring it would let a stray
+ * variable push.
  */
 @SeedScenario
 public class FabricDeliveryScenario
@@ -88,10 +96,15 @@ public class FabricDeliveryScenario
   private Optional<LinkedWorktrees> linkedWorktrees = Optional.empty();
 
   // The ndh key-store the commit's bot identity and signing key come from. Absent in a run whose
-  // sops key-store is unreadable — the commit is then unsigned, which is honest for a commit that
-  // is not pushed: a signature protects what is PUBLISHED, and publishing is the next slice.
+  // sops key-store is unreadable — the commit is then unsigned, which is honest only because such a
+  // commit is never pushed: a token without a key-store is refused.
   @OsgiService(await = false)
   private Optional<NdhKeystoreReader> keystore = Optional.empty();
+
+  // The contents:write mint (auth-edge, cultivating). Absent under a survey/preview frontier, so no
+  // token is minted and nothing is pushed.
+  @OsgiService(await = false)
+  private Optional<GithubWriterTokenMint> writerTokenMint = Optional.empty();
 
   @Override
   public Scenario<Given, When, Then> getScenario() {
@@ -115,10 +128,12 @@ public class FabricDeliveryScenario
     given().the_runbook_input(facet);
     final Cellar harvest =
         Objects.requireNonNull(cellar, "the cellar was not injected before the body");
+    final Optional<String> token =
+        new GithubAppTokens(writerTokenMint, Optional.empty(), Map.of()).writer(harvest, parcel);
     when()
         .the_harvested_plan_is_read(harvest, parcel)
         .and()
-        .the_delivery_is_written(linkedWorktrees, keystore);
+        .the_delivery_is_written(linkedWorktrees, keystore, token);
     then().the_delivery_carries_both_files();
   }
 
@@ -165,12 +180,22 @@ public class FabricDeliveryScenario
       return self();
     }
 
+    /**
+     * Write both files, commit, and push when a token was revealed. The token is a {@code @Hidden}
+     * argument and never scenario state, so it reaches neither the scenario report nor anything the
+     * run persists: it exists between the reveal and the push, and nowhere else.
+     */
     public When the_delivery_is_written(
-        @Hidden Optional<LinkedWorktrees> worktrees, @Hidden Optional<NdhKeystoreReader> keystore) {
+        @Hidden Optional<LinkedWorktrees> worktrees,
+        @Hidden Optional<NdhKeystoreReader> keystore,
+        @Hidden Optional<String> token) {
       this.delivery = FabricDelivery.canonical();
       final LinkedWorktrees mechanism =
           worktrees.orElseThrow(
               () -> new FabricDeliveryError(FabricDeliveryError.Reason.NO_WORKTREES));
+      if (token.isPresent() && keystore.isEmpty()) {
+        throw new FabricDeliveryError(FabricDeliveryError.Reason.UNSIGNABLE);
+      }
       final LinkedWorktree linked =
           mechanism.prepare(soil().resolve(delivery.branch()), delivery.branch());
       this.worktree = linked;
@@ -179,6 +204,7 @@ public class FabricDeliveryScenario
           linked.path().resolve(delivery.dataplanFile()), read(dataplan, delivery.dataplanFile()));
       linked.stageAll();
       this.deliveredSha = linked.commit(message(), identity(keystore), signingKey(keystore));
+      token.ifPresent(linked::push);
       return self();
     }
 
@@ -196,7 +222,7 @@ public class FabricDeliveryScenario
      * key-store's authority domain — the single source every automated commit of this project
      * reads, so the fabric delivery cannot drift into a convention of its own. Without a key-store
      * the identity falls back to the tool with no authority domain, which is what an unsigned local
-     * commit deserves; the publishing slice makes the key-store mandatory because it pushes.
+     * commit deserves — and such a commit is never pushed.
      */
     private GitIdentity identity(Optional<NdhKeystoreReader> keystore) {
       return keystore

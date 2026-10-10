@@ -48,6 +48,7 @@ class FabricDeliveryTest {
     private final List<String> calls = new ArrayList<>();
     private Optional<GitIdentity> committedAs = Optional.empty();
     private Optional<String> signedWith = Optional.empty();
+    private Optional<String> pushedWith = Optional.empty();
 
     RecordingWorktree(Path path, String branch) {
       this.path = path;
@@ -107,6 +108,7 @@ class FabricDeliveryTest {
     @Override
     public void push(String token, Duration timeout) {
       calls.add("push");
+      this.pushedWith = Optional.of(token);
     }
 
     @Override
@@ -192,7 +194,7 @@ class FabricDeliveryTest {
     when.the_harvested_plan_is_read(
             harvested("{\"b\":1,\"a\":{\"d\":4,\"c\":3}}", "{\"datasets\":[\"tank/rke2lab\"]}"),
             Optional.of(PARCEL))
-        .the_delivery_is_written(Optional.of(worktrees), Optional.empty());
+        .the_delivery_is_written(Optional.of(worktrees), Optional.empty(), Optional.empty());
 
     final FabricDelivery delivery = FabricDelivery.canonical();
     assertEquals(
@@ -223,7 +225,7 @@ class FabricDeliveryTest {
 
     when()
         .the_harvested_plan_is_read(harvested("{}", "{}"), Optional.of(PARCEL))
-        .the_delivery_is_written(Optional.of(worktrees), Optional.empty());
+        .the_delivery_is_written(Optional.of(worktrees), Optional.empty(), Optional.empty());
 
     assertEquals("fabric/plan", worktrees.made.branch());
     assertEquals(tmp.resolve("fabric/plan"), worktrees.made.path());
@@ -235,7 +237,8 @@ class FabricDeliveryTest {
 
     when()
         .the_harvested_plan_is_read(harvested("{}", "{}"), Optional.of(PARCEL))
-        .the_delivery_is_written(Optional.of(worktrees), Optional.of(new FakeKeystore()));
+        .the_delivery_is_written(
+            Optional.of(worktrees), Optional.of(new FakeKeystore()), Optional.empty());
 
     assertEquals(
         new GitIdentity(
@@ -246,27 +249,63 @@ class FabricDeliveryTest {
         "the signing key is named through NdhKeystoreCatalog, not re-typed");
   }
 
-  /**
-   * The LIMIT of this slice, pinned so the slice that lifts it has to change this test rather than
-   * remember to. The delivery commits locally and does NOT push: a push needs a freshly minted
-   * token, which only the publishing CLI can reveal. An unsigned, unpushed commit is also why the
-   * missing key-store is tolerated here — a signature protects what is published.
-   */
+  /** No token — a survey, a preview, a frontier that filtered the mint out — means no push. */
   @Test
-  void the_delivery_is_not_pushed_until_a_publishing_cli_can_reveal_a_token() {
+  void without_a_token_the_delivery_is_committed_and_never_pushed() {
     final RecordingWorktrees worktrees = new RecordingWorktrees();
 
     when()
         .the_harvested_plan_is_read(harvested("{}", "{}"), Optional.of(PARCEL))
-        .the_delivery_is_written(Optional.of(worktrees), Optional.empty());
+        .the_delivery_is_written(Optional.of(worktrees), Optional.empty(), Optional.empty());
 
     assertTrue(worktrees.made.calls.contains("stageAll"));
     assertTrue(worktrees.made.calls.stream().anyMatch(call -> call.startsWith("commit:")));
-    assertFalse(worktrees.made.calls.contains("push"), "this slice delivers no push");
+    assertFalse(worktrees.made.calls.contains("push"), "no token, no push");
     assertEquals(
         Optional.empty(),
         worktrees.made.signedWith,
         "without a key-store the local commit is unsigned, never silently self-signed");
+  }
+
+  /** A revealed token pushes the SIGNED delivery, with exactly that token, after the commit. */
+  @Test
+  void with_a_token_the_signed_delivery_is_pushed_with_it() {
+    final RecordingWorktrees worktrees = new RecordingWorktrees();
+
+    when()
+        .the_harvested_plan_is_read(harvested("{}", "{}"), Optional.of(PARCEL))
+        .the_delivery_is_written(
+            Optional.of(worktrees), Optional.of(new FakeKeystore()), Optional.of("write-token"));
+
+    assertEquals(Optional.of("write-token"), worktrees.made.pushedWith);
+    assertTrue(worktrees.made.signedWith.isPresent(), "a pushed delivery is signed");
+    final List<String> calls = worktrees.made.calls;
+    assertTrue(
+        calls.indexOf("push")
+            > calls.indexOf(
+                calls.stream().filter(c -> c.startsWith("commit:")).findFirst().orElseThrow()),
+        "the push follows the commit");
+  }
+
+  /**
+   * A token with no key-store to sign with is refused BEFORE anything is prepared or committed: an
+   * unsigned bot commit on a branch other repos pin is what a signature exists to rule out.
+   */
+  @Test
+  void a_token_without_a_keystore_is_refused_before_any_commit() {
+    final RecordingWorktrees worktrees = new RecordingWorktrees();
+    final FabricDeliveryScenario.When when = when();
+    when.the_harvested_plan_is_read(harvested("{}", "{}"), Optional.of(PARCEL));
+
+    assertEquals(
+        FabricDeliveryError.Reason.UNSIGNABLE,
+        assertThrows(
+                FabricDeliveryError.class,
+                () ->
+                    when.the_delivery_is_written(
+                        Optional.of(worktrees), Optional.empty(), Optional.of("write-token")))
+            .reason());
+    assertEquals(null, worktrees.made, "nothing was prepared, so nothing was committed or pushed");
   }
 
   @Test
@@ -300,7 +339,9 @@ class FabricDeliveryTest {
         FabricDeliveryError.Reason.NO_WORKTREES,
         assertThrows(
                 FabricDeliveryError.class,
-                () -> when.the_delivery_is_written(Optional.empty(), Optional.empty()))
+                () ->
+                    when.the_delivery_is_written(
+                        Optional.empty(), Optional.empty(), Optional.empty()))
             .reason());
   }
 }
