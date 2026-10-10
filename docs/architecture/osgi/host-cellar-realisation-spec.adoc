@@ -752,6 +752,18 @@ readiness-budget tuning (a post-grow WHEN of `ClusterSeedScenario` folds `WARM` 
 fail-fast `ReadinessOverrides`, `COLD` keeps the patient config-derived one), but the transient bus
 is general — any scion of the run can read the frozen fact.
 
+*The netplan projection — `netplan-ingress-contract`, the second domain host face (2026-10-10).* The
+operator's kubeconfig contexts (`ClusterSeedScenario`, the fabric address, the VIP, each node's IPs) need
+netplan's addressing. They used to read the checked-in `network-blueprint.json` from the process CWD; that
+file is a copy for nix, and leaves the root once `rke2lab:fabric/plan` delivers it. So the netplan soil
+(`NetplanBlueprintScenario`, the same derivation the plan CLI exports) also files its projection under
+`NetplanIngressCoordinate.PROJECTION` (slug `netplan-projection`) when the run publishes a `Parcel` — a seed
+run; the plan CLI publishes none and only exports. The host sows the `netplan` crossing right after the
+worktree survey and fetches the projection as a `JsonNode`: no netplan type crosses, so the coordinate is
+all the host face holds, `type=dual-realm` like `incus-ingress-contract` and for the same reason
+(`netplan-contract` is OSGi-only, a host-side slug is the magic-string anti-pattern). A missing harvest is a
+broken run: the host throws, it never falls back to a file.
+
 *The scion-side producers (incus-core, OSGi-only).* Collaborators assemble the plan, each named
 by `IncusProvisionScenario`'s PREPARE beats: `GrowNetworkResolver` (resolves `NetplanSynthesisService`
 → the `GrowNetworkView`), `GrowIdentityResolver` (same blueprint → the `GrowIdentityView`, the four

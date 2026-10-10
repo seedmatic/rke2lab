@@ -37,6 +37,7 @@ import io.seedmatic.rke2lab.manifests.ingress.NodeGithubTokenCoordinate;
 import io.seedmatic.rke2lab.manifests.ingress.PacWebhookFunnel;
 import io.seedmatic.rke2lab.manifests.ingress.ServerManifestsBundle;
 import io.seedmatic.rke2lab.manifests.ingress.ServerManifestsCoordinate;
+import io.seedmatic.rke2lab.netplan.ingress.NetplanIngressCoordinate;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.ConnectionReceiver;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.OsgiConnection;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.SeedRuntime;
@@ -84,11 +85,11 @@ import org.junit.jupiter.api.extension.RegisterExtension;
  * The ClusterSeed root scenario — the host runbook, spoken in the gardening register, composed on
  * the common {@code seed-bdd} stages (link:docs/architecture/osgi/seed-bdd-module-spec.adoc). It is
  * the concrete instance of link:docs/architecture/bdd/bdd.adoc#clusterseed-scenario-map[the
- * ClusterSeed scenario map]: a GIVEN that bootstraps the open gardening, then the twelve WHENs —
- * the {@code Cellar.fetch} bookend, the eight sow-and-graft crossings (worktree · cluster-pki ·
- * ghapp · replicator-secrets · ghapp-webhook · incus-provision · systemd · cluster) and the
- * host-flat beats interleaved among them (the GROW, the operator kubeconfig, the readiness-budget
- * tuning) — closed by the {@code Cellar.store} THEN.
+ * ClusterSeed scenario map]: a GIVEN that bootstraps the open gardening, then the thirteen WHENs —
+ * the {@code Cellar.fetch} bookend, the nine sow-and-graft crossings (worktree · netplan ·
+ * cluster-pki · ghapp · replicator-secrets · ghapp-webhook · incus-provision · systemd · cluster)
+ * and the host-flat beats interleaved among them (the GROW, the operator kubeconfig, the
+ * readiness-budget tuning) — closed by the {@code Cellar.store} THEN.
  *
  * <p>The amorce is two-layered (§ the amorce): {@code Main} — inside {@code Pulumi.run} — captures
  * the {@link RunMode} (the one fact only it can know) and seeds it through the launcher session
@@ -188,6 +189,8 @@ public class ClusterSeedScenario
     given().i_have_access_to_the_open_gardening(seedRun, world, tx);
     when()
         .the_worktree_is_surveyed(hostScenario, hostTree)
+        .and()
+        .the_netplan_is_projected(hostScenario, hostTree)
         .and()
         .the_parcels_state_is_fetched()
         .and()
@@ -556,11 +559,11 @@ public class ClusterSeedScenario
   }
 
   /**
-   * The twelve WHENs — the worktree survey (harvest + entry gate), the {@code Cellar.fetch}
-   * bookend, the eight sow-and-graft crossings (worktree · cluster-pki · ghapp · replicator-secrets
-   * · ghapp-webhook · incus-provision · systemd · cluster), and the host-flat beats interleaved
-   * among them (the GROW, the operator kubeconfig, the readiness-budget tuning). The closing {@code
-   * Cellar.store} is the THEN, not a WHEN.
+   * The thirteen WHENs — the worktree survey (harvest + entry gate), the netplan projection, the
+   * {@code Cellar.fetch} bookend, the nine sow-and-graft crossings (worktree · netplan ·
+   * cluster-pki · ghapp · replicator-secrets · ghapp-webhook · incus-provision · systemd ·
+   * cluster), and the host-flat beats interleaved among them (the GROW, the operator kubeconfig,
+   * the readiness-budget tuning). The closing {@code Cellar.store} is the THEN, not a WHEN.
    */
   public static class When extends Stage<When> {
 
@@ -617,6 +620,19 @@ public class ClusterSeedScenario
       sowAndGraft
           .sowing("worktree", gardening, hostScenario, hostTree)
           .the_scion_is_sown_and_grafted("the worktree is surveyed");
+      return self();
+    }
+
+    @NestedSteps
+    @As("the netplan is projected")
+    public When the_netplan_is_projected(
+        @Hidden ScenarioModel hostScenario, @Hidden ReportModel hostTree) {
+      // The netplan soil derives the addressing projection from its code and harvests it into the
+      // cellar at NetplanIngressCoordinate.PROJECTION; the operator's kubeconfig contexts read it
+      // back from there. A pure derivation, no live system: it runs in both modes.
+      sowAndGraft
+          .sowing("netplan", gardening, hostScenario, hostTree)
+          .the_scion_is_sown_and_grafted("the netplan is projected");
       return self();
     }
 
@@ -918,11 +934,10 @@ public class ClusterSeedScenario
     }
 
     /**
-     * The operator's ways IN to the management cluster, read from the netplan's own materialised
-     * projection ({@code network-blueprint.json}) rather than re-derived here — the host does not
-     * compile against netplan (runtime scope) and must not restate its addressing law. The netplan
-     * deliberately keeps no cellar harvest and materialises to that file instead, which ndh already
-     * consumes the same way.
+     * The operator's ways IN to the management cluster, read from the netplan's own projection —
+     * the one its soil derived and harvested into the cellar this run — rather than re-derived
+     * here: the host does not compile against netplan (runtime scope) and must not restate its
+     * addressing law.
      *
      * <p>THREE contexts, because none of them subsumes the others (measured from the operator's
      * Mac):
@@ -1010,10 +1025,9 @@ public class ClusterSeedScenario
     }
 
     /**
-     * One node's {@code ips} block in the committed projection. Absent it, the tree is broken — the
-     * file is checked in and a nix check ({@code blueprint-fresh}) already fails the build when it
-     * drifts from the Java source — so this throws rather than degrading to a guessed endpoint: a
-     * kubeconfig pointing somewhere plausible and wrong is worse than none.
+     * One node's {@code ips} block in the projection. Absent it, the derivation does not describe
+     * the node, so this throws rather than degrading to a guessed endpoint: a kubeconfig pointing
+     * somewhere plausible and wrong is worse than none.
      */
     private JsonNode nodeIps(final String cluster, final String node) {
       final JsonNode ips = addressing().path(cluster).path(node).path("ips");
@@ -1024,23 +1038,25 @@ public class ClusterSeedScenario
       return ips;
     }
 
-    /** The committed projection's {@code addressing} tree, {@code <cluster>.<node>.ips}. */
-    private JsonNode addressing() {
-      // Resolved against the process CWD, the way Main resolves `.secrets`: the host deliberately
-      // carries no worktree root ("that is the worktree soil's harvest, no longer a host-carried
-      // scalar"), and pulumi runs in the project directory.
-      final Path projection = Path.of("network-blueprint.json").toAbsolutePath().normalize();
-      try {
-        final JsonNode addressing =
-            new ObjectMapper().readTree(Files.readString(projection)).path("addressing");
-        if (addressing.isMissingNode()) {
-          throw new IllegalStateException(
-              "the netplan projection at " + projection + " carries no addressing tree");
-        }
-        return addressing;
-      } catch (IOException ex) {
-        throw new UncheckedIOException("cannot read the netplan projection at " + projection, ex);
+    /**
+     * The projection's {@code addressing} tree, {@code <cluster>.<node>.ips}, as the netplan soil
+     * harvested it this run. No file is read: the root's {@code network-blueprint.json} is a copy
+     * for nix, and a missing harvest is a broken run, never a reason to fall back to it.
+     */
+    JsonNode addressing() {
+      final JsonNode addressing =
+          workingCellar
+              .fetch(parcel, NetplanIngressCoordinate.PROJECTION, JsonNode.class)
+              .orElseThrow(
+                  () ->
+                      new IllegalStateException(
+                          "the netplan projection was not harvested in this run — the netplan"
+                              + " crossing must run before the operator kubeconfig is published"))
+              .path("addressing");
+      if (addressing.isMissingNode()) {
+        throw new IllegalStateException("the netplan projection carries no addressing tree");
       }
+      return addressing;
     }
 
     @As("the readiness budget is tuned to the growth")
