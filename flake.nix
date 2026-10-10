@@ -324,6 +324,73 @@
         }
       '';
 
+      # The jars' SOURCE: what their Maven builds read, not the whole repository. Under `src = ./.`
+      # every commit — a doc, the flake.lock a relock writes — moved the jars' derivations (a
+      # doc-only commit moved 8 of 27 packages), so none was ever reused and no impact guard could
+      # set a change aside. The list is the Maven build cache's own: its glob and includes are what
+      # a module's cache key hashes, so reading them here keeps the two from drifting. Outside that
+      # key a build still needs the poms, the `.mvn/` directories and `mvnw`, and the bnd fragment
+      # every bundle -includes from bundle-parent (a project input of its own there).
+      mavenSource =
+        let
+          lib = nixpkgs.lib;
+          root = ./.;
+          config = builtins.readFile ./.mvn/maven-build-cache-config.xml;
+          tagged = tag:
+            map builtins.head
+              (builtins.filter builtins.isList (builtins.split "<${tag}>([^<]*)</${tag}>" config));
+          globs = tagged "glob";
+          patterns =
+            lib.splitString ","
+              (lib.removeSuffix "}" (lib.removePrefix "{" (lib.trim (builtins.head globs))));
+          includes = map lib.trim (tagged "include");
+          matchesGlob = name:
+            lib.any
+              (pattern:
+                let around = lib.splitString "*" pattern; in
+                lib.hasPrefix (builtins.elemAt around 0) name
+                && lib.hasSuffix (builtins.elemAt around 1) name
+                && builtins.stringLength name >= builtins.stringLength pattern - 1)
+              patterns;
+          isModule = dir: builtins.pathExists (if dir == "" then root + "/pom.xml" else root + "/${dir}/pom.xml");
+          moduleInput = rel:
+            let
+              segments = lib.splitString "/" rel;
+              name = lib.last segments;
+              prefixOf = n: lib.concatStringsSep "/" (lib.take n segments);
+              underInclude = include:
+                if lib.hasSuffix "/" include then
+                  let
+                    dir = lib.removeSuffix "/" include;
+                    at = lib.lists.findFirstIndex (segment: segment == dir) null (lib.init segments);
+                  in
+                  at != null && isModule (prefixOf at) && matchesGlob name
+                else
+                  name == include && isModule (prefixOf (builtins.length segments - 1));
+            in
+            lib.any underInclude includes;
+          declared = rel:
+            let segments = lib.splitString "/" rel; in
+            builtins.elem (lib.last segments) [ "pom.xml" "mvnw" "mvnw.cmd" ]
+            || builtins.elem ".mvn" segments
+            || rel == "osgi/bundle-parent/annotations.bnd";
+        in
+        assert lib.assertMsg (builtins.length globs == 1 && patterns != [ ] && includes != [ ])
+          "mavenSource: no <glob> or <include> parsed from .mvn/maven-build-cache-config.xml";
+        assert lib.assertMsg (lib.all (pattern: builtins.length (lib.splitString "*" pattern) == 2) patterns)
+          "mavenSource: every build-cache glob pattern must hold exactly one '*'";
+        assert lib.assertMsg (builtins.pathExists (root + "/osgi/bundle-parent/annotations.bnd"))
+          "mavenSource: osgi/bundle-parent/annotations.bnd is declared but gone";
+        lib.fileset.toSource {
+          inherit root;
+          fileset = lib.fileset.fromSource (lib.sources.cleanSourceWith {
+            src = root;
+            filter = path: type:
+              let rel = lib.removePrefix "${toString root}/" (toString path); in
+              type == "directory" || declared rel || moduleInput rel;
+          });
+        };
+
       # The staging-extension build closure, built by NIX (not seeded from a host ~/.m2 nor a
       # per-mode Tekton bootstrap task). The `.mvn/extensions.xml` core extension is a reactor
       # module needed at mvn STARTUP (before any reactor build) — a chicken-egg — so it is built
@@ -350,7 +417,7 @@
       # than silently — which is the right failure, and the moment to revisit the FOD route.
       stagingExtensionRepoFor = pkgs: pkgs.stdenv.mkDerivation {
         name = "rke2lab-staging-extension-repo";
-        src = ./.;
+        src = mavenSource;
         nativeBuildInputs = mavenBuildInputs pkgs;
         buildPhase = ''
           export HOME="$TMPDIR"
@@ -369,7 +436,7 @@
       # output can build it locally while `lib` uses the pinned set.
       planJarFor = pkgs: pkgs.stdenv.mkDerivation {
         name = "rke2lab-plan";
-        src = ./.;  # Need full repo for parent POM + BOM resolution
+        src = mavenSource;
 
         nativeBuildInputs = mavenBuildInputs pkgs;
 
@@ -551,7 +618,7 @@
         # come from the SAME build logic, no drift.
         buildReactorExe = { pname, mvnArgs ? "", jars }: pkgs.stdenv.mkDerivation {
           name = "rke2lab-${pname}";
-          src = ./.;
+          src = mavenSource;
 
           nativeBuildInputs = mavenBuildInputs pkgs;
 

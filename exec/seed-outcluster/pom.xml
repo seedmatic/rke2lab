@@ -623,10 +623,6 @@
             <phase>generate-resources</phase>
             <configuration>
               <target>
-                <mkdir dir="${project.build.directory}/generated-resources/META-INF/io.seedmatic/rke2lab/controlplane/incus/assets"/>
-                <copy overwrite="true" todir="${project.build.directory}/generated-resources/META-INF/io.seedmatic/rke2lab/controlplane/incus/assets">
-                  <fileset dir="${maven.multiModuleProjectDirectory}/assets/incus" erroronmissingdir="false"/>
-                </copy>
                 <mkdir dir="${project.build.directory}/generated-resources/META-INF/io.seedmatic/rke2lab/controlplane/incus"/>
                 <copy overwrite="true" todir="${project.build.directory}/generated-resources/META-INF/io.seedmatic/rke2lab/controlplane/incus">
                   <fileset dir="${project.basedir}/src/main/resources/incus"/>

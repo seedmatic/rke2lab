@@ -473,9 +473,11 @@ does with `realpath`.
 | `nix eval .#nixosConfigurations.<h>.config.system.build.toplevel.drvPath` across a bump
 
 | **Self-sensitive set S** — derivations that move on ANY tracked-file edit
-| a bump that moves only S is carried although nothing consumed changed. rke2lab: 8 of 27 packages
-  (`src = ./.` for Maven, `flake.nix:341`, `:360`, `:542`) and the apps `regen-blueprint`,
-  `regen-dataplan`; ndh: 6 of 25 (`nerd-tart-*`); nnh and nch: none (measured 2026-10-07)
+| a bump that moves only S is carried although nothing consumed changed. rke2lab: its 8 of 27
+  packages (`src = ./.` for Maven) left S on 2026-10-10 — the jars' source is now `mavenSource`, the
+  Maven build cache's inputs, and a doc-only commit moves 0 of 27 (8 before); the apps
+  `regen-blueprint`, `regen-dataplan` not re-measured; ndh: 6 of 25 (`nerd-tart-*`); nnh and nch:
+  none (measured 2026-10-07)
 | add a newline to a tracked non-nix file in a clone, compare the projection
 
 | **Go `src = ./.`** in flox-controller (`flake.nix:76`)

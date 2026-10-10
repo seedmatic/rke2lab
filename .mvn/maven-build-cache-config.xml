@@ -44,8 +44,15 @@
     <input>
         <global>
             <!-- If not defined, default glob is "*" -->
+            <!-- This glob and the includes below are ALSO the nix source of the jars (flake.nix,
+                 mavenSource): one list of what a module's build reads, for Maven's cache key and
+                 nix's derivation alike. A tracked file under src/ that matches no pattern is a
+                 hole in both — Maven serves a stale build (a golden edited, its test re-run
+                 against the cached copy) and nix builds without the file. Hence *.json (the
+                 goldens), *.crt, *.txt and *logback-test.xml. -->
+
             <glob>
-                {*.java,*.groovy,*.yaml,*.svcd,*.proto,*assembly.xml,assembly*.xml,*logback.xml,*.vm,*.ini,*.jks,*.properties,*.sh,*.bat,*.bnd}
+                {*.java,*.groovy,*.yaml,*.svcd,*.proto,*assembly.xml,assembly*.xml,*logback.xml,*logback-test.xml,*.vm,*.ini,*.jks,*.properties,*.sh,*.bat,*.bnd,*.json,*.crt,*.txt}
             </glob>
             <includes>
                 <!-- By default, project sources and resources directories are included (src/main/java and src/main/resources) -->

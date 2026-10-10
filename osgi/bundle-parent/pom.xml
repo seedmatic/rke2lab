@@ -21,6 +21,11 @@
 
   <properties>
     <bnd.version>7.3.0</bnd.version>
+    <!-- annotations.bnd is read by every bundle's build (its bnd.bnd -includes it) yet sits
+         outside the bundle, where the build cache's src/ and bnd.bnd inputs never look: an edit
+         here served every bundle its cached manifest. Named as a project input, so each bundle
+         inheriting this pom keys its cache on it. -->
+    <maven.build.cache.input.1>${maven.multiModuleProjectDirectory}/osgi/bundle-parent/annotations.bnd</maven.build.cache.input.1>
   </properties>
 
   <!-- Every bundle authors per-package @Version in package-info.java; bnd reads the annotation
