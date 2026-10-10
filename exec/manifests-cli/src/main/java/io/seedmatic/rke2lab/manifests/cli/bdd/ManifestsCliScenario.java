@@ -8,19 +8,22 @@ import com.tngtech.jgiven.Stage;
 import com.tngtech.jgiven.annotation.As;
 import com.tngtech.jgiven.annotation.Hidden;
 import com.tngtech.jgiven.annotation.ProvidedScenarioState;
+import com.tngtech.jgiven.annotation.ScenarioStage;
 import com.tngtech.jgiven.annotation.ScenarioState;
 import com.tngtech.jgiven.base.ScenarioTestBase;
 import com.tngtech.jgiven.impl.Scenario;
+import com.tngtech.jgiven.report.model.ReportModel;
+import com.tngtech.jgiven.report.model.ScenarioModel;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.ConnectionReceiver;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.OsgiConnection;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.SeedRuntime;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.CellarReceiver;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.ScenarioCellar;
-import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.ScenarioGraft;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.SeedScenario;
 import io.seedmatic.rke2lab.seed.bdd.EphemeralCellar;
 import io.seedmatic.rke2lab.seed.bdd.SeedReceiver;
 import io.seedmatic.rke2lab.seed.bdd.SessionSeed;
+import io.seedmatic.rke2lab.seed.bdd.SowAndGraftStage;
 import io.seedmatic.rke2lab.seed.bdd.sow.Gardening;
 import io.seedmatic.rke2lab.seed.broker.port.Amendment;
 import io.seedmatic.rke2lab.seed.broker.port.Cellar;
@@ -99,8 +102,7 @@ public class ManifestsCliScenario
         Objects.requireNonNull(
             cellar, "the ScenarioCellar was not injected before the scenario ran");
     given().i_have_access_to_the_open_gardening(seedRun, world, tx);
-    when().the_manifests_are_sown();
-    then().the_runbook_is_reaped();
+    when().the_manifests_are_sown(getScenario().getScenarioModel(), getScenario().getModel());
   }
 
   /**
@@ -137,18 +139,26 @@ public class ManifestsCliScenario
     }
   }
 
-  /** The WHEN sows the manifests coordinate through the broker and reaps its runbook. */
+  /**
+   * The WHEN sows the manifests coordinate and GRAFTS the reaped scion into this run's trunk,
+   * through the {@link SowAndGraftStage} every host crossing uses. Nothing here reads the scion's
+   * writes back, so the graft is not needed for a value — it is needed for the PATTERN: every
+   * crossing grafts, so no crossing can be the one whose writes silently never reach the host. It
+   * also carries the scion's steps into the runbook this CLI reaps, and propagates its verdict: a
+   * failed synthesis fails the run.
+   */
   public static class When extends Stage<When> {
 
+    @ScenarioStage SowAndGraftStage sowAndGraft;
+
     @ScenarioState Gardening gardening;
-    @ScenarioState Cellar cellar;
     @ScenarioState Optional<String> materializationRoot;
     @ScenarioState Optional<ManifestsCliRun.Identity> identity;
     @ScenarioState JsonNode facet;
-    @ProvidedScenarioState String runbook;
 
     @As("the manifests are sown")
-    public When the_manifests_are_sown() {
+    public When the_manifests_are_sown(
+        @Hidden ScenarioModel hostScenario, @Hidden ReportModel hostTree) {
       // The CLI sows a COMPLETE manifests input, honouring the contract the amend door enforces:
       // the
       // mandatory FACET (the CLI's own posture, always), plus the Optional SOIL (the plot; absent →
@@ -158,7 +168,9 @@ public class ManifestsCliScenario
       amendments.put(Amendment.FACET, facet);
       materializationRoot.ifPresent(root -> amendments.put(Amendment.SOIL, TextNode.valueOf(root)));
       identity.ifPresent(id -> amendments.put(Amendment.IDENTITY, identityNode(id)));
-      this.runbook = gardening.sow("manifests", amendments, cellar);
+      sowAndGraft
+          .sowing("manifests", gardening, hostScenario, hostTree, amendments)
+          .the_scion_is_sown_and_grafted("the manifests are sown");
       return self();
     }
 
@@ -170,21 +182,9 @@ public class ManifestsCliScenario
     }
   }
 
-  /** The THEN asserts the scion reaped a runbook — the sow grew the in-container synthesis. */
-  public static class Then extends Stage<Then> {
-
-    @ScenarioState String runbook;
-
-    @As("the runbook is reaped")
-    public Then the_runbook_is_reaped() {
-      if (runbook == null || runbook.isBlank()) {
-        throw new AssertionError("the manifests sow reaped no runbook — the scion did not grow");
-      }
-      // A non-blank runbook is not enough: a FAILED in-container synthesis still reaps its runbook.
-      // This CLI grafts into no host tree, so it asserts the scion passed here — the assert throws
-      // the scion's own reason (message + stack) on a FAILED sow, else the CLI exits GREEN on it.
-      new ScenarioGraft().assertPassed(runbook, "the manifests synthesis");
-      return self();
-    }
-  }
+  /**
+   * No THEN step: the graft enforces the scion's verdict, so an assertion here could only repeat
+   * it. The stage exists because the scenario base names three.
+   */
+  public static class Then extends Stage<Then> {}
 }

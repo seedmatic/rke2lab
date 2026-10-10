@@ -5,24 +5,26 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.TextNode;
 import com.tngtech.jgiven.Stage;
-import com.tngtech.jgiven.annotation.As;
 import com.tngtech.jgiven.annotation.Hidden;
 import com.tngtech.jgiven.annotation.ProvidedScenarioState;
+import com.tngtech.jgiven.annotation.ScenarioStage;
 import com.tngtech.jgiven.annotation.ScenarioState;
 import com.tngtech.jgiven.annotation.ScenarioState.Resolution;
 import com.tngtech.jgiven.base.ScenarioTestBase;
 import com.tngtech.jgiven.impl.Scenario;
+import com.tngtech.jgiven.report.model.ReportModel;
+import com.tngtech.jgiven.report.model.ScenarioModel;
 import io.seedmatic.rke2lab.host.runtime.ExecutionEnvironment;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.ConnectionReceiver;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.OsgiConnection;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.SeedRuntime;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.CellarReceiver;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.ScenarioCellar;
-import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.ScenarioGraft;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.SeedScenario;
 import io.seedmatic.rke2lab.seed.bdd.EphemeralCellar;
 import io.seedmatic.rke2lab.seed.bdd.SeedReceiver;
 import io.seedmatic.rke2lab.seed.bdd.SessionSeed;
+import io.seedmatic.rke2lab.seed.bdd.SowAndGraftStage;
 import io.seedmatic.rke2lab.seed.bdd.sow.Gardening;
 import io.seedmatic.rke2lab.seed.broker.port.Amendment;
 import io.seedmatic.rke2lab.seed.broker.port.Cellar;
@@ -39,15 +41,15 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
 /**
- * The manifests-cli {@code publish} root scenario — {@code synthesize} PLUS delivery: it renders
- * the manifests into the SOIL and commits + pushes the rendered {@code manifests/<cluster>} branch,
- * reusing the SAME in-container delivery {@code ManifestSynthesisScenario} the grow drives. It is
- * NOT a new operation — the render+push lives in OSGi; this host just sows the same broker
- * coordinates the grow does, minus the Pulumi envelope (see the seed-outcluster {@code
- * ClusterSeedScenario} auth sub-graph).
+ * The root scenario of manifests-cli's delivery verbs, {@code init} / {@code update} / {@code edit}
+ * — {@code synthesize} PLUS delivery: it renders the manifests into the SOIL and commits + pushes
+ * the rendered {@code manifests/<cluster>} branch, reusing the SAME in-container delivery {@code
+ * ManifestSynthesisScenario} the grow drives. It is NOT a new operation — the render+push lives in
+ * OSGi; this host just sows the same broker coordinates the grow does, minus the Pulumi envelope
+ * (see the seed-outcluster {@code ClusterSeedScenario} auth sub-graph).
  *
- * <p>Two sows in order, sharing the run's transactional {@link ScenarioCellar} and {@link Parcel}
- * (so the sealed anchors flow between them):
+ * <p>Two crossings in order, sharing the run's transactional {@link ScenarioCellar} and {@link
+ * Parcel}, each sown AND grafted through {@link SowAndGraftStage}:
  *
  * <ol>
  *   <li>{@code ghapp} — rehydrates the one org-owned GitHub App's credentials from {@code .secrets}
@@ -58,8 +60,12 @@ import org.junit.jupiter.api.extension.RegisterExtension;
  *       (signed) + pushes {@code manifests/<cluster>}.
  * </ol>
  *
- * <p>The push authenticates as the GitHub App (the identity baked for this automation), exactly as
- * the grow's first render does — publish is the steady-state twin of that bootstrap render.
+ * <p>The graft is what makes the first crossing reach the second: it folds the ghapp scion's writes
+ * into this run's cellar overlay, and the manifests sow inherits that overlay. Sown raw, the App
+ * would stay in the ghapp scion's own runbook, no token would be minted, and the delivery would
+ * commit and sign the render but skip its push in silence — a PASSED scion all the same. The push
+ * authenticates as the GitHub App (the identity baked for this automation), exactly as the grow's
+ * first render does.
  */
 @SeedScenario
 @SeedRuntime
@@ -110,8 +116,12 @@ public class PublishCliScenario
         Objects.requireNonNull(
             cellar, "the ScenarioCellar was not injected before the scenario ran");
     given().i_have_access_to_the_open_gardening(seedRun, world, tx);
-    when().the_app_credentials_are_sealed_and_the_manifests_are_delivered();
-    then().the_branch_is_delivered();
+    final ScenarioModel hostScenario = getScenario().getScenarioModel();
+    final ReportModel hostTree = getScenario().getModel();
+    when()
+        .the_github_app_is_rehydrated(hostScenario, hostTree)
+        .and()
+        .the_manifests_are_rendered_and_delivered(hostScenario, hostTree);
   }
 
   /**
@@ -189,11 +199,16 @@ public class PublishCliScenario
     }
   }
 
-  /** The WHEN sows ghapp → auth → manifests in order, sharing the run's cellar. */
+  /**
+   * The WHEN sows and grafts ghapp → manifests, ONE STEP PER CROSSING. A scion grafts under the
+   * host step that is executing, found by its name, so each crossing has its own step and passes
+   * that step's own name.
+   */
   public static class When extends Stage<When> {
 
+    @ScenarioStage SowAndGraftStage sowAndGraft;
+
     @ScenarioState Gardening gardening;
-    @ScenarioState Cellar cellar;
     @ScenarioState String materializationRoot;
     @ScenarioState ManifestsCliRun.Identity identity;
 
@@ -203,24 +218,30 @@ public class PublishCliScenario
     @ScenarioState(resolution = Resolution.NAME)
     JsonNode renderMode;
 
-    @ProvidedScenarioState String ghappRunbook;
-    @ProvidedScenarioState String manifestsRunbook;
+    public When the_github_app_is_rehydrated(
+        @Hidden ScenarioModel hostScenario, @Hidden ReportModel hostTree) {
+      // Grafted, so the App credentials reach this run's overlay; the manifests sow inherits them,
+      // reveals them and mints a FRESH WRITER token on demand (no seal, no staleable durable
+      // token). No amendment (the scion's door defaults).
+      sowAndGraft
+          .sowing("ghapp", gardening, hostScenario, hostTree)
+          .the_scion_is_sown_and_grafted("the github app is rehydrated");
+      return self();
+    }
 
-    @As("the app credentials are sealed and the manifests are delivered")
-    public When the_app_credentials_are_sealed_and_the_manifests_are_delivered() {
-      // (1) rehydrate the App credentials from .secrets — they ride the shared cellar so the
-      // manifests delivery below reveals them and mints a FRESH WRITER token on demand (no seal, no
-      // staleable durable token). No amendment (the scion falls back to its own door defaults).
-      this.ghappRunbook = gardening.sow("ghapp", Map.of(), cellar);
-      // (2) render into the SOIL + deliver: a COMPLETE manifests input — mandatory FACET (with
-      // delivery.push armed), SOIL, IDENTITY, and the RENDER_MODE that carries the verb intent
-      // (init/update/edit) the synthesis resolves the facet against HEAD with.
+    public When the_manifests_are_rendered_and_delivered(
+        @Hidden ScenarioModel hostScenario, @Hidden ReportModel hostTree) {
+      // A COMPLETE manifests input — mandatory FACET (with delivery.push armed), SOIL, IDENTITY,
+      // and the RENDER_MODE that carries the verb intent (init/update/edit) the synthesis resolves
+      // the facet against HEAD with.
       final Map<String, JsonNode> amendments = new LinkedHashMap<>();
       amendments.put(Amendment.FACET, facet);
       amendments.put(Amendment.SOIL, TextNode.valueOf(materializationRoot));
       amendments.put(Amendment.IDENTITY, identityNode(identity));
       amendments.put(Amendment.RENDER_MODE, renderMode);
-      this.manifestsRunbook = gardening.sow("manifests", amendments, cellar);
+      sowAndGraft
+          .sowing("manifests", gardening, hostScenario, hostTree, amendments)
+          .the_scion_is_sown_and_grafted("the manifests are rendered and delivered");
       return self();
     }
 
@@ -232,18 +253,9 @@ public class PublishCliScenario
     }
   }
 
-  /** The THEN asserts EACH scion passed — a broken ghapp silently skips the push otherwise. */
-  public static class Then extends Stage<Then> {
-
-    @ScenarioState String ghappRunbook;
-    @ScenarioState String manifestsRunbook;
-
-    @As("the rendered branch is delivered")
-    public Then the_branch_is_delivered() {
-      final ScenarioGraft graft = new ScenarioGraft();
-      graft.assertPassed(ghappRunbook, "the github app rehydrate");
-      graft.assertPassed(manifestsRunbook, "the manifests render + delivery");
-      return self();
-    }
-  }
+  /**
+   * No THEN step: each crossing's verdict is enforced by its graft, so an assertion here could only
+   * repeat it. The stage exists because the scenario base names three.
+   */
+  public static class Then extends Stage<Then> {}
 }
