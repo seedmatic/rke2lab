@@ -43,6 +43,13 @@
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>worktree-contract</artifactId>
     </dependency>
+    <!-- The push token: GithubAppTokens (the one revealer) and the GithubWriterTokenMint it calls.
+         The App material it reads is ghapp's and arrives with auth-contract; fabric names no ghapp
+         type itself. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>auth-contract</artifactId>
+    </dependency>
     <!-- The key-store the commit's authority domain and signing key come from, named through
          NdhKeystoreCatalog so neither is re-typed as a literal. -->
     <dependency>

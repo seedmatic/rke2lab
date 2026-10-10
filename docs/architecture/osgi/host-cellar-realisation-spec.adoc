@@ -806,16 +806,20 @@ a linked worktree of `FabricDelivery.branch`.
 * **`FabricRunbookInput`** — one `SOIL` amendment, `worktreesRoot`: the plot the linked worktree is
   made under, which only the host knows. WHAT to deliver is deliberately NOT an input — it is the two
   harvests. A delivery with no harvest to read is a broken run, raised as `FabricDeliveryError` with
-  the link that is missing (`NO_PARCEL` / `NO_NETPLAN` / `NO_DATAPLAN` / `NO_WORKTREES`), never an
-  empty result.
+  the link that is missing (`NO_PARCEL` / `NO_NETPLAN` / `NO_DATAPLAN` / `NO_WORKTREES` / `UNSIGNABLE`),
+  never an empty result.
 
-⚠️ The commit is LOCAL in this slice. It is signed when the ndh key-store is reachable — the identity
-minted by the worktree domain's `GitBotIdentities`, the signing key named through `NdhKeystoreCatalog`,
-so neither is re-typed — and it is NOT pushed: a push needs a freshly minted token, which only the
-publishing CLI can reveal, and that CLI is the next slice. Until then the BYTES are the deliverable,
-handed to the integration for republication.
-`FabricDeliveryTest.the_delivery_is_not_pushed_until_a_publishing_cli_can_reveal_a_token` pins that
-limit, so the slice that lifts it has to change a test rather than remember an intention.
+*The push.* The delivery is pushed when a token is revealed, and only then — a fresh `contents:write`
+token minted from the sealed App through `GithubAppTokens`, the one revealer the render, the version
+bump and the delivery share. Its MINT-only lane: no Tekton run publishes a plan, so a pipeline token in
+the environment has no legitimate meaning here, and honouring it would let a stray variable push. A
+pushed delivery is always SIGNED — the identity minted by the worktree domain's `GitBotIdentities`,
+the signing key named through `NdhKeystoreCatalog`, so neither is re-typed — and a token with no
+key-store to sign with is refused (`UNSIGNABLE`) before anything is prepared or committed. With no
+token (a survey, a preview, a frontier that filtered the mint out) the commit stays local and is never
+pushed. The push is a fast-forward: `fabric/plan` accretes, it is never rewritten. `FabricDeliveryTest`
+pins all three: no token → no push; token → the signed commit pushed with exactly that token, after
+the commit; token without key-store → refused.
 
 *The scion-side producers (incus-core, OSGi-only).* Collaborators assemble the plan, each named
 by `IncusProvisionScenario`'s PREPARE beats: `GrowNetworkResolver` (resolves `NetplanSynthesisService`
