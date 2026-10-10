@@ -428,9 +428,191 @@ gated on the fork patch.
 runtime guests, sftp and `nix-daemon --stdio` over Tailscale SSH, `tart exec` for the nudge.
 |===
 
+[[private-binary-cache]]
+== The private binary cache — from a public watch-store to one builder
+
+The second tenant of the fabric's Incus containers. The target is ndh
+`docs/private-binary-cache-spec.adoc`; this section carries the delta from today. Everything marked
+*measured* was read on 2026-10-10 from store paths that already existed, without evaluating a flake.
+
+The motive is again a measured incident. A `cachix watch-store` daemon pushed every new store path
+to the public `nxmatic` cache. Every flake evaluation of a dirty rke2lab tree copies the tree as it
+sits on disk, and the sops smudge has decrypted `.secrets` and `.ndh-ssh.d/keys.yaml` there. So 52
+plaintext copies became public. The daemon was disabled on every host (ndh `395b34a1`). The operator
+wants the cache back for a different reason than speed of one host: **the hosts share most of one
+configuration, and each one rebuilds it.**
+
+=== Diagram F — Who builds, who publishes: BEFORE vs AFTER
+
+Reads: the BEFORE has every host building for itself and a daemon publishing whatever entered any
+store, a dirty-tree copy included. The AFTER has one builder per platform evaluating a pushed
+revision, a private cache that keeps only the latest, and three store tiers that each inherit the
+immutable EROFS base and substitute only their delta.
+
+[mermaid]
+....
+flowchart TB
+  subgraph BEFORE["Before — each host builds, a daemon publishes everything"]
+    direction TB
+    b1["4 hosts, each rebuilding its share — 32 GiB summed, 15.7 GiB distinct"]:::ko
+    b2["dirty-tree evaluation — .secrets in clear copied into the store"]:::ko
+    b3["cachix watch-store — every new path pushed"]:::ko
+    b4["nxmatic.cachix.org — PUBLIC, anonymous read"]:::ko
+    b1 --- b2 --- b3 --- b4
+  end
+  subgraph AFTER["After — build once, substitute everywhere"]
+    direction TB
+    a1["one builder per platform — pushed revision, allow-dirty false"]:::ok
+    a2["fill — upstream narinfo filter, secret guard, explicit push"]:::ok
+    a3["attic-nixos on bioskop — fabric only, latest per host"]:::ok
+    a4["tiers — nerd-nixos EROFS, then containers and nodes, then pods — each substitutes its delta"]:::ok
+    a1 --- a2 --- a3 --- a4
+  end
+  BEFORE ==>|"migration"| AFTER
+
+  classDef ko fill:#f7d9d9,stroke:#a33;
+  classDef ok fill:#d9f2e0,stroke:#2d7a4b;
+....
+
+=== What rke2lab gains — the nodes and their workloads
+
+The cluster nodes are Incus containers in the same Incus cluster as attic-nixos (project `rke2lab`,
+members `bioskop` and `nikopol`). So the mechanism ndh builds for its own containers is the one the
+nodes **inherit**: a `/nix/store` that is an overlay on nerd-nixos's EROFS layers, a lower DB shipped
+with the layers, and an upper that receives only the node's delta, substituted from attic.
+
+[cols="1,2,2",options="header"]
+|===
+| Tier | Today (measured or read in code) | With the cache
+
+| node store
+| no node running on 2026-10-10. Its closure was realised in neither bioskop's nor bioskop-nixos's
+store, so it is unmeasured.
+| overlay on the EROFS layers. The node's closure and its `FloxEnv` closures are in the cache's live
+set.
+
+| env closures
+| realised on each node by the flox controller, which GC-roots them. The node collects on disk
+pressure (`nixos/nix-env.nix`: `min-free = 128MB`, `max-free = 1GB`).
+| built once by the builder from the pushed `flox-catalog` lock. A node that collected one
+re-substitutes it instead of rebuilding.
+
+| pod store
+| `flox-nri-overlay-hook.sh`: the lower is a read-only bind of the node's **live** `/nix`, the upper a
+2 GiB tmpfs or a PVC. The DB is reconciled at every container start (`--dump-db \| --load-db`, then
+`--verify`), after a defect measured on 2026-09-30.
+| unchanged in mechanism; it reads the env closures the node substituted. Remote builds of unknown
+packages (`max-jobs = 0` → `{bioskop,nikopol}-nixos`) are not fills and are never pushed.
+|===
+
+⚠️ The pod tier's lower is the node's live store, which the controller grows and the node's GC
+shrinks. In OverlayFS, a lower that changes while mounted is undefined. ndh's spec forbids exactly
+that for the containers, and the hook's reconcile repairs the DB, not that rule. With the immutable
+base available, stacking the pod on the EROFS layers plus a stable env layer becomes a candidate. That
+decision is rke2lab's.
+
+=== The migration sequence
+
+[mermaid]
+....
+flowchart TB
+  c0["c0 · watch-store disabled on every host — DONE, ndh 395b34a1"]:::done
+  c1["c1 · re-lock ndh's rke2lab input from GitHub — BEFORE the purge"]
+  c2["c2 · purge the 52 plaintext paths from nxmatic.cachix.org — operator"]
+  c3["c3 · ndh container module, attic-nixos on bioskop — target stated, PostgreSQL, quota 32G"]
+  c4["c4 · Linux fill on nerd-nixos — pushed revision, filters, keep-alive"]
+  c5["c5 · hosts substitute from attic — a nikopol switch builds nothing truly ours"]
+  c6["c6 · darwin fill job on bioskop — dedicated user, both darwin configurations"]
+  c7["c7 · cluster nodes on the EROFS layers — node and env closures in the live set"]
+  c8["c8 · pod tier — decide its lower"]:::later
+  c9["c9 · remove the cachix-watch-store modules, decide the nxmatic cache"]
+  c0 --> c1 --> c2 --> c3 --> c4 --> c5 --> c6 --> c7 --> c9
+  c7 -.-> c8
+
+  classDef done fill:#d9f2e0,stroke:#2d7a4b,stroke-width:2px;
+  classDef later fill:#f3f4f6,stroke:#9ca3af,stroke-dasharray:4 3;
+....
+
+[cols="1,3,3",options="header"]
+|===
+| Step | Content | Precondition / measured fact
+
+| c1 — re-lock ndh's rke2lab input
+| relock the `rke2lab` node of ndh's `flake.lock` from GitHub, as a clean revision
+| *measured 2026-10-10*: that node (`github:seedmatic/rke2lab`, rev `372f6578`) carries the
+narHash of a **plaintext** copy, `8qizqgcj…-source`, one of the 52, still served by the public cache.
+GitHub's archive is encrypted and cannot produce that hash. So every evaluation of ndh currently
+substitutes the plaintext copy from the public cache, and **the purge would break ndh's evaluation**
+unless the relock comes first.
+
+| c2 — purge
+| the operator deletes the 52 paths
+| the list is held outside the repo (counts and paths only). Rotations are the operator's gestures.
+
+| c3 — attic-nixos
+| the shared ndh container module, with project and target stated; `services.atticd` plus
+PostgreSQL; `tank/nerd/attic` with `quota=32G`
+| SQLite reaps 500 chunks per GC run: a weekly nixpkgs bump would orphan ~111 000 chunks, more than
+SQLite can reap. `tank` has 168 GiB available (raidz1).
+
+| c4 — Linux fill
+| build every Linux configuration from a pushed revision; drop the paths cache.nixos.org serves;
+the secret guard; `attic push --no-closure`; a keep-alive download of the live set
+| attic's signature filter would push 297 paths (0.66 GiB) that upstream serves, because the EROFS
+registration carries no signature. Truly ours: 1.56 GiB of systems, 5.25 GiB of flox environments,
+zstd-8 ratio 0.26.
+
+| c5 — hosts substitute
+| attic's fabric URL and key in each host's `nix.conf`, after cache.nixos.org
+| the measure that proves the step: a switch on a second host that builds no truly-ours path
+
+| c6 — darwin fill
+| one launchd job on bioskop, its own user and token, builds bioskop's and nikopol's darwin
+configurations
+| the two darwin closures share 0.97 GiB of the 1.17 GiB that is ours
+
+| c7 — cluster nodes
+| the nodes take the EROFS layers as lowers; the node and `FloxEnv` closures join the live set
+| the reachability of attic from the `vmnet` segments, and across the bridge, has to be stated first
+|===
+
+=== What the transition deletes
+
+* the `cachix-watch-store` modules (`modules/.common.d/`, `modules/darwin/`, `modules/nixos/`),
+  disabled since `395b34a1` and still in the tree;
+* the per-host rebuild of the shared paths;
+* a write token on every host;
+* the `nxmatic.cachix.org` substituter, if the operator decides to drop the public cache.
+
+=== Verdict — does it hold?
+
+[cols="1,3",options="header"]
+|===
+| Question | Answer
+
+| Is the move monotone?
+| Yes, with one hard order: c1 before c2. Purging first breaks ndh's evaluation.
+
+| Does it fix the leak?
+| No. It removes the publication path and the dirty evaluation from the builders. A dirty
+evaluation on a dev seat still copies plaintext into that seat's local store; the Maven build of
+manifests-core does it on every run. The root fix, no plaintext on disk in a flake tree, is still the
+operator's decision.
+
+| What stays out of reach?
+| the size of the package outputs and of the node and env closures, since none is realised in any
+store today; and the pod tier's lower, which is rke2lab's decision.
+|===
+
 == Related documentation
 
 * ndh `docs/fabric-control-plane-spec.adoc` — the target this atlas migrates to.
+* ndh `docs/private-binary-cache-spec.adoc` — the cache's target: who fills it, retention, sizing,
+  the containers' store.
+* link:../nixos-substrate/erofs-store-layer-stack.adoc[The EROFS layer stack] — the immutable base
+  the containers and the nodes inherit.
+* link:../patterns/flox-store-resolved-runtime-and-builder.adoc[Flox Store-Resolved Runtime] — the
+  pod tier: the NRI overlay and the remote builder whose builds are never pushed.
 * ndh `docs/ssh-keys-architecture.adoc` and `docs/ssh-keys-renewal-spec.adoc` — the keys that remain.
 * link:cellar-secrets.adoc[Cellar secrets atlas] — the ndh boundary, whose projection is step 10.
 * link:../cluster-api/management-workload-topology.adoc[Management / workload topology] — the cluster

@@ -712,3 +712,4 @@ Fixed in ndh `47943f0b` and `6213a553`:
 * link:node-bootstrap-delivery.adoc[Node-side bootstrap delivery] — the other half of what reaches a node with no `/srv/host`.
 * link:../atlas/nixos-substrate.adoc[Atlas — NixOS substrate] — the before/after delta this becomes a component of.
 * link:tailscale-fork-supply-chain.adoc[Tailscale fork supply chain] — the sibling `ndh`-as-SSOT pattern, with its own bump runbook.
+* link:../atlas/fabric-control-plane.adoc#private-binary-cache[Fabric control-plane atlas — the private binary cache] — the layers gain consumers beyond the guest: the Incus containers (attic-nixos, headscale-nixos, the cluster nodes) take them as read-only lowers, newest first, projected from `erofs-store-layers.nix`, with a lower DB generated once per layer set. Both invariants extend to them: a layer replaced under a running container is an ESTALE.

@@ -935,3 +935,6 @@ already present in the real store the overlay lowers from.
   secret-full (filter wired on activation, `SOPS_AGE_KEY` via `spec.inject`).
 * link:../bootstrap/bootstrap-identity-provider.adoc[Bootstrap Identity Provider] —
   the synth-time secret-access pattern the builder key delivery follows.
+* link:../atlas/fabric-control-plane.adoc#private-binary-cache[Fabric control-plane atlas — the private binary cache] —
+  the pod tier of the store stack: env closures substituted from attic by the node, Part 2's remote
+  builds never pushed, and the open question of the pod's lower being the node's live `/nix`.
