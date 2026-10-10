@@ -1112,14 +1112,19 @@ reconfigured), so all three read alike and only their writers differ.
 === Build-time is the load-bearing contract check (we build on one codebase)
 
 We are *embedded*: the host and the OSGi exec-jar build from the same codebase, in one reactor. So the
-contract is enforced where that fact lives — at build time, by the `SCHEMA_CONCORD` staging gate
-(alongside record-purity / spec-coverage / instance-discipline / realm-boundary / duplicate-realm).
-It asserts every `Coordinate` has a wire-record, that each `<slug>.schema.json` validates against the
-JSON-Schema meta-schema, and that the schema's properties concord with the record's components. The
-gate lives in both `StagingGate` enums (the annotation module `osgi/foundation/domain-annotations` and
-the ASM mirror in `maven-embed-staging-ext/staging-extension`) and is at the locked `ERROR` default.
-Because the two worlds ship together, their contract cannot drift in version — the reactor guarantees
-the pairing.
+contract is enforced where that fact lives — at build time, by the staging gates. Because the two
+worlds ship together, their contract cannot drift in version: the reactor guarantees the pairing.
+
+⚠️ `SCHEMA_CONCORD` — the gate that would assert every `Coordinate` has a wire-record, that each
+`<slug>.schema.json` validates against the JSON-Schema meta-schema, and that the schema's properties
+concord with the record's components — is **DESIGNED, NOT IMPLEMENTED**. This passage used to claim it
+"lives in both `StagingGate` enums and is at the locked `ERROR` default"; measured on 2026-10-10, both
+enums carry the SAME SEVEN gates and none of them is it (`CONTRACT_PURITY`, `SPEC_COVERAGE`,
+`INSTANCE_DISCIPLINE`, `REALM_BOUNDARY`, `DUPLICATE_REALM_CLASS`, `REALM_WIRING_INTEGRITY`,
+`SYNTHESIS_PATTERN`), and the repository holds **zero** `*.schema.json` files. So the `shape`
+meta-coordinate projects a record's schema at RUNTIME with nothing checking it at build time, and a
+wire-record added without one is not refused by anything. The seven gates that DO run are what this
+spec's other claims rest on; this one rested on nothing.
 
 === Runtime validation is designed, but YAGNI until remote
 
