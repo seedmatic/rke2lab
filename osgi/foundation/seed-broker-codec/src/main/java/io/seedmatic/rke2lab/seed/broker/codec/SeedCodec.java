@@ -85,18 +85,44 @@ public final class SeedCodec {
   private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
 
   private final boolean validationEnabled;
+  private final ReadingCodec reading;
+  private final CanonicalCodec canonical;
+  private final WireCodec wire;
 
   public SeedCodec() {
-    this(false);
+    final ReadingCodec reading = new ReadingCodec();
+    this(false, reading, new CanonicalCodec(reading), new WireCodec(reading));
   }
 
-  private SeedCodec(boolean validationEnabled) {
+  private SeedCodec(
+      boolean validationEnabled, ReadingCodec reading, CanonicalCodec canonical, WireCodec wire) {
     this.validationEnabled = validationEnabled;
+    this.reading = reading;
+    this.canonical = canonical;
+    this.wire = wire;
+  }
+
+  /**
+   * The files we write and read back, in their one canonical form. The seam's payloads stay on this
+   * class's own mapper: they are never committed, so they need no canonical form.
+   */
+  public CanonicalCodec canonical() {
+    return canonical;
+  }
+
+  /** The JSON and YAML we only parse — config, secrets, other tools' files. */
+  public ReadingCodec reading() {
+    return reading;
+  }
+
+  /** The bodies exchanged with external APIs. */
+  public WireCodec wire() {
+    return wire;
   }
 
   /** The off→on switch the capstone flips; embedded keeps the default (off). */
   public SeedCodec withValidation(boolean enabled) {
-    return new SeedCodec(enabled);
+    return new SeedCodec(enabled, reading, canonical, wire);
   }
 
   public String encode(JsonNode node) {
