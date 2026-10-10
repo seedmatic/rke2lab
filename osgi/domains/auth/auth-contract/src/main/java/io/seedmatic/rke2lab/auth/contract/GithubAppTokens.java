@@ -14,10 +14,8 @@ import java.util.Optional;
  * fabric delivery.
  *
  * <p>It reads the App credentials from their OWNER — {@link GhAppCoordinate#GITHUB_APP}, the case
- * the ghapp registration seals {@link GithubAppCredentials} at — not from a consumer's mirror of
- * it. It replaces three copies of the same "reveal the App, then mint" logic that each consumer had
- * grown on a manifests-side copy of that record; the copy itself is gone, and the synthesis renders
- * the owner's record too.
+ * the ghapp registration seals {@link GithubAppCredentials} at. A consumer asks it for a token and
+ * grows no "reveal the App, then mint" of its own: that logic exists once, here.
  *
  * <p>The lanes are named, not merged, because their callers legitimately differ: {@link #writer}
  * mints only, {@link #writerOrPipeline} falls back to the pipeline's token when there is no App to

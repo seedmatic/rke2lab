@@ -23,8 +23,7 @@ import java.util.Optional;
  * server/tls/*-ca.crt}; {@link Pair#keyPem()} is the CA private key.
  *
  * <p>The manifests synthesis renders it as it is, and looks a cluster's set up with {@link
- * #forCluster}, which moved here from the manifests-side copy of this record deleted on 2026-10-10.
- * See docs/architecture/cluster-api/deterministic-cluster-access.adoc and the
+ * #forCluster}. See docs/architecture/cluster-api/deterministic-cluster-access.adoc and the
  * caprke2-byo-ca-secret-contract memory.
  */
 @SeedContract("workload-cluster-cas")

@@ -17,10 +17,7 @@ import java.util.List;
  * {@link AdminCredentials} stays what its name says: three PEM blocks, no rendering.
  *
  * <p>The ONE kubeconfig renderer: the manifests kubeconfig unit renders its single-endpoint Secrets
- * through this record too (one cluster, one access whose context bears the cluster's name). A
- * single-endpoint copy of this template used to live on {@code manifests-contract}'s {@code
- * OperatorPkiMaterial} mirror; it was folded in on 2026-10-10, and the golden render of that unit
- * proves the bytes did not move.
+ * through this record too — one cluster, one access whose context bears the cluster's name.
  */
 public record OperatorKubeconfig(List<ClusterAccess> clusters) {
 
