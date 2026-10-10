@@ -2,6 +2,11 @@ package io.seedmatic.rke2lab.manifests.units.clusterapi;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import io.seedmatic.rke2lab.clusterpki.contract.AdminCredentials;
+import io.seedmatic.rke2lab.clusterpki.contract.ClusterIssuerCa;
+import io.seedmatic.rke2lab.clusterpki.contract.ManagementClusterCa;
+import io.seedmatic.rke2lab.clusterpki.contract.WorkloadClusterCas;
+import io.seedmatic.rke2lab.ghapp.contract.GithubAppCredentials;
 import io.seedmatic.rke2lab.manifests.Cdk8sApiObjectResolver;
 import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
 import io.seedmatic.rke2lab.manifests.ManifestsUnit;
@@ -10,11 +15,6 @@ import io.seedmatic.rke2lab.manifests.YamlMapper;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainPolicy;
 import io.seedmatic.rke2lab.manifests.contract.ManifestSynthesisRequest;
-import io.seedmatic.rke2lab.manifests.contract.profiles.ClusterIssuerCaMaterial;
-import io.seedmatic.rke2lab.manifests.contract.profiles.GithubAppMaterial;
-import io.seedmatic.rke2lab.manifests.contract.profiles.ManagementClusterCaMaterial;
-import io.seedmatic.rke2lab.manifests.contract.profiles.OperatorPkiMaterial;
-import io.seedmatic.rke2lab.manifests.contract.profiles.WorkloadClusterCasMaterial;
 import io.seedmatic.rke2lab.manifests.node.DefaultNodeEnvContext;
 import io.seedmatic.rke2lab.manifests.units.cicd.PacSecretManifestsUnit;
 import io.seedmatic.rke2lab.manifests.units.gitops.GithubAppSecretManifestsUnit;
@@ -46,10 +46,10 @@ import org.junit.jupiter.api.io.TempDir;
  * could see a change to what they publish. Here every material is present, so the Secrets,
  * kubeconfigs and CA bundles are rendered, and the bytes are pinned.
  *
- * <p>The goldens were produced by the code as it stood BEFORE the units' material types changed
- * (commit {@code 5m-0}, on the manifests mirrors), so a later change of those types is checked
- * against bytes it did not write. A change here is a change of what a cluster receives: it is a
- * finding, not a golden to refresh.
+ * <p>The goldens were produced by the code as it stood BEFORE the units' material types changed —
+ * at {@code e0cd71f97}, when they still took manifests-side copies of the owners' records — so the
+ * move to the owners' records was checked against bytes it did not write. A change here is a change
+ * of what a cluster receives: it is a finding, not a golden to refresh.
  *
  * <p>Two limits, said rather than implied. The goldens pin the bytes for THESE fixtures, not for
  * every material. And every material is an obvious placeholder: rke2lab is public, and a
@@ -77,13 +77,13 @@ class SealedMaterialUnitsGoldenTest {
           .platform(true)
           .build();
 
-  private static WorkloadClusterCasMaterial.Pair pair(String name) {
-    return new WorkloadClusterCasMaterial.Pair(
+  private static WorkloadClusterCas.Pair pair(String name) {
+    return new WorkloadClusterCas.Pair(
         "FAKE-" + name + "-CA-CERT-CHAIN", "FAKE-" + name + "-CA-KEY");
   }
 
-  private static WorkloadClusterCasMaterial.Entry workload(String cluster, String tag) {
-    return new WorkloadClusterCasMaterial.Entry(
+  private static WorkloadClusterCas.Entry workload(String cluster, String tag) {
+    return new WorkloadClusterCas.Entry(
         cluster,
         pair(tag + "-SERVER"),
         pair(tag + "-CLIENT"),
@@ -182,27 +182,28 @@ class SealedMaterialUnitsGoldenTest {
             .manifestDomainPolicy(Optional.of(POLICY))
             .fabricBridgeParent(Optional.of(ClusterApiRenderTest.FABRIC_BRIDGE))
             .githubApp(
-                Optional.of(new GithubAppMaterial("1001", "2002", "FAKE-GITHUB-APP-PRIVATE-KEY")))
+                Optional.of(
+                    new GithubAppCredentials("1001", "2002", "FAKE-GITHUB-APP-PRIVATE-KEY")))
             .operatorPki(
                 Optional.of(
-                    new OperatorPkiMaterial(
+                    new AdminCredentials(
                         "FAKE-OPERATOR-CLIENT-CERT",
                         "FAKE-OPERATOR-CLIENT-KEY",
                         "FAKE-OPERATOR-CA-CERT")))
             .clusterIssuerCa(
                 Optional.of(
-                    new ClusterIssuerCaMaterial(
+                    new ClusterIssuerCa(
                         "FAKE-CLUSTER-ISSUER-CA-CERT-CHAIN", "FAKE-CLUSTER-ISSUER-CA-KEY")))
             .managementCas(
                 Optional.of(
-                    new ManagementClusterCaMaterial(
+                    new ManagementClusterCa(
                         pair("MGMT-SERVER"),
                         pair("MGMT-CLIENT"),
                         pair("MGMT-ETCD-SERVER"),
                         pair("MGMT-ETCD-PEER"))))
             .workloadCas(
                 Optional.of(
-                    new WorkloadClusterCasMaterial(
+                    new WorkloadClusterCas(
                         List.of(
                             workload("bioskop-wrkld", "BIOSKOP-WRKLD"),
                             workload("nikopol-mgmt", "NIKOPOL-MGMT")))))

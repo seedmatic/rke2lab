@@ -1,10 +1,10 @@
 package io.seedmatic.rke2lab.manifests.units.gitops;
 
+import io.seedmatic.rke2lab.ghapp.contract.GithubAppCredentials;
 import io.seedmatic.rke2lab.manifests.AbstractManifestsUnit;
 import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
 import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
-import io.seedmatic.rke2lab.manifests.contract.profiles.GithubAppMaterial;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
@@ -29,13 +29,13 @@ import software.constructs.Construct;
  *
  * <p><b>The unit only RENDERS.</b> The App credentials are a prerequisite, revealed upstream by the
  * manifests scion from the sealed {@code GhAppCoordinate.GITHUB_APP} cellar case and handed in as
- * {@link GithubAppMaterial} on {@link ManifestSynthesisContext} — the same channel as {@code
- * OperatorPkiMaterial} / {@code SopsAgeMaterial}. This unit never reveals a cellar case or shells a
+ * {@link GithubAppCredentials} on {@link ManifestSynthesisContext} — the same channel as {@code
+ * AdminCredentials} / {@code SopsAgeMaterial}. This unit never reveals a cellar case or shells a
  * tool itself; it embeds the identifiers + key into the Secret, base64-encoded as Kubernetes
  * requires.
  *
  * <p>Absence — no App credentials sealed (ephemeral / test / bare-survey runs) — is carried as an
- * empty {@code Optional<GithubAppMaterial>}, and the unit then renders nothing (a
+ * empty {@code Optional<GithubAppCredentials>}, and the unit then renders nothing (a
  * required-credential absence is a hard fail at the mint site, never here — this is the honest
  * local-render skip).
  *
@@ -56,13 +56,13 @@ public final class GithubAppSecretManifestsUnit extends AbstractManifestsUnit {
 
   @Override
   protected void doSynthesize(final Construct scope, final ManifestsUnitContext context) {
-    final Optional<GithubAppMaterial> maybeMaterial =
+    final Optional<GithubAppCredentials> maybeMaterial =
         ManifestSynthesisContext.current().githubApp();
 
     if (maybeMaterial.isEmpty()) {
       return;
     }
-    final GithubAppMaterial material = maybeMaterial.orElseThrow();
+    final GithubAppCredentials material = maybeMaterial.orElseThrow();
 
     final ApiObject secret =
         new ApiObject(

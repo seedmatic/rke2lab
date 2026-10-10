@@ -1,6 +1,7 @@
 package io.seedmatic.rke2lab.clusterpki.contract;
 
 import io.seedmatic.rke2lab.seed.broker.port.SeedContract;
+import java.util.Objects;
 
 /**
  * The cluster-issuer CA — a dedicated, low-privilege CA (the sixth, minted under the same
@@ -20,10 +21,19 @@ import io.seedmatic.rke2lab.seed.broker.port.SeedContract;
  * private key, so a compromise mints only app leaves, never kube/etcd client certs.
  *
  * <p>A {@code type=dual-realm} record: minted + filed OSGi-side by the seal scion, fetched
- * host-side (the GROW poses it on devlxd) and mirrored manifests-side (to render the {@code
+ * host-side (the GROW poses it on devlxd) and rendered manifests-side as it is (the {@code
  * ClusterIssuer} + its key Secret). {@link SeedContract} binds it to the {@code cluster-issuer-ca}
  * coordinate for the codec's decode guard. See
  * docs/architecture/cluster-api/deterministic-cluster-access.adoc.
  */
 @SeedContract("cluster-issuer-ca")
-public record ClusterIssuerCa(String caCertChainPem, String caKeyPem) {}
+public record ClusterIssuerCa(String caCertChainPem, String caKeyPem) {
+
+  // A sealed case missing a field fails at its decode, not as an empty render downstream: the
+  // manifests units now embed this record as it is, and an absent PEM would ride into a Secret as
+  // nothing, silently. The manifests-side mirror used to carry this guard.
+  public ClusterIssuerCa {
+    Objects.requireNonNull(caCertChainPem, "caCertChainPem");
+    Objects.requireNonNull(caKeyPem, "caKeyPem");
+  }
+}

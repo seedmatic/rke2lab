@@ -109,9 +109,8 @@ private key). The seal scion (an OSGi `@SeedScenario` that seals the bundle thro
 them on the instance's `user.rke2lab.cluster-ca-bundle` / `user.rke2lab.sops-age-key` devlxd keys,
 never inside the (PLAIN) `InstanceGrowPlan`. The `AdminCredentials` case is revealed twice today: by
 the host runbook (which renders the operator kubeconfig to `kubeconfigRef`, the current sink) and,
-for the new synthesis path, by the manifests scion in-container — which translates it to the
-manifests-side `OperatorPkiMaterial` and synthesizes the kubeconfigs — see the delivery section
-below.
+for the new synthesis path, by the manifests scion in-container — which hands the record to the
+synthesis as it is and renders the kubeconfigs — see the delivery section below.
 
 A fourth case, `ClusterIssuerCa`, carries a dedicated **cluster-issuer CA** — a sixth CA the seal
 mints under the SAME intermediate as the five rke2 leaf CAs, so it chains to the mammoth-skate root,
@@ -123,8 +122,7 @@ serving cert, the CAPI operator certs, future webhooks — so all chain to our o
 forest of independent self-signed issuers. Deliberately low-privilege and distinct from the rke2
 CAs: cert-manager never receives an rke2 CA private key, so a compromise of the issuer CA mints only
 application leaves, never kube/etcd client certs. The manifests scion reveals it in-container and
-translates it to the manifests-side `ClusterIssuerCaMaterial` mirror (the same gate-boundary
-discipline `OperatorPkiMaterial` follows); the delivering unit stamps only the key Secret onto the
+hands it to the synthesis as it is; the delivering unit stamps only the key Secret onto the
 `NODE_BOOTSTRAP` lane, while the `ClusterIssuer` object itself (no secret) renders onto the branch.
 
 == The target architecture
@@ -211,20 +209,20 @@ material, discriminated by `local-config`:
   node; CAPI (in the management cluster) greenfield-creates each workload cluster's own nodes
   (master + peers + workers).
 
-The material crosses the gate boundary cleanly: `AdminCredentials` (cluster-pki) is revealed from the
-cellar in-container by the manifests scion and translated to `OperatorPkiMaterial` — the manifests
-domain's mirror record (contract `profiles`, alongside `SopsAgeMaterial` / `IncusIdentityMaterial`),
-carrying the render as `OperatorPkiMaterial.kubeconfig(cluster, server)`. No `cluster-pki` type
-enters `manifests-core`.
+The material reaches the synthesis as the owner's record: `AdminCredentials` (cluster-pki) is revealed
+from the cellar in-container by the manifests scion, handed to `manifests-core` as it is, and the
+kubeconfig unit renders it through `OperatorKubeconfig` — the one renderer, here for one cluster and one
+way in. Until 2026-10-10 a manifests-side copy, `OperatorPkiMaterial`, stood in between with a
+second, single-endpoint renderer. It existed to satisfy a staging gate (`DUAL_REALM_JUSTIFIED`) that
+was retired on 2026-08-09, and domain contracts are how this project's domains wire to each other,
+so it went with the four other copies of foreign sealed records; a golden render of the kubeconfig
+unit proves the bytes did not move.
 
-The same seal→reveal thread now also carries a *serving* leaf for the flox-controller webhook. The
-seal mints it from the `server-ca` (a `serverAuth` EKU + SAN DNS names for the
-`flox-controller-webhook.rke2lab-system.svc` Service) and files it SEALED as `WebhookServingCredentials`
-(cert + key + the `server-ca` bundle) at the `WEBHOOK_SERVING` cellar case. `ManifestSynthesisScenario`
-reveals it into the manifests-side mirror `WebhookServingMaterial` (contract `profiles`, twin of
-`OperatorPkiMaterial`) on the synthesis context, and `FloxWebhookManifestsUnit` renders it as the
-webhook's `kubernetes.io/tls` Secret with the `server-ca` chain as the `MutatingWebhookConfiguration`
-`caBundle`. Same gate discipline: no `cluster-pki` type crosses into `manifests-core`.
+The flox-controller webhook's *serving* certificate no longer rides this thread: since 2026-09-06
+(`9949119f7`) cert-manager mints and renews it in-cluster from the `rke2lab-ca` `ClusterIssuer`, and
+its ca-injector fills the `MutatingWebhookConfiguration` `caBundle`. The seal-minted
+`WebhookServingCredentials` and its manifests-side `WebhookServingMaterial`, which this paragraph
+used to describe, are gone.
 
 **Additive seal (adding a case to a cluster already sealed).** The seal scion is idempotent on a
 cellar hit — an existing `CLUSTER_CA_BUNDLE` means the CA is KEPT, never re-minted (keygen is random;
@@ -338,10 +336,9 @@ flowchart LR
   doc -->|"render()"| out["kubeconfigRef<br/>.local.d/kubeconfig.yaml<br/>rw-------"]
 ----
 
-WARNING: `manifests-contract`'s `OperatorPkiMaterial` still duplicates a single-endpoint variant of
-this template on the other side of the manifests seam (its consumer, the in-cluster
-`<cluster>-kubeconfig` Secret, wants one context). One renderer in two realms — worth collapsing when
-a third appears, not before.
+`OperatorKubeconfig` is the ONE kubeconfig renderer. The in-cluster `<cluster>-kubeconfig` Secrets,
+which want one context, render through it as one cluster with one access; the single-endpoint copy
+that `manifests-contract`'s `OperatorPkiMaterial` used to carry was folded in on 2026-10-10.
 
 == Rotating the root — breaking "stable across re-grows" on purpose
 
@@ -474,9 +471,9 @@ input carrying the workload cluster names:
   mints the four CAs per cluster *additively* (a cluster already in the cellar keeps its CA — stable
   across re-grows; a new one is minted; a removed one drops) and files them SEALED under
   `ClusterPkiCoordinate.WORKLOAD_CLUSTER_CAS` as a `WorkloadClusterCas` record.
-* *Reveal (manifests).* `ManifestSynthesisScenario` reveals that record by the neutral wire
-  coordinate into the manifests-side mirror `WorkloadClusterCasMaterial` (same gate discipline as
-  `OperatorPkiMaterial` — no `cluster-pki` type crosses into manifests).
+* *Reveal (manifests).* `ManifestSynthesisScenario` reveals that record at the owner's
+  `ClusterPkiCoordinate.WORKLOAD_CLUSTER_CAS` and hands it to the synthesis as it is; a cluster's
+  set is looked up with `WorkloadClusterCas.forCluster`.
 * *Render.* `ClusterApiWorkloadManifestsUnit` looks up each workload target's entry and renders its
   four Secrets onto the durable `NODE_BOOTSTRAP` lane (a real CA private key — never on the
   Flux-reconciled branch; a secret-blind in-cluster render finds nothing and omits them).
@@ -497,8 +494,8 @@ render-usable form is filed alongside it:
   `ClusterPkiCoordinate.MANAGEMENT_CLUSTER_CAS` — re-filed on a keep so a re-grow converges its
   reach. It is the sibling of `CLUSTER_CA_BUNDLE`: same material, one as the node's sops blob, this
   as the render-usable pairs.
-* *Reveal.* `ManifestSynthesisScenario` reveals it into the manifests-side mirror
-  `ManagementClusterCaMaterial` (same blind-mirror discipline as `WorkloadClusterCasMaterial`).
+* *Reveal.* `ManifestSynthesisScenario` reveals it at the owner's
+  `ClusterPkiCoordinate.MANAGEMENT_CLUSTER_CAS` and hands it to the synthesis as it is.
 * *Render.* `ClusterApiManagementManifestsUnit` renders the four BYO-CA Secrets on the branch
   (sops-encrypted — Flux needs them to reconcile the adopted cluster), NAMELESS at the seal: the
   render owns the mgmt cluster name (`bootstrapIdentity`), which the seal does not hold.
@@ -600,7 +597,7 @@ flowchart LR
     ROOT --> CHAIN
   end
   subgraph cellar["cellar (sealed at rest)"]
-    ICA["ClusterIssuerCaMaterial<br/>caCertChainPem"]
+    ICA["ClusterIssuerCa<br/>caCertChainPem"]
   end
   subgraph render["render (either realm)"]
     TCA["TlsAuthorityCaMaterial<br/>= rootOf(chain) — the LAST block"]
@@ -630,7 +627,7 @@ flowchart LR
 the key-store is unreachable, and the in-cluster render is the steady state. A host-only read would
 give the operator's render a CA and the cluster's render none — and with `server-crt` empty, "none"
 is a provider that trusts nothing we signed. So it is the *last certificate* of
-`ClusterIssuerCaMaterial.caCertChainPem`, which `ClusterCaGenerator` assembles as
+`ClusterIssuerCa.caCertChainPem`, which `ClusterCaGenerator` assembles as
 `chainPem(issuerCa, intermediate, root)` with `root` being exactly that key-store entry. That
 material is cellar-borne, hence present in both realms, and the derivation states the invariant that
 matters: *the CA we ask a pod to trust is the root our own chain ends at.* Two independent reads

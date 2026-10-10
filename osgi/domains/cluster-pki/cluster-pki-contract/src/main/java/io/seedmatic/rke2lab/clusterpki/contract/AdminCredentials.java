@@ -1,6 +1,7 @@
 package io.seedmatic.rke2lab.clusterpki.contract;
 
 import io.seedmatic.rke2lab.seed.broker.port.SeedContract;
+import java.util.Objects;
 
 /**
  * The operator's admin credentials, endpoint-INDEPENDENT: an admin client certificate ({@code
@@ -23,4 +24,14 @@ import io.seedmatic.rke2lab.seed.broker.port.SeedContract;
  * See docs/architecture/cluster-api/deterministic-cluster-access.adoc.
  */
 @SeedContract("admin-credentials")
-public record AdminCredentials(String clientCertPem, String clientKeyPem, String caCertPem) {}
+public record AdminCredentials(String clientCertPem, String clientKeyPem, String caCertPem) {
+
+  // A sealed case missing a field fails at its decode, not as an empty render downstream: the
+  // manifests units now embed this record as it is, and an absent PEM would ride into a Secret as
+  // nothing, silently. The manifests-side mirror used to carry this guard.
+  public AdminCredentials {
+    Objects.requireNonNull(clientCertPem, "clientCertPem");
+    Objects.requireNonNull(clientKeyPem, "clientKeyPem");
+    Objects.requireNonNull(caCertPem, "caCertPem");
+  }
+}

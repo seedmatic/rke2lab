@@ -16,6 +16,13 @@ import com.tngtech.jgiven.impl.Scenario;
 import io.seedmatic.rke2lab.auth.contract.GithubAppTokens;
 import io.seedmatic.rke2lab.auth.contract.GithubReaderTokenMint;
 import io.seedmatic.rke2lab.auth.contract.GithubWriterTokenMint;
+import io.seedmatic.rke2lab.clusterpki.contract.AdminCredentials;
+import io.seedmatic.rke2lab.clusterpki.contract.ClusterIssuerCa;
+import io.seedmatic.rke2lab.clusterpki.contract.ClusterPkiCoordinate;
+import io.seedmatic.rke2lab.clusterpki.contract.ManagementClusterCa;
+import io.seedmatic.rke2lab.clusterpki.contract.WorkloadClusterCas;
+import io.seedmatic.rke2lab.ghapp.contract.GhAppCoordinate;
+import io.seedmatic.rke2lab.ghapp.contract.GithubAppCredentials;
 import io.seedmatic.rke2lab.manifests.contract.ClusterCoordinate;
 import io.seedmatic.rke2lab.manifests.contract.ClusterFleet;
 import io.seedmatic.rke2lab.manifests.contract.ClusterRole;
@@ -28,17 +35,12 @@ import io.seedmatic.rke2lab.manifests.contract.ManifestsRunbookInput;
 import io.seedmatic.rke2lab.manifests.contract.NodeBootstrapArtifact;
 import io.seedmatic.rke2lab.manifests.contract.RenderMode;
 import io.seedmatic.rke2lab.manifests.contract.profiles.BootstrapIdentity;
-import io.seedmatic.rke2lab.manifests.contract.profiles.ClusterIssuerCaMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.FloxDebugPolicy;
-import io.seedmatic.rke2lab.manifests.contract.profiles.GithubAppMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ImageState;
 import io.seedmatic.rke2lab.manifests.contract.profiles.IncusIdentityMaterial;
-import io.seedmatic.rke2lab.manifests.contract.profiles.ManagementClusterCaMaterial;
-import io.seedmatic.rke2lab.manifests.contract.profiles.OperatorPkiMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ReplicatorSourceSecretsMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.TlsAuthorityCaMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.WorkloadBootstrapBundlesMaterial;
-import io.seedmatic.rke2lab.manifests.contract.profiles.WorkloadClusterCasMaterial;
 import io.seedmatic.rke2lab.manifests.ingress.NodeGithubToken;
 import io.seedmatic.rke2lab.manifests.ingress.NodeGithubTokenCoordinate;
 import io.seedmatic.rke2lab.manifests.ingress.ServerManifestsBundle;
@@ -149,9 +151,8 @@ public class ManifestSynthesisScenario
   @MonotonicNonNull private ManifestsRunbookInput input;
 
   // The shared in-container cellar (injected by ScenarioCellarExtension before the body) + the
-  // current plot — the seam through which the sealed admin-credentials case the seal scion filed is
-  // revealed (decoded into OperatorPkiMaterial via a neutral wire coordinate), in-container, never
-  // crossing the host membrane.
+  // current plot — the seam through which the sealed cases other scions filed are revealed as their
+  // owners' records, in-container, never crossing the host membrane.
   @MonotonicNonNull private ScenarioCellar cellar;
 
   // await=false: the parcel is genuinely OPTIONAL — a bare survey or a run before the seal filed
@@ -194,7 +195,7 @@ public class ManifestSynthesisScenario
   private Optional<EnclosureGate> enclosure = Optional.empty();
 
   // The on-demand push-token mint (auth-edge, cultivating). OPERATOR mints a FRESH WRITER token
-  // here at the moment of the push, from the durable App credentials revealed at GhAppCase — the
+  // here at the moment of the push, through GithubAppTokens, from the App ghapp sealed — the
   // ephemeral (~1 h) token is never sealed, so it can't go stale between a mint and a much later
   // reveal. Absent under a survey/preview frontier → the push is skipped.
   @OsgiService(await = false)
@@ -224,64 +225,32 @@ public class ManifestSynthesisScenario
     this.cellar = cellar;
   }
 
-  // Reveal the operator's admin PKI straight into the manifests-side OperatorPkiMaterial: its three
-  // PEM fields mirror the cluster-pki AdminCredentials record exactly, so the codec's structural
-  // decode reads the sealed case 1:1. Addressed by the NEUTRAL wire coordinate (see
-  // ClusterPkiCase),
-  // so no cluster-pki type is ever touched and manifests-bdd carries no cluster-pki-contract
-  // dependency — the standalone manifests-cli assembly never drags that domain's dual-realm flat
-  // copy. Empty when no cellar/plot (a bare survey) or the seal has not filed yet.
-  private Optional<OperatorPkiMaterial> revealOperatorPki() {
-    if (cellar == null || parcel.isEmpty()) {
-      return Optional.empty();
-    }
-    return cellar.fetch(
-        parcel.orElseThrow(), ClusterPkiCase.ADMIN_CREDENTIALS, OperatorPkiMaterial.class);
+  // The cluster-pki seal's sealed cases, revealed as the OWNER's records and handed to synthesis as
+  // they are: the operator's admin PKI, the cluster-issuer CA, the workload clusters' BYO-CA sets
+  // and the management cluster's own. Empty when no cellar/plot (a bare survey), before the seal
+  // filed, or on a secret-blind in-cluster render (EphemeralCellar) — the delivering unit then
+  // renders no Secret onto the branch, the material riding the durable NODE_BOOTSTRAP lane.
+  private Optional<AdminCredentials> revealOperatorPki() {
+    return reveal(ClusterPkiCoordinate.ADMIN_CREDENTIALS, AdminCredentials.class);
   }
 
-  // Reveal the cluster-issuer CA (mirror of cluster-pki ClusterIssuerCa) via the neutral wire
-  // coordinate — same treatment as revealOperatorPki(). Empty on a bare survey / before the seal
-  // filed / a secret-blind in-cluster render (EphemeralCellar) → the delivering unit renders no
-  // Secret onto the branch (the material rides the durable NODE_BOOTSTRAP lane).
-  private Optional<ClusterIssuerCaMaterial> revealClusterIssuerCa() {
-    if (cellar == null || parcel.isEmpty()) {
-      return Optional.empty();
-    }
-    return cellar.fetch(
-        parcel.orElseThrow(), ClusterPkiCase.CLUSTER_ISSUER_CA, ClusterIssuerCaMaterial.class);
+  private Optional<ClusterIssuerCa> revealClusterIssuerCa() {
+    return reveal(ClusterPkiCoordinate.CLUSTER_ISSUER_CA, ClusterIssuerCa.class);
   }
 
-  // Reveal the workload clusters' BYO-CA sets (mirror of cluster-pki WorkloadClusterCas) via the
-  // neutral wire coordinate — same treatment as revealClusterIssuerCa(). Empty on a bare survey /
-  // before the seal filed / a secret-blind in-cluster render → ClusterApiWorkloadManifestsUnit
-  // renders no <cluster>-{ca,cca,etcd,peer-etcd} Secret (they ride the durable NODE_BOOTSTRAP
-  // lane).
-  private Optional<WorkloadClusterCasMaterial> revealWorkloadCas() {
-    if (cellar == null || parcel.isEmpty()) {
-      return Optional.empty();
-    }
-    return cellar.fetch(
-        parcel.orElseThrow(),
-        ClusterPkiCase.WORKLOAD_CLUSTER_CAS,
-        WorkloadClusterCasMaterial.class);
+  private Optional<WorkloadClusterCas> revealWorkloadCas() {
+    return reveal(ClusterPkiCoordinate.WORKLOAD_CLUSTER_CAS, WorkloadClusterCas.class);
   }
 
-  // Reveal the MANAGEMENT cluster's own CA set (mirror of cluster-pki ManagementClusterCa) via the
-  // neutral wire coordinate — same treatment as revealWorkloadCas(). Empty on a bare survey /
-  // before
-  // the seal filed / a secret-blind in-cluster render → ClusterApiManagementManifestsUnit renders
-  // no
-  // <mgmt>-{ca,cca,etcd,peer-etcd} Secret (the mgmt CA also rides the durable NODE_BOOTSTRAP lane
-  // as
-  // the cluster-ca-bundle blob).
-  private Optional<ManagementClusterCaMaterial> revealManagementCas() {
+  private Optional<ManagementClusterCa> revealManagementCas() {
+    return reveal(ClusterPkiCoordinate.MANAGEMENT_CLUSTER_CAS, ManagementClusterCa.class);
+  }
+
+  private <T> Optional<T> reveal(SeedCoordinate coordinate, Class<T> type) {
     if (cellar == null || parcel.isEmpty()) {
       return Optional.empty();
     }
-    return cellar.fetch(
-        parcel.orElseThrow(),
-        ClusterPkiCase.MANAGEMENT_CLUSTER_CAS,
-        ManagementClusterCaMaterial.class);
+    return cellar.fetch(parcel.orElseThrow(), coordinate, type);
   }
 
   // Reveal the CAPN provider incus identity (assembled + sealed by the incus-identity seal scion)
@@ -290,27 +259,16 @@ public class ManifestSynthesisScenario
   // <host>-incus-identity
   // Secret (it rides the durable NODE_BOOTSTRAP lane).
   private Optional<IncusIdentityMaterial> revealIncusIdentity() {
-    if (cellar == null || parcel.isEmpty()) {
-      return Optional.empty();
-    }
-    return cellar.fetch(
-        parcel.orElseThrow(), IncusIdentityCase.INCUS_IDENTITY, IncusIdentityMaterial.class);
+    return reveal(IncusIdentityCase.INCUS_IDENTITY, IncusIdentityMaterial.class);
   }
 
   /**
-   * The one org-owned App's credentials the ghapp registration sealed, revealed from the cellar so
-   * the {@code githubapp} Secret unit renders them for Flux's native App auth. Empty on a bare
-   * survey / before the registration filed — the unit then renders nothing. Addressed by the
-   * NEUTRAL {@code github-app} wire coordinate ({@link GhAppCase}) into the manifests-side {@link
-   * GithubAppMaterial} mirror, so no {@code ghapp-contract} flat copy is dragged into the
-   * standalone {@code manifests-cli} assembly — the exact treatment {@link #revealOperatorPki()}
-   * gives cluster-pki.
+   * The one org-owned App's credentials the ghapp registration sealed, revealed as the owner's
+   * record so the {@code githubapp} Secret unit renders them for Flux's native App auth. Empty on a
+   * bare survey / before the registration filed — the unit then renders nothing.
    */
-  private Optional<GithubAppMaterial> revealGithubApp() {
-    if (cellar == null || parcel.isEmpty()) {
-      return Optional.empty();
-    }
-    return cellar.fetch(parcel.orElseThrow(), GhAppCase.GITHUB_APP, GithubAppMaterial.class);
+  private Optional<GithubAppCredentials> revealGithubApp() {
+    return reveal(GhAppCoordinate.GITHUB_APP, GithubAppCredentials.class);
   }
 
   /**
@@ -320,13 +278,7 @@ public class ManifestSynthesisScenario
    * before the seal filed (an empty material seals nothing) → the unit renders no source secrets.
    */
   private Optional<ReplicatorSourceSecretsMaterial> revealReplicatorSources() {
-    if (cellar == null || parcel.isEmpty()) {
-      return Optional.empty();
-    }
-    return cellar.fetch(
-        parcel.orElseThrow(),
-        ReplicatorSecretsCase.REPLICATOR_SECRETS,
-        ReplicatorSourceSecretsMaterial.class);
+    return reveal(ReplicatorSecretsCase.REPLICATOR_SECRETS, ReplicatorSourceSecretsMaterial.class);
   }
 
   private static final String TAILNET_AUTHORITY = NdhKeystoreCatalog.TAILNET_AUTHORITY.entryName();
@@ -811,13 +763,13 @@ public class ManifestSynthesisScenario
    * every pass signature.
    */
   private record Materials(
-      Optional<OperatorPkiMaterial> operatorPki,
-      Optional<GithubAppMaterial> githubApp,
+      Optional<AdminCredentials> operatorPki,
+      Optional<GithubAppCredentials> githubApp,
       Optional<ReplicatorSourceSecretsMaterial> replicatorSources,
-      Optional<ClusterIssuerCaMaterial> clusterIssuerCa,
+      Optional<ClusterIssuerCa> clusterIssuerCa,
       Optional<TlsAuthorityCaMaterial> tlsAuthorityCa,
-      Optional<WorkloadClusterCasMaterial> workloadCas,
-      Optional<ManagementClusterCaMaterial> managementCas,
+      Optional<WorkloadClusterCas> workloadCas,
+      Optional<ManagementClusterCa> managementCas,
       Optional<IncusIdentityMaterial> incusIdentity) {}
 
   /**
@@ -852,38 +804,6 @@ public class ManifestSynthesisScenario
    * the delivery seam) and played by the WHEN (which owns the synthesis).
    */
   private record TargetPass(ClusterCoordinate child, LinkedWorktree worktree, Delivery delivery) {}
-
-  /**
-   * The cluster-pki seal's {@code admin-credentials} cellar case, addressed by its NEUTRAL wire
-   * coordinate so the manifests realm reveals it without a compile link to {@code
-   * cluster-pki-contract}. Naming that domain's {@code ClusterPkiCoordinate} enum would drag its
-   * {@code type=dual-realm} flat copy into the standalone {@code manifests-cli} assembly — a dead
-   * flat copy the staging gate rightly flags. The membrane speaks slugs; the {@code slug}/{@code
-   * domain} here MUST match {@code ClusterPkiCoordinate.ADMIN_CREDENTIALS}. This is the one place
-   * the manifests realm knows that cross-realm wire name (the cellar matches a read case by slug).
-   */
-  private enum ClusterPkiCase implements SeedCoordinate {
-    ADMIN_CREDENTIALS("admin-credentials"),
-    CLUSTER_ISSUER_CA("cluster-issuer-ca"),
-    WORKLOAD_CLUSTER_CAS("workload-cluster-cas"),
-    MANAGEMENT_CLUSTER_CAS("management-cluster-cas");
-
-    private final String slug;
-
-    ClusterPkiCase(String slug) {
-      this.slug = slug;
-    }
-
-    @Override
-    public String slug() {
-      return slug;
-    }
-
-    @Override
-    public String domain() {
-      return "cluster-pki";
-    }
-  }
 
   @Test
   void the_manifests_are_synthesized_from_the_activation_facet() {
@@ -927,7 +847,7 @@ public class ManifestSynthesisScenario
     // § per-target-pass).
     final List<TargetPass> workloadPasses = prepareWorkloadPasses(effective, rendered, delivery);
     given().the_activation_facet(effective);
-    final Optional<ClusterIssuerCaMaterial> issuerCa = revealClusterIssuerCa();
+    final Optional<ClusterIssuerCa> issuerCa = revealClusterIssuerCa();
     final Materials materials =
         new Materials(
             revealOperatorPki(),

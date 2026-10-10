@@ -1,6 +1,7 @@
 package io.seedmatic.rke2lab.clusterpki.contract;
 
 import io.seedmatic.rke2lab.seed.broker.port.SeedContract;
+import java.util.Objects;
 
 /**
  * The MANAGEMENT cluster's OWN deterministic CA set, in render-usable PEM form — the four CAs
@@ -14,9 +15,9 @@ import io.seedmatic.rke2lab.seed.broker.port.SeedContract;
  *
  * <p>Reuses {@link WorkloadClusterCas.Pair} (cert chain + key, both PEM) — the identical shape a
  * workload BYO-CA pair has. NAMELESS: unlike a workload entry, no {@code clusterName} — the render
- * owns the mgmt cluster name (its {@code bootstrapIdentity}), which the seal does not hold. A blind
- * mirror ({@code ManagementClusterCaMaterial}) shares this exact component shape so the codec
- * decodes straight across, no {@code cluster-pki} type crossing into manifests. See
+ * owns the mgmt cluster name (its {@code bootstrapIdentity}), which the seal does not hold. The
+ * manifests synthesis renders it as it is; it used to go through a manifests-side copy of this
+ * record, deleted on 2026-10-10 once the reason for it was found dead. See
  * docs/architecture/cluster-api/management-workload-topology.adoc and the
  * caprke2-byo-ca-secret-contract memory.
  */
@@ -25,4 +26,15 @@ public record ManagementClusterCa(
     WorkloadClusterCas.Pair serverCa,
     WorkloadClusterCas.Pair clientCa,
     WorkloadClusterCas.Pair etcdServerCa,
-    WorkloadClusterCas.Pair etcdPeerCa) {}
+    WorkloadClusterCas.Pair etcdPeerCa) {
+
+  // A sealed case missing a field fails at its decode, not as an empty render downstream: the
+  // manifests units now embed this record as it is, and an absent PEM would ride into a Secret as
+  // nothing, silently. The manifests-side mirror used to carry this guard.
+  public ManagementClusterCa {
+    Objects.requireNonNull(serverCa, "serverCa");
+    Objects.requireNonNull(clientCa, "clientCa");
+    Objects.requireNonNull(etcdServerCa, "etcdServerCa");
+    Objects.requireNonNull(etcdPeerCa, "etcdPeerCa");
+  }
+}

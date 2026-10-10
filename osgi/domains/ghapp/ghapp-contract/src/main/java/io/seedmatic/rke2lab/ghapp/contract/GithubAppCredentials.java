@@ -1,6 +1,7 @@
 package io.seedmatic.rke2lab.ghapp.contract;
 
 import io.seedmatic.rke2lab.seed.broker.port.SeedContract;
+import java.util.Objects;
 
 /**
  * The one org-owned GitHub App's identity + private key, as a SEALED cellar case — filed ONCE by
@@ -19,4 +20,14 @@ import io.seedmatic.rke2lab.seed.broker.port.SeedContract;
  * guard.
  */
 @SeedContract("github-app")
-public record GithubAppCredentials(String appId, String installationId, String privateKeyPem) {}
+public record GithubAppCredentials(String appId, String installationId, String privateKeyPem) {
+
+  // A sealed case missing a field fails at its decode, not downstream: the manifests units embed
+  // this record as it is, and the token mints hand it to GitHub. The manifests-side mirror used to
+  // carry this guard.
+  public GithubAppCredentials {
+    Objects.requireNonNull(appId, "appId");
+    Objects.requireNonNull(installationId, "installationId");
+    Objects.requireNonNull(privateKeyPem, "privateKeyPem");
+  }
+}

@@ -1348,7 +1348,7 @@ source is the ndh key-store — and *IN_CLUSTER the key-store is unreachable*, w
 condition the in-cluster render runs under, and the in-cluster render is the steady state. A key-store
 read would have given the operator's render a CA and the cluster's render none.
 
-So `ManifestSynthesisScenario` derives it from `ClusterIssuerCaMaterial.caCertChainPem` — the last
+So `ManifestSynthesisScenario` derives it from `ClusterIssuerCa.caCertChainPem` — the last
 certificate of a chain the seal assembles as `chainPem(issuerCa, intermediate, root)`, whose root IS
 that key-store entry.
 
