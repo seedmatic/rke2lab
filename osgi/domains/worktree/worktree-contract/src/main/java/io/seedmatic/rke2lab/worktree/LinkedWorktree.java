@@ -8,9 +8,9 @@ import java.util.Optional;
 /**
  * A prepared linked worktree — the handle {@link LinkedWorktrees#prepare} returns. It is the
  * transient checkout a producer materialises a rendered tree into, then seals with a SIGNED commit
- * and force-pushes to the origin the repository already knows. {@link AutoCloseable}: {@link
- * #close()} runs {@code git worktree remove --force}, so a try-with-resources leaves no linked
- * worktree behind whatever the render did.
+ * and fast-forward-pushes to the origin the repository already knows (see {@link #push} — not a
+ * force; renders accrete). {@link AutoCloseable}: {@link #close()} runs {@code git worktree remove
+ * --force}, so a try-with-resources leaves no linked worktree behind whatever the render did.
  *
  * <p>Its {@link #stage}/{@link #commit} mirror {@link Worktree}'s verbs, but against THIS
  * worktree's path and branch, not the seed's own — the same signing mechanism (the caller's OpenSSH

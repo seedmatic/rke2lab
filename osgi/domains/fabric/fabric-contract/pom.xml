@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- @codebase -->
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>io.seedmatic.rke2lab</groupId>
+    <artifactId>bundle-parent</artifactId>
+    <version>0.0.0-SNAPSHOT</version>
+    <relativePath>../../../bundle-parent/pom.xml</relativePath>
+  </parent>
+
+  <artifactId>fabric-contract</artifactId>
+  <name>osgi/domains/fabric/fabric-contract</name>
+  <description>The fabric domain's vocabulary: the delivery's own names (FabricDelivery — the branch
+    and the two file names, single-sourced here because nix pins the same branch), the runbook-input
+    wire-record, and the domain coordinates. type=contract, wired bundle-to-bundle and never
+    system-exported.</description>
+
+  <dependencies>
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>domain-annotations</artifactId>
+    </dependency>
+    <!-- The seed-broker seam: FabricRunbookInput carries @SeedContract("runbook") + @Amendment(SOIL)
+         and FabricCoordinate holds the Amend/Shape/Runbook meta-coordinates. Like dataplan-contract. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>seed-broker-port</artifactId>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+      </plugin>
+      <plugin>
+        <groupId>biz.aQute.bnd</groupId>
+        <artifactId>bnd-maven-plugin</artifactId>
+      </plugin>
+    </plugins>
+  </build>
+</project>

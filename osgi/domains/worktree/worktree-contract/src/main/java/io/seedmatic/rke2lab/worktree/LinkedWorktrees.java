@@ -7,8 +7,11 @@ import java.nio.file.Path;
  * {@link Worktree} is "the worktree the seed IS" (it self-locates and reports its own facts),
  * {@code LinkedWorktrees} is "a worktree the seed MAKES": a transient checkout of a target branch
  * at a caller-chosen path, into which a producer materialises a rendered tree, then commits and
- * force-pushes it. A rendered branch is ephemeral desired-state, not history — a force-push is
- * expected and correct (see docs/architecture/cluster-api/manifests-rendered-branches.adoc).
+ * pushes it. The push is a FAST-FORWARD: a rendered branch ACCRETES on a stable null-commit base
+ * (see {@link #prepare} and {@link LinkedWorktree#push}), so the remote advances and a divergence
+ * fails loudly instead of being clobbered. This paragraph used to say the opposite — a force-push
+ * "expected and correct" — describing the orphan-per-render model its own {@code prepare} had
+ * already replaced.
  *
  * <p>Domain-neutral, exactly like {@link Worktree} and {@link GatePolicy}: it names no {@code
  * manifests/<host>-<role>} convention and no {@code .local.d} path. The caller supplies the branch

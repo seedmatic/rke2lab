@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- @codebase -->
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>io.seedmatic.rke2lab</groupId>
+    <artifactId>build-parent</artifactId>
+    <version>0.0.0</version>
+    <relativePath>../../../build-parent/pom.xml</relativePath>
+  </parent>
+
+  <artifactId>fabric-domain</artifactId>
+  <version>0.0.0-SNAPSHOT</version>
+  <packaging>pom</packaging>
+  <name>osgi/domains/fabric</name>
+  <description>The fabric domain: what seedmatic READS of rke2lab. Where netplan owns the network
+    underlay and dataplan the dataset layout, fabric owns their DELIVERY — it derives nothing of its
+    own, it reads the two harvests the netplan and dataplan scions filed in the run and writes them
+    into the fabric/plan linked worktree, the branch the other repos pin. Contract + bdd only, no
+    -core: there is no synthesis to hold.</description>
+
+  <modules>
+    <module>fabric-contract</module>
+    <module>fabric-bdd</module>
+  </modules>
+</project>

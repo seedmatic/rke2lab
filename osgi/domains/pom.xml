@@ -22,6 +22,7 @@
     <module>manifests</module>
     <module>netplan</module>
     <module>dataplan</module>
+    <module>fabric</module>
     <module>unitrepo</module>
     <module>crypto</module>
     <module>ndh</module>

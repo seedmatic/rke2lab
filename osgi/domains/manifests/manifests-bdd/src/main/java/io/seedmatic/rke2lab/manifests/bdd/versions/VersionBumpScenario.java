@@ -27,6 +27,7 @@ import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.ScenarioPlaye
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.SeedScenario;
 import io.seedmatic.rke2lab.seed.broker.port.Cellar;
 import io.seedmatic.rke2lab.seed.broker.port.Parcel;
+import io.seedmatic.rke2lab.worktree.GitBotIdentities;
 import io.seedmatic.rke2lab.worktree.GitIdentity;
 import io.seedmatic.rke2lab.worktree.Worktree;
 import java.util.Objects;

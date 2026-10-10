@@ -97,6 +97,13 @@
       <artifactId>dataplan-bdd</artifactId>
       <scope>runtime</scope>
     </dependency>
+    <!-- The fabric DELIVERY scion (embed type=model): reads the netplan + dataplan harvests of the
+         run and writes fabric/plan. Staged here so its import closure is PROVEN to resolve in the
+         live world; the `publish` verb that sows it is the next slice. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>fabric-bdd</artifactId>
+    </dependency>
     <!-- jGiven-in-OSGi wrap, dual-realm (staged as a bundle AND kept host-flat): the host root
          scenario is a jGiven ScenarioTest, so jgiven runs FLAT for it and as a BUNDLE for the scion. -->
     <dependency>
