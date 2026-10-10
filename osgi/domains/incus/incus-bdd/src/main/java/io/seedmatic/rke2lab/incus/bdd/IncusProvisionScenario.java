@@ -194,7 +194,8 @@ public class IncusProvisionScenario
     // it
     // read (§ host-cellar-realisation, computed OSGi-side) and derives the paths the run needs —
     // the
-    // per-cluster render plot (the SOIL forwarded to manifests), the liveRoot the host renders the
+    // per-cluster render worktree (the SOIL forwarded to manifests), the liveRoot the host renders
+    // the
     // runbook into, and the worktree for provenance.
     final Optional<Resolved> resolved = Resolved.from(input.facet(), worktreeRoot);
     // The @Test body OWNS the observation sink (the same discipline as the other scions): the When
@@ -312,12 +313,13 @@ public class IncusProvisionScenario
   /**
    * The topology the scion resolves ONCE from the worktree scalars — the inversion made concrete:
    * the scion owns the tree and derives every path the run needs. {@code soil} is the per-cluster
-   * RENDER plot forwarded to the manifests scion ({@code .local.d/render/<cluster>}, the orphan
-   * {@code manifests/<cluster>} worktree it prepares and force-pushes from — no rotating staging
-   * slot); {@code liveRoot} is where the host renders the runbook; {@code worktreeRoot} the base
-   * for the git provenance. {@link #from(Optional, Optional)} returns EMPTY for an unamended survey
-   * (a bare {@code shape} probe) — absence is an empty {@link Optional}, never a record carried
-   * with blank fields; a present {@code Resolved} always holds a real topology.
+   * RENDER worktree forwarded to the manifests scion ({@code
+   * .local.d/worktrees/manifests/<cluster>}, the orphan {@code manifests/<cluster>} worktree it
+   * prepares and pushes from, at the path of its branch); {@code liveRoot} is where the host
+   * renders the runbook; {@code worktreeRoot} the base for the git provenance. {@link
+   * #from(Optional, Optional)} returns EMPTY for an unamended survey (a bare {@code shape} probe) —
+   * absence is an empty {@link Optional}, never a record carried with blank fields; a present
+   * {@code Resolved} always holds a real topology.
    */
   private record Resolved(
       String soil,
@@ -338,12 +340,10 @@ public class IncusProvisionScenario
       final BootstrapPaths local = BootstrapPaths.fromLocalWorktree(root);
       return Optional.of(
           new Resolved(
-              // The manifests plot is now the per-cluster RENDER worktree the manifests scion
-              // prepares (the `manifests/<cluster>` checkout the branch is pushed from) — no
-              // rotating staging slot, no host.live.d promotion. The cluster identity is
-              // <host>-<role> = clusterName-nodeName (the same identity the mDNS FQDN and the
-              // seed-node name carry).
-              local.renderRoot().resolve(facet.clusterName() + "-" + facet.nodeName()).toString(),
+              // The per-cluster RENDER worktree the manifests scion prepares — the
+              // `manifests/<cluster>` checkout the branch is pushed from, at the path of its
+              // branch.
+              local.worktreesRoot().resolve("manifests").resolve(facet.clusterName()).toString(),
               local.liveRoot().toString(),
               root,
               local.secretsFile(),

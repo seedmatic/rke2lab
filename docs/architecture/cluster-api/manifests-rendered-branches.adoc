@@ -318,10 +318,11 @@ Delivery is likewise one discipline, not two: the run resolves ONE plan — one 
 identity, one minted token — and each pass re-subjects it to its own branch. A per-target token mint
 would have been N+1 GitHub round-trips for no gain.
 
-Each target materialises into a sibling directory of the managing SOIL, named for its cluster
-(`<soil-parent>/<cluster>/<soil-leaf>`), which keeps every pass's exploded tree, consolidated
-`manifests.yaml` and carved `.bootstrap/` disjoint — those last two sit one level ABOVE the tree, so
-sharing a parent would have made them collide.
+Each target materialises into its own worktree beside the managing one, at the path of its branch
+(`.local.d/worktrees/manifests/<cluster>`). A pass's consolidated `manifests.yaml` and carved
+`.bootstrap/` live in its worktree's own `.local.d/`, which the `.gitignore` the render commits keeps
+out of the branch — the way any worktree of this project keeps what is its own. So no two passes
+share them, and nothing intermediate reaches Flux.
 
 NOTE: This is what breaks the circle, not a permanent division of labour. `cicd` is structural for
 BOTH roles precisely because each cluster is meant to render its own branch through its own in-cluster
@@ -493,7 +494,7 @@ because the render is a *pure function* of `(main, config, descriptor)` and ther
 |remote reads `host.live.d` over the automount |Flux / `seed-outcluster` read the branch — no manifests rsync
 |===
 
-The render worktree lives at **`.local.d/render/<host>-<role>/`** — a linked git worktree of the
+The render worktree lives at **`.local.d/worktrees/manifests/<host>-<role>/`**, the path of its branch — a linked git worktree of the
 branch, *inside* gitignored `.local.d`. That nesting is deliberate and clean: the `.local.d` ignore
 makes the main worktree never look inside it (no untracked noise, no "embedded repo" gitlink), while
 `.gitignore` being per-checkout means the parent's ignore never leaks into the rendered branch's own

@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * The prepared linked worktree {@link JgitRenderedBranch#prepare} returns — a composition, not a
+ * The prepared linked worktree {@link JgitLinkedWorktrees#prepare} returns — a composition, not a
  * subclass: it holds the {@link GitCli} that made it (for the {@link #close() remove}) and a {@link
  * JgitCheckout} of its path (for stage / commit / push). Its verbs are pure delegation; the only
  * knowledge it adds is its own {@code branch}, which {@link #forcePush} names to the checkout. jgit

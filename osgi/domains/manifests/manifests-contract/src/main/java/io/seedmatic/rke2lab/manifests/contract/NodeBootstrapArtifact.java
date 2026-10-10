@@ -5,9 +5,10 @@ import java.nio.file.Path;
 /**
  * The node-side bootstrap artifact the exploder writes and the synthesis scion reads back — an enum
  * so its location is one instance both ends resolve through, never a static path helper (the
- * instance-discipline law: pass instances, not static behaviour). It sits a level ABOVE the
- * exploded tree, like the consolidated {@code manifests.yaml}, so it is never part of the
- * committed/applied per-resource branch tree.
+ * instance-discipline law: pass instances, not static behaviour). It sits in the exploded tree's
+ * {@link #LOCAL_DIR}, like the consolidated {@code manifests.yaml}: inside the render's own
+ * worktree but ignored by git, the way any worktree keeps what is its own (dog-fooding the worktree
+ * convention), so it is never part of the committed/applied per-resource branch tree.
  */
 public enum NodeBootstrapArtifact {
 
@@ -18,6 +19,13 @@ public enum NodeBootstrapArtifact {
    */
   MANIFESTS(".bootstrap", "rke2lab-bootstrap.yaml");
 
+  /**
+   * The rendered tree's local directory — the render's intermediates (this artifact, the
+   * consolidated {@code manifests.yaml}). Ignored by the {@code .gitignore} the render commits into
+   * its branch, so a render in-cluster, with no operator-side ignore, keeps them out as well.
+   */
+  public static final String LOCAL_DIR = ".local.d";
+
   private final String dir;
   private final String file;
 
@@ -27,13 +35,10 @@ public enum NodeBootstrapArtifact {
   }
 
   /**
-   * This artifact's path for a given exploded tree — its sibling one level above (so it is not part
-   * of the tree). Falls back into the tree itself only when it has no parent (a bare temp-dir
-   * render with no delivery), where nothing is committed anyway.
+   * This artifact's path for a given exploded tree — under its {@link #LOCAL_DIR}, so each render
+   * keeps its own (two passes never share it) and git never tracks it.
    */
   public Path in(final Path explodedTargetDir) {
-    final Path base =
-        explodedTargetDir.getParent() == null ? explodedTargetDir : explodedTargetDir.getParent();
-    return base.resolve(dir).resolve(file);
+    return explodedTargetDir.resolve(LOCAL_DIR).resolve(dir).resolve(file);
   }
 }

@@ -165,17 +165,17 @@ public final class Main {
    * another coordinate.
    *
    * <p>Only {@code publish} works in the branch: it prepares a linked worktree on {@code
-   * manifests/<cluster>} at {@code .local.d/render/<cluster>} (the exe locates it — never passed
-   * in), follows its HEAD facet, and delivers (signed commit + ff-push). {@code synthesize} is pure
-   * generation — it does not know jgit — so it surveys into a temp dir (empty {@code SOIL}: no
-   * branch, no commit).
+   * manifests/<cluster>} at {@code .local.d/worktrees/manifests/<cluster>}, the path of its branch
+   * (the exe locates it — never passed in), follows its HEAD facet, and delivers (signed commit +
+   * ff-push). {@code synthesize} is pure generation — it does not know jgit — so it surveys into a
+   * temp dir (empty {@code SOIL}: no branch, no commit).
    */
   private ManifestsCliRun run(Map<String, String> options, boolean armPush, JsonNode renderMode) {
     final String cluster = option(options, "cluster").orElseGet(Main::defaultCluster);
     final ManifestsCliRun.Identity identity =
         new ManifestsCliRun.Identity(cluster, option(options, "node").orElse("master"));
     final Optional<String> worktree =
-        armPush ? Optional.of(".local.d/render/" + cluster) : Optional.empty();
+        armPush ? Optional.of(".local.d/worktrees/manifests/" + cluster) : Optional.empty();
     return ManifestsCliRun.of(
         worktree, Optional.of(identity), manifestsFacet(options, armPush), renderMode);
   }

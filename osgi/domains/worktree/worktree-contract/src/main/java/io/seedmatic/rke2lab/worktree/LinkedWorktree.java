@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * A prepared linked worktree — the handle {@link RenderedBranch#prepare} returns. It is the
+ * A prepared linked worktree — the handle {@link LinkedWorktrees#prepare} returns. It is the
  * transient checkout a producer materialises a rendered tree into, then seals with a SIGNED commit
  * and force-pushes to the origin the repository already knows. {@link AutoCloseable}: {@link
  * #close()} runs {@code git worktree remove --force}, so a try-with-resources leaves no linked

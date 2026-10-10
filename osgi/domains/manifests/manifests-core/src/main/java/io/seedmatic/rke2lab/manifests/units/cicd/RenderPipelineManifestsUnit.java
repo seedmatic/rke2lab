@@ -408,7 +408,7 @@ public final class RenderPipelineManifestsUnit extends AbstractManifestsUnit {
                       [ -n "${SOPS_AGE_KEY:-}" ] || { echo >&2 "render: SOPS_AGE_KEY not set (git-sops inject / replicated sops-age missing)"; exit 1; }
                       set -x
                       git config --get filter.sops-yaml.smudge >/dev/null 2>&1 || { echo >&2 "render: sops-yaml git filter not registered (git-sops on-activate hook did not wire it)"; exit 1; }
-                      : "The flox NRI plugin put nix on PATH, injected NIX_CONFIG (daemonless single-user) and hosts the /nix store overlay on the assigned persistent PVC, so there is no flox env and no flox activate. nix run .#render-manifests from the source checkout is the ONE render definition shared with dev and release: it builds manifests-cli, signs, and ff-pushes manifests/<cluster>; the exe locates its render worktree at .local.d/render/<cluster>"
+                      : "The flox NRI plugin put nix on PATH, injected NIX_CONFIG (daemonless single-user) and hosts the /nix store overlay on the assigned persistent PVC, so there is no flox env and no flox activate. nix run .#render-manifests from the source checkout is the ONE render definition shared with dev and release: it builds manifests-cli, signs, and ff-pushes manifests/<cluster>; the exe locates its render worktree at .local.d/worktrees/manifests/<cluster>"
                       nix run .#render-manifests -- "$(params.cluster)" "$(params.node)"
                       """
                           .replace("@MAVEN_CACHE@", MAVEN_CACHE_PATH)),

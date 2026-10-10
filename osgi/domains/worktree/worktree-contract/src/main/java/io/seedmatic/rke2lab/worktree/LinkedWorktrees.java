@@ -5,8 +5,8 @@ import java.nio.file.Path;
 /**
  * Fabricates a LINKED git worktree of a branch — the delivery channel for a rendered tree. Where
  * {@link Worktree} is "the worktree the seed IS" (it self-locates and reports its own facts),
- * {@code RenderedBranch} is "a worktree the seed MAKES": a transient checkout of a target branch at
- * a caller-chosen path, into which a producer materialises a rendered tree, then commits and
+ * {@code LinkedWorktrees} is "a worktree the seed MAKES": a transient checkout of a target branch
+ * at a caller-chosen path, into which a producer materialises a rendered tree, then commits and
  * force-pushes it. A rendered branch is ephemeral desired-state, not history — a force-push is
  * expected and correct (see docs/architecture/cluster-api/manifests-rendered-branches.adoc).
  *
@@ -16,7 +16,7 @@ import java.nio.file.Path;
  * remove), so no consumer vocabulary leaks in. jgit and {@code git worktree} stay sealed behind the
  * implementation — only JDK types cross this interface.
  */
-public interface RenderedBranch {
+public interface LinkedWorktrees {
 
   /**
    * Prepare a linked worktree checked out at {@code worktreePath} on {@code branch}, on a STABLE

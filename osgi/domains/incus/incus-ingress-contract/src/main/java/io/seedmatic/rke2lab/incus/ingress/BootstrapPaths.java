@@ -11,7 +11,7 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
  * catalog and the host-asset materialisation roots are gone; and the rendered-branch model moved
  * the manifests delivery to git, so the staging-slot rebase and its {@code manifestsRoot}/{@code
  * assetsRoot} went with it. What remains is the worktree base, the per-node state tree ({@code
- * stateRoot}, from which {@link #renderRoot} and {@link #liveRoot} derive), and the {@code
+ * stateRoot}, from which {@link #worktreesRoot} and {@link #liveRoot} derive), and the {@code
  * secretsFile}. Felix is embedded in the host JVM, so the scion computes the whole topology
  * OSGi-side, here. {@link #fromLocalWorktree} builds the DARWIN-local view; {@link
  * #asAutomountView} rebases onto the automount view the remote NixOS host reads through.
@@ -44,14 +44,14 @@ public record BootstrapPaths(Path worktreeRoot, Path stateRoot, Path secretsFile
   }
 
   /**
-   * The root the per-cluster RENDERED trees live under — {@code .local.d/render}. Each cluster gets
-   * an orphan {@code manifests/<cluster>} worktree at {@code renderRoot()/<cluster>} that the
-   * manifests scion prepares, materialises the rendered YAML into, and force-pushes from. It
-   * replaces the old rotating staging slot: a rendered branch is regenerated in place and delivered
-   * through git, so there is no slot rotation and no {@code host.live.d} promotion to size it for.
+   * The root the seed's LINKED worktrees live under — {@code .local.d/worktrees}, each at the path
+   * of its branch: {@code worktreesRoot()/manifests/<cluster>} is the orphan {@code
+   * manifests/<cluster>} worktree the manifests scion prepares, materialises the rendered YAML
+   * into, and pushes from. The render's intermediates live in that worktree's own ignored {@code
+   * .local.d}, so the root holds worktrees and nothing else.
    */
-  public Path renderRoot() {
-    return stateRoot.resolve("render");
+  public Path worktreesRoot() {
+    return stateRoot.resolve("worktrees");
   }
 
   /**

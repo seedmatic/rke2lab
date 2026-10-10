@@ -1073,7 +1073,7 @@ USAGE
             fi
 
             # Steady-state re-render: `update` FOLLOWS the branch HEAD facet (the grow's recorded
-            # posture), renders into the plot the exe LOCATES itself (.local.d/render/<cluster>) +
+            # posture), renders into the worktree the exe LOCATES itself (.local.d/worktrees/manifests/<cluster>) +
             # signed ff-push manifests/<cluster>. cluster/node are trailing key=value args
             # (discoverable in `update` help); RKE2LAB_SIGNING_KEY + RKE2LAB_PUSH_TOKEN come from the
             # caller's environment (the Tekton step / the operator). A first render of a cluster is
