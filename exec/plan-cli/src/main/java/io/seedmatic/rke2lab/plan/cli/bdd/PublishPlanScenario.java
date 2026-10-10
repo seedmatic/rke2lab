@@ -3,7 +3,6 @@ package io.seedmatic.rke2lab.plan.cli.bdd;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.TextNode;
 import com.tngtech.jgiven.Stage;
-import com.tngtech.jgiven.annotation.As;
 import com.tngtech.jgiven.annotation.Hidden;
 import com.tngtech.jgiven.annotation.ProvidedScenarioState;
 import com.tngtech.jgiven.annotation.ScenarioStage;
@@ -110,9 +109,16 @@ public class PublishPlanScenario
         Objects.requireNonNull(
             cellar, "the ScenarioCellar was not injected before the scenario ran");
     given().i_have_access_to_the_open_gardening(seedRun, world, tx);
+    final ScenarioModel hostScenario = getScenario().getScenarioModel();
+    final ReportModel hostTree = getScenario().getModel();
     when()
-        .the_plan_is_derived_and_delivered(
-            getScenario().getScenarioModel(), getScenario().getModel());
+        .the_github_app_is_rehydrated(hostScenario, hostTree)
+        .and()
+        .the_network_plan_is_derived(hostScenario, hostTree)
+        .and()
+        .the_dataset_plan_is_derived(hostScenario, hostTree)
+        .and()
+        .the_plan_is_delivered(hostScenario, hostTree);
   }
 
   /**
@@ -148,7 +154,12 @@ public class PublishPlanScenario
     }
   }
 
-  /** The WHEN sows and grafts ghapp → netplan → dataplan → fabric, in that order. */
+  /**
+   * The WHEN sows and grafts ghapp → netplan → dataplan → fabric, ONE STEP PER CROSSING. A scion
+   * grafts under the host step that is executing, found by its name, so each crossing has its own
+   * step and passes that step's own name — four crossings under one step would graft under names no
+   * step bears, and fail at the first.
+   */
   public static class When extends Stage<When> {
 
     @ScenarioStage SowAndGraftStage sowAndGraft;
@@ -156,20 +167,32 @@ public class PublishPlanScenario
     @ScenarioState Gardening gardening;
     @ScenarioState PublishPlanRun run;
 
-    @As("the plan is derived and delivered")
-    public When the_plan_is_derived_and_delivered(
+    public When the_github_app_is_rehydrated(
         @Hidden ScenarioModel hostScenario, @Hidden ReportModel hostTree) {
-      final Map<String, JsonNode> exportSoil =
-          Map.of(Amendment.SOIL, TextNode.valueOf(run.exportSoil()));
       sowAndGraft
           .sowing("ghapp", gardening, hostScenario, hostTree)
           .the_scion_is_sown_and_grafted("the github app is rehydrated");
+      return self();
+    }
+
+    public When the_network_plan_is_derived(
+        @Hidden ScenarioModel hostScenario, @Hidden ReportModel hostTree) {
       sowAndGraft
-          .sowing("netplan", gardening, hostScenario, hostTree, exportSoil)
+          .sowing("netplan", gardening, hostScenario, hostTree, exportSoil())
           .the_scion_is_sown_and_grafted("the network plan is derived");
+      return self();
+    }
+
+    public When the_dataset_plan_is_derived(
+        @Hidden ScenarioModel hostScenario, @Hidden ReportModel hostTree) {
       sowAndGraft
-          .sowing("dataplan", gardening, hostScenario, hostTree, exportSoil)
+          .sowing("dataplan", gardening, hostScenario, hostTree, exportSoil())
           .the_scion_is_sown_and_grafted("the dataset plan is derived");
+      return self();
+    }
+
+    public When the_plan_is_delivered(
+        @Hidden ScenarioModel hostScenario, @Hidden ReportModel hostTree) {
       sowAndGraft
           .sowing(
               "fabric",
@@ -177,8 +200,12 @@ public class PublishPlanScenario
               hostScenario,
               hostTree,
               Map.of(Amendment.SOIL, TextNode.valueOf(run.worktreesRoot())))
-          .the_scion_is_sown_and_grafted("the plan is delivered to fabric/plan");
+          .the_scion_is_sown_and_grafted("the plan is delivered");
       return self();
+    }
+
+    private Map<String, JsonNode> exportSoil() {
+      return Map.of(Amendment.SOIL, TextNode.valueOf(run.exportSoil()));
     }
   }
 
