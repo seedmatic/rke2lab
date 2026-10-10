@@ -29,6 +29,17 @@
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>netplan-contract</artifactId>
     </dependency>
+    <!-- The netplan host face: the coordinate the export also stores its projection at, which the
+         seed host fetches back for the operator's kubeconfig contexts. Dual-realm. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>netplan-ingress-contract</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>seed-broker-testkit</artifactId>
+      <scope>test</scope>
+    </dependency>
     <!-- Typed recovery vocabulary: the ScenarioNotReadyError base + SymptomKind the export THEN
          raises (NetplanExportError) so a failed export carries a routing symptom, not a bare string. -->
     <dependency>

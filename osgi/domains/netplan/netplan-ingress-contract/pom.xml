@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- @codebase -->
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>io.seedmatic.rke2lab</groupId>
+    <artifactId>bundle-parent</artifactId>
+    <version>0.0.0-SNAPSHOT</version>
+    <relativePath>../../../bundle-parent/pom.xml</relativePath>
+  </parent>
+
+  <artifactId>netplan-ingress-contract</artifactId>
+  <name>osgi/domains/netplan/netplan-ingress-contract</name>
+  <description>The HOST face of the netplan contract — what BOTH realms genuinely consume: the one
+    coordinate the netplan scion stores its projection at and the host fetches it back from (the
+    operator's kubeconfig contexts read their addressing there). netplan-contract is type=contract,
+    OSGi-only, so the host cannot compile against it, and spelling the slug as a string host-side is
+    the mismatch the single-source-of-truth discipline forbids. type=dual-realm, like
+    incus-ingress-contract: staged as a bundle OSGi-side AND kept flat host-side. The projection
+    itself crosses as JSON (the host reads it as a JsonNode, never a netplan type).</description>
+
+  <dependencies>
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>domain-annotations</artifactId>
+    </dependency>
+    <!-- SeedCoordinate. provided: the seed-broker seam is system-exported OSGi-side and flat
+         host-side in BOTH realms, so this library compiles against it and bnd emits an
+         Import-Package, but it must NOT be embedded (that would duplicate the seam class → a realm
+         collision) — the incus-ingress-contract treatment. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>seed-broker-port</artifactId>
+      <scope>provided</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+      </plugin>
+      <plugin>
+        <groupId>biz.aQute.bnd</groupId>
+        <artifactId>bnd-maven-plugin</artifactId>
+      </plugin>
+    </plugins>
+  </build>
+</project>

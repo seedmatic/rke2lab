@@ -9,12 +9,13 @@ import io.seedmatic.rke2lab.seed.broker.port.ShapeCoordinate;
  * The netplan domain's seed coordinates, declared and owned in ONE place — the single-source
  * discipline its siblings {@code ManifestsCoordinate} / {@code IncusCoordinate} hold, and, like
  * {@code ManifestsCoordinate}, an EMPTY {@code enum}: netplan SYNTHESISES-and-MATERIALISES (the
- * blueprint export writes {@code blueprint.json} into the soil and stores no harvest behind the
- * cellar), so it owns no value-coordinate. It enumerates nothing, holding instead, as static
- * constants, the shared META coordinates netplan is addressed through — {@link #AMEND} (the
- * reflector serves it, the assembler gathers on it), {@link #SHAPE} (the schema projection), {@link
- * #RUNBOOK} (the export trigger) — all keyed by one {@link #DOMAIN}, so the growers never diverge
- * as raw literals.
+ * blueprint export writes {@code blueprint.json} into the soil). The one value it harvests behind
+ * the cellar, its projection, is keyed by {@code NetplanIngressCoordinate} in the dual-realm {@code
+ * netplan-ingress-contract}, because the host fetches it. It enumerates nothing, holding instead,
+ * as static constants, the shared META coordinates netplan is addressed through — {@link #AMEND}
+ * (the reflector serves it, the assembler gathers on it), {@link #SHAPE} (the schema projection),
+ * {@link #RUNBOOK} (the export trigger) — all keyed by one {@link #DOMAIN}, so the growers never
+ * diverge as raw literals.
  */
 public enum NetplanCoordinate implements SeedCoordinate {
   ;

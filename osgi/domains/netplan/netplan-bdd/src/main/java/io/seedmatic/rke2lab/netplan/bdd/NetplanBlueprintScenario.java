@@ -12,11 +12,16 @@ import io.seedmatic.rke2lab.netplan.contract.ClusterAsn;
 import io.seedmatic.rke2lab.netplan.contract.ClusterNetworkBlueprint;
 import io.seedmatic.rke2lab.netplan.contract.ClusterNetworkBlueprint.ClusterTopology;
 import io.seedmatic.rke2lab.netplan.contract.NetplanRunbookInput;
+import io.seedmatic.rke2lab.netplan.ingress.NetplanIngressCoordinate;
+import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.CellarReceiver;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.InputReceiver;
+import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.OsgiService;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.ScenarioInputSeed;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.ScenarioPlayer;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.SeedScenario;
 import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
+import io.seedmatic.rke2lab.seed.broker.port.Cellar;
+import io.seedmatic.rke2lab.seed.broker.port.Parcel;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.InetAddress;
@@ -62,7 +67,7 @@ public class NetplanBlueprintScenario
         NetplanBlueprintScenario.Given,
         NetplanBlueprintScenario.When,
         NetplanBlueprintScenario.Then>
-    implements InputReceiver<NetplanRunbookInput>, ScenarioPlayer.Playable {
+    implements CellarReceiver<Cellar>, InputReceiver<NetplanRunbookInput>, ScenarioPlayer.Playable {
 
   /**
    * The inbound channel the runbook handler ({@code NetplanRunbookHandler.seedFrom}) seeds the
@@ -76,6 +81,17 @@ public class NetplanBlueprintScenario
 
   @MonotonicNonNull private NetplanRunbookInput input;
 
+  // The transactional cellar the extension injects before the body; the projection is stored into
+  // it
+  // for the host to fetch back within the run. Null until receiveCellar sets it.
+  @MonotonicNonNull private Cellar cellar;
+
+  // The run's parcel, published by the seed host at its GIVEN (synchronously, before any sow), so a
+  // snapshot sees it. The plan CLI publishes none: its run only exports to the soil, and nobody
+  // fetches a projection there. Hence an optional collaborator, never awaited.
+  @OsgiService(await = false)
+  private Optional<Parcel> parcel = Optional.empty();
+
   @Override
   public Scenario<Given, When, Then> getScenario() {
     return scenario;
@@ -86,13 +102,20 @@ public class NetplanBlueprintScenario
     this.input = input;
   }
 
+  @Override
+  public void receiveCellar(Cellar cellar) {
+    this.cellar = cellar;
+  }
+
   @Test
   void the_blueprint_is_exported_to_the_soil() {
     final NetplanRunbookInput facet =
         Objects.requireNonNull(input, "the netplan runbook input was not seeded before the body");
     given().the_runbook_input(facet);
     when().the_blueprint_metadata_is_derived().and().the_blueprint_is_written_as_json();
-    then().the_blueprint_file_is_written();
+    final Cellar harvest =
+        Objects.requireNonNull(cellar, "the cellar was not injected before the body");
+    then().the_blueprint_file_is_written().and().the_projection_is_harvested(harvest, parcel);
   }
 
   /** Given: the runbook input carrying the SOIL to materialise into. */
@@ -120,9 +143,8 @@ public class NetplanBlueprintScenario
 
     private final SeedCodec codec = new SeedCodec();
 
-    // Derived by the first WHEN step, read by the second on the same stage instance — intra-stage,
-    // so a plain field, not a cross-stage @ProvidedScenarioState.
-    @MonotonicNonNull private NetworkBlueprintMetadata metadata;
+    // Derived by the first WHEN step, written by the second, harvested by the THEN.
+    @ProvidedScenarioState @MonotonicNonNull NetworkBlueprintMetadata metadata;
 
     // One blueprint, for one (cluster, node). Five identical builder chains lived here; the shape
     // is the netplan's, not this scenario's, so it is named once.
@@ -391,10 +413,18 @@ public class NetplanBlueprintScenario
     }
   }
 
-  /** Then: the export landed — {@code blueprint.json} exists and is non-empty. */
+  /**
+   * Then: the export landed — {@code blueprint.json} exists and is non-empty — and, in a seed run,
+   * the same projection is filed at {@link NetplanIngressCoordinate#PROJECTION} under the run's
+   * parcel, where the host reads the operator's addressing from instead of a file. The projection
+   * is what the netplan CODE derives, never a file it publishes (fabric/plan's {@code netplan.json}
+   * is the delivery of this same derivation, for nix).
+   */
   public static class Then extends Stage<Then> {
 
     @ExpectedScenarioState Path blueprintFile;
+
+    @ExpectedScenarioState NetworkBlueprintMetadata metadata;
 
     public Then the_blueprint_file_is_written() {
       if (!Files.exists(blueprintFile)) {
@@ -409,6 +439,12 @@ public class NetplanBlueprintScenario
       if (size <= 0) {
         throw new NetplanExportError(blueprintFile, NetplanExportError.Reason.EMPTY);
       }
+      return self();
+    }
+
+    public Then the_projection_is_harvested(
+        @Hidden Cellar cellar, @Hidden Optional<Parcel> parcel) {
+      parcel.ifPresent(run -> cellar.store(run, NetplanIngressCoordinate.PROJECTION, metadata));
       return self();
     }
   }

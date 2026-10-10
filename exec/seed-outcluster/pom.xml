@@ -114,6 +114,12 @@
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>manifests-ingress-contract</artifactId>
     </dependency>
+    <!-- The dual-realm host face of the netplan contract: the operator kubeconfig contexts fetch the
+         netplan projection at NetplanIngressCoordinate.PROJECTION, harvested by the netplan soil. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>netplan-ingress-contract</artifactId>
+    </dependency>
     <dependency>
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>framework-launcher</artifactId>
@@ -320,6 +326,14 @@
     <dependency>
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>worktree-bdd</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <!-- netplan-bdd: the netplan soil the "netplan is projected" crossing sows — it derives the
+         addressing projection and harvests it into the cellar. Without it staged, the sow throws
+         "no SeedHandler serves coordinate". runtime scope, embedded INTACT under META-INF/bundles. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>netplan-bdd</artifactId>
       <scope>runtime</scope>
     </dependency>
     <dependency>
