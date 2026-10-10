@@ -63,4 +63,58 @@ EOF
   return 0
 }
 
-secret_material_guard
+# Refuse a bearer token in the clear inside a sops-managed file.
+#
+# The private-key guard above reads key MARKERS; a bearer token has none. A FloxHub
+# JWT sat in the clear in .secrets from 2026-09-09 to 2026-10-11: its leaf carried no
+# `# sops:encrypted` comment, so encrypted_comment_regex skipped it, and the envelope
+# around it was valid. So here the question is the shape of what is left once every
+# ENC[…] value is removed: a JWT (three base64url segments, the first two starting
+# with a JSON object) or a known token prefix.
+#
+# Scoped to sops-managed files — those the sops filter cleans, or whose blob holds an
+# ENC[ value — because those are the files that claim to hold secrets. Elsewhere a
+# token prefix is a mention, and docs mention them. The offending LINE NUMBERS are
+# printed, never the line: the value is the secret.
+token_shape_guard() {
+  local found=0 f blob filter lines
+  while IFS= read -r -d '' f; do
+    blob="$(git ls-files -s -- "$f" | awk '{print $2}')"
+    [[ -n "$blob" ]] || continue
+    filter="$(git check-attr filter -- "$f" | sed 's/.*: filter: //')"
+    # Not `cat-file | grep -q`: under pipefail, grep -q exiting early SIGPIPEs cat-file,
+    # and the negated pipeline would then skip the very file that matched.
+    if [[ "$filter" != sops* ]] && ! grep -q 'ENC\[' < <(git cat-file blob "$blob"); then
+      continue
+    fi
+    lines="$(git cat-file blob "$blob" 2>/dev/null |
+      sed 's/ENC\[[^]]*\]//g' |
+      grep -nE 'eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+|(tskey-|gh[opsu]_|github_pat_|dckr_pat_|glpat-)[A-Za-z0-9_-]{16,}' |
+      cut -d: -f1 | paste -sd, - || true)"
+    if [[ -n "$lines" ]]; then
+      echo "  ⛔ $f — staged blob holds a token in the clear outside ENC[…], line(s) $lines" >&2
+      found=1
+    fi
+  done < <(git diff --cached --name-only --diff-filter=ACMR -z)
+
+  if ((found)); then
+    cat >&2 <<'EOF'
+
+Refusing the commit. A sops-managed file carries a bearer token (a JWT or a
+tskey-/gh*_/github_pat_/dckr_pat_/glpat- token) that sops did not encrypt.
+
+With encrypted_comment_regex, sops encrypts only the leaves whose comment says
+so: a leaf without its `# sops:encrypted` marker stays plaintext inside a valid
+envelope. Add the marker and re-encrypt — or, if the token is no longer used,
+remove the leaf with `sops unset`.
+
+EOF
+    return 1
+  fi
+  return 0
+}
+
+status=0
+secret_material_guard || status=1
+token_shape_guard || status=1
+exit "$status"
