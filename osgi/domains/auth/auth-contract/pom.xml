@@ -12,9 +12,9 @@
 
   <artifactId>auth-contract</artifactId>
   <name>osgi/domains/auth/auth-contract</name>
-  <description>The auth domain's contract: the AuthTokenContact verb (resolve a short-lived credential for
-    one AuthTokenSource — GitHub or FloxHub — by asking its CLI) and the flat AuthTokenSource enum.
-    The auth-edge satisfies it by shelling `gh auth token` / `flox auth token`. type=contract:
+  <description>The auth domain's contract: the GithubWriterTokenMint and GithubReaderTokenMint verbs
+    (mint a fresh scoped installation token from the App at the point of use), satisfied by the
+    auth-edge through the ghapp minter. type=contract:
     installed bundle-side and wired bundle-to-bundle, not system-exported — the host speaks only to
     the broker.</description>
 

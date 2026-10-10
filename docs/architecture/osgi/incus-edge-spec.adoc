@@ -171,8 +171,6 @@ SCENARIO: the instance is prepared   (PREPARE beat — sow-and-graft, in-contain
         so the manifests synthesis renders as a nested sub-tree, faithful in the runbook (§ decision a: every scion played is rendered).
         The cloud-config content (nocloud user-data/meta-data/network-config) is synthesised by manifests here — there is NO separate
         nocloud-unwrap step in this scenario                                                              [CODED]
-    AND the_secrets_are_written (#10 — resolve the auth token contact, upsert gh/flox into <worktree>/.secrets
-        via LaunchSecretsWriter (incus-core); gated on cultivating)                                        [CODED]
     AND the_network_and_identity_are_resolved — resolve NetplanSynthesisService (@Component), assemble the
         GrowNetworkView (2 NIC hwaddrs + the dnsmasqConfig map) AND the GrowIdentityView (nodeName,
         <cluster>-<node> hostname, NodeType.kind(), nodeId) from the one blueprint, OSGi-side           [CODED]
@@ -229,10 +227,9 @@ detail owned here, not host-visible. Each scion grafts back under its host step;
 doctor-consult follows the same pattern as the other scions.
 
 *Migration note (re-baselined).* PREPARE's materialisations are CODED: `IncusProvisionScenario`
-(grown by `IncusRunbookHandler`) ships image-build + manifests-sub-sow + secrets (#10) + `IncusHarvest`
+(grown by `IncusRunbookHandler`) ships image-build + manifests-sub-sow + `IncusHarvest`
 store + the `InstanceGrowPlan` publish. The materialisation WHEN steps (they FABRICATE material —
-§ bdd.adoc, the G/W/T phase rule) delegate to incus-core instances — the secrets write to
-`LaunchSecretsWriter`; the cloud-config (nocloud) content is synthesised by the manifests sub-sow, so
+§ bdd.adoc, the G/W/T phase rule) delegate to incus-core instances; the cloud-config (nocloud) content is synthesised by the manifests sub-sow, so
 there is NO standalone `NocloudSeedWriter` type and no separate nocloud-unwrap step. The PROMOTE beat is
 NOT built: `IncusScenario.RECONCILE` is only an unwired enum constant, no `IncusReconcileScenario` exists.
 

@@ -7,10 +7,11 @@ import java.util.Objects;
 /**
  * The mittwald-replicator SOURCE secrets published to synth-time layers via {@code
  * ManifestSynthesisContext} — the manifests-side MIRROR of the credentials the {@code
- * replicator-secrets} seal rehydrates from {@code .secrets} host-side ({@code flox.token}, {@code
- * github.webhook.secret}, {@code tailscale.oauth}) and files SEALED in the cellar, revealed in-container by
- * the manifests scion. The exact twin of {@link GithubAppMaterial}'s treatment: a blind mirror
- * naming no other domain's type, so no {@code .secrets} shape leaks into the manifests domain.
+ * replicator-secrets} seal rehydrates from {@code .secrets} host-side ({@code
+ * github.webhook.secret}, {@code tailscale.oauth}) and files SEALED in the cellar, revealed
+ * in-container by the manifests scion. The exact twin of {@link GithubAppMaterial}'s treatment: a
+ * blind mirror naming no other domain's type, so no {@code .secrets} shape leaks into the manifests
+ * domain.
  *
  * <p>Each {@link SourceSecret} is rendered by {@code ReplicatorManifestsUnit} into {@link
  * SourceSecret#namespace()} on the node-bootstrap lane, annotated so the mittwald replicator fans

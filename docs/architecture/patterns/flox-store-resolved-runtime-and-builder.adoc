@@ -344,9 +344,11 @@ model — a consumer that annotates the env gets all three, and hand-wires none 
 | The env's `manifest.install` closures on PATH (git, sops, kubectl, …), overlaid read-only
   from the host `/nix` store.
 
-| *`FLOX_FLOXHUB_TOKEN`* + the canonical flox knobs
+| *The canonical flox knobs*
 | The flox-controller pod webhook (`PodFloxMutator.injectFloxEnvInto`)
-| `valueFrom` the replicated FloxHub token Secret (optional), so `flox` runs authenticated.
+| The flox behavioural settings the controller runs with (one source, `floxenv`), so `flox` in
+  the consumer behaves as it does in the controller. No FloxHub token: nothing pulls from FloxHub
+  with auth.
 
 | *`spec.inject`* — arbitrary required env/secrets
 | The same webhook, reading the env's CR (see below)
@@ -354,7 +356,7 @@ model — a consumer that annotates the env gets all three, and hand-wires none 
 |===
 
 The third vector is the piece added here. It COMPLETES the model: an env already contributed
-packages and the token; now it also contributes the *required runtime env/secrets its tools
+packages and the flox knobs; now it also contributes the *required runtime env/secrets its tools
 need to function*. So a consumer only ANNOTATES the env — it never reaches around the env to
 hand-wire the env's own secrets.
 
@@ -406,7 +408,7 @@ flowchart TB
 
   ann -->|opt-in| wh
   wh -->|GET FloxEnv| cr
-  wh -->|"upsert: flox knobs + FLOX_FLOXHUB_TOKEN + spec.inject<br/>(SOPS_AGE_KEY valueFrom secretKeyRef)"| ctr
+  wh -->|"upsert: flox knobs + spec.inject<br/>(SOPS_AGE_KEY valueFrom secretKeyRef)"| ctr
   ann -.->|plugin resolves the annotation| nri
   nri -->|"packages on PATH (git + sops + filter)"| ctr
   sec -.->|kubelet resolves secretKeyRef| ctr

@@ -363,10 +363,9 @@
     </dependency>
     <!-- The auth edge: embedded INTACT under META-INF/bundles and installed by OsgiRuntime, NOT
          flattened into the uber-jar. runtime scope — seed-outcluster never compiles against the edge impl.
-         It publishes TWO @Components: CliAuthTokenContact (the launch-secrets updater resolves
-         AuthTokenContact from the registry for the FloxHub token) and GithubWriterTokenMintEdge (the
-         on-demand push-token mint the manifests synthesis reveals a fresh WRITER token through — it
-         @References ghapp's GithubAppMinter, embedded above). MUST be embedded or neither publishes. -->
+         It publishes TWO @Components, GithubWriterTokenMintEdge and GithubReaderTokenMintEdge (the
+         on-demand mints the manifests synthesis reveals a fresh WRITER / READER token through — both
+         @Reference ghapp's GithubAppMinter, embedded above). MUST be embedded or neither publishes. -->
     <dependency>
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>auth-edge</artifactId>

@@ -38,11 +38,11 @@ import org.junit.jupiter.api.Test;
  *
  * <p>The mapping lives in {@code .secrets}: {@code kubernetes.sourceNamespace} + {@code
  * kubernetes.secrets.<key>.{name,replicateTo}} name each source secret and its allowed target
- * namespaces; the credential data comes from the matching {@code flox.*} / {@code github.*} /
- * {@code tailscale.*} block. The bridged shapes are the FloxHub token, the GitHub webhook secret,
- * and the tailscale oauth — the one domain-specific step the split {@code .secrets} layout
- * requires. (Tekton git/docker source secrets were dropped: git auth flows from the App via PaC's
- * dynamic git_auth, and no in-cluster build pulls a private registry.)
+ * namespaces; the credential data comes from the matching {@code github.*} / {@code tailscale.*}
+ * block. The bridged shapes are the GitHub webhook secret and the tailscale oauth — the one
+ * domain-specific step the split {@code .secrets} layout requires. (Tekton git/docker source
+ * secrets were dropped: git auth flows from the App via PaC's dynamic git_auth, and no in-cluster
+ * build pulls a private registry.)
  *
  * <p>Absence — no {@code kubernetes.secrets} block — seals an empty material (the honest local
  * skip): the render then produces no source secrets and the replicator's targets stay at their
@@ -120,12 +120,9 @@ public class ReplicatorSecretsSealScenario
       final String sourceNamespace = k.path("sourceNamespace").asText();
       final JsonNode secretsMap = k.path("secrets");
       final Optional<JsonNode> tailscale = read(gateway, "tailscale");
-      final Optional<JsonNode> flox = read(gateway, "flox");
       final Optional<JsonNode> github = read(gateway, "github");
 
       final List<SourceSecret> sources = new ArrayList<>();
-      flox.ifPresent(
-          fx -> floxSecret(secretsMap.path("flox"), sourceNamespace, fx).ifPresent(sources::add));
       github.ifPresent(
           gh ->
               webhookSecret(secretsMap.path("web-hook"), sourceNamespace, gh)
@@ -135,20 +132,6 @@ public class ReplicatorSecretsSealScenario
               oauthSecret(secretsMap.path("tailscale"), sourceNamespace, ts.path("oauth"))
                   .ifPresent(sources::add));
       return new ReplicatorSourceSecretsMaterial(List.copyOf(sources));
-    }
-
-    private Optional<SourceSecret> floxSecret(
-        final JsonNode mapping, final String namespace, final JsonNode flox) {
-      if (mapping.path("name").isMissingNode() || flox.path("token").isMissingNode()) {
-        return Optional.empty();
-      }
-      return Optional.of(
-          new SourceSecret(
-              mapping.path("name").asText(),
-              namespace,
-              "Opaque",
-              Map.of("token", flox.path("token").asText()),
-              namespaces(mapping.path("replicateTo"))));
     }
 
     /**

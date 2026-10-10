@@ -12,7 +12,6 @@ import com.tngtech.jgiven.base.ScenarioTestBase;
 import com.tngtech.jgiven.impl.Scenario;
 import com.tngtech.jgiven.report.model.ReportModel;
 import com.tngtech.jgiven.report.model.ScenarioModel;
-import io.seedmatic.rke2lab.auth.contract.AuthTokenContact;
 import io.seedmatic.rke2lab.doctor.contract.Checkpoint;
 import io.seedmatic.rke2lab.doctor.contract.ConsultingService;
 import io.seedmatic.rke2lab.doctor.contract.DoctorCoordinate;
@@ -29,7 +28,6 @@ import io.seedmatic.rke2lab.incus.contract.IncusRunbookInput.Image;
 import io.seedmatic.rke2lab.incus.core.GrowIdentityResolver;
 import io.seedmatic.rke2lab.incus.core.GrowNetworkResolver;
 import io.seedmatic.rke2lab.incus.core.GrowPlanAssembler;
-import io.seedmatic.rke2lab.incus.core.LaunchSecretsWriter;
 import io.seedmatic.rke2lab.incus.ingress.BootstrapPaths;
 import io.seedmatic.rke2lab.incus.ingress.GrowIdentityView;
 import io.seedmatic.rke2lab.incus.ingress.GrowImageView;
@@ -98,12 +96,10 @@ import org.junit.jupiter.api.extension.RegisterExtension;
  * seeds).
  *
  * <p>Preview inertness lives at the FRONTIER, not in the scenario: under a surveying gate the scion
- * gets the {@link SurveyingImageBuilder} (plans the build, shells nothing) and no {@code
- * AuthTokenContact} at all (the optional CLI probe is tagged cultivating, so it resolves empty and
- * secrets fall back to the environment — no CLI). The manifests synthesis is pure FS, so it runs in
- * both modes. Every step renders PENDING via E9. The image markers are fixed (the offline mock
- * ignores them; the live config-derived plumbing is the same deferral the cluster/systemd twins
- * make for their kubeconfig / endpoint).
+ * gets the {@link SurveyingImageBuilder} (plans the build, shells nothing). The manifests synthesis
+ * is pure FS, so it runs in both modes. Every step renders PENDING via E9. The image markers are
+ * fixed (the offline mock ignores them; the live config-derived plumbing is the same deferral the
+ * cluster/systemd twins make for their kubeconfig / endpoint).
  */
 @SeedScenario
 public class IncusProvisionScenario
@@ -140,7 +136,7 @@ public class IncusProvisionScenario
   @MonotonicNonNull private IncusRunbookInput input;
 
   // Injected by the OsgiServiceExtension from THIS bundle's registry before the body. The edge
-  // collaborators (imageBuilder, broker, netplan, authToken) moved to the stages that drive them
+  // collaborators (imageBuilder, broker, netplan) moved to the stages that drive them
   // (@OsgiService there, filled by the stage creator). What stays on the scenario:
   // parcel — an ambient identity the body reads (Resolved.from) and threads to the Then; doctor —
   // await=false, the consult the body raises on a failure (empty when a world booted without it).
@@ -224,8 +220,6 @@ public class IncusProvisionScenario
         .and()
         .the_manifests_are_cultivated(
             hostScenario, hostTree, input.facet(), input.image(), worktreeRoot)
-        .and()
-        .the_secrets_are_written(resolved)
         .and()
         .the_network_and_identity_are_resolved(resolved);
     then()
@@ -323,7 +317,6 @@ public class IncusProvisionScenario
       String soil,
       String liveRoot,
       Path worktreeRoot,
-      Path secretsFile,
       String clusterName,
       String nodeName,
       boolean automount,
@@ -346,7 +339,6 @@ public class IncusProvisionScenario
               local.renderRoot().resolve(facet.clusterName() + "-" + facet.nodeName()).toString(),
               local.liveRoot().toString(),
               root,
-              local.secretsFile(),
               facet.clusterName(),
               facet.nodeName(),
               facet.automount(),
@@ -409,9 +401,6 @@ public class IncusProvisionScenario
     @OsgiService private Optional<ImageBuilder> imageBuilder = Optional.empty();
     @OsgiService private Optional<SeedBroker> broker = Optional.empty();
     @OsgiService private Optional<NetplanSynthesisService> netplan = Optional.empty();
-
-    @OsgiService(await = false)
-    private Optional<AuthTokenContact> authToken = Optional.empty();
 
     // The flat network + identity views the scion projects for the host GROW — assembled here (WHEN
     // fabricates), sealed into the plan by the THEN. Null for an unamended survey (no cluster to
@@ -580,26 +569,6 @@ public class IncusProvisionScenario
       runtimeNode.put("interceptBpf", runtime.interceptBpf());
       runtimeNode.put("interceptBpfDevices", runtime.interceptBpfDevices());
       return Optional.of(node);
-    }
-
-    /**
-     * Upsert the flox launch token into the worktree's {@code .secrets} (§ provisioning-slice delta
-     * #10) — a WHEN because it FABRICATES material (a file materialisation), BEFORE the {@code
-     * worktree.dir} mount binds it into the instance. {@link LaunchSecretsWriter} resolves the
-     * token from the environment first, else the {@link AuthTokenContact} edge. Mode-blind: the
-     * inertness lives at the frontier — the {@code AuthTokenContact} CLI probe is tagged {@code
-     * cultivating}, so a surveying run resolves it empty (no {@code flox} shelled) and the writer
-     * falls back to the environment; the step renders PENDING via E9. Skipped only for an unamended
-     * survey (no worktree {@code .secrets} to upsert). (GitHub is no longer written here — its
-     * credential flows from the App via {@code ghapp}, sealed in the cellar.)
-     */
-    public When the_secrets_are_written(@Hidden Optional<Resolved> maybeResolved) {
-      if (maybeResolved.isEmpty()) {
-        return self();
-      }
-      final Resolved resolved = maybeResolved.orElseThrow();
-      new LaunchSecretsWriter(authToken).ensureTokensPresent(resolved.secretsFile());
-      return self();
     }
 
     /**

@@ -33,7 +33,7 @@ import software.constructs.Construct;
  *   <li>a {@code Receiver} ({@code type: github}) that, on a signed {@code push}, tells
  *       source-controller to reconcile the {@code rke2lab} {@code GitRepository} at once;
  *   <li>the {@code flux-webhook-token} Secret it HMAC-validates against — a replica stub filled by
- *       mittwald from the replicator source (the same pull pattern as {@code floxhub-token}); the
+ *       mittwald from the replicator source (the same pull pattern as {@code github-token}); the
  *       operator seeds the value at {@code github.webhook.secret} in {@code .secrets} and
  *       configures the GitHub webhook's Secret field with the SAME value;
  *   <li>a Tailscale {@code Ingress} ({@code ingressClassName: tailscale}, {@code

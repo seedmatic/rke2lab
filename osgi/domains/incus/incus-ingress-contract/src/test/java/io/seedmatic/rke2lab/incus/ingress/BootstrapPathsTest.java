@@ -48,7 +48,7 @@ class BootstrapPathsTest {
   void asAutomountView_rebases_every_root_under_the_prefix() {
     final BootstrapPaths view = bootstrapPaths.asAutomountView(true, "/net/nikopol.local");
     assertEquals(Path.of("/net/nikopol.local/tmp/worktree"), view.worktreeRoot());
-    assertEquals(Path.of("/net/nikopol.local/tmp/worktree/.secrets"), view.secretsFile());
+    assertEquals(Path.of("/net/nikopol.local/tmp/worktree/.local.d"), view.stateRoot());
   }
 
   @Test

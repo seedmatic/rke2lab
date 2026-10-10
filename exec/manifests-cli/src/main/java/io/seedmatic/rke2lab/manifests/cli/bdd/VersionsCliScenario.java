@@ -46,7 +46,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
  * the staging and the bot commit — ride the host runbook the CLI renders.
  *
  * <p>Why a scion and not a bare host bumper: the bump reads {@code Worktree}/{@code
- * AuthTokenContact}/{@code NdhKeystoreReader}, all registered with their (non-seam) {@code
+ * GithubWriterTokenMint}/{@code NdhKeystoreReader}, all registered with their (non-seam) {@code
  * type=contract} bundle's class copy — a host-side {@code awaitService} on the flat copy never
  * matches (the structural breakage the synthesis CLI already dodges). Sowing through the broker
  * (the ONE {@code seed.broker.port} membrane) grows {@link

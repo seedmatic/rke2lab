@@ -640,7 +640,8 @@ public final class Main {
     public void run() {
       // The bump is a scion: this host root scenario sows the `manifests-versions` coordinate
       // through the broker and grows VersionBumpScenario in-container (where Worktree /
-      // AuthTokenContact / NdhKeystoreReader resolve bundle-side, unreachable to the flat host).
+      // GithubWriterTokenMint / NdhKeystoreReader resolve bundle-side, unreachable to the flat
+      // host).
       // The reaped runbook — the per-component report, and on apply the bumps + the bot commit — is
       // grafted into this host runbook and rendered to the console below.
       final VersionsCliRun cliRun =

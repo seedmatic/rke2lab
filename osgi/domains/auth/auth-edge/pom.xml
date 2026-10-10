@@ -12,10 +12,8 @@
 
   <artifactId>auth-edge</artifactId>
   <name>osgi/domains/auth/auth-edge</name>
-  <description>The live auth edge: an @Component satisfying AuthTokenContact by shelling
-    `gh auth token` / `flox auth token` via ProcessBuilder — the token-capture formerly inlined in the
-    host IncusResourceBootstrap.LaunchSecretsUpdater. Pure ProcessBuilder over the JDK, no embedded
-    jars, mirroring incus-edge's ssh contact.</description>
+  <description>The live auth edge: the @Components satisfying GithubWriterTokenMint and
+    GithubReaderTokenMint by delegating to the ghapp minter. No embedded jars.</description>
 
   <dependencies>
     <dependency>
@@ -28,10 +26,6 @@
     <dependency>
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>ghapp-contract</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.slf4j</groupId>
-      <artifactId>slf4j-api</artifactId>
     </dependency>
 
     <!-- bnd-consumed: @Component generates OSGI-INF/*.xml + the Service-Component header -->
