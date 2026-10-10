@@ -1,7 +1,7 @@
 creation_rules:
   # Age recipients for SOPS encryption.
   #
-  # - age1stxd... : Operator decryption key. ★ A STANDALONE age identity, deliberately NOT
+  # - age1hlvu... : Operator decryption key. ★ A STANDALONE age identity, deliberately NOT
   #                  derived from an SSH key, and it appears in no keys.yaml. Lives only at
   #                  ~/.config/sops/age/, which activation READS as an import candidate and
   #                  never rewrites, so it reaches /etc/sops/age/keys.txt and from there the
@@ -22,6 +22,7 @@ creation_rules:
   # - age10ey0l... : the `github-signing-hyland@26-05-29` SSH key, in the clear in this public
   #                  repository from 2026-08-27.
   # - age1k0tc4... : `rke2-cluster@26-05-29`, in the 52 store copies pushed to a public cache.
+  # - age1stxd... : operator, exposed in a session transcript on 2026-10-10 (not published).
   #
   # ndh carries two MORE recipients that this repo deliberately does not: the bioskop and nikopol
   # SSH HOST keys, which is how sops-nix decrypts on those machines at activation. Nothing here is
@@ -51,7 +52,7 @@ creation_rules:
     input_type: kubernetes
     encrypted_regex: '^(data|stringData)$'
     age: >-
-      age1stxdeh0t6arhdm7uhyy2jcf2qj9r9vfzkwte4jr4gj6hlpxe740seq8j82,
+      age1hlvu7l7kefeum8drzvc5jp0jhgsqw2h3t3a8rmzvx05lcrsmx48q2ehxsk,
       age16ldt7qagykh3zt609689p69vcpugth6rhzpyyufztyws7llcp4asjpvp9j
   # Everything else — `.secrets` — marks each secret scalar with a `# sops:encrypted` comment.
   # `.ndh-ssh.d/keys.yaml` is never encrypted HERE: it arrives encrypted from ndh, under ndh's
@@ -61,7 +62,7 @@ creation_rules:
   - path_regex: '.*'
     encrypted_comment_regex: 'sops:encrypted'
     age: >-
-      age1stxdeh0t6arhdm7uhyy2jcf2qj9r9vfzkwte4jr4gj6hlpxe740seq8j82,
+      age1hlvu7l7kefeum8drzvc5jp0jhgsqw2h3t3a8rmzvx05lcrsmx48q2ehxsk,
       age16ldt7qagykh3zt609689p69vcpugth6rhzpyyufztyws7llcp4asjpvp9j
 stores:
   json:
