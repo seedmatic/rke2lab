@@ -46,7 +46,7 @@ class TailscaleOauthClientGatewayTest {
     final SecretsGateway gw = new TailscaleOauthClientGateway(client);
 
     assertTrue(gw.read("kubernetes").isEmpty());
-    assertTrue(gw.read("tekton").isEmpty());
+    assertTrue(gw.read("github").isEmpty());
   }
 
   @Test

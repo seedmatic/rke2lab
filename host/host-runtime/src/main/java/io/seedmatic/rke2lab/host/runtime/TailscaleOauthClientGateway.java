@@ -29,8 +29,8 @@ import java.util.Optional;
  * pair the k8s-operator needs and presents it as the SAME shape the old {@code .secrets} tailscale
  * block had — {@code {"oauth":{"id":<CLIENT_ID>,"token":<full scalar>}}} — so {@code
  * ReplicatorSecretsSealScenario} consumes it unchanged. Chained ahead of {@link DotSecretsGateway}
- * (which serves the {@code kubernetes} mapping + {@code tekton}); every non-{@code tailscale} path
- * falls through.
+ * (which serves the {@code kubernetes} mapping and the other blocks); every non-{@code tailscale}
+ * path falls through.
  */
 public final class TailscaleOauthClientGateway implements SecretsGateway {
 
