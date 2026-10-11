@@ -116,23 +116,18 @@
           default = seed-incluster;
         };
 
-        # relock — THIS flake's locks, by the shared implementation in nix-flake-commons'
-        # `lib.mkRelockApp`. This flake is the `seed-incluster/develop` orphan branch of rke2lab, so it
-        # names its `branch`: the slug alone would take any rke2lab checkout for this one.
-        # `consumers` names rke2lab, which pins this branch as its `seed-incluster` input.
+        # relock — nix-flake-commons' `lib.mkRelockApp`, the one implementation every seedmatic
+        # flake shares. This head supplies its name; the heads, the order and what each head pins
+        # are read from nix-flake-commons:fabric/heads.
         apps.relock = {
           type = "app";
           program = "${
             inputs.flake-commons.lib.mkRelockApp {
               inherit pkgs;
               name = "seed-incluster";
-              slug = "seedmatic/rke2lab";
-              url = "https://github.com/seedmatic/rke2lab.git";
-              branch = "seed-incluster/develop";
-              consumers = [ "github:seedmatic/rke2lab" ];
             }
           }/bin/relock";
-          meta.description = "Reconcile THIS flake's locks: bump each input, DROP any bump that moves no exported derivation, push. --downstream requests rke2lab's own relock — impl: nix-flake-commons lib.mkRelockApp";
+          meta.description = "Reconcile THIS head's locks: bump each input, DROP any bump that moves nothing it exports, push. --plan shows a pass, --downstream plays it over every head of fabric/heads";
         };
 
         # Dev toolchain lives in the flox env (.flox/env/manifest.toml): `flox activate`
