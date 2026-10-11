@@ -1,0 +1,34 @@
+{
+  "schema": "seedmatic.relock/v1",
+  "head": "rke2lab",
+  "rev": "2e9c5890e96009e6fb2addc07bbf599fb3c2b6eb",
+  "status": {
+    "wave": "flake-commons@2026-10-11T09:19:47Z",
+    "tool": "3441528c8710e06d3fb518a0ec7f7bf8697b0a380245e74d765d35f0253eeb66",
+    "bumped": {
+      "flake-commons": [
+        "26a657da6c7066960d510babb7c1e0517ebe1d62",
+        "f994a3f785a72ace4100a500576bf95019b2cd39"
+      ],
+      "flox-controller": [
+        "327a064a263064db1e987e6b9c9ec1da5e6ecd0c",
+        "69a66ca851b59e7203685671a6761126ea6ce061"
+      ],
+      "seed-incluster": [
+        "64dcc3a5fcdf62e0b472bc6456c84bcd400b8050",
+        "038de00f0df4477b2f3549034cb78ad56104b8db"
+      ]
+    },
+    "dropped": [
+      "flox-runtime",
+      "ndh"
+    ],
+    "after": [],
+    "unmeasured": [
+      "packages of x86_64-darwin: one of them does not evaluate before any bump, so none of x86_64-darwin is measured — error:",
+      "packages of x86_64-linux: one of them does not evaluate before any bump, so none of x86_64-linux is measured — error:",
+      "apps of x86_64-darwin: one of them does not evaluate before any bump, so none of x86_64-darwin is measured — error:",
+      "apps of x86_64-linux: one of them does not evaluate before any bump, so none of x86_64-linux is measured — error:"
+    ]
+  }
+}
