@@ -32,9 +32,10 @@ import software.constructs.Construct;
  *       git_auth_secret} App token PaC injects into the PipelineRun).
  *   <li>{@code render-publish} — nix-build-annotated (the flox NRI system gives the {@code
  *       step-render} container the nix runtime: nix on PATH, daemonless {@code NIX_CONFIG}, and the
- *       {@code /nix} store overlay hosted on a persistent PVC), then runs {@code nix run
- *       .#render-manifests}: the SINGLE render definition (shared with dev/release, no
- *       hand-scripted mvn+java that drifts) builds {@code manifests-cli} with the reactor
+ *       {@code /nix} store overlay hosted on a persistent PVC), then runs the flake's {@code
+ *       render-manifests} app at the cloned revision (never the smudged working tree): the
+ *       SINGLE render definition (shared with dev/release, no hand-scripted mvn+java that
+ *       drifts) builds {@code manifests-cli} with the reactor
  *       discipline and seeds the {@code staging-extension} closure from a nix derivation (no
  *       separate bootstrap task), then runs the {@code update} verb — re-render following the
  *       branch HEAD facet + ff-push {@code manifests/<cluster>}.
@@ -409,8 +410,9 @@ public final class RenderPipelineManifestsUnit extends AbstractManifestsUnit {
                       [ -n "${SOPS_AGE_KEY:-}" ] || { echo >&2 "render: SOPS_AGE_KEY not set (git-sops inject / replicated sops-age missing)"; exit 1; }
                       set -x
                       git config --get filter.sops-yaml.smudge >/dev/null 2>&1 || { echo >&2 "render: sops-yaml git filter not registered (git-sops on-activate hook did not wire it)"; exit 1; }
-                      : "The flox NRI plugin put nix on PATH, injected NIX_CONFIG (daemonless single-user) and hosts the /nix store overlay on the assigned persistent PVC, so there is no flox env and no flox activate. nix run .#render-manifests from the source checkout is the ONE render definition shared with dev and release: it builds manifests-cli, signs, and ff-pushes manifests/<cluster>; the exe locates its render worktree at .local.d/worktrees/manifests/<cluster>"
-                      nix run .#render-manifests -- "$(params.cluster)" "$(params.node)"
+                      : "The flox NRI plugin put nix on PATH, injected NIX_CONFIG (daemonless single-user) and hosts the /nix store overlay on the assigned persistent PVC, so there is no flox env and no flox activate. The render-manifests app of the source checkout is the ONE render definition shared with dev and release: it builds manifests-cli, signs, and ff-pushes manifests/<cluster>; the exe locates its render worktree at .local.d/worktrees/manifests/<cluster>"
+                      : "The flake is named by REVISION, never as the working tree: the clone step smudged .secrets in clear, and evaluating the tree would copy it into this node's store. shallow=1 because the clone is a depth-1 fetch"
+                      nix run "git+file://$PWD?rev=`git rev-parse HEAD`&shallow=1#render-manifests" -- "$(params.cluster)" "$(params.node)"
                       """
                           .replace("@MAVEN_CACHE@", MAVEN_CACHE_PATH)
                           .replace("@PUSH_TOKEN_ENV@", GithubAppTokens.PIPELINE_TOKEN_ENV)),

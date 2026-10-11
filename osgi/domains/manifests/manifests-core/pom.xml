@@ -243,8 +243,10 @@
       <!-- Stage the flox-controller + seed-incluster CRDs (single-sourced from their flakes, never
            vendored) into target/generated-resources/crds. In generate-resources (POST-clean, unlike
            the old lifecycle participant which ran pre-clean and had to stage into src/): `mvn clean`
-           wipes the dir, so a renamed/removed CRD never lingers as stale output. Run from the repo
-           root so `.#stage-*-crd` resolves the flake. Skipped with -Dflox.crd-staging.skip=true (the
+           wipes the dir, so a renamed/removed CRD never lingers as stale output. The flake is named
+           by REVISION, never as `.`: a checkout may hold decrypted sops files, and evaluating the
+           working tree copies them into the store in clear — so the staging reflects HEAD, and an
+           uncommitted flake edit does not reach it. Skipped with -Dflox.crd-staging.skip=true (the
            nix reactor build stages the store CRDs itself; any nix-less host opts out the same way). -->
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
@@ -265,7 +267,7 @@
                 <!-- Pass THIS build's profile-specific dir (target~claude / target~nxmatic / target)
                      so the CRDs land where build-helper embeds from; Maven resolves the property
                      before sh sees it. -->
-                <argument>nix run .#stage-flox-controller-crd -- "${project.build.directory}/generated-resources/crds" &amp;&amp; nix run .#stage-seed-incluster-crd -- "${project.build.directory}/generated-resources/crds" &amp;&amp; nix run .#stage-seed-incluster-rbac -- "${project.build.directory}/generated-resources/rbac" &amp;&amp; nix run .#stage-flox-controller-rbac -- "${project.build.directory}/generated-resources/rbac" &amp;&amp; nix run .#stage-image-refs -- "${project.build.directory}/generated-resources/image-refs"</argument>
+                <argument>flake="git+file://$PWD?rev=$(git rev-parse HEAD)" &amp;&amp; nix run "$flake#stage-flox-controller-crd" -- "${project.build.directory}/generated-resources/crds" &amp;&amp; nix run "$flake#stage-seed-incluster-crd" -- "${project.build.directory}/generated-resources/crds" &amp;&amp; nix run "$flake#stage-seed-incluster-rbac" -- "${project.build.directory}/generated-resources/rbac" &amp;&amp; nix run "$flake#stage-flox-controller-rbac" -- "${project.build.directory}/generated-resources/rbac" &amp;&amp; nix run "$flake#stage-image-refs" -- "${project.build.directory}/generated-resources/image-refs"</argument>
               </arguments>
             </configuration>
           </execution>

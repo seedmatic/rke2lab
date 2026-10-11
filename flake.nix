@@ -617,7 +617,7 @@
         };
 
         # The manifests-cli render exe alone — a lean `-pl :manifests-cli -am` build the
-        # `render-manifests` app runs (`nix build .#manifests-cli` → run the jar), mirroring
+        # `render-manifests` app runs (build manifests-cli from its own store source → run the jar), mirroring
         # deploy/seed-outcluster. Same shared closure, so CRD staging + spotless gate are
         # identical; the resulting fat jar is self-contained (CRDs baked in) so running it
         # needs no maven cache, bootstrap or CRD staging at runtime.
@@ -954,12 +954,12 @@ USAGE
             # Maven-in-nix cache knob — SAME model as `.#render-manifests`: M2_REPO is the ONE knob
             # (the read-only tail with the released private deps), and the persistent maven-build-cache
             # is DERIVED beside it (its parent) unless MAVEN_BUILD_CACHE is set explicitly. Both are
-            # read IMPURELY (getEnv) by the inner `nix build .#seed-outcluster`, so exporting them here
+            # read IMPURELY (getEnv) by the inner seed-outcluster build, so exporting them here
             # makes that build INCREMENTAL instead of a cold tmpfs primary every `nix run .#grow`.
             : "''${M2_REPO:?set M2_REPO to your maven repository, e.g. \$HOME/.m2/repository}"
             export MAVEN_BUILD_CACHE="''${MAVEN_BUILD_CACHE:-$(dirname "$M2_REPO")}"
 
-            # The inner `nix build .#seed-outcluster` is a SEPARATE child nix process — flags on the
+            # The inner seed-outcluster build is a SEPARATE child nix process — flags on the
             # OUTER `nix run` (e.g. `nix run .#grow -L …`) go to building THIS wrapper, not it. So it
             # always gets `-L` (surface the build log), plus whatever the shared NIX_FLAGS env adds,
             # e.g. `NIX_FLAGS='--rebuild -Lvv' nix run .#grow -- dev up`. Same var across every app.
@@ -987,8 +987,11 @@ USAGE
               fi
             fi
 
+            # The inner build names THIS flake's own store source, never `.`: the checkout it runs in
+            # may hold decrypted sops files, and evaluating the working tree would copy them into the
+            # store in clear. So it builds what the outer `nix run` was given, not the working tree.
             echo "==> building seed-outcluster from the store" >&2
-            jar="$(nix build .#seed-outcluster "''${nixFlags[@]}" --no-link --print-out-paths)/share/java/seed-outcluster.jar"
+            jar="$(nix build "${self}#seed-outcluster" "''${nixFlags[@]}" --no-link --print-out-paths)/share/java/seed-outcluster.jar"
             [ -f "$jar" ] || { echo "error: store jar not found at $jar" >&2; exit 1; }
 
             # Swap Pulumi.yaml's binary to the store jar for the duration; always
@@ -1057,7 +1060,8 @@ USAGE
             # Build the manifests-cli exe from the store — the shared reactor derivation
             # stages the CRDs, resolves deps + gates spotless, so the fat jar is
             # self-contained (no runtime maven cache, bootstrap or CRD staging). Mirrors
-            # `grow`'s `nix build .#seed-outcluster`. The build is IMPURE (mvnHost reads M2_REPO) —
+            # `grow`'s inner build, and like it names this flake's store source, never `.` (a checkout
+            # may hold decrypted sops files). The build is IMPURE (mvnHost reads M2_REPO) —
             # the caller sets it (in-cluster: the maven-cache PVC). GH_TOKEN is no longer read by
             # the build, only by the fetches and the push around it. The inner build is a SEPARATE child nix process, so it always
             # gets `-L` (surface the build log) plus the shared NIX_FLAGS env (e.g.
@@ -1085,7 +1089,7 @@ USAGE
             fi
 
             echo "==> building manifests-cli from the store" >&2
-            jar="$(nix build .#manifests-cli "''${nixFlags[@]}" --no-link --print-out-paths)/share/java/manifests.jar"
+            jar="$(nix build "${self}#manifests-cli" "''${nixFlags[@]}" --no-link --print-out-paths)/share/java/manifests.jar"
             [ -f "$jar" ] || { echo "error: store jar not found at $jar" >&2; exit 1; }
 
             # publish prepares a linked worktree on manifests/<cluster> and FOLLOWS its HEAD facet, so
@@ -1210,7 +1214,7 @@ USAGE
         };
 
         # Standalone: `GH_TOKEN=$(nix run .#mint-gh-app-token) …` — mint a packages:read GitHub
-        # App token from .secrets. No longer needed by `nix build .#seed-outcluster` itself (the reactor
+        # App token from .secrets. No longer needed by the seed-outcluster build itself (the reactor
         # resolves from public sources); it is for the flake-input fetches and the push.
         apps.mint-gh-app-token = {
           type = "app";
