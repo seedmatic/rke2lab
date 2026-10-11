@@ -36,14 +36,10 @@
 
   inputs = {
     # ndh (nix-darwin-home) IS an input of this flake — see `ndh` at the bottom of this block.
-    # The comment that stood here claimed the exact opposite ("must NEVER be an input", "would
-    # close the loop into a real flake-eval cycle") and was not retired on the day it was
-    # broken. The real model is stated at that input: a MUTUAL edge, cut with a reciprocal
-    # EMPTY follows, each side consuming only a self-contained constant of the other. So
-    # bidirectional with a cut, never one-directional. The old text was worse than decorative —
-    # it was actionable in the WRONG direction: a reader would conclude this flake is broken,
-    # or remove the input to "restore the invariant", which would break the five things this
-    # repo genuinely consumes from ndh.
+    # ndh does not pin this flake back: it pins its DELIVERY, the fabric/plan orphan, which pins
+    # nothing — so the edge is one-directional and nothing is cut. What keeps it so is relock's
+    # plan, which refuses any pin cycle among the heads of fabric/heads, read from their locks;
+    # no guard here names an input (one did, `nix-darwin-home`, which no input was ever called).
     #
     # ★ Why it survived is the part worth keeping: the comment said `nix-darwin-home` while the
     # input says `ndh`, so NO search ever touched both. An incomplete rename does not leave a
@@ -85,7 +81,7 @@
     # boot over devlxd (never baked), and sops-install-secrets decrypts the cluster-CA bundle +
     # tokens into /run. Followed through flake-commons so the version stays in lock-step with
     # nix-darwin-home. Only the flake input and its `nixosModules.sops` are consumed here — the
-    # nix-darwin-home sops *module* is NOT imported (that would breach the invariant above).
+    # nix-darwin-home sops *module* is NOT imported.
     sops-nix.follows = "flake-commons/sops-nix";
 
     # The flox runtime flake owns the NRI plugin + per-workload package
@@ -139,26 +135,6 @@
 
   outputs = inputs@{ self, nixpkgs, flake-utils, flox-runtime, flox-controller, seed-incluster, flox, sops-nix, ... }:
     let
-      # Enforce the INVARIANT above mechanically, not just by comment: fail eval
-      # (any `nix build`/`nix eval` of this flake) with a printed diagnostic if
-      # nix-darwin-home is ever wired in as an input. The `...` in the argument
-      # set would otherwise swallow it silently. The dependency must stay
-      # one-directional — nix-darwin-home -> rke2lab — so this edge never closes
-      # into a flake-eval cycle.
-      _invariantGuard =
-        if inputs ? nix-darwin-home then
-          throw ''
-            rke2lab flake INVARIANT violated: `nix-darwin-home` is an input.
-            The two repos relate in opposite scopes — nix-darwin-home depends on
-            rke2lab at build/eval time (it imports lib.networkBlueprint), while
-            rke2lab depends on nix-darwin-home only at runtime (incus instances
-            run on the host it provisions). Adding nix-darwin-home as an input
-            here closes that into a real flake-eval cycle. Remove the input;
-            keep the dependency one-directional: nix-darwin-home -> rke2lab.
-          ''
-        else
-          null;
-
       # The network blueprint is OS-independent data (cluster/node IDs, MAC
       # patterns, addressing): the netplan jar is a portable JDK/Maven build, so
       # the YAML — and the data parsed from it — is identical regardless of which
@@ -527,9 +503,6 @@
             networkBlueprintData.segments).cidr;
       };
     in
-    # Force the invariant guard before returning any output, so a forbidden
-    # nix-darwin-home input fails eval with the diagnostic rather than slipping by.
-    builtins.seq _invariantGuard
     (flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
