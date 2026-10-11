@@ -25,13 +25,16 @@ import org.osgi.service.component.annotations.Component;
  *
  * <ul>
  *   <li>a KEY is read at its NEWEST slot — the generation it presents;
- *   <li>an AUTHORITY signs with its OLDEST slot — trust in a new authority distributes one
- *       activation at a time while a signature takes effect at once, so signing with the newest
- *       would hand an un-activated verifier a certificate it cannot check.
+ *   <li>an AUTHORITY signs with its OLDEST slot that is not marked {@code compromised} — trust in a
+ *       new authority distributes one activation at a time while a signature takes effect at once,
+ *       so signing with the newest would hand an un-activated verifier a certificate it cannot
+ *       check; a compromised slot never signs, so the signature moves at once. That slot is also
+ *       the one the authority PRESENTS: its {@code ca_crt} and its {@code private} are read
+ *       together, so ClusterSeal never pairs one generation's root with the other's key.
  * </ul>
  *
- * <p>{@code ca_crt} and {@code domain} stayed at the authority level. There is no fallback to the
- * v1 flat {@code public}/{@code private}: an entry without slots raises, naming the shape.
+ * <p>{@code domain} stays at the authority level; {@code ca_crt} is per slot. There is no fallback
+ * to the v1 flat {@code public}/{@code private}: an entry without slots raises, naming the shape.
  *
  * <p>{@link #present()} is the fail-soft gate; the accessors are fail-fast — a
  * present-but-malformed store (unparseable, PLAINTEXT at rest, or a missing field) raises, a defect
@@ -61,7 +64,8 @@ public final class DefaultNdhKeystoreReader implements NdhKeystoreReader {
 
   @Override
   public String authorityCert(String authority) {
-    return text(read(), "authorities", authority, "ca_crt");
+    final JsonNode root = read();
+    return text(root, "authorities", authority, "slots", signingSlot(root, authority), "ca_crt");
   }
 
   @Override
@@ -72,13 +76,7 @@ public final class DefaultNdhKeystoreReader implements NdhKeystoreReader {
   @Override
   public String authorityPrivate(String authority) {
     final JsonNode root = read();
-    return text(
-        root,
-        "authorities",
-        authority,
-        "slots",
-        oldestSlot(root, "authorities", authority),
-        "private");
+    return text(root, "authorities", authority, "slots", signingSlot(root, authority), "private");
   }
 
   @Override
@@ -98,8 +96,18 @@ public final class DefaultNdhKeystoreReader implements NdhKeystoreReader {
     return slots.get(slots.size() - 1);
   }
 
-  private String oldestSlot(final JsonNode root, final String section, final String name) {
-    return slots(root, section, name).get(0);
+  /** The oldest generation not marked {@code compromised} — the one an authority signs with. */
+  private String signingSlot(final JsonNode root, final String authority) {
+    final JsonNode slots = root.path("authorities").path(authority).path("slots");
+    return slots(root, "authorities", authority).stream()
+        .filter(slot -> slots.path(slot).path("compromised").asText("").isEmpty())
+        .findFirst()
+        .orElseThrow(
+            () ->
+                new IllegalStateException(
+                    "authority '"
+                        + authority
+                        + "': every slot is marked compromised — nothing may sign"));
   }
 
   /** The entry's generations, oldest first — {@code YY-MM-DD} sorts as a date. */
