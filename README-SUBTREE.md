@@ -128,9 +128,10 @@ only the root cert itself changes:
 # pathLenConstraint — step's root-ca profile stamps pathlen:1, too tight for a
 # 3-tier chain like RKE2's root -> intermediate-ca -> server-ca -> leaf).
 # Run from the repo root (the app resolves keys.yaml via `git rev-parse`).
-nix run .#authority-bootstrap-tls-root -- mammoth-skate-tls --force
-sops -d modules/home-manager/ssh.d/keys.yaml \
-  | yq -r '.authorities."mammoth-skate-tls".ca_crt' \
+nix run "git+file://$PWD?rev=$(git rev-parse HEAD)#authority-bootstrap-tls-root" -- mammoth-skate-tls --force
+# ca_crt is plaintext, per slot: the newest slot's root is the one just minted.
+yq -r '.authorities."mammoth-skate-tls".slots | to_entries | sort_by(.key) | .[-1].value.ca_crt' \
+    modules/home-manager/ssh.d/keys.yaml \
   | step certificate inspect - | grep -A1 'Basic Constraints'   # expect CA:TRUE, no pathlen
 ```
 
