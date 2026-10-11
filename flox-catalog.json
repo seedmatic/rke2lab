@@ -1,0 +1,20 @@
+{
+  "schema": "seedmatic.relock/v1",
+  "head": "flox-catalog",
+  "rev": "0c8c3bed6e89a0c67ad7b788a779ace2b93267a0",
+  "status": {
+    "wave": "flake-commons@2026-10-11T09:19:47Z",
+    "tool": "3441528c8710e06d3fb518a0ec7f7bf8697b0a380245e74d765d35f0253eeb66",
+    "bumped": {
+      "rke2lab": [
+        "c380d44156e6631bb0fc6f1673152658bbafd504",
+        "2e9c5890e96009e6fb2addc07bbf599fb3c2b6eb"
+      ]
+    },
+    "dropped": [],
+    "after": [
+      "lock-envs"
+    ],
+    "unmeasured": []
+  }
+}
