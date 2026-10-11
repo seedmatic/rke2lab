@@ -41,13 +41,13 @@
       "description": "GNU Bourne-Again Shell, the de facto standard shell on Linux (for interactive use)",
       "install_id": "bash",
       "license": "GPL-3.0-or-later",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=151fa4e8ddfdd8dd25d945ad94ed54a13de9f6e4",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=6510408d147d8c5e6d76043e899e9251756f6a75",
       "name": "bash-interactive-5.3p15",
       "pname": "bash",
-      "rev": "151fa4e8ddfdd8dd25d945ad94ed54a13de9f6e4",
-      "rev_count": 1086391,
-      "rev_date": "2026-10-06T04:29:54Z",
-      "scrape_date": "2026-10-07T05:31:52.011353Z",
+      "rev": "6510408d147d8c5e6d76043e899e9251756f6a75",
+      "rev_count": 1089111,
+      "rev_date": "2026-10-10T01:01:48Z",
+      "scrape_date": "2026-10-11T05:32:39.128416Z",
       "stabilities": [
         "unstable"
       ],
@@ -77,13 +77,13 @@
       "description": "GNU Core Utilities",
       "install_id": "coreutils",
       "license": "GPL-3.0-or-later",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=151fa4e8ddfdd8dd25d945ad94ed54a13de9f6e4",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=6510408d147d8c5e6d76043e899e9251756f6a75",
       "name": "coreutils-9.11",
       "pname": "coreutils",
-      "rev": "151fa4e8ddfdd8dd25d945ad94ed54a13de9f6e4",
-      "rev_count": 1086391,
-      "rev_date": "2026-10-06T04:29:54Z",
-      "scrape_date": "2026-10-07T05:31:52.605562Z",
+      "rev": "6510408d147d8c5e6d76043e899e9251756f6a75",
+      "rev_count": 1089111,
+      "rev_date": "2026-10-10T01:01:48Z",
+      "scrape_date": "2026-10-11T05:32:39.698724Z",
       "stabilities": [
         "unstable"
       ],
@@ -110,13 +110,13 @@
       "description": "Distributed version control system",
       "install_id": "git",
       "license": "GPL-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=151fa4e8ddfdd8dd25d945ad94ed54a13de9f6e4",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=6510408d147d8c5e6d76043e899e9251756f6a75",
       "name": "git-2.55.0",
       "pname": "git",
-      "rev": "151fa4e8ddfdd8dd25d945ad94ed54a13de9f6e4",
-      "rev_count": 1086391,
-      "rev_date": "2026-10-06T04:29:54Z",
-      "scrape_date": "2026-10-07T05:31:53.970187Z",
+      "rev": "6510408d147d8c5e6d76043e899e9251756f6a75",
+      "rev_count": 1089111,
+      "rev_date": "2026-10-10T01:01:48Z",
+      "scrape_date": "2026-10-11T05:32:41.022116Z",
       "stabilities": [
         "unstable"
       ],
@@ -141,13 +141,13 @@
       "description": "Simple and flexible tool for managing secrets",
       "install_id": "sops",
       "license": "MPL-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=151fa4e8ddfdd8dd25d945ad94ed54a13de9f6e4",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=6510408d147d8c5e6d76043e899e9251756f6a75",
       "name": "sops-3.13.3",
       "pname": "sops",
-      "rev": "151fa4e8ddfdd8dd25d945ad94ed54a13de9f6e4",
-      "rev_count": 1086391,
-      "rev_date": "2026-10-06T04:29:54Z",
-      "scrape_date": "2026-10-07T05:34:26.901967Z",
+      "rev": "6510408d147d8c5e6d76043e899e9251756f6a75",
+      "rev_count": 1089111,
+      "rev_date": "2026-10-10T01:01:48Z",
+      "scrape_date": "2026-10-11T05:35:10.048288Z",
       "stabilities": [
         "unstable"
       ],
@@ -170,13 +170,13 @@
       "description": "Portable command-line YAML processor",
       "install_id": "yq-go",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=151fa4e8ddfdd8dd25d945ad94ed54a13de9f6e4",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=6510408d147d8c5e6d76043e899e9251756f6a75",
       "name": "yq-go-4.54.1",
       "pname": "yq-go",
-      "rev": "151fa4e8ddfdd8dd25d945ad94ed54a13de9f6e4",
-      "rev_count": 1086391,
-      "rev_date": "2026-10-06T04:29:54Z",
-      "scrape_date": "2026-10-07T05:35:52.795628Z",
+      "rev": "6510408d147d8c5e6d76043e899e9251756f6a75",
+      "rev_count": 1089111,
+      "rev_date": "2026-10-10T01:01:48Z",
+      "scrape_date": "2026-10-11T05:36:39.338350Z",
       "stabilities": [
         "unstable"
       ],
@@ -195,12 +195,12 @@
     },
     {
       "install_id": "git-sops-filter",
-      "locked-url": "path:/Volumes/git-worktree-store/seedmatic/rke2lab.d/flox-catalog?lastModified=1791387060&narHash=sha256-lFTAsB4/qAoi4tCqcJbU2jKu6UqiHtXlupxXBF%2Bj54E%3D",
+      "locked-url": "path:/private/tmp/.nxmatic/tmp.pAiwkZ4RzV/flox-catalog?lastModified=1791711722&narHash=sha256-b3x41OKLv9WX94Nm61zZzzyxnqQmCUPX3m1FLJhtz3U%3D",
       "flake-description": "Flox runtime env catalog: per-workload packages (kdns, tailscale) the flox-nri-plugin injects. The plugin itself now lives in github:seedmatic/flox-nri-plugin (consumed as the flox-runtime input of the rke2lab flake).",
       "locked-flake-attr-path": "packages.aarch64-linux.git-sops-filter",
-      "derivation": "/nix/store/53zmplnbnpz8pzy6hxhr5ab8hhrsssdk-git-sops-filter.drv",
+      "derivation": "/nix/store/5vzmzwfav1bmmxkdngalkqa4mmh4xa8d-git-sops-filter.drv",
       "outputs": {
-        "out": "/nix/store/vbypxbjf1czylnaha9cx4dshfyvr2979-git-sops-filter"
+        "out": "/nix/store/4q6lnh593hgmwqd6n0rqd08hr6m1kfsi-git-sops-filter"
       },
       "output-names": [
         "out"
