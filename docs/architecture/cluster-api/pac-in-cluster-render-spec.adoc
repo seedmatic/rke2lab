@@ -527,12 +527,14 @@ is a different concern — the `.secrets` DOOR — not a process secret.
 | `revealSigningKey()` reads the ndh keystore (`sshPrivate("github-signing")` + `authorityDomain`) —
   the `manifests publish` verb's current path.
 | `revealSigningKey()` reads the env (`RKE2LAB_SIGNING_KEY`) fed by a *mounted Secret* — the signing
-  key rides the same NODE_BOOTSTRAP → mittwald-replicator lane as `tekton.git`/`tekton.docker` (the
-  OPERATOR bootstrap emits it from its keystore, exactly as it emits `sops-age`), replicated into
+  key rides the NODE_BOOTSTRAP → mittwald-replicator lane (the OPERATOR bootstrap emits it from its
+  keystore, exactly as it emits `sops-age`; the `tekton.git`/`tekton.docker` blocks that once shared
+  the lane were dropped — Tekton authenticates with the token PaC mints through the GitHub App), replicated into
   `tekton-pipelines`, mounted into `render-publish`. The bot's authority domain is the code constant.
 
 | ndh keystore (`sops-age` age key, cluster-pki)
-| Read from the sops-smudged `.ndh-ssh.d/keys.yaml`.
+| Read from `.ndh-ssh.d/keys.yaml`, encrypted at rest: `DefaultNdhKeystoreReader` decrypts it in
+memory (`sops --decrypt`) and refuses a plaintext file.
 | *Not read.* The enclosure gates `SopsAgeMaterialResolver` + the cluster-pki reads OFF in-cluster —
   `sops-age` is a NODE_BOOTSTRAP bootstrap secret already applied at the operator's first grow, never
   re-emitted by an in-cluster render.
