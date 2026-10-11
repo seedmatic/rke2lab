@@ -7,7 +7,7 @@
   # extra-substituters, nixConfig is applied before outputs are evaluated, so
   # `nix build .#seed-outcluster` works without a manual `--impure`. This only takes
   # effect when rke2lab is the TOP-LEVEL flake; when consumed as an input (e.g.
-  # nix-darwin-home reading `lib.networkBlueprint`), it is ignored and that pure
+  # flox-catalog's rke2lab pin), it is ignored and that pure
   # path never forces the impure getEnv. First use prompts to trust the config
   # unless `accept-flake-config = true` is set.
   nixConfig.pure-eval = false;
@@ -124,15 +124,11 @@
     seed-incluster.inputs.flake-commons.follows = "flake-commons";
 
     # Federation (Direction A): rke2lab consumes ndh's home-LAN facts
-    # (catalog.netplan.lan). ndh already imports rke2lab's lib.networkBlueprint,
-    # so this closes a mutual edge — cut with a reciprocal EMPTY follows: ndh's
-    # back-reference to rke2lab follows THIS root, which breaks the lock cycle
-    # while both flakes still build standalone. Consume ONLY `.lan` (a
-    # self-contained constant); NEVER `.segments`/`.asns` (they union
-    # networkBlueprint → value cycle). Pinned as a github rev now that the cut is
-    # proven (a local path during prototyping).
+    # (catalog.netplan.lan). ndh pins rke2lab's DELIVERY — the fabric/plan orphan — not
+    # this flake, so the pair is no cycle and nothing is cut. Consume ONLY `.lan` (a
+    # self-contained constant); NEVER `.segments`/`.asns`: they union rke2lab's own plan,
+    # so reading them back would feed the plan into itself.
     ndh.url = "ndh";
-    ndh.inputs.rke2lab.follows = "";
 
     # rke2lab's own delivery, pinned back like any head: netplan.json + dataplan.json on the
     # fabric/plan orphan, which `nix run .#publish-plan` writes. Data, not a flake.
@@ -211,8 +207,8 @@
 
       # Host ~/.m2 reuse for the Maven-in-nix builds. These read the host env at eval
       # time — they resolve ONLY when the eval is IMPURE. rke2lab as the top-level flake
-      # has `nixConfig.pure-eval = false`, but when nix-darwin-home consumes it as an
-      # input (building planJar via lib.networkBlueprint) that config is ignored and
+      # has `nixConfig.pure-eval = false`, but when another flake consumes it as an
+      # input (flox-catalog pins rke2lab) that config is ignored and
       # the eval is PURE → getEnv returns "" → hostM2Repo becomes "/.m2/repository". So that path
       # MUST be evaluated impurely: `darwin-rebuild … --impure` (or the equivalent on the consuming
       # flake). Without it the seed below copies nothing and the build dies resolving
