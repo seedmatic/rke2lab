@@ -39,7 +39,7 @@ while read -r local_ref local_sha _remote_ref _remote_sha; do
   git fetch -q origin fabric/plan
   if ! git merge-base --is-ancestor "$rev" FETCH_HEAD 2>/dev/null; then
     echo "  ⛔ $local_ref pins fabric-plan at ${rev:0:12}, which origin's fabric/plan does not carry." >&2
-    echo "     No one else can fetch it. Push the delivery first (nix run .#publish-plan)," >&2
+    echo "     No one else can fetch it. Push the delivery first (nix run \"git+file://\$PWD?rev=\$(git rev-parse HEAD)#publish-plan\")," >&2
     echo "     then relock the pin against origin." >&2
     refused=1
     continue
@@ -72,14 +72,14 @@ while read -r local_ref local_sha _remote_ref _remote_sha; do
   for file in netplan dataplan; do
     if ! git cat-file -e "$rev:$file.json" 2>/dev/null; then
       echo "  ⛔ $local_ref pins a fabric/plan revision without $file.json (${rev:0:12})." >&2
-      echo "     Deliver the plan (nix run .#publish-plan), then relock the pin." >&2
+      echo "     Deliver the plan (nix run \"git+file://\$PWD?rev=\$(git rev-parse HEAD)#publish-plan\"), then relock the pin." >&2
       refused=1
       continue
     fi
     git show "$rev:$file.json" | run yq -p=json -o=json 'sort_keys(..)' >"$tree.$file.pinned"
     if ! cmp -s "$tree.$file.pinned" "$tree.$file.fresh"; then
       echo "  ⛔ $local_ref pins a STALE fabric/plan: its $file.json differs from what the pushed" >&2
-      echo "     sources produce. Deliver them (nix run .#publish-plan), then relock the pin." >&2
+      echo "     sources produce. Deliver them (nix run \"git+file://\$PWD?rev=\$(git rev-parse HEAD)#publish-plan\"), then relock the pin." >&2
       refused=1
     fi
   done
