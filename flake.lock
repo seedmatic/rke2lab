@@ -66,11 +66,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1791697083,
-        "narHash": "sha256-00Y5Zk1TcOJDtC1n8stQyR0cVC6gYOkdREa3a9AiDlU=",
+        "lastModified": 1791710403,
+        "narHash": "sha256-WkEvBanL58Ms49jBENb9OGIkHLU2e+f91cs2gD2b0u4=",
         "owner": "seedmatic",
         "repo": "nix-flake-commons",
-        "rev": "26a657da6c7066960d510babb7c1e0517ebe1d62",
+        "rev": "f994a3f785a72ace4100a500576bf95019b2cd39",
         "type": "github"
       },
       "original": {
