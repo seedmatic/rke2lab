@@ -28,7 +28,8 @@ creation_rules:
   # SSH HOST keys, which is how sops-nix decrypts on those machines at activation. Nothing here is
   # read at a host's activation, so adding them would widen the blast radius for nothing.
 
-  # ⛔ These path_regex values MUST mirror the `filter=sops-*` entries in .gitattributes.
+  # ⛔ These path_regex values MUST mirror the files that are sops-encrypted: the `filter=sops-*`
+  # entries in .gitattributes, and `.secrets`, which has no filter and stays encrypted on disk.
   # When they drifted, 8 SSH private keys were published in the clear for five weeks.
   #
   # The rules are tried IN ORDER and the FIRST path match wins. The Kubernetes rule used to

@@ -11,6 +11,7 @@ import io.seedmatic.rke2lab.controlplane.config.BootstrapConfig;
 import io.seedmatic.rke2lab.controlplane.config.ConfigLoader;
 import io.seedmatic.rke2lab.controlplane.config.GithubAppCli;
 import io.seedmatic.rke2lab.controlplane.config.Rke2labConfig;
+import io.seedmatic.rke2lab.host.runtime.SopsAtRest;
 import io.seedmatic.rke2lab.incus.ingress.BootstrapPaths;
 import io.seedmatic.rke2lab.osgi.runtime.junit.launcher.JUnitLauncherCore;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.LogLevelSeed;
@@ -77,12 +78,15 @@ public final class Main {
     Pulumi.run(
         context -> {
           final RunMode runMode = RunMode.detect(true);
-          // Two-document view: the Pulumi stack config joined with the worktree's smudged .secrets,
-          // so a coordinate's `secret:` meta pulls its provider subtree in. `.secrets` sits at the
-          // worktree root, which IS the CWD `pulumi up` runs from — the worktree root is harvested
-          // OSGi-side, never derived here (see below).
+          // Two-document view: the Pulumi stack config joined with the worktree's .secrets, opened
+          // in memory by sops, so a coordinate's `secret:` meta pulls its provider subtree in.
+          // `.secrets` sits at the worktree root, which IS the CWD `pulumi up` runs from — the
+          // worktree root is harvested OSGi-side, never derived here (see below).
           final ConfigLoader loader =
-              ConfigLoader.of(context.config(), Path.of(".secrets").toAbsolutePath().normalize());
+              ConfigLoader.of(
+                  context.config(),
+                  Path.of(".secrets").toAbsolutePath().normalize(),
+                  new SopsAtRest());
           final Rke2labConfig config = Rke2labConfig.from(loader);
           // worktree.dir is NOT config and NOT derived here: the worktree soil (OSGi-side, played
           // as

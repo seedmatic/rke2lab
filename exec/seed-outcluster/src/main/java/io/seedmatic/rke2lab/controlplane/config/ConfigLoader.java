@@ -4,9 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.pulumi.Config;
+import io.seedmatic.rke2lab.host.runtime.SopsAtRest;
 import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
-import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -64,13 +63,14 @@ public final class ConfigLoader {
   }
 
   /**
-   * Live over TWO documents: the Pulumi stack config AND the smudged {@code .secrets} file. The
-   * config is read plainly; the {@code .secrets} document is held for {@link #bind(Class, String)}
-   * to deep-merge on demand, directed by a bound record's {@link SecretJoin}. A missing/unreadable
-   * {@code .secrets} yields an empty secret side (a survey without secrets falls to defaults).
+   * Live over TWO documents: the Pulumi stack config AND the {@code .secrets} file, encrypted at
+   * rest and opened in memory by {@code sops}. The config is read plainly; the {@code .secrets}
+   * document is held for {@link #bind(Class, String)} to deep-merge on demand, directed by a bound
+   * record's {@link SecretJoin}. A missing {@code .secrets} yields an empty secret side (a survey
+   * without secrets falls to defaults).
    */
-  public static ConfigLoader of(Config config, Path secretsFile) {
-    return new ConfigLoader(new PulumiSections(config), NestedDocument.ofYaml(secretsFile));
+  public static ConfigLoader of(Config config, Path secretsFile, SopsAtRest sops) {
+    return new ConfigLoader(new PulumiSections(config), NestedDocument.ofYaml(secretsFile, sops));
   }
 
   /** Offline/test: a root map keyed by top-level section; dotted names walk into sub-maps. */
@@ -290,17 +290,13 @@ public final class ConfigLoader {
    */
   private record NestedDocument(JsonNode root) implements SectionReader {
 
-    /** Parse a smudged {@code .secrets}-style YAML file, or an empty document when unreadable. */
-    static NestedDocument ofYaml(Path file) {
+    /** Open an encrypted {@code .secrets}-style YAML file, or an empty document when absent. */
+    static NestedDocument ofYaml(Path file, SopsAtRest sops) {
       if (!Files.isReadable(file)) {
         return new NestedDocument(JsonNodeFactory.instance.objectNode());
       }
-      try {
-        final JsonNode root = CODEC.reading().readYaml(Files.readString(file));
-        return new NestedDocument(root == null ? JsonNodeFactory.instance.objectNode() : root);
-      } catch (IOException ex) {
-        throw new UncheckedIOException("failed to read the secrets file at " + file, ex);
-      }
+      final JsonNode root = CODEC.reading().readYaml(sops.open(file));
+      return new NestedDocument(root == null ? JsonNodeFactory.instance.objectNode() : root);
     }
 
     /** Wrap an already-parsed section→submap root (the offline fixtures). */

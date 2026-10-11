@@ -99,9 +99,10 @@ public final class FloxEnvManifestsUnit extends AbstractManifestsUnit {
     // stop re-declaring the same tools. No debug flavor — it is a toolchain base, not a workload.
     createEnv(scope, resolver, "kube", FloxEnvFolder.TOOLCHAINS, kubeBaseManifest());
     // toolchains/git-sops — the git sops clean/smudge filter toolchain (git + sops + yq + the ndh
-    // git-sops-filter). The in-cluster render pipeline's re-smudge step activates it so a Tekton
-    // checkout smudges `.secrets` (and the branch's sops-encrypted Secrets) exactly as the operator
-    // host does — the render is then secret-FULL, not blind. A cross-cutting toolchain tier (like
+    // git-sops-filter). The in-cluster render pipeline activates it so the Secret carriers it
+    // commits to manifests/<cluster> are sealed by the filter, and `.secrets` (no filter) is opened
+    // in memory with the injected age key — the render is then secret-FULL, not blind. A
+    // cross-cutting toolchain tier (like
     // toolchains/kube), NOT cicd-bound: decoupled so the cicd need evolves independently and any
     // env
     // doing

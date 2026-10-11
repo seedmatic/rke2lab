@@ -3,6 +3,7 @@ package io.seedmatic.rke2lab.controlplane.config;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.seedmatic.rke2lab.host.runtime.SopsAtRest;
 import io.seedmatic.rke2lab.manifests.ingress.PacWebhookFunnel;
 import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
 import io.seedmatic.rke2lab.seed.broker.codec.WireCodec;
@@ -171,7 +172,8 @@ public final class GithubAppCli {
     leaves.put("appId", appId);
     leaves.put("installationId", installationId);
     leaves.put("privateKeyPem", pem.stripTrailing() + "\n");
-    DotSecretsWriter.upsert(Path.of(".secrets"), SECRETS_PATH, leaves, Set.of("privateKeyPem"));
+    new DotSecretsWriter(new SopsAtRest())
+        .upsert(Path.of(".secrets"), SECRETS_PATH, leaves, Set.of("privateKeyPem"));
 
     System.out.println(
         "ghapp seed: App "

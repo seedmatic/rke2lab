@@ -81,7 +81,7 @@ public final class SopsAgeSecretManifestsUnit extends AbstractManifestsUnit {
                         .namespace("flux-system")
                         // Allow the mittwald replicator to fan the LIVE (decrypted) age key out to
                         // rke2lab-system, where the in-cluster render Task reads it as SOPS_AGE_KEY
-                        // to smudge .secrets + the cellar asset (secret-full render). The
+                        // to open .secrets + the cellar asset (secret-full render). The
                         // replicator
                         // copies the in-cluster Secret, not the branch blob — so this is
                         // independent

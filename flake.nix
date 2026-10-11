@@ -833,15 +833,18 @@
         # caller sets GH_TOKEN from PaC's App token instead.
         mintGhAppTokenApp = pkgs.writeShellApplication {
           name = "mint-gh-app-token";
-          runtimeInputs = [ pkgs.coreutils pkgs.openssl pkgs.curl pkgs.yq-go ];
+          runtimeInputs = [ pkgs.coreutils pkgs.openssl pkgs.curl pkgs.yq-go pkgs.sops ];
           text = ''
             secrets="''${1:-.secrets}"
             if [ ! -f "$secrets" ]; then
               echo "mint-gh-app-token: no $secrets (github.app credentials)" >&2
               exit 1
             fi
-            appId=$(yq -r '.github.app.appId' "$secrets")
-            installationId=$(yq -r '.github.app.installationId' "$secrets")
+            # .secrets stays encrypted at rest: it is opened once, into memory. Values are read through
+            # pipes, never a here-string, which some bash versions back with a temporary file.
+            plain=$(sops --decrypt --input-type yaml --output-type yaml "$secrets")
+            appId=$(printf '%s' "$plain" | yq -r '.github.app.appId')
+            installationId=$(printf '%s' "$plain" | yq -r '.github.app.installationId')
             b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
             now=$(date +%s)
             header=$(printf '%s' '{"alg":"RS256","typ":"JWT"}' | b64url)
@@ -850,7 +853,7 @@
             # process-substitution fd (an anonymous pipe, never a tmpfs file), and the data to sign
             # arrives on stdin. openssl reads the key sequentially so a pipe is fine.
             signature=$(printf '%s' "$header.$payload" \
-              | openssl dgst -sha256 -sign <(yq -r '.github.app.privateKeyPem' "$secrets") -binary \
+              | openssl dgst -sha256 -sign <(printf '%s' "$plain" | yq -r '.github.app.privateKeyPem') -binary \
               | b64url)
             jwt="$header.$payload.$signature"
             curl -sS -X POST \
@@ -972,12 +975,11 @@ USAGE
             # token into its derivation hash. Mint from the one org-owned GitHub App
             # (.secrets github.app), never a personal `gh auth token`.
             # Mint ONLY when no token is already provided. In-cluster the Tekton step already set
-            # GH_TOKEN from PaC's App git_auth (the App-provided k8s Secret) AND .secrets is present
-            # but sops-ENCRYPTED at rest (no git smudge filter) — so keying off `[ -f .secrets ]`
-            # would wrongly try to mint from an unreadable encrypted key. Key off GH_TOKEN instead:
-            # set ⇒ in-cluster/explicit, use it; empty ⇒ the operator dropped `gh auth token`, mint.
+            # GH_TOKEN from PaC's App git_auth (the App-provided k8s Secret), and .secrets is present
+            # there too — so keying off `[ -f .secrets ]` would mint a second token for nothing. Key
+            # off GH_TOKEN instead: set ⇒ in-cluster/explicit, use it; empty ⇒ the operator, mint.
             if [ -z "''${GH_TOKEN:-}" ] && [ -f .secrets ]; then
-              # Non-fatal: if the mint fails (e.g. an encrypted key), do not abort the whole build.
+              # Non-fatal: if the mint fails (e.g. no key to open .secrets), do not abort the build.
               # The `if` condition swallows the non-zero exit (set -e does not fire on a tested cmd).
               if minted="$(mint-gh-app-token)"; then
                 GH_TOKEN="$minted"; export GH_TOKEN
@@ -1073,12 +1075,11 @@ USAGE
             # org-owned GitHub App (.secrets github.app), never a personal token. In-cluster the
             # Tekton step already set GH_TOKEN from PaC's App token, so the guard below skips.
             # Mint ONLY when no token is already provided. In-cluster the Tekton step already set
-            # GH_TOKEN from PaC's App git_auth (the App-provided k8s Secret) AND .secrets is present
-            # but sops-ENCRYPTED at rest (no git smudge filter) — so keying off `[ -f .secrets ]`
-            # would wrongly try to mint from an unreadable encrypted key. Key off GH_TOKEN instead:
-            # set ⇒ in-cluster/explicit, use it; empty ⇒ the operator dropped `gh auth token`, mint.
+            # GH_TOKEN from PaC's App git_auth (the App-provided k8s Secret), and .secrets is present
+            # there too — so keying off `[ -f .secrets ]` would mint a second token for nothing. Key
+            # off GH_TOKEN instead: set ⇒ in-cluster/explicit, use it; empty ⇒ the operator, mint.
             if [ -z "''${GH_TOKEN:-}" ] && [ -f .secrets ]; then
-              # Non-fatal: if the mint fails (e.g. an encrypted key), do not abort the whole build.
+              # Non-fatal: if the mint fails (e.g. no key to open .secrets), do not abort the build.
               # The `if` condition swallows the non-zero exit (set -e does not fire on a tested cmd).
               if minted="$(mint-gh-app-token)"; then
                 GH_TOKEN="$minted"; export GH_TOKEN
