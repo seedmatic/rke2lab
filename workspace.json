@@ -1,0 +1,21 @@
+{
+  "schema": "seedmatic.relock/v1",
+  "head": "workspace",
+  "rev": "e80a9dc802e5a32df6b44abb6b00912d22a92b7f",
+  "status": {
+    "wave": "flake-commons@2026-10-11T09:19:47Z",
+    "tool": "3441528c8710e06d3fb518a0ec7f7bf8697b0a380245e74d765d35f0253eeb66",
+    "bumped": {
+      "flake-commons": [
+        "26a657da6c7066960d510babb7c1e0517ebe1d62",
+        "f994a3f785a72ace4100a500576bf95019b2cd39"
+      ]
+    },
+    "dropped": [],
+    "after": [],
+    "unmeasured": [
+      "apps of x86_64-darwin: one of them does not evaluate before any bump, so none of x86_64-darwin is measured — error:",
+      "apps of x86_64-linux: one of them does not evaluate before any bump, so none of x86_64-linux is measured — error:"
+    ]
+  }
+}
