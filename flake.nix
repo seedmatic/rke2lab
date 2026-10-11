@@ -262,22 +262,21 @@
         meta.description = "Re-lock env manifest.lock files under environment.d/ via flox lock-manifest (run from the catalog repo root)";
       };
 
-      # relock — THIS flake's locks, by the shared implementation in nix-flake-commons'
-      # `lib.mkRelockApp`. This flake is the `flox-catalog/develop` orphan branch of rke2lab, so it names
-      # its `branch`: the slug alone would take any rke2lab checkout for this one. No `consumers`:
-      # no flake pins this branch; rke2lab's own relock re-pins it here (its catalog hop).
+      # relock — nix-flake-commons' `lib.mkRelockApp`, the one implementation every seedmatic
+      # flake shares. This head supplies its name; the heads, the order and what each head pins
+      # are read from nix-flake-commons:fabric/heads. lock-envs runs AFTER the inputs: the envs
+      # lock `path:../../..#<attr>` against this flake, so locked before its rke2lab pin moves they
+      # would record the old derivations.
       apps.relock = {
         type = "app";
         program = "${
           inputs.flake-commons.lib.mkRelockApp {
             inherit pkgs;
             name = "flox-catalog";
-            slug = "seedmatic/rke2lab";
-            url = "https://github.com/seedmatic/rke2lab.git";
-            branch = "flox-catalog/develop";
+            afterInputs = [ "lock-envs" ];
           }
         }/bin/relock";
-        meta.description = "Reconcile THIS flake's locks: bump each input, DROP any bump that moves no exported derivation, push — impl: nix-flake-commons lib.mkRelockApp";
+        meta.description = "Reconcile THIS head's locks: bump each input, DROP any bump that moves nothing it exports, then re-lock the envs, push. --plan shows a pass, --downstream plays it over every head of fabric/heads";
       };
 
       packages = {
