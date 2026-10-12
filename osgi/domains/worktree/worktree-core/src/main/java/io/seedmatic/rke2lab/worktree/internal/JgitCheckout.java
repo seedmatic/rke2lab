@@ -1,8 +1,10 @@
 package io.seedmatic.rke2lab.worktree.internal;
 
 import io.seedmatic.rke2lab.worktree.BuildRevision;
+import io.seedmatic.rke2lab.worktree.CommitSpec;
 import io.seedmatic.rke2lab.worktree.GitIdentity;
 import io.seedmatic.rke2lab.worktree.Provenance;
+import io.seedmatic.rke2lab.worktree.TreeEdit;
 import io.seedmatic.rke2lab.worktree.WorkingState;
 import java.io.File;
 import java.io.IOException;
@@ -340,6 +342,44 @@ final class JgitCheckout {
       return null;
     }
     return Files.readAllBytes(file);
+  }
+
+  /** The seat's write verb: apply an {@link TreeEdit.Overlay} on disk, stage it, commit it. */
+  String commit(TreeEdit edit, CommitSpec spec) {
+    final TreeEdit.Overlay overlay =
+        switch (edit) {
+          case TreeEdit.Overlay laid -> laid;
+          case TreeEdit.Replace replace ->
+              throw new IllegalArgumentException(
+                  "a durable worktree takes an Overlay: a Replace would empty " + worktree);
+        };
+    final List<Path> touched = new ArrayList<>();
+    try {
+      for (Map.Entry<String, byte[]> file : overlay.files().entrySet()) {
+        final Path target = inside(file.getKey());
+        Files.createDirectories(target.getParent());
+        Files.write(target, file.getValue());
+        touched.add(target);
+      }
+      for (String removed : overlay.removed()) {
+        final Path target = inside(removed);
+        Files.deleteIfExists(target);
+        touched.add(target);
+      }
+    } catch (IOException ex) {
+      throw new UncheckedIOException("cannot apply the edit to " + worktree, ex);
+    }
+    stage(touched);
+    return commit(spec.message(), spec.identity(), spec.sshSigningKey());
+  }
+
+  private Path inside(String path) {
+    final Path root = worktree.toAbsolutePath().normalize();
+    final Path target = root.resolve(path).normalize();
+    if (!target.startsWith(root) || target.equals(root)) {
+      throw new IllegalArgumentException("an edit path must stay inside " + root + ": " + path);
+    }
+    return target;
   }
 
   void stage(List<Path> paths) {

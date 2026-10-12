@@ -75,29 +75,10 @@ public interface Worktree {
   String treeDigest(String revision, List<String> paths);
 
   /**
-   * Stage the given worktree paths for the next commit — additions/modifications for paths that
-   * exist, removals for paths that no longer do. Each path may be absolute or worktree-relative and
-   * is resolved against {@link #root()}. The first WRITE verb of this domain (survey stayed
-   * read-only until a consumer needed to cultivate the tree); jgit stays sealed behind the
-   * implementation, so only JDK types cross.
+   * Apply {@code edit} to the working tree and the index and commit it as {@code spec} says. When
+   * the result matches HEAD nothing is committed — no empty commit — and the unchanged tip sha is
+   * returned. Local only, no push. A durable worktree takes an {@link TreeEdit.Overlay}: a {@link
+   * TreeEdit.Replace} would empty the operator's working tree, and is refused.
    */
-  void stage(List<Path> paths);
-
-  /**
-   * Commit the staged changes with {@code message}, authored AND committed as {@code identity} — an
-   * automated commit carries an explicit per-tool bot identity (minted by the caller from the PKI
-   * keystore's tailnet domain), never the ambient {@code user.name} of whoever ran the tool. When
-   * the staged tree matches HEAD nothing is committed — no empty commit — and the unchanged tip sha
-   * is returned. Returns the delivered commit sha (new, or the unchanged tip). Local only — no push
-   * (that is where a remote credential, and thus the auth edge, would enter; deliberately out of
-   * scope here). jgit stays sealed. The worktree stays domain-neutral: the tool identity is the
-   * CALLER's value.
-   *
-   * <p>{@code sshSigningKey} is the caller's OpenSSH PRIVATE key (e.g. the ndh {@code
-   * github-signing} key) the commit is SSH-signed with (git SSHSIG, {@code git} namespace) — so the
-   * bot signs with its own imported key, the same way the operator's {@code gpg.format=ssh} config
-   * would. {@link Optional#empty()} commits unsigned. Only a JDK type crosses; the signing
-   * mechanism (jgit + {@code ssh-keygen}) stays sealed in the implementation.
-   */
-  String commit(String message, GitIdentity identity, Optional<String> sshSigningKey);
+  String commit(TreeEdit edit, CommitSpec spec);
 }

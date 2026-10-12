@@ -99,17 +99,21 @@ amend door that binds the injected `GatePolicy` FACET — the twin of `IncusAmen
   beside `GitIdentity` because the identity of a git commit belongs to the domain that owns the git
   mechanism. Users: the manifests render, the manifests version bumper, the fabric delivery.
 
-The `Worktree` service also carries TWO write verbs — the first the domain gained (survey stayed
-read-only until a consumer needed to cultivate the tree), jgit still sealed behind the implementation
-so only JDK types cross:
+The `Worktree` service also carries ONE write verb, `commit(TreeEdit, CommitSpec)` — a writer hands
+bytes in memory and never touches files itself; jgit stays sealed behind the implementation so only
+JDK types cross:
 
-* **`stage(List<Path>)`** — stage additions/modifications for paths that exist, removals for paths
-  that no longer do; each path absolute or worktree-relative, resolved against `root()`.
-* **`commit(String message, GitIdentity identity, Optional<String> sshSigningKey)`** — commit the
-  staged changes authored AND committed as `identity`, optionally SSH-signed with the caller's OpenSSH
-  private key (git SSHSIG, `git` namespace, via an injected `ssh-keygen` signer since jgit ships
-  none), returning the new commit sha. LOCAL to the seed's OWN worktree — pushing a rendered branch is
-  the separate `LinkedWorktrees` service below.
+* **`TreeEdit`** — the edit model, sealed: an **`Overlay`** (`files` laid over the head's tree, the
+  `removed` paths dropped — a version bump, a delivery of a few files) or a **`Replace`** (the whole
+  tree replaced by `files`, the head's `carried` subtrees kept — a render). Paths worktree-relative.
+* **`CommitSpec`** — the `message`, the `identity` authored AND committed as, and the OpenSSH private
+  key the commit is SSH-signed with (git SSHSIG, `git` namespace, via an injected `ssh-keygen` signer
+  since jgit ships none), or empty for unsigned.
+* **`commit(TreeEdit, CommitSpec)`** — the seat (on disk) takes an `Overlay`: it writes the files,
+  deletes the removed paths, stages them and commits, returning the sha (the unchanged tip when the
+  result matches HEAD). A `Replace` is refused there — it would empty the operator's working tree —
+  and a path leaving the worktree is refused. LOCAL to the seed's OWN worktree — pushing a rendered
+  branch is the separate `LinkedWorktrees` service below. The manifests version bumper is its user.
 
 === The rendered-branch delivery — `LinkedWorktrees` / `LinkedWorktree`
 

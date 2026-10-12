@@ -5,8 +5,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.seedmatic.rke2lab.worktree.BuildRevision;
-import io.seedmatic.rke2lab.worktree.GitIdentity;
+import io.seedmatic.rke2lab.worktree.CommitSpec;
 import io.seedmatic.rke2lab.worktree.Provenance;
+import io.seedmatic.rke2lab.worktree.TreeEdit;
 import io.seedmatic.rke2lab.worktree.WorkingState;
 import io.seedmatic.rke2lab.worktree.Worktree;
 import java.nio.file.Path;
@@ -104,12 +105,7 @@ class NodeBaseSourceTest {
       }
 
       @Override
-      public void stage(List<Path> paths) {
-        throw new UnsupportedOperationException();
-      }
-
-      @Override
-      public String commit(String message, GitIdentity identity, Optional<String> sshSigningKey) {
+      public String commit(TreeEdit edit, CommitSpec spec) {
         throw new UnsupportedOperationException();
       }
     };

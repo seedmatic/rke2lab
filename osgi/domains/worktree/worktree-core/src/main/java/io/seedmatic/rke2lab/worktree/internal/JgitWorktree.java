@@ -1,8 +1,9 @@
 package io.seedmatic.rke2lab.worktree.internal;
 
 import io.seedmatic.rke2lab.worktree.BuildRevision;
-import io.seedmatic.rke2lab.worktree.GitIdentity;
+import io.seedmatic.rke2lab.worktree.CommitSpec;
 import io.seedmatic.rke2lab.worktree.Provenance;
+import io.seedmatic.rke2lab.worktree.TreeEdit;
 import io.seedmatic.rke2lab.worktree.WorkingState;
 import io.seedmatic.rke2lab.worktree.Worktree;
 import java.io.File;
@@ -85,13 +86,8 @@ public final class JgitWorktree implements Worktree {
   }
 
   @Override
-  public void stage(List<Path> paths) {
-    checkout.stage(paths);
-  }
-
-  @Override
-  public String commit(String message, GitIdentity identity, Optional<String> sshSigningKey) {
-    return checkout.commit(message, identity, sshSigningKey);
+  public String commit(TreeEdit edit, CommitSpec spec) {
+    return checkout.commit(edit, spec);
   }
 
   /** Walk up from {@code startDir} to the enclosing {@code .git} and report its working tree. */
