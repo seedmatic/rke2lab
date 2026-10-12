@@ -1179,8 +1179,7 @@ these the scion produces the three PREPARE outputs in-container:
 
 *The host keeps only TWO gestures.* (a) the Pulumi engine (`com.pulumi.incus`, the sole host-irreducible
 — the control flow cannot enter Felix, shape B); (b) extracting a HANDFUL of FLAT SCALARS from
-`BootstrapConfig` — `worktreeRoot`, `clusterName`, `nodeName`, `automount` (netPrefix derives from
-cluster) — and handing them to the scion by `@Amendment`. `BootstrapConfig` itself NEVER crosses
+`BootstrapConfig` — `worktreeRoot`, `clusterName`, `nodeName` — and handing them to the scion by `@Amendment`. `BootstrapConfig` itself NEVER crosses
 (consistent with "the flat host fills it from BootstrapConfig", the SystemdProbeRequest pattern). The
 host reads the resolved mount plan back (flat, via Split) to build the `InstanceDeviceArgs`.
 
@@ -1190,14 +1189,13 @@ already sows `broker.sow(new AmendCoordinate("manifests"), …)` (the reflector 
 the computed `rke2-manifests.d` is handed through that SAME amend-by-coordinate — neutral JSON, ZERO
 added typed cross-domain dependency. That is what keeps the boundary clean.
 
-*The automount translation, and WHY it survives.* `BootstrapPaths.asAutomountView(automount, netPrefix)`
-(the pure `automountPath` helper, ex-`BootstrapConfig.pathOn`, extracted into incus-core 2026-07-15)
-rewrites a DARWIN path into its automount NIXOS view (`/private/x` → `/net/<cluster>.local/private/x`)
-because provisioning is BI-MACHINE: the Mac WRITES the assets (Felix runs there), the remote NIXOS host
-MOUNTS them over NFS to grow the instance. It is dormant in the feature branch (its only caller,
-`seedInstanceDevices`, was deleted with the grow) but NOT dead — it returns with the mount plan. As a
-pure method on the record (fed `automount` + `netPrefix`) the scion applies it without naming
-`BootstrapConfig`, which never crosses.
+*The automount translation — deleted (2026-10-12).* `BootstrapPaths.asAutomountView(automount, netPrefix)`
+rewrote a DARWIN path into its automount NIXOS view (`/private/x` → `/net/<cluster>.local/private/x`)
+because provisioning was BI-MACHINE: the Mac wrote the assets, the remote NIXOS host read them over NFS.
+Its last reader was the image's remote ssh build. The image now builds by revision
+(`git+file://<repository>?rev=<sha>`, see link:incus-edge-spec.adoc[incus-edge spec]) and nix hands the
+derivations to the builder itself, so the translation, the `automount` / `netPrefix` scalars and the
+ssh mode went together.
 
 *The true consumer of the 17 roots is the GROW, not the two phantom reads.* Today's scenario reads only
 `clusterNodeRoot()` (feed the slot) and `manifestsRoot()` (the SOIL) — vestiges. The real client is

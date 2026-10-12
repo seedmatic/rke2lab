@@ -615,6 +615,16 @@ class JgitLinkedWorktreesTest {
     }
 
     @Override
+    public Path repository() {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public String treeDigestAtHead(List<String> paths) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
     public void stage(List<Path> paths) {
       throw new UnsupportedOperationException();
     }

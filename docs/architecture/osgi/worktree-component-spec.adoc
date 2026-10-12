@@ -200,7 +200,7 @@ Two changes removed both host-side reads, and with them the reason for the dual-
 
 . **The grow plan became self-contained (Q1 — ✅).** The `InstanceGrowPlan` (`incus-ingress-contract`)
   now carries the resolved disk mounts as `GrowMountView`s: the incus scion (which `@Reference`s
-  `Worktree`) computes the live + automount `BootstrapPaths` view OSGi-side and projects the 13
+  `Worktree`) computes the live `BootstrapPaths` view OSGi-side and projects the 13
   source↔target pairs into the plan, so the host GROW actualises the plan ALONE — no separate
   `WorktreeCoordinate.FACTS` fetch for `root()`.
 . **The entry gate moved OSGi-side (Q2 — ✅).** The host-flat `EntryGatePolicyEnforcer` (with its

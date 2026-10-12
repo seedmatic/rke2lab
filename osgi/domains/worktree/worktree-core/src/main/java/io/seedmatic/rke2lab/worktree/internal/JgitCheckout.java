@@ -9,8 +9,11 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
@@ -34,6 +37,7 @@ import org.eclipse.jgit.transport.URIish;
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
 import org.eclipse.jgit.treewalk.CanonicalTreeParser;
 import org.eclipse.jgit.treewalk.TreeWalk;
+import org.eclipse.jgit.treewalk.filter.PathFilterGroup;
 
 /**
  * A jgit view of ONE git worktree at a path — the SOLE holder of jgit in this domain, and the
@@ -92,6 +96,38 @@ final class JgitCheckout {
       return violatingFlakeDirs(repository, oldTree, newTree).isEmpty();
     } catch (IOException ex) {
       throw new UncheckedIOException("cannot read the flake-lock coherence of " + worktree, ex);
+    }
+  }
+
+  Path repository() {
+    try (Repository repository = open()) {
+      return repository.getCommonDirectory().toPath().toAbsolutePath().normalize();
+    }
+  }
+
+  String treeDigestAtHead(List<String> paths) {
+    try (Repository repository = open()) {
+      final ObjectId tree = repository.resolve("HEAD^{tree}");
+      if (tree == null) {
+        throw new IllegalStateException("no HEAD to digest in " + worktree);
+      }
+      final MessageDigest digest = MessageDigest.getInstance("SHA-256");
+      try (TreeWalk walk = new TreeWalk(repository)) {
+        walk.addTree(tree);
+        walk.setRecursive(true);
+        walk.setFilter(PathFilterGroup.createFromStrings(paths));
+        while (walk.next()) {
+          digest.update(walk.getPathString().getBytes(StandardCharsets.UTF_8));
+          digest.update((byte) 0);
+          digest.update(walk.getObjectId(0).name().getBytes(StandardCharsets.US_ASCII));
+          digest.update((byte) '\n');
+        }
+      }
+      return HexFormat.of().formatHex(digest.digest());
+    } catch (IOException ex) {
+      throw new UncheckedIOException("cannot digest " + paths + " at HEAD of " + worktree, ex);
+    } catch (NoSuchAlgorithmException ex) {
+      throw new IllegalStateException("SHA-256 is not available", ex);
     }
   }
 

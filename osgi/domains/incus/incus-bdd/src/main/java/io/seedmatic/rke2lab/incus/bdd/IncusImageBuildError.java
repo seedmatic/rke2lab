@@ -6,10 +6,10 @@ import io.seedmatic.rke2lab.incus.contract.ImageBuildRequest;
 import java.util.Map;
 
 /**
- * The node-base image build (nix realise → import → alias) failed. {@link Symptomatic}: carries the
- * {@link ImageBuildRequest} that failed as a typed member and the edge exception as the cause, so a
- * consumer sees which project/artifact-dir was targeted and the underlying reason without parsing
- * the message.
+ * The node-base image build (nix realise of a committed revision) failed. {@link Symptomatic}:
+ * carries the {@link ImageBuildRequest} that failed as a typed member and the edge exception as the
+ * cause, so a consumer sees which revision and artifact dir were targeted and the underlying reason
+ * without parsing the message.
  */
 public final class IncusImageBuildError extends AssertionError implements Symptomatic {
 
@@ -27,8 +27,7 @@ public final class IncusImageBuildError extends AssertionError implements Sympto
 
   @Override
   public Map<String, Object> recoveryContext() {
-    return Map.of(
-        "incusProject", request.incusProject(), "artifactDir", request.localArtifactDir());
+    return Map.of("flakeRef", request.flakeRef(), "artifactDir", request.artifactDir());
   }
 
   public ImageBuildRequest request() {

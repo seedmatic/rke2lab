@@ -46,6 +46,22 @@ public interface Worktree {
   boolean flakeLockCoherent();
 
   /**
+   * The repository that holds this worktree's objects and refs — the COMMON dir, which for a linked
+   * worktree is the repository it was added from (the bare), not its private {@code .git} file. A
+   * commit made here is readable through it at once, with no push: {@code
+   * git+file://<repository>?rev=<sha>} builds that revision.
+   */
+  Path repository();
+
+  /**
+   * SHA-256 over the {@code (path, blob id)} pairs committed at {@code HEAD} under {@code paths}
+   * (each a file or a directory, worktree-relative), in tree order — a CONTENT digest of what a
+   * build of that revision reads, blind to the working tree and to commit metadata. A path absent
+   * at HEAD contributes nothing. Throws when there is no HEAD.
+   */
+  String treeDigestAtHead(List<String> paths);
+
+  /**
    * Stage the given worktree paths for the next commit — additions/modifications for paths that
    * exist, removals for paths that no longer do. Each path may be absolute or worktree-relative and
    * is resolved against {@link #root()}. The first WRITE verb of this domain (survey stayed

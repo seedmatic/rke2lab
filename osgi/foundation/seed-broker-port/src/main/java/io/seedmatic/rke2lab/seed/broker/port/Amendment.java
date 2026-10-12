@@ -40,9 +40,9 @@ public @interface Amendment {
   String FACET = "facet";
 
   /**
-   * The identity provisioning coordinates — the flat scalars (identity root, cluster, node,
-   * automount) the host holds and a domain needs to RECONSTRUCT the provisioning topology in-world.
-   * The host fills it from its {@code BootstrapConfig}; the scion computes its own paths from it (§
+   * The identity provisioning coordinates — the flat scalars (identity root, cluster, node) the
+   * host holds and a domain needs to RECONSTRUCT the provisioning topology in-world. The host fills
+   * it from its {@code BootstrapConfig}; the scion computes its own paths from it (§
    * host-cellar-realisation, the whole topology is computed OSGi-side).
    */
   String IDENTITY = "identity";

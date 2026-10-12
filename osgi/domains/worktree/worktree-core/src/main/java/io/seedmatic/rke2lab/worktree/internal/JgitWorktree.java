@@ -64,6 +64,16 @@ public final class JgitWorktree implements Worktree {
   }
 
   @Override
+  public Path repository() {
+    return checkout.repository();
+  }
+
+  @Override
+  public String treeDigestAtHead(List<String> paths) {
+    return checkout.treeDigestAtHead(paths);
+  }
+
+  @Override
   public void stage(List<Path> paths) {
     checkout.stage(paths);
   }

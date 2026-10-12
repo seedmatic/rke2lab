@@ -85,16 +85,16 @@ recipe script as a classpath resource.
 
 * *incus-contract* declares `ImageBuilder` — `build(ImageBuildRequest)` (produce the artifacts, throwing
   an unchecked exception on failure) and `recipeDigest()` (a stable digest of the edge-owned recipe).
-  `ImageBuildRequest` is the flat contract record: the builder binary, `incusProject`, and two path
-  families — `workspaceDir`/`localArtifactDir` (drive a local build) and `remoteHost`/`remoteWorkspaceDir`/
-  `remoteArtifactDir` (NixOS-translated by the host, drive the ssh recipe). The recipe is NOT a field —
-  the edge owns it (see below), so only artifact/workspace placement crosses.
+  `ImageBuildRequest` is the flat contract record: the builder binary, the `flakeRef` — a REVISION,
+  `git+file://<repository>?rev=<sha>`, the seat's commit read through its common dir — the `sourceDigest`
+  (the jgit content digest of that revision's build inputs) and the absolute `artifactDir`. The recipe is
+  NOT a field — the edge owns it (see below).
 * *incus-edge* provides TWO paired `@Component`s implementing `ImageBuilder`: `CultivatingNixosImageBuilder`
   (cultivate = run — it builds) and `SurveyingImageBuilder` (survey = preview — it plans only and returns
   without touching anything), selected at the collaborator frontier by the gardening mode. The cultivating
-  builder owns the local-vs-remote decision, runs `nix build …#nixosConfigurations.rke2-node-base` to
-  produce `incus.tar.xz` + `rootfs.squashfs` locally when `nix` and `incus` both resolve on `PATH`, else
-  streams the recipe over `ssh` to the builder host. The recipe is owned by `BuildRecipe` (a bundle
+  builder runs `nix build <flakeRef>#nixosConfigurations.rke2-node-base…` to produce `incus.tar.xz` +
+  `rootfs.squashfs`; nix itself hands the aarch64-linux derivations to the seat's configured builder
+  (`/etc/nix/machines`), so the edge has no transport of its own and the script runs no git. The recipe is owned by `BuildRecipe` (a bundle
   resource — this edge is its single source). `ImageBuildException` (unchecked) lives HERE in `incus-edge`,
   not in the contract.
 * *the host* keeps the Pulumi `Image` resource, the reuse lookup, the artifact cache, and the path

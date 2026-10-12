@@ -502,10 +502,10 @@ tracking. Cleanup is `git worktree remove`.
 
 Two consequences fall out:
 
-* **The automount becomes image-only.** With manifests delivered through git, the remote NixOS host
-  no longer reads a manifests tree over the automount — the bi-machine rsync of manifests dissolves,
-  and `asAutomountView` / `netPrefix` rebase *only the incus image artefacts* (§ the `.local.d`
-  split). That is what keeps the automount machinery earning its place.
+* **The automount goes.** With manifests delivered through git, the remote NixOS host no longer reads
+  a manifests tree over the automount — the bi-machine rsync of manifests dissolves. The image was its
+  last reader, and it went too (2026-10-12): the image builds by revision and nix hands the derivations
+  to the builder itself, so `asAutomountView` / `netPrefix` and the `automount` key are deleted.
 * **Drift doubles and improves.** The single local "staged vs live" diff becomes two: `git diff`
   (pre-push, to review the change) and Flux reconciliation (post-push, git-vs-cluster — the *actual*
   drift). Neither is a local rotation file.

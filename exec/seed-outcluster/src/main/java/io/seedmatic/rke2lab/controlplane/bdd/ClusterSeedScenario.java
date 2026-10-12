@@ -338,7 +338,6 @@ public class ClusterSeedScenario
       final ObjectNode imageScalars = JsonNodeFactory.instance.objectNode();
       imageScalars.put("alias", run.config().imageAlias());
       imageScalars.put("builderBinary", run.config().imageBuilderBinary());
-      imageScalars.put("builderHost", run.config().imageBuilderHost());
       this.imageScalars = imageScalars;
       // The host GROW derives the instance mounts + provider context from the run's config.
       this.config = run.config();
@@ -415,7 +414,7 @@ public class ClusterSeedScenario
       // The incus-identity seal's host-world creds — assembled from config + ~/.config/incus + the
       // bundled capn client cert, offered to the incus-identity crossing.
       this.incusIdentityHostCreds = incusIdentityHostCreds(run.config());
-      // The incus FACET — the stable provisioning identity (cluster/node, automount, netPrefix)
+      // The incus FACET — the stable provisioning identity (cluster/node, incus project)
       // the scion combines with the worktree root it reads from its Worktree component. A FACET,
       // not
       // a per-consult ROW: the value never changes across the run, so it is contributed AMBIENT
@@ -426,8 +425,6 @@ public class ClusterSeedScenario
       final ObjectNode incusFacet = JsonNodeFactory.instance.objectNode();
       incusFacet.put("clusterName", run.config().clusterName());
       incusFacet.put("nodeName", run.config().nodeName());
-      incusFacet.put("automount", run.config().automount());
-      incusFacet.put("netPrefix", run.config().netPrefix());
       incusFacet.put("incusProject", run.config().incusProject());
       gardening
           .connection()
