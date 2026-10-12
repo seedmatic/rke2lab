@@ -54,12 +54,25 @@ public interface Worktree {
   Path repository();
 
   /**
-   * SHA-256 over the {@code (path, blob id)} pairs committed at {@code HEAD} under {@code paths}
-   * (each a file or a directory, worktree-relative), in tree order — a CONTENT digest of what a
-   * build of that revision reads, blind to the working tree and to commit metadata. A path absent
-   * at HEAD contributes nothing. Throws when there is no HEAD.
+   * The revision a build of {@code paths} (each a file or a directory, worktree-relative) reads:
+   * HEAD when those paths are clean, otherwise a commit FABRICATED from HEAD's tree with only those
+   * paths taken from the working tree, pinned under {@code refs/rke2lab/grow/<sha>} and never
+   * pushed. Fails closed, naming paths and never content, on a captured file that is gitignored
+   * (skipped, never captured), carries a sops filter/diff attribute or a sops envelope, holds
+   * private key material or a bearer token, or is a symlink leaving the repository. Sweeps the
+   * fabricated refs older than seven days.
    */
-  String treeDigestAtHead(List<String> paths);
+  BuildRevision buildRevision(List<String> paths);
+
+  /** Drop the ref pinning a fabricated revision once its build is done; a no-op for HEAD. */
+  void releaseBuildRevision(BuildRevision revision);
+
+  /**
+   * SHA-256 over the {@code (path, blob id)} pairs of {@code revision}'s tree under {@code paths},
+   * in tree order — a CONTENT digest of what a build of that revision reads, blind to the working
+   * tree and to commit metadata. A path absent from the tree contributes nothing.
+   */
+  String treeDigest(String revision, List<String> paths);
 
   /**
    * Stage the given worktree paths for the next commit — additions/modifications for paths that

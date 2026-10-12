@@ -1,5 +1,6 @@
 package io.seedmatic.rke2lab.worktree.internal;
 
+import io.seedmatic.rke2lab.worktree.BuildRevision;
 import io.seedmatic.rke2lab.worktree.GitIdentity;
 import io.seedmatic.rke2lab.worktree.Provenance;
 import io.seedmatic.rke2lab.worktree.WorkingState;
@@ -69,8 +70,18 @@ public final class JgitWorktree implements Worktree {
   }
 
   @Override
-  public String treeDigestAtHead(List<String> paths) {
-    return checkout.treeDigestAtHead(paths);
+  public BuildRevision buildRevision(List<String> paths) {
+    return checkout.buildRevision(paths);
+  }
+
+  @Override
+  public void releaseBuildRevision(BuildRevision revision) {
+    checkout.releaseBuildRevision(revision);
+  }
+
+  @Override
+  public String treeDigest(String revision, List<String> paths) {
+    return checkout.treeDigest(revision, paths);
   }
 
   @Override

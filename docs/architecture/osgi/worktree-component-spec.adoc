@@ -52,8 +52,15 @@ amend door that binds the injected `GatePolicy` FACET — the twin of `IncusAmen
 
 * **`Worktree`** (contract) — the service: `root()` (the absolute, normalised anchor every
   provisioning path derives from), `provenance()`, `workingState()`, and `flakeLockCoherent()` (the
-  `HEAD~1..HEAD` check — a `flake.nix` inputs change without its `flake.lock`). jgit-free — only JDK
+  `HEAD~1..HEAD` check — a `flake.nix` inputs change without its `flake.lock`). For a build of the seat
+  it adds `repository()` (the common dir, the bare a revision is read through), `buildRevision(paths)`,
+  `releaseBuildRevision(revision)` and `treeDigest(revision, paths)` — see
+  link:incus-edge-spec.adoc#build-by-revision[the rule: nix builds only a revision]. jgit-free — only JDK
   types and the `worktree` records cross it.
+* **`BuildRevision`** — the revision a build of the seat reads: the `sha`, whether it was `fabricated`
+  (HEAD's tree with the dirty build inputs taken from the working tree, pinned under
+  `refs/rke2lab/grow/<sha>`, never pushed), and the `changed` and `untracked` paths that made it so —
+  the run's provenance names them.
 * **`GatePolicy`** (contract) — the entry-gate POLICY, injected into the worktree crossing as the
   `FACET` amendment. Two sub-gates, each toggled: `cleanWorktreeRequired` (+ the `toleratedPaths`
   allowed to be uncommitted) and `flakeLockRequired` (default OFF). Its `enforce(WorktreeFacts)`

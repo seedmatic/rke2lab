@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.seedmatic.rke2lab.worktree.BuildRevision;
 import io.seedmatic.rke2lab.worktree.GitIdentity;
 import io.seedmatic.rke2lab.worktree.Provenance;
 import io.seedmatic.rke2lab.worktree.WorkingState;
@@ -13,40 +14,49 @@ import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
-/** The node-base image builds the seat's committed HEAD, and refuses uncommitted build inputs. */
+/** The node-base image builds a REVISION of the seat, and nothing else. */
 class NodeBaseSourceTest {
 
   private static final String SHA = "0123456789abcdef0123456789abcdef01234567";
 
   @Test
   void a_clean_seat_builds_its_head_by_revision() {
-    final NodeBaseSource source = NodeBaseSource.of(seat(SHA, List.of()));
+    final NodeBaseSource source =
+        NodeBaseSource.of(
+            seat("/bare/rke2lab.git", new BuildRevision(SHA, false, List.of(), List.of())));
     assertEquals("git+file:///bare/rke2lab.git?rev=" + SHA, source.flakeRef());
-    assertEquals("digest:" + NodeBaseSource.BUILD_INPUTS, source.digest());
+    assertEquals("digest:" + SHA + ":" + NodeBaseSource.BUILD_INPUTS, source.digest());
+    assertEquals("0123456789ab", source.provenance());
   }
 
   @Test
-  void an_uncommitted_build_input_is_refused_by_name() {
-    for (String dirty : List.of("flake.lock", "flake.nix", "nixos/rke2.nix")) {
+  void a_dirty_seat_builds_its_fabricated_revision_and_says_so() {
+    final NodeBaseSource source =
+        NodeBaseSource.of(
+            seat(
+                "/bare/rke2lab.git",
+                new BuildRevision(
+                    SHA, true, List.of("nixos/a.nix", "nixos/new.nix"), List.of("nixos/new.nix"))));
+    assertEquals(
+        "0123456789ab (dirty: nixos/a.nix, nixos/new.nix — untracked: nixos/new.nix)",
+        source.provenance());
+  }
+
+  @Test
+  void a_flake_ref_that_is_not_a_revision_is_refused() {
+    for (Worktree seat :
+        List.of(
+            seat("/bare/rke2lab.git", new BuildRevision("abc", false, List.of(), List.of())),
+            seat(
+                "/bare/rke2lab.git?ref=develop&x=",
+                new BuildRevision(SHA, false, List.of(), List.of())))) {
       final IllegalStateException refused =
-          assertThrows(
-              IllegalStateException.class,
-              () -> NodeBaseSource.of(seat(SHA, List.of("docs/x.adoc", dirty))));
-      assertTrue(refused.getMessage().contains(dirty), refused.getMessage());
+          assertThrows(IllegalStateException.class, () -> NodeBaseSource.of(seat));
+      assertTrue(refused.getMessage().contains("nix builds only a revision"), refused.getMessage());
     }
   }
 
-  @Test
-  void an_uncommitted_path_outside_the_inputs_does_not_block() {
-    NodeBaseSource.of(seat(SHA, List.of("docs/x.adoc", "nixos-notes/y.md", "flake.nix.orig")));
-  }
-
-  @Test
-  void a_seat_without_head_is_refused() {
-    assertThrows(IllegalStateException.class, () -> NodeBaseSource.of(seat("", List.of())));
-  }
-
-  private static Worktree seat(String sha, List<String> uncommitted) {
+  private static Worktree seat(String repository, BuildRevision revision) {
     return new Worktree() {
       @Override
       public Path root() {
@@ -55,12 +65,12 @@ class NodeBaseSourceTest {
 
       @Override
       public Provenance provenance() {
-        return new Provenance(sha, !uncommitted.isEmpty());
+        return new Provenance(revision.sha(), revision.fabricated());
       }
 
       @Override
       public WorkingState workingState() {
-        return new WorkingState(uncommitted.isEmpty(), uncommitted);
+        throw new UnsupportedOperationException();
       }
 
       @Override
@@ -75,12 +85,22 @@ class NodeBaseSourceTest {
 
       @Override
       public Path repository() {
-        return Path.of("/bare/rke2lab.git");
+        return Path.of(repository);
       }
 
       @Override
-      public String treeDigestAtHead(List<String> paths) {
-        return "digest:" + paths;
+      public BuildRevision buildRevision(List<String> paths) {
+        return revision;
+      }
+
+      @Override
+      public void releaseBuildRevision(BuildRevision built) {
+        throw new UnsupportedOperationException();
+      }
+
+      @Override
+      public String treeDigest(String rev, List<String> paths) {
+        return "digest:" + rev + ":" + paths;
       }
 
       @Override

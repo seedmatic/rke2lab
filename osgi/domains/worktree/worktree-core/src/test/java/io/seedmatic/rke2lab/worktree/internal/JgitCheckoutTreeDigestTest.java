@@ -32,19 +32,20 @@ class JgitCheckoutTreeDigestTest {
       write("docs/x.md", "x");
       commit(git, "base");
       final JgitCheckout seat = new JgitCheckout(dir);
-      final String base = seat.treeDigestAtHead(BUILD_INPUTS);
+      final String base = seat.treeDigest("HEAD", BUILD_INPUTS);
 
-      assertEquals(base, seat.treeDigestAtHead(BUILD_INPUTS), "the same tree digests the same");
+      assertEquals(base, seat.treeDigest("HEAD", BUILD_INPUTS), "the same tree digests the same");
 
       write("docs/x.md", "y");
       commit(git, "a doc moves");
-      assertEquals(base, seat.treeDigestAtHead(BUILD_INPUTS), "a path outside the inputs is blind");
+      assertEquals(
+          base, seat.treeDigest("HEAD", BUILD_INPUTS), "a path outside the inputs is blind");
 
       write("nixos/a.nix", "edited, not committed");
-      assertEquals(base, seat.treeDigestAtHead(BUILD_INPUTS), "the working tree is blind");
+      assertEquals(base, seat.treeDigest("HEAD", BUILD_INPUTS), "the working tree is blind");
 
       commit(git, "a module moves");
-      assertNotEquals(base, seat.treeDigestAtHead(BUILD_INPUTS), "a committed input moves it");
+      assertNotEquals(base, seat.treeDigest("HEAD", BUILD_INPUTS), "a committed input moves it");
     }
   }
 
@@ -62,7 +63,7 @@ class JgitCheckoutTreeDigestTest {
   void no_head_refuses_to_digest() throws Exception {
     try (Git git = init()) {
       final JgitCheckout seat = new JgitCheckout(dir);
-      assertThrows(IllegalStateException.class, () -> seat.treeDigestAtHead(BUILD_INPUTS));
+      assertThrows(IllegalStateException.class, () -> seat.treeDigest("HEAD", BUILD_INPUTS));
     }
   }
 

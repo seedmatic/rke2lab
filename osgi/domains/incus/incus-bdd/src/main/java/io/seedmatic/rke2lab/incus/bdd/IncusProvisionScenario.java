@@ -232,11 +232,13 @@ public class IncusProvisionScenario
     given()
         .the_seed_node(seedNode)
         .and()
+        .the_image_source(source.map(NodeBaseSource::provenance).orElse("none (unamended)"))
+        .and()
         .prepared_through(observations)
         .and()
         .consulting_manifests_through(resolved.map(Resolved::soil), cellar);
     when()
-        .the_image_is_built(imageRequest(worktreeRoot, source, input.image()))
+        .the_image_is_built(imageRequest(worktreeRoot, source, input.image()), source)
         .and()
         .the_manifests_are_cultivated(
             hostScenario, hostTree, input.facet(), input.image(), worktreeRoot, source)
@@ -357,6 +359,10 @@ public class IncusProvisionScenario
       return self();
     }
 
+    public Given the_image_source(@Quoted String provenance) {
+      return self();
+    }
+
     @Hidden
     public Given prepared_through(List<ObservationWire> observations) {
       this.observations = observations;
@@ -396,6 +402,10 @@ public class IncusProvisionScenario
     // Injected straight from the bundle registry by the @OsgiService bridge (the stage creator) —
     // not threaded from the scenario as step params. The edge collaborators the WHEN drives.
     @OsgiService private Optional<ImageBuilder> imageBuilder = Optional.empty();
+
+    @OsgiService(await = false)
+    private Optional<Worktree> seat = Optional.empty();
+
     @OsgiService private Optional<SeedBroker> broker = Optional.empty();
     @OsgiService private Optional<NetplanSynthesisService> netplan = Optional.empty();
 
@@ -408,7 +418,8 @@ public class IncusProvisionScenario
     private final SeedCodec codec = new SeedCodec();
     private final ScenarioGraft graft = new ScenarioGraft();
 
-    public When the_image_is_built(@Hidden ImageBuildRequest request) {
+    public When the_image_is_built(
+        @Hidden ImageBuildRequest request, @Hidden Optional<NodeBaseSource> source) {
       // Mode-blind: the frontier already chose the builder — CultivatingNixosImageBuilder
       // (shells nix/ssh) or SurveyingImageBuilder (plans, shells nothing). The scion just
       // drives it; a surveying run touches nothing and the step renders PENDING.
@@ -422,6 +433,9 @@ public class IncusProvisionScenario
         throw new IncusImageBuildError(request, failed);
       }
       record("incus image", true, SymptomKind.IMAGE_BUILD_FAILED, null);
+      // Built: a fabricated revision has served its purpose. On a failure its ref stays for the
+      // operator, until the next grow sweeps it.
+      source.ifPresent(built -> seat.orElseThrow().releaseBuildRevision(built.revision()));
       return self();
     }
 
@@ -624,6 +638,9 @@ public class IncusProvisionScenario
     // Injected straight from the bundle registry by the @OsgiService bridge (the stage creator) —
     // the Then reads its recipe digest, no longer threaded from the scenario.
     @OsgiService private Optional<ImageBuilder> imageBuilder = Optional.empty();
+
+    @OsgiService(await = false)
+    private Optional<Worktree> seat = Optional.empty();
 
     public Then the_instance_is_prepared() {
       return self();

@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.abort;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import io.seedmatic.rke2lab.worktree.BuildRevision;
 import io.seedmatic.rke2lab.worktree.GitIdentity;
 import io.seedmatic.rke2lab.worktree.LinkedWorktree;
 import io.seedmatic.rke2lab.worktree.LinkedWorktrees;
@@ -620,7 +621,17 @@ class JgitLinkedWorktreesTest {
     }
 
     @Override
-    public String treeDigestAtHead(List<String> paths) {
+    public BuildRevision buildRevision(List<String> paths) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void releaseBuildRevision(BuildRevision revision) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public String treeDigest(String revision, List<String> paths) {
       throw new UnsupportedOperationException();
     }
 

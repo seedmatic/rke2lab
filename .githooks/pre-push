@@ -29,7 +29,14 @@ run() {
 }
 
 refused=0
-while read -r local_ref local_sha _remote_ref _remote_sha; do
+while read -r local_ref local_sha remote_ref _remote_sha; do
+  # A fabricated grow revision (refs/rke2lab/grow/<sha>) is the seat's dirty build inputs: it
+  # never leaves the repository, whatever the refspec — a broad one (--mirror, refs/*) included.
+  if [[ "$local_ref" == refs/rke2lab/* || "$remote_ref" == refs/rke2lab/* ]]; then
+    echo "  ⛔ $local_ref → $remote_ref: refs/rke2lab/* never leaves this repository." >&2
+    refused=1
+    continue
+  fi
   [[ "$local_sha" != "$zero" ]] || continue
   lock="$(git show "$local_sha:flake.lock" 2>/dev/null || true)"
   [[ -n "$lock" ]] || continue

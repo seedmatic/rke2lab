@@ -108,12 +108,56 @@ The recipe is the NixOS build (`nix build …#nixosConfigurations.rke2-node-base
 `BuildRecipe` as a bundle resource of `incus-edge` — the single source. There is no distrobuilder config
 (`incus-distrobuilder.yaml`) and no distrobuilder invocation any more; the earlier two-channel
 distrobuilder scheme (an NFS-pathed yaml + an ssh-streamed driver) is fully superseded by the substrate.
-A local build runs nix in place; a remote build streams the recipe over the one `ssh` channel.
+nix runs on the seat and hands the aarch64-linux derivations to the seat's own configured builder
+(`/etc/nix/machines`); the edge has no transport of its own.
 
 `recipeDigest()` is a stable digest of that edge-owned recipe, so a recipe change invalidates the host's
 image cache. The host still holds only the digest, never the recipe — it folds `recipeDigest()` into its
-`buildChecksum`. The scion composes `buildChecksum` from `recipeDigest` + the image amendment's fields;
-the recipe bytes it never sees are already covered by the digest. One owner, one channel.
+`buildChecksum`. The scion composes `buildChecksum` from `recipeDigest`, the image amendment's fields and
+the source digest of the revision it builds.
+
+[[build-by-revision]]
+=== The rule — nix builds only a REVISION; a dirty seat builds a fabricated one
+
+[mermaid]
+....
+flowchart LR
+  SEAT["seat worktree<br/>(rdp.bioskop or rdp.nikopol)"]
+  CLEAN{"flake.lock · flake.nix · nixos/<br/>clean?"}
+  HEAD["HEAD's sha"]
+  FAB["fabricated commit<br/>HEAD's tree + the dirty inputs<br/>pinned refs/rke2lab/grow/&lt;sha&gt;"]
+  GUARD["scion guard<br/>git+file://…?rev=&lt;40-hex&gt; or refuse"]
+  NIX["nix build by ?rev=<br/>source read on the seat,<br/>derivations to the builder"]
+  DROP["ref deleted after a successful build<br/>swept after 7 days otherwise"]
+  SEAT --> CLEAN
+  CLEAN -- yes --> HEAD --> GUARD
+  CLEAN -- no --> FAB --> GUARD
+  GUARD --> NIX --> DROP
+....
+
+Any nix evaluation that names a working tree copies that tree into the store, and the store's new paths
+are published by the cache's watch-store — the 2026-10-10 leak. So the image is built from a REVISION
+only: `git+file://<repository>?rev=<sha>`, `<repository>` being the seat's common dir
+(`Worktree.repository()`), read on the seat; the builder receives store paths, never the repository.
+`NodeBaseSource` refuses any other flake ref.
+
+When the build inputs are dirty — the usual case while testing a grow — the seat FABRICATES the revision
+(`Worktree.buildRevision`): HEAD's tree with only the allow-listed inputs (`flake.lock`, `flake.nix`,
+`nixos/**`) taken from the working tree, committed as `rke2lab:grow`, unsigned, subject naming the dirty
+paths, and pinned under `refs/rke2lab/grow/<sha>`. What enters it is guarded, failing closed and naming
+paths, never content:
+
+* gitignored files are never captured; untracked ones are, and are listed in the run's provenance;
+* a path with a `filter=sops-*` / `diff=sops-*` attribute or a sops envelope is refused;
+* every captured blob goes through the pre-commit's content guards (`ContentGuards`, a port whose
+  literals a test compares with `.githooks/pre-commit`), the token shapes applying to every file;
+* a symlink whose target leaves the repository is refused.
+
+`refs/rke2lab/*` never leaves the repository: `.githooks/pre-push` refuses it whatever the refspec.
+
+Gestures: commit, or not — the grow builds what is on disk either way, and the runbook's "the image
+source" step names the revision and, when fabricated, the dirty and untracked paths. A refused grow
+names the paths to fix.
 
 == The shared shape
 
