@@ -102,6 +102,10 @@ $defs:
       # github-signing so a leak of one grants either push access or a
       # "Verified" signature, never both.
       - github-authentication
+      # Signs the commits a bot makes (the manifests render, the version bumper). Kept
+      # apart from github-signing so the operator's own key never leaves the seat: the
+      # bot key is the one a cluster holds, under a bot principal only.
+      - bot-signing
       # v2.1: the `mammoth-skate` authority also signs TLS x509 certs so
       # headscale can serve HTTPS without introducing a second CA key.
       # Leaf keys declare `cert_usage: [tls-server]` (and optionally
@@ -136,21 +140,13 @@ $defs:
       - system
       - user
 
-  # Accepts any of the forms a key material field can take at rest:
-  #  - sops-encrypted envelope `ENC[...]`
-  #  - OpenSSH PEM block `-----BEGIN OPENSSH PRIVATE KEY-----...-----END...-----`
-  #  - raw base64 public blob (possibly with `ssh-<type>` prefix + comment)
-  # Uses anyOf (not oneOf) because a sops-encrypted scalar happens to also
-  # satisfy the minLength predicate; the intent is "any of the known
-  # shapes", not "exactly one shape".
-  base64OrEnc:
-    anyOf:
-      - type: string
-        pattern: '^ENC\[.*\]$'
-      - type: string
-        pattern: '^-----BEGIN [A-Z ]+PRIVATE KEY-----'
-      - type: string
-        minLength: 40
+  # A private key AT REST — keys.yaml as committed — is a sops envelope and nothing else.
+  # This schema validates the encrypted file (checks.<system>.ssh-keys-schema, the pre-commit),
+  # so a private in clear can only be a defect: the August 2026 shape, a valid sops envelope
+  # around keys a routing rule never encrypted. The pattern is the blob-level guard.
+  encryptedPrivate:
+    type: string
+    pattern: '^ENC\[.*\]$'
 
   publicBlob:
     description: >
@@ -202,7 +198,7 @@ $defs:
         public:
           $ref: "#/$defs/publicBlob"
         private:
-          $ref: "#/$defs/base64OrEnc"
+          $ref: "#/$defs/encryptedPrivate"
         certificates:
           $ref: "#/$defs/certificates"
 
@@ -211,7 +207,7 @@ $defs:
     description: >
       An authority's generations, keyed like a key's slots. ONE rule decides
       which generation signs, everywhere it is applied (the enrichment, the TLS
-      root bootstrap, the incus listener mint, rke2lab's keystore reader): the
+      root bootstrap, the incus cluster cert renewal, rke2lab's keystore reader): the
       OLDEST slot that is not `compromised`. That slot is also the one the
       authority PRESENTS — its `ca_crt` is the root its leaves chain to. Every
       slot that is not compromised is ACCEPTED: trust stores carry its `public`
@@ -232,7 +228,7 @@ $defs:
         public:
           $ref: "#/$defs/publicBlob"
         private:
-          $ref: "#/$defs/base64OrEnc"
+          $ref: "#/$defs/encryptedPrivate"
         ca_crt:
           type: string
           pattern: "^-----BEGIN CERTIFICATE-----"
@@ -430,12 +426,12 @@ $defs:
       profiles:
         type: array
         description: >
-          Which profiles this key participates in. An empty list (or missing
-          field) means the key is excluded from every profile — the split
-          step warns on such entries.
+          Which profiles this key participates in. An EMPTY list means the key
+          lands on no host: no split slice carries it, and its consumer reads
+          keys.yaml itself, in memory (the bot signing key, read by rke2lab's
+          keystore).
         items:
           $ref: "#/$defs/profileName"
-        minItems: 1
         uniqueItems: true
       comment:
         type: string

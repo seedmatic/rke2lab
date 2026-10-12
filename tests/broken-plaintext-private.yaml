@@ -1,0 +1,13 @@
+# Must FAIL the schema, for ONE reason only: a private key in CLEAR in the committed file.
+# A valid sops envelope around unencrypted keys is how eight privates were published in 2026-08.
+authorities:
+  test-ca:
+    type: ssh-ed25519
+    slots:
+      26-10-01:
+        public: AAAAC3NzaC1lZDI1NTE5AAAAIOneFixtureBlobOneFixtureBlobOneFixtureBlob
+        private: |
+          -----BEGIN OPENSSH PRIVATE KEY-----
+          not-a-real-key-only-its-shape
+          -----END OPENSSH PRIVATE KEY-----
+keys: {}
