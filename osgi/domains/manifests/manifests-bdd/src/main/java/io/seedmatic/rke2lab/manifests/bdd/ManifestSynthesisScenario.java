@@ -629,7 +629,7 @@ public class ManifestSynthesisScenario
     // blank token), so a present token is always usable and the caller holds no empty-token case.
     final Optional<String> token = push ? revealGithubToken() : Optional.empty();
     // The bot identity + signing key are enclosure-resolved (§ pac-in-cluster-render-spec, auth):
-    // OPERATOR reads the sops-smudged ndh key-store at hand; IN_CLUSTER the git tree is
+    // OPERATOR opens the ndh key-store at hand in memory; IN_CLUSTER the git tree is
     // sops-encrypted
     // at rest, so the signing key rides the mounted Secret (revealSigningKey, RKE2LAB_SIGNING_KEY)
     // and

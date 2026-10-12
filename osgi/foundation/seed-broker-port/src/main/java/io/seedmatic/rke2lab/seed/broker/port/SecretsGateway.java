@@ -19,8 +19,8 @@ public interface SecretsGateway {
 
   /**
    * The JSON of the {@code .secrets} subtree at {@code dottedPath} (e.g. {@code "github"}), or
-   * empty when the block is absent. The worktree copy is smudged plaintext, so the JSON is
-   * readable.
+   * empty when the block is absent. The worktree copy stays sops-encrypted; the gateway opens it in
+   * memory, so the JSON is readable.
    */
   Optional<String> read(String dottedPath);
 }

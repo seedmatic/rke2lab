@@ -20,8 +20,8 @@ public enum FloxEnvFolder {
   // baked node-base image. Holds the seed-incluster env (the Go controller binary).
   CLUSTER_API("cluster-api"),
   // The cross-cutting toolchain tier — NOT a workload domain. `toolchains` holds composable
-  // capability envs a step activates or `[include]`s regardless of domain: `git-sops` (git + sops +
-  // the ndh filter, so a checkout smudges the sops tree) and `kube` (the kube-API scripting tools
+  // capability envs a step activates or `[include]`s regardless of domain: `git-sops` (git + sops,
+  // to open and seal sops documents in memory) and `kube` (the kube-API scripting tools
   // kubectl + yq-go that helper Jobs activate / domain envs `[include]`). Kept separate from the
   // domain folders so a folder never implies a consumer.
   TOOLCHAINS("toolchains");
