@@ -834,48 +834,6 @@
         # a JRE to run the seed-outcluster jar, and the incus client the provider
         # shells out to. The PULUMI_* vars are set here too, mirroring the flox
         # env's [vars]: local file:// backend under the repo, empty passphrase.
-        # Mint a short-lived (~1h) GitHub App INSTALLATION token from the one org-owned App's
-        # credentials in .secrets (github.app), for the flake-input fetches and the push AS THE APP
-        # — never a personal `gh auth token`. There
-        # is no cluster/cellar at BUILD time, so this is the shell twin of the OSGi ghapp minter
-        # (which is itself what the build produces — chicken-and-egg forbids reusing it here). Least
-        # privilege: packages:read. The grow / render wrappers export its
-        # output as GH_TOKEN before the inner `nix build`; in-cluster there is no .secrets and the
-        # caller sets GH_TOKEN from PaC's App token instead.
-        mintGhAppTokenApp = pkgs.writeShellApplication {
-          name = "mint-gh-app-token";
-          runtimeInputs = [ pkgs.coreutils pkgs.openssl pkgs.curl pkgs.yq-go pkgs.sops ];
-          text = ''
-            secrets="''${1:-.secrets}"
-            if [ ! -f "$secrets" ]; then
-              echo "mint-gh-app-token: no $secrets (github.app credentials)" >&2
-              exit 1
-            fi
-            # .secrets stays encrypted at rest: it is opened once, into memory. Values are read through
-            # pipes, never a here-string, which some bash versions back with a temporary file.
-            plain=$(sops --decrypt --input-type yaml --output-type yaml "$secrets")
-            appId=$(printf '%s' "$plain" | yq -r '.github.app.appId')
-            installationId=$(printf '%s' "$plain" | yq -r '.github.app.installationId')
-            b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
-            now=$(date +%s)
-            header=$(printf '%s' '{"alg":"RS256","typ":"JWT"}' | b64url)
-            payload=$(printf '%s' "{\"iat\":$((now - 60)),\"exp\":$((now + 540)),\"iss\":\"$appId\"}" | b64url)
-            # Sign WITHOUT ever writing the private key to disk: the key is fed to openssl through a
-            # process-substitution fd (an anonymous pipe, never a tmpfs file), and the data to sign
-            # arrives on stdin. openssl reads the key sequentially so a pipe is fine.
-            signature=$(printf '%s' "$header.$payload" \
-              | openssl dgst -sha256 -sign <(printf '%s' "$plain" | yq -r '.github.app.privateKeyPem') -binary \
-              | b64url)
-            jwt="$header.$payload.$signature"
-            curl -sS -X POST \
-              -H "Authorization: Bearer $jwt" \
-              -H "Accept: application/vnd.github+json" \
-              -d '{"permissions":{"packages":"read"}}' \
-              "https://api.github.com/app/installations/$installationId/access_tokens" \
-              | yq -p json -r '.token'
-          '';
-        };
-
         growApp = pkgs.writeShellApplication {
           name = "rke2lab-grow";
           runtimeInputs = [
@@ -886,7 +844,6 @@
             pulumiJavaPkg
             pkgs.jdk25
             incusClient
-            mintGhAppTokenApp
           ]
           # ndh's manage-tailnet on PATH: InstanceGrow runs it as a local.Command to prune the old
           # node's stale tailscale devices when the instance is replaced (they orphan their MagicDNS
@@ -973,24 +930,6 @@ USAGE
             read -r -a extraNixFlags <<< "''${NIX_FLAGS:-}"
             nixFlags+=( "''${extraNixFlags[@]}" )
 
-            # GH_TOKEN for the flake-input fetches and the ff-push — NOT for the inner maven
-            # build, which runs offline over maven-deps. Mint from the one org-owned GitHub App
-            # (.secrets github.app), never a personal `gh auth token`.
-            # Mint ONLY when no token is already provided. In-cluster the Tekton step already set
-            # GH_TOKEN from PaC's App git_auth (the App-provided k8s Secret), and .secrets is present
-            # there too — so keying off `[ -f .secrets ]` would mint a second token for nothing. Key
-            # off GH_TOKEN instead: set ⇒ in-cluster/explicit, use it; empty ⇒ the operator, mint.
-            if [ -z "''${GH_TOKEN:-}" ] && [ -f .secrets ]; then
-              # Non-fatal: if the mint fails (e.g. no key to open .secrets), do not abort the build.
-              # The `if` condition swallows the non-zero exit (set -e does not fire on a tested cmd).
-              if minted="$(mint-gh-app-token)"; then
-                GH_TOKEN="$minted"; export GH_TOKEN
-                echo "==> using a GitHub App token for the fetches and the push" >&2
-              else
-                echo "==> mint-gh-app-token failed; falling back to the ambient GH_TOKEN" >&2
-              fi
-            fi
-
             # The inner build names THIS flake's own store source, never `.`: the checkout it runs in
             # may hold decrypted sops files, and evaluating the working tree would copy them into the
             # store in clear. So it builds what the outer `nix run` was given, not the working tree.
@@ -1034,7 +973,7 @@ USAGE
           # openssh: the publish signs the rendered commit with RKE2LAB_SIGNING_KEY via `ssh-keygen`
           # (SshCommitSigner → jgit), which openssh provides (`Cannot run program "ssh-keygen"`
           # without it). Both were implicit on dev / the deleted cicd/nix FloxEnv.
-          runtimeInputs = [ pkgs.coreutils pkgs.nix pkgs.git pkgs.jdk25 pkgs.nodejs pkgs.openssh mintGhAppTokenApp ];
+          runtimeInputs = [ pkgs.coreutils pkgs.nix pkgs.git pkgs.jdk25 pkgs.nodejs pkgs.openssh ];
           text = ''
             if [ ! -f pom.xml ] || [ ! -f flake.nix ]; then
               echo "error: run from the rke2lab repo root" >&2
@@ -1060,24 +999,6 @@ USAGE
             nixFlags=( -L )
             read -r -a extraNixFlags <<< "''${NIX_FLAGS:-}"
             nixFlags+=( "''${extraNixFlags[@]}" )
-            # GH_TOKEN for the fetch and the push below: on the operator (dev render), mint from the one
-            # org-owned GitHub App (.secrets github.app), never a personal token. In-cluster the
-            # Tekton step already set GH_TOKEN from PaC's App token, so the guard below skips.
-            # Mint ONLY when no token is already provided. In-cluster the Tekton step already set
-            # GH_TOKEN from PaC's App git_auth (the App-provided k8s Secret), and .secrets is present
-            # there too — so keying off `[ -f .secrets ]` would mint a second token for nothing. Key
-            # off GH_TOKEN instead: set ⇒ in-cluster/explicit, use it; empty ⇒ the operator, mint.
-            if [ -z "''${GH_TOKEN:-}" ] && [ -f .secrets ]; then
-              # Non-fatal: if the mint fails (e.g. no key to open .secrets), do not abort the build.
-              # The `if` condition swallows the non-zero exit (set -e does not fire on a tested cmd).
-              if minted="$(mint-gh-app-token)"; then
-                GH_TOKEN="$minted"; export GH_TOKEN
-                echo "==> using a GitHub App token for the fetches and the push" >&2
-              else
-                echo "==> mint-gh-app-token failed; falling back to the ambient GH_TOKEN" >&2
-              fi
-            fi
-
             echo "==> building manifests-cli from the store" >&2
             jar="$(nix build "${self}#manifests-cli" "''${nixFlags[@]}" --no-link --print-out-paths)/share/java/manifests.jar"
             [ -f "$jar" ] || { echo "error: store jar not found at $jar" >&2; exit 1; }
@@ -1158,7 +1079,6 @@ USAGE
           maven-deps = mavenDepsFor pkgs;
           incus-client = incusClient;
           grow = growApp;
-          mint-gh-app-token = mintGhAppTokenApp;
           flux9s = flux9sPkg;
         }
         // floxNriPluginPackages
@@ -1202,14 +1122,6 @@ USAGE
           type = "app";
           program = "${renderApp}/bin/rke2lab-render-manifests";
           meta.description = "Render manifests/<cluster> + signed ff-push (build manifests-cli from the store, then publish)";
-        };
-
-        # Standalone: `GH_TOKEN=$(nix run .#mint-gh-app-token) …` — mint a packages:read GitHub
-        # App token from .secrets, for the flake-input fetches and the push.
-        apps.mint-gh-app-token = {
-          type = "app";
-          program = "${mintGhAppTokenApp}/bin/mint-gh-app-token";
-          meta.description = "Mint a short-lived packages:read GitHub App installation token from .secrets (github.app)";
         };
 
         # Derive the plan and DELIVER it: `nix run .#publish-plan`, from the repo root. The plan jar's

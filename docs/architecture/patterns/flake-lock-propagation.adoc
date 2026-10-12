@@ -264,7 +264,7 @@ knowledge.
   invent a second one.
 . It names the OUTCOME, not the mechanism. `update-locks` describes `nix flake update`; `relock`
   describes what a consumer cares about — the lock is re-established.
-. House style is a short kebab-case imperative: `grow`, `lock-envs`, `mint-gh-app-token`,
+. House style is a short kebab-case imperative: `grow`, `lock-envs`, `publish-plan`,
   `manage-tailnet`.
 
 Propagation is a SCOPE, not a second name — following the per-input scope already decided for the
