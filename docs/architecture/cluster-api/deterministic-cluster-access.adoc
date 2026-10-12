@@ -375,8 +375,8 @@ synced copy:
 +
 [source,bash]
 ----
-yq -r '.authorities."mammoth-skate-tls".ca_crt' .ndh-ssh.d/keys.yaml \
-  | step certificate inspect - | grep -A1 'Basic Constraints'   # expect CA:TRUE, no pathlen
+yq -r '.authorities."mammoth-skate-tls".slots | to_entries | sort_by(.key) | .[-1].value.ca_crt' \
+    .ndh-ssh.d/keys.yaml | step certificate inspect - | grep -A1 'Basic Constraints'   # expect CA:TRUE, no pathlen
 ----
 
 . **Clear the cached PKI** so the next seal re-mints. The three `cluster-pki` cases

@@ -24,11 +24,19 @@ class DefaultNdhKeystoreReaderTest {
       authorities:
         mammoth-skate-tls:
           type: ecdsa-sha2-nistp256
-          ca_crt: CA-CRT
           domain: mammoth-skate.ts.net
           slots:
-            26-10-05: { public: new-auth-pub, private: new-auth-priv }
-            26-05-29: { public: old-auth-pub, private: old-auth-priv }
+            26-10-05: { public: new-auth-pub, private: new-auth-priv, ca_crt: NEW-CA-CRT }
+            26-05-29: { public: old-auth-pub, private: old-auth-priv, ca_crt: OLD-CA-CRT }
+        leaked-tls:
+          type: ecdsa-sha2-nistp256
+          slots:
+            26-10-05: { private: new-leaked-priv, ca_crt: NEW-LEAKED-CRT }
+            26-05-29: { private: old-leaked-priv, ca_crt: OLD-LEAKED-CRT, compromised: published }
+        all-leaked:
+          type: ecdsa-sha2-nistp256
+          slots:
+            26-05-29: { private: p, ca_crt: c, compromised: published }
       keys:
         rke2-cluster:
           type: ssh-ed25519
@@ -63,8 +71,24 @@ class DefaultNdhKeystoreReaderTest {
   }
 
   @Test
-  void anAuthoritySignsWithItsOldestGeneration() throws IOException {
-    assertEquals("old-auth-priv", reader(V2).authorityPrivate("mammoth-skate-tls"));
+  void anAuthoritySignsWithItsOldestGenerationAndPresentsThatRoot() throws IOException {
+    final DefaultNdhKeystoreReader keystore = reader(V2);
+    assertEquals("old-auth-priv", keystore.authorityPrivate("mammoth-skate-tls"));
+    assertEquals("OLD-CA-CRT", keystore.authorityCert("mammoth-skate-tls"));
+  }
+
+  @Test
+  void aCompromisedOldestSlotNeverSignsTheNewerOneDoesAtOnce() throws IOException {
+    final DefaultNdhKeystoreReader keystore = reader(V2);
+    assertEquals("new-leaked-priv", keystore.authorityPrivate("leaked-tls"));
+    assertEquals("NEW-LEAKED-CRT", keystore.authorityCert("leaked-tls"));
+  }
+
+  @Test
+  void whenEverySlotIsCompromisedNothingSigns() throws IOException {
+    final IllegalStateException raised =
+        assertThrows(IllegalStateException.class, () -> reader(V2).authorityPrivate("all-leaked"));
+    assertTrue(raised.getMessage().contains("compromised"), raised.getMessage());
   }
 
   @Test
@@ -75,10 +99,8 @@ class DefaultNdhKeystoreReaderTest {
   }
 
   @Test
-  void theCertificateAndDomainStayAtTheAuthorityLevel() throws IOException {
-    final DefaultNdhKeystoreReader keystore = reader(V2);
-    assertEquals("CA-CRT", keystore.authorityCert("mammoth-skate-tls"));
-    assertEquals("mammoth-skate.ts.net", keystore.authorityDomain("mammoth-skate-tls"));
+  void theDomainStaysAtTheAuthorityLevel() throws IOException {
+    assertEquals("mammoth-skate.ts.net", reader(V2).authorityDomain("mammoth-skate-tls"));
   }
 
   @Test

@@ -18,7 +18,11 @@ public interface NdhKeystoreReader {
   /** Whether the key-store is present + readable (fail-soft gate; the accessors assume it is). */
   boolean present();
 
-  /** The x509 certificate of a TLS authority — {@code authorities.<authority>.ca_crt}. */
+  /**
+   * The x509 root a TLS authority presents — {@code authorities.<authority>.slots.<slot>.ca_crt} of
+   * its signing slot (the oldest not marked {@code compromised}), the same slot as {@link
+   * #authorityPrivate}.
+   */
   String authorityCert(String authority);
 
   /**
