@@ -39,7 +39,7 @@ secret_material_guard() {
       echo "  ⛔ $f — staged blob contains private key material in the clear" >&2
       found=1
     fi
-  done < <(git diff --cached --name-only --diff-filter=ACMR -z)
+  done < <(git diff --cached --name-only --diff-filter=ACMRT -z)
 
   if ((found)); then
     cat >&2 <<'EOF'
@@ -95,7 +95,7 @@ token_shape_guard() {
       echo "  ⛔ $f — staged blob holds a token in the clear outside ENC[…], line(s) $lines" >&2
       found=1
     fi
-  done < <(git diff --cached --name-only --diff-filter=ACMR -z)
+  done < <(git diff --cached --name-only --diff-filter=ACMRT -z)
 
   if ((found)); then
     cat >&2 <<'EOF'
