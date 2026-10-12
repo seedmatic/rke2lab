@@ -52,8 +52,15 @@ amend door that binds the injected `GatePolicy` FACET — the twin of `IncusAmen
 
 * **`Worktree`** (contract) — the service: `root()` (the absolute, normalised anchor every
   provisioning path derives from), `provenance()`, `workingState()`, and `flakeLockCoherent()` (the
-  `HEAD~1..HEAD` check — a `flake.nix` inputs change without its `flake.lock`). jgit-free — only JDK
+  `HEAD~1..HEAD` check — a `flake.nix` inputs change without its `flake.lock`). For a build of the seat
+  it adds `repository()` (the common dir, the bare a revision is read through), `buildRevision(paths)`,
+  `releaseBuildRevision(revision)` and `treeDigest(revision, paths)` — see
+  link:incus-edge-spec.adoc#build-by-revision[the rule: nix builds only a revision]. jgit-free — only JDK
   types and the `worktree` records cross it.
+* **`BuildRevision`** — the revision a build of the seat reads: the `sha`, whether it was `fabricated`
+  (HEAD's tree with the dirty build inputs taken from the working tree, pinned under
+  `refs/rke2lab/grow/<sha>`, never pushed), and the `changed` and `untracked` paths that made it so —
+  the run's provenance names them.
 * **`GatePolicy`** (contract) — the entry-gate POLICY, injected into the worktree crossing as the
   `FACET` amendment. Two sub-gates, each toggled: `cleanWorktreeRequired` (+ the `toleratedPaths`
   allowed to be uncommitted) and `flakeLockRequired` (default OFF). Its `enforce(WorktreeFacts)`
@@ -92,17 +99,21 @@ amend door that binds the injected `GatePolicy` FACET — the twin of `IncusAmen
   beside `GitIdentity` because the identity of a git commit belongs to the domain that owns the git
   mechanism. Users: the manifests render, the manifests version bumper, the fabric delivery.
 
-The `Worktree` service also carries TWO write verbs — the first the domain gained (survey stayed
-read-only until a consumer needed to cultivate the tree), jgit still sealed behind the implementation
-so only JDK types cross:
+The `Worktree` service also carries ONE write verb, `commit(TreeEdit, CommitSpec)` — a writer hands
+bytes in memory and never touches files itself; jgit stays sealed behind the implementation so only
+JDK types cross:
 
-* **`stage(List<Path>)`** — stage additions/modifications for paths that exist, removals for paths
-  that no longer do; each path absolute or worktree-relative, resolved against `root()`.
-* **`commit(String message, GitIdentity identity, Optional<String> sshSigningKey)`** — commit the
-  staged changes authored AND committed as `identity`, optionally SSH-signed with the caller's OpenSSH
-  private key (git SSHSIG, `git` namespace, via an injected `ssh-keygen` signer since jgit ships
-  none), returning the new commit sha. LOCAL to the seed's OWN worktree — pushing a rendered branch is
-  the separate `LinkedWorktrees` service below.
+* **`TreeEdit`** — the edit model, sealed: an **`Overlay`** (`files` laid over the head's tree, the
+  `removed` paths dropped — a version bump, a delivery of a few files) or a **`Replace`** (the whole
+  tree replaced by `files`, the head's `carried` subtrees kept — a render). Paths worktree-relative.
+* **`CommitSpec`** — the `message`, the `identity` authored AND committed as, and the OpenSSH private
+  key the commit is SSH-signed with (git SSHSIG, `git` namespace, via an injected `ssh-keygen` signer
+  since jgit ships none), or empty for unsigned.
+* **`commit(TreeEdit, CommitSpec)`** — the seat (on disk) takes an `Overlay`: it writes the files,
+  deletes the removed paths, stages them and commits, returning the sha (the unchanged tip when the
+  result matches HEAD). A `Replace` is refused there — it would empty the operator's working tree —
+  and a path leaving the worktree is refused. LOCAL to the seed's OWN worktree — pushing a rendered
+  branch is the separate `LinkedWorktrees` service below. The manifests version bumper is its user.
 
 === The rendered-branch delivery — `LinkedWorktrees` / `LinkedWorktree`
 
@@ -200,7 +211,7 @@ Two changes removed both host-side reads, and with them the reason for the dual-
 
 . **The grow plan became self-contained (Q1 — ✅).** The `InstanceGrowPlan` (`incus-ingress-contract`)
   now carries the resolved disk mounts as `GrowMountView`s: the incus scion (which `@Reference`s
-  `Worktree`) computes the live + automount `BootstrapPaths` view OSGi-side and projects the 13
+  `Worktree`) computes the live `BootstrapPaths` view OSGi-side and projects the 13
   source↔target pairs into the plan, so the host GROW actualises the plan ALONE — no separate
   `WorktreeCoordinate.FACTS` fetch for `root()`.
 . **The entry gate moved OSGi-side (Q2 — ✅).** The host-flat `EntryGatePolicyEnforcer` (with its

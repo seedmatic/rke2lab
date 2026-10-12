@@ -7,10 +7,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.abort;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import io.seedmatic.rke2lab.worktree.BuildRevision;
+import io.seedmatic.rke2lab.worktree.CommitSpec;
 import io.seedmatic.rke2lab.worktree.GitIdentity;
 import io.seedmatic.rke2lab.worktree.LinkedWorktree;
 import io.seedmatic.rke2lab.worktree.LinkedWorktrees;
 import io.seedmatic.rke2lab.worktree.Provenance;
+import io.seedmatic.rke2lab.worktree.TreeEdit;
 import io.seedmatic.rke2lab.worktree.WorkingState;
 import io.seedmatic.rke2lab.worktree.Worktree;
 import jakarta.servlet.DispatcherType;
@@ -615,12 +618,27 @@ class JgitLinkedWorktreesTest {
     }
 
     @Override
-    public void stage(List<Path> paths) {
+    public Path repository() {
       throw new UnsupportedOperationException();
     }
 
     @Override
-    public String commit(String message, GitIdentity identity, Optional<String> sshSigningKey) {
+    public BuildRevision buildRevision(List<String> paths) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void releaseBuildRevision(BuildRevision revision) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public String treeDigest(String revision, List<String> paths) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public String commit(TreeEdit edit, CommitSpec spec) {
       throw new UnsupportedOperationException();
     }
   }

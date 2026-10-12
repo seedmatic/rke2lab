@@ -315,7 +315,7 @@ filesystem. So the WHOLE topology is computed OSGi-side, uniformly (it reads bet
 split): `HostPathCatalog` + `fromLocalWorktree` + the slot + the pure `pathOn` NFS translation all live
 bundle-side; the scion produces the resolved mount plan; the host reads it flat via Split and holds no
 catalog, no roots. The host keeps only the Pulumi engine (irreducible) + a handful of flat scalars it
-hands the scion by `@Amendment` (worktree, cluster, node, automount). No D5 leak, because the
+hands the scion by `@Amendment` (worktree, cluster, node). No D5 leak, because the
 crossing SOIL is flat and `BootstrapConfig` never crosses. See
 link:host-cellar-realisation-spec.adoc[host-cellar] § "BootstrapPaths — the WHOLE topology is computed
 OSGi-side".

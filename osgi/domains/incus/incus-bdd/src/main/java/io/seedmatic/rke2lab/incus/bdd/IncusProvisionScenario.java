@@ -56,6 +56,7 @@ import io.seedmatic.rke2lab.seed.broker.port.Parcel;
 import io.seedmatic.rke2lab.seed.broker.port.RunbookCoordinate;
 import io.seedmatic.rke2lab.seed.broker.port.SeedBroker;
 import io.seedmatic.rke2lab.seed.broker.port.SeedEnvelope;
+import io.seedmatic.rke2lab.worktree.Worktree;
 import io.seedmatic.rke2lab.worktree.WorktreeCoordinate;
 import io.seedmatic.rke2lab.worktree.WorktreeFacts;
 import java.io.IOException;
@@ -145,6 +146,11 @@ public class IncusProvisionScenario
   @OsgiService(await = false)
   private Optional<ConsultingService> doctor = Optional.empty();
 
+  // The seat, read for the node-base image's source (its HEAD and the digest of its build inputs).
+  // await=false: an unamended survey builds nothing and never asks for it.
+  @OsgiService(await = false)
+  private Optional<Worktree> seat = Optional.empty();
+
   // The consultations the run raised on a failed build/unreachable instance — the
   // ScenarioOutcomeExtension PULLS them (ConsultationSource) at the run boundary. Set in the @Test
   // after the body (jGiven defers a failed step's throw to scenario-end); empty until then.
@@ -194,6 +200,19 @@ public class IncusProvisionScenario
     // the
     // runbook into, and the worktree for provenance.
     final Optional<Resolved> resolved = Resolved.from(input.facet(), worktreeRoot);
+    // What the node-base image builds from — the seat's committed HEAD. Computed once, for the
+    // build request, the IMAGE_STATE amendment and the grow plan alike. Absent for an unamended
+    // run.
+    final Optional<NodeBaseSource> source =
+        input
+            .facet()
+            .map(
+                facet ->
+                    NodeBaseSource.of(
+                        seat.orElseThrow(
+                            () ->
+                                new IllegalStateException(
+                                    "no Worktree service — cannot source the node-base image"))));
     // The @Test body OWNS the observation sink (the same discipline as the other scions): the When
     // fills it, and the consult below reads THIS reference — independent of jGiven's stage state
     // after a fail-fast step, so a failed build still reaches the consult.
@@ -213,14 +232,16 @@ public class IncusProvisionScenario
     given()
         .the_seed_node(seedNode)
         .and()
+        .the_image_source(source.map(NodeBaseSource::provenance).orElse("none (unamended)"))
+        .and()
         .prepared_through(observations)
         .and()
         .consulting_manifests_through(resolved.map(Resolved::soil), cellar);
     when()
-        .the_image_is_built(imageRequest(worktreeRoot, input.facet(), input.image()))
+        .the_image_is_built(imageRequest(worktreeRoot, source, input.image()), source)
         .and()
         .the_manifests_are_cultivated(
-            hostScenario, hostTree, input.facet(), input.image(), worktreeRoot)
+            hostScenario, hostTree, input.facet(), input.image(), worktreeRoot, source)
         .and()
         .the_network_and_identity_are_resolved(resolved);
     then()
@@ -229,7 +250,7 @@ public class IncusProvisionScenario
         .the_prep_is_stored(resolved.map(Resolved::soil).orElse(""), cellar, parcel)
         .and()
         .the_instance_grow_plan_is_published(
-            resolved, input.image().orElse(new Image("", "", "")), cellar, parcel);
+            resolved, input.image().orElse(new Image("", "")), source, cellar, parcel);
     // Pose the live root the host renders the runbook into — a within-run fact whose layout
     // convention lives only here (§ seed-broker-spec, two cellars: the ephemeral cellar). The graft
     // merges this tag into the host tree; the host reads it via ScenarioGraft.graftedValue. Posed
@@ -269,39 +290,25 @@ public class IncusProvisionScenario
   }
 
   /**
-   * The image-build request the scion drives. When both amendments are present (a live cultivating
-   * run) it is derived from them: the incus daemon lives only on the remote {@code builderHost}
-   * ({@code bioskop-nixos}), so from the seed-outcluster host the edge streams the nix build over
-   * ssh (nix alone resolves on the Mac, but no local daemon to import into). The workspace it
-   * {@code cd}s into is the worktree root rebased onto the automount view ({@code
-   * BootstrapPaths.asAutomountView}, e.g. {@code /net/bioskop.local/private/ …}), the SAME view the
-   * Mac reads the artifacts back through. The artifact dir is that root's OWN subpath, so it rides
-   * as a path RELATIVE to the workspace and the recipe joins the two — no second translation; the
-   * artifact dir is the flat state root {@code .local.d} ({@code BootstrapPaths.STATE_DIR}).
-   * Unamended (a bare survey or the offline scenario) it falls to a blank marker the surveying/mock
-   * builder ignores.
+   * The image-build request the scion drives. When the run is amended it builds the seat's
+   * committed HEAD ({@link NodeBaseSource}) into the flat state root {@code .local.d} ({@code
+   * BootstrapPaths.STATE_DIR}) under the worktree root, the same dir the plan reads the artifacts
+   * back from. Unamended (a bare survey or the offline scenario) it falls to a blank marker the
+   * surveying/mock builder ignores.
    */
   private ImageBuildRequest imageRequest(
-      Optional<Path> worktreeRoot, Optional<Facet> maybeFacet, Optional<Image> maybeImage) {
-    if (maybeFacet.isEmpty() || maybeImage.isEmpty()) {
-      return new ImageBuildRequest("nix", "/srv/host/incus-build", "artifacts", "", "", "", "");
+      Optional<Path> worktreeRoot,
+      Optional<NodeBaseSource> maybeSource,
+      Optional<Image> maybeImage) {
+    if (maybeSource.isEmpty() || maybeImage.isEmpty()) {
+      return new ImageBuildRequest("nix", "", "", "/srv/host/incus-build/artifacts");
     }
-    final Facet facet = maybeFacet.orElseThrow();
-    final Image image = maybeImage.orElseThrow();
-    final Path localRoot = worktreeRoot.orElseThrow();
-    final Path remoteRoot =
-        BootstrapPaths.fromLocalWorktree(localRoot)
-            .asAutomountView(facet.automount(), facet.netPrefix())
-            .worktreeRoot();
-    final Path artifactUnderWorktree = Path.of(BootstrapPaths.STATE_DIR);
+    final NodeBaseSource source = maybeSource.orElseThrow();
     return new ImageBuildRequest(
-        image.builderBinary(),
-        localRoot.toString(),
-        localRoot.resolve(artifactUnderWorktree).toString(),
-        image.builderHost(),
-        remoteRoot.toString(),
-        artifactUnderWorktree.toString(),
-        facet.incusProject());
+        maybeImage.orElseThrow().builderBinary(),
+        source.flakeRef(),
+        source.digest(),
+        BootstrapPaths.fromLocalWorktree(worktreeRoot.orElseThrow()).stateRoot().toString());
   }
 
   /**
@@ -316,13 +323,7 @@ public class IncusProvisionScenario
    * {@code Resolved} always holds a real topology.
    */
   private record Resolved(
-      String soil,
-      String liveRoot,
-      Path worktreeRoot,
-      String clusterName,
-      String nodeName,
-      boolean automount,
-      String netPrefix) {
+      String soil, String liveRoot, Path worktreeRoot, String clusterName, String nodeName) {
 
     static Optional<Resolved> from(Optional<Facet> maybeFacet, Optional<Path> worktreeRoot) {
       if (maybeFacet.isEmpty()) {
@@ -340,9 +341,7 @@ public class IncusProvisionScenario
               local.liveRoot().toString(),
               root,
               facet.clusterName(),
-              facet.nodeName(),
-              facet.automount(),
-              facet.netPrefix()));
+              facet.nodeName()));
     }
   }
 
@@ -357,6 +356,10 @@ public class IncusProvisionScenario
     @ProvidedScenarioState Cellar cellar;
 
     public Given the_seed_node(@Quoted String name) {
+      return self();
+    }
+
+    public Given the_image_source(@Quoted String provenance) {
       return self();
     }
 
@@ -399,6 +402,10 @@ public class IncusProvisionScenario
     // Injected straight from the bundle registry by the @OsgiService bridge (the stage creator) —
     // not threaded from the scenario as step params. The edge collaborators the WHEN drives.
     @OsgiService private Optional<ImageBuilder> imageBuilder = Optional.empty();
+
+    @OsgiService(await = false)
+    private Optional<Worktree> seat = Optional.empty();
+
     @OsgiService private Optional<SeedBroker> broker = Optional.empty();
     @OsgiService private Optional<NetplanSynthesisService> netplan = Optional.empty();
 
@@ -411,7 +418,8 @@ public class IncusProvisionScenario
     private final SeedCodec codec = new SeedCodec();
     private final ScenarioGraft graft = new ScenarioGraft();
 
-    public When the_image_is_built(@Hidden ImageBuildRequest request) {
+    public When the_image_is_built(
+        @Hidden ImageBuildRequest request, @Hidden Optional<NodeBaseSource> source) {
       // Mode-blind: the frontier already chose the builder — CultivatingNixosImageBuilder
       // (shells nix/ssh) or SurveyingImageBuilder (plans, shells nothing). The scion just
       // drives it; a surveying run touches nothing and the step renders PENDING.
@@ -425,6 +433,9 @@ public class IncusProvisionScenario
         throw new IncusImageBuildError(request, failed);
       }
       record("incus image", true, SymptomKind.IMAGE_BUILD_FAILED, null);
+      // Built: a fabricated revision has served its purpose. On a failure its ref stays for the
+      // operator, until the next grow sweeps it.
+      source.ifPresent(built -> seat.orElseThrow().releaseBuildRevision(built.revision()));
       return self();
     }
 
@@ -443,7 +454,8 @@ public class IncusProvisionScenario
         @Hidden ReportModel hostTree,
         @Hidden Optional<Facet> facet,
         @Hidden Optional<Image> image,
-        @Hidden Optional<Path> worktreeRoot) {
+        @Hidden Optional<Path> worktreeRoot,
+        @Hidden Optional<NodeBaseSource> source) {
       // AMEND: hand the broker {soil → path} by neutral role; the manifests amend reflector binds
       // it
       // onto ManifestsRunbookInput and returns the reconciled input, still under the runbook
@@ -461,7 +473,7 @@ public class IncusProvisionScenario
       // plan with) + the nix-emitted rke2.version — so the workload CRs pin the exact image the
       // master
       // booted and its RKE2 version. Absent for a survey / a run that built no artifacts.
-      imageStateAmendment(facet, image, worktreeRoot)
+      imageStateAmendment(facet, image, worktreeRoot, source)
           .ifPresent(node -> roleValues.set(Amendment.IMAGE_STATE, node));
       final SeedEnvelope amended =
           broker
@@ -502,8 +514,14 @@ public class IncusProvisionScenario
      * nixosHost}).
      */
     private Optional<ObjectNode> imageStateAmendment(
-        Optional<Facet> maybeFacet, Optional<Image> maybeImage, Optional<Path> maybeWorktreeRoot) {
-      if (maybeFacet.isEmpty() || maybeImage.isEmpty() || maybeWorktreeRoot.isEmpty()) {
+        Optional<Facet> maybeFacet,
+        Optional<Image> maybeImage,
+        Optional<Path> maybeWorktreeRoot,
+        Optional<NodeBaseSource> maybeSource) {
+      if (maybeFacet.isEmpty()
+          || maybeImage.isEmpty()
+          || maybeWorktreeRoot.isEmpty()
+          || maybeSource.isEmpty()) {
         return Optional.empty();
       }
       final Facet facet = maybeFacet.orElseThrow();
@@ -513,9 +531,8 @@ public class IncusProvisionScenario
           new GrowPlanAssembler(
                   image.alias(),
                   image.builderBinary(),
-                  image.builderHost(),
                   imageBuilder.orElseThrow().recipeDigest(),
-                  worktreeRoot,
+                  maybeSource.orElseThrow().digest(),
                   BootstrapPaths.fromLocalWorktree(worktreeRoot).stateRoot())
               .imageView();
       final Path metadata = Path.of(view.metadataPath());
@@ -622,6 +639,9 @@ public class IncusProvisionScenario
     // the Then reads its recipe digest, no longer threaded from the scenario.
     @OsgiService private Optional<ImageBuilder> imageBuilder = Optional.empty();
 
+    @OsgiService(await = false)
+    private Optional<Worktree> seat = Optional.empty();
+
     public Then the_instance_is_prepared() {
       return self();
     }
@@ -661,9 +681,10 @@ public class IncusProvisionScenario
     public Then the_instance_grow_plan_is_published(
         @Hidden Optional<Resolved> maybeResolved,
         @Hidden Image image,
+        @Hidden Optional<NodeBaseSource> source,
         @Hidden Cellar cellar,
         @Hidden Parcel parcel) {
-      if (maybeResolved.isEmpty() || networkView == null) {
+      if (maybeResolved.isEmpty() || source.isEmpty() || networkView == null) {
         return self();
       }
       final Resolved resolved = maybeResolved.orElseThrow();
@@ -674,9 +695,8 @@ public class IncusProvisionScenario
           new GrowPlanAssembler(
                   image.alias(),
                   image.builderBinary(),
-                  image.builderHost(),
                   imageBuilder.orElseThrow().recipeDigest(),
-                  resolved.worktreeRoot(),
+                  source.orElseThrow().digest(),
                   BootstrapPaths.fromLocalWorktree(resolved.worktreeRoot()).stateRoot())
               .assemble(networkView, identityView);
       cellar.store(parcel, IncusGrowCoordinate.INSTANCE_GROW_PLAN, plan);

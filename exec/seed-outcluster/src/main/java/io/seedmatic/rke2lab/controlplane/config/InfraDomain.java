@@ -22,19 +22,11 @@ public enum InfraDomain {
     }
   },
 
-  IMAGE(InfraDomainCatalog.IMAGE) {
-    @Override
-    InfraConfigFragment contribute(ConfigLoader loader) {
-      return new Rke2labConfig.ImageConfig(loader.optional(domainId(), "builderHost"));
-    }
-  },
-
   NETWORK(InfraDomainCatalog.NETWORK) {
     @Override
     InfraConfigFragment contribute(ConfigLoader loader) {
       return new Rke2labConfig.NetworkConfig(
           loader.optional(domainId(), "fabricBridgeParent"),
-          loader.optionalBoolean(domainId(), "automount"),
           loader.optional(domainId(), "tailnet"));
     }
   },

@@ -13,8 +13,7 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
  * assetsRoot} went with it. What remains is the worktree base, the per-node state tree ({@code
  * stateRoot}, from which {@link #worktreesRoot} and {@link #liveRoot} derive). Felix is embedded in
  * the host JVM, so the scion computes the whole topology OSGi-side, here. {@link
- * #fromLocalWorktree} builds the DARWIN-local view; {@link #asAutomountView} rebases onto the
- * automount view the remote NixOS host reads through.
+ * #fromLocalWorktree} builds it.
  */
 public record BootstrapPaths(Path worktreeRoot, Path stateRoot) {
 
@@ -56,38 +55,6 @@ public record BootstrapPaths(Path worktreeRoot, Path stateRoot) {
    */
   public Path liveRoot() {
     return stateRoot.resolve("host.live.d");
-  }
-
-  /**
-   * The layout rebased onto the automount view the remote NIXOS host mounts the assets from.
-   * Provisioning is BI-MACHINE: Felix (on the Mac) WRITES the assets under the DARWIN-local paths,
-   * the remote NIXOS host reads them over its automount. When {@code automount} is off the paths
-   * are unchanged (same machine); otherwise each absolute path is rebased under {@code netPrefix}
-   * (e.g. {@code /net/<cluster>.<tailnet>}, the tailscale MagicDNS FQDN).
-   */
-  public BootstrapPaths asAutomountView(boolean automount, String netPrefix) {
-    return builder()
-        .worktreeRoot(automountPath(worktreeRoot, automount, netPrefix))
-        .stateRoot(automountPath(stateRoot, automount, netPrefix))
-        .build();
-  }
-
-  /**
-   * Rebase one absolute path onto the automount view. With automount off (or a path already under
-   * {@code /net/}) the path is returned unchanged; any absolute path is rebased under {@code
-   * netPrefix} (host-agnostic, the input root is already canonicalised at the source via {@link
-   * io.seedmatic.rke2lab.worktree.Worktree}).
-   */
-  Path automountPath(Path rawPath, boolean automount, String netPrefix) {
-    final Path normalized = rawPath.toAbsolutePath().normalize();
-    if (!automount) {
-      return normalized;
-    }
-    final String path = normalized.toString();
-    if (path.startsWith("/net/")) {
-      return normalized;
-    }
-    return Path.of(netPrefix + path).normalize();
   }
 
   private static final class Builder {

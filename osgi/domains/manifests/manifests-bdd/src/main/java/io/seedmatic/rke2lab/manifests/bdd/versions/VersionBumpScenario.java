@@ -26,6 +26,7 @@ import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.ScenarioPlaye
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.SeedScenario;
 import io.seedmatic.rke2lab.seed.broker.port.Cellar;
 import io.seedmatic.rke2lab.seed.broker.port.Parcel;
+import io.seedmatic.rke2lab.worktree.CommitSpec;
 import io.seedmatic.rke2lab.worktree.GitBotIdentities;
 import io.seedmatic.rke2lab.worktree.GitIdentity;
 import io.seedmatic.rke2lab.worktree.Worktree;
@@ -51,12 +52,12 @@ import org.junit.jupiter.api.extension.RegisterExtension;
  *
  * <p>Its collaborators are INJECTED from the framework registry by the {@link OsgiService} bridge,
  * all bundle-side (unreachable to the flat host, which is exactly why the bump is a scion): the
- * {@link Worktree} (jgit stage/commit) and the {@link NdhKeystoreReader} (the tailnet {@code
- * authorityDomain} the bot email is minted from). The GitHub token for the release query is NOT
- * shelled here: it is minted ON DEMAND from the one org-owned App through {@link GithubAppTokens}
- * and the {@link GithubWriterTokenMint} edge — empty for a standalone CLI run with no sealed
- * credentials, so the query then runs anonymously (rate-limited), never against a personal {@code
- * gh auth token}.
+ * {@link Worktree} (which applies the bump's edit and commits it) and the {@link NdhKeystoreReader}
+ * (the tailnet {@code authorityDomain} the bot email is minted from). The GitHub token for the
+ * release query is NOT shelled here: it is minted ON DEMAND from the one org-owned App through
+ * {@link GithubAppTokens} and the {@link GithubWriterTokenMint} edge — empty for a standalone CLI
+ * run with no sealed credentials, so the query then runs anonymously (rate-limited), never against
+ * a personal {@code gh auth token}.
  */
 @SeedScenario
 public class VersionBumpScenario
@@ -192,13 +193,16 @@ public class VersionBumpScenario
       final NdhKeystoreReader keystore =
           ndh.orElseThrow(
               () -> new IllegalStateException("no ndh key-store — cannot mint the bot"));
-      tree.stage(application.changedPaths());
       final GitIdentity identity =
           new GitBotIdentities(keystore.authorityDomain(TAILNET_AUTHORITY)).forTool(TOOL);
-      // rke2lab signs its own bot commit with the ndh github-signing key (git SSHSIG).
+      // rke2lab signs its own bot commit with the ndh key SIGNING_KEY names (git SSHSIG).
       final String sha =
           tree.commit(
-              commitMessage(application), identity, Optional.of(keystore.sshPrivate(SIGNING_KEY)));
+              application.edit(),
+              new CommitSpec(
+                  commitMessage(application),
+                  identity,
+                  Optional.of(keystore.sshPrivate(SIGNING_KEY))));
       narration.the_change_is_committed_as_$_at_$(
           identity.name() + " <" + identity.email() + ">", sha);
     }
