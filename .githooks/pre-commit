@@ -158,6 +158,10 @@ spotless_check() {
     d="$(dirname "$f")"
     while [[ "$d" != . && ! -f "$d/pom.xml" ]]; do d="$(dirname "$d")"; done
     [[ "$d" == . ]] && continue
+    # A standalone pom (no parent, no spotless of its own — bom, maven-embed-staging-ext) is outside the reactor's
+    # spotless configuration, like the root: `-pl` there fails with "No plugin found for prefix 'spotless'".
+    # Elements, not words: bom's comment says "no <parent>".
+    grep -Eq '^[[:space:]]*<parent>' "$d/pom.xml" || grep -q 'spotless-maven-plugin' "$d/pom.xml" || continue
     owned+=("$f")
     [[ " ${modules[*]} " == *" $d "* ]] || modules+=("$d")
   done
