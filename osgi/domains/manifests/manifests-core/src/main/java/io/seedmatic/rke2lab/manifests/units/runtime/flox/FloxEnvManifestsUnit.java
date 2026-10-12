@@ -12,7 +12,6 @@ import io.seedmatic.rke2lab.manifests.units.gitops.SopsAgeSecretManifestsUnit;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import org.cdk8s.ApiObject;
 import org.cdk8s.ApiObjectMetadata;
 import org.cdk8s.ApiObjectProps;
@@ -25,9 +24,9 @@ import software.constructs.Construct;
  * headscale}/{@code tailscale}/{@code headplane} (mesh), and the cross-cutting {@code toolchains}
  * tier ({@code kube} + {@code git-sops}). The CI render's TOOLCHAIN is nix-build (not a flox env) —
  * nix CLI + config + persistent store via the {@code flox.seedmatic.io/nix-build} annotation; but
- * the render step ALSO carries the {@code toolchains/git-sops} flox env (git + sops + the git-sops
- * filter) composed with nix-build, so a checkout smudges the sops tree (see {@code
- * RenderPipelineManifestsUnit}).
+ * the render step ALSO carries the {@code toolchains/git-sops} flox env (git + sops, and the age
+ * key it injects) composed with nix-build, so the render opens {@code .secrets} and seals the
+ * Secrets it commits, both in memory (see {@code RenderPipelineManifestsUnit}).
  *
  * <p>Each env installs its workload package from the {@link FloxCatalogManifestsUnit} catalog via a
  * {@code floxcatalog:catalog#<output>} ref (resolved same-namespace, both live in {@code
@@ -98,10 +97,10 @@ public final class FloxEnvManifestsUnit extends AbstractManifestsUnit {
     // Jobs (e.g. the funnel-state mirror) activate it directly; domain envs will `[include]` it to
     // stop re-declaring the same tools. No debug flavor — it is a toolchain base, not a workload.
     createEnv(scope, resolver, "kube", FloxEnvFolder.TOOLCHAINS, kubeBaseManifest());
-    // toolchains/git-sops — the git sops clean/smudge filter toolchain (git + sops + yq + the ndh
-    // git-sops-filter). The in-cluster render pipeline activates it so the Secret carriers it
-    // commits to manifests/<cluster> are sealed by the filter, and `.secrets` (no filter) is opened
-    // in memory with the injected age key — the render is then secret-FULL, not blind. A
+    // toolchains/git-sops — git + sops + yq for a step that works on the sops tree. The in-cluster
+    // render pipeline activates it so the render opens `.secrets` and seals the Secrets it commits
+    // to manifests/<cluster>, both in memory with the injected age key — the render is then
+    // secret-FULL, not blind. No git filter: nothing in-cluster encrypts or decrypts at checkout. A
     // cross-cutting toolchain tier (like
     // toolchains/kube), NOT cicd-bound: decoupled so the cicd need evolves independently and any
     // env
@@ -272,12 +271,10 @@ public final class FloxEnvManifestsUnit extends AbstractManifestsUnit {
   }
 
   /**
-   * Mirrors {@code environment.d/cicd/git-sops/manifest.toml} — the git sops clean/smudge filter
-   * toolchain. Carries git + sops + yq-go + a shell, plus the ndh {@code git-sops-filter} package
-   * (the SSOT filter def re-exported by the catalog flake); on activation flox wires git to that
-   * package's {@code sops} include, registering the {@code sops-yaml} clean/smudge commands. The
-   * age key is NOT here — sops reads {@code SOPS_AGE_KEY} from the render pod's mounted {@code
-   * sops-age} Secret.
+   * Mirrors {@code environment.d/toolchains/git-sops/manifest.toml} on the catalog branch: git +
+   * sops + yq-go + a shell, the tools a step needs to open and seal sops documents in memory. The
+   * age key is NOT here — it arrives through the env's {@code spec.inject} ({@code SOPS_AGE_KEY},
+   * from the replicated {@code sops-age} Secret).
    */
   private Map<String, Object> gitSopsManifest() {
     final Map<String, Object> install = new LinkedHashMap<>();
@@ -286,32 +283,8 @@ public final class FloxEnvManifestsUnit extends AbstractManifestsUnit {
     install.put("yq-go", catalog("yq-go"));
     install.put("bash", catalogAll("bash"));
     install.put("coreutils", catalogAll("coreutils"));
-    // sops-dispatch (the smudge/clean filter) shells `grep` — not in coreutils, and the
-    // flox-carrier
-    // base is minimal, so the toolchain must carry it (a debian base happened to have it).
-    install.put("gnugrep", catalog("gnugrep"));
-    install.put("git-sops-filter", flakeRef("git-sops-filter"));
-    return manifest(install, Optional.of(GIT_SOPS_ON_ACTIVATE));
+    return manifest(install);
   }
-
-  /**
-   * git-sops activation hook: register the {@code git-sops-filter} package's {@code sops} include
-   * (shipped at {@code $FLOX_ENV/sops}) as a GLOBAL git include, so a {@code git checkout} in the
-   * source checkout AND the render worktree (a {@code git worktree add} shares the config) runs the
-   * {@code sops-yaml} clean/smudge filter. {@code SOPS_AGE_KEY} (per-pod, from the replicated
-   * {@code sops-age} Secret) is what sops decrypts with. NOT fail-closed on a missing key: this
-   * same hook runs during the flox-controller's {@code flox activate --mode dev -- true} realise,
-   * which has no {@code SOPS_AGE_KEY} — a hard exit there would wedge the env's realisation. The
-   * consumer (the render step) is where the key + filter are asserted fail-loud.
-   */
-  private static final String GIT_SOPS_ON_ACTIVATE =
-      """
-      if [ -f "$FLOX_ENV/sops" ]; then
-        git config --global include.path "$FLOX_ENV/sops"
-      else
-        echo >&2 "git-sops: include $FLOX_ENV/sops not found — sops-yaml filter NOT wired"
-      fi
-      """;
 
   /**
    * The kube-API scripting fragment: a shell ({@code bash}/{@code coreutils}) plus {@code kubectl}
@@ -342,17 +315,11 @@ public final class FloxEnvManifestsUnit extends AbstractManifestsUnit {
   }
 
   private Map<String, Object> manifest(final Map<String, Object> install) {
-    return manifest(install, Optional.empty());
-  }
-
-  private Map<String, Object> manifest(
-      final Map<String, Object> install, final Optional<String> hookOnActivate) {
     final Map<String, Object> manifest = new LinkedHashMap<>();
     manifest.put("schema-version", SCHEMA_VERSION);
     manifest.put("install", install);
     // These envs activate inside Linux containers on the nodes — restrict resolution to Linux.
     manifest.put("options", Map.of("systems", new Object[] {"aarch64-linux"}));
-    hookOnActivate.ifPresent(h -> manifest.put("hook", Map.of("on-activate", h)));
     return manifest;
   }
 }

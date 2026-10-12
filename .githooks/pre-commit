@@ -39,7 +39,7 @@ secret_material_guard() {
       echo "  ⛔ $f — staged blob contains private key material in the clear" >&2
       found=1
     fi
-  done < <(git diff --cached --name-only --diff-filter=ACMR -z)
+  done < <(git diff --cached --name-only --diff-filter=ACMRT -z)
 
   if ((found)); then
     cat >&2 <<'EOF'
@@ -74,17 +74,21 @@ EOF
 #
 # Scoped to sops-managed files — those the sops filter cleans, or whose blob holds an
 # ENC[ value — because those are the files that claim to hold secrets. Elsewhere a
-# token prefix is a mention, and docs mention them. The offending LINE NUMBERS are
-# printed, never the line: the value is the secret.
+# token prefix is a mention, and docs mention them. A repository with no .sops.yaml
+# has no place for a secret at all, so there EVERY file is in scope: a vendored-env
+# repository such as fleet reaches its consumers by `git subtree pull`, a merge no
+# pre-commit sees.
+# The offending LINE NUMBERS are printed, never the line: the value is the secret.
 token_shape_guard() {
-  local found=0 f blob filter lines
+  local found=0 f blob filter lines all=0
+  git cat-file -e :.sops.yaml 2>/dev/null || all=1
   while IFS= read -r -d '' f; do
     blob="$(git ls-files -s -- "$f" | awk '{print $2}')"
     [[ -n "$blob" ]] || continue
     filter="$(git check-attr filter -- "$f" | sed 's/.*: filter: //')"
     # Not `cat-file | grep -q`: under pipefail, grep -q exiting early SIGPIPEs cat-file,
     # and the negated pipeline would then skip the very file that matched.
-    if [[ "$filter" != sops* ]] && ! grep -q 'ENC\[' < <(git cat-file blob "$blob"); then
+    if ((!all)) && [[ "$filter" != sops* ]] && ! grep -q 'ENC\[' < <(git cat-file blob "$blob"); then
       continue
     fi
     lines="$(git cat-file blob "$blob" 2>/dev/null |
@@ -95,18 +99,82 @@ token_shape_guard() {
       echo "  ⛔ $f — staged blob holds a token in the clear outside ENC[…], line(s) $lines" >&2
       found=1
     fi
-  done < <(git diff --cached --name-only --diff-filter=ACMR -z)
+  done < <(git diff --cached --name-only --diff-filter=ACMRT -z)
 
   if ((found)); then
     cat >&2 <<'EOF'
 
-Refusing the commit. A sops-managed file carries a bearer token (a JWT or a
-tskey-/gh*_/github_pat_/dckr_pat_/glpat- token) that sops did not encrypt.
+Refusing the commit. A staged file carries a bearer token (a JWT or a
+tskey-/gh*_/github_pat_/dckr_pat_/glpat- token) in the clear. In a repository
+without .sops.yaml no file may hold one: move it out of the repository.
 
-With encrypted_comment_regex, sops encrypts only the leaves whose comment says
-so: a leaf without its `# sops:encrypted` marker stays plaintext inside a valid
-envelope. Add the marker and re-encrypt — or, if the token is no longer used,
-remove the leaf with `sops unset`.
+In a sops-managed file: with encrypted_comment_regex, sops encrypts only the
+leaves whose comment says so, so a leaf without its `# sops:encrypted` marker
+stays plaintext inside a valid envelope. Add the marker and re-encrypt — or, if
+the token is no longer used, remove the leaf with `sops unset`.
+
+EOF
+    return 1
+  fi
+  return 0
+}
+
+# Refuse a staged file that spotless would reformat.
+#
+# The build does not format any more (it rewrote shared worktrees behind their sessions' back: a javadoc reflow
+# surfaced in someone else's checkout, from a commit that had never been formatted). So the check moves here, onto
+# what is about to be committed, and it only CHECKS: fixing is `./mvnw spotless:apply`, by hand.
+#
+# Only the types spotless governs (build-parent's spotless configuration) trigger Maven, so a commit that touches none
+# of them costs nothing. Spotless reads the worktree copy, not the staged blob: a partially staged file is refused,
+# because the copy it would judge is not the one being committed.
+spotless_check() {
+  local f files=() partial=() regex
+  while IFS= read -r -d '' f; do
+    case "$f" in
+      *.java | */src/main/resources/*.sh | */src/test/resources/*.sh | README.adoc | docs/*.adoc | docs/*.md | pom.xml | */pom.xml) ;;
+      *) continue ;;
+    esac
+    files+=("$f")
+    git diff --quiet -- "$f" || partial+=("$f")
+  done < <(git diff --cached --name-only --diff-filter=ACMR -z)
+
+  ((${#files[@]})) || return 0
+
+  if ((${#partial[@]})); then
+    printf '  ⛔ %s — partially staged: spotless would judge the worktree copy, not the staged one\n' "${partial[@]}" >&2
+    echo "Stage the whole file, or commit the other hunks separately." >&2
+    return 1
+  fi
+  if ! command -v flox >/dev/null 2>&1; then
+    echo "  ⛔ flox not found: the spotless check cannot run, so the commit is refused (a gate that skips is no gate)." >&2
+    return 1
+  fi
+
+  # Run the check only in the modules that own the staged files (the nearest pom.xml): the root aggregator carries no
+  # spotless configuration, so a reactor-wide run fails there on any commit. A file owned by the root is not governed.
+  local d modules=() owned=()
+  for f in "${files[@]}"; do
+    d="$(dirname "$f")"
+    while [[ "$d" != . && ! -f "$d/pom.xml" ]]; do d="$(dirname "$d")"; done
+    [[ "$d" == . ]] && continue
+    owned+=("$f")
+    [[ " ${modules[*]} " == *" $d "* ]] || modules+=("$d")
+  done
+  ((${#modules[@]})) || return 0
+
+  # spotlessFiles takes comma-separated regexes matched against absolute paths.
+  regex="$(for f in "${owned[@]}"; do printf '%s\n' "$PWD/$f"; done |
+    sed 's/[][\.*^$()+?{}|]/\\&/g' | paste -sd, -)"
+  if ! flox activate -- ./mvnw -q -pl "$(
+    IFS=,
+    echo "${modules[*]}"
+  )" spotless:check -DspotlessFiles="$regex"; then
+    cat >&2 <<'EOF'
+
+Refusing the commit: spotless would reformat a staged file. Format it, stage it, and commit again:
+
+  flox activate -- ./mvnw -q spotless:apply -DspotlessFiles='<absolute path regex>'
 
 EOF
     return 1
@@ -117,4 +185,5 @@ EOF
 status=0
 secret_material_guard || status=1
 token_shape_guard || status=1
+spotless_check || status=1
 exit "$status"

@@ -1,8 +1,8 @@
 # @codebase
 #
-# `filter` decides what is COMMITTED (ciphertext) and what sits in the worktree (plaintext).
-# `.secrets` has NO filter: it stays encrypted in the worktree too, and its readers open it in memory
-# with sops. A decrypted copy on disk is what a working-tree evaluation copies into the store.
+# No sops `filter` is bound in this repository. `.secrets` stays encrypted in the worktree too, and
+# its readers open it in memory with sops: a decrypted copy on disk is what a working-tree evaluation
+# copies into the store. The Secrets of a rendered branch are sealed in memory by the render.
 # `diff` decides what a HUMAN reads: the sops-yaml diff driver's textconv renders each blob
 # decrypted, so `git diff` shows the change instead of two walls of unrelated base64 — AES-GCM takes
 # a fresh IV per encryption, so raw ciphertext always differs and never says what moved.
@@ -10,4 +10,3 @@
 # Safe when the key is absent: the textconv then exits non-zero and git falls back to the raw blob.
 # It is deliberately NOT allowed to render empty, which would show two differing secrets as identical.
 .secrets diff=sops-yaml
-**/01-secret-*.yaml filter=sops-yaml diff=sops-yaml

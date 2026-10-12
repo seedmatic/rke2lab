@@ -40,12 +40,13 @@ nix-darwin-home's.
 
 ## Why a subtree and not a flake input
 
-rke2lab's `flake.nix` holds an INVARIANT: **nix-darwin-home must never be a flake
-input of rke2lab** (the two repos depend on each other in opposite scopes; an
-input edge would create a flake-eval cycle). The subtree shares this content over
-plain git — no eval edge, no token, no cycle — which is exactly why it is the
-right mechanism here. Treat the subtree as the *only* sanctioned channel for
-ssh.d content to reach rke2lab.
+The original reason no longer holds. The subtree was chosen because rke2lab's
+`flake.nix` forbade nix-darwin-home as an input (a flake-eval cycle). ndh has been
+an input of rke2lab since the cycle was cut (`ndh.url = "ndh"` in `flake.nix`), and the
+guard is gone. The subtree stays the channel until the booked replacement lands:
+rke2lab reads its own projection of `keys.yaml` through `inputs.ndh`, from the store,
+still encrypted. The roles, holders and lifecycles of what it reads are in ndh
+`docs/ssh-keys-architecture.adoc` (Roles × Keys).
 
 ## Sync down (nix-darwin-home → rke2lab)
 
@@ -128,9 +129,10 @@ only the root cert itself changes:
 # pathLenConstraint — step's root-ca profile stamps pathlen:1, too tight for a
 # 3-tier chain like RKE2's root -> intermediate-ca -> server-ca -> leaf).
 # Run from the repo root (the app resolves keys.yaml via `git rev-parse`).
-nix run .#authority-bootstrap-tls-root -- mammoth-skate-tls --force
-sops -d modules/home-manager/ssh.d/keys.yaml \
-  | yq -r '.authorities."mammoth-skate-tls".ca_crt' \
+nix run "git+file://$PWD?rev=$(git rev-parse HEAD)#authority-bootstrap-tls-root" -- mammoth-skate-tls --force
+# ca_crt is plaintext, per slot: the newest slot's root is the one just minted.
+yq -r '.authorities."mammoth-skate-tls".slots | to_entries | sort_by(.key) | .[-1].value.ca_crt' \
+    modules/home-manager/ssh.d/keys.yaml \
   | step certificate inspect - | grep -A1 'Basic Constraints'   # expect CA:TRUE, no pathlen
 ```
 

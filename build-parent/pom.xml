@@ -1078,15 +1078,9 @@
             </sortPom>
           </pom>
         </configuration>
-        <executions>
-          <execution>
-            <id>spotless-apply-on-build</id>
-            <goals>
-              <goal>apply</goal>
-            </goals>
-            <phase>process-sources</phase>
-          </execution>
-        </executions>
+        <!-- No execution: a build must not rewrite files. In a shared worktree an apply-on-build reformats another
+             session's checkout behind its back. The repository pre-commit runs `spotless:check` on the staged files
+             instead; format by hand with `./mvnw spotless:apply`. -->
       </plugin>
     </plugins>
   </build>

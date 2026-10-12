@@ -1482,10 +1482,12 @@ default: a new sealed secret cannot leak to the branch asset unless a producer d
 
 *The mechanism (manifests owns it — the seam only carries `reach`).* At the grow the render reads the
 durable `OpaqueCellar.fetch(parcel)` (opaque envelopes, trails CLEAR), keeps those with
-`env.trail().reach() == IN_CLUSTER`, and writes the STILL-SEALED envelopes into a branch asset (named to
-match the `.gitattributes` sops filter so the git-sops clean filter age-encrypts it at commit). This is the
+`env.trail().reach() == IN_CLUSTER`, and writes the STILL-SEALED envelopes into a branch asset
+(`BranchSecretCarrier.IN_CLUSTER_CELLAR`, `.secret-in-cluster-cellar.yml`), a Secret the delivery age-encrypts
+in memory with every other rendered Secret before it stages the branch. This is the
 symmetric twin of the `NODE_BOOTSTRAP`-annotation extraction the exploder already does on rendered documents.
-In-cluster, the git-sops smudge filter decrypts the asset on checkout, and a READ-ONLY `OpaqueCellar` backed
+The next render reads the asset at HEAD and opens it in memory with the key sops finds in its enclosure (the
+cluster key in-cluster), and a READ-ONLY `OpaqueCellar` backed
 by it REPLACES the `EphemeralCellar` as the durable read-side: `fetch(parcel, coordinate)` serves the exported
 envelopes, so the reveals resolve the same sealed materials the operator sealed. The transactional overlay
 still layers on top, so a this-run in-cluster seal (from `.secrets`) still wins over the asset.

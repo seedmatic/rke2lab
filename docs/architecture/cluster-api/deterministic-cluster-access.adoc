@@ -67,7 +67,9 @@ end-entity *leaves*, never intermediates): the cluster CA set is produced OSGi-s
 `cluster-pki` domain — a faithful **BouncyCastle** port of rke2's `generate-custom-ca-certs.sh`
 (proven structurally identical cert-by-cert against OpenSSL 3), rooted on our root — and lives
 rke2lab-side as a **sops view onto the ndh key material** — encrypted for the operator and for the
-cluster age recipient (`age1k0tc4…`, derived from the `rke2-cluster` SSH key), `keys.yaml` itself
+cluster age recipient (the published `age1k0tc4…` was retired on 2026-10-10; at the renewal the
+recipient becomes a pure `cluster-age` identity generated for the cluster — ndh
+`docs/ssh-keys-architecture.adoc`, Roles × Keys), `keys.yaml` itself
 untouched. The CA hierarchy is pure Java (no shell); the only external tool contacts are the
 `sops-edge` (sealing the bundle the node's sops-nix decrypts) and the ssh-to-age edge (the cluster
 age identity), both reused, not reinvented.
@@ -373,8 +375,8 @@ synced copy:
 +
 [source,bash]
 ----
-yq -r '.authorities."mammoth-skate-tls".ca_crt' .ndh-ssh.d/keys.yaml \
-  | step certificate inspect - | grep -A1 'Basic Constraints'   # expect CA:TRUE, no pathlen
+yq -r '.authorities."mammoth-skate-tls".slots | to_entries | sort_by(.key) | .[-1].value.ca_crt' \
+    .ndh-ssh.d/keys.yaml | step certificate inspect - | grep -A1 'Basic Constraints'   # expect CA:TRUE, no pathlen
 ----
 
 . **Clear the cached PKI** so the next seal re-mints. The three `cluster-pki` cases
@@ -385,10 +387,15 @@ yq -r '.authorities."mammoth-skate-tls".ca_crt' .ndh-ssh.d/keys.yaml \
 pulumi state delete 'urn:pulumi:dev::rke2lab::rke2lab:cellar:Entry::cluster-ca-bundle' --stack dev
 pulumi state delete 'urn:pulumi:dev::rke2lab::rke2lab:cellar:Entry::cluster-age-key'   --stack dev
 pulumi state delete 'urn:pulumi:dev::rke2lab::rke2lab:cellar:Entry::admin-credentials' --stack dev
+pulumi state delete 'urn:pulumi:dev::rke2lab::rke2lab:cellar:Entry::cluster-issuer-ca' --stack dev
+pulumi state delete 'urn:pulumi:dev::rke2lab::rke2lab:cellar:Entry::workload-cluster-cas' --stack dev
+pulumi state delete 'urn:pulumi:dev::rke2lab::rke2lab:cellar:Entry::workload-admin-credentials' --stack dev
+pulumi state delete 'urn:pulumi:dev::rke2lab::rke2lab:cellar:Entry::management-cluster-cas' --stack dev
 ----
 +
-Delete **all three** — they are minted as a set (the CA, the age key that decrypts it
-on the node, and the admin leaf), so a partial delete leaves a mismatched bundle.
+Delete **every case** of `ClusterPkiCoordinate` — that enum is the list, seven entries today. They
+are minted from the same root (the CA, the age key that decrypts it on the node, the admin leaf, the
+cluster issuer, the workload and management CA sets), so a partial delete leaves a mismatched set.
 
 . **Re-grow.** A running node reads the bundle only at boot, so delete the master to
 force a fresh devlxd fetch, then re-seed:
@@ -418,9 +425,10 @@ the *old* CA and the rotation is silently lost.
 * ❌ **Deleting only `cluster-ca-bundle`** — leaves a stale age key + admin leaf that no
   longer match the freshly minted CA.
 
-No SSH blast radius: SSH host/user certs chain to the separate `mammoth-skate`
-authority (OpenSSH format, no X.509 `pathLen`); rotating `mammoth-skate-tls` touches
-only the TLS side.
+No SSH blast radius: SSH host/user certs come from separate SSH authorities (OpenSSH format,
+no X.509 `pathLen`); rotating the TLS authority touches only the TLS side. The target authority
+model (an offline seedmatic root, a TLS intermediate, SSH host and user CAs) is ndh
+`docs/ssh-keys-architecture.adoc`.
 
 == Workload clusters — the same root, delivered as CAPRKE2 BYO-CA secrets (C2)
 
