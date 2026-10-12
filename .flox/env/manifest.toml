@@ -88,7 +88,6 @@ flox-mcp-server.pkg-group = "flox-mcp-server"
   PULUMI_HOME='${XDG_STATE_HOME:-$HOME/.local/state}/pulumi'
   PULUMI_BACKEND_URL='file://${FLOX_ENV_PROJECT}/.pulumi-state'
   GITHUB_OWNER='seedmatic'
-  M2_REPO="${HOME}/.m2/repository"
 
 
 # INTRO_MESSAGE = "It's gettin' Flox in here"

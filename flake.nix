@@ -1,17 +1,6 @@
 {
   description = "RKE2 lab infrastructure and network blueprints";
 
-  # The seed-outcluster build reuses the host `~/.m2` (resolved via getEnv "HOME")
-  # to reach private GitHub Packages deps without plumbing a token into the
-  # sandbox, so its eval is necessarily impure. Declare that here — like
-  # extra-substituters, nixConfig is applied before outputs are evaluated, so
-  # `nix build .#seed-outcluster` works without a manual `--impure`. This only takes
-  # effect when rke2lab is the TOP-LEVEL flake; when consumed as an input (e.g.
-  # flox-catalog's rke2lab pin), it is ignored and that pure
-  # path never forces the impure getEnv. First use prompts to trust the config
-  # unless `accept-flake-config = true` is set.
-  nixConfig.pure-eval = false;
-
   # The binary caches this flake's builds — chiefly the NixOS node-base image
   # (nixosConfigurations.rke2-node-base) — resolve their closure from, beyond the cache.nixos.org
   # default. Declared here so ANY consumer (CI, a fresh machine, an external clone) substitutes
@@ -181,16 +170,6 @@
       };
       mavenBuildInputs = pkgs: builtins.attrValues (mavenToolchain pkgs);
 
-      # Optional PERSISTENT maven primary repo + build-cache. When set — a dev cache dir (must
-      # be writable by the nix BUILD user, i.e. nixbld on a multi-user daemon: use /tmp/…, NOT
-      # $HOME) or the in-cluster PVC (single-user nix builds as the pod user) — the reactor build
-      # writes its resolved deps AND its maven-build-cache there, so successive builds are
-      # INCREMENTAL. The maven-build-cache hash is stable across nix builds ONLY once volatile
-      # absolute paths are excluded from it (see .mvn/maven-build-cache-config.xml — the compiler
-      # compilerArgs exclusion). Empty ⇒ a fresh tmpfs primary each build (the pure default: the
-      # nix store already caches the jar per-src, so seed-outcluster/CI need nothing more).
-      buildCache = "${builtins.getEnv "MAVEN_BUILD_CACHE"}";
-
       # The io.seedmatic closure the `.mvn/extensions.xml` core extension needs at
       # bootstrap: staging-extension + its bnd-read dep + the parent-POM chain
       # (aggregator maven-embed-staging-ext → build-parent → root rke2lab) + the `bom`
@@ -292,17 +271,9 @@
         : "local repo ($HOME/.m2/repository\) IS the seeded primary — covers the bootstrap"
         : "resolver whether it honors -Dmaven.repo.local or falls back to user.home."
         export HOME="$TMPDIR"
-        # Persistent primary local repo (MAVEN_BUILD_CACHE) when set, else a fresh tmpfs
-        # primary. The maven-build-cache extension defaults its location to the PARENT of
-        # maven.repo.local, so it lands at $cache/build-cache on its own → a persistent
-        # MAVEN_BUILD_CACHE makes successive builds incremental.
-        if [ -n "${buildCache}" ]; then
-          M2_REPO="${buildCache}/repository"
-        else
-          M2_REPO="$HOME/.m2/repository"
-        fi
+        M2_REPO="$HOME/.m2/repository"
         mkdir -p "$M2_REPO"
-        cp -rsn --no-preserve=mode ${mavenDepsFor pkgs}/. "$M2_REPO/"
+        cp -rs --no-preserve=mode ${mavenDepsFor pkgs}/. "$M2_REPO/"
 
         cp -r ${javaSystemdRepoFor pkgs}/. "$M2_REPO/"
         chmod -R u+w "$M2_REPO/com/github/thjomnx"
@@ -312,8 +283,7 @@
         # identical bootstrap.
         for a in ${builtins.concatStringsSep " " stagingExtensionClosure}; do
           src="${stagingExtensionRepoFor pkgs}/$a"
-          # Idempotent when the primary persists across builds (skip if already seeded).
-          if [ -d "$src" ] && [ ! -e "$M2_REPO/$a" ]; then
+          if [ -d "$src" ]; then
             mkdir -p "$M2_REPO/$(dirname "$a")"
             cp -r "$src" "$M2_REPO/$a"
             chmod -R u+w "$M2_REPO/$a"
@@ -325,6 +295,9 @@
           exit 1
         fi
 
+        # The maven-build-cache is off: the nix store already caches the jars per source, and a
+        # build cache in a fresh $TMPDIR could only record entries no later build reads.
+        #
         # NO GH_TOKEN, for a CACHING reason: interpolating it puts it in the derivation hash, and PaC
         # mints a fresh token per PipelineRun, so the reactor was rebuilt on every render. Nothing
         # resolved here is private (measured 2026-09-24: every dependency comes from a public source).
@@ -333,7 +306,7 @@
         # fails LOUDLY on resolution — the moment to supply the token by a stable PATH whose CONTENT
         # is not hashed (the pattern nixos/rke2.nix uses with /run/rke2lab/nix-github.conf).
         mvnHost() {
-          mvn -o -Dmaven.repo.local="$M2_REPO" "$@"
+          mvn -o -Dmaven.repo.local="$M2_REPO" -Dmaven.build.cache.enabled=false "$@"
         }
       '';
 
@@ -862,11 +835,11 @@
         # shells out to. The PULUMI_* vars are set here too, mirroring the flox
         # env's [vars]: local file:// backend under the repo, empty passphrase.
         # Mint a short-lived (~1h) GitHub App INSTALLATION token from the one org-owned App's
-        # credentials in .secrets (github.app), so the maven build resolves private GitHub Packages
-        # (java-systemd) AS THE APP — never a personal `gh auth token`. There
+        # credentials in .secrets (github.app), for the flake-input fetches and the push AS THE APP
+        # — never a personal `gh auth token`. There
         # is no cluster/cellar at BUILD time, so this is the shell twin of the OSGi ghapp minter
         # (which is itself what the build produces — chicken-and-egg forbids reusing it here). Least
-        # privilege: packages:read, the only scope maven needs. The grow / render wrappers export its
+        # privilege: packages:read. The grow / render wrappers export its
         # output as GH_TOKEN before the inner `nix build`; in-cluster there is no .secrets and the
         # caller sets GH_TOKEN from PaC's App token instead.
         mintGhAppTokenApp = pkgs.writeShellApplication {
@@ -992,14 +965,6 @@ USAGE
               git checkout -- Pulumi.yaml
             fi
 
-            # Maven-in-nix cache knob — SAME model as `.#render-manifests`: M2_REPO is the ONE knob
-            # (the read-only tail with the released private deps), and the persistent maven-build-cache
-            # is DERIVED beside it (its parent) unless MAVEN_BUILD_CACHE is set explicitly. Both are
-            # read IMPURELY (getEnv) by the inner seed-outcluster build, so exporting them here
-            # makes that build INCREMENTAL instead of a cold tmpfs primary every `nix run .#grow`.
-            : "''${M2_REPO:?set M2_REPO to your maven repository, e.g. \$HOME/.m2/repository}"
-            export MAVEN_BUILD_CACHE="''${MAVEN_BUILD_CACHE:-$(dirname "$M2_REPO")}"
-
             # The inner seed-outcluster build is a SEPARATE child nix process — flags on the
             # OUTER `nix run` (e.g. `nix run .#grow -L …`) go to building THIS wrapper, not it. So it
             # always gets `-L` (surface the build log), plus whatever the shared NIX_FLAGS env adds,
@@ -1009,8 +974,7 @@ USAGE
             nixFlags+=( "''${extraNixFlags[@]}" )
 
             # GH_TOKEN for the flake-input fetches and the ff-push — NOT for the inner maven
-            # build any more, which resolves everything from public sources and no longer bakes the
-            # token into its derivation hash. Mint from the one org-owned GitHub App
+            # build, which runs offline over maven-deps. Mint from the one org-owned GitHub App
             # (.secrets github.app), never a personal `gh auth token`.
             # Mint ONLY when no token is already provided. In-cluster the Tekton step already set
             # GH_TOKEN from PaC's App git_auth (the App-provided k8s Secret), and .secrets is present
@@ -1021,7 +985,7 @@ USAGE
               # The `if` condition swallows the non-zero exit (set -e does not fire on a tested cmd).
               if minted="$(mint-gh-app-token)"; then
                 GH_TOKEN="$minted"; export GH_TOKEN
-                echo "==> using a GitHub App token for the build (packages:read)" >&2
+                echo "==> using a GitHub App token for the fetches and the push" >&2
               else
                 echo "==> mint-gh-app-token failed; falling back to the ambient GH_TOKEN" >&2
               fi
@@ -1059,13 +1023,10 @@ USAGE
         # In-cluster / standalone render: `nix run .#render-manifests`. The ONE
         # definition of the render (build manifests-cli + `publish`), so the Tekton step
         # no longer hand-scripts an mvn+java block that drifts from the dev/release build
-        # — it just calls this app. It is deliberately NOT a hermetic nix build: the mvn
-        # runs against an EXTERNAL cache DIR ($MAVEN_BUILD_CACHE — a repo-local default
-        # standalone, the maven-cache PVC mount in-cluster), so the build is INCREMENTAL
-        # across renders (a nix sandbox would wall the cache off → a cold build each time).
-        # Nix's role is the toolchain SSOT (jdk25/maven/shfmt/shellcheck/which via
-        # runtimeInputs — no `flox activate` needed) + the single definition; it is
-        # oblivious to what backs the cache dir (a host dir or a PVC — just a path).
+        # — it just calls this app. The manifests-cli build is a sealed nix build (offline over
+        # maven-deps), so the node's store is its only cache. Nix's role is also the toolchain
+        # SSOT (jdk25/maven/shfmt/shellcheck/which via runtimeInputs — no `flox activate`
+        # needed).
         renderApp = pkgs.writeShellApplication {
           name = "rke2lab-render-manifests";
           # nodejs: the render's `publish` runs the cdk8s App, whose Java bindings (jsii) shell out
@@ -1088,28 +1049,18 @@ USAGE
             node="''${2:?usage: nix run .#render-manifests -- <cluster> <node> [publish args...]}"
             shift 2
 
-            # ONE knob: M2_REPO. The persistent build cache is DERIVED from it (its parent), so
-            # maven.repo.local == M2_REPO and the maven-build-cache lands beside it
-            # ($M2_REPO/../build-cache) → incremental across renders without a second variable.
-            # M2_REPO must be writable by the nix build user (in-cluster: the PVC, single-user nix;
-            # dev multi-user: a world-writable ~/.m2 or a /tmp repo). Override MAVEN_BUILD_CACHE
-            # only for a deliberately split layout.
-            : "''${M2_REPO:?set M2_REPO to your maven repository, e.g. \$HOME/.m2/repository}"
-            export MAVEN_BUILD_CACHE="''${MAVEN_BUILD_CACHE:-$(dirname "$M2_REPO")}"
-
             # Build the manifests-cli exe from the store — the shared reactor derivation
             # stages the CRDs, resolves deps + gates spotless, so the fat jar is
             # self-contained (no runtime maven cache, bootstrap or CRD staging). Mirrors
             # `grow`'s inner build, and like it names this flake's store source, never `.` (a checkout
-            # may hold decrypted sops files). The build is IMPURE (mvnHost reads M2_REPO) —
-            # the caller sets it (in-cluster: the maven-cache PVC). GH_TOKEN is no longer read by
-            # the build, only by the fetches and the push around it. The inner build is a SEPARATE child nix process, so it always
+            # may hold decrypted sops files). GH_TOKEN is not read by the build, only by the
+            # fetches and the push around it. The inner build is a SEPARATE child nix process, so it always
             # gets `-L` (surface the build log) plus the shared NIX_FLAGS env (e.g.
             # `NIX_FLAGS='--rebuild -Lvv'`); OUTER `nix run` flags build THIS wrapper, not the child.
             nixFlags=( -L )
             read -r -a extraNixFlags <<< "''${NIX_FLAGS:-}"
             nixFlags+=( "''${extraNixFlags[@]}" )
-            # GH_TOKEN for the inner maven build: on the operator (dev render), mint from the one
+            # GH_TOKEN for the fetch and the push below: on the operator (dev render), mint from the one
             # org-owned GitHub App (.secrets github.app), never a personal token. In-cluster the
             # Tekton step already set GH_TOKEN from PaC's App token, so the guard below skips.
             # Mint ONLY when no token is already provided. In-cluster the Tekton step already set
@@ -1121,7 +1072,7 @@ USAGE
               # The `if` condition swallows the non-zero exit (set -e does not fire on a tested cmd).
               if minted="$(mint-gh-app-token)"; then
                 GH_TOKEN="$minted"; export GH_TOKEN
-                echo "==> using a GitHub App token for the build (packages:read)" >&2
+                echo "==> using a GitHub App token for the fetches and the push" >&2
               else
                 echo "==> mint-gh-app-token failed; falling back to the ambient GH_TOKEN" >&2
               fi
@@ -1250,12 +1201,11 @@ USAGE
         apps.render-manifests = {
           type = "app";
           program = "${renderApp}/bin/rke2lab-render-manifests";
-          meta.description = "Render manifests/<cluster> + signed ff-push (build manifests-cli against $MAVEN_BUILD_CACHE, then publish)";
+          meta.description = "Render manifests/<cluster> + signed ff-push (build manifests-cli from the store, then publish)";
         };
 
         # Standalone: `GH_TOKEN=$(nix run .#mint-gh-app-token) …` — mint a packages:read GitHub
-        # App token from .secrets. No longer needed by the seed-outcluster build itself (the reactor
-        # resolves from public sources); it is for the flake-input fetches and the push.
+        # App token from .secrets, for the flake-input fetches and the push.
         apps.mint-gh-app-token = {
           type = "app";
           program = "${mintGhAppTokenApp}/bin/mint-gh-app-token";

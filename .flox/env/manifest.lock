@@ -301,7 +301,6 @@
     },
     "vars": {
       "GITHUB_OWNER": "seedmatic",
-      "M2_REPO": "${HOME}/.m2/repository",
       "PULUMI_BACKEND_URL": "file://${FLOX_ENV_PROJECT}/.pulumi-state",
       "PULUMI_CONFIG_PASSPHRASE": "",
       "PULUMI_HOME": "${XDG_STATE_HOME:-$HOME/.local/state}/pulumi"
@@ -4634,7 +4633,6 @@
       },
       "vars": {
         "GITHUB_OWNER": "seedmatic",
-        "M2_REPO": "${HOME}/.m2/repository",
         "PULUMI_BACKEND_URL": "file://${FLOX_ENV_PROJECT}/.pulumi-state",
         "PULUMI_CONFIG_PASSPHRASE": "",
         "PULUMI_HOME": "${XDG_STATE_HOME:-$HOME/.local/state}/pulumi"

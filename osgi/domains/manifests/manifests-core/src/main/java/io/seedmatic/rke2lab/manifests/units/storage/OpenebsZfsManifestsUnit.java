@@ -75,7 +75,7 @@ public final class OpenebsZfsManifestsUnit extends AbstractManifestsUnit {
     // only cross-grow handle). Per-cluster, because two clusters sharing one funnel-cert dataset
     // destroys the Let's Encrypt budget of both at once. Nothing lands here unless it names the
     // class
-    // explicitly — the funnel cert and the render maven-cache do.
+    // explicitly — the funnel cert does.
     createStorageClass(scope, PERSIST_CLASS, false, false, dataplan.persistPool(), "Retain");
     createHelmChart(scope, namespace, chartVersion);
   }
