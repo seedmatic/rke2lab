@@ -181,22 +181,6 @@
       };
       mavenBuildInputs = pkgs: builtins.attrValues (mavenToolchain pkgs);
 
-      # Host ~/.m2 reuse for the Maven-in-nix builds. These read the host env at eval
-      # time — they resolve ONLY when the eval is IMPURE. rke2lab as the top-level flake
-      # has `nixConfig.pure-eval = false`, but when another flake consumes it as an
-      # input (flox-catalog pins rke2lab) that config is ignored and
-      # the eval is PURE → getEnv returns "" → hostM2Repo becomes "/.m2/repository". So that path
-      # MUST be evaluated impurely: `darwin-rebuild … --impure` (or the equivalent on the consuming
-      # flake). Without it the seed below copies nothing and the build dies resolving
-      # staging-extension from central.
-      #
-      # M2_REPO is the ONLY host value read here now. GH_TOKEN used to be read the same way and
-      # interpolated into two build phases, which put it in their derivation hashes — and since PaC
-      # mints a fresh token per PipelineRun, every render asked nix for derivations it had never
-      # seen. It is still needed by the SHELL (flake-input fetches, the ff-push), just never by a
-      # derivation.
-      hostM2Repo = "${builtins.getEnv "M2_REPO"}";
-
       # Optional PERSISTENT maven primary repo + build-cache. When set — a dev cache dir (must
       # be writable by the nix BUILD user, i.e. nixbld on a multi-user daemon: use /tmp/…, NOT
       # $HOME) or the in-cluster PVC (single-user nix builds as the pod user) — the reactor build
@@ -226,27 +210,87 @@
         "io/seedmatic/rke2lab/rke2lab"
       ];
 
+      # The Maven invocations of each build, written ONCE and replayed twice: online by mavenDepsFor,
+      # which is how its repository holds exactly what the builds resolve (a dependency:go-offline
+      # misses the plugins' lazily resolved deps), and offline by the builds themselves. `mvn` is the
+      # name of the shell function the caller defined.
+      stagingExtensionSteps = mvn: ''
+        ${mvn} -f bom/pom.xml install
+        ${mvn} -f build-parent/pom.xml install
+        ${mvn} -f maven-embed-staging-ext/pom.xml -pl :staging-extension -am clean install
+      '';
+      # java-systemd is the one dependency no public Maven repository serves: Central stops at 2.1.0,
+      # and GitHub Packages refuses an anonymous read even of a public package. So it is built from
+      # its public tag, at the version the bom pins — the same jar, without a token anywhere.
+      javaSystemdVersion =
+        builtins.head (builtins.match ".*<java-systemd.version>([^<]*)</java-systemd.version>.*"
+          (builtins.readFile ./bom/pom.xml));
+      javaSystemdSrcFor = pkgs: pkgs.fetchFromGitHub {
+        owner = "seedmatic";
+        repo = "java-systemd";
+        rev = "v${javaSystemdVersion}";
+        hash = "sha256-TtlrxZ1Nqg0/tcz1BIP/1ds2vshXI6vFBcTSikFX4Jw=";
+      };
+      javaSystemdSteps = pkgs: mvn: ''
+        cp -r ${javaSystemdSrcFor pkgs} "$TMPDIR/java-systemd"
+        chmod -R u+w "$TMPDIR/java-systemd"
+        (cd "$TMPDIR/java-systemd" && ${mvn} -t "$NIX_BUILD_TOP/$sourceRoot/.mvn/toolchains.xml" -DskipTests install)
+      '';
+      planSteps = pkgs: mvn: ''
+        ${mvn} install:install-file -Dfile=pom.xml -DpomFile=pom.xml
+        ${mvn} -f build-parent/pom.xml install
+        ${mvn} -f bom/pom.xml install
+        ${mvn} -pl :plan-cli -am -Dshfmt.version=${pkgs.shfmt.version} clean package -DskipTests
+      '';
+
+      # Every third-party artifact the Maven builds resolve, as ONE fixed-output derivation: the
+      # only derivation here allowed the network, which the sandbox grants a FOD because its content
+      # is pinned by outputHash. It replays the builds' own steps online (the whole reactor covers
+      # manifests-cli's `-pl` subset), then drops what is not a download — rke2lab's own artifacts and
+      # java-systemd, which embed their build time and are why stagingExtensionRepoFor cannot be a
+      # FOD — and the
+      # resolver's bookkeeping, which records WHEN and FROM WHERE rather than WHAT. The CRD staging
+      # is skipped: it puts files in the jars, not dependencies in the repository.
+      #
+      # A dependency change fails every Maven build with a hash mismatch until outputHash is
+      # updated: set it to lib.fakeHash, build `maven-deps` by revision, take the hash it reports.
+      mavenDepsFor = pkgs: pkgs.stdenv.mkDerivation {
+        name = "rke2lab-maven-deps";
+        src = mavenSource;
+        nativeBuildInputs = mavenBuildInputs pkgs;
+        buildPhase = ''
+          export HOME="$TMPDIR"
+          mvnDeps() { mvn -Dmaven.repo.local="$out" -Dmaven.build.cache.enabled=false "$@"; }
+          ${javaSystemdSteps pkgs "mvnDeps"}
+          cp -r . "$TMPDIR/bootstrap"
+          (cd "$TMPDIR/bootstrap" && rm .mvn/extensions.xml && ${stagingExtensionSteps "mvnDeps"})
+          ${planSteps pkgs "mvnDeps"}
+          mvnDeps -Dshfmt.version=${pkgs.shfmt.version} -DskipTests -Dflox.crd-staging.skip=true clean package
+          rm -rf "$out/io/seedmatic/rke2lab" "$out/com/github/thjomnx/java-systemd"
+          find "$out" -type f \( -name _remote.repositories -o -name '*.lastUpdated' \
+            -o -name resolver-status.properties -o -name 'maven-metadata-*.xml' \) -delete
+        '';
+        installPhase = "true";
+        dontFixup = true;
+        outputHashMode = "recursive";
+        outputHashAlgo = "sha256";
+        outputHash = "sha256-y8FDKZqBlKiXeGEtSdwQHBnV8tnGO1HnrqlBYB865c8=";
+      };
+
       # Shared Maven-in-nix plumbing for both reactor derivations: a buildPhase prelude
-      # that sets up a writable $M2_REPO, SEEDS the staging-extension closure into it
-      # (mechanism 1 below), and defines `mvnHost` — an `mvn` wrapper pinning that primary
-      # + the host ~/.m2 as a READ-ONLY tail (mechanism 2). Each derivation
-      # opens its buildPhase with `${mavenHostPrelude}`, then calls `mvnHost <goals>`.
+      # that sets up a writable $M2_REPO over the fixed-output dependency repository, SEEDS
+      # the staging-extension closure into it, and defines `mvnHost` — an OFFLINE `mvn`
+      # pinned to that primary. Each derivation opens its buildPhase with
+      # `${mavenHostPrelude pkgs}`, then calls `mvnHost <goals>`.
       #
-      # (1) The CORE extension resolves at bootstrap from the seeded primary (the tail is
-      #     invisible to that early resolver — see stagingExtensionClosure).
-      # (2) The MAIN build's released private dep (java-systemd 3.0.0-rc.2) comes from the
-      #     host ~/.m2 as a read-only tail — the build user can't
-      #     WRITE the host repo (Maven tracking files → AccessDeniedException), so it's a
-      #     tail, not the primary; public deps download into the temp primary.
-      #
-      # Both mechanisms read host state (hostM2Repo) → the eval must be impure (see above).
-      # The seed guard turns an empty getEnv into a clear error instead of a cryptic
-      # "staging-extension not found in central" 200 lines later.
-      mavenHostPrelude = ''   
+      # The CORE extensions resolve at bootstrap from the primary itself (that early resolver
+      # consults no tail — see stagingExtensionClosure), hence a symlinked copy of the
+      # dependency repository rather than a read-only tail over it: links keep it cheap, and
+      # the directories stay writable for what Maven records.
+      mavenHostPrelude = pkgs: ''
         : "Point M2_REPO at the writable build dir so the JVM's user.home-derived default"
         : "local repo ($HOME/.m2/repository\) IS the seeded primary — covers the bootstrap"
-        : "resolver whether it honors -Dmaven.repo.local or falls back to user.home. The"
-        : "tail path ($hostM2Repo) is baked at eval time, so this override doesn't touch it."
+        : "resolver whether it honors -Dmaven.repo.local or falls back to user.home."
         export HOME="$TMPDIR"
         # Persistent primary local repo (MAVEN_BUILD_CACHE) when set, else a fresh tmpfs
         # primary. The maven-build-cache extension defaults its location to the PARENT of
@@ -258,12 +302,16 @@
           M2_REPO="$HOME/.m2/repository"
         fi
         mkdir -p "$M2_REPO"
+        cp -rsn --no-preserve=mode ${mavenDepsFor pkgs}/. "$M2_REPO/"
 
-        # Seed the staging-extension closure from the NIX-built repo ($STAGING_EXTENSION_REPO,
-        # set by each caller before this prelude) — the same store path for every mode, so the
-        # operator standalone build and the in-cluster render replay the identical bootstrap.
+        cp -r ${javaSystemdRepoFor pkgs}/. "$M2_REPO/"
+        chmod -R u+w "$M2_REPO/com/github/thjomnx"
+
+        # Seed the staging-extension closure from the NIX-built repo — the same store path for
+        # every mode, so the operator standalone build and the in-cluster render replay the
+        # identical bootstrap.
         for a in ${builtins.concatStringsSep " " stagingExtensionClosure}; do
-          src="$STAGING_EXTENSION_REPO/$a"
+          src="${stagingExtensionRepoFor pkgs}/$a"
           # Idempotent when the primary persists across builds (skip if already seeded).
           if [ -d "$src" ] && [ ! -e "$M2_REPO/$a" ]; then
             mkdir -p "$M2_REPO/$(dirname "$a")"
@@ -273,31 +321,19 @@
         done
 
         if [ ! -d "$M2_REPO/io/seedmatic/rke2lab/staging-extension" ]; then
-          echo "FATAL: staging-extension not seeded from '$STAGING_EXTENSION_REPO'" >&2
+          echo "FATAL: staging-extension not seeded from '${stagingExtensionRepoFor pkgs}'" >&2
           exit 1
         fi
 
-        # NO GH_TOKEN here either, for the same CACHING reason as the staging closure: interpolating
-        # it puts it in the derivation hash, and PaC mints a fresh token per PipelineRun — so both
-        # reactor derivations were rebuilt on every render even when no source had changed, which is
-        # the largest single waste in the render (the whole 40-module reactor).
-        #
-        # Measured 2026-09-24 before removing it: manifests-cli builds with GH_TOKEN=dummyTOKEN, an
-        # EMPTY tail (M2_REPO to a fresh dir) and HOME redirected — so every dependency resolved from
-        # a public source, with nothing borrowed from a warm host repo. The private java-systemd the
-        # comment above warns about did not block it.
-        #
+        # NO GH_TOKEN, for a CACHING reason: interpolating it puts it in the derivation hash, and PaC
+        # mints a fresh token per PipelineRun, so the reactor was rebuilt on every render. Nothing
+        # resolved here is private (measured 2026-09-24: every dependency comes from a public source).
         # ⚠️ The GitHub Packages repos in .mvn/settings.xml are still declared; anonymous requests to
-        # them fail and maven falls through to the next repository. If an artifact ever becomes truly
-        # private, the build fails LOUDLY on resolution — the moment to supply the token by a stable
-        # PATH whose CONTENT is not hashed (the pattern nixos/rke2.nix uses with
-        # /run/rke2lab/nix-github.conf), rather than by interpolating its value here again.
+        # them fail and maven falls through. If an artifact ever becomes truly private, mavenDepsFor
+        # fails LOUDLY on resolution — the moment to supply the token by a stable PATH whose CONTENT
+        # is not hashed (the pattern nixos/rke2.nix uses with /run/rke2lab/nix-github.conf).
         mvnHost() {
-          mvn \
-            -Dmaven.repo.local="$M2_REPO" \
-            -Dmaven.repo.local.tail="${hostM2Repo}" \
-            -Dmaven.repo.local.tail.ignoreAvailability=true \
-            "$@"
+          mvn -o -Dmaven.repo.local="$M2_REPO" "$@"
         }
       '';
 
@@ -371,41 +407,51 @@
       # The staging-extension build closure, built by NIX (not seeded from a host ~/.m2 nor a
       # per-mode Tekton bootstrap task). The `.mvn/extensions.xml` core extension is a reactor
       # module needed at mvn STARTUP (before any reactor build) — a chicken-egg — so it is built
-      # WITHOUT itself (rm .mvn/extensions.xml) and installed into $out, a maven-repo store path.
-      # Every downstream reactor build (`mavenHostPrelude`) then SEEDS the closure from this ONE
-      # store path — so the operator standalone (seed-outcluster's build) and the in-cluster render
-      # replay the identical bootstrap, zero per-mode duplication.
-      #
-      # NO GH_TOKEN, deliberately, and this is a CACHING property rather than a tidiness one. The
-      # token used to be interpolated into the buildPhase below "for any GitHub Packages dep of the
-      # parent chain" — at the conditional. Interpolating it puts it in the DERIVATION HASH, and PaC
-      # mints a fresh App token per PipelineRun, so every in-cluster render saw a different
-      # derivation and re-downloaded this whole closure from scratch, however warm the nix store was.
-      # (It also deposited a live token in the world-readable store.)
-      #
-      # Measured 2026-09-24: the closure builds with a DUMMY token, so nothing here is private —
-      # bom, build-parent, staging-extension and bnd-read are all rke2lab, a public repo. The
-      # `impureEnvVars` route (pass the token without hashing it) was the first choice and is not
-      # available: it requires a fixed-output derivation, and two builds of this closure produce
-      # DIFFERENT content hashes even after dropping maven's resolver bookkeeping — the jars built
-      # here embed their build time. Removing the token reaches the same end without that fight.
-      #
-      # ⚠️ If a private dependency ever enters this chain, the build fails LOUDLY on a 401 rather
-      # than silently — which is the right failure, and the moment to revisit the FOD route.
+      # WITHOUT itself (rm .mvn/extensions.xml), offline over mavenDepsFor, and its rke2lab
+      # artifacts alone go to $out, a maven-repo store path. Every downstream reactor build
+      # (`mavenHostPrelude`) then SEEDS the closure from this ONE store path — so the operator
+      # standalone (seed-outcluster's build) and the in-cluster render replay the identical
+      # bootstrap, zero per-mode duplication. Not a FOD itself: the jars built here embed their
+      # build time, so two builds never hash the same.
       stagingExtensionRepoFor = pkgs: pkgs.stdenv.mkDerivation {
         name = "rke2lab-staging-extension-repo";
         src = mavenSource;
         nativeBuildInputs = mavenBuildInputs pkgs;
         buildPhase = ''
           export HOME="$TMPDIR"
-          mkdir -p $out
+          repo="$TMPDIR/repository"
+          mkdir -p "$repo"
+          cp -rs --no-preserve=mode ${mavenDepsFor pkgs}/. "$repo/"
+          mvnOffline() { mvn -o -Dmaven.repo.local="$repo" "$@"; }
           rm .mvn/extensions.xml
-          mvn -f bom/pom.xml install -Dmaven.repo.local="$out"
-          mvn -f build-parent/pom.xml install -Dmaven.repo.local="$out"
-          mvn -f maven-embed-staging-ext/pom.xml -pl :staging-extension -am \
-            clean install -Dmaven.repo.local="$out"
+          ${stagingExtensionSteps "mvnOffline"}
         '';
-        installPhase = "true";
+        installPhase = ''
+          mkdir -p $out/io/seedmatic
+          cp -r "$repo/io/seedmatic/rke2lab" $out/io/seedmatic/
+        '';
+        dontFixup = true;
+      };
+
+      # java-systemd at the bom's version, built offline over mavenDepsFor; its artifacts alone go
+      # to $out, seeded into every reactor build by `mavenHostPrelude`.
+      javaSystemdRepoFor = pkgs: pkgs.stdenv.mkDerivation {
+        name = "rke2lab-java-systemd-repo";
+        src = mavenSource;
+        nativeBuildInputs = mavenBuildInputs pkgs;
+        buildPhase = ''
+          export HOME="$TMPDIR"
+          repo="$TMPDIR/repository"
+          mkdir -p "$repo"
+          cp -rs --no-preserve=mode ${mavenDepsFor pkgs}/. "$repo/"
+          mvnOffline() { mvn -o -Dmaven.repo.local="$repo" "$@"; }
+          ${javaSystemdSteps pkgs "mvnOffline"}
+        '';
+        installPhase = ''
+          mkdir -p $out/com/github/thjomnx
+          cp -r "$repo/com/github/thjomnx/java-systemd" $out/com/github/thjomnx/
+          rm -f $out/com/github/thjomnx/java-systemd/maven-metadata-local.xml
+        '';
         dontFixup = true;
       };
 
@@ -418,18 +464,13 @@
         nativeBuildInputs = mavenBuildInputs pkgs;
 
         buildPhase = ''
-          STAGING_EXTENSION_REPO=${stagingExtensionRepoFor pkgs}
-          ${mavenHostPrelude}
+          ${mavenHostPrelude pkgs}
 
           # Install parent POM and BOM first, then build the plan CLI module. plan-cli
           # multiplexes both plan exports (network + dataset), driving the netplan +
           # dataplan scions; it builds through the reactor (`-pl :plan-cli -am`) so `-am`
           # pulls the netplan-core / dataplan-contract siblings from source.
-          mvnHost install:install-file -Dfile=pom.xml -DpomFile=pom.xml
-          mvnHost -f build-parent/pom.xml install
-          mvnHost -f bom/pom.xml install
-          mvnHost -pl :plan-cli -am \
-            -Dshfmt.version=${pkgs.shfmt.version} clean package -DskipTests
+          ${planSteps pkgs "mvnHost"}
         '';
 
         installPhase = ''
@@ -514,10 +555,8 @@
         # from the immutable store rather than a mutable target/. seed-outcluster
         # depends on manifests, netplan, systemd-contract and sdks/incus, so the
         # whole reactor is built once from the parent pom. Mirrors netplanJar's
-        # Maven-in-nix pattern (shared `mavenHostPrelude` — full rationale there);
-        # the build runs with sandbox=false (per the host nix.conf) so Maven can
-        # resolve its dependency tree. java-systemd 3.0.0-rc.2 is a release now, so
-        # the tail serves it — no seed needed beyond the staging-extension closure.
+        # Maven-in-nix pattern (shared `mavenHostPrelude` — full rationale there):
+        # offline, every dependency from mavenDepsFor.
         # The flox-controller CRD staging snippet (single-sourced from the flake input,
         # never vendored) onto the manifest-synthesis classpath so
         # FloxControllerManifestsUnit emits it into the cluster's crds layer. Shared by
@@ -575,8 +614,7 @@
           nativeBuildInputs = mavenBuildInputs pkgs;
 
           buildPhase = ''
-            STAGING_EXTENSION_REPO=${stagingExtensionRepoFor pkgs}
-            ${mavenHostPrelude}
+            ${mavenHostPrelude pkgs}
             # CRDs stage into target/generated-resources/crds (crdStagingDir), which `clean` wipes —
             # so clean FIRST, then install the store CRDs, then package. `-Dflox.crd-staging.skip`
             # tells manifests-core's exec plugin to SKIP its own `nix run .#stage-*-crd` (a nested
@@ -1166,6 +1204,7 @@ USAGE
           # only interpolated into two other build phases, which makes it impossible to measure
           # (determinism, size, what it actually downloaded) without building something else first.
           staging-extension-repo = stagingExtensionRepoFor pkgs;
+          maven-deps = mavenDepsFor pkgs;
           incus-client = incusClient;
           grow = growApp;
           mint-gh-app-token = mintGhAppTokenApp;
