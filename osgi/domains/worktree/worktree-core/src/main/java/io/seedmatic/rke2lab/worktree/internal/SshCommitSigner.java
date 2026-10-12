@@ -22,7 +22,7 @@ import org.eclipse.jgit.transport.CredentialsProvider;
  * namespace, exactly what the operator's {@code gpg.format=ssh} / {@code gpg.ssh.program} config
  * produces. JGit 7.x registers NO ssh signer of its own, so {@code worktree-core} injects this one
  * via {@code CommitCommand.setSigner}; the bot then signs with its own imported key (the ndh {@code
- * github-signing}), not the ambient user's.
+ * rke2lab-bot-signing}), not the ambient user's.
  *
  * <p>The private key is written to a {@code 0600} temp file for the single {@code sign} call and
  * deleted immediately after ({@code ssh-keygen -Y sign} needs a key FILE — it cannot read the key

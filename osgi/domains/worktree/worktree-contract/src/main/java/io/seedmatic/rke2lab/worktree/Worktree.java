@@ -65,9 +65,9 @@ public interface Worktree {
    * CALLER's value.
    *
    * <p>{@code sshSigningKey} is the caller's OpenSSH PRIVATE key (e.g. the ndh {@code
-   * github-signing} key) the commit is SSH-signed with (git SSHSIG, {@code git} namespace) — so the
-   * bot signs with its own imported key, the same way the operator's {@code gpg.format=ssh} config
-   * would. {@link Optional#empty()} commits unsigned. Only a JDK type crosses; the signing
+   * rke2lab-bot-signing} key) the commit is SSH-signed with (git SSHSIG, {@code git} namespace) —
+   * so the bot signs with its own imported key, the same way the operator's {@code gpg.format=ssh}
+   * config would. {@link Optional#empty()} commits unsigned. Only a JDK type crosses; the signing
    * mechanism (jgit + {@code ssh-keygen}) stays sealed in the implementation.
    */
   String commit(String message, GitIdentity identity, Optional<String> sshSigningKey);

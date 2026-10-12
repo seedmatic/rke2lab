@@ -118,7 +118,7 @@ class FabricDeliveryTest {
             "rke2lab:fabric-delivery", "rke2lab+fabric-delivery@mammoth-skate.example.invalid"),
         worktrees.made.committedAs.orElseThrow());
     assertTrue(
-        worktrees.made.signedWith.orElseThrow().contains("github-signing"),
+        worktrees.made.signedWith.orElseThrow().contains("rke2lab-bot-signing"),
         "the signing key is named through NdhKeystoreCatalog, not re-typed");
   }
 

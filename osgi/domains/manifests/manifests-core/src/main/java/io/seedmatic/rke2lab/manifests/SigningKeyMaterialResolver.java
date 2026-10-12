@@ -10,8 +10,8 @@ import org.slf4j.LoggerFactory;
 
 /**
  * The pre-synthesis resolver for the commit-signing key — the twin of {@link
- * SopsAgeMaterialResolver}. Reads the {@code github-signing} SSH private from the shared {@link
- * NdhKeystoreReader} (the ndh domain's single door) so the OPERATOR grow can emit the {@code
+ * SopsAgeMaterialResolver}. Reads the {@code rke2lab-bot-signing} SSH private from the shared
+ * {@link NdhKeystoreReader} (the ndh domain's single door) so the OPERATOR grow can emit the {@code
  * manifests-render-signing} Secret the in-cluster render mounts.
  *
  * <p>Enclosure-gated: IN_CLUSTER the git tree's key-store is sops-encrypted at rest and the Secret

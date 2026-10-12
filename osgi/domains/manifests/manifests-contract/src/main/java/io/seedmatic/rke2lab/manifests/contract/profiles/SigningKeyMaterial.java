@@ -4,8 +4,8 @@ package io.seedmatic.rke2lab.manifests.contract.profiles;
 import java.util.Objects;
 
 /**
- * The commit-signing SSH private key ({@code github-signing}) published to synth-time layers via
- * {@link io.seedmatic.rke2lab.manifests.ManifestSynthesisContext}. Backs the {@code
+ * The commit-signing SSH private key ({@code rke2lab-bot-signing}) published to synth-time layers
+ * via {@link io.seedmatic.rke2lab.manifests.ManifestSynthesisContext}. Backs the {@code
  * manifests-render-signing} Secret (see {@code RenderSigningSecretManifestsUnit}) that the
  * in-cluster Tekton {@code render-publish} step mounts as {@code RKE2LAB_SIGNING_KEY} to sign the
  * rendered commit — the twin of {@link SopsAgeMaterial}.

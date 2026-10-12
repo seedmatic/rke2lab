@@ -47,11 +47,12 @@ public enum NdhKeystoreCatalog {
   CLUSTER_SSH_KEY("rke2-cluster"),
 
   /**
-   * The SSH key the manifests pipeline signs its commits with — {@code keys.github-signing}. It was
-   * a string literal in three places (the resolver and both scenarios that sign), absent from this
-   * registry, which is the shape the registry exists to prevent.
+   * The SSH key the rke2lab bots sign their commits with — {@code keys.rke2lab-bot-signing}: the
+   * manifests render, the version bumper, the fabric delivery, and the in-cluster render's mounted
+   * Secret. The bots' OWN key, trusted for {@code rke2lab+*@<authority domain>} only; never the
+   * operator's {@code github-signing}, which would otherwise be posed into every cluster.
    */
-  SIGNING_KEY("github-signing");
+  SIGNING_KEY("rke2lab-bot-signing");
 
   private final String entryName;
 
