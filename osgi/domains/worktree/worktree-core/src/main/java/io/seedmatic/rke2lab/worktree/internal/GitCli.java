@@ -15,10 +15,9 @@ import java.util.concurrent.TimeUnit;
  * The {@code git} binary for ONE repository's LOCAL operations — an instance bound to that repo's
  * directory. Shelled where jgit cannot do the job: it exposes no worktree porcelain (verified
  * against 7.7.x: it can OPEN a linked worktree but not CREATE the {@code .git/worktrees/<name>}
- * administrative files), so {@code worktree add / remove / prune / list} run here; and a {@link
- * #restoreFromHead checkout} must run the configured {@code sops-yaml} smudge filter, which only
- * the binary does. The other verbs it carries — emptying a linked worktree, seeding its null base,
- * staging it whole — sit with the worktree add they follow, and are local too.
+ * administrative files), so {@code worktree add / remove / prune / list} run here. The other verbs
+ * it carries — emptying a linked worktree, seeding its null base, staging it whole, restoring a
+ * preserved path from HEAD — sit with the worktree add they follow, and are local too.
  *
  * <p>Nothing here reaches a remote. The binary reads the machine's git config, so a fetch through
  * it would answer an authentication challenge with whatever credential helper that config names —
@@ -134,22 +133,12 @@ final class GitCli {
   }
 
   /**
-   * Restore {@code relPath} from HEAD into the working tree ({@code git checkout HEAD -- <path>}) —
-   * a checkout, so it runs the configured {@code sops-yaml} smudge filter and the file lands
-   * DECRYPTED. The caller has already confirmed the path is committed at HEAD (jgit read its blob),
-   * so a non-zero exit is a real defect, not the missing-path case.
-   */
-  void restoreFromHead(Path worktreePath, String relPath) {
-    run(true, "-C", worktreePath.toString(), "checkout", "HEAD", "--", relPath);
-  }
-
-  /**
    * Restore {@code pathspec} from HEAD into the working tree, TOLERANT of an unmatched pathspec
    * (the path absent at HEAD → a no-op). For preserving a whole directory (e.g. the reflector's
    * {@code reflections/}) across the wholesale render's {@code rm -rf .}, where the directory may
    * not exist yet on a first render.
    */
-  void restoreFromHeadTolerant(Path worktreePath, String pathspec) {
+  void restoreFromHead(Path worktreePath, String pathspec) {
     run(false, "-C", worktreePath.toString(), "checkout", "HEAD", "--", pathspec);
   }
 

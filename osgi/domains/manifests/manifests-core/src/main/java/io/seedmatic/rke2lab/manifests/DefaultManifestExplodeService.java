@@ -74,7 +74,7 @@ public final class DefaultManifestExplodeService implements ManifestExplodeServi
     // Callers are responsible for clearing stale per-resource files before
     // invoking explode.
     Files.createDirectories(target);
-    writeSopsGuard(target);
+    writeSecretDiffAttributes(target);
 
     final List<Path> written = new ArrayList<>();
     // The node-side bootstrap lane: resources marked NODE_BOOTSTRAP are NOT written into the
@@ -134,28 +134,27 @@ public final class DefaultManifestExplodeService implements ManifestExplodeServi
   }
 
   /**
-   * Belt-and-suspenders: bind any Secret rendered into the branch tree to the sops clean filter, so
-   * if one ever carries real data its {@code data}/{@code stringData} commits ENCRYPTED (the age
-   * recipients in the repo's {@code .sops.yaml}), never plaintext. The PRIMARY guarantee stays that
-   * real-data secrets ride the {@link ManifestAnnotation#NODE_BOOTSTRAP} lane and never reach the
-   * branch at all; this {@code .gitattributes} is the second belt, engaged by any filter-aware
-   * committer over the tree (the operator's git CLI, which carries the {@code sops-yaml} filter).
+   * Make the rendered Secrets REVIEWABLE: bind them to the {@code sops-yaml} diff driver. No git
+   * filter is bound — the delivery seals each Secret in memory ({@link RenderedSecretSeal}) before
+   * it stages the tree, so the blob is ciphertext whoever writes it, including a commit built with
+   * no checkout, which no filter would see.
    */
-  private void writeSopsGuard(final Path target) throws IOException {
+  private void writeSecretDiffAttributes(final Path target) throws IOException {
     Files.writeString(
         target.resolve(".gitattributes"),
         """
-        # Rendered Secrets are sops-filtered: their data/stringData commit ENCRYPTED (never
-        # plaintext), decrypted by Flux (sops-age) on reconcile. The recorded .sops.yaml names the
-        # fields + recipients; only the irreducible bootstrap seed still rides the node-bootstrap lane.
+        # Rendered Secrets are sealed in memory by the render: their data/stringData are committed
+        # ENCRYPTED (never plaintext), decrypted by Flux (sops-age) on reconcile. The recorded
+        # .sops.yaml names the fields + recipients. No filter is bound here: nothing is encrypted
+        # at `git add`, so a file edited by hand must be re-sealed with `sops` before it is staged.
         #
         # `diff=` is what makes a RENDER REVIEWABLE. Without it `git diff` compares ciphertext, and
         # AES-GCM takes a fresh IV per encryption, so every Secret always looks changed and never says
         # what moved — which is how a render's real change hides among 28 walls of base64. The
         # sops-yaml textconv renders each blob decrypted instead; with no key it exits non-zero and git
         # falls back to the raw blob, so a missing key costs legibility and never truthfulness.
-        **/*-secret-*.yml filter=sops-yaml diff=sops-yaml
-        **/.secret-*.yml filter=sops-yaml diff=sops-yaml
+        **/*-secret-*.yml diff=sops-yaml
+        **/.secret-*.yml diff=sops-yaml
         """);
   }
 

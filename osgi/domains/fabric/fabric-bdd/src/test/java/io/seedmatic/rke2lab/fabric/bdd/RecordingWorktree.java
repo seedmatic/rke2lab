@@ -48,11 +48,6 @@ final class RecordingWorktree implements LinkedWorktree {
   }
 
   @Override
-  public Optional<String> smudgeFromHead(String file) {
-    return readAtHead(file);
-  }
-
-  @Override
   public void restoreFromHead(String pathspec) {
     calls.add("restoreFromHead");
   }

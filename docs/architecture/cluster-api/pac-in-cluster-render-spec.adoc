@@ -1299,6 +1299,11 @@ exactly that and was measured wrong before being believed.
 Verified three ways against the store's own layout: an identical re-render keeps the SAME blob; the
 same content with reordered keys keeps the SAME blob; a changed value still produces a NEW blob.
 
+The render now seals its Secrets itself, in memory, before staging (`RenderedSecretSeal`), and carries the
+same law: the envelope committed at the same path is written back when it opens to the same documents,
+compared as parsed trees; anything it cannot compare is sealed afresh. No git filter takes part any more,
+so the law holds for a commit built without a checkout too.
+
 ==== Why it was worth fixing — and why the reason is NOT runtime
 
 Stated plainly because two tempting justifications are false:

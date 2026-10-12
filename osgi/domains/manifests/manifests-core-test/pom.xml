@@ -150,6 +150,13 @@
       <artifactId>commons-compress</artifactId>
       <scope>test</scope>
     </dependency>
+    <!-- The sops edge, installed in-container by its capability: RenderedSecretSealTest seals the
+         exploded Secrets with the real SopsEncryptor it publishes. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>sops-edge</artifactId>
+      <scope>test</scope>
+    </dependency>
     <!-- netplan-contract imports inet.ipaddr; installed in-container as its sole exporter bundle. -->
     <dependency>
       <groupId>com.github.seancfoley</groupId>
