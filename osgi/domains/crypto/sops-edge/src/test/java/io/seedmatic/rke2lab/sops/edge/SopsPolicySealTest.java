@@ -1,10 +1,13 @@
 package io.seedmatic.rke2lab.sops.edge;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import com.github.marschall.memoryfilesystem.MemoryFileSystemBuilder;
 import java.io.IOException;
+import java.nio.file.FileSystem;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
@@ -92,5 +95,40 @@ class SopsPolicySealTest {
       }
     }
     return false;
+  }
+
+  @Test
+  void aPolicyInAMemoryFileSystemSealsTheSameAndLeavesNoCopyBehind() throws IOException {
+    final int before = policyCopies();
+    try (FileSystem memory = MemoryFileSystemBuilder.newEmpty().build()) {
+      final Path tree = memory.getPath("/tree");
+      Files.createDirectories(tree);
+      final Path memoryPolicy = Files.write(tree.resolve(".sops.yaml"), Files.readAllBytes(policy));
+      final ProcessBuilderSopsEncryptor encryptor = new ProcessBuilderSopsEncryptor();
+
+      final String sealed = encryptor.encryptYaml(SECRET, memoryPolicy, "a/b/02-secret-probe.yml");
+      assertTrue(sealed.contains("token: ENC["), "the first rule matched through the copy");
+      assertFalse(sealed.contains("dummy-token"));
+      final String opened =
+          new ProcessBuilderSopsDecryptor(
+                  new SopsProcess(Map.of("SOPS_AGE_KEY_FILE", key.toString())))
+              .decryptYaml(sealed);
+      assertTrue(opened.contains("token: dummy-token"));
+
+      final String unmarked = encryptor.encryptYaml(SECRET, memoryPolicy, "a/b/plain.yml");
+      assertTrue(
+          unmarked.contains("token: dummy-token"),
+          "the relative path keeps its meaning: only the comment rule applies, and it marks nothing");
+    }
+    assertEquals(before, policyCopies(), "the owner-only policy copy is removed");
+  }
+
+  private static int policyCopies() throws IOException {
+    try (var entries = Files.list(Path.of(System.getProperty("java.io.tmpdir")))) {
+      return (int)
+          entries
+              .filter(p -> p.getFileName().toString().startsWith("rke2lab-sops-policy-"))
+              .count();
+    }
   }
 }

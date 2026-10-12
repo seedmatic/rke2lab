@@ -253,7 +253,7 @@
         dontFixup = true;
         outputHashMode = "recursive";
         outputHashAlgo = "sha256";
-        outputHash = "sha256-y8FDKZqBlKiXeGEtSdwQHBnV8tnGO1HnrqlBYB865c8=";
+        outputHash = "sha256-x2wS0FGbgYOeAJMEX/6HOQZMnqNKUczxroRTd02xHIo=";
       };
 
       # Shared Maven-in-nix plumbing for both reactor derivations: a buildPhase prelude
