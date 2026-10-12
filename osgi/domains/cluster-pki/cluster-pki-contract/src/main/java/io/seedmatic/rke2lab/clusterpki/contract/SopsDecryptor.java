@@ -27,4 +27,16 @@ public interface SopsDecryptor {
    * @return the plaintext YAML document
    */
   String decryptYaml(String sopsYaml, String ageIdentity);
+
+  /**
+   * Open {@code sopsYaml} with whatever identity sops finds on its own ({@code SOPS_AGE_KEY},
+   * {@code SOPS_AGE_KEY_FILE}, the default key file). The manifests render reads back the carrier
+   * it sealed on a previous run this way: in-cluster the cluster key is injected into its
+   * environment, on the operator's host the operator key is in place, and neither is ever held by
+   * the render itself.
+   *
+   * @param sopsYaml the sops-encrypted YAML document (piped through the tool, never touches disk)
+   * @return the plaintext YAML document
+   */
+  String decryptYaml(String sopsYaml);
 }

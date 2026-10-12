@@ -32,18 +32,16 @@ metadata:
     # closure. Keyed per-container (NO bare-key fallback), so it names the render step container
     # (step-render); only the render-publish pod owns one, so the git-fetch pod ignores it.
     flox.seedmatic.io/nix-build.step-render: "manifests-nix-store"
-    # git-sops filter capability: the SAME step-render container ALSO gets the toolchains/git-sops
-    # flox env (git + sops + the ndh git-sops-filter) — the NRI plugin composes a flox env AND a
-    # nix-build runtime on one container. This wires git's sops clean/smudge filter, so the render
-    # commits branch Secrets ENCRYPTED (clean, needs only the .sops.yaml recipients) and — with
-    # SOPS_AGE_KEY mounted (see the render Task) — smudges .secrets + the in-cluster cellar asset,
-    # making the in-cluster render secret-FULL instead of blind.
+    # sops capability: the SAME step-render container ALSO gets the toolchains/git-sops flox env
+    # (git + sops) — the NRI plugin composes a flox env AND a nix-build runtime on one container.
+    # With SOPS_AGE_KEY (the env's spec.inject) the render opens .secrets and the in-cluster cellar
+    # asset in memory and seals the branch Secrets it commits in memory, making the in-cluster
+    # render secret-FULL instead of blind. No git filter is wired.
     flox.seedmatic.io/environment.step-render: "toolchains/git-sops"
-    # The git-fetch pod's clone step ALSO runs on toolchains/git-sops (git + sops + the ndh
-    # git-sops-filter, on the flox-carrier base), so its `git checkout FETCH_HEAD` smudges .secrets
-    # in the shared source workspace AT CLONE TIME — no stock alpine/git image, no downstream
-    # re-smudge. SOPS_AGE_KEY arrives via the env's spec.inject (flox-controller webhook), not a
-    # hand-wired Task env. Keyed to the clone step's container (step-clone); the render-publish pod
+    # The git-fetch pod's clone step ALSO runs on toolchains/git-sops (git + sops, on the
+    # flox-carrier base) — no stock alpine/git image. Its checkout leaves .secrets ENCRYPTED in the
+    # shared source workspace; the render opens it in memory. SOPS_AGE_KEY arrives via the env's
+    # spec.inject (flox-controller webhook), not a hand-wired Task env. Keyed to the clone step's container (step-clone); the render-publish pod
     # has no such container so it ignores it.
     flox.seedmatic.io/environment.step-clone: "toolchains/git-sops"
     # The two cache phases bracketing the render (RenderPipelineManifestsUnit): they lay out the

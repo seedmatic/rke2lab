@@ -1,5 +1,6 @@
 package io.seedmatic.rke2lab.clusterpki.contract;
 
+import java.nio.file.Path;
 import java.util.List;
 
 /**
@@ -29,4 +30,21 @@ public interface SopsEncryptor {
    * @return the sops-encrypted YAML document
    */
   String encryptYaml(String plaintextYaml, List<String> ageRecipients);
+
+  /**
+   * Seal {@code plaintextYaml} the way {@code policy} says a file at {@code path} is sealed: the
+   * creation rule whose {@code path_regex} matches {@code path} picks the recipients and the leaves
+   * to encrypt. The second consumer is the manifests render, which seals each Secret it writes to a
+   * rendered branch IN MEMORY, before the file exists — never through a git clean filter, which a
+   * blob inserted without a checkout would skip.
+   *
+   * <p>A rule that matches but encrypts nothing returns a valid envelope around the clear values;
+   * the caller checks the result, the tool does not.
+   *
+   * @param plaintextYaml the cleartext YAML to seal (piped through the tool, never touches disk)
+   * @param policy the {@code .sops.yaml} whose creation rules apply
+   * @param path the path the sealed document will have, relative to the policy's directory
+   * @return the sops-encrypted YAML document
+   */
+  String encryptYaml(String plaintextYaml, Path policy, String path);
 }

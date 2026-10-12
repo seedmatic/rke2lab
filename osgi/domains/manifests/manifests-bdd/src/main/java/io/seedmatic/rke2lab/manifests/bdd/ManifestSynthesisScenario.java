@@ -16,9 +16,14 @@ import io.seedmatic.rke2lab.clusterpki.contract.AdminCredentials;
 import io.seedmatic.rke2lab.clusterpki.contract.ClusterIssuerCa;
 import io.seedmatic.rke2lab.clusterpki.contract.ClusterPkiCoordinate;
 import io.seedmatic.rke2lab.clusterpki.contract.ManagementClusterCa;
+import io.seedmatic.rke2lab.clusterpki.contract.SopsDecryptor;
+import io.seedmatic.rke2lab.clusterpki.contract.SopsEncryptor;
 import io.seedmatic.rke2lab.clusterpki.contract.WorkloadClusterCas;
 import io.seedmatic.rke2lab.ghapp.contract.GhAppCoordinate;
 import io.seedmatic.rke2lab.ghapp.contract.GithubAppCredentials;
+import io.seedmatic.rke2lab.manifests.RenderedSecretSeal;
+import io.seedmatic.rke2lab.manifests.YamlMapper;
+import io.seedmatic.rke2lab.manifests.contract.BranchSecretCarrier;
 import io.seedmatic.rke2lab.manifests.contract.ClusterCoordinate;
 import io.seedmatic.rke2lab.manifests.contract.ClusterFleet;
 import io.seedmatic.rke2lab.manifests.contract.ClusterRole;
@@ -181,6 +186,18 @@ public class ManifestSynthesisScenario
 
   @OsgiService(await = false)
   private Optional<NdhKeystoreReader> keystore = Optional.empty();
+
+  // The sops edge and the YAML reader the delivery seals the rendered Secrets with, in memory,
+  // before staging. OPTIONAL like the worktree seam (a survey delivers nothing), but a delivery
+  // without them is refused rather than committed unsealed: deliveryPlan fails before synthesis.
+  @OsgiService(await = false)
+  private Optional<SopsEncryptor> sopsEncryptor = Optional.empty();
+
+  @OsgiService(await = false)
+  private Optional<SopsDecryptor> sopsDecryptor = Optional.empty();
+
+  @OsgiService(await = false)
+  private Optional<YamlMapper> yamlMapper = Optional.empty();
 
   // The ambient enclosure gate (host-published, § pac-in-cluster-render-spec auth): the
   // deterministic
@@ -612,7 +629,7 @@ public class ManifestSynthesisScenario
     // blank token), so a present token is always usable and the caller holds no empty-token case.
     final Optional<String> token = push ? revealGithubToken() : Optional.empty();
     // The bot identity + signing key are enclosure-resolved (§ pac-in-cluster-render-spec, auth):
-    // OPERATOR reads the sops-smudged ndh key-store at hand; IN_CLUSTER the git tree is
+    // OPERATOR opens the ndh key-store at hand in memory; IN_CLUSTER the git tree is
     // sops-encrypted
     // at rest, so the signing key rides the mounted Secret (revealSigningKey, RKE2LAB_SIGNING_KEY)
     // and
@@ -637,7 +654,22 @@ public class ManifestSynthesisScenario
       bot = new GitBotIdentities(ks.authorityDomain(TAILNET_AUTHORITY)).forTool(RENDER_TOOL);
       signingKey = ks.sshPrivate(SIGNING_KEY);
     }
-    return Optional.of(new Delivery(renderCommitMessage(cluster), bot, signingKey, push, token));
+    final RenderedSecretSeal secrets =
+        new RenderedSecretSeal(
+            sopsEncryptor.orElseThrow(
+                () ->
+                    new IllegalStateException(
+                        "no SopsEncryptor edge — the rendered Secrets cannot be sealed, so the"
+                            + " branch is not delivered")),
+            sopsDecryptor.orElseThrow(
+                () ->
+                    new IllegalStateException(
+                        "no SopsDecryptor edge — the committed Secrets cannot be compared, so the"
+                            + " branch is not delivered")),
+            yamlMapper.orElseThrow(
+                () -> new IllegalStateException("no YamlMapper — cannot read the rendered tree")));
+    return Optional.of(
+        new Delivery(renderCommitMessage(cluster), bot, signingKey, push, token, secrets));
   }
 
   /**
@@ -712,7 +744,8 @@ public class ManifestSynthesisScenario
       GitIdentity identity,
       String signingKey,
       boolean push,
-      Optional<String> token) {
+      Optional<String> token,
+      RenderedSecretSeal secrets) {
 
     /**
      * The same plan for another cluster's branch — identity, signing key and token are per-RUN (one
@@ -721,14 +754,16 @@ public class ManifestSynthesisScenario
      * token per target.
      */
     Delivery forBranchOf(String message) {
-      return new Delivery(message, identity, signingKey, push, token);
+      return new Delivery(message, identity, signingKey, push, token, secrets);
     }
 
     /**
      * Seal {@code worktree} with this plan: write the worktree convention's {@code .gitignore} (its
-     * intermediates stay local), stage the whole rendered tree, commit it SIGNED as the rke2lab
-     * bot, and force-push only when the operator armed the push AND the token was revealed (the
-     * gardening gate). Behaviour of the plan itself, so the managing branch's THEN and each
+     * intermediates stay local), seal every rendered Secret in memory under the branch's {@code
+     * .sops.yaml} — an unchanged one keeps the ciphertext committed at HEAD, and the delivery is
+     * refused if one stays in the clear — stage the whole rendered tree, commit it SIGNED as the
+     * rke2lab bot, and force-push only when the operator armed the push AND the token was revealed
+     * (the gardening gate). Behaviour of the plan itself, so the managing branch's THEN and each
      * per-target pass deliver through ONE path — a change to the push discipline has one site.
      */
     void seal(LinkedWorktree worktree) {
@@ -738,6 +773,7 @@ public class ManifestSynthesisScenario
         throw new UncheckedIOException(
             "cannot write the render's .gitignore in " + worktree.path(), ex);
       }
+      secrets.seal(worktree.path(), worktree::readAtHead);
       worktree.stageAll();
       worktree.commit(message, identity, Optional.of(signingKey));
       if (push) {
@@ -861,9 +897,10 @@ public class ManifestSynthesisScenario
         .the_manifests_are_synthesized(materials, rendered);
     // Extract the IN_CLUSTER-reaching sealed materials to the branch asset (§ in-cluster-cellar
     // -asset): the operator's grow captures its fresh seals, a publish re-captures the rehydrated
-    // set (a fixpoint). Written plaintext into the tree; the git clean filter sops-encrypts it at
-    // stageAll, so the passphrase-sealed payloads gain age protection at rest. Before delivery so
-    // the THEN's stageAll picks it up. A no-op when nothing reaches in-cluster (a mgmt-only run).
+    // set (a fixpoint). Written plaintext into the tree; the delivery seals it with the other
+    // Secrets before staging, so the passphrase-sealed payloads gain age protection at rest. Before
+    // delivery so the THEN's seal and stageAll pick it up. A no-op when nothing reaches in-cluster
+    // (a mgmt-only run).
     extractInClusterAsset(rendered);
     then()
         .every_enabled_domain_produced_its_units()
@@ -1057,14 +1094,6 @@ public class ManifestSynthesisScenario
     }
   }
 
-  // The in-cluster cellar asset at the branch ROOT (§ in-cluster-cellar-asset): a hidden Secret
-  // carrier holding the SEALED IN_CLUSTER-reaching envelopes as one stringData scalar. The
-  // `.secret-`
-  // prefix matches the exploder's `.gitattributes` (`**/.secret-*.yml filter=sops-yaml`), so the
-  // git
-  // clean filter sops-encrypts the stringData at commit; local-config + its root placement (outside
-  // every Flux Kustomization path) keep it unapplied — pure operator/render carrier.
-  private static final String IN_CLUSTER_ASSET_FILE = ".secret-in-cluster-cellar.yml";
   // The cluster→git reflector's subtree on the managing branch — a reflector-owned path the render
   // never generates but PRESERVES across its wholesale regeneration (the escape carve-out).
   private static final String REFLECTIONS_DIR = "reflections";
@@ -1072,10 +1101,10 @@ public class ManifestSynthesisScenario
 
   /**
    * Rehydrate the prior render's in-cluster asset onto the run's overlay so the IN_CLUSTER reveals
-   * resolve on a secret-blind publish (§ in-cluster-cellar-asset). Reads the COMMITTED asset back
-   * THROUGH the sops smudge filter ({@link LinkedWorktree#smudgeFromHead}, since jgit's {@code
-   * readAtHead} would hand back the encrypted blob), unwraps its {@code stringData} scalar, and
-   * hands the sealed envelopes to the cellar. A no-op on a survey / no cellar / no asset at HEAD.
+   * resolve on a secret-blind publish (§ in-cluster-cellar-asset). Reads the COMMITTED carrier at
+   * HEAD, opens its sops envelope in memory with the key sops finds in this enclosure (the cluster
+   * key in-cluster, the operator's on the host), unwraps its {@code stringData} scalar, and hands
+   * the sealed envelopes to the cellar. A no-op on a survey / no cellar / no asset at HEAD.
    */
   private void rehydrateInClusterAsset(Optional<LinkedWorktree> rendered) {
     if (rendered.isEmpty() || cellar == null || parcel.isEmpty()) {
@@ -1085,7 +1114,16 @@ public class ManifestSynthesisScenario
     final Parcel plot = parcel.orElseThrow();
     rendered
         .orElseThrow()
-        .smudgeFromHead(IN_CLUSTER_ASSET_FILE)
+        .readAtHead(BranchSecretCarrier.IN_CLUSTER_CELLAR.file())
+        .map(
+            carrier ->
+                sopsDecryptor
+                    .orElseThrow(
+                        () ->
+                            new IllegalStateException(
+                                "no SopsDecryptor edge — cannot open the sealed in-cluster"
+                                    + " cellar asset"))
+                    .decryptYaml(carrier))
         .flatMap(this::assetEnvelopesJson)
         .ifPresent(json -> tx.importSealed(plot, json));
   }
@@ -1093,9 +1131,8 @@ public class ManifestSynthesisScenario
   /**
    * Extract the IN_CLUSTER-reaching sealed materials to the branch asset — the grow captures its
    * fresh seals, a publish re-captures the rehydrated set (a fixpoint). Written PLAINTEXT into the
-   * tree; the git clean filter sops-encrypts the {@code stringData} at {@code stageAll}. A no-op on
-   * a survey / no cellar / nothing reaching in-cluster (a mgmt-only run leaves the branch
-   * untouched).
+   * tree; the delivery seals its {@code stringData} in memory before {@code stageAll}. A no-op on a
+   * survey / no cellar / nothing reaching in-cluster (a mgmt-only run leaves the branch untouched).
    */
   private void extractInClusterAsset(Optional<LinkedWorktree> rendered) {
     if (rendered.isEmpty() || cellar == null || parcel.isEmpty()) {
@@ -1107,7 +1144,7 @@ public class ManifestSynthesisScenario
   }
 
   /**
-   * The {@code stringData.envelopes} scalar of a smudged asset carrier; empty if absent/unreadable.
+   * The {@code stringData.envelopes} scalar of an opened asset carrier; empty if absent/unreadable.
    */
   private Optional<String> assetEnvelopesJson(String secretYaml) {
     try {
@@ -1135,7 +1172,8 @@ public class ManifestSynthesisScenario
     secret.put("type", "Opaque");
     secret.putObject("stringData").put(ASSET_ENVELOPES_KEY, envelopesJson);
     try {
-      Files.writeString(root.resolve(IN_CLUSTER_ASSET_FILE), CODEC.canonical().writeYaml(secret));
+      Files.writeString(
+          BranchSecretCarrier.IN_CLUSTER_CELLAR.in(root), CODEC.canonical().writeYaml(secret));
     } catch (IOException ex) {
       throw new UncheckedIOException(
           "cannot write the in-cluster cellar asset at the branch root", ex);
@@ -1508,12 +1546,13 @@ public class ManifestSynthesisScenario
     /**
      * Copy the source repo's {@code .sops.yaml} policy verbatim to the rendered branch ROOT — the
      * declarative half of the two static sops assets (the exploder writes the other, {@code
-     * .gitattributes}, marking {@code *-secret-*.yml filter=sops-yaml}). This policy names the
-     * fields to encrypt ({@code encrypted_regex: ^(data|stringData)$}) and the age recipients —
-     * crucially the cluster key, so Flux decrypts the committed Secrets in-cluster. Verbatim from
-     * source, so the recipients stay SSOT (a key rotation propagates on the next render). The
-     * git-sops clean filter (run when the THEN stages) reads it from the worktree root (its CWD). A
-     * no-op on a bare survey or a source with no readable {@code .sops.yaml}.
+     * .gitattributes}, marking {@code *-secret-*.yml diff=sops-yaml}). This policy names the fields
+     * to encrypt ({@code encrypted_regex: ^(data|stringData)$}) and the age recipients — crucially
+     * the cluster key, so Flux decrypts the committed Secrets in-cluster. Verbatim from source, so
+     * the recipients stay SSOT (a key rotation propagates on the next render). The delivery's
+     * {@link RenderedSecretSeal} seals each rendered Secret under it, in memory, before the THEN
+     * stages. A no-op on a bare survey or a source with no readable {@code .sops.yaml} — and then a
+     * tree that holds a Secret is refused at the seal.
      */
     private void recordSopsPolicy(Path root) {
       sourceWorktree
@@ -1610,7 +1649,7 @@ public class ManifestSynthesisScenario
                         name="$(yq eval -r '.metadata.name' "$manifest")"
                         # Extract the config payload (ConfigMap .data), parsing each value from its
                         # embedded YAML. The fragments are non-secret ConfigMaps committed plaintext
-                        # (the sops gitattributes binds only *-secret-* files), so no decryption.
+                        # (the render seals only Secrets), so no decryption.
                         yq eval -o=yaml \
                           '(.data // {}) | with_entries(.value |= from_yaml)' \
                           "$manifest" > "$dest/$name"

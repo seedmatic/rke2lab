@@ -36,25 +36,12 @@ public interface LinkedWorktree extends AutoCloseable {
   Optional<String> readAtHead(String path);
 
   /**
-   * Restore {@code path} from {@code HEAD} into the working tree THROUGH the smudge filter, then
-   * return its (smudged) content — the read-back a rendered branch's sops-encrypted asset needs.
-   * {@link #readAtHead} yields the COMMITTED blob (sops-ENCRYPTED, jgit runs no filter), so a
-   * consumer that must read the plaintext instead checks the committed asset out with {@code git}
-   * (which DOES run the {@code sops-yaml} smudge filter the environment configures), leaving the
-   * decrypted file where the render then overwrites it. Empty when {@code path} is absent at HEAD
-   * (a first render, an orphan base). The working-tree file is a side effect — {@code prepare}
-   * emptied the tree, so restoring it is additive, and a later {@link #stageAll} re-seals it via
-   * the clean filter.
-   */
-  Optional<String> smudgeFromHead(String path);
-
-  /**
    * PRESERVE {@code pathspec} across the wholesale render: restore it from {@code HEAD} back into
    * the working tree (which {@code prepare} emptied), TOLERANT of the pathspec being absent at HEAD
-   * (a no-op — a first render). Unlike {@link #smudgeFromHead} this reads nothing back; it exists
-   * so a subtree the render does NOT own (the reflector's {@code reflections/} documents) survives
-   * the {@code rm -rf .} + {@code stageAll} cycle instead of being staged as a deletion. The render
-   * owns everything else; this is the "escape" carve-out for a reflector-owned path.
+   * (a no-op — a first render). It reads nothing back; it exists so a subtree the render does NOT
+   * own (the reflector's {@code reflections/} documents) survives the {@code rm -rf .} + {@code
+   * stageAll} cycle instead of being staged as a deletion. The render owns everything else; this is
+   * the "escape" carve-out for a reflector-owned path.
    */
   void restoreFromHead(String pathspec);
 

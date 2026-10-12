@@ -72,6 +72,14 @@
       <artifactId>ssh-to-age-edge</artifactId>
       <scope>runtime</scope>
     </dependency>
+    <!-- The sops edge, embedded the same way: the synthesis scion seals every rendered Secret in
+         memory through SopsEncryptor and reads the sealed cellar carrier back through SopsDecryptor.
+         A delivery without it is refused, so an in-cluster render could not commit at all. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>sops-edge</artifactId>
+      <scope>runtime</scope>
+    </dependency>
 
     <!-- BDD-as-engine: the CLI drives ManifestsCliScenario on the embedded JUnit launcher (the same
          machinery seed-outcluster uses), sowing the `manifests` coordinate through the broker instead of

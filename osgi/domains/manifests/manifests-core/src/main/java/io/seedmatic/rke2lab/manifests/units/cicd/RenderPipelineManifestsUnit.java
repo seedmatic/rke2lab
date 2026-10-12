@@ -49,13 +49,13 @@ import software.constructs.Construct;
  * ALSO carries {@code flox.seedmatic.io/environment.step-render=toolchains/git-sops} — the NRI
  * composes a flox env AND the nix-build runtime on ONE container (see {@code
  * flox-store-resolved-runtime-and-builder.adoc} § capability-vs-package-set): the nix-build runtime
- * builds + runs the closure, while the git-sops env brings git + sops + the git-sops filter so the
- * render commits branch Secrets ENCRYPTED (clean) and — with {@code SOPS_AGE_KEY} (the cluster age
- * key replicated into this namespace, {@link
- * io.seedmatic.rke2lab.manifests.units.gitops.SopsAgeSecretManifestsUnit}) — smudges {@code
- * .secrets} + the cellar asset, making the render secret-FULL. Only the {@code render-publish} pod
- * owns a {@code step-render} container, so the injection applies there and is ignored on the {@code
- * git-fetch} pod (no bare-key fallback — each container opts in BY NAME). See {@code
+ * builds + runs the closure, while the git-sops env brings git + sops so the render seals the
+ * branch Secrets it commits in memory and — with {@code SOPS_AGE_KEY} (the cluster age key
+ * replicated into this namespace, {@link
+ * io.seedmatic.rke2lab.manifests.units.gitops.SopsAgeSecretManifestsUnit}) — opens {@code .secrets}
+ * and the cellar asset in memory, making the render secret-FULL. Only the {@code render-publish}
+ * pod owns a {@code step-render} container, so the injection applies there and is ignored on the
+ * {@code git-fetch} pod (no bare-key fallback — each container opts in BY NAME). See {@code
  * docs/architecture/patterns/flox-store-resolved-runtime-and-builder.adoc} + {@link
  * io.seedmatic.rke2lab.manifests.contract.FloxAnnotation}.
  *
@@ -404,11 +404,10 @@ public final class RenderPipelineManifestsUnit extends AbstractManifestsUnit {
                       export M2_REPO="@MAVEN_CACHE@/base/repository"
                       export MAVEN_BUILD_CACHE="@MAVEN_CACHE@/incoming/$(context.taskRun.name)"
                       : "Nothing sets the build-cache location, deliberately: the extension defaults it to the PARENT of maven.repo.local, which is this run's inbox — exactly where cache-prepare hard-linked the shared cache in, and exactly what cache-publish links back out. Both halves of the cache therefore ride the same overlay with one knob. An earlier attempt exported MAVEN_ARGS to pin the location; it never took effect, because the mvn runs inside a nix DERIVATION whose environment is sealed — only what the flake reads with builtins.getEnv at EVAL time crosses that boundary, which is why M2_REPO and MAVEN_BUILD_CACHE do and an ambient variable does not"
-                      : "Secret-full render prerequisites — fail loud with a clear message, not a downstream decode error. SOPS_AGE_KEY arrives via the git-sops env spec.inject (flox-controller webhook) and opens the encrypted .secrets in memory; the sops-yaml filter is wired by the env on-activate hook and still seals the Secret carriers the render commits to manifests/<cluster>"
+                      : "Secret-full render prerequisites — fail loud with a clear message, not a downstream decode error. SOPS_AGE_KEY arrives via the git-sops env spec.inject (flox-controller webhook): it opens the encrypted .secrets in memory and reads back the cellar carrier the previous render sealed; the render seals the Secrets it commits to manifests/<cluster> in memory, so no git filter is needed"
                       set +x
                       [ -n "${SOPS_AGE_KEY:-}" ] || { echo >&2 "render: SOPS_AGE_KEY not set (git-sops inject / replicated sops-age missing)"; exit 1; }
                       set -x
-                      git config --get filter.sops-yaml.smudge >/dev/null 2>&1 || { echo >&2 "render: sops-yaml git filter not registered (git-sops on-activate hook did not wire it)"; exit 1; }
                       : "The flox NRI plugin put nix on PATH, injected NIX_CONFIG (daemonless single-user) and hosts the /nix store overlay on the assigned persistent PVC, so there is no flox env and no flox activate. The render-manifests app of the source checkout is the ONE render definition shared with dev and release: it builds manifests-cli, signs, and ff-pushes manifests/<cluster>; the exe locates its render worktree at .local.d/worktrees/manifests/<cluster>"
                       : "The flake is named by REVISION, never as the working tree: a checkout may hold decrypted sops files, and evaluating the tree would copy them into this node's store. shallow=1 because the clone is a depth-1 fetch"
                       nix run "git+file://$PWD?rev=`git rev-parse HEAD`&shallow=1#render-manifests" -- "$(params.cluster)" "$(params.node)"
