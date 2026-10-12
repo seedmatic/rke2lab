@@ -57,6 +57,14 @@ amend door that binds the injected `GatePolicy` FACET — the twin of `IncusAmen
   `releaseBuildRevision(revision)` and `treeDigest(revision, paths)` — see
   link:incus-edge-spec.adoc#build-by-revision[the rule: nix builds only a revision]. jgit-free — only JDK
   types and the `worktree` records cross it.
+* **`TransientWorktrees`** / **`TransientWorktree`** (contract) — a head the seed commits onto WITHOUT
+  materializing it, opened in the seat's repository (its common dir, where the branches live):
+  `open(branch, fetchToken)` fetches the branch with the caller's explicit credential, or starts on a
+  README-only base when it does not exist (jgit cannot pack the empty tree); `readAtHead(path)`;
+  `commit(TreeEdit, CommitSpec)` writes objects only and moves no ref; `publish(pushToken)` pushes
+  fast-forward first and advances the local branch only once origin accepted it — or, without a token,
+  advances the local branch only. No working file, no linked worktree, nothing to release. The render
+  and the Fabric delivery move onto it from `LinkedWorktrees` (render chantier, step 5).
 * **`BuildRevision`** — the revision a build of the seat reads: the `sha`, whether it was `fabricated`
   (HEAD's tree with the dirty build inputs taken from the working tree, pinned under
   `refs/rke2lab/grow/<sha>`, never pushed), and the `changed` and `untracked` paths that made it so —
