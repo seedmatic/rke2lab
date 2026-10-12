@@ -337,7 +337,7 @@ class JgitLinkedWorktreesTest {
   /**
    * The inline fixture "app": a bare origin served over a loopback HTTP {@code GitServlet} (a
    * stand-in GitHub on the half-duplex transport the push needs), a work repository with one commit
-   * on {@code main}, and a throwaway {@code ssh-keygen} key (the ndh {@code github-signing}
+   * on {@code main}, and a throwaway {@code ssh-keygen} key (the ndh {@code rke2lab-bot-signing}
    * stand-in). It owns every {@code git} shell-out and the server lifecycle, so a test reads as
    * prepare / render / push / close, not as plumbing. {@link AutoCloseable}: {@link #close()} stops
    * the server and closes the origin repository.

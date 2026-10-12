@@ -524,7 +524,7 @@ is a different concern — the `.secrets` DOOR — not a process secret.
   (`RKE2LAB_PUSH_TOKEN`), sowing NO `ghapp`/`auth`.
 
 | Signing key + bot identity
-| `revealSigningKey()` reads the ndh keystore (`sshPrivate("github-signing")` + `authorityDomain`) —
+| `revealSigningKey()` reads the ndh keystore (`sshPrivate("rke2lab-bot-signing")` + `authorityDomain`) —
   the `manifests publish` verb's current path.
 | `revealSigningKey()` reads the env (`RKE2LAB_SIGNING_KEY`) fed by a *mounted Secret* — the signing
   key rides the NODE_BOOTSTRAP → mittwald-replicator lane (the OPERATOR bootstrap emits it from its
@@ -576,7 +576,7 @@ enclosure.
 
 That reach IS the sops-age pattern, applied to the signing key — the OPERATOR grow SEEDS it so a
 later in-cluster render can consume it. A pre-synthesis `SigningKeyMaterialResolver` reads {@code
-github-signing} from the ndh key-store (OPERATOR-only, enclosure-gated) into a `SigningKeyMaterial`
+rke2lab-bot-signing} from the ndh key-store (OPERATOR-only, enclosure-gated) into a `SigningKeyMaterial`
 on the synthesis context (the twin of `SopsAgeMaterialResolver`/`SopsAgeMaterial`);
 `RenderSigningSecretManifestsUnit` renders it as the NODE_BOOTSTRAP `manifests-render-signing` Secret
 in `tekton-pipelines`, which `RenderPipelineManifestsUnit` mounts into the `render-publish` step as
