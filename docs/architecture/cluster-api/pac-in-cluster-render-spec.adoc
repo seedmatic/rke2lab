@@ -116,7 +116,7 @@ The render loop is split across two namespaces by OWNERSHIP, not lumped in `tekt
 | `rke2lab-system` (the runtime-system namespace, already home to flox-controller)
 | rke2lab's OWN render artifacts — the `Repository` CR (which binds the source repo to THIS
   execution namespace), the `render-manifests` `Pipeline` + its `git-fetch`/`render-publish` Tasks,
-  the Maven-cache PVC, the `manifests-render-signing` Secret, and the PipelineRuns PaC creates. PaC
+  the `manifests-render-signing` Secret, and the PipelineRuns PaC creates. PaC
   runs a matched PipelineRun in the `Repository`'s namespace — so this is where the runs execute.
 
 | `tekton-pipelines`
@@ -240,16 +240,11 @@ A happy side effect: the spec's own escape hatch is that renaming an FQDN opens 
 budget. Migrating to per-cluster names IS that rename, so it is also the way out if `flux-webhook`'s
 budget is already spent. It costs updating the GitHub App's webhook URL, as the WARNING below notes.
 
-NOTE: the maven cache has LANDED on that same tier, and the shape is settled:
-`tank/rke2lab/<role>/persist/maven-cache` — keyed by `ClusterRole`, not by cluster name, for the
-reason `DataplanLayout` gives (the projection ndh consumes is one checked-in list materialised on
-every host, so it cannot name hosts). It is adopted by a `VolumeIntention` the render pipeline
-renders, exactly as the funnel cert is, so the dataset is no longer the unadopted orphan that made
-declaring it litter. What forced the move was not tidiness: as a Tekton *workspace* the cache was
-co-mounted by the affinity assistant, which required the `shared: yes` bind-mount class, which lives
-on the ephemeral tier — where a dynamic `pvc-<uuid>` leaked one dataset per cold start (measured
-2026-09-24: eight datasets for one live claim) and a node-pinned PV stranded the cache on the first
-control-plane roll. See `RenderPipelineManifestsUnit` § workspaces-vs-caches.
+NOTE: the render carries NO Maven cache since 2026-10-12, so nothing of it sits on this tier: its
+Maven dependencies are one fixed-output nix derivation (`maven-deps`), cached by the node's store by
+hash, and the build runs offline in the nix sandbox. `persist/maven-cache` left `DataplanLayout`; the
+datasets already on the hosts are undeclared persist data, reported by the stale-resource GC and
+deleted only on the operator's go.
 
 [#funnel-node-affinity]
 ==== The volume belongs to the CONTROLLER — a managed node's name is not render-time knowledge
@@ -809,10 +804,12 @@ The pipeline runs `mvn -pl :manifests-cli -am clean verify` (not `package`): `ve
 pushed. `verify` sits before `install` in the lifecycle → the reactor discipline holds (siblings
 resolve from `target/`, nothing is installed to `~/.m2`). Speed:
 
-* A *RWO PVC* mounted at `~/.m2` carries the dependency repo + the maven-build-cache. `clean` wipes
-  the module `target/` dirs but NOT the PVC build-cache, so unchanged modules restore from cache.
-* The pipeline is *serialised* (concurrency 1) — a Maven local repo + build-cache are not
-  multi-writer safe, and two renders racing to push the branch is undesirable anyway.
+* The node's nix store is the only cache: it holds the fixed-output Maven dependency repository by
+  hash and `manifests-cli` by source, so an unchanged source is a store hit and a dependency is
+  downloaded once per change. A source change rebuilds the reactor whole — the price of a build the
+  sandbox can seal (operator, 2026-10-12: purity first).
+* The pipeline is *serialised* (concurrency 1) — the nix store is not multi-writer safe, and two
+  renders racing to push the branch is undesirable anyway.
 
 *Runtime = the flox NRI plugin (dogfooding).* The PipelineRun pod is flox-annotated → the NRI plugin
 injects a FloxEnv build-toolchain (JDK 25 / maven). No bespoke toolchain image; its lifecycle is a
@@ -1385,7 +1382,8 @@ from either viewpoint" — including when one viewpoint can see less.
 === Open
 
 * The reconcile interval — a latency-versus-churn trade, not a correctness question: the loop
-  converges at any interval. Bounded below by the shared nix/maven cache PVC each render warms.
+  converges at any interval. Bounded below by the render's build time, which the node's nix store
+  shortens whenever the source has not moved.
 * How the parent AUTHENTICATES its poke to the child's PaC: sign a synthetic push with the shared
   `webhook.secret` (identical across clusters — measured 2026-09-30, same sha256, and both hold the
   same App id + private key), or use PaC's `/incoming` endpoint, which exists for external triggers.

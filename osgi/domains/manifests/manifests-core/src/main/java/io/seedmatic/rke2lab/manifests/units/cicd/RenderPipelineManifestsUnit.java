@@ -1,18 +1,12 @@
 package io.seedmatic.rke2lab.manifests.units.cicd;
 
 import io.seedmatic.rke2lab.auth.contract.GithubAppTokens;
-import io.seedmatic.rke2lab.dataplan.contract.DataplanLayout;
-import io.seedmatic.rke2lab.dataplan.contract.DataplanLayout.ClusterDataplan;
 import io.seedmatic.rke2lab.manifests.AbstractManifestsUnit;
 import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
 import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
-import io.seedmatic.rke2lab.manifests.contract.ManifestAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
-import io.seedmatic.rke2lab.manifests.contract.ManifestLayer;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import io.seedmatic.rke2lab.manifests.units.cluster.ClusterRefs;
-import io.seedmatic.rke2lab.manifests.units.runtime.SeedInclusterManifestsUnit;
-import io.seedmatic.rke2lab.manifests.units.storage.OpenebsZfsManifestsUnit;
 import java.util.List;
 import java.util.Map;
 import org.cdk8s.ApiObject;
@@ -24,7 +18,7 @@ import software.constructs.Construct;
 /**
  * The in-cluster render pipeline — the upstream half of the GitOps loop rendered as Tekton
  * manifests (see {@code docs/architecture/cluster-api/pac-in-cluster-render-spec.adoc}). Two Tasks
- * wired by one Pipeline ({@code fetch → render}), plus the persistent Maven-cache PVC:
+ * wired by one Pipeline ({@code fetch → render}):
  *
  * <ul>
  *   <li>{@code git-fetch} — clones the source repo at the pushed revision into the shared {@code
@@ -35,9 +29,9 @@ import software.constructs.Construct;
  *       {@code /nix} store overlay hosted on a persistent PVC), then runs the flake's {@code
  *       render-manifests} app at the cloned revision (never the working tree): the SINGLE render
  *       definition (shared with dev/release, no hand-scripted mvn+java that drifts) builds {@code
- *       manifests-cli} with the reactor discipline and seeds the {@code staging-extension} closure
- *       from a nix derivation (no separate bootstrap task), then runs the {@code update} verb —
- *       re-render following the branch HEAD facet + ff-push {@code manifests/<cluster>}.
+ *       manifests-cli} offline from the nix store (its Maven dependencies are a fixed-output
+ *       derivation, no cache volume), then runs the {@code update} verb — re-render following the
+ *       branch HEAD facet + ff-push {@code manifests/<cluster>}.
  * </ul>
  *
  * <p><b>The nix-build capability lives on the PipelineRun stub, not here.</b> Pod annotations are
@@ -59,27 +53,13 @@ import software.constructs.Construct;
  * docs/architecture/patterns/flox-store-resolved-runtime-and-builder.adoc} + {@link
  * io.seedmatic.rke2lab.manifests.contract.FloxAnnotation}.
  *
- * <p><b>Workspaces vs caches — the distinction is load-bearing.</b> A WORKSPACE is scratch for ONE
- * run, shared between its tasks; a CACHE is state carried ACROSS runs. Only {@code source}
- * (per-run, bound by the stub to a {@code volumeClaimTemplate}) and {@code basic-auth} (PaC's
- * {@code git_auth_secret}) are workspaces. Neither cache is: this Task mounts the Maven cache as a
- * RAW VOLUME, on the three phases that bracket the build ({@code cache-prepare} → {@code render} →
- * {@code cache-publish}), and the nix store is not in the pod at all — it is the NODE's {@code
- * /nix} overlay, which the flox NRI plugin wires into the container and whose env provisioning runs
- * in the node's own namespace ({@code nsenter}).
- *
- * <p>So the two caches escape the workspace mechanism by DIFFERENT routes, and the Maven cache
- * cannot take the store's: a cache that must survive the NODE cannot live on the node — which is
- * exactly the failure this unit was fixed for. It stays a PVC; it simply stops being a workspace.
- *
- * <p>Because it WAS one, every symptom followed from that single misfiling: Tekton's affinity
- * assistant co-mounts every PVC-backed workspace beside the task pod, so a single-writer cache
- * needed the {@code shared: yes} bind-mount class, which lives on the EPHEMERAL tier — where a
- * dynamic {@code pvc-<uuid>} leaked a dataset per cold start (8 datasets for 1 live claim) and a
- * node-pinned PV stranded the cache on the first control-plane roll (both measured 2026-09-24). A
- * raw volume the assistant never sees takes the exclusive persist class and an adopted dataset of
- * stable name. The build is still serialised (concurrency 1, on the PaC {@code Repository}/stub) —
- * a Maven local repo, build-cache, and the nix store are not multi-writer safe.
+ * <p><b>No Maven cache.</b> Only {@code source} (per-run, bound by the stub to a {@code
+ * volumeClaimTemplate}) and {@code basic-auth} (PaC's {@code git_auth_secret}) are workspaces, and
+ * the only state carried across runs is the NODE's {@code /nix} store, which the flox NRI plugin
+ * wires into the container: it holds the fixed-output Maven dependency repository by hash and the
+ * jars by source, so an unchanged source is a store hit and a dependency is downloaded once per
+ * change. The render is still serialised (concurrency 1, on the PaC {@code Repository}/stub) — the
+ * nix store is not multi-writer safe.
  *
  * <p>The push token is wired: the {@code render-publish} step extracts PaC's App token from the
  * mounted {@code git_auth} secret into {@link GithubAppTokens#PIPELINE_TOKEN_ENV}, which the
@@ -97,143 +77,23 @@ public final class RenderPipelineManifestsUnit extends AbstractManifestsUnit {
 
   private static final String PIPELINE_NAME = "render-manifests";
 
-  private static final String MAVEN_CACHE_PVC = "manifests-maven-cache";
-
-  /**
-   * Where the three cache phases mount the volume. NOT under {@code /workspace} — that prefix is
-   * Tekton's, and borrowing it for a raw volume is how the two roles got confused in the first
-   * place. Under it: {@code base/} (shared, read-through) and {@code incoming/<run>/} (this run's
-   * writes).
-   */
-  private static final String MAVEN_CACHE_PATH = "/var/cache/rke2lab/maven";
-
-  // The ~/.m2 local repo plus the maven-build-cache beside it; 4Gi has held both with headroom.
-  private static final String MAVEN_CACHE_CAPACITY = "4Gi";
-
   /**
    * Container name the flox NRI plugin keys on: {@code flox.seedmatic.io/nix-build.step-render}.
    */
   private static final String RENDER_STEP = "render";
 
-  /**
-   * The cache phases that bracket the render. Both need a shell + coreutils, which the flox carrier
-   * does NOT carry on its own — the stub annotates {@code environment.step-<name>=toolchains/kube}
-   * for each, exactly as it does for step-render and step-clone. Renaming a step here means
-   * renaming its annotation there, or the container silently starts without its toolchain.
-   */
-  private static final String CACHE_PREPARE_STEP = "cache-prepare";
-
-  private static final String CACHE_PUBLISH_STEP = "cache-publish";
-
   private final PackageMetadataProfile packageProfile =
       new PackageMetadataProfile("cicd", "render-pipeline");
 
   public RenderPipelineManifestsUnit() {
-    // seed-incluster must be UP: it is what turns this unit's VolumeIntention into the ZFSVolume +
-    // static PV the cache PVC binds against. Without the edge Flux would health-gate a PVC nobody
-    // can
-    // satisfy yet — the same reason FunnelCertRestoreManifestsUnit carries it.
-    super(MANIFEST_UNIT_ID, List.of(SeedInclusterManifestsUnit.MANIFEST_UNIT_ID));
+    super(MANIFEST_UNIT_ID, List.of());
   }
 
   @Override
   protected void doSynthesize(final Construct scope, final ManifestsUnitContext context) {
-    createMavenCacheVolumeIntention(
-        scope, context.nodeEnvContext().bootstrapIdentity().clusterName());
-    createMavenCachePvc(scope);
     createGitFetchTask(scope);
     createRenderPublishTask(scope);
     createPipeline(scope);
-  }
-
-  /**
-   * The cache's INTENT: the dataset to adopt, its size, the claim to satisfy, and the kind of node
-   * eligible to serve it. It names NO node — a managed node's name is random and unknowable at
-   * render time, and pinning one is precisely what stranded this cache when the control plane
-   * rolled. The in-cluster volume controller elects, stamps the ZFSVolume's owner and creates the
-   * static PV.
-   *
-   * <p>Static adoption rather than dynamic provisioning for the SAME reason the funnel cert needs
-   * it: a cold start wipes the PVC object, so a dynamic class mints a fresh {@code pvc-<uuid>} and
-   * leaks the previous dataset — eight of them had accumulated for one live claim. A stable dataset
-   * name is the only handle that survives an etcd wipe.
-   */
-  private void createMavenCacheVolumeIntention(final Construct scope, final String cluster) {
-    final ApiObject intention =
-        new ApiObject(
-            scope,
-            "volumeintention-manifests-maven-cache",
-            ApiObjectProps.builder()
-                .apiVersion("cluster.seedmatic.io/v1alpha1")
-                .kind("VolumeIntention")
-                .metadata(
-                    ApiObjectMetadata.builder()
-                        .name(DataplanLayout.MAVEN_CACHE)
-                        .namespace(NAMESPACE)
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                Map.of(
-                                    ManifestAnnotation.MANIFEST_LAYER.key(),
-                                    ManifestLayer.OPERATORS.value())))
-                        .build())
-                .build());
-    intention.addJsonPatch(
-        JsonPatch.add(
-            "/spec",
-            Map.of(
-                "pool",
-                ClusterDataplan.of(cluster).persistPool(),
-                "dataset",
-                DataplanLayout.MAVEN_CACHE,
-                "capacity",
-                MAVEN_CACHE_CAPACITY,
-                "storageClassName",
-                OpenebsZfsManifestsUnit.PERSIST_CLASS,
-                "claimRef",
-                Map.of("namespace", NAMESPACE, "name", MAVEN_CACHE_PVC),
-                "nodeRole",
-                "control-plane")));
-  }
-
-  private void createMavenCachePvc(final Construct scope) {
-    final ApiObject pvc =
-        new ApiObject(
-            scope,
-            "persistentvolumeclaim-manifests-maven-cache",
-            ApiObjectProps.builder()
-                .apiVersion("v1")
-                .kind("PersistentVolumeClaim")
-                .metadata(
-                    ApiObjectMetadata.builder()
-                        .name(MAVEN_CACHE_PVC)
-                        .namespace(NAMESPACE)
-                        .annotations(packageProfile.packageAnnotations())
-                        .build())
-                .build());
-    // RWO on the EXCLUSIVE persist class, and pre-bound by name to the static PV the
-    // VolumeIntention
-    // above produces. It rode the SHARED (bind-mount) class while it was a Tekton workspace,
-    // because
-    // under coschedule=pipelineruns the affinity assistant co-located with the task pod and BOTH
-    // mounted it — the exclusive class then failed "device already mounted". As a raw volume on
-    // step-render (createRenderPublishTask) there is exactly ONE mounter, so the bind-mount variant
-    // is
-    // no longer needed; `source`, a genuine shared workspace, keeps it.
-    //
-    // volumeName pins the claim to the adopted PV: without it the claim would match ANY sufficient
-    // PV of the class, which on a re-grow is how a cache gets bound to a stranger's dataset.
-    pvc.addJsonPatch(
-        JsonPatch.add(
-            "/spec",
-            Map.of(
-                "accessModes",
-                List.of("ReadWriteOnce"),
-                "storageClassName",
-                OpenebsZfsManifestsUnit.PERSIST_CLASS,
-                "volumeName",
-                DataplanLayout.MAVEN_CACHE,
-                "resources",
-                Map.of("requests", Map.of("storage", MAVEN_CACHE_CAPACITY)))));
   }
 
   private void createGitFetchTask(final Construct scope) {
@@ -317,26 +177,8 @@ public final class RenderPipelineManifestsUnit extends AbstractManifestsUnit {
                 new Object[] {
                   Map.of("name", "source"), Map.of("name", "basic-auth", "optional", true)
                 },
-                // The Maven cache is a raw volume the TASK owns, not a workspace the PipelineRun
-                // binds: a workspace would be co-mounted by Tekton's affinity assistant, which is
-                // the
-                // only reason a single-writer cache ever needed the shared bind-mount class.
-                "volumes",
-                new Object[] {
-                  Map.of(
-                      "name",
-                      DataplanLayout.MAVEN_CACHE,
-                      "persistentVolumeClaim",
-                      Map.of("claimName", MAVEN_CACHE_PVC))
-                },
-                // Three phases, in order: prepare the cache topology, render, publish the delta.
-                // The
-                // preparation is a phase of its own rather than a line inside the render, because
-                // the
-                // primary has a precondition the tail cannot satisfy — see cachePrepareStep.
                 "steps",
                 new Object[] {
-                  cachePrepareStep(),
                   Map.of(
                       // Container name = step-render; the PipelineRun stub carries
                       // flox.seedmatic.io/nix-build.step-render=<pvc>, so the flox NRI system gives
@@ -344,8 +186,6 @@ public final class RenderPipelineManifestsUnit extends AbstractManifestsUnit {
                       // overlay hosted on the assigned (webhook-ensured) persistent PVC.
                       "name",
                       RENDER_STEP,
-                      "volumeMounts",
-                      cacheMount(),
                       // The commit-signing key the operator's grow emitted as
                       // manifests-render-signing (RenderSigningSecretManifestsUnit), fed to the
                       // in-cluster publish's revealSigningKey() (RKE2LAB_SIGNING_KEY) so it signs
@@ -389,7 +229,6 @@ public final class RenderPipelineManifestsUnit extends AbstractManifestsUnit {
                       : "The publish narrates live to stdout: it runs STANDALONE (not seed-outcluster under Pulumi), so PaxLogbackConfigurer keeps its console appender on and the render/delivery logs land in this container's logs"
                       GIT_AUTH_DIR="$(workspaces.basic-auth.path)"
                       : "PaC mints the App token into the git_auth secret's git-provider-token key; read it RAW (not scraped from the .git-credentials URL) into @PUSH_TOKEN_ENV@ for the ff-push (the scion reveals it in-container, ManifestSynthesisScenario.revealGithubToken) + nix + maven. Backticks, not the dollar-paren form, so Tekton does not claim the substitution as one of its own vars"
-                      : "The same App token authenticates .mvn/settings.xml to GitHub Packages (the env.GH_TOKEN placeholder) so the reactor resolves the private seedmatic release java-systemd. Requires the App to carry packages:read"
                       : "nix must authenticate its flake-input fetches: the closure pulls a PRIVATE input, seedmatic/claude-hub transitively via ndh; the flox NRI sets NIX_CONFIG but no access-tokens, so an unauthenticated github fetch 404s on the private repo. Append the App token so nix reads it AS the App. Requires PaC to scope the git_auth token to include claude-hub via secret-github-app-scope-extra-repos"
                       : "xtrace is disabled across the next block so the App token is never echoed to the logs"
                       set +x
@@ -399,11 +238,6 @@ public final class RenderPipelineManifestsUnit extends AbstractManifestsUnit {
                         export NIX_CONFIG="${NIX_CONFIG:-}"$'\\n'"access-tokens = github.com=$@PUSH_TOKEN_ENV@"
                       fi
                       set -x
-                      : "OVERLAY over the cache: everyone READS the shared base, only the end of the run WRITES it. M2_REPO names the base because the flake bakes it as maven.repo.local.tail (a READ-THROUGH tail, ignoreAvailability=true) — Maven 3.9's chained local repository, verified present in maven-core-3.9.12. MAVEN_BUILD_CACHE names this run's own root, which the flake turns into maven.repo.local, so every write Maven makes lands in incoming/<run>/ and the base cannot be corrupted by a build — nor by one that is killed halfway. Both knobs already existed; in-cluster they pointed at the SAME directory, so the chained repo was wired to itself and bought nothing"
-                      : "The volume is a RAW VOLUME, not a workspace, so the path is ours rather than Tekton's — hence the substitution rather than a workspaces.* reference"
-                      export M2_REPO="@MAVEN_CACHE@/base/repository"
-                      export MAVEN_BUILD_CACHE="@MAVEN_CACHE@/incoming/$(context.taskRun.name)"
-                      : "Nothing sets the build-cache location, deliberately: the extension defaults it to the PARENT of maven.repo.local, which is this run's inbox — exactly where cache-prepare hard-linked the shared cache in, and exactly what cache-publish links back out. Both halves of the cache therefore ride the same overlay with one knob. An earlier attempt exported MAVEN_ARGS to pin the location; it never took effect, because the mvn runs inside a nix DERIVATION whose environment is sealed — only what the flake reads with builtins.getEnv at EVAL time crosses that boundary, which is why M2_REPO and MAVEN_BUILD_CACHE do and an ambient variable does not"
                       : "Secret-full render prerequisites — fail loud with a clear message, not a downstream decode error. SOPS_AGE_KEY arrives via the git-sops env spec.inject (flox-controller webhook): it opens the encrypted .secrets in memory and reads back the cellar carrier the previous render sealed; the render seals the Secrets it commits to manifests/<cluster> in memory, so no git filter is needed"
                       set +x
                       [ -n "${SOPS_AGE_KEY:-}" ] || { echo >&2 "render: SOPS_AGE_KEY not set (git-sops inject / replicated sops-age missing)"; exit 1; }
@@ -412,159 +246,8 @@ public final class RenderPipelineManifestsUnit extends AbstractManifestsUnit {
                       : "The flake is named by REVISION, never as the working tree: a checkout may hold decrypted sops files, and evaluating the tree would copy them into this node's store. shallow=1 because the clone is a depth-1 fetch"
                       nix run "git+file://$PWD?rev=`git rev-parse HEAD`&shallow=1#render-manifests" -- "$(params.cluster)" "$(params.node)"
                       """
-                          .replace("@MAVEN_CACHE@", MAVEN_CACHE_PATH)
-                          .replace("@PUSH_TOKEN_ENV@", GithubAppTokens.PIPELINE_TOKEN_ENV)),
-                  cachePublishStep()
+                          .replace("@PUSH_TOKEN_ENV@", GithubAppTokens.PIPELINE_TOKEN_ENV))
                 })));
-  }
-
-  /** The cache volume, mounted identically by all three phases. */
-  private Object[] cacheMount() {
-    return new Object[] {Map.of("name", DataplanLayout.MAVEN_CACHE, "mountPath", MAVEN_CACHE_PATH)};
-  }
-
-  /**
-   * Phase 1 — lay out the cache. A phase of its own, not a line inside the render, because the
-   * PRIMARY local repository has a precondition the read-through tail cannot satisfy: Maven
-   * resolves the {@code .mvn/extensions.xml} core extensions BEFORE it builds any project model, in
-   * a session created before the chained local repository manager is installed. So the bootstrap
-   * resolver sees only {@code maven.repo.local} — the tail is not ignored, it does not exist yet —
-   * and the whole {@code staging-extension} closure must be self-sufficient in the primary. (That
-   * seeding itself stays inside the nix derivation: it copies from a store path only the derivation
-   * knows.)
-   *
-   * <p>It also PRUNES stale inboxes. A render that fails never reaches the publish phase (Tekton
-   * stops the step sequence), so its inbox would linger — and that is the right trade: a failed
-   * render may hold half-downloaded artifacts, which must never reach the base. Publishing only on
-   * success comes for free from the step ordering; the pruning is what keeps the cost bounded.
-   */
-  private Map<String, Object> cachePrepareStep() {
-    return Map.of(
-        "name",
-        CACHE_PREPARE_STEP,
-        "volumeMounts",
-        cacheMount(),
-        "image",
-        ManifestSynthesisContext.current().containerImages().carrier(),
-        "script",
-        """
-        #!/usr/bin/env bash
-        set -euxo pipefail
-        inbox_dir="@MAVEN_CACHE@/incoming/$(context.taskRun.name)"
-        mkdir -p "@MAVEN_CACHE@/base/repository" "@MAVEN_CACHE@/base/build-cache"
-        mkdir -p "$inbox_dir/repository" "$inbox_dir/build-cache"
-        : 'Narration is SINGLE-quoted on purpose.'
-        : 'Inside DOUBLE quotes a backtick is command substitution, so the shell runs it.'
-        : 'Three of them once made bash run cp, mv and added as commands: operand errors in'
-        : 'the log, and the very words the sentence explained replaced by their empty output.'
-        : 'Single quotes forbid that outright — at the price of forbidding the apostrophe,'
-        : 'which is why these lines read the way they do. Only a line that interpolates a'
-        : 'value keeps double quotes, and it carries no backtick.'
-        :
-        : 'Drop inboxes older than a day: the residue of renders that failed before publishing.'
-        : 'No find(1) — toolchains/kube carries coreutils, and find lives in findutils; a bash'
-        : 'glob plus stat is the same job without widening a shared toolchain for one caller.'
-        now="$(date +%s)"
-        pruned=0
-        for stale in "@MAVEN_CACHE@"/incoming/*/; do
-          [ -d "$stale" ] || continue
-          if [ "$(( now - $(stat -c %Y "$stale") ))" -gt 86400 ]; then
-            rm -rf "$stale"
-            pruned=$((pruned + 1))
-          fi
-        done
-        : 'SEED the build-cache of this run from the shared one, by HARD LINK.'
-        : 'The maven-build-cache extension has no read-through tail — unlike the local repository,'
-        : 'which gets maven.repo.local.tail — so a per-run location starts EMPTY and every render'
-        : 'would rebuild from scratch. A byte copy is out of the question: the cache reaches 1.1G.'
-        : 'But cp -al is metadata only, on the same dataset, so it costs neither space nor time,'
-        : 'and that is what lets the build-cache join the overlay at all.'
-        : 'A failed seed is TOLERATED — a cold build-cache costs time, not correctness — but its'
-        : 'reason is never hidden. Swallowing stderr here would leave the reported seeded size at 0'
-        : 'with nothing to say why, which is the one thing the figure cannot tell on its own.'
-        if [ -d "@MAVEN_CACHE@/base/build-cache" ]; then
-          cp -al "@MAVEN_CACHE@/base/build-cache/." "$inbox_dir/build-cache/" || true
-        fi
-        : 'State what this run reads through and what it pruned, so the figures cache-publish'
-        : 'prints at the other end have a baseline. No echo: xtrace already prints a : line with'
-        : 'its arguments expanded, so this is one command less for the same log.'
-        : "[cache-prepare] base repository $(du -sk "@MAVEN_CACHE@/base/repository" | cut -f1)K read-through | build-cache $(du -sk "$inbox_dir/build-cache" | cut -f1)K seeded | ${pruned} stale inbox(es) pruned"
-        """
-            .replace("@MAVEN_CACHE@", MAVEN_CACHE_PATH));
-  }
-
-  /**
-   * Phase 3 — publish this run's delta into the shared base by HARD LINK ({@code cp -alf}). The
-   * inbox and the base are two directories of the same dataset, so publishing is metadata work:
-   * O(1) in bytes however much the delta weighs. {@code mv} cannot serve — it does not MERGE into
-   * an existing tree, and merging is the whole operation.
-   *
-   * <p>Overwriting ({@code -f}, not {@code -n}) is SOUND rather than merely faster: a released
-   * Maven coordinate is immutable, so overwriting writes identical bytes, and the mutable parts
-   * ({@code maven-metadata}, {@code _remote.repositories}, {@code *.lastUpdated}, a SNAPSHOT) are
-   * bookkeeping where this run holds the fresher copy — under {@code -n} a stale SNAPSHOT in the
-   * base could never be refreshed again.
-   *
-   * <p>⚠️ This step is the ONLY writer of the base, and it is serialised today only because the
-   * render is ({@code concurrency_limit=1} on the PaC Repository). The day that limit is lifted,
-   * this must move to a singleton merger — a CronJob with {@code concurrencyPolicy: Forbid} is the
-   * native expression, and the inbox layout is already what it would consume.
-   */
-  private Map<String, Object> cachePublishStep() {
-    return Map.of(
-        "name",
-        CACHE_PUBLISH_STEP,
-        "volumeMounts",
-        cacheMount(),
-        "image",
-        ManifestSynthesisContext.current().containerImages().carrier(),
-        "script",
-        """
-        #!/usr/bin/env bash
-        set -euxo pipefail
-        inbox="@MAVEN_CACHE@/incoming/$(context.taskRun.name)"
-        base="@MAVEN_CACHE@/base"
-        if [ ! -d "$inbox" ]; then
-          : '[cache-publish] no inbox — nothing to publish'
-          exit 0
-        fi
-        : 'MEASURE. xtrace shows one cp line and says nothing about a step whose entire purpose is'
-        : 'a side effect on shared state. du/ls/wc/cut only — coreutils, not findutils.'
-        :
-        : 'The two halves are measured SEPARATELY and never summed: they are not the same kind of'
-        : 'number. repository/ is entirely new, never seeded — Maven reaches the shared copy through'
-        : 'maven.repo.local.tail instead. build-cache/ is largely the links cache-prepare seeded in,'
-        : 'so its size is NOT a delta, and adding the two would report 1.1G of borrowed links as'
-        : 'work done. What the base actually gained is the only honest total, measured on the base.'
-        repo_k="$(du -sk "$inbox/repository" | cut -f1)"
-        repo_n="$(ls -RA1 "$inbox/repository" | wc -l)"
-        bc_k="$(du -sk "$inbox/build-cache" | cut -f1)"
-        before_k="$(du -sk "$base" | cut -f1)"
-        : 'HARD LINKS, not a byte copy. The inbox and the base are two directories of the SAME'
-        : 'dataset, so cp -alf publishes by metadata alone: O(1) in bytes, whatever the delta'
-        : 'weighs. mv cannot serve — it does not MERGE into an existing tree, and merging is the'
-        : 'whole operation.'
-        :
-        : 'And -f rather than -n, which is not merely faster but more CORRECT. A released Maven'
-        : 'coordinate is immutable, so overwriting writes identical bytes; the mutable parts'
-        : '(maven-metadata, _remote.repositories, *.lastUpdated, a SNAPSHOT) are bookkeeping where'
-        : 'this run holds the fresher copy — under -n a stale SNAPSHOT in the base could never be'
-        : 'refreshed again.'
-        cp -alf "$inbox/." "$base/"
-        after_k="$(du -sk "$base" | cut -f1)"
-        : 'An added figure far below the repository delta means most of what this run resolved was'
-        : 'already in the base — the read-through tail is doing its job, and the next render will'
-        : 'download less still.'
-        :
-        : 'On the FIRST run after seeding landed, expect added to be roughly the build-cache size:'
-        : 'there was nothing to seed from, so the run produced that cache itself and it is new.'
-        : "[cache-publish] inbox: repository ${repo_k}K new (${repo_n} entries), build-cache ${bc_k}K seeded+produced | base ${before_k}K -> ${after_k}K, added $((after_k - before_k))K"
-        : 'Dropping the inbox removes only ITS links; the base keeps the files. That is also what'
-        : 'makes the hard links safe — nothing survives to be modified in place through a shared'
-        : 'inode.'
-        rm -rf "$inbox"
-        """
-            .replace("@MAVEN_CACHE@", MAVEN_CACHE_PATH));
   }
 
   private void createPipeline(final Construct scope) {
