@@ -1018,6 +1018,10 @@ USAGE
               # -w0 so no newline breaks the header.
               authHeader="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
               git config --local "http.https://github.com/.extraheader" "$authHeader"
+              # The header holds the token in the clear in .git/config, and the source workspace may
+              # outlive the run: it lives exactly as long as the render that needs it. JGit reads the
+              # repo config, not GIT_CONFIG_* env, so the env route would not reach the push.
+              trap 'git config --local --unset-all "http.https://github.com/.extraheader" || true' EXIT
             fi
 
             # Steady-state re-render: `update` FOLLOWS the branch HEAD facet (the grow's recorded
