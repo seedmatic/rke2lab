@@ -1,34 +1,32 @@
 {
   "schema": "seedmatic.relock/v1",
   "head": "rke2lab",
-  "rev": "2e9c5890e96009e6fb2addc07bbf599fb3c2b6eb",
+  "rev": "d78100268bdcab2c078bf9e97c585b0b9d6513d8",
   "status": {
-    "wave": "flake-commons@2026-10-11T09:19:47Z",
-    "tool": "3441528c8710e06d3fb518a0ec7f7bf8697b0a380245e74d765d35f0253eeb66",
+    "wave": "flake-commons@2026-10-13T20:05:59Z",
+    "tool": "ab9ed4142b9736920e237973f2deafba0677f8306f73d3db5c719e9a30a711f0",
     "bumped": {
-      "flake-commons": [
-        "26a657da6c7066960d510babb7c1e0517ebe1d62",
-        "f994a3f785a72ace4100a500576bf95019b2cd39"
+      "flox-runtime": [
+        "91dcb857fee1bd31c640394e2c58f4e922a90eda",
+        "ca0f7ebf4fe849d6f22fb9669bfec07cd4cd7abd"
       ],
-      "flox-controller": [
-        "327a064a263064db1e987e6b9c9ec1da5e6ecd0c",
-        "69a66ca851b59e7203685671a6761126ea6ce061"
+      "ndh": [
+        "7652f46037022e0afa632933caaed873696ffd77",
+        "625b67e6cbd1ae97bff890947cb197da1e1a5378"
       ],
       "seed-incluster": [
-        "64dcc3a5fcdf62e0b472bc6456c84bcd400b8050",
-        "038de00f0df4477b2f3549034cb78ad56104b8db"
+        "038de00f0df4477b2f3549034cb78ad56104b8db",
+        "3b7a6b50b98d3c227aa546382b7a6ab0c87b94a7"
       ]
     },
-    "dropped": [
-      "flox-runtime",
-      "ndh"
-    ],
+    "dropped": [],
     "after": [],
     "unmeasured": [
-      "packages of x86_64-darwin: one of them does not evaluate before any bump, so none of x86_64-darwin is measured — error:",
-      "packages of x86_64-linux: one of them does not evaluate before any bump, so none of x86_64-linux is measured — error:",
-      "apps of x86_64-darwin: one of them does not evaluate before any bump, so none of x86_64-darwin is measured — error:",
-      "apps of x86_64-linux: one of them does not evaluate before any bump, so none of x86_64-linux is measured — error:"
-    ]
+      "packages of x86_64-darwin: one of them does not evaluate before any bump, so none of x86_64-darwin is measured — error: Nixpkgs 26.11 has dropped support for x86_64-darwin.",
+      "packages of x86_64-linux: one of them does not evaluate before any bump, so none of x86_64-linux is measured — error: attribute 'x86_64-linux' missing",
+      "apps of x86_64-darwin: one of them does not evaluate before any bump, so none of x86_64-darwin is measured — error: Nixpkgs 26.11 has dropped support for x86_64-darwin.",
+      "apps of x86_64-linux: one of them does not evaluate before any bump, so none of x86_64-linux is measured — error: attribute 'x86_64-linux' missing"
+    ],
+    "seconds": 275
   }
 }
