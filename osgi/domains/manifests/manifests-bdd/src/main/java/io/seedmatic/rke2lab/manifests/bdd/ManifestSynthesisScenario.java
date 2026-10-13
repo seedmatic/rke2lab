@@ -63,13 +63,11 @@ import io.seedmatic.rke2lab.seed.broker.port.Parcel;
 import io.seedmatic.rke2lab.seed.broker.port.Persistence;
 import io.seedmatic.rke2lab.seed.broker.port.SeedCoordinate;
 import io.seedmatic.rke2lab.seed.broker.port.Sensitivity;
-import io.seedmatic.rke2lab.worktree.CommitSpec;
 import io.seedmatic.rke2lab.worktree.DurableWorktree;
 import io.seedmatic.rke2lab.worktree.GitBotIdentities;
 import io.seedmatic.rke2lab.worktree.GitIdentity;
 import io.seedmatic.rke2lab.worktree.Provenance;
 import io.seedmatic.rke2lab.worktree.TransientWorktrees;
-import io.seedmatic.rke2lab.worktree.TreeEdit;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.FileSystem;
@@ -309,12 +307,6 @@ public class ManifestSynthesisScenario
   private static final String SIGNING_KEY_ENV = "RKE2LAB_SIGNING_KEY";
   private static final String RENDER_TOOL = "manifests-render";
   private static final String BRANCH_PREFIX = "manifests/";
-
-  // What a worktree keeps for itself, the same rule every worktree of this project follows. The
-  // render commits it into its branch, so a render in-cluster (no operator-side ignore) keeps its
-  // intermediates out of the branch too.
-  private static final String WORKTREE_IGNORE =
-      String.join("", RenderSoil.KEPT_LOCAL.stream().map(dir -> dir + "/\n").toList());
 
   // The cluster's FIRST control node — the one a per-target pass renders as. Taken from the
   // blueprint's canonical roster, never spelled "master" here.
@@ -617,7 +609,7 @@ public class ManifestSynthesisScenario
    * the fast-forward push is opt-in ({@code rke2lab:manifests:push}, default off) and needs the
    * sealed token.
    */
-  private Optional<Delivery> deliveryPlan(
+  private Optional<RenderDelivery> deliveryPlan(
       ManifestsRunbookInput facet, Optional<RenderSoil> rendered) {
     if (rendered.isEmpty()) {
       return Optional.empty();
@@ -669,7 +661,7 @@ public class ManifestSynthesisScenario
             yamlMapper.orElseThrow(
                 () -> new IllegalStateException("no YamlMapper — cannot read the rendered tree")));
     return Optional.of(
-        new Delivery(renderCommitMessage(cluster), bot, signingKey, push, token, secrets));
+        new RenderDelivery(renderCommitMessage(cluster), bot, signingKey, push, token, secrets));
   }
 
   /**
@@ -738,52 +730,6 @@ public class ManifestSynthesisScenario
     return new GithubAppTokens(writerTokenMint, readerTokenMint, System.getenv());
   }
 
-  /** The rendered-branch delivery plan carried from the scenario into the THEN. */
-  private record Delivery(
-      String message,
-      GitIdentity identity,
-      String signingKey,
-      boolean push,
-      Optional<String> token,
-      RenderedSecretSeal secrets) {
-
-    /**
-     * The same plan for another cluster's branch — identity, signing key and token are per-RUN (one
-     * bot, one keystore read, one minted token), only the commit subject names the cluster. So the
-     * manager's per-target passes derive their plans from the managing one instead of re-minting a
-     * token per target.
-     */
-    Delivery forBranchOf(String message) {
-      return new Delivery(message, identity, signingKey, push, token, secrets);
-    }
-
-    /**
-     * Seal {@code soil} with this plan: write the worktree convention's {@code .gitignore} (its
-     * intermediates stay local, out of the commit), seal every rendered Secret in memory under the
-     * branch's {@code .sops.yaml} — an unchanged one keeps the ciphertext committed at HEAD, and
-     * the delivery is refused if one stays in the clear — commit the whole rendered tree onto the
-     * head SIGNED as the rke2lab bot, carrying {@code reflections/} over, and push it fast-forward
-     * only when the operator armed the push AND the token was revealed (the gardening gate);
-     * otherwise only the local branch moves. Behaviour of the plan itself, so the managing branch's
-     * THEN and each per-target pass deliver through ONE path — a change to the push discipline has
-     * one site.
-     */
-    void seal(RenderSoil soil) {
-      try {
-        Files.writeString(soil.root().resolve(".gitignore"), WORKTREE_IGNORE);
-      } catch (IOException ex) {
-        throw new UncheckedIOException(
-            "cannot write the render's .gitignore in " + soil.root(), ex);
-      }
-      secrets.seal(soil.root(), soil::readAtHead);
-      soil.head()
-          .commit(
-              new TreeEdit.Replace(soil.files(), List.of(REFLECTIONS_DIR)),
-              new CommitSpec(message, identity, Optional.of(signingKey)));
-      soil.head().publish(push ? token : Optional.empty());
-    }
-  }
-
   /**
    * The sealed materials ONE render pass consumes, grouped so the managing pass and every
    * per-target pass take the identical set — revealed once per run, at the scenario, and handed
@@ -832,7 +778,7 @@ public class ManifestSynthesisScenario
    * branch with its in-memory plot, and the plan that seals it. Prepared by the scenario (which
    * owns the delivery seam) and played by the WHEN (which owns the synthesis).
    */
-  private record TargetPass(ClusterCoordinate child, RenderSoil soil, Delivery delivery) {}
+  private record TargetPass(ClusterCoordinate child, RenderSoil soil, RenderDelivery delivery) {}
 
   @Test
   void the_manifests_are_synthesized_from_the_activation_facet() throws IOException {
@@ -868,7 +814,7 @@ public class ManifestSynthesisScenario
     // Resolved BEFORE the passes, because each per-target pass delivers its own branch inside the
     // WHEN and re-subjects THIS plan to it — one keystore read and one token mint per run, not one
     // per branch. The OPERATOR token lives ~1 h, so covering the synthesis is well inside its life.
-    final Optional<Delivery> delivery = deliveryPlan(effective, rendered);
+    final Optional<RenderDelivery> delivery = deliveryPlan(effective, rendered);
     // The manager's PER-TARGET passes: each workload target's own branch, rendered with the WRKLD
     // unit set, sealed, and its carved bootstrap bundle handed back — the material the managing
     // pass
@@ -924,9 +870,9 @@ public class ManifestSynthesisScenario
    *
    * <p>Empty unless the managing render itself has a head: a bare survey / the standalone CLI
    * renders the one cluster into an in-memory survey plot with no branch, and a target's pass
-   * exists only to produce a branch and a bundle. Present ⟹ a {@link Delivery} was resolved (both
-   * hang off the same worktree seam), so each target's plan is the managing one re-subjected to its
-   * own branch.
+   * exists only to produce a branch and a bundle. Present ⟹ a {@link RenderDelivery} was resolved
+   * (both hang off the same worktree seam), so each target's plan is the managing one re-subjected
+   * to its own branch.
    *
    * <p>Each target renders at {@code <plots-root>/<cluster>} on the run's in-memory soil — beside
    * the managing plot, each on its own branch {@code manifests/<cluster>}. The render's
@@ -968,7 +914,9 @@ public class ManifestSynthesisScenario
   }
 
   private List<TargetPass> prepareWorkloadPasses(
-      ManifestsRunbookInput effective, Optional<RenderSoil> rendered, Optional<Delivery> delivery) {
+      ManifestsRunbookInput effective,
+      Optional<RenderSoil> rendered,
+      Optional<RenderDelivery> delivery) {
     // DEEPEST-FIRST. `renderedBy` is breadth-first, so parents precede children; reversing it puts
     // every child before the pass that ADOPTS it, which is what lets a bundle exist by the time its
     // adopter renders. On a tree that reversal IS a post-order, and the adopter relation is a tree.
@@ -982,7 +930,7 @@ public class ManifestSynthesisScenario
       return List.of();
     }
     final TransientWorktrees heads = transientWorktrees.orElseThrow();
-    final Delivery plan = delivery.orElseThrow();
+    final RenderDelivery plan = delivery.orElseThrow();
     final Optional<String> fetchToken = revealFetchToken();
     final List<TargetPass> passes = new ArrayList<>();
     for (final ClusterCoordinate child : children) {
@@ -1018,7 +966,9 @@ public class ManifestSynthesisScenario
    * surface as a cryptic node-boot fetch failure. So: fail LOUD.
    */
   private void fileNodeGithubToken(
-      ManifestsRunbookInput facet, Optional<RenderSoil> rendered, Optional<Delivery> delivery) {
+      ManifestsRunbookInput facet,
+      Optional<RenderSoil> rendered,
+      Optional<RenderDelivery> delivery) {
     // The role is only ever asked one question below — "is this a WORKLOAD?" — so an ABSENT
     // identity
     // must stay absent rather than be flattened into a blank name. The previous `.orElse("")`
@@ -1097,9 +1047,6 @@ public class ManifestSynthesisScenario
     }
   }
 
-  // The cluster→git reflector's subtree on the managing branch — a reflector-owned path the render
-  // never generates but PRESERVES across its wholesale regeneration (the escape carve-out).
-  private static final String REFLECTIONS_DIR = "reflections";
   private static final String ASSET_ENVELOPES_KEY = "envelopes";
 
   /**
@@ -1706,7 +1653,7 @@ public class ManifestSynthesisScenario
      * CLI render (no head opened) — the tree was materialised in memory, nothing is delivered.
      */
     public Then the_rendered_branch_is_delivered(
-        @Hidden Optional<RenderSoil> rendered, @Hidden Optional<Delivery> delivery) {
+        @Hidden Optional<RenderSoil> rendered, @Hidden Optional<RenderDelivery> delivery) {
       if (rendered.isEmpty() || delivery.isEmpty()) {
         return self();
       }
