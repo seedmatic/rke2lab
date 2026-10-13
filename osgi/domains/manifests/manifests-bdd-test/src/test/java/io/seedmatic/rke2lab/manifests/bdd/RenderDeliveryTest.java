@@ -173,6 +173,18 @@ class RenderDeliveryTest {
     }
   }
 
+  @Test
+  void a_clear_file_in_a_nested_local_dir_is_refused_and_never_reaches_origin() throws Exception {
+    final String before = originTip();
+    try (FileSystem soil = MemoryFileSystemBuilder.newEmpty().build()) {
+      final RenderSoil plot = renderedPlot(soil);
+      write(plot.root(), "probe-system/.local.d/leak.yaml", SECRET);
+
+      assertThrows(IllegalStateException.class, () -> delivery().seal(plot));
+    }
+    assertEquals(before, originTip(), "nothing was pushed");
+  }
+
   private RenderDelivery delivery() {
     return new RenderDelivery(
         "render test-mgmt manifests",

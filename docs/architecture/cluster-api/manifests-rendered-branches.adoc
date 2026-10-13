@@ -498,7 +498,11 @@ The render needs no worktree: it opens the head of `manifests/<host>-<role>` in 
 (`TransientWorktrees`, jgit), materialises the rendered tree into its SOIL plot on an in-memory file
 system — so no rendered Secret touches the disk in the clear — and commits that plot onto the head,
 the head's `reflections/` subtree carried over and the worktree convention's local dirs (`.local.d`,
-`.scratchpad.d`) left out. Nothing is checked out, so there is nothing to clean up.
+`.scratchpad.d`) left out. Nothing is checked out, so there is nothing to clean up. Those dirs are ONE
+rule, `KeptLocalDirs.OF_A_WORKTREE` (manifests-contract), read by the committed `.gitignore`, by the
+Secret seal (which skips them at any depth, leaving what sits there in the clear) and by the tree the
+commit carries — which leaves them out at the plot's root and REFUSES one below it, so a clear file can
+never ride a nested `.local.d` to origin.
 
 Two consequences fall out:
 

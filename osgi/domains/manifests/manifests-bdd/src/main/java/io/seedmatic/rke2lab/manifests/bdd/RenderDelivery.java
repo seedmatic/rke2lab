@@ -1,6 +1,7 @@
 package io.seedmatic.rke2lab.manifests.bdd;
 
 import io.seedmatic.rke2lab.manifests.RenderedSecretSeal;
+import io.seedmatic.rke2lab.manifests.contract.KeptLocalDirs;
 import io.seedmatic.rke2lab.worktree.CommitSpec;
 import io.seedmatic.rke2lab.worktree.GitIdentity;
 import io.seedmatic.rke2lab.worktree.TreeEdit;
@@ -22,8 +23,7 @@ record RenderDelivery(
   // What a worktree keeps for itself, the same rule every worktree of this project follows. The
   // render commits it into its branch, so a render in-cluster (no operator-side ignore) keeps its
   // intermediates out of the branch too.
-  static final String WORKTREE_IGNORE =
-      String.join("", RenderSoil.KEPT_LOCAL.stream().map(dir -> dir + "/\n").toList());
+  static final String WORKTREE_IGNORE = KeptLocalDirs.OF_A_WORKTREE.gitignore();
 
   // The cluster→git reflector's subtree on the managing branch — a reflector-owned path the render
   // never generates but PRESERVES across its wholesale regeneration (the escape carve-out).
@@ -61,5 +61,21 @@ record RenderDelivery(
             new TreeEdit.Replace(soil.files(), List.of(REFLECTIONS_DIR)),
             new CommitSpec(message, identity, Optional.of(signingKey)));
     soil.head().publish(push ? token : Optional.empty());
+  }
+
+  /**
+   * The signing key and the token are secrets: a plan printed in a log or a report shows neither.
+   */
+  @Override
+  public String toString() {
+    return "RenderDelivery[message="
+        + message
+        + ", identity="
+        + identity
+        + ", signingKey=<redacted>, push="
+        + push
+        + ", token="
+        + (token.isPresent() ? "<redacted>" : "<none>")
+        + "]";
   }
 }

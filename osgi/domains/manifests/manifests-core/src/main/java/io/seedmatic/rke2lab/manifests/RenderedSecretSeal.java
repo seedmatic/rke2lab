@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.seedmatic.rke2lab.clusterpki.contract.SopsDecryptor;
 import io.seedmatic.rke2lab.clusterpki.contract.SopsEncryptor;
-import io.seedmatic.rke2lab.manifests.contract.NodeBootstrapArtifact;
+import io.seedmatic.rke2lab.manifests.contract.KeptLocalDirs;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -58,7 +58,6 @@ public final class RenderedSecretSeal {
   private static final List<String> VALUE_FIELDS = List.of("data", "stringData");
   private static final String ENVELOPE = "sops";
   // The render's own scratch, ignored by the committed .gitignore like .local.d.
-  private static final String SCRATCH_DIR = ".scratchpad.d";
   private static final Pattern STRUCTURED = Pattern.compile("\\.(ya?ml|json)$");
   private static final Pattern SECRET_KIND_TEXT =
       Pattern.compile("kind[\"']?\\s*:\\s*[\"']?Secret\\b");
@@ -249,15 +248,13 @@ public final class RenderedSecretSeal {
     if (POLICY.equals(file.getFileName().toString())) {
       return true;
     }
-    for (Path segment : root.relativize(file)) {
-      final String part = segment.toString();
-      if (".git".equals(part)
-          || NodeBootstrapArtifact.LOCAL_DIR.equals(part)
-          || SCRATCH_DIR.equals(part)) {
+    final Path relative = root.relativize(file);
+    for (Path segment : relative) {
+      if (".git".equals(segment.toString())) {
         return true;
       }
     }
-    return false;
+    return KeptLocalDirs.OF_A_WORKTREE.holds(relative);
   }
 
   /**
