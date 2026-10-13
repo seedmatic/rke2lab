@@ -1025,7 +1025,7 @@ USAGE
             fi
 
             # Steady-state re-render: `update` FOLLOWS the branch HEAD facet (the grow's recorded
-            # posture), renders into the worktree the exe LOCATES itself (.local.d/worktrees/manifests/<cluster>) +
+            # posture), renders into an in-memory plot (manifests/<cluster>, nothing checked out) +
             # signed ff-push manifests/<cluster>. cluster/node are trailing key=value args
             # (discoverable in `update` help); RKE2LAB_SIGNING_KEY + RKE2LAB_PUSH_TOKEN come from the
             # caller's environment (the Tekton step / the operator). A first render of a cluster is
@@ -1129,15 +1129,15 @@ USAGE
         };
 
         # Derive the plan and DELIVER it: `nix run .#publish-plan`, from the repo root. The plan jar's
-        # `publish` verb sows and grafts ghapp → netplan → dataplan → fabric; the fabric scion writes
-        # netplan.json + dataplan.json into the .local.d/worktrees/fabric/plan linked worktree, signs
-        # the commit and fast-forward pushes fabric/plan with a token minted from the App. git: the
-        # linked worktree; openssh: ssh-keygen signs the commit (SshCommitSigner → jgit).
+        # `publish` verb sows and grafts ghapp → netplan → dataplan → fabric; the fabric scion commits
+        # netplan.json + dataplan.json onto fabric/plan's head in memory (jgit, no checkout), signs the
+        # commit and fast-forward pushes fabric/plan with a token minted from the App. openssh:
+        # ssh-keygen signs the commit (SshCommitSigner → jgit); no git on the PATH.
         apps.publish-plan = {
           type = "app";
           program = toString (pkgs.writeShellApplication {
             name = "publish-plan";
-            runtimeInputs = [ pkgs.coreutils pkgs.git pkgs.jdk25 pkgs.openssh ];
+            runtimeInputs = [ pkgs.coreutils pkgs.jdk25 pkgs.openssh ];
             text = ''
               if [ ! -f pom.xml ] || [ ! -f flake.nix ]; then
                 echo "error: run from the rke2lab repo root" >&2

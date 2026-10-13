@@ -23,7 +23,7 @@ class RenderSoilTest {
   @Test
   void the_commit_carries_the_rendered_files_and_never_the_local_dirs() throws Exception {
     try (FileSystem soil = MemoryFileSystemBuilder.newEmpty().build()) {
-      final Path root = soil.getPath("/.local.d/worktrees/manifests/test-mgmt");
+      final Path root = soil.getPath("manifests/test-mgmt");
       write(root, "manifest.yaml", "m");
       write(root, "platform/flux/kustomization.yaml", "k");
       write(root, ".gitignore", ".local.d/\n");

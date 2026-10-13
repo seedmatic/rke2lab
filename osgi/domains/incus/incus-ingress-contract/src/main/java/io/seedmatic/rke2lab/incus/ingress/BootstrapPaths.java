@@ -11,9 +11,8 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
  * catalog and the host-asset materialisation roots are gone; and the rendered-branch model moved
  * the manifests delivery to git, so the staging-slot rebase and its {@code manifestsRoot}/{@code
  * assetsRoot} went with it. What remains is the worktree base, the per-node state tree ({@code
- * stateRoot}, from which {@link #worktreesRoot} and {@link #liveRoot} derive). Felix is embedded in
- * the host JVM, so the scion computes the whole topology OSGi-side, here. {@link
- * #fromLocalWorktree} builds it.
+ * stateRoot}, from which {@link #liveRoot} derives). Felix is embedded in the host JVM, so the
+ * scion computes the whole topology OSGi-side, here. {@link #fromLocalWorktree} builds it.
  */
 public record BootstrapPaths(Path worktreeRoot, Path stateRoot) {
 
@@ -36,17 +35,6 @@ public record BootstrapPaths(Path worktreeRoot, Path stateRoot) {
    */
   public static BootstrapPaths fromLocalWorktree(Path worktreeRoot) {
     return builder().worktreeRoot(worktreeRoot).stateRoot(worktreeRoot.resolve(STATE_DIR)).build();
-  }
-
-  /**
-   * The root the seed's LINKED worktrees live under — {@code .local.d/worktrees}, each at the path
-   * of its branch: {@code worktreesRoot()/manifests/<cluster>} is the orphan {@code
-   * manifests/<cluster>} worktree the manifests scion prepares, materialises the rendered YAML
-   * into, and pushes from. The render's intermediates live in that worktree's own ignored {@code
-   * .local.d}, so the root holds worktrees and nothing else.
-   */
-  public Path worktreesRoot() {
-    return stateRoot.resolve("worktrees");
   }
 
   /**

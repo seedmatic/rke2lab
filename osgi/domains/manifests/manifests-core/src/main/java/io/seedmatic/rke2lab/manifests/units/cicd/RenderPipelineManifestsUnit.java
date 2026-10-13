@@ -242,7 +242,7 @@ public final class RenderPipelineManifestsUnit extends AbstractManifestsUnit {
                       set +x
                       [ -n "${SOPS_AGE_KEY:-}" ] || { echo >&2 "render: SOPS_AGE_KEY not set (git-sops inject / replicated sops-age missing)"; exit 1; }
                       set -x
-                      : "The flox NRI plugin put nix on PATH, injected NIX_CONFIG (daemonless single-user) and hosts the /nix store overlay on the assigned persistent PVC, so there is no flox env and no flox activate. The render-manifests app of the source checkout is the ONE render definition shared with dev and release: it builds manifests-cli, signs, and ff-pushes manifests/<cluster>; the exe locates its render worktree at .local.d/worktrees/manifests/<cluster>"
+                      : "The flox NRI plugin put nix on PATH, injected NIX_CONFIG (daemonless single-user) and hosts the /nix store overlay on the assigned persistent PVC, so there is no flox env and no flox activate. The render-manifests app of the source checkout is the ONE render definition shared with dev and release: it builds manifests-cli, signs, and ff-pushes manifests/<cluster>; the render's plot manifests/<cluster> lives in memory, no worktree is checked out"
                       : "The flake is named by REVISION, never as the working tree: a checkout may hold decrypted sops files, and evaluating the tree would copy them into this node's store. shallow=1 because the clone is a depth-1 fetch"
                       nix run "git+file://$PWD?rev=`git rev-parse HEAD`&shallow=1#render-manifests" -- "$(params.cluster)" "$(params.node)"
                       """
