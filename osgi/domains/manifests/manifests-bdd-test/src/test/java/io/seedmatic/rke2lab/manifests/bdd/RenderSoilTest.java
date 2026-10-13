@@ -62,6 +62,19 @@ class RenderSoilTest {
   }
 
   @Test
+  void a_git_dir_the_seal_skips_is_refused_too() throws Exception {
+    try (FileSystem soil = MemoryFileSystemBuilder.newEmpty().build()) {
+      final Path root = soil.getPath("/plot");
+      write(root, "manifest.yaml", "m");
+      write(root, "sub/.git/x", "token: dummy-token");
+
+      final IllegalStateException refused =
+          assertThrows(IllegalStateException.class, () -> new RenderSoil(null, root).files());
+      assertTrue(refused.getMessage().contains("sub/.git/x"), refused.getMessage());
+    }
+  }
+
+  @Test
   void a_delivery_plan_prints_neither_its_signing_key_nor_its_token() {
     final String printed =
         new RenderDelivery(
