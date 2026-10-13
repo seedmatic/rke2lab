@@ -188,11 +188,11 @@
     "fabric-plan": {
       "flake": false,
       "locked": {
-        "lastModified": 1791622072,
-        "narHash": "sha256-KBvHsNcBVtAFLpJ3RYBjVv2Os7vu8nQrQrAM2QQjtEI=",
+        "lastModified": 1791915973,
+        "narHash": "sha256-JTZnLZ79VdrplFblF2oGqpuHk0AkbNBntpQBLzSCCEs=",
         "owner": "seedmatic",
         "repo": "rke2lab",
-        "rev": "18b126eb701513668c0d9557b315f0a788658143",
+        "rev": "eda63e430a51c3c9be35cd9c061054879a7e482d",
         "type": "github"
       },
       "original": {
