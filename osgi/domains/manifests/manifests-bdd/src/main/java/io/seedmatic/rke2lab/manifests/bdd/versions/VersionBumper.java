@@ -40,9 +40,9 @@ import java.util.regex.Pattern;
  * that is all that is newer), {@code minor} stays within the current major, {@code micro} within
  * the current major.minor.
  *
- * <p>{@link #apply} resolves its targets under a {@code worktreeRoot} (the {@code Worktree} the
- * scion injects), rewrites the {@code "<slug>", "<pin>"} literal of the matching {@link Component}
- * constant in {@code Component.java} in place, refreshes the vendored {@code
+ * <p>{@link #apply} resolves its targets under a {@code worktreeRoot} (the {@code DurableWorktree}
+ * the scion injects), rewrites the {@code "<slug>", "<pin>"} literal of the matching {@link
+ * Component} constant in {@code Component.java} in place, refreshes the vendored {@code
  * release-<version>.yaml} for the manifest-vendoring components, and RETURNS the paths it touched
  * so the scion stages exactly them (asset FIRST, so a failed fetch never leaves a pin pointing at a
  * missing asset).

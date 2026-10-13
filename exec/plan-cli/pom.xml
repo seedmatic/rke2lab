@@ -124,8 +124,8 @@
          .secrets through the SecretsGateway seam) + ghapp-edge (the GithubAppMinter, the JWT signer);
          auth-edge (GithubWriterTokenMintEdge — the mint GithubAppTokens calls); ndh-core
          (DefaultNdhKeystoreReader — the authority domain and the signing key the delivery commit is
-         signed with); worktree-core (JgitLinkedWorktrees — the fabric/plan linked worktree and its
-         fast-forward push). runtime scope: the host compiles against none of them, it stages them. -->
+         signed with); worktree-core (JgitTransientWorktrees — the fabric/plan head committed in memory
+         and its fast-forward push). runtime scope: the host compiles against none of them, it stages them. -->
     <dependency>
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>ghapp-bdd</artifactId>

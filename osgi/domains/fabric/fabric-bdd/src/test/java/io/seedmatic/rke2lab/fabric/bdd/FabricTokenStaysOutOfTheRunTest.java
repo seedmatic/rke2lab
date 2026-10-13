@@ -16,11 +16,9 @@ import io.seedmatic.rke2lab.netplan.ingress.NetplanIngressCoordinate;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.ScenarioCellar;
 import io.seedmatic.rke2lab.seed.broker.port.Parcel;
 import io.seedmatic.rke2lab.seed.broker.testkit.InMemoryCellar;
-import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
 /**
  * The push token reaches the push and nothing else a run keeps. The delivery is played as a real
@@ -42,14 +40,12 @@ class FabricTokenStaysOutOfTheRunTest
   private static final String FETCH_SENTINEL = "SENTINEL-MINTED-FETCH-TOKEN";
   private static final Parcel PARCEL = new Parcel("rke2lab", "plan");
 
-  @TempDir Path tmp;
-
   /** The runbook input the delivery's WHEN expects. */
   public static class Given extends Stage<Given> {
     @ProvidedScenarioState FabricRunbookInput facet;
 
-    public Given a_plot_for_the_delivery(Path root) {
-      this.facet = new FabricRunbookInput(Optional.of(root.toString()));
+    public Given the_runbook_input() {
+      this.facet = new FabricRunbookInput();
       return self();
     }
   }
@@ -82,9 +78,9 @@ class FabricTokenStaysOutOfTheRunTest
         PARCEL,
         DataplanIngressCoordinate.LAYOUT,
         JsonNodeFactory.instance.objectNode().put("pool", "fixture"));
-    final RecordingWorktrees worktrees = new RecordingWorktrees();
+    final RecordingTransientWorktrees worktrees = new RecordingTransientWorktrees();
 
-    given().a_plot_for_the_delivery(tmp);
+    given().the_runbook_input();
     when()
         .the_harvested_plan_is_read(cellar, Optional.of(PARCEL))
         .and()

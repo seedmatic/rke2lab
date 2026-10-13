@@ -56,7 +56,7 @@ import io.seedmatic.rke2lab.seed.broker.port.Parcel;
 import io.seedmatic.rke2lab.seed.broker.port.RunbookCoordinate;
 import io.seedmatic.rke2lab.seed.broker.port.SeedBroker;
 import io.seedmatic.rke2lab.seed.broker.port.SeedEnvelope;
-import io.seedmatic.rke2lab.worktree.Worktree;
+import io.seedmatic.rke2lab.worktree.DurableWorktree;
 import io.seedmatic.rke2lab.worktree.WorktreeCoordinate;
 import io.seedmatic.rke2lab.worktree.WorktreeFacts;
 import java.io.IOException;
@@ -149,7 +149,7 @@ public class IncusProvisionScenario
   // The seat, read for the node-base image's source (its HEAD and the digest of its build inputs).
   // await=false: an unamended survey builds nothing and never asks for it.
   @OsgiService(await = false)
-  private Optional<Worktree> seat = Optional.empty();
+  private Optional<DurableWorktree> seat = Optional.empty();
 
   // The consultations the run raised on a failed build/unreachable instance — the
   // ScenarioOutcomeExtension PULLS them (ConsultationSource) at the run boundary. Set in the @Test
@@ -212,7 +212,7 @@ public class IncusProvisionScenario
                         seat.orElseThrow(
                             () ->
                                 new IllegalStateException(
-                                    "no Worktree service — cannot source the node-base image"))));
+                                    "no DurableWorktree service — cannot source the node-base image"))));
     // The @Test body OWNS the observation sink (the same discipline as the other scions): the When
     // fills it, and the consult below reads THIS reference — independent of jGiven's stage state
     // after a fail-fast step, so a failed build still reaches the consult.
@@ -404,7 +404,7 @@ public class IncusProvisionScenario
     @OsgiService private Optional<ImageBuilder> imageBuilder = Optional.empty();
 
     @OsgiService(await = false)
-    private Optional<Worktree> seat = Optional.empty();
+    private Optional<DurableWorktree> seat = Optional.empty();
 
     @OsgiService private Optional<SeedBroker> broker = Optional.empty();
     @OsgiService private Optional<NetplanSynthesisService> netplan = Optional.empty();
@@ -640,7 +640,7 @@ public class IncusProvisionScenario
     @OsgiService private Optional<ImageBuilder> imageBuilder = Optional.empty();
 
     @OsgiService(await = false)
-    private Optional<Worktree> seat = Optional.empty();
+    private Optional<DurableWorktree> seat = Optional.empty();
 
     public Then the_instance_is_prepared() {
       return self();

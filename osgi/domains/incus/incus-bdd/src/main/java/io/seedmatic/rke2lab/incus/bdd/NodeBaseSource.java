@@ -1,7 +1,7 @@
 package io.seedmatic.rke2lab.incus.bdd;
 
 import io.seedmatic.rke2lab.worktree.BuildRevision;
-import io.seedmatic.rke2lab.worktree.Worktree;
+import io.seedmatic.rke2lab.worktree.DurableWorktree;
 import java.util.List;
 import java.util.regex.Pattern;
 
@@ -13,7 +13,7 @@ import java.util.regex.Pattern;
  * buildChecksum}.
  *
  * <p>The revision is the seat's HEAD when the build inputs are clean; when they are dirty, the seat
- * fabricates one ({@link Worktree#buildRevision}) — the grow tests what is on disk, still by
+ * fabricates one ({@link DurableWorktree#buildRevision}) — the grow tests what is on disk, still by
  * revision. The rule is enforced here: a source whose flake ref names anything but a revision does
  * not exist.
  */
@@ -34,7 +34,7 @@ record NodeBaseSource(BuildRevision revision, String flakeRef, String digest) {
     }
   }
 
-  static NodeBaseSource of(Worktree seat) {
+  static NodeBaseSource of(DurableWorktree seat) {
     final BuildRevision revision = seat.buildRevision(BUILD_INPUTS);
     return new NodeBaseSource(
         revision,

@@ -90,7 +90,8 @@ public final class Main {
           final Rke2labConfig config = Rke2labConfig.from(loader);
           // worktree.dir is NOT config and NOT derived here: the worktree soil (OSGi-side, played
           // as
-          // the first crossing) harvests its own root into the cellar via its Worktree component,
+          // the first crossing) harvests its own root into the cellar via its DurableWorktree
+          // component,
           // and the host fetches it back where it needs it (the GROW mounts). Storing it in config
           // would only collide across worktrees; deriving it here would duplicate the component.
           final BootstrapConfig bootstrap = BootstrapConfig.from(config);

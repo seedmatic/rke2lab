@@ -64,8 +64,8 @@ public record BootstrapConfig(
 
   /**
    * Derive the Stage A bootstrap config from the root DTO. The worktree root is NOT here: it is the
-   * worktree soil's harvest (its {@code Worktree} component self-locates it), fetched from the
-   * cellar by whoever needs it — storing it in config would only collide across worktrees. The
+   * worktree soil's harvest (its {@code DurableWorktree} component self-locates it), fetched from
+   * the cellar by whoever needs it — storing it in config would only collide across worktrees. The
    * mandatory config value ({@code incus.configDir}) is already validated at load, so it arrives
    * non-null; optional values get their default here.
    */

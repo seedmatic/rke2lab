@@ -37,7 +37,7 @@
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>dataplan-ingress-contract</artifactId>
     </dependency>
-    <!-- The git MECHANISM and the bot identity: LinkedWorktrees makes the delivery's checkout,
+    <!-- The git MECHANISM and the bot identity: TransientWorktrees opens the delivery's head,
          GitBotIdentities mints the identity every automated commit of this project reads. -->
     <dependency>
       <groupId>io.seedmatic.rke2lab</groupId>

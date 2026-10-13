@@ -72,6 +72,12 @@
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>worktree-contract</artifactId>
     </dependency>
+    <!-- The render's soil: its plots live on an in-memory file system, so no rendered Secret
+         touches the disk in the clear. An OSGi bundle in its own right. -->
+    <dependency>
+      <groupId>com.github.marschall</groupId>
+      <artifactId>memoryfilesystem</artifactId>
+    </dependency>
     <dependency>
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>auth-contract</artifactId>

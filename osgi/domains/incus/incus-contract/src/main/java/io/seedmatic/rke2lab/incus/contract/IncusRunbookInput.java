@@ -16,8 +16,8 @@ import java.util.Optional;
  * the host contributes it AMBIENT (an {@link
  * io.seedmatic.rke2lab.seed.broker.port.AmendmentContributor} the assembler gathers at the amend
  * door) rather than sowing it in the trigger. The scion combines it with the worktree root it reads
- * from the {@code Worktree} OSGi component (which self-locates its own root — no longer a scalar
- * the host carries) to reconstruct the whole provisioning topology in-world (§
+ * from the {@code DurableWorktree} OSGi component (which self-locates its own root — no longer a
+ * scalar the host carries) to reconstruct the whole provisioning topology in-world (§
  * host-cellar-realisation, the topology is computed OSGi-side): it picks the rotation slot, derives
  * the staging tree, and forwards THAT as the manifests SOIL. {@link #image} is the {@link
  * Amendment#IMAGE} — the seed-image build scalars the scion folds into the {@code buildChecksum}
@@ -40,12 +40,12 @@ public record IncusRunbookInput(
 
   /**
    * The stable provisioning identity the host contributes as the {@link Amendment#FACET} — the
-   * cluster/node names. The worktree ROOT is NOT here: the scion reads it from the {@code Worktree}
-   * OSGi component and feeds it to {@code BootstrapPaths.fromLocalWorktree(root)}. The {@code
-   * incusProject} is the daemon project the built image is registered into and adopted from (part
-   * of the stable provisioning identity, not a build-recipe scalar — so it rides the FACET, not the
-   * IMAGE). A sub-record filled blind by role, mirroring the {@code DebugFacet} facet-sub-record
-   * pattern — the host names no path vocabulary.
+   * cluster/node names. The worktree ROOT is NOT here: the scion reads it from the {@code
+   * DurableWorktree} OSGi component and feeds it to {@code BootstrapPaths.fromLocalWorktree(root)}.
+   * The {@code incusProject} is the daemon project the built image is registered into and adopted
+   * from (part of the stable provisioning identity, not a build-recipe scalar — so it rides the
+   * FACET, not the IMAGE). A sub-record filled blind by role, mirroring the {@code DebugFacet}
+   * facet-sub-record pattern — the host names no path vocabulary.
    */
   public record Facet(String clusterName, String nodeName, String incusProject) {}
 

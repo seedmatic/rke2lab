@@ -27,9 +27,9 @@ import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.SeedScenario;
 import io.seedmatic.rke2lab.seed.broker.port.Cellar;
 import io.seedmatic.rke2lab.seed.broker.port.Parcel;
 import io.seedmatic.rke2lab.worktree.CommitSpec;
+import io.seedmatic.rke2lab.worktree.DurableWorktree;
 import io.seedmatic.rke2lab.worktree.GitBotIdentities;
 import io.seedmatic.rke2lab.worktree.GitIdentity;
-import io.seedmatic.rke2lab.worktree.Worktree;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -52,12 +52,12 @@ import org.junit.jupiter.api.extension.RegisterExtension;
  *
  * <p>Its collaborators are INJECTED from the framework registry by the {@link OsgiService} bridge,
  * all bundle-side (unreachable to the flat host, which is exactly why the bump is a scion): the
- * {@link Worktree} (which applies the bump's edit and commits it) and the {@link NdhKeystoreReader}
- * (the tailnet {@code authorityDomain} the bot email is minted from). The GitHub token for the
- * release query is NOT shelled here: it is minted ON DEMAND from the one org-owned App through
- * {@link GithubAppTokens} and the {@link GithubWriterTokenMint} edge — empty for a standalone CLI
- * run with no sealed credentials, so the query then runs anonymously (rate-limited), never against
- * a personal {@code gh auth token}.
+ * {@link DurableWorktree} (which applies the bump's edit and commits it) and the {@link
+ * NdhKeystoreReader} (the tailnet {@code authorityDomain} the bot email is minted from). The GitHub
+ * token for the release query is NOT shelled here: it is minted ON DEMAND from the one org-owned
+ * App through {@link GithubAppTokens} and the {@link GithubWriterTokenMint} edge — empty for a
+ * standalone CLI run with no sealed credentials, so the query then runs anonymously (rate-limited),
+ * never against a personal {@code gh auth token}.
  */
 @SeedScenario
 public class VersionBumpScenario
@@ -139,7 +139,7 @@ public class VersionBumpScenario
     @ExpectedScenarioState boolean apply;
     @ExpectedScenarioState Optional<Component> component;
 
-    @OsgiService private Optional<Worktree> worktree = Optional.empty();
+    @OsgiService private Optional<DurableWorktree> worktree = Optional.empty();
 
     /**
      * The current plot — the key the sealed GitHub token is revealed under; absent for a survey.
@@ -179,9 +179,9 @@ public class VersionBumpScenario
     }
 
     private void applyBump(VersionBumper bumper) {
-      final Worktree tree =
+      final DurableWorktree tree =
           worktree.orElseThrow(
-              () -> new IllegalStateException("no Worktree service — cannot apply a bump"));
+              () -> new IllegalStateException("no DurableWorktree service — cannot apply a bump"));
       final VersionBumper.BumpApplication application = bumper.apply(component, tree.root());
       for (VersionBumper.AppliedBump bump : application.bumps()) {
         narration.the_pin_$_is_$(bump.component().slug(), change(bump));

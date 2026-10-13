@@ -62,16 +62,15 @@ import org.eclipse.jgit.treewalk.filter.PathFilterGroup;
 
 /**
  * A jgit view of ONE git worktree at a path — the SOLE holder of jgit in this domain, and the
- * instance both worktrees compose rather than a static utility. {@link JgitWorktree} (the seed the
- * process runs inside) holds a checkout of its self-located root; {@link JgitLinkedWorktree} (a
- * rendered branch) holds a checkout of the transient linked path {@code git worktree add} created.
- * Each opens its repository on demand — provenance and working state change as the tree is edited,
- * so they are never cached. jgit stays sealed here; nothing jgit crosses back to a caller.
+ * instance the seat composes rather than a static utility: {@link JgitWorktree} (the seed the
+ * process runs inside) holds a checkout of its self-located root, and {@link
+ * JgitTransientWorktrees} fetches through it. Each opens its repository on demand — provenance and
+ * working state change as the tree is edited, so they are never cached. jgit stays sealed here;
+ * nothing jgit crosses back to a caller.
  *
  * <p>Works equally on a main worktree and a LINKED one: a linked worktree's {@code .git} file
  * points at the shared common dir, which {@link FileRepositoryBuilder#findGitDir} resolves, so
- * provenance/stage/commit act on the linked HEAD while {@link #push} pushes through the shared
- * object database to the origin the repository already knows.
+ * provenance and commits act on the linked HEAD over the shared object database.
  */
 final class JgitCheckout {
 
@@ -382,7 +381,7 @@ final class JgitCheckout {
     return target;
   }
 
-  void stage(List<Path> paths) {
+  private void stage(List<Path> paths) {
     try (Repository repository = open();
         Git git = new Git(repository)) {
       for (Path path : paths) {
@@ -403,7 +402,7 @@ final class JgitCheckout {
     }
   }
 
-  String commit(String message, GitIdentity identity, Optional<String> sshSigningKey) {
+  private String commit(String message, GitIdentity identity, Optional<String> sshSigningKey) {
     try (Repository repository = open();
         Git git = new Git(repository)) {
       final CommitCommand commit =
@@ -448,51 +447,13 @@ final class JgitCheckout {
   }
 
   /**
-   * Push {@code branch} to {@code origin} over HTTPS, authenticating as {@code x-access-token} with
-   * {@code token}. A FAST-FORWARD push ({@link org.eclipse.jgit.api.PushCommand#setForce(boolean)
-   * setForce(false)}): renders accrete on the branch's stable null-commit base, so origin advances
-   * — a non-fast-forward (a divergence) is rejected, not clobbered. The credential is held only for
-   * this call (jgit's in-memory provider), never written to config or a command line.
-   *
-   * <p>{@code timeout} is the caller-supplied transport ceiling — a stuck connection FAILS rather
-   * than blocking the seed. jgit takes it in whole seconds; {@link Duration#ZERO} means no ceiling.
-   * (jgit's local {@code file://} transport can deadlock its two in-JVM piped streams, which is why
-   * a test pushes over a socket, never a local path — but production is HTTPS, where this bounds a
-   * wedged read.)
-   */
-  void push(String branch, String token, Duration timeout) {
-    try (Repository repository = open();
-        Git git = new Git(repository)) {
-      git.push()
-          .setRemote(Constants.DEFAULT_REMOTE_NAME)
-          .setRefSpecs(new RefSpec("refs/heads/" + branch + ":refs/heads/" + branch))
-          .setForce(false)
-          .setTimeout((int) timeout.toSeconds())
-          .setCredentialsProvider(new UsernamePasswordCredentialsProvider("x-access-token", token))
-          .call();
-    } catch (GitAPIException ex) {
-      throw new IllegalStateException("cannot push " + branch + " from " + worktree, ex);
-    }
-  }
-
-  /** Whether this repository has a local {@code refs/heads/<branch>}. */
-  boolean hasBranch(String branch) {
-    try (Repository repository = open()) {
-      return repository.exactRef(Constants.R_HEADS + branch) != null;
-    } catch (IOException ex) {
-      throw new UncheckedIOException("cannot read " + branch + " at " + worktree, ex);
-    }
-  }
-
-  /**
    * Fast-forward the LOCAL {@code refs/heads/<branch>} to origin's tip, so a render accretes on the
    * branch's real (pushed) history instead of orphaning it. A render cut from a fresh clone
    * (in-cluster the Tekton {@code FETCH_HEAD} checkout) or an operator checkout that never tracked
-   * the branch has only a remote ref — without this {@link #hasBranch} is false and the linked
-   * worktree is added on a fresh null base, LOSING the facet the grow recorded at HEAD (the
-   * mesh-drop footgun) and rejecting the follow-up fast-forward push. Forced ({@code +src:dst}) so
-   * a stale or diverged local ref is reset to origin: the render must sit on origin's tip for that
-   * push to land.
+   * the branch has only a remote ref — without this the head opens on a fresh null base, LOSING the
+   * facet the grow recorded at HEAD (the mesh-drop footgun) and rejecting the follow-up
+   * fast-forward push. Forced ({@code +src:dst}) so a stale or diverged local ref is reset to
+   * origin: the render must sit on origin's tip for that push to land.
    *
    * <p>The credential is EXPLICIT: {@code x-access-token} with {@code token} when given, else a
    * provider that answers nothing, so jgit never falls back to a default one and no credential the

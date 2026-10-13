@@ -6,11 +6,12 @@ import java.util.Optional;
 /**
  * A head the seed commits onto WITHOUT materializing it: the branch's tip read from the seat's
  * repository, edited in memory, committed as objects, then published. No working file, no linked
- * worktree, nothing to release — the transient twin of the seat's {@link Worktree}.
+ * worktree, nothing to release — the transient realization of {@link Worktree}, twin of the seat's
+ * {@link DurableWorktree}.
  *
  * <p>jgit-free — only JDK types and the {@code worktree} records cross it.
  */
-public interface TransientWorktree {
+public interface TransientWorktree extends Worktree {
 
   /** The branch this head belongs to, e.g. {@code manifests/<cluster>}. */
   String branch();
@@ -20,9 +21,6 @@ public interface TransientWorktree {
    * carrying only a README (jgit cannot pack the empty tree), then the last commit this head made.
    */
   String head();
-
-  /** The content of {@code path} in {@link #head()}'s tree, or empty when it is absent there. */
-  Optional<String> readAtHead(String path);
 
   /**
    * Commit {@code edit} on {@link #head()} as {@code spec} says, writing objects only: no ref moves

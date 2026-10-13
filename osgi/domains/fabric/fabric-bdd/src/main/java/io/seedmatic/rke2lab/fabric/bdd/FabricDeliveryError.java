@@ -19,7 +19,7 @@ public final class FabricDeliveryError extends IllegalStateException {
     /** The dataplan scion did not file its layout in this run. */
     NO_DATAPLAN("the dataplan layout was not harvested in this run"),
     /** No worktree factory: the delivery cannot be written without the git mechanism. */
-    NO_WORKTREES("the worktree domain published no LinkedWorktrees — cannot make the delivery"),
+    NO_WORKTREES("the worktree domain published no TransientWorktrees — cannot make the delivery"),
     /**
      * A token was revealed but there is no key-store to sign with: a delivery that would be pushed
      * must be signed, so it is refused before anything is committed.

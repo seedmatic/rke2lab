@@ -6,10 +6,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.seedmatic.rke2lab.worktree.BuildRevision;
 import io.seedmatic.rke2lab.worktree.CommitSpec;
+import io.seedmatic.rke2lab.worktree.DurableWorktree;
 import io.seedmatic.rke2lab.worktree.Provenance;
 import io.seedmatic.rke2lab.worktree.TreeEdit;
 import io.seedmatic.rke2lab.worktree.WorkingState;
-import io.seedmatic.rke2lab.worktree.Worktree;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
@@ -45,7 +45,7 @@ class NodeBaseSourceTest {
 
   @Test
   void a_flake_ref_that_is_not_a_revision_is_refused() {
-    for (Worktree seat :
+    for (DurableWorktree seat :
         List.of(
             seat("/bare/rke2lab.git", new BuildRevision("abc", false, List.of(), List.of())),
             seat(
@@ -57,8 +57,8 @@ class NodeBaseSourceTest {
     }
   }
 
-  private static Worktree seat(String repository, BuildRevision revision) {
-    return new Worktree() {
+  private static DurableWorktree seat(String repository, BuildRevision revision) {
+    return new DurableWorktree() {
       @Override
       public Path root() {
         return Path.of("/seat");
