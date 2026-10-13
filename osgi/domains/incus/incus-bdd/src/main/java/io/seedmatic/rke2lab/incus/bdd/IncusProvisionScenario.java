@@ -314,13 +314,13 @@ public class IncusProvisionScenario
   /**
    * The topology the scion resolves ONCE from the worktree scalars — the inversion made concrete:
    * the scion owns the tree and derives every path the run needs. {@code soil} is the per-cluster
-   * RENDER worktree forwarded to the manifests scion ({@code
-   * .local.d/worktrees/manifests/<cluster>}, the orphan {@code manifests/<cluster>} worktree it
-   * prepares and pushes from, at the path of its branch); {@code liveRoot} is where the host
-   * renders the runbook; {@code worktreeRoot} the base for the git provenance. {@link
-   * #from(Optional, Optional)} returns EMPTY for an unamended survey (a bare {@code shape} probe) —
-   * absence is an empty {@link Optional}, never a record carried with blank fields; a present
-   * {@code Resolved} always holds a real topology.
+   * RENDER plot forwarded to the manifests scion ({@code manifests/<cluster>}, a path on the
+   * render's IN-MEMORY soil — nothing of it is materialised on disk, only the commit's objects
+   * reach the repository); {@code liveRoot} is where the host renders the runbook; {@code
+   * worktreeRoot} the base for the git provenance. {@link #from(Optional, Optional)} returns EMPTY
+   * for an unamended survey (a bare {@code shape} probe) — absence is an empty {@link Optional},
+   * never a record carried with blank fields; a present {@code Resolved} always holds a real
+   * topology.
    */
   private record Resolved(
       String soil, String liveRoot, Path worktreeRoot, String clusterName, String nodeName) {
@@ -334,10 +334,9 @@ public class IncusProvisionScenario
       final BootstrapPaths local = BootstrapPaths.fromLocalWorktree(root);
       return Optional.of(
           new Resolved(
-              // The per-cluster RENDER worktree the manifests scion prepares — the
-              // `manifests/<cluster>` checkout the branch is pushed from, at the path of its
+              // The per-cluster RENDER plot on the manifests scion's in-memory soil, named as its
               // branch.
-              local.worktreesRoot().resolve("manifests").resolve(facet.clusterName()).toString(),
+              "manifests/" + facet.clusterName(),
               local.liveRoot().toString(),
               root,
               facet.clusterName(),

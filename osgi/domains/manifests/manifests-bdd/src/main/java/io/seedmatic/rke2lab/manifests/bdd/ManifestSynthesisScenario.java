@@ -925,8 +925,8 @@ public class ManifestSynthesisScenario
     if (rendered.isEmpty() || delivery.isEmpty() || children.isEmpty()) {
       return List.of();
     }
-    final Path worktreesRoot = rendered.orElseThrow().root().getParent();
-    if (worktreesRoot == null) {
+    final Path plotsRoot = rendered.orElseThrow().root().getParent();
+    if (plotsRoot == null) {
       return List.of();
     }
     final TransientWorktrees heads = transientWorktrees.orElseThrow();
@@ -939,7 +939,7 @@ public class ManifestSynthesisScenario
           new TargetPass(
               child,
               new RenderSoil(
-                  heads.open(BRANCH_PREFIX + cluster, fetchToken), worktreesRoot.resolve(cluster)),
+                  heads.open(BRANCH_PREFIX + cluster, fetchToken), plotsRoot.resolve(cluster)),
               plan.forBranchOf(renderCommitMessage(cluster))));
     }
     return List.copyOf(passes);

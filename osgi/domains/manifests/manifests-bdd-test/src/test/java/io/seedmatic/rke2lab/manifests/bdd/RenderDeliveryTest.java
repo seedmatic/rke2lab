@@ -200,7 +200,7 @@ class RenderDeliveryTest {
 
   /** The head opened in the seat's repository, its plot on the in-memory soil, rendered. */
   private RenderSoil renderedPlot(FileSystem soil) throws IOException {
-    final Path root = soil.getPath("/.local.d/worktrees/" + BRANCH);
+    final Path root = soil.getPath(BRANCH);
     write(root, ".sops.yaml", policy());
     write(root, "manifest.yaml", "kind: ConfigMap\n");
     write(root, "probe-system/02-secret-probe.yaml", SECRET);

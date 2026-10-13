@@ -318,10 +318,11 @@ Delivery is likewise one discipline, not two: the run resolves ONE plan — one 
 identity, one minted token — and each pass re-subjects it to its own branch. A per-target token mint
 would have been N+1 GitHub round-trips for no gain.
 
-Each target materialises into its own worktree beside the managing one, at the path of its branch
-(`.local.d/worktrees/manifests/<cluster>`). A pass's consolidated `manifests.yaml` and carved
-`.bootstrap/` live in its worktree's own `.local.d/`, which the `.gitignore` the render commits keeps
-out of the branch — the way any worktree of this project keeps what is its own. So no two passes
+Each target materialises into its own plot beside the managing one on the render's in-memory soil,
+named as its branch (`manifests/<cluster>`) — nothing is materialised on disk, only the commit's
+objects reach the repository. A pass's consolidated `manifests.yaml` and carved `.bootstrap/` live in
+its plot's own `.local.d/`, which the commit leaves out (and the `.gitignore` the render commits keeps
+out) — the way any worktree of this project keeps what is its own. So no two passes
 share them, and nothing intermediate reaches Flux.
 
 NOTE: This is what breaks the circle, not a permanent division of labour. `cicd` is structural for
