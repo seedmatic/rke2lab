@@ -713,12 +713,12 @@ order, no doc-start marker) so an unchanged render is byte-identical. Being plai
 applied by nothing and sits outside every Flux `Kustomization` path. The branch becomes self-describing:
 `git show manifests/<cluster>:manifest.yaml | yq .facet` shows the facet that produced it.
 
-*Transmission — the synthesis reads that manifest from the branch HEAD.* The render prepares its
-linked worktree on `manifests/<cluster>` (`LinkedWorktrees.prepare`, which first fast-forwards the
-LOCAL branch to origin's tip so a fresh clone — the in-cluster Tekton `--depth 1` checkout — reuses
+*Transmission — the synthesis reads that manifest from the branch HEAD.* The render opens its head
+on `manifests/<cluster>` in memory (`TransientWorktrees.open`, which first fast-forwards the LOCAL
+branch to origin's tip so a fresh clone — the in-cluster Tekton `--depth 1` checkout — reuses
 the pushed history instead of orphaning it; the fetch authenticates as the App, with the pipeline's
 token in-cluster, never through a credential helper), then the synthesis (`ManifestSynthesisScenario`) reads
-the recorded facet at HEAD THROUGH the worktree edge (`Worktree.readAtHead("manifest.yaml")`) — jgit
+the recorded facet at HEAD THROUGH the worktree edge (`TransientWorktree.readAtHead("manifest.yaml")`) — jgit
 is already in the boat, so there is no wrapper `git show` plumbing and no `-D` facet file. The read is
 robust to the delivery EMPTYING the working tree (it reads the COMMITTED blob, not the checkout). No
 per-cluster value is baked into the Pipeline, which stays generic. The grow WRITES the manifest (from

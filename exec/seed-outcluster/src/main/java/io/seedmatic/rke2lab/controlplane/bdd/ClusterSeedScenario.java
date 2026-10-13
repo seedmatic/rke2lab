@@ -333,7 +333,8 @@ public class ClusterSeedScenario
       // buildChecksum and the artifact paths it projects for the GROW. A blind subtree: the host
       // names only the neutral IMAGE role's schema fields, no incus type. (The worktree ROOT is no
       // longer sown: the worktree soil harvests it into the cellar and the scion reads it from its
-      // own Worktree component; the stable cluster/node identity is contributed as the incus FACET
+      // own DurableWorktree component; the stable cluster/node identity is contributed as the incus
+      // FACET
       // below.)
       final ObjectNode imageScalars = JsonNodeFactory.instance.objectNode();
       imageScalars.put("alias", run.config().imageAlias());
@@ -415,7 +416,8 @@ public class ClusterSeedScenario
       // bundled capn client cert, offered to the incus-identity crossing.
       this.incusIdentityHostCreds = incusIdentityHostCreds(run.config());
       // The incus FACET — the stable provisioning identity (cluster/node, incus project)
-      // the scion combines with the worktree root it reads from its Worktree component. A FACET,
+      // the scion combines with the worktree root it reads from its DurableWorktree component. A
+      // FACET,
       // not
       // a per-consult ROW: the value never changes across the run, so it is contributed AMBIENT
       // (the
@@ -756,7 +758,8 @@ public class ClusterSeedScenario
       // projects for the GROW (§ host-cellar-realisation, computed OSGi-side). The stable cluster/
       // node identity is the ambient incus FACET (contributed at the GIVEN, merged at the door);
       // the
-      // worktree root the scion reads from its own Worktree component. The host names only the
+      // worktree root the scion reads from its own DurableWorktree component. The host names only
+      // the
       // neutral IMAGE role — never an incus field nor a path.
       sowAndGraft
           .sowing(

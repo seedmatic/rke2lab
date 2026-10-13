@@ -1,8 +1,14 @@
 package io.seedmatic.rke2lab.sops.edge;
 
 import io.seedmatic.rke2lab.clusterpki.contract.SopsEncryptor;
+import java.io.IOException;
+import java.nio.file.FileSystems;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
+import java.util.Set;
 import org.osgi.service.component.annotations.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,6 +56,28 @@ public final class ProcessBuilderSopsEncryptor implements SopsEncryptor {
 
   @Override
   public String encryptYaml(String plaintextYaml, Path policy, String path) {
+    if (policy.getFileSystem().equals(FileSystems.getDefault())) {
+      return encryptUnder(plaintextYaml, policy, path);
+    }
+    // A policy on another file system (the render's in-memory tree) is unreadable to the sops
+    // process: give it a real copy, owner-only, in its own directory so the relative path the
+    // creation rules match keeps its meaning — and remove both whatever happens. The policy is
+    // not secret; the document still goes in on stdin and never touches the disk.
+    final Path dir = createPrivateDir();
+    final Path copy = dir.resolve(policy.getFileName().toString());
+    try {
+      Files.write(copy, Files.readAllBytes(policy));
+      Files.setPosixFilePermissions(copy, OWNER_READ_WRITE);
+      return encryptUnder(plaintextYaml, copy, path);
+    } catch (IOException ex) {
+      throw new SopsEncryptionException("cannot hand the sops policy to the sops process", ex);
+    } finally {
+      deleteQuietly(copy);
+      deleteQuietly(dir);
+    }
+  }
+
+  private String encryptUnder(String plaintextYaml, Path policy, String path) {
     final String sealed =
         sops.run(
             List.of(
@@ -67,4 +95,25 @@ public final class ProcessBuilderSopsEncryptor implements SopsEncryptor {
     LOG.debug("sops sealed {} under {}", path, policy);
     return sealed;
   }
+
+  private static Path createPrivateDir() {
+    try {
+      return Files.createTempDirectory(
+          "rke2lab-sops-policy-",
+          PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
+    } catch (IOException ex) {
+      throw new SopsEncryptionException("cannot create a private dir for the sops policy", ex);
+    }
+  }
+
+  private static void deleteQuietly(Path path) {
+    try {
+      Files.deleteIfExists(path);
+    } catch (IOException ignored) {
+      // A leftover owner-only copy of a non-secret policy; the seal's outcome already stands.
+    }
+  }
+
+  private static final Set<PosixFilePermission> OWNER_READ_WRITE =
+      Set.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE);
 }

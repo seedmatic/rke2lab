@@ -14,24 +14,20 @@ import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
 import io.seedmatic.rke2lab.seed.broker.port.Parcel;
 import io.seedmatic.rke2lab.seed.broker.testkit.InMemoryCellar;
 import io.seedmatic.rke2lab.worktree.GitIdentity;
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The fabric delivery: it reads the two harvests the run filed and writes them, canonically, into
- * the linked worktree of its branch. The git MECHANISM is the worktree domain's and is proven by
- * {@code JgitLinkedWorktreesTest} — here it is a recording double, so what is under test is
- * fabric's own behaviour: which coordinates it reads, which files it writes, in what form, and what
- * it asks of the worktree.
+ * The fabric delivery: it reads the two harvests the run filed and commits them, canonically, onto
+ * its branch's head. The git MECHANISM is the worktree domain's and is proven by {@code
+ * JgitTransientWorktreeTest} — here it is a recording double, so what is under test is fabric's own
+ * behaviour: which coordinates it reads, which files it writes, in what form, and what it asks of
+ * the worktree.
  */
 class FabricDeliveryTest {
 
   private static final Parcel PARCEL = new Parcel("rke2lab", "bioskop-mgmt");
-
-  @TempDir Path tmp;
 
   private static JsonNode tree(String json) {
     return new SeedCodec().reading().readJson(json);
@@ -50,14 +46,14 @@ class FabricDeliveryTest {
 
   private FabricDeliveryScenario.When when() {
     final FabricDeliveryScenario.When when = new FabricDeliveryScenario.When();
-    when.facet = new FabricRunbookInput(Optional.of(tmp.toString()));
+    when.facet = new FabricRunbookInput();
     return when;
   }
 
   @Test
   void the_delivery_writes_both_harvests_in_the_canonical_form() {
     final FabricDeliveryScenario.When when = when();
-    final RecordingWorktrees worktrees = new RecordingWorktrees();
+    final RecordingTransientWorktrees worktrees = new RecordingTransientWorktrees();
 
     when.the_harvested_plan_is_read(
             harvested("{\"b\":1,\"a\":{\"d\":4,\"c\":3}}", "{\"datasets\":[\"tank/rke2lab\"]}"),
@@ -89,8 +85,8 @@ class FabricDeliveryTest {
   }
 
   @Test
-  void the_delivery_lands_on_its_own_branch_under_the_amended_plot() {
-    final RecordingWorktrees worktrees = new RecordingWorktrees();
+  void the_delivery_lands_on_its_own_branch() {
+    final RecordingTransientWorktrees worktrees = new RecordingTransientWorktrees();
 
     when()
         .the_harvested_plan_is_read(harvested("{}", "{}"), Optional.of(PARCEL))
@@ -98,12 +94,11 @@ class FabricDeliveryTest {
             Optional.of(worktrees), Optional.empty(), Optional.empty(), Optional.empty());
 
     assertEquals("fabric/plan", worktrees.made.branch());
-    assertEquals(tmp.resolve("fabric/plan"), worktrees.made.path());
   }
 
   @Test
   void the_commit_is_signed_and_attributed_when_the_keystore_is_reachable() {
-    final RecordingWorktrees worktrees = new RecordingWorktrees();
+    final RecordingTransientWorktrees worktrees = new RecordingTransientWorktrees();
 
     when()
         .the_harvested_plan_is_read(harvested("{}", "{}"), Optional.of(PARCEL))
@@ -125,16 +120,16 @@ class FabricDeliveryTest {
   /** No token — a survey, a preview, a frontier that filtered the mint out — means no push. */
   @Test
   void without_a_token_the_delivery_is_committed_and_never_pushed() {
-    final RecordingWorktrees worktrees = new RecordingWorktrees();
+    final RecordingTransientWorktrees worktrees = new RecordingTransientWorktrees();
 
     when()
         .the_harvested_plan_is_read(harvested("{}", "{}"), Optional.of(PARCEL))
         .the_delivery_is_written(
             Optional.of(worktrees), Optional.empty(), Optional.empty(), Optional.empty());
 
-    assertTrue(worktrees.made.calls.contains("stageAll"));
     assertTrue(worktrees.made.calls.stream().anyMatch(call -> call.startsWith("commit:")));
     assertFalse(worktrees.made.calls.contains("push"), "no token, no push");
+    assertTrue(worktrees.made.calls.contains("publish-local"), "only the local branch moves");
     assertEquals(
         Optional.empty(),
         worktrees.made.signedWith,
@@ -144,7 +139,7 @@ class FabricDeliveryTest {
   /** A revealed token pushes the SIGNED delivery, with exactly that token, after the commit. */
   @Test
   void with_a_token_the_signed_delivery_is_pushed_with_it() {
-    final RecordingWorktrees worktrees = new RecordingWorktrees();
+    final RecordingTransientWorktrees worktrees = new RecordingTransientWorktrees();
 
     when()
         .the_harvested_plan_is_read(harvested("{}", "{}"), Optional.of(PARCEL))
@@ -174,7 +169,7 @@ class FabricDeliveryTest {
    */
   @Test
   void a_token_without_a_keystore_is_refused_before_any_commit() {
-    final RecordingWorktrees worktrees = new RecordingWorktrees();
+    final RecordingTransientWorktrees worktrees = new RecordingTransientWorktrees();
     final FabricDeliveryScenario.When when = when();
     when.the_harvested_plan_is_read(harvested("{}", "{}"), Optional.of(PARCEL));
 

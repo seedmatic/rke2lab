@@ -2,10 +2,10 @@ package io.seedmatic.rke2lab.worktree.internal;
 
 import io.seedmatic.rke2lab.worktree.BuildRevision;
 import io.seedmatic.rke2lab.worktree.CommitSpec;
+import io.seedmatic.rke2lab.worktree.DurableWorktree;
 import io.seedmatic.rke2lab.worktree.Provenance;
 import io.seedmatic.rke2lab.worktree.TreeEdit;
 import io.seedmatic.rke2lab.worktree.WorkingState;
-import io.seedmatic.rke2lab.worktree.Worktree;
 import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -18,16 +18,16 @@ import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
 
 /**
- * The {@link Worktree} the seed IS — a thin {@code @Component} that self-locates its root once at
- * activation (walking up from the process directory to the enclosing {@code .git}) and holds a
- * {@link JgitCheckout} of it, to which every git fact and write verb delegates. The self-location
- * is the only thing this component adds over a plain checkout: the seed process runs INSIDE its
- * worktree, so its root is discovered, not supplied. jgit stays sealed inside the checkout
- * instance; the exported {@link Worktree} interface carries only JDK types and the contract's
- * records.
+ * The {@link DurableWorktree} the seed IS — a thin {@code @Component} that self-locates its root
+ * once at activation (walking up from the process directory to the enclosing {@code .git}) and
+ * holds a {@link JgitCheckout} of it, to which every git fact and write verb delegates. The
+ * self-location is the only thing this component adds over a plain checkout: the seed process runs
+ * INSIDE its worktree, so its root is discovered, not supplied. jgit stays sealed inside the
+ * checkout instance; the exported {@link DurableWorktree} interface carries only JDK types and the
+ * contract's records.
  */
-@Component(service = Worktree.class)
-public final class JgitWorktree implements Worktree {
+@Component(service = DurableWorktree.class)
+public final class JgitWorktree implements DurableWorktree {
 
   private final JgitCheckout checkout;
 

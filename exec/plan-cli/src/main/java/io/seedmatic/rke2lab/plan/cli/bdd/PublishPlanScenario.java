@@ -194,12 +194,7 @@ public class PublishPlanScenario
     public When the_plan_is_delivered(
         @Hidden ScenarioModel hostScenario, @Hidden ReportModel hostTree) {
       sowAndGraft
-          .sowing(
-              "fabric",
-              gardening,
-              hostScenario,
-              hostTree,
-              Map.of(Amendment.SOIL, TextNode.valueOf(run.worktreesRoot())))
+          .sowing("fabric", gardening, hostScenario, hostTree, Map.of())
           .the_scion_is_sown_and_grafted();
       return self();
     }

@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import com.github.marschall.memoryfilesystem.MemoryFileSystemBuilder;
 import io.seedmatic.rke2lab.clusterpki.contract.SopsDecryptor;
 import io.seedmatic.rke2lab.clusterpki.contract.SopsEncryptor;
 import io.seedmatic.rke2lab.manifests.contract.BranchSecretCarrier;
@@ -17,6 +18,7 @@ import io.seedmatic.rke2lab.manifests.contract.NodeBootstrapArtifact;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileSystem;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
@@ -74,6 +76,28 @@ class RenderedSecretSealTest {
           String.valueOf(((Map<?, ?>) secret.get("metadata")).get("name")).startsWith("ENC["),
           tree.relativize(file) + " keeps its name readable for Flux");
       assertFalse(Files.readString(file).contains("dummy-"), "no clear value survives");
+    }
+  }
+
+  @Test
+  void theSealRunsOnAnInMemoryTreeAndNoSecretTouchesTheDisk() throws IOException {
+    assumeTrue(onPath("sops"), "needs sops on PATH");
+    try (FileSystem memory = MemoryFileSystemBuilder.newEmpty().build()) {
+      final Path tree = renderedTree(memory.getPath("/render"));
+      Files.copy(repositoryPolicy(), tree.resolve(POLICY));
+
+      seal(service(SopsDecryptor.class)).seal(tree, path -> Optional.empty());
+
+      final List<Path> secrets = secretFiles(tree);
+      assertEquals(2, secrets.size(), "the namespaced Secret and the cellar carrier");
+      for (Path file : secrets) {
+        assertEquals(memory, file.getFileSystem(), "the tree never left memory");
+        assertTrue(
+            values(secretOf(file)).stream()
+                .allMatch(value -> String.valueOf(value).startsWith("ENC[")),
+            tree.relativize(file) + " has every data/stringData value encrypted");
+        assertFalse(Files.readString(file).contains("dummy-"), "no clear value survives");
+      }
     }
   }
 

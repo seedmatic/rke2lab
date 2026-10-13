@@ -25,14 +25,15 @@ import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.SeedScenario;
 import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
 import io.seedmatic.rke2lab.seed.broker.port.Cellar;
 import io.seedmatic.rke2lab.seed.broker.port.Parcel;
+import io.seedmatic.rke2lab.worktree.CommitSpec;
 import io.seedmatic.rke2lab.worktree.GitBotIdentities;
 import io.seedmatic.rke2lab.worktree.GitIdentity;
-import io.seedmatic.rke2lab.worktree.LinkedWorktree;
-import io.seedmatic.rke2lab.worktree.LinkedWorktrees;
-import java.io.IOException;
-import java.io.UncheckedIOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import io.seedmatic.rke2lab.worktree.TransientWorktree;
+import io.seedmatic.rke2lab.worktree.TransientWorktrees;
+import io.seedmatic.rke2lab.worktree.TreeEdit;
+import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -95,7 +96,7 @@ public class FabricDeliveryScenario
   // The git mechanism, owned by the worktree domain. Optional because a bare shape probe resolves
   // no services; absent at delivery time is a wiring defect, raised as such.
   @OsgiService(await = false)
-  private Optional<LinkedWorktrees> linkedWorktrees = Optional.empty();
+  private Optional<TransientWorktrees> transientWorktrees = Optional.empty();
 
   // The ndh key-store the commit's bot identity and signing key come from. ABSENT — no key-store
   // service at all — the commit is unsigned, which is honest only because such a commit is never
@@ -142,7 +143,7 @@ public class FabricDeliveryScenario
         .the_harvested_plan_is_read(harvest, parcel)
         .and()
         .the_delivery_is_written(
-            linkedWorktrees,
+            transientWorktrees,
             keystore,
             tokens.readerOrPipeline(harvest, parcel),
             tokens.writer(harvest, parcel));
@@ -161,14 +162,14 @@ public class FabricDeliveryScenario
     }
   }
 
-  /** When: read both harvests, then write them into the delivery's linked worktree. */
+  /** When: read both harvests, then commit them onto the delivery branch's head, in memory. */
   public static class When extends Stage<When> {
 
     @ExpectedScenarioState FabricRunbookInput facet;
 
     @ProvidedScenarioState FabricDelivery delivery;
 
-    @ProvidedScenarioState @MonotonicNonNull LinkedWorktree worktree;
+    @ProvidedScenarioState @MonotonicNonNull TransientWorktree head;
 
     @ProvidedScenarioState @MonotonicNonNull String deliveredSha;
 
@@ -193,32 +194,33 @@ public class FabricDeliveryScenario
     }
 
     /**
-     * Fetch the branch, write both files, commit, and push when a push token was revealed. The
-     * tokens are {@code @Hidden} arguments and never scenario state, so they reach neither the
-     * scenario report nor anything the run persists: each exists between its reveal and its use,
-     * and nowhere else.
+     * Open the branch's head, commit both files onto it, and push when a push token was revealed —
+     * else only the local branch moves. Nothing is written to disk: the two files go from the
+     * harvests into the commit as bytes. The tokens are {@code @Hidden} arguments and never
+     * scenario state, so they reach neither the scenario report nor anything the run persists: each
+     * exists between its reveal and its use, and nowhere else.
      */
     public When the_delivery_is_written(
-        @Hidden Optional<LinkedWorktrees> worktrees,
+        @Hidden Optional<TransientWorktrees> worktrees,
         @Hidden Optional<NdhKeystoreReader> keystore,
         @Hidden Optional<String> fetchToken,
         @Hidden Optional<String> pushToken) {
       this.delivery = FabricDelivery.canonical();
-      final LinkedWorktrees mechanism =
+      final TransientWorktrees heads =
           worktrees.orElseThrow(
               () -> new FabricDeliveryError(FabricDeliveryError.Reason.NO_WORKTREES));
       if (pushToken.isPresent() && keystore.isEmpty()) {
         throw new FabricDeliveryError(FabricDeliveryError.Reason.UNSIGNABLE);
       }
-      final LinkedWorktree linked =
-          mechanism.prepare(soil().resolve(delivery.branch()), delivery.branch(), fetchToken);
-      this.worktree = linked;
-      write(linked.path().resolve(delivery.netplanFile()), read(netplan, delivery.netplanFile()));
-      write(
-          linked.path().resolve(delivery.dataplanFile()), read(dataplan, delivery.dataplanFile()));
-      linked.stageAll();
-      this.deliveredSha = linked.commit(message(), identity(keystore), signingKey(keystore));
-      pushToken.ifPresent(linked::push);
+      final Map<String, byte[]> files = new LinkedHashMap<>();
+      files.put(delivery.netplanFile(), bytes(read(netplan, delivery.netplanFile())));
+      files.put(delivery.dataplanFile(), bytes(read(dataplan, delivery.dataplanFile())));
+      this.head = heads.open(delivery.branch(), fetchToken);
+      this.deliveredSha =
+          head.commit(
+              new TreeEdit.Overlay(files, List.of()),
+              new CommitSpec(message(), identity(keystore), signingKey(keystore)));
+      head.publish(pushToken);
       return self();
     }
 
@@ -252,33 +254,14 @@ public class FabricDeliveryScenario
       return keystore.map(ks -> ks.sshPrivate(NdhKeystoreCatalog.SIGNING_KEY.entryName()));
     }
 
-    private Path soil() {
-      return facet
-          .worktreesRoot()
-          .map(root -> Path.of(root).toAbsolutePath().normalize())
-          .orElseGet(this::freshTempDir);
-    }
-
-    private Path freshTempDir() {
-      try {
-        return Files.createTempDirectory("rke2lab-fabric-").toAbsolutePath().normalize();
-      } catch (IOException ex) {
-        throw new UncheckedIOException("cannot create the fabric delivery dir", ex);
-      }
-    }
-
     /** The harvest the read step holds, refused if the steps were played out of order. */
     private JsonNode read(@Nullable JsonNode harvested, String file) {
       return Objects.requireNonNull(
           harvested, "the read step must run before the delivery is written: " + file);
     }
 
-    private void write(Path file, JsonNode tree) {
-      try {
-        Files.writeString(file, codec.canonical().writeJson(tree));
-      } catch (IOException ex) {
-        throw new UncheckedIOException("cannot write the fabric delivery " + file, ex);
-      }
+    private byte[] bytes(JsonNode tree) {
+      return codec.canonical().writeJson(tree).getBytes(StandardCharsets.UTF_8);
     }
   }
 
@@ -293,36 +276,30 @@ public class FabricDeliveryScenario
   static final String UNATTRIBUTED_DOMAIN = "unsigned.invalid";
 
   /**
-   * Then: the delivery holds both files AS COMMITTED — read back from the commit's tree, not from
-   * the working directory, because the commit is what the branch publishes and what the next slice
-   * will push. The worktree is removed afterwards: it is a transient checkout, and the delivery
-   * that outlives it is the commit.
+   * Then: the delivery holds both files AS COMMITTED — read back from the head's tree, because the
+   * commit is what the branch publishes. Nothing to remove afterwards: the head was never a
+   * checkout.
    */
   public static class Then extends Stage<Then> {
 
     @ExpectedScenarioState FabricDelivery delivery;
 
-    @ExpectedScenarioState LinkedWorktree worktree;
+    @ExpectedScenarioState TransientWorktree head;
 
     @ExpectedScenarioState String deliveredSha;
 
     public Then the_delivery_carries_both_files() {
-      try {
-        for (final String file : delivery.files()) {
-          final String committed =
-              worktree
-                  .readAtHead(file)
-                  .orElseThrow(
-                      () ->
-                          new IllegalStateException(
-                              "the fabric delivery " + deliveredSha + " carries no " + file));
-          if (committed.isBlank()) {
-            throw new IllegalStateException(
-                "the fabric delivery " + deliveredSha + " carries an empty " + file);
-          }
+      for (final String file : delivery.files()) {
+        final String committed =
+            head.readAtHead(file)
+                .orElseThrow(
+                    () ->
+                        new IllegalStateException(
+                            "the fabric delivery " + deliveredSha + " carries no " + file));
+        if (committed.isBlank()) {
+          throw new IllegalStateException(
+              "the fabric delivery " + deliveredSha + " carries an empty " + file);
         }
-      } finally {
-        worktree.close();
       }
       return self();
     }

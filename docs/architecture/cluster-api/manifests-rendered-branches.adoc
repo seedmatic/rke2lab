@@ -487,18 +487,22 @@ because the render is a *pure function* of `(main, config, descriptor)` and ther
 |===
 |Host staging (today) |Rendered-branch (new)
 
-|`host.N.staging.d` rotating slot |a transient git *worktree* of `manifests/<host>-<role>` to render into
-|`host.N.drift.*` (staged vs live) |`git diff` (render worktree vs branch HEAD) before push
+|`host.N.staging.d` rotating slot |the head of `manifests/<host>-<role>`, opened in memory, and its in-memory plot to render into
+|`host.N.drift.*` (staged vs live) |`git diff` (the rendered commit vs branch HEAD) before push
 |promotion rsync → `host.live.d` |`git push` (history-preserving, atomic ref update)
 |N-slot retention (rollback) |the branch history — `git revert` to a prior rendered commit (or re-render from `main@<sha>`)
 |remote reads `host.live.d` over the automount |Flux / `seed-outcluster` read the branch — no manifests rsync
 |===
 
-The render worktree lives at **`.local.d/worktrees/manifests/<host>-<role>/`**, the path of its branch — a linked git worktree of the
-branch, *inside* gitignored `.local.d`. That nesting is deliberate and clean: the `.local.d` ignore
-makes the main worktree never look inside it (no untracked noise, no "embedded repo" gitlink), while
-`.gitignore` being per-checkout means the parent's ignore never leaks into the rendered branch's own
-tracking. Cleanup is `git worktree remove`.
+The render needs no worktree: it opens the head of `manifests/<host>-<role>` in memory
+(`TransientWorktrees`, jgit), materialises the rendered tree into its SOIL plot on an in-memory file
+system — so no rendered Secret touches the disk in the clear — and commits that plot onto the head,
+the head's `reflections/` subtree carried over and the worktree convention's local dirs (`.local.d`,
+`.scratchpad.d`) left out. Nothing is checked out, so there is nothing to clean up. Those dirs are ONE
+rule, `KeptLocalDirs.OF_A_WORKTREE` (manifests-contract), read by the committed `.gitignore`, by the
+Secret seal (which skips them at any depth, leaving what sits there in the clear) and by the tree the
+commit carries — which leaves them out at the plot's root and REFUSES one below it, so a clear file can
+never ride a nested `.local.d` to origin.
 
 Two consequences fall out:
 

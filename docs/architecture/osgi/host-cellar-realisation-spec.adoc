@@ -792,8 +792,8 @@ of rke2lab, and it is a domain because the DELIVERY is one commit carrying both 
 owner. netplan and dataplan each derive and harvest; neither knows the branch, the other's file, or
 that git is involved. `FabricDeliveryScenario` reads `NetplanIngressCoordinate.PROJECTION` and
 `DataplanCoordinate.LAYOUT` as `JsonNode` — opaque, so no foreign vocabulary enters fabric and this
-seam does not test the realm boundary — and writes them through the codec's `canonical()` profile into
-a linked worktree of `FabricDelivery.branch`.
+seam does not test the realm boundary — and commits them through the codec's `canonical()` profile
+onto the head of `FabricDelivery.branch`, in memory.
 
 * **`FabricCoordinate`** — an EMPTY enum, and here the justified case rather than the default one:
   fabric DELIVERS, it derives nothing, so it files no harvest and owns no value-coordinate. Where
@@ -805,8 +805,8 @@ a linked worktree of `FabricDelivery.branch`.
   them, nix pins the same branch as the `fabric-plan` input and reads the same two files, and the
   other repos pin it. A name spelled twice is the mismatch class that cost this project the
   `clusterApi` bug.
-* **`FabricRunbookInput`** — one `SOIL` amendment, `worktreesRoot`: the plot the linked worktree is
-  made under, which only the host knows. WHAT to deliver is deliberately NOT an input — it is the two
+* **`FabricRunbookInput`** — no amendment: the delivery commits onto its branch's head in memory, so
+  it needs no plot. WHAT to deliver is deliberately NOT an input — it is the two
   harvests. A delivery with no harvest to read is a broken run, raised as `FabricDeliveryError` with
   the link that is missing (`NO_PARCEL` / `NO_NETPLAN` / `NO_DATAPLAN` / `NO_WORKTREES` / `UNSIGNABLE`),
   never an empty result.

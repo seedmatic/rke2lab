@@ -54,6 +54,13 @@
       <artifactId>seed-broker-codec</artifactId>
       <scope>provided</scope>
     </dependency>
+    <!-- The in-memory file system the render's tree lives on: the fixture seals a tree there, which
+         also proves the bundle resolves in-container (installed through the fixture's closure). -->
+    <dependency>
+      <groupId>com.github.marschall</groupId>
+      <artifactId>memoryfilesystem</artifactId>
+      <scope>provided</scope>
+    </dependency>
     <!-- the fragment's src/main entry names the in-container runner (JUnitLauncherCore/
          InContainerJUnitRunner) directly; provided — resolved through the manifests-core host. -->
     <dependency>

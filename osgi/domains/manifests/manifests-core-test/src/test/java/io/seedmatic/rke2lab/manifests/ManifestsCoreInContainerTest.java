@@ -78,9 +78,13 @@ class ManifestsCoreInContainerTest {
         felix,
         RUNNER_FQN,
         f -> {
-          final Bundle host = f.installFixtureWithHost(CORE_FIXTURE).host();
+          final OutOfContainerFrameworkExtension.FixtureWithHost fixture =
+              f.installFixtureWithHost(CORE_FIXTURE);
+          final Bundle host = fixture.host();
           final List<Bundle> toResolve = new ArrayList<>(List.of(host));
-          toResolve.addAll(f.installImportClosureOf(host));
+          // The fragment is seeded too: its imports merge into the host's at resolve time, and the
+          // in-memory file system the seal test renders into is one only the fixture imports.
+          toResolve.addAll(f.installImportClosureOf(host, fixture.fragment()));
           // The sops edge exports nothing — it only publishes the sops services — so no import
           // closure reaches it; RenderedSecretSealTest seals with it, so it is installed by its
           // capability. Its own imports (cluster-pki-contract, slf4j) are already in the host's

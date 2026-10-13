@@ -153,6 +153,23 @@
       <artifactId>ssh-to-age-edge</artifactId>
       <scope>test</scope>
     </dependency>
+    <!-- RenderDeliveryTest drives the render's delivery end to end OUT of the container, on real parts:
+         the jgit heads (worktree-core), the real sops (sops-edge) and jgit to read the local bare. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>worktree-core</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>sops-edge</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.eclipse.jgit</groupId>
+      <artifactId>org.eclipse.jgit</artifactId>
+      <scope>test</scope>
+    </dependency>
     <dependency>
       <groupId>com.fasterxml.jackson.core</groupId>
       <artifactId>jackson-annotations</artifactId>

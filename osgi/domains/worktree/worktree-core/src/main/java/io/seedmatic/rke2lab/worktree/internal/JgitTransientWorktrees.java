@@ -1,8 +1,8 @@
 package io.seedmatic.rke2lab.worktree.internal;
 
+import io.seedmatic.rke2lab.worktree.DurableWorktree;
 import io.seedmatic.rke2lab.worktree.TransientWorktree;
 import io.seedmatic.rke2lab.worktree.TransientWorktrees;
-import io.seedmatic.rke2lab.worktree.Worktree;
 import java.time.Duration;
 import java.util.Optional;
 import org.osgi.service.component.annotations.Activate;
@@ -20,10 +20,10 @@ public final class JgitTransientWorktrees implements TransientWorktrees {
   // An IDLE bound, as the push's: a stalled fetch fails rather than blocks the seed.
   private static final Duration FETCH_TIMEOUT = Duration.ofSeconds(30);
 
-  private final Worktree seat;
+  private final DurableWorktree seat;
 
   @Activate
-  public JgitTransientWorktrees(@Reference Worktree seat) {
+  public JgitTransientWorktrees(@Reference DurableWorktree seat) {
     this.seat = seat;
   }
 

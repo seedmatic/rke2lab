@@ -59,6 +59,9 @@ class BuildNodeBaseImageScriptTest {
     assertTrue(Files.isRegularFile(artifacts.resolve("rootfs.squashfs")));
     assertEquals("digest-1", Files.readString(artifacts.resolve(".image.checksum.sha256")).strip());
     assertEquals("1.33.1+rke2r1", Files.readString(artifacts.resolve("rke2.version")).strip());
+    assertTrue(
+        first.stream().noneMatch(l -> l.contains("--impure")),
+        "the evaluation is pure: " + String.join("\n", first));
 
     assertEquals(0, run(artifacts, nix, "digest-1"));
     assertEquals(first, Files.readAllLines(log), "an unchanged digest does not call nix");
@@ -99,7 +102,7 @@ class BuildNodeBaseImageScriptTest {
             "\n",
             "#!/bin/sh",
             "verb=\"$1\"; for last; do :; done",
-            "printf '%s %s\\n' \"$verb\" \"$last\" >> '" + log + "'",
+            "printf '%s\\n' \"$*\" >> '" + log + "'",
             "case \"$verb:$last\" in",
             "  build:*.metadata) mkdir -p '"
                 + out

@@ -130,18 +130,15 @@ public final class PlanCli {
 
   /**
    * Derive the plan and deliver it: {@link PublishPlanScenario} sows and grafts ghapp, netplan,
-   * dataplan and fabric, and the fabric scion pushes {@code fabric/plan}. Run from the repository's
-   * root: the delivery's linked worktree is made under its {@code .local.d/worktrees}.
+   * dataplan and fabric, and the fabric scion commits onto {@code fabric/plan}'s head in memory and
+   * pushes it.
    */
   private void publish() {
     final Path soil = freshDir("rke2lab-plan-publish-");
     try {
       play(
           PublishPlanScenario.class,
-          PublishPlanScenario.SEED.into(
-              new PublishPlanRun(
-                  soil.toString(),
-                  Path.of(".local.d", "worktrees").toAbsolutePath().normalize().toString())),
+          PublishPlanScenario.SEED.into(new PublishPlanRun(soil.toString())),
           "the plan publish");
     } finally {
       deleteRecursively(soil);
