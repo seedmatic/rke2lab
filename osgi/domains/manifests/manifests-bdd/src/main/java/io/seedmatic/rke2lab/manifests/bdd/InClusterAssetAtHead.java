@@ -10,7 +10,7 @@ import java.util.Optional;
 /**
  * The in-cluster cellar asset a render reads back from its branch head (§ in-cluster-cellar-asset)
  * — THREE-valued, like the recorded facet: empty only when HEAD carries no asset; the sealed
- * envelopes when it carries one; a REFUSAL when it carries one this render cannot read.
+ * envelopes when it carries one; a REFUSAL when it carries one this render cannot open or read.
  *
  * <p>⚠️ It used to answer empty for an unreadable carrier and for one without envelopes too. A
  * secret-blind in-cluster render then rehydrated nothing, its IN_CLUSTER reveals found nothing, the
@@ -32,7 +32,25 @@ final class InClusterAssetAtHead {
   /** The sealed envelopes HEAD's carrier holds, or empty when HEAD carries none. */
   Optional<String> envelopes(RenderSoil soil) {
     final String file = BranchSecretCarrier.IN_CLUSTER_CELLAR.file();
-    return soil.readAtHead(file).map(carrier -> envelopesOf(file, decryptor.decryptYaml(carrier)));
+    return soil.readAtHead(file).map(carrier -> envelopesOf(file, opened(file, carrier)));
+  }
+
+  /**
+   * The carrier opened with the key sops finds in this enclosure — or a refusal when it does not
+   * open (sealed to recipients this enclosure no longer holds). Only the exception's class is kept:
+   * the sops edge's message embeds sops' stderr, which can quote what it failed to read.
+   */
+  private String opened(String file, String carrier) {
+    try {
+      return decryptor.decryptYaml(carrier);
+    } catch (RuntimeException undecryptable) {
+      throw new IllegalStateException(
+          "HEAD carries "
+              + file
+              + " but it does not open here ("
+              + undecryptable.getClass().getName()
+              + "); refusing to render as though the branch carried no in-cluster asset");
+    }
   }
 
   /**

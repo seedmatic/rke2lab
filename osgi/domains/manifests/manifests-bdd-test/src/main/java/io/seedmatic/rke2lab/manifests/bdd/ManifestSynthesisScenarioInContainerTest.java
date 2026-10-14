@@ -126,7 +126,7 @@ public class ManifestSynthesisScenarioInContainerTest {
     // The control: the same provisioning render, with no carrier at HEAD (a first grow), reaches
     // the delivery — so the refusal below is what stops the commit, not a harness that never could.
     final SpyHead head = new SpyHead(Map.of());
-    final ScenarioOutcome outcome = playRenderOnto(head);
+    final ScenarioOutcome outcome = playRenderOnto(head, openingDecryptor());
 
     assertEquals(
         ExecutionStatus.SUCCESS,
@@ -143,7 +143,7 @@ public class ManifestSynthesisScenarioInContainerTest {
     // The render must fail, with the branch head where it was and nothing pushed.
     final SpyHead head = new SpyHead(Map.of(CARRIER, CARRIER_WITHOUT_ENVELOPES));
     final String before = head.head();
-    final ScenarioOutcome outcome = playRenderOnto(head);
+    final ScenarioOutcome outcome = playRenderOnto(head, openingDecryptor());
 
     assertEquals(
         ExecutionStatus.FAILED,
@@ -153,6 +153,29 @@ public class ManifestSynthesisScenarioInContainerTest {
         outcome.runbook().getScenarios().get(0).getScenarioCases().get(0).getErrorMessage();
     assertTrue(reason.contains(CARRIER), "the refusal names the carrier: " + reason);
     assertFalse(reason.contains(MARKER), "the refusal carries nothing of the carrier");
+    assertEquals(0, head.commits, "nothing was committed onto the render branch");
+    assertEquals(before, head.head(), "the render branch head is unchanged");
+    assertEquals(0, head.publishes, "nothing was pushed");
+  }
+
+  @Test
+  void an_in_cluster_asset_that_does_not_open_fails_the_render_without_quoting_sops()
+      throws Exception {
+    // The carrier T4 meets: sealed to recipients this enclosure no longer holds, so its decrypt
+    // throws — with sops' stderr in the message. Same verdict, and none of that stderr in the
+    // reason the runbook, the graft and the logs carry.
+    final SpyHead head = new SpyHead(Map.of(CARRIER, "sops: sealed\n"));
+    final String before = head.head();
+    final ScenarioOutcome outcome = playRenderOnto(head, undecryptableCarrier());
+
+    assertEquals(
+        ExecutionStatus.FAILED,
+        outcome.runbook().getScenarios().get(0).getExecutionStatus(),
+        "an in-cluster asset that does not open refuses the render");
+    final String reason =
+        outcome.runbook().getScenarios().get(0).getScenarioCases().get(0).getErrorMessage();
+    assertTrue(reason.contains(CARRIER), "the refusal names the carrier: " + reason);
+    assertFalse(reason.contains(MARKER), "the refusal carries nothing of sops' stderr: " + reason);
     assertEquals(0, head.commits, "nothing was committed onto the render branch");
     assertEquals(before, head.head(), "the render branch head is unchanged");
     assertEquals(0, head.publishes, "nothing was pushed");
@@ -180,12 +203,13 @@ public class ManifestSynthesisScenarioInContainerTest {
   }
 
   /**
-   * Play a PROVISIONING render of {@code test-mgmt} onto {@code head}: the delivery seam and the
-   * source seat it is rendered from, a parcel over an empty durable cellar, the sops edges and a
-   * key-store that only names the signing identity — the spy head never signs, so nothing real is
-   * reached.
+   * Play a PROVISIONING render of {@code test-mgmt} onto {@code head}, opening its carrier with
+   * {@code decryptor}: the delivery seam and the source seat it is rendered from, a parcel over an
+   * empty durable cellar, the sops edges and a key-store that only names the signing identity — the
+   * spy head never signs, so nothing real is reached.
    */
-  private static ScenarioOutcome playRenderOnto(SpyHead head) throws Exception {
+  private static ScenarioOutcome playRenderOnto(SpyHead head, SopsDecryptor decryptor)
+      throws Exception {
     final BundleContext context =
         FrameworkUtil.getBundle(ManifestsBddTests.class).getBundleContext();
     final List<ServiceRegistration<?>> registrations = new ArrayList<>();
@@ -199,8 +223,7 @@ public class ManifestSynthesisScenarioInContainerTest {
     registrations.add(
         context.registerService(Parcel.class, new Parcel("rke2lab", "test"), new Hashtable<>()));
     registrations.add(context.registerService(Cellar.class, emptyCellar(), new Hashtable<>()));
-    registrations.add(
-        context.registerService(SopsDecryptor.class, openingDecryptor(), new Hashtable<>()));
+    registrations.add(context.registerService(SopsDecryptor.class, decryptor, new Hashtable<>()));
     registrations.add(
         context.registerService(SopsEncryptor.class, markingEncryptor(), new Hashtable<>()));
     registrations.add(
@@ -446,6 +469,25 @@ public class ManifestSynthesisScenarioInContainerTest {
       @Override
       public String decryptYaml(String sopsYaml) {
         return sopsYaml;
+      }
+    };
+  }
+
+  /**
+   * Fails the way the sops edge does for a carrier sealed to recipients this enclosure no longer
+   * holds: its message quotes sops' stderr, here the marker.
+   */
+  private static SopsDecryptor undecryptableCarrier() {
+    return new SopsDecryptor() {
+      @Override
+      public String decryptYaml(String sopsYaml, String ageIdentity) {
+        return decryptYaml(sopsYaml);
+      }
+
+      @Override
+      public String decryptYaml(String sopsYaml) {
+        throw new IllegalStateException(
+            "sops --decrypt exited with code 128: no key could decrypt the data key; " + MARKER);
       }
     };
   }

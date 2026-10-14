@@ -41,23 +41,28 @@ class InClusterAssetAtHeadTest {
 
   @Test
   void a_carrier_without_envelopes_refuses_the_render_by_name() {
-    assertRefused(carrier("  other: " + MARKER + "\n"));
+    assertRefused(asset(), carrier("  other: " + MARKER + "\n"));
   }
 
   @Test
   void a_carrier_with_blank_envelopes_refuses_the_render() {
-    assertRefused(carrier("  envelopes: ''\n  other: " + MARKER + "\n"));
+    assertRefused(asset(), carrier("  envelopes: ''\n  other: " + MARKER + "\n"));
   }
 
   @Test
   void an_unreadable_carrier_refuses_the_render_without_quoting_it() {
-    assertRefused("stringData: [ " + MARKER + "\n  : : {");
+    assertRefused(asset(), "stringData: [ " + MARKER + "\n  : : {");
   }
 
-  private static void assertRefused(String opened) {
+  @Test
+  void a_carrier_that_does_not_open_refuses_the_render_without_quoting_sops() {
+    assertRefused(new InClusterAssetAtHead(new UndecryptableCarrier()), "sops: sealed\n");
+  }
+
+  private static void assertRefused(InClusterAssetAtHead asset, String atHead) {
     final IllegalStateException refused =
         assertThrows(
-            IllegalStateException.class, () -> asset().envelopes(soil(Map.of(FILE, opened))));
+            IllegalStateException.class, () -> asset.envelopes(soil(Map.of(FILE, atHead))));
     assertTrue(refused.getMessage().contains(FILE), refused.getMessage());
     assertFalse(
         refused.getMessage().contains(MARKER), "the refusal carries nothing of the carrier");
@@ -83,6 +88,23 @@ class InClusterAssetAtHeadTest {
             return sopsYaml;
           }
         });
+  }
+
+  /**
+   * A decryptor that fails the way the sops edge does for a carrier sealed to recipients this
+   * enclosure no longer holds — its message quoting sops' stderr, here the marker.
+   */
+  private static final class UndecryptableCarrier implements SopsDecryptor {
+    @Override
+    public String decryptYaml(String sopsYaml, String ageIdentity) {
+      return decryptYaml(sopsYaml);
+    }
+
+    @Override
+    public String decryptYaml(String sopsYaml) {
+      throw new IllegalStateException(
+          "sops --decrypt exited with code 128: no key could decrypt the data key; " + MARKER);
+    }
   }
 
   /** A head whose committed files are {@code atHead}; nothing else of it is used. */
