@@ -44,6 +44,7 @@
       "outputs_to_install": [
         "man",
         "out",
+        "out",
         "out"
       ],
       "outputs": {
@@ -80,6 +81,7 @@
       "outputs_to_install": [
         "out",
         "out",
+        "out",
         "out"
       ],
       "outputs": {
@@ -93,7 +95,7 @@
     },
     {
       "install_id": "tailscale",
-      "locked-url": "path:/private/tmp/.nxmatic/tmp.uqK60uFr8G/flox-catalog?lastModified=1791923567&narHash=sha256-nU0uJwxiIwgPsVD5y7xbUsc5UoDOj25ZxsODnBu53aE%3D",
+      "locked-url": "path:/private/tmp/.nxmatic/tmp.T4S91I1VhX/flox-catalog?lastModified=1791982156&narHash=sha256-g4Yz8l1yWBcbrLNGYK2iT977uJ1bWm3wrg2Jpm7dOb8%3D",
       "flake-description": "Flox runtime env catalog: per-workload packages (kdns, tailscale) the flox-nri-plugin injects. The plugin itself now lives in github:seedmatic/flox-nri-plugin (consumed as the flox-runtime input of the rke2lab flake).",
       "locked-flake-attr-path": "packages.aarch64-linux.tailscale",
       "derivation": "/nix/store/5zr4xksmi9m32qrrjlghrixy5xsnrr36-tailscale.drv",
