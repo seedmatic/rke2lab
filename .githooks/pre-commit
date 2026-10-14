@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+
+# Refuse to commit secret material in the clear.
+#
+# Checks the STAGED BLOB, never the worktree. In a repository whose .gitattributes
+# runs the sops clean filter, the worktree copy is legitimately plaintext and only
+# the blob is encrypted — so a worktree check would fire on every commit while
+# missing the one case that matters: a blob that escaped the filter.
+#
+# The pattern is written with its literal broken (PRIVATE[ ]KEY) so this file does
+# not match itself. A scanner that carries its own signatures flags itself and every
+# document that mentions them.
+#
+# That case is not hypothetical. Eight SSH private keys sat in the clear in a
+# public repository from 2026-08-27 to 2026-10-04, in a file carrying a VALID sops
+# envelope with an empty payload, because a Kubernetes creation_rule matched it
+# first and its encrypted_regex matched none of its fields. Neither the filter nor
+# an eval-time assertion could see it: one saw an envelope, the other asked whether
+# the file "looks decrypted". The question has to be whether secret material is
+# still readable.
+secret_material_guard() {
+  local found=0 f blob
+  while IFS= read -r -d '' f; do
+    blob="$(git ls-files -s -- "$f" | awk '{print $2}')"
+    [[ -n "$blob" ]] || continue
+    # A header alone is a MENTION — schemas, specs and docs legitimately name these
+    # blocks. Real material has a header AND a body, so require a long base64 line
+    # within two lines of the header. Without that distinction the guard fires on
+    # its own documentation and gets switched off within a week.
+    if git cat-file blob "$blob" 2>/dev/null | awk '
+        /BEGIN [A-Z]*[ ]?PRIVATE[ ]KEY/ { hdr = NR }
+        hdr && NR > hdr && NR <= hdr + 2 && /^[A-Za-z0-9+\/=]{40,}$/ { found = 1; exit }
+        /AGE-SECRET[-]KEY-1[A-Z0-9]{50,}/ { found = 1; exit }
+        END { exit(found ? 0 : 1) }
+      '; then
+      echo "  ⛔ $f — staged blob contains private key material in the clear" >&2
+      found=1
+    fi
+  done < <(git diff --cached --name-only --diff-filter=ACMRT -z)
+
+  if ((found)); then
+    cat >&2 <<'EOF'
+
+Refusing the commit. One of the staged blobs carries a private key or an age
+secret in the clear.
+
+If the file is meant to be sops-encrypted, the encryption did not happen. Check
+which creation_rule .sops.yaml applied to it — a rule whose encrypted_regex
+matches none of the file's fields still produces a complete, valid envelope around
+an unencrypted payload.
+
+Verify with the same question this guard asks, which is about content and not
+about the envelope:
+
+  git show :<path> | grep -c 'BEGIN OPENSSH'
+
+EOF
+    return 1
+  fi
+  return 0
+}
+
+# Refuse a bearer token in the clear inside a sops-managed file.
+#
+# The private-key guard above reads key MARKERS; a bearer token has none. A FloxHub
+# JWT sat in the clear in .secrets from 2026-09-09 to 2026-10-11: its leaf carried no
+# `# sops:encrypted` comment, so encrypted_comment_regex skipped it, and the envelope
+# around it was valid. So here the question is the shape of what is left once every
+# ENC[…] value is removed: a JWT (three base64url segments, the first two starting
+# with a JSON object) or a known token prefix.
+#
+# Scoped to sops-managed files — those the sops filter cleans, or whose blob holds an
+# ENC[ value — because those are the files that claim to hold secrets. Elsewhere a
+# token prefix is a mention, and docs mention them. A repository with no .sops.yaml
+# has no place for a secret at all, so there EVERY file is in scope: a vendored-env
+# repository such as fleet reaches its consumers by `git subtree pull`, a merge no
+# pre-commit sees.
+# The offending LINE NUMBERS are printed, never the line: the value is the secret.
+token_shape_guard() {
+  local found=0 f blob filter lines all=0
+  git cat-file -e :.sops.yaml 2>/dev/null || all=1
+  while IFS= read -r -d '' f; do
+    blob="$(git ls-files -s -- "$f" | awk '{print $2}')"
+    [[ -n "$blob" ]] || continue
+    filter="$(git check-attr filter -- "$f" | sed 's/.*: filter: //')"
+    # Not `cat-file | grep -q`: under pipefail, grep -q exiting early SIGPIPEs cat-file,
+    # and the negated pipeline would then skip the very file that matched.
+    if ((!all)) && [[ "$filter" != sops* ]] && ! grep -q 'ENC\[' < <(git cat-file blob "$blob"); then
+      continue
+    fi
+    lines="$(git cat-file blob "$blob" 2>/dev/null |
+      sed 's/ENC\[[^]]*\]//g' |
+      grep -nE 'eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+|(tskey-|gh[opsu]_|github_pat_|dckr_pat_|glpat-)[A-Za-z0-9_-]{16,}' |
+      cut -d: -f1 | paste -sd, - || true)"
+    if [[ -n "$lines" ]]; then
+      echo "  ⛔ $f — staged blob holds a token in the clear outside ENC[…], line(s) $lines" >&2
+      found=1
+    fi
+  done < <(git diff --cached --name-only --diff-filter=ACMRT -z)
+
+  if ((found)); then
+    cat >&2 <<'EOF'
+
+Refusing the commit. A staged file carries a bearer token (a JWT or a
+tskey-/gh*_/github_pat_/dckr_pat_/glpat- token) in the clear. In a repository
+without .sops.yaml no file may hold one: move it out of the repository.
+
+In a sops-managed file: with encrypted_comment_regex, sops encrypts only the
+leaves whose comment says so, so a leaf without its `# sops:encrypted` marker
+stays plaintext inside a valid envelope. Add the marker and re-encrypt — or, if
+the token is no longer used, remove the leaf with `sops unset`.
+
+EOF
+    return 1
+  fi
+  return 0
+}
+
+status=0
+secret_material_guard || status=1
+token_shape_guard || status=1
+exit "$status"
