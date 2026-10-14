@@ -116,42 +116,31 @@ public final class TektonPipelinesManifestsUnit extends AbstractManifestsUnit {
                     100,
                     "schedule",
                     "0 8 * * *"),
-                // Extend the git_auth installation token PaC mints so it can read the one PRIVATE
-                // flake input the render pulls: seedmatic/claude-hub (transitively via ndh). By
-                // default secret-github-app-token-scoped=true scopes the token to the payload repo
-                // (rke2lab) only → nix 404s on the private claude-hub; scope-extra-repos widens it
-                // to
-                // rke2lab + claude-hub (least-privilege vs token-scoped=false = the whole
-                // installation). The render ALSO fetches flox-controller + flox-nri-plugin (the
-                // packages attrset re-exports them) — but those repos are PUBLIC, so they need NO
-                // scope; a valid token fetches them. (A 401 "Bad credentials" on a PUBLIC repo
-                // means
-                // an EMPTY token: nix sent `access-tokens = github.com=` and github rejects the
-                // malformed header even anonymously — the fix is a real token, not the scope.) The
-                // operator writes these settings into the operator-managed
-                // pipelines-as-code ConfigMap (a direct edit would be reverted). This is the
-                // KUBERNETES Tekton operator (not OpenShift): its validating webhook REQUIRES PaC
-                // settings under platforms.kubernetes and REJECTS platforms.openshift — despite the
-                // operand being named "openshift-pipeline-as-code".
+                // The git_auth installation token PaC mints stays scoped to the payload repo
+                // (rke2lab), the default secret-github-app-token-scoped=true: every seedmatic flake
+                // input the render pulls is PUBLIC (flox-controller, flox-nri-plugin, ndh,
+                // nix-flake-commons, nnh, rke2lab), so none needs an extra scope. The token itself
+                // is still needed: a 401 "Bad credentials" on a PUBLIC repo means an EMPTY token —
+                // nix sent `access-tokens = github.com=` and github rejects the malformed header
+                // even anonymously — and an authenticated fetch is not held to the anonymous rate
+                // limit. PaC settings, when there are any, go into the operator-managed
+                // pipelines-as-code ConfigMap through this block (a direct edit would be reverted).
+                // This is the KUBERNETES Tekton operator (not OpenShift): its validating webhook
+                // REQUIRES PaC settings under platforms.kubernetes and REJECTS platforms.openshift
+                // —
+                // despite the operand being named "openshift-pipeline-as-code".
                 "platforms",
                 Map.of(
                     "kubernetes",
                     Map.of(
                         "pipelinesAsCode",
                         // enable MUST be set: the operator's TektonConfig.SetDefaults only defaults
-                        // Enable=true when the WHOLE pipelinesAsCode block is nil. Setting
-                        // `settings`
-                        // makes the block non-nil while Enable stays nil, and SetDefaults then
-                        // dereferences `*PipelinesAsCode.Enable` (tektonconfig_defaults.go:105) →
-                        // nil
-                        // pointer panic in the defaulting webhook → every TektonConfig apply is
-                        // rejected (EOF), wedging the whole Tekton install.
-                        Map.of(
-                            "enable",
-                            true,
-                            "settings",
-                            Map.of(
-                                "secret-github-app-scope-extra-repos",
-                                "seedmatic/claude-hub")))))));
+                        // Enable=true when the WHOLE pipelinesAsCode block is nil. A block carrying
+                        // any other key makes it non-nil while Enable stays nil, and SetDefaults
+                        // then dereferences `*PipelinesAsCode.Enable`
+                        // (tektonconfig_defaults.go:105)
+                        // → nil pointer panic in the defaulting webhook → every TektonConfig apply
+                        // is rejected (EOF), wedging the whole Tekton install.
+                        Map.of("enable", true))))));
   }
 }
