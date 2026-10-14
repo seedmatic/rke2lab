@@ -1,16 +1,11 @@
 package io.seedmatic.rke2lab.controlplane.config;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
-import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.pulumi.Config;
-import java.io.IOException;
-import java.io.UncheckedIOException;
+import io.seedmatic.rke2lab.host.runtime.SopsAtRest;
+import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -46,17 +41,13 @@ public final class ConfigLoader {
   }
 
   /**
-   * The record-mapping mapper — the {@code json → record} half of the deterministic bind (its
-   * inverse is {@link Facet#facetJson()}). {@link Jdk8Module} decodes {@code Optional}; unknown
-   * keys are tolerated (they land in a record's {@code @JsonAnySetter} remainder, the blind part of
-   * a facet). Empty-{@code Optional} omission on the way back out is a per-record
-   * {@code @JsonInclude}.
+   * The codec both halves of the deterministic bind go through: {@code reading()} maps json onto a
+   * record ({@code Optional} decoded, unknown keys tolerated — they land in a record's {@code
+   * JsonAnySetter} remainder, the blind part of a facet), and {@code wire()} writes the facet back
+   * out exactly as given, nothing reordered or dropped. Empty-{@code Optional} omission on the way
+   * out is a per-record {@code @JsonInclude}.
    */
-  static final ObjectMapper JSON =
-      JsonMapper.builder()
-          .addModule(new Jdk8Module())
-          .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
-          .build();
+  private static final SeedCodec CODEC = new SeedCodec();
 
   private final SectionReader sectionReader;
   private final NestedDocument secrets;
@@ -72,13 +63,14 @@ public final class ConfigLoader {
   }
 
   /**
-   * Live over TWO documents: the Pulumi stack config AND the smudged {@code .secrets} file. The
-   * config is read plainly; the {@code .secrets} document is held for {@link #bind(Class, String)}
-   * to deep-merge on demand, directed by a bound record's {@link SecretJoin}. A missing/unreadable
-   * {@code .secrets} yields an empty secret side (a survey without secrets falls to defaults).
+   * Live over TWO documents: the Pulumi stack config AND the {@code .secrets} file, encrypted at
+   * rest and opened in memory by {@code sops}. The config is read plainly; the {@code .secrets}
+   * document is held for {@link #bind(Class, String)} to deep-merge on demand, directed by a bound
+   * record's {@link SecretJoin}. A missing {@code .secrets} yields an empty secret side (a survey
+   * without secrets falls to defaults).
    */
-  public static ConfigLoader of(Config config, Path secretsFile) {
-    return new ConfigLoader(new PulumiSections(config), NestedDocument.ofYaml(secretsFile));
+  public static ConfigLoader of(Config config, Path secretsFile, SopsAtRest sops) {
+    return new ConfigLoader(new PulumiSections(config), NestedDocument.ofYaml(secretsFile, sops));
   }
 
   /** Offline/test: a root map keyed by top-level section; dotted names walk into sub-maps. */
@@ -110,25 +102,21 @@ public final class ConfigLoader {
         sectionReader
             .read(section)
             .map(node -> (ObjectNode) node.deepCopy())
-            .orElseGet(JSON::createObjectNode);
+            .orElseGet(JsonNodeFactory.instance::objectNode);
     final SecretJoin join = type.getAnnotation(SecretJoin.class);
     if (join != null) {
       secrets.read(join.from()).ifPresent(secret -> deepMerge(merged, secret));
     }
-    return JSON.convertValue(merged, type);
+    return CODEC.reading().convert(merged, type);
   }
 
   /**
    * The {@code record → json} half of the bind — the inverse of {@link #bind(Class, String)}, used
-   * by a {@link Facet} to re-serialise itself into the payload it contributes. Shares the one
-   * mapper so the round-trip is symmetric.
+   * by a {@link Facet} to re-serialise itself into the payload it contributes. Through the same
+   * codec, so the round-trip is symmetric.
    */
   static String writeJson(Object value) {
-    try {
-      return JSON.writeValueAsString(value);
-    } catch (JsonProcessingException ex) {
-      throw new IllegalStateException("failed to serialise a config facet: " + value, ex);
-    }
+    return CODEC.wire().writeJson(value);
   }
 
   /** Deep-merge {@code overlay} into {@code base}; overlay leaves win (sops is the authority). */
@@ -297,40 +285,34 @@ public final class ConfigLoader {
   /**
    * A nested {@link JsonNode} document (parsed YAML or an in-memory config root), read by dotted
    * section path — the walk that resolves {@code "manifests.publish"} to its sub-object, shared by
-   * every source. Owns the one mapper that turns a {@code .secrets} file or a raw config value into
-   * a tree; every other source delegates its navigation here.
+   * every source. The one place a {@code .secrets} file or a raw config value becomes a tree, read
+   * through the codec's {@code reading()}; every other source delegates its navigation here.
    */
   private record NestedDocument(JsonNode root) implements SectionReader {
 
-    private static final YAMLMapper MAPPER = new YAMLMapper();
-
-    /** Parse a smudged {@code .secrets}-style YAML file, or an empty document when unreadable. */
-    static NestedDocument ofYaml(Path file) {
+    /** Open an encrypted {@code .secrets}-style YAML file, or an empty document when absent. */
+    static NestedDocument ofYaml(Path file, SopsAtRest sops) {
       if (!Files.isReadable(file)) {
-        return new NestedDocument(MAPPER.createObjectNode());
+        return new NestedDocument(JsonNodeFactory.instance.objectNode());
       }
-      try {
-        final JsonNode root = MAPPER.readTree(file.toFile());
-        return new NestedDocument(root == null ? MAPPER.createObjectNode() : root);
-      } catch (IOException ex) {
-        throw new UncheckedIOException("failed to read the secrets file at " + file, ex);
-      }
+      final JsonNode root = CODEC.reading().readYaml(sops.open(file));
+      return new NestedDocument(root == null ? JsonNodeFactory.instance.objectNode() : root);
     }
 
     /** Wrap an already-parsed section→submap root (the offline fixtures). */
     static NestedDocument ofRoot(Map<String, Object> root) {
-      return new NestedDocument(MAPPER.valueToTree(root));
+      return new NestedDocument(CODEC.reading().toTree(root));
     }
 
     /** An empty document — the secret side of a loader built with no {@code .secrets}. */
     static NestedDocument empty() {
-      return new NestedDocument(MAPPER.createObjectNode());
+      return new NestedDocument(JsonNodeFactory.instance.objectNode());
     }
 
     /** Wrap one named section's raw content (a Pulumi {@code getObject} result) as a document. */
     static NestedDocument ofSection(String name, Object content) {
-      final ObjectNode root = MAPPER.createObjectNode();
-      root.set(name, MAPPER.valueToTree(content));
+      final ObjectNode root = JsonNodeFactory.instance.objectNode();
+      root.set(name, CODEC.reading().toTree(content));
       return new NestedDocument(root);
     }
 

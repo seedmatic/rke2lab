@@ -1,0 +1,7 @@
+# Must FAIL the schema, for ONE reason only: a slot carries a field the schema does not know.
+authorities:
+  test-ca:
+    type: ssh-ed25519
+    slots:
+      26-10-01: { public: AAAAC3NzaC1lZDI1NTE5AAAAIOneFixtureBlobOneFixtureBlobOneFixtureBlob, signs: always }
+keys: {}

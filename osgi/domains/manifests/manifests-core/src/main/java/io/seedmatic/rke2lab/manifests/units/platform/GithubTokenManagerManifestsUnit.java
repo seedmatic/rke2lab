@@ -1,12 +1,12 @@
 package io.seedmatic.rke2lab.manifests.units.platform;
 
+import io.seedmatic.rke2lab.ghapp.contract.GithubAppCredentials;
 import io.seedmatic.rke2lab.manifests.AbstractManifestsUnit;
 import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
 import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
 import io.seedmatic.rke2lab.manifests.contract.ManifestAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.ManifestLayer;
-import io.seedmatic.rke2lab.manifests.contract.profiles.GithubAppMaterial;
 import io.seedmatic.rke2lab.manifests.ingress.Component;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import io.seedmatic.rke2lab.manifests.units.cluster.ClusterRefs;
@@ -86,11 +86,11 @@ public final class GithubTokenManagerManifestsUnit extends AbstractManifestsUnit
 
   @Override
   protected void doSynthesize(final Construct scope, final ManifestsUnitContext context) {
-    final Optional<GithubAppMaterial> maybeApp = ManifestSynthesisContext.current().githubApp();
+    final Optional<GithubAppCredentials> maybeApp = ManifestSynthesisContext.current().githubApp();
     if (maybeApp.isEmpty()) {
       return;
     }
-    final GithubAppMaterial app = maybeApp.orElseThrow();
+    final GithubAppCredentials app = maybeApp.orElseThrow();
     final String namespace = ClusterRefs.RUNTIME_SYSTEM_NAMESPACE.name();
 
     createHelmChart(scope);
@@ -126,7 +126,6 @@ public final class GithubTokenManagerManifestsUnit extends AbstractManifestsUnit
                         .namespace("kube-system")
                         .annotations(
                             packageProfile.packageAnnotations(
-                                "helm.cattle.io|HelmChart|kube-system|github-token-manager",
                                 Map.of(
                                     ManifestAnnotation.MANIFEST_LAYER.key(),
                                     ManifestLayer.OPERATORS.value())))
@@ -145,7 +144,7 @@ public final class GithubTokenManagerManifestsUnit extends AbstractManifestsUnit
 
   /** The App private key Secret (branch + sops-encrypted, data key {@code private-key.pem}). */
   private ApiObject createAppKeySecret(
-      final Construct scope, final String namespace, final GithubAppMaterial app) {
+      final Construct scope, final String namespace, final GithubAppCredentials app) {
     final ApiObject secret =
         new ApiObject(
             scope,
@@ -157,9 +156,7 @@ public final class GithubTokenManagerManifestsUnit extends AbstractManifestsUnit
                     ApiObjectMetadata.builder()
                         .name(APP_KEY_SECRET)
                         .namespace(namespace)
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "|Secret|" + namespace + "|" + APP_KEY_SECRET))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
     secret.addJsonPatch(JsonPatch.add("/type", "Opaque"));
@@ -177,7 +174,7 @@ public final class GithubTokenManagerManifestsUnit extends AbstractManifestsUnit
   private ApiObject createApp(
       final Construct scope,
       final String namespace,
-      final GithubAppMaterial app,
+      final GithubAppCredentials app,
       final ApiObject key) {
     final ApiObject appCr =
         new ApiObject(
@@ -190,12 +187,10 @@ public final class GithubTokenManagerManifestsUnit extends AbstractManifestsUnit
                     ApiObjectMetadata.builder()
                         .name(APP_NAME)
                         .namespace(namespace)
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "github.as-code.io|App|" + namespace + "|" + APP_NAME))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
-    // appID / installationID are INTs in the CRD (GithubAppMaterial carries them as strings).
+    // appID / installationID are INTs in the CRD (GithubAppCredentials carries them as strings).
     appCr.addJsonPatch(
         JsonPatch.add(
             "/spec",
@@ -238,9 +233,7 @@ public final class GithubTokenManagerManifestsUnit extends AbstractManifestsUnit
                 .metadata(
                     ApiObjectMetadata.builder()
                         .name(secretName)
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "github.as-code.io|ClusterToken||" + secretName))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
     token.addJsonPatch(

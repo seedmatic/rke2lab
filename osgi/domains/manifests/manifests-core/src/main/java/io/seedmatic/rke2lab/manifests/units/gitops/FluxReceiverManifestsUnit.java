@@ -33,7 +33,7 @@ import software.constructs.Construct;
  *   <li>a {@code Receiver} ({@code type: github}) that, on a signed {@code push}, tells
  *       source-controller to reconcile the {@code rke2lab} {@code GitRepository} at once;
  *   <li>the {@code flux-webhook-token} Secret it HMAC-validates against — a replica stub filled by
- *       mittwald from the replicator source (the same pull pattern as {@code floxhub-token}); the
+ *       mittwald from the replicator source (the same pull pattern as {@code github-token}); the
  *       operator seeds the value at {@code github.webhook.secret} in {@code .secrets} and
  *       configures the GitHub webhook's Secret field with the SAME value;
  *   <li>a Tailscale {@code Ingress} ({@code ingressClassName: tailscale}, {@code
@@ -94,7 +94,6 @@ public final class FluxReceiverManifestsUnit extends AbstractManifestsUnit {
                         .labels(Map.of("app.kubernetes.io/replicated", "true"))
                         .annotations(
                             packageProfile.packageAnnotations(
-                                "|Secret|" + NAMESPACE + "|" + WEBHOOK_TOKEN_SECRET,
                                 Map.of(
                                     "replicator.v1.mittwald.de/replicate-from",
                                     ClusterRefs.SECRETS_NAMESPACE + "/" + WEBHOOK_TOKEN_SECRET)))
@@ -116,11 +115,7 @@ public final class FluxReceiverManifestsUnit extends AbstractManifestsUnit {
                     ApiObjectMetadata.builder()
                         .name("github-receiver")
                         .namespace(NAMESPACE)
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "notification.toolkit.fluxcd.io|Receiver|"
-                                    + NAMESPACE
-                                    + "|github-receiver"))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
     receiver.addJsonPatch(
@@ -172,20 +167,25 @@ public final class FluxReceiverManifestsUnit extends AbstractManifestsUnit {
                         .name("flux-webhook")
                         .namespace(NAMESPACE)
                         .annotations(
-                            packageProfile.packageAnnotations(
-                                "networking.k8s.io|Ingress|" + NAMESPACE + "|flux-webhook",
-                                // Funnel = public internet (vs a bare tailnet-private expose). The
-                                // Tailscale operator provisions the funnel + Let's Encrypt cert.
-                                // proxy-class opts this proxy into the per-funnel ProxyClass that
-                                // pins a STABLE state Secret (FunnelStatePersistenceManifestsUnit)
-                                // —
-                                // so the device identity + cert survive a cold-start (re-attach, no
-                                // LE re-issuance), same durable-funnel posture as the PaC webhook.
-                                Map.of(
-                                    "tailscale.com/funnel",
-                                    "true",
-                                    "tailscale.com/proxy-class",
-                                    funnel.proxyClass())))
+                            packageProfile
+                                .packageAnnotations( // Funnel = public internet (vs a bare
+                                    // tailnet-private expose). The
+                                    // Tailscale operator provisions the funnel + Let's Encrypt
+                                    // cert.
+                                    // proxy-class opts this proxy into the per-funnel ProxyClass
+                                    // that
+                                    // pins a STABLE state Secret
+                                    // (FunnelStatePersistenceManifestsUnit)
+                                    // —
+                                    // so the device identity + cert survive a cold-start
+                                    // (re-attach, no
+                                    // LE re-issuance), same durable-funnel posture as the PaC
+                                    // webhook.
+                                    Map.of(
+                                        "tailscale.com/funnel",
+                                        "true",
+                                        "tailscale.com/proxy-class",
+                                        funnel.proxyClass())))
                         .build())
                 .build());
     ingress.addJsonPatch(

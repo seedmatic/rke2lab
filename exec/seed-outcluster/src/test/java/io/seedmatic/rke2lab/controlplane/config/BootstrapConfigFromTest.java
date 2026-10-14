@@ -31,16 +31,12 @@ class BootstrapConfigFromTest {
     assertEquals("bioskop-nixos", boot.incusDefaultRemote());
     assertEquals(URI.create("https://nixos.bioskop:8443"), boot.incusRemoteAddress());
     assertEquals("node-base", boot.imageAlias());
-    assertEquals("nixos.bioskop", boot.imageBuilderHost());
     // ★ And it now agrees with the in-cluster form by construction rather than by coincidence: one
     // daemon, one name, every audience.
     assertEquals(boot.incusRemoteAddress(), boot.incusClusterAddress());
     assertEquals("fabric-br", boot.fabricBridgeParent());
     assertEquals("mammoth-skate.ts.net", boot.tailnet());
-    // The automount root routes over the tailscale MagicDNS FQDN, not the LAN mDNS .local.
-    assertEquals("/net/bioskop.local", boot.netPrefix());
     assertEquals(URI.create("https://10.66.106.10:6443"), boot.apiEndpoint());
-    assertEquals(true, boot.automount());
     // The master container is reached over mDNS (avahi/.local), not the tailnet — so the default
     // dbus host carries the .local FQDN; a bare <cluster>-<node> would not resolve from the host.
     assertEquals("bioskop-mgmt-master.local", boot.systemdAdapterDbusHost());

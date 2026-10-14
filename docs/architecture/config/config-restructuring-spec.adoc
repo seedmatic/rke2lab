@@ -196,7 +196,6 @@ classDiagram
         +ProvisioningPolicyConfig provisioning
         +ReadinessConfig readiness
         +incus() IncusConfig
-        +image() ImageConfig
         +network() NetworkConfig
         +worktree() WorktreeConfig
         +systemd() SystemdAdapterConfig
@@ -213,18 +212,12 @@ classDiagram
         +Optional~URI~ remoteAddress
         +Path configDir  «MANDATORY»
     }
-    class ImageConfig {
-        +Optional~String~ alias
-        +Optional~String~ builderHost
-        +Path sharedFolder  «MANDATORY»
-    }
     class WorktreeConfig {
         +Path dir  «MANDATORY»
     }
     class NetworkConfig {
         +Optional~String~ lanBridgeParent
         +Optional~String~ vmnetNetworkName
-        +Optional~Boolean~ automount
     }
     class SystemdAdapterConfig {
         +Optional~String~ dbusHost
@@ -243,7 +236,6 @@ classDiagram
     Rke2labConfig *-- ProvisioningPolicyConfig
     InfraConfigRegistry o-- InfraConfigFragment
     InfraConfigFragment <|.. IncusConfig
-    InfraConfigFragment <|.. ImageConfig
     InfraConfigFragment <|.. WorktreeConfig
     InfraConfigFragment <|.. NetworkConfig
     InfraConfigFragment <|.. SystemdAdapterConfig
@@ -316,7 +308,7 @@ classDiagram
 
 The manifest registry has it easy: every registrar yields the same `ManifestsDomain` type, so
 the registry flattens uniformly. Infra fragments are *heterogeneous* (`IncusConfig` ≠
-`ImageConfig`), so a uniform registrar interface returns the `InfraConfigFragment` marker, which
+`NetworkConfig`), so a uniform registrar interface returns the `InfraConfigFragment` marker, which
 erases the concrete type. We pay this in exactly one place and recover full type-safety for
 consumers:
 
@@ -409,14 +401,9 @@ config:
     defaultRemote: bioskop-nixos
     remoteAddress: https://bioskop-nixos.local:8443
     configDir: /Users/nxmatic/.config/incus      # MANDATORY (Incus client cert dir)
-  rke2lab:image:
-    alias: control-node
-    builderHost: bioskop-nixos.local
-    sharedFolder: /Users/nxmatic/.../distrobuilder # MANDATORY
   rke2lab:network:
     lanBridgeParent: lan-br
     vmnetNetworkName: vmnet-br
-    automount: true
   rke2lab:api:
     endpoint: https://10.66.106.10:6443
   rke2lab:worktree:

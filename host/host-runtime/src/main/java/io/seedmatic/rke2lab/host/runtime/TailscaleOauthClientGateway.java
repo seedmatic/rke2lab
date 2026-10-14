@@ -1,10 +1,9 @@
 package io.seedmatic.rke2lab.host.runtime;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
 import io.seedmatic.rke2lab.seed.broker.port.SecretsGateway;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -29,8 +28,8 @@ import java.util.Optional;
  * pair the k8s-operator needs and presents it as the SAME shape the old {@code .secrets} tailscale
  * block had — {@code {"oauth":{"id":<CLIENT_ID>,"token":<full scalar>}}} — so {@code
  * ReplicatorSecretsSealScenario} consumes it unchanged. Chained ahead of {@link DotSecretsGateway}
- * (which serves the {@code kubernetes} mapping + {@code tekton}); every non-{@code tailscale} path
- * falls through.
+ * (which serves the {@code kubernetes} mapping and the other blocks); every non-{@code tailscale}
+ * path falls through.
  */
 public final class TailscaleOauthClientGateway implements SecretsGateway {
 
@@ -40,7 +39,7 @@ public final class TailscaleOauthClientGateway implements SecretsGateway {
 
   private static final String BLOCK = "tailscale";
   private static final String CLIENT_PREFIX = "tskey-client-";
-  private static final ObjectMapper JSON = JsonMapper.builder().build();
+  private static final SeedCodec CODEC = new SeedCodec();
 
   private final Path clientFile;
 
@@ -70,10 +69,10 @@ public final class TailscaleOauthClientGateway implements SecretsGateway {
       return Optional.empty();
     }
 
-    final ObjectNode oauth = JSON.createObjectNode();
+    final ObjectNode oauth = JsonNodeFactory.instance.objectNode();
     oauth.put("id", id.get());
     oauth.put("token", secret);
-    final ObjectNode tailscale = JSON.createObjectNode();
+    final ObjectNode tailscale = JsonNodeFactory.instance.objectNode();
     tailscale.set("oauth", oauth);
 
     JsonNode node = tailscale;
@@ -83,11 +82,7 @@ public final class TailscaleOauthClientGateway implements SecretsGateway {
     if (node.isMissingNode() || node.isNull()) {
       return Optional.empty();
     }
-    try {
-      return Optional.of(JSON.writeValueAsString(node));
-    } catch (final JsonProcessingException ex) {
-      throw new UncheckedIOException("failed to render the tailscale oauth block", ex);
-    }
+    return Optional.of(CODEC.encode(node));
   }
 
   /**

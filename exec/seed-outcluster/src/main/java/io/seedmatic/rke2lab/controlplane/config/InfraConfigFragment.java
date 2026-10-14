@@ -7,7 +7,6 @@ package io.seedmatic.rke2lab.controlplane.config;
  */
 public sealed interface InfraConfigFragment
     permits Rke2labConfig.IncusConfig,
-        Rke2labConfig.ImageConfig,
         Rke2labConfig.NetworkConfig,
         Rke2labConfig.SystemdAdapterConfig,
         Rke2labConfig.HostAssetConfig {}

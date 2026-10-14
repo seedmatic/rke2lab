@@ -1,0 +1,625 @@
+= Agent Instructions — Scope and the Cost of Moving Off the Hub
+:toc: macro
+:toclevels: 3
+
+toc::[]
+
+**Status:** ✅ delivered, 2026-10-08. The cutover is done and verified. What follows first is the state that
+**is**; the measurement of 2026-10-07 that motivated it is kept below, dated, as the record of why.
+
+== What is delivered
+
+Claude Code's configuration no longer travels through the `claude-hub` subtree, a config-home wrapper and a
+`.claude/` directory per repository. It has **one home, `~/.claude`**, and three deliveries, each from a single
+source that pins what it delivers:
+
+* **instructions and skills** — installed per user by `hy-reg` from the `registry` branch of a private bare,
+  `claude-home`;
+* **session hooks** — built and wired by home-manager, from ndh;
+* **the deny list and its hook** — managed settings, installed by nix-darwin from ndh, on `bioskop` only.
+
+No repository tracks a `.claude/` any more: `/.claude/` is ignored in each of them.
+
+[mermaid]
+....
+flowchart LR
+  subgraph BEFORE["Before — 2026-10-07"]
+    direction TB
+    HUB["claude-hub — GitHub, private"]
+    WR["config-home wrapper — from ndh's claude-hub input"]
+    CD["CLAUDE_CONFIG_DIR = rke2lab.d/develop/.claude"]
+    SUB["rke2lab/.claude/hub and nnh/.claude/hub — subtrees, nnh frozen"]
+    PR["per-repo .claude/bin + settings.json — diverged"]
+    DL["18-rule deny list — inert, in .claude/hub/settings.json"]
+    AG["rke2lab/AGENTS.md — stale since May"]
+    HUB --> SUB
+    HUB --> WR --> CD
+    SUB --> DL
+  end
+  subgraph AFTER["After — 2026-10-08"]
+    direction TB
+    REG["claude-home — branch registry, private bare"]
+    HOME["~/.claude — the one config home"]
+    NDH["ndh"]
+    HM["home-manager — session hooks, nix store"]
+    ND["nix-darwin, bioskop only — managed settings"]
+    POL["717 deny + 24 ask + PreToolUse deny hook"]
+    NIK["nikopol — employer MDM policy, nothing from ndh"]
+    REG -->|"hy-reg install --global"| HOME
+    NDH --> HM -->|".hooks of settings.json"| HOME
+    NDH --> ND --> POL
+  end
+  BEFORE ==> AFTER
+
+  classDef gone fill:#fdecea,stroke:#b42318;
+  classDef live fill:#d9f2e0,stroke:#2d7a4b,stroke-width:2px;
+  classDef foreign fill:#eeeeee,stroke:#666666,stroke-dasharray: 4 3;
+  class HUB,WR,CD,SUB,PR,DL,AG gone
+  class REG,HOME,NDH,HM,ND,POL live
+  class NIK foreign
+....
+
+Legend: red is removed, green is in force, grey is a policy that is not ours.
+
+[cols="1,2,2",options="header"]
+|===
+| Layer | Where it lives now | Delivered by
+
+| Shared rules (the 59 lines of the hub's `instructions.md`)
+| `~/.claude/rules/seedmatic-workflow.md`, loaded at user scope
+| `hy-reg install --global`, registry `2a29a9b`; hub subtree removed by rke2lab `3c1e2533c`
+
+| Skills and agents
+| `~/.claude/skills/`, `~/.claude/agents/`
+| the same install; project copies removed by rke2lab `79dd6da05`
+
+| Repo-specific instructions
+| each repository's `CLAUDE.md`, no `@`-include left
+| unchanged; nnh aligned by `d1bc47d`
+
+| Session hooks (SessionStart, PreCompact, PostCompact, SessionEnd)
+| `/nix/store/…-claude-code-session-hooks/`, wired in the `.hooks` key of `~/.claude/settings.json`
+| ndh `05f25b62`, `af6a2492`, `fddb802a`; the per-repo copies left git with rke2lab `d666a21a8`, nnh
+`2e8ec1e`, nch `651362a`
+
+| Deny list and deny hook
+| `/Library/Application Support/ClaudeCode/managed-settings.json`, mode 0644, read as `policySettings`
+| ndh `0a1a1ff1`, `76fa2488`, `1282e6f2`, scoped to `bioskop` by `e54805c6`
+
+| The config home itself
+| `~/.claude`; `CLAUDE_CONFIG_DIR` is no longer set
+| the wrapper and the `claude-hub` input removed by ndh `050c8188`
+
+| Memory
+| a `memory/seedmatic` branch of the private `claude-home` bare — it no longer goes to GitHub
+| `branch.memory.pushRemote = claude-home`
+|===
+
+=== The safety finding, now
+
+The finding below — *the hub's 18-rule deny list is in force nowhere* — is **closed**. The list became managed
+settings, which no session, mode or lower settings level can lift: **717 deny rules and 24 ask rules**, generated
+from one verb table (`verbs.json`), plus a `PreToolUse` hook that parses each Bash command.
+
+Verified after the rebuild, in a fresh session started in `bypassPermissions`:
+
+* the policy loads as `policySettings`, 717 / 24;
+* a listed command is refused, and a hook `ask` still asks — bypass does not lift either;
+* each session hook fires once, from the nix store.
+
+The hook closes the gap the list alone leaves: a global option before the verb (`kubectl --context x apply`,
+`pulumi -C dir up`) and a command wrapped in `bash -c`, `flox activate -c`, `nix shell -c`, `sudo env`. `rm -rf`
+**asks**, it is not refused (operator's decision). 120 bats cases run in `nix flake check`.
+
+⚠️ It is a **first line, not a boundary**. Code handed to an interpreter (`python3 -c` calling `subprocess`)
+passes, and a test pins that limit so it cannot be mistaken for coverage. A real boundary would be a sandbox.
+
+=== Prerequisites — answered
+
+[cols="2,3",options="header"]
+|===
+| Prerequisite | Answer
+
+| Decide the deny list
+| ✅ managed settings on `bioskop`, 717 deny / 24 ask + the deny hook (see above)
+
+| Deal with the stale `rke2lab/AGENTS.md`
+| ✅ deleted, rke2lab `fdc61bb2d`
+
+| Test whether `AGENTS.md` resolves an `@`-include
+| moot — option A was not taken, and no `@`-include remains: the shared lines became a user-scope rule file
+
+| Look at `nikopol`'s `~/.claude/CLAUDE.md`
+| ⬜ not done — part of the `nikopol` alignment, below
+|===
+
+=== Operator questions — answered
+
+[cols="2,3",options="header"]
+|===
+| Question | Answer
+
+| What "instructions as `AGENTS.md`" means
+| neither per-repo root files nor `cl`'s composed sections: **user-scope rule files from a registry**, `hy-reg`'s
+shape. The repo-specific part stays in each `CLAUDE.md`
+
+| Which `instructionFiles` mode
+| the default, unchanged — with `AGENTS.md` gone it has nothing left to arbitrate
+
+| Option A, B or C
+| **C, in its `hy-reg` form**: one registry, `claude-home`, installed with `--global`. Consumers keeping no lock is
+accepted: the lock lives in the registry. `CLAUDE_CONFIG_DIR` pointing into a worktree was not deliberate — it is
+gone, and the trap under option C with it
+
+| Agent configuration for the seven repositories that had none
+| ✅ by construction: a user-scope install reaches every repository, with no per-repo file
+
+| Centralise family 3 (hooks, settings, scripts)?
+| ✅ yes — hooks from home-manager, the policy from nix-darwin, both built from ndh. Decisions D1–D4 below
+
+| The 2026-06-03 restructure plan
+| not taken up: it left with `.claude/` (rke2lab `58d913be8`), and the cutover did not shrink `CLAUDE.md`
+|===
+
+The operator's decisions on the session hooks:
+
+[cols="1,3",options="header"]
+|===
+| | Decision
+
+| D1 | the two JS hooks (`file-backup-hook.js`, `session-cleanup-hook.js`) are **deleted**, not ported: Claude Code
+keeps its own file history (`/rewind`), and the backup hook was what left trees dirty
+| D2 | checkpoints go to `<repo>/.scratchpad.d/checkpoints/`, ignored by the global git ignore
+| D3 | the SessionEnd commit takes **only the paths this session wrote** with Write or Edit, never `add -A` in the
+shared memory; a write made through Bash is committed by hand, and the SessionStart guard reports it
+| D4 | the **empty window**: project hooks removed first, the rebuild right after, so no session ever sees both
+sources and commits twice
+| — | managed settings and session hooks on `bioskop` only: `nikopol` carries its employer's policy
+|===
+
+=== Gaps that remain
+
+* ⬜ **`nikopol`** — not aligned. Its employer's MDM policy for Claude Code stays authoritative there, so ndh installs
+  neither managed settings nor hooks. Still to do: the registry install and a first look at its
+  `~/.claude/CLAUDE.md`.
+* ⬜ **Memory per repository** — one `memory/seedmatic` branch carries rke2lab's memory. The memories of the other
+  repositories are not merged into it yet; that design is in progress.
+* ⬜ **Deleting `claude-hub`** — after its 42 memory notes, and the 128 `[[hub:]]` links pointing at them, are
+  brought home. Before that, the references that still name it (comments around the GitHub token, a token scope
+  entry, a transitive lock node in rke2lab, nnh and nch) go. The token itself stays: reading private repositories
+  is useful on its own.
+* ⬜ **Which compaction it was** — the checkpoint still does not record the hook's `trigger`, so a reader cannot tell
+  an automatic instant from a chosen one (see the auto-compaction section below).
+
+=== Checking that it is in force
+
+[cols="2,3",options="header"]
+|===
+| To check | How
+
+| the policy is loaded
+| `/status` shows the managed source; `stat -f %Lp` on the managed file prints `644`. ⛔ A root-only file means
+**no** policy, with no error, and an invalid JSON stops every session from starting — the derivation checks both
+
+| each hook once
+| `/hooks` in a **new** session: one entry per event, from `/nix/store`. Hooks are captured when a session starts,
+so an older session still shows what it started with
+
+| the installed rules and skills match the registry
+| `hy-reg install --check`. ⚠️ `hy-reg lock check` does **not** see drift — it compares descriptors to the lock,
+not the sources. Drift shows only through `lock update`, then `git diff` of the lock
+
+| a user skill shadows a project skill
+| by design: the same name at user and project scope shows only the user one. Align the registry before an install
+|===
+
+ⓘ `enabledPlugins: {}` disables nothing: a plugin is off only with its own entry set to `false`.
+
+== Before the cutover — the measurement of 2026-10-07
+
+ⓘ Everything from here is the statement of work as written on 2026-10-07, before any of it was executed. Paths and
+counts are as they were then; several of them no longer exist.
+
+=== Why this document exists
+
+The operator decided on 2026-10-07 to move away from distributing Claude's configuration through
+the `claude-hub` subtree. The operator's words: *"la manière dont on s'y prenait avec le claude hub est trop
+difficile à maintenir"*. The direction, learned on `nikopol`: distribute **instructions** as
+`AGENTS.md` files in the repositories rather than distributing **configuration** through a shared
+tree.
+
+The operator asked for this alignment to go first, ahead of the flake-registry chantier, because it
+simplifies how the agent itself is configured.
+
+This document measures where we stand, says what `AGENTS.md` does and does not cover, and lists the
+choices that are the operator's. It is not a plan.
+
+ⓘ *Source.* A read-only research pass produced the inventory. The integration session re-checked
+the claims that carry weight before writing them here; each section says which ones were
+re-checked.
+
+=== Where we actually stand
+
+==== ⛔ The hub reaches two repositories, and one of them is frozen
+
+The premise *"one edit in the hub reaches every repo"* is **not the current state**.
+
+[cols="1,1,2",options="header"]
+|===
+| Repository | Hub vendored | State
+
+| `rke2lab` | ✅ | **Live.** Its `.claude/hub/` is byte-identical to the hub's `main`
+| `nnh` | ✅ | ⛔ **Frozen.** Added by `subtree add` on 2026-08-15, never pulled since. Its
+`instructions.md` has **35 lines against the hub's 59** _(re-checked)_ — it is missing the whole
+workspace-isolation and context-management guidance
+| `ndh`, `nch`, `fleet`, `flox-controller`, `flox-nri-plugin`, `nix-flake-commons`, `seat-roster` | ✗ |
+**Nothing.** No `CLAUDE.md`, no hub
+|===
+
+★ The difference between `rke2lab` and `nnh` is not the mechanism. It is that one of them has a
+session that runs the `hub-subtree-sync` procedure and the other does not. **A subtree does not
+freeze; an unattended subtree freezes.** That is the same failure fleet's env tree had for nine
+months.
+
+==== ⛔ `AGENTS.md` already exists in `rke2lab` — stale, and ignored by Claude Code
+
+_Re-checked._ `rke2lab/AGENTS.md` is tracked and was last changed on **2026-05-18**. It dates from
+the Copilot period and contradicts current instruction on three points:
+
+* it names `/var/lib/git/nxmatic/rke2lab` as the working directory — a path deleted on 2026-10-02;
+* it asks for the commit author `GitHub Copilot <copilot@github.com>`;
+* it asks to run commands inside an SSH session on `bioskop-nixos.local`.
+
+It has stayed stale without anyone noticing because **Claude Code does not load it**. The setting
+`instructionFiles` defaults to `claude-md-or-agents-md`: a project that has a `CLAUDE.md` gets its
+`AGENTS.md` **ignored**. `rke2lab` has both, so its `AGENTS.md` is dead text in Claude Code — while
+still being **live for Copilot and every other agent that reads it**.
+
+⚠️ That is a silent split: two tracked instruction files that contradict each other, each one
+authoritative for a different tool.
+
+The four modes, as the running Claude Code build describes them:
+
+[cols="1,2",options="header"]
+|===
+| `instructionFiles` | Behaviour
+
+| `claude-md` | `CLAUDE.md` only
+| `claude-md-or-agents-md` *(default)* | `AGENTS.md` only where there is **no** `CLAUDE.md`
+| `claude-md-and-agents-md` | both; a file `CLAUDE.md` already imports is not loaded twice
+| `managed-only` | project and personal instruction files are dropped
+|===
+
+⛔ *Order matters.* Switching to `claude-md-and-agents-md` today would **activate the stale Copilot
+instructions immediately**. The stale file has to be dealt with before any mode change.
+
+=== Distribution has three families, and `AGENTS.md` covers one
+
+[mermaid]
+....
+flowchart LR
+  subgraph F1["1 · Instructions — prose"]
+    CM["CLAUDE.md + @-include of the hub"]
+    AG["AGENTS.md"]
+  end
+  subgraph F2["2 · Skills"]
+    SK["SKILL.md trees — hub, user scope, gh skill"]
+  end
+  subgraph F3["3 · Hooks, settings, scripts"]
+    ST["settings.json + .claude/bin/"]
+  end
+  AG -. "covers" .-> F1
+
+  classDef covered fill:#d9f2e0,stroke:#2d7a4b,stroke-width:2px;
+  classDef notcovered fill:#fdecea,stroke:#b42318;
+  class F1 covered
+  class F2,F3 notcovered
+....
+
+[cols="1,2,2",options="header"]
+|===
+| Family | Today | Does `AGENTS.md` help?
+
+| **1 · Instructions**
+| `rke2lab/CLAUDE.md`, 439 lines, ending with `@.claude/hub/instructions.md` (59 shared lines).
+`nnh` does the same. These are the only two `@`-includes in the organisation
+| ✅ **Yes.** The repo-specific part is a rename. The 59 *shared* lines are the real question: they
+must still come from somewhere
+
+| **2 · Skills**
+| the hub carries 4 skills; `rke2lab` symlinks 3 of them into `.claude/skills/`
+| ❌ **No.** `AGENTS.md` is one file of prose. ⓘ The symlinks look redundant: `nix-repo-setup` has
+no symlink and still loads, so this build walks `.claude/` recursively — worth confirming, free to
+clean up
+
+| **3 · Hooks, settings, scripts**
+| `rke2lab` has 11 files in `.claude/bin/`, `nnh` has 4, the hub has 3 **different** ones. Their
+`settings.json` files have diverged
+| ❌ **No** — and this family is **already** duplicated per repo and drifting
+|===
+
+★ *So the current model does not hold the high ground it appears to.* The choice is not
+"centralised today versus duplicated tomorrow". Two families are duplicated **today**, and the one
+family `AGENTS.md` addresses is the **smallest** — 59 shared lines.
+
+ⓘ A fresh example from the same evening: the model pin lives in the `env` block of
+`settings.local.json`, and two config directories each carried their own copy (`rke2lab` and
+`nch`). Changing the model meant editing both.
+
+=== ⛔ A safety finding that does not wait for this decision
+
+_Re-checked, every level._ The hub's `settings.json` carries a **deny list of 18 rules** —
+`pulumi up/destroy/cancel`, `kubectl apply/delete/patch/create/replace`, `helm
+install/upgrade/uninstall`, `incus *`, `darwin-rebuild`, `nixos-rebuild`, `rm -rf *`,
+`rm -rf ~/.claude*`.
+
+**None of it is in force.** The file is vendored at `.claude/hub/settings.json`, which is not a path
+Claude Code loads.
+
+[cols="2,1,1",options="header"]
+|===
+| Settings file actually loaded | `deny` rules | `defaultMode`
+
+| `rke2lab/.claude/settings.json` | 0 | —
+| `rke2lab/.claude/settings.local.json` | 0 | `dontAsk`
+| `~/.claude/settings.json` | 0 | —
+| managed settings (`/Library/…`, `/etc/claude-code/…`) | absent | —
+|===
+
+So every guardrail the hub appears to publish is off, and the effective mode does not ask. The
+project rule *"operations that change the live system are run by the user — propose them, don't
+execute them"* is today held by **instruction only**, not by configuration.
+
+IMPORTANT: This is the operator's decision to take, and it is independent of `AGENTS.md`. It should
+not be folded into the migration and left to wait for it.
+
+=== Why the hub is hard to maintain — the operator's diagnosis, measured
+
+The cost is not the files. It is the **procedure**. `hub-subtree-sync` encodes `--ignore-joins`
+(split side only), `--squash` both ways, never `--rejoin`, never delete split branches, recovering
+missing base objects, and publishing through the hub's own `develop` → `main` merge-down.
+
+That procedure was corrected **twice on 2026-10-07**: its topology section named a host layout that
+no longer existed, and its publication flow named a branch the practice had already left. A
+distribution mechanism whose own instructions rot is itself a source of staleness.
+
+=== The trade-off that has to be faced
+
+[cols="1,2,2",options="header"]
+|===
+| | How it breaks | How cheap it is to detect
+
+| **Shared subtree** (today)
+| *silent staleness* — `nnh` reads a plausible, shorter file and believes it
+| **cheap but needs intent.** `diff -rq` against the hub answers it in one command. A source of
+truth exists to compare with
+
+| **Per-repo `AGENTS.md`**
+| *contradiction* — `rke2lab/AGENTS.md` says "commit as GitHub Copilot"
+| ⛔ **expensive.** There is no upstream to compare with, so staleness is invisible by
+construction. It is found when an agent **obeys** the wrong instruction
+|===
+
+★ The asymmetry worth naming: a frozen subtree gives **less** current guidance; a drifted
+`AGENTS.md` gives **confidently wrong** guidance. Removing the hub in favour of N independent copies
+does not remove drift — it removes the **reference** that makes drift measurable.
+
+So whatever replaces the hub has to keep *one* thing the hub has: a reference that each repo's copy
+can be checked against.
+
+=== The options
+
+[cols="1,3,1",options="header"]
+|===
+| Option | Shape | Cost
+
+| **A · Rename only**
+| `CLAUDE.md` → `AGENTS.md` in each repo; the shared lines stay an `@`-include of the hub.
+⬜ Depends on whether `AGENTS.md` resolves `@`-includes — **untested**
+| smallest; but it keeps the hub, which is what the operator wants to leave
+
+| **B · Inline the shared lines**
+| every `AGENTS.md` carries its own copy of the 59 shared lines; the hub goes
+| simplest to read; **N copies with no reference** — the expensive failure above
+
+| **C · Shared lines as an installed, locked skill**
+| `AGENTS.md` per repo for the repo-specific part; the shared part distributed by
+`gh skill install`, which writes a lock file with a content hash (`~/.agents/.skill-lock.json`) and
+targets 48 agents
+| keeps a **reference** (the hash) **and** locality **and** multi-agent reach. ⬜ **Untested**, and
+blocked by the trap below
+|===
+
+⚠️ *The trap under option C.* `CLAUDE_CONFIG_DIR` points into a worktree
+(`rke2lab.d/develop/.claude`). So in this setup **"user scope" and "this one worktree" are the same
+directory**: `gh skill install --scope user` does not install machine-wide, it writes into whichever
+worktree the config home points at.
+
+=== Auto-compaction at ~50 % and our hooks
+
+The operator noted that `nikopol` compacts automatically at about half the context.
+
+[cols="1,2",options="header"]
+|===
+| Question | Measured answer
+
+| Do the hooks fire on automatic compaction?
+| ✅ yes — both `PreCompact` and `PostCompact` use the matcher `manual\|auto`
+
+| Do the scripts know which kind it was?
+| ❌ no — `checkpoint-write.sh` reads only `session_id`, `checkpoint-gc.sh` only `transcript_path`.
+⬜ The hook input very probably carries a `trigger` field; it would be arriving and being discarded
+
+| Does garbage collection keep up?
+| ✅ mostly — 3 checkpoints are kept per session. ⓘ 22 of the 30 on disk sit in
+`rke2lab.d/.etage0-archive/`, which no live session covers, so GC will never see them
+|===
+
+⛔ *The real issue is not frequency, it is the chosen instant.* A checkpoint records each
+worktree's branch, HEAD and dirty count. Its own comment says it is only meaningful when the tree
+is attributable. Worktrees here are **shared under a write lock**, so an automatic compaction can
+photograph another session's worktree **in the middle of a rebase** — a state that was never at
+rest, recorded by a session that does not own it, and with no mark saying the moment was unchosen.
+Raising the threshold makes this rarer, not sound.
+
+Cheapest mitigation: read `trigger` and **stamp it in the checkpoint header**, so a reader knows
+whether the instant was chosen.
+
+=== What `nikopol` actually applies — two mechanisms, measured
+
+The operator named the two repositories applied on `nikopol`: `HylandSoftware/swf-registry` and
+`HylandExperience/cin-content-lake-tooling`. Both were read once SAML access was unlocked. They are
+**two independent mechanisms**, not an installer and its content: `swf-registry` never references
+`cin-content-lake-tooling`.
+
+[cols="1,2,2",options="header"]
+|===
+| | `cl ai` — shipped inside `cin-content-lake-tooling` | `hy-reg` — `HylandSoftware/swf-registry`
+
+| What it is
+| a Go binary distributed by the repository it belongs to; it reads that repo's own
+`agent-tooling/` folder from GitHub
+| a registry of **references** to agent resources in other repositories, *"referenced at a pinned
+commit rather than copied"*; content converted per target with `rulesync`
+
+| Declares content in
+| `agent-tooling/bundles/resources.json` (resources keyed `<kind>/<slug>`, each with `targets` and
+a path per target) and `bundles.json` (named bundles)
+| `registry/*.toml`, pinned by `registry.lock.json` — commit, source-tree hash and descriptor hash
+per resource
+
+| Where instructions land
+| ⚠️ into the **user-level** `~/.claude/CLAUDE.md` (and OpenCode's `AGENTS.md`), as fragments
+between markers. An existing file is kept; only the marked regions belong to the installer
+| ⚠️ as **separate rule files** (`.claude/rules/<name>.md` for Claude Code). It **refuses** to claim a
+project's root instruction file
+
+| Across repositories?
+| ❌ one repository → many machines
+| ✅ a central catalogue that references many repositories
+
+| Pinned?
+| ❌ follows `main` by default
+| ✅ commit + hashes, in a lock
+
+| Drift detection
+| `cl ai diff` — local versus source, per file
+| `install --check` — a CI gate failing when output would change; `lock diff` between two pins
+
+| Hooks and `settings.json`
+| ❌ copies hook scripts; **wiring them is a manual step**
+| ❌ **refuses** for Claude Code (*"needs a `hooks.json` merge"*)
+|===
+
+==== What this changes
+
+1. ⛔ *"Instructions as `AGENTS.md` in the repositories" is **not** what either tool does.* `cl`
+   composes at **user level**; `hy-reg` writes rule files beside the root file and never the root
+   file itself. Neither generates a repository's `AGENTS.md`. The operator's intent needs restating
+   before a choice is made — and `nikopol`'s `~/.claude/CLAUDE.md` would show the actual result.
+2. ✅ **`hy-reg` is the measured shape of option C**: pinned references across repositories, hashes
+   in a lock, a `--check` gate, seven targets. ⚠️ Its gap: **the lock lives in the registry, never in
+   the consumer.** A repository receives generated files and keeps no record of what it received or
+   at which commit, so drift is measurable only from the registry side.
+3. ⛔ **The `CLAUDE_CONFIG_DIR` trap applies to `cl` directly.** It writes to a hardcoded
+   `~/.claude`, while Claude Code on this machine loads from `rke2lab.d/develop/.claude`. Anything
+   `cl` installed here would be **written and never loaded**. ⬜ Whether `hy-reg --global` honours
+   `CLAUDE_CONFIG_DIR` is unverified.
+4. ⛔ **Neither tool solves family 3.** Both ship hook scripts and leave the wiring to the user — the
+   same shape as our hub's inert `settings.json`. The deny-list decision stays ours.
+
+==== ⛔ How the access was blocked — and the cause is now removed
+
+Reaching these organisations failed for an hour with *SAML enforcement* (HTTP 403), even after the
+operator granted access. The cause was not the grant. `rke2lab`'s flox seat ran
+`export GH_TOKEN="$(gh auth token)"` at activation — a **copy** of the keyring token, inherited by
+VS Code and by every agent session launched from it. A `gh auth refresh` produced a fresh, authorised
+keyring token; the inherited copy stayed the old one and **shadowed** it.
+
+Two distinct authorisations were also in play, which made it hard to see: an organisation can allow
+the GitHub CLI application (*"Allowed"*) while a **given token** has never been validated in an SSO
+session. Only the refresh produced a token validated for `HylandSoftware`.
+
+✅ The export is removed from the seat (this commit). ⚠️ Processes already running keep the copy
+until VS Code is restarted from a shell where it is unset.
+
+==== In scope: which HylandExperience skills seedmatic should import
+
+Added by the operator on 2026-10-07. The organisation publishes about 496 `SKILL.md` files, almost
+all inside product repositories, often copied once per tool. About 85 % are tied to Hyland products,
+to .NET or Angular, or to Jira.
+
+[cols="1,1,2",options="header"]
+|===
+| Skill | Verdict | Why
+
+| `grilling` | **import** | questions in rounds over a tree of decisions until both sides agree —
+no topology or tool assumption, and it fits how this project designs
+| `rfc-research` | **import** | gathers the earlier decisions relevant to a new one; point it at
+`docs/architecture/` and the atlas. Clean provenance: a normal `skills/` path
+| `threat-model` | **adapt** | the STRIDE/DREAD method is general; its control mapping is a Hyland
+catalogue. Relevant after the leaked-key incident and the tailnet ACL work
+| `linearize-shared-branch` | **adapt carefully** | its safety steps are good, but it **rewrites
+shared history** — against `develop` as trunk and `--no-ff` merges down. Keep the safety steps only
+| `sync-agent-customizations` | **adapt the idea** | the only skill about distributing agent
+configuration. "One body, thin per-tool stubs" — but **within one repository**, and it copies root
+instruction files in full per tool. That is option B inside each repo, not evidence for C
+| `git-worktree` | **skip** | puts worktrees in `<root>/.worktrees/` — the same layout rejected for
+`.claude/worktrees/`
+| the rest | **skip** | product-specific, Jira-bound, or duplicating a seedmatic skill
+|===
+
+How each candidate was judged — the criteria this evening's work produced:
+
+[cols="1,2",options="header"]
+|===
+| Criterion | Why
+
+| **Provenance is recorded** | install through `gh skill install` so it lands in the lock file with a
+source and a content hash. The 8 skills already in `~/.agents/skills/` have none, and their origin
+is now unknowable
+| **It does not duplicate a seedmatic skill** | `doc-standards`, `worktree`, `hub-subtree-sync`,
+`flox-envs-subtree-sync`, `gh-stack` already exist; two skills on one topic disagree within weeks
+| **It does not assume a topology we do not have** | an org skill written for one-repo-per-checkout
+will contradict the shared stack worktree and the lead protocol
+| **It targets the agents we use** | `gh skill install --agent` takes 48 targets; installing for one
+leaves the others reading a different instruction set
+|===
+
+=== Prerequisites, in the order they are forced
+
+. **Decide the deny list** — independent of everything else here.
+. **Deal with the stale `rke2lab/AGENTS.md`** — before any `instructionFiles` change, or switching
+  modes activates Copilot-era instructions.
+. **Test whether `AGENTS.md` resolves an `@`-include** — one scratch repository settles it, and it
+  decides whether option A exists at all.
+. **Look at `nikopol`'s `~/.claude/CLAUDE.md`** — the actual result of `cl`'s composition, which is
+  what "the new model" produces in practice.
+
+=== Questions that are the operator's
+
+. ★ **What "instructions as `AGENTS.md` in the repositories" means for you**, given that neither tool
+  applied on `nikopol` writes a repository's `AGENTS.md`: per-repo root files, user-level composed
+  sections (`cl`), or per-repo rule files from a registry (`hy-reg`)? This decides the shape of
+  everything else.
+. Which `instructionFiles` mode do you want?
+. Option A, B or C — and, if C, **`hy-reg` as is**, accepting that consumers keep no lock? And is
+  `CLAUDE_CONFIG_DIR` pointing into a worktree deliberate, given that it makes `cl` write where
+  Claude Code never reads?
+. Should the seven repositories that have no agent configuration at all receive one? If the real
+  goal is *coverage*, a one-file-per-repo convention is plainly cheaper than a subtree they never
+  had.
+. Should family 3 (hooks, settings, scripts) be centralised at all, or is per-repo divergence there
+  intended?
+. ⓘ A prior plan, `.claude/claude-config-restructure-plan.md` (2026-06-03), asked *"where does
+  what go — CLAUDE.md, memory, skills?"* and was never executed; `CLAUDE.md` has grown from about
+  350 lines to 439 since. Is the `AGENTS.md` move partly about that older itch?
+
+== Related
+
+* xref:headscale-scope-and-switch-cost.adoc[Headscale — Scope and the Cost of Switching] — the other SOW written
+  the same day
+* xref:flake-chain.adoc[Atlas — The flake chain, as delivered] — how the transitive `claude-hub` lock node leaves
+  rke2lab, nnh and nch: a `relock` once ndh no longer carries the input
+* ndh `modules/darwin/claude-code-managed.d/` — the verb table, the deny hook and their tests
+* ndh `modules/home-manager/claude-code.d/hooks/` — the session hooks and their tests

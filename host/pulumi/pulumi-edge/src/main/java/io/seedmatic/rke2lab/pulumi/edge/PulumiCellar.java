@@ -1,7 +1,5 @@
 package io.seedmatic.rke2lab.pulumi.edge;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pulumi.automation.LocalWorkspace;
 import com.pulumi.automation.LocalWorkspaceOptions;
 import com.pulumi.automation.ProjectBackend;
@@ -128,10 +126,10 @@ public final class PulumiCellar implements OpaqueCellar {
 
   private static final String MAC_ALGORITHM = "HmacSHA256";
 
-  private final ObjectMapper mapper = new ObjectMapper();
   // The trail (de)serialization DELEGATES to the SeedCodec, the sole holder of the sealed
-  // Breadcrumb's polymorphic type-info (§ SeedCodec). The bare `mapper` above stays for the shell
-  // map and the MAC canonical (flat strings/booleans, no crumb) — those carry no polymorphism.
+  // Breadcrumb's polymorphic type-info (§ SeedCodec). The MAC's input goes through wire(): compact,
+  // nothing reordered or dropped — the bytes past runs MAC'd, which a stored entry must still
+  // match.
   private final SeedCodec codec = new SeedCodec();
   private final Optional<Path> backendDir;
   private final RunGate gate;
@@ -592,11 +590,7 @@ public final class PulumiCellar implements OpaqueCellar {
   }
 
   private String writeString(Object blob) {
-    try {
-      return mapper.writeValueAsString(blob);
-    } catch (JsonProcessingException e) {
-      throw new IllegalStateException("could not serialize cellar coquille field", e);
-    }
+    return codec.wire().writeJson(blob);
   }
 
   /**

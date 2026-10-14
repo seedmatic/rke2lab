@@ -70,6 +70,14 @@ $defs:
       reason:
         type: string
         minLength: 1
+      compromised:
+        type: boolean
+        description: >
+          The retired generation's private was exposed. An authority generation
+          retired as compromised is exempt from the phase-2 gate (its successor
+          signs at once, breakage accepted); an ordinary retirement requires the
+          slot that now signs to carry `trusted`. Written by `ssh-keys-renew
+          --replace`.
 
   sshKeyType:
     type: string
@@ -94,6 +102,10 @@ $defs:
       # github-signing so a leak of one grants either push access or a
       # "Verified" signature, never both.
       - github-authentication
+      # Signs the commits a bot makes (the manifests render, the version bumper). Kept
+      # apart from github-signing so the operator's own key never leaves the seat: the
+      # bot key is the one a cluster holds, under a bot principal only.
+      - bot-signing
       # v2.1: the `mammoth-skate` authority also signs TLS x509 certs so
       # headscale can serve HTTPS without introducing a second CA key.
       # Leaf keys declare `cert_usage: [tls-server]` (and optionally
@@ -128,21 +140,13 @@ $defs:
       - system
       - user
 
-  # Accepts any of the forms a key material field can take at rest:
-  #  - sops-encrypted envelope `ENC[...]`
-  #  - OpenSSH PEM block `-----BEGIN OPENSSH PRIVATE KEY-----...-----END...-----`
-  #  - raw base64 public blob (possibly with `ssh-<type>` prefix + comment)
-  # Uses anyOf (not oneOf) because a sops-encrypted scalar happens to also
-  # satisfy the minLength predicate; the intent is "any of the known
-  # shapes", not "exactly one shape".
-  base64OrEnc:
-    anyOf:
-      - type: string
-        pattern: '^ENC\[.*\]$'
-      - type: string
-        pattern: '^-----BEGIN [A-Z ]+PRIVATE KEY-----'
-      - type: string
-        minLength: 40
+  # A private key AT REST — keys.yaml as committed — is a sops envelope and nothing else.
+  # This schema validates the encrypted file (checks.<system>.ssh-keys-schema, the pre-commit),
+  # so a private in clear can only be a defect: the August 2026 shape, a valid sops envelope
+  # around keys a routing rule never encrypted. The pattern is the blob-level guard.
+  encryptedPrivate:
+    type: string
+    pattern: '^ENC\[.*\]$'
 
   publicBlob:
     description: >
@@ -194,9 +198,63 @@ $defs:
         public:
           $ref: "#/$defs/publicBlob"
         private:
-          $ref: "#/$defs/base64OrEnc"
+          $ref: "#/$defs/encryptedPrivate"
         certificates:
           $ref: "#/$defs/certificates"
+
+  authoritySlots:
+    type: object
+    description: >
+      An authority's generations, keyed like a key's slots. ONE rule decides
+      which generation signs, everywhere it is applied (the enrichment, the TLS
+      root bootstrap, the incus cluster cert renewal, rke2lab's keystore reader): the
+      OLDEST slot that is not `compromised`. That slot is also the one the
+      authority PRESENTS — its `ca_crt` is the root its leaves chain to. Every
+      slot that is not compromised is ACCEPTED: trust stores carry its `public`
+      and `ca_crt`.
+      During a renewal the old generation keeps signing until phase 2 drops it,
+      by which time every trust store carries the new one. The exception is a
+      compromised slot: it never signs, so the signature moves at once, and it
+      leaves every trust store, so its leaked private mints nothing accepted.
+      See docs/ssh-keys-renewal-spec.adoc.
+    minProperties: 1
+    maxProperties: 2
+    propertyNames:
+      pattern: "^[0-9]{2}-[0-9]{2}-[0-9]{2}$"
+    additionalProperties:
+      type: object
+      additionalProperties: false
+      properties:
+        public:
+          $ref: "#/$defs/publicBlob"
+        private:
+          $ref: "#/$defs/encryptedPrivate"
+        ca_crt:
+          type: string
+          pattern: "^-----BEGIN CERTIFICATE-----"
+          description: >
+            This generation's self-signed x509 root (PEM), minted from this
+            slot's private by bin/authority-bootstrap-tls-root.sh, for
+            authorities that advertise `tls-authority`. Plaintext: trust-anchor
+            material, like `public`. Every trusted slot's root goes into every
+            trust store; the signing slot's root is the one leaves chain to.
+        trusted:
+          type: string
+          pattern: "^[0-9]{2}-[0-9]{2}-[0-9]{2}$"
+          description: >
+            The date `ndh-trust-check` passed on every host for this generation —
+            recorded in the change that drops the previous slot (phase 2), which
+            the evaluation refuses without it (keys-yaml.d/trust.nix, phase2Gaps).
+        compromised:
+          type: string
+          minLength: 1
+          description: >
+            The reason this generation's private is considered exposed. A
+            compromised slot never signs, even through an overlap: the newer
+            slot signs at once. It also leaves every trust store (NixOS
+            security.pki, the darwin System keychain — removed if already
+            installed —, ssh known_hosts and TrustedUserCAKeys), and the
+            renewal revokes it.
 
   certificates:
     type: object
@@ -211,9 +269,9 @@ $defs:
       derived. SSH cert types carry a single-line openssh format; TLS types
       carry a PEM blob (multi-line, BEGIN/END CERTIFICATE).
 
-      The signing authority is always the PRESENTED one. An authority renews
-      before its leaves, so a single certificate per key generation suffices;
-      see docs/ssh-keys-renewal-spec.adoc.
+      The signing generation of the authority is its PRESENTED one — the oldest
+      slot that is not compromised (see authoritySlots). A single certificate per
+      key generation suffices; see docs/ssh-keys-renewal-spec.adoc.
     patternProperties:
       "^[a-z][a-z0-9-]*$":
         type: object
@@ -245,20 +303,7 @@ $defs:
         type: string
         description: "DNS domain the authority asserts jurisdiction over."
       slots:
-        $ref: "#/$defs/slots"
-      ca_crt:
-        type: string
-        pattern: "^-----BEGIN CERTIFICATE-----"
-        description: >
-          Self-signed x509 root certificate (PEM), co-located with the
-          authority's SSH key material.  Populated by the bootstrap
-          ceremony (bin/authority-bootstrap-tls-root.sh) for authorities
-          that advertise `tls-authority` in their `usage`.  Plaintext —
-          cert bytes are public trust-anchor material, same category as
-          the `public:` SSH key above.  Consumed by the enrichment
-          pipeline (to sign TLS leaves via step-cli) and by downstream
-          Nix modules that install the cert into every client's system
-          trust store.
+        $ref: "#/$defs/authoritySlots"
       usage:
         type: array
         description: >
@@ -381,12 +426,12 @@ $defs:
       profiles:
         type: array
         description: >
-          Which profiles this key participates in. An empty list (or missing
-          field) means the key is excluded from every profile — the split
-          step warns on such entries.
+          Which profiles this key participates in. An EMPTY list means the key
+          lands on no host: no split slice carries it, and its consumer reads
+          keys.yaml itself, in memory (the bot signing key, read by rke2lab's
+          keystore).
         items:
           $ref: "#/$defs/profileName"
-        minItems: 1
         uniqueItems: true
       comment:
         type: string

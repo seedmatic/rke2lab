@@ -18,9 +18,9 @@ import io.seedmatic.rke2lab.seed.broker.port.CellarCoordinate;
 import io.seedmatic.rke2lab.seed.broker.port.Parcel;
 import io.seedmatic.rke2lab.seed.broker.port.SourceCrumb;
 import io.seedmatic.rke2lab.seed.broker.port.Trail;
+import io.seedmatic.rke2lab.worktree.DurableWorktree;
 import io.seedmatic.rke2lab.worktree.GatePolicy;
 import io.seedmatic.rke2lab.worktree.WorkingState;
-import io.seedmatic.rke2lab.worktree.Worktree;
 import io.seedmatic.rke2lab.worktree.WorktreeCoordinate;
 import io.seedmatic.rke2lab.worktree.WorktreeFacts;
 import io.seedmatic.rke2lab.worktree.WorktreeRunbookInput;
@@ -33,17 +33,17 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 /**
  * The worktree soil — a production jGiven scenario told in the WORKTREE DOMAIN's own vocabulary,
  * played IN-CONTAINER by the seeding engine like every other crossing. Its whole job is to HARVEST
- * the worktree's git facts into the cellar: it reads the {@link Worktree} {@code @Component} (which
- * self-locates its root and knows its HEAD provenance + working state) and stores a {@link
+ * the worktree's git facts into the cellar: it reads the {@link DurableWorktree} {@code @Component}
+ * (which self-locates its root and knows its HEAD provenance + working state) and stores a {@link
  * WorktreeFacts} at the {@link WorktreeCoordinate#FACTS} coordinate. The flat host then FETCHES
  * that harvest from the cellar — the root for the GROW mounts, the working state for the entry gate
  * — the same fetch-not-push discipline the incus {@code InstanceGrowPlan} rides (a domain-owned
  * coordinate keyed by its wire slug, so it crosses the realm through the cellar without the broker
  * ever routing a domain enum).
  *
- * <p>Its collaborator, the {@link Worktree} service, is INJECTED from the framework registry by the
- * {@link OsgiService} bridge — {@code worktree-core}'s {@code JgitWorktree} live, or a mock a test
- * seeds. NOT survey-inert: reading git facts is a pure, deterministic read (no live system
+ * <p>Its collaborator, the {@link DurableWorktree} service, is INJECTED from the framework registry
+ * by the {@link OsgiService} bridge — {@code worktree-core}'s {@code JgitWorktree} live, or a mock
+ * a test seeds. NOT survey-inert: reading git facts is a pure, deterministic read (no live system
  * contacted), so the harvest runs in BOTH modes — the host needs the root to project the GROW
  * mounts at preview too, exactly as the incus grow plan is projected in both.
  */
@@ -113,18 +113,19 @@ public class WorktreeScenario
   }
 
   /**
-   * When: read the worktree's git facts off the {@link Worktree} service and fabricate the {@link
-   * WorktreeFacts} snapshot (WHEN fabricates). The service is injected straight from the bundle
-   * registry by the {@link OsgiService} bridge — {@code JgitWorktree} live, jgit sealed behind it.
+   * When: read the worktree's git facts off the {@link DurableWorktree} service and fabricate the
+   * {@link WorktreeFacts} snapshot (WHEN fabricates). The service is injected straight from the
+   * bundle registry by the {@link OsgiService} bridge — {@code JgitWorktree} live, jgit sealed
+   * behind it.
    */
   public static class When extends Stage<When> {
 
-    @OsgiService private Optional<Worktree> worktree = Optional.empty();
+    @OsgiService private Optional<DurableWorktree> worktree = Optional.empty();
 
     @ProvidedScenarioState WorktreeFacts facts;
 
     public When the_git_facts_are_read() {
-      final Worktree resolved = worktree.orElseThrow();
+      final DurableWorktree resolved = worktree.orElseThrow();
       this.facts =
           new WorktreeFacts(
               resolved.root().toString(),

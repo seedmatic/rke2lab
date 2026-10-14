@@ -3,6 +3,12 @@ schema-version = "1.11.0"
 [include]
   [[include.environments]]
     dir = '../keyhole'
+  ## The flake-input registry indirection lived in THIS env's own [hook] first, which made
+  ## including it for the registry drag eleven nix tools across two systems — measured, +23
+  ## packages in a seat that wanted one hook. It moved to its own env; `nix` keeps offering the
+  ## bundle to whoever wants both, and a seat that wants only the registry includes that one.
+  [[include.environments]]
+    dir = '../flake-registry'
 
 [install]
   [install.cachix]

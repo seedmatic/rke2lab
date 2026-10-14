@@ -21,6 +21,10 @@
     bundles (Import-Package org.bouncycastle.*), staged beside it.</description>
 
   <dependencies>
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>seed-broker-codec</artifactId>
+    </dependency>
     <!-- The domain contract: the seal's output records (ClusterCaBundle, ClusterAgeKey) + the
          SopsEncryptor seam it drives. -->
     <dependency>

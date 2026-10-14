@@ -1,9 +1,12 @@
 package io.seedmatic.rke2lab.controlplane.config;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.seedmatic.rke2lab.host.runtime.SopsAtRest;
 import io.seedmatic.rke2lab.manifests.ingress.PacWebhookFunnel;
+import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
+import io.seedmatic.rke2lab.seed.broker.codec.WireCodec;
 import java.awt.Desktop;
 import java.awt.GraphicsEnvironment;
 import java.io.IOException;
@@ -25,6 +28,7 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Set;
 import java.util.stream.Stream;
 
@@ -48,9 +52,9 @@ import java.util.stream.Stream;
  *       as a URL param) is set later by the grow's webhook scion, AS the App — never on the UI.
  *   <li>{@code ghapp install} — open the App's install page; the operator installs it on the org.
  *   <li>{@code ghapp seed <appId> [pemPath]} — forge the App JWT from the PEM, resolve the
- *       installation id via {@code GET /app/installations}, and write the {@code githubApp} block
- *       into {@code .secrets} ({@code privateKeyPem} marked {@code # sops:encrypted}). {@code
- *       pemPath} defaults to the newest {@code *.pem} in {@code ~/Downloads}.
+ *       installation id via {@code GET /app/installations}, and write {@code github.app} into
+ *       {@code .secrets} ({@code privateKeyPem} marked {@code # sops:encrypted}). {@code pemPath}
+ *       defaults to the newest {@code *.pem} in {@code ~/Downloads}.
  * </ul>
  */
 public final class GithubAppCli {
@@ -58,7 +62,7 @@ public final class GithubAppCli {
   private static final String ORG = "seedmatic";
   private static final String APP_NAME = "seedmatic-rke2lab";
   private static final URI API = URI.create("https://api.github.com");
-  private static final String SECRETS_KEY = "githubApp";
+  private static final List<String> SECRETS_PATH = List.of("github", "app");
   private static final String API_VERSION = "2022-11-28";
 
   /**
@@ -100,7 +104,7 @@ public final class GithubAppCli {
       URI.create(
           "https://github.com/organizations/seedmatic/settings/apps/seedmatic-rke2lab/installations");
 
-  private static final ObjectMapper MAPPER = new ObjectMapper();
+  private static final WireCodec WIRE = new SeedCodec().wire();
   private static final Base64.Encoder URL64 = Base64.getUrlEncoder().withoutPadding();
   private static final HttpClient HTTP =
       HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(20)).build();
@@ -121,7 +125,7 @@ public final class GithubAppCli {
                   + " private key)\n"
                   + "  install             open the App's install page (install on the seedmatic"
                   + " org)\n"
-                  + "  seed <appId> [pem]  resolve the installation id and write the githubApp block"
+                  + "  seed <appId> [pem]  resolve the installation id and write github.app"
                   + " into .secrets");
     }
   }
@@ -134,7 +138,7 @@ public final class GithubAppCli {
     System.out.println(
         "Next: Create GitHub App -> Generate a private key (PEM lands in ~/Downloads), then:");
     System.out.println("  ghapp install        # install it on the org");
-    System.out.println("  ghapp seed <appId>   # write the githubApp block into .secrets");
+    System.out.println("  ghapp seed <appId>   # write github.app into .secrets");
   }
 
   private static void install() {
@@ -168,7 +172,8 @@ public final class GithubAppCli {
     leaves.put("appId", appId);
     leaves.put("installationId", installationId);
     leaves.put("privateKeyPem", pem.stripTrailing() + "\n");
-    DotSecretsWriter.upsert(Path.of(".secrets"), SECRETS_KEY, leaves, Set.of("privateKeyPem"));
+    new DotSecretsWriter(new SopsAtRest())
+        .upsert(Path.of(".secrets"), SECRETS_PATH, leaves, Set.of("privateKeyPem"));
 
     System.out.println(
         "ghapp seed: App "
@@ -187,7 +192,7 @@ public final class GithubAppCli {
             + repos
             + ")");
     System.out.println(
-        "ghapp seed: wrote the githubApp block into .secrets (privateKeyPem # sops:encrypted)");
+        "ghapp seed: wrote github.app into .secrets (privateKeyPem # sops:encrypted)");
     if (!"all".equals(repos)) {
       System.out.println(
           "ghapp seed: NOTE selection is '"
@@ -269,7 +274,7 @@ public final class GithubAppCli {
         throw new IllegalStateException(
             "GitHub " + path + " -> HTTP " + response.statusCode() + " " + response.body());
       }
-      return MAPPER.readTree(response.body());
+      return WIRE.readJson(response.body());
     } catch (IOException e) {
       throw new UncheckedIOException("GitHub " + path + " failed", e);
     } catch (InterruptedException e) {
@@ -281,24 +286,25 @@ public final class GithubAppCli {
   private static String issueJwt(String appId, String pem) {
     final PrivateKey key = readPrivateKey(pem);
     final Instant now = Instant.now();
-    final ObjectNode header = MAPPER.createObjectNode().put("alg", "RS256").put("typ", "JWT");
+    final ObjectNode header =
+        JsonNodeFactory.instance.objectNode().put("alg", "RS256").put("typ", "JWT");
     final ObjectNode payload =
-        MAPPER
-            .createObjectNode()
+        JsonNodeFactory.instance
+            .objectNode()
             .put("iat", now.getEpochSecond() - 60)
             .put("exp", now.getEpochSecond() + 540)
             .put("iss", appId);
     try {
       final String signingInput =
-          enc(MAPPER.writeValueAsBytes(header)) + "." + enc(MAPPER.writeValueAsBytes(payload));
+          enc(WIRE.writeJson(header).getBytes(StandardCharsets.UTF_8))
+              + "."
+              + enc(WIRE.writeJson(payload).getBytes(StandardCharsets.UTF_8));
       final Signature rsa = Signature.getInstance("SHA256withRSA");
       rsa.initSign(key);
       rsa.update(signingInput.getBytes(StandardCharsets.US_ASCII));
       return signingInput + "." + enc(rsa.sign());
     } catch (GeneralSecurityException e) {
       throw new IllegalStateException("could not sign the App JWT", e);
-    } catch (IOException e) {
-      throw new UncheckedIOException("could not serialise the App JWT", e);
     }
   }
 

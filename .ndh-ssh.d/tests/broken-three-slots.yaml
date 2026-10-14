@@ -1,0 +1,10 @@
+# Must FAIL the schema, for ONE reason only: three slots means phase 2 of a renewal was
+# skipped. Everything else here is valid, so the refusal proves maxProperties bites.
+authorities:
+  test-ca:
+    type: ssh-ed25519
+    slots:
+      26-01-01: { public: AAAAC3NzaC1lZDI1NTE5AAAAIOneFixtureBlobOneFixtureBlobOneFixtureBlob }
+      26-05-01: { public: AAAAC3NzaC1lZDI1NTE5AAAAITwoFixtureBlobTwoFixtureBlobTwoFixtureBlob }
+      26-10-01: { public: AAAAC3NzaC1lZDI1NTE5AAAAIThreeFixtureBlobThreeFixtureBlobThreeFixtur }
+keys: {}

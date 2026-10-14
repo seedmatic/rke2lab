@@ -116,7 +116,7 @@ The render loop is split across two namespaces by OWNERSHIP, not lumped in `tekt
 | `rke2lab-system` (the runtime-system namespace, already home to flox-controller)
 | rke2lab's OWN render artifacts — the `Repository` CR (which binds the source repo to THIS
   execution namespace), the `render-manifests` `Pipeline` + its `git-fetch`/`render-publish` Tasks,
-  the Maven-cache PVC, the `manifests-render-signing` Secret, and the PipelineRuns PaC creates. PaC
+  the `manifests-render-signing` Secret, and the PipelineRuns PaC creates. PaC
   runs a matched PipelineRun in the `Repository`'s namespace — so this is where the runs execute.
 
 | `tekton-pipelines`
@@ -240,16 +240,11 @@ A happy side effect: the spec's own escape hatch is that renaming an FQDN opens 
 budget. Migrating to per-cluster names IS that rename, so it is also the way out if `flux-webhook`'s
 budget is already spent. It costs updating the GitHub App's webhook URL, as the WARNING below notes.
 
-NOTE: the maven cache has LANDED on that same tier, and the shape is settled:
-`tank/rke2lab/<role>/persist/maven-cache` — keyed by `ClusterRole`, not by cluster name, for the
-reason `DataplanLayout` gives (the projection ndh consumes is one checked-in list materialised on
-every host, so it cannot name hosts). It is adopted by a `VolumeIntention` the render pipeline
-renders, exactly as the funnel cert is, so the dataset is no longer the unadopted orphan that made
-declaring it litter. What forced the move was not tidiness: as a Tekton *workspace* the cache was
-co-mounted by the affinity assistant, which required the `shared: yes` bind-mount class, which lives
-on the ephemeral tier — where a dynamic `pvc-<uuid>` leaked one dataset per cold start (measured
-2026-09-24: eight datasets for one live claim) and a node-pinned PV stranded the cache on the first
-control-plane roll. See `RenderPipelineManifestsUnit` § workspaces-vs-caches.
+NOTE: the render carries NO Maven cache since 2026-10-12, so nothing of it sits on this tier: its
+Maven dependencies are one fixed-output nix derivation (`maven-deps`), cached by the node's store by
+hash, and the build runs offline in the nix sandbox. `persist/maven-cache` left `DataplanLayout`; the
+datasets already on the hosts are undeclared persist data, reported by the stale-resource GC and
+deleted only on the operator's go.
 
 [#funnel-node-affinity]
 ==== The volume belongs to the CONTROLLER — a managed node's name is not render-time knowledge
@@ -524,15 +519,17 @@ is a different concern — the `.secrets` DOOR — not a process secret.
   (`RKE2LAB_PUSH_TOKEN`), sowing NO `ghapp`/`auth`.
 
 | Signing key + bot identity
-| `revealSigningKey()` reads the ndh keystore (`sshPrivate("github-signing")` + `authorityDomain`) —
+| `revealSigningKey()` reads the ndh keystore (`sshPrivate("rke2lab-bot-signing")` + `authorityDomain`) —
   the `manifests publish` verb's current path.
 | `revealSigningKey()` reads the env (`RKE2LAB_SIGNING_KEY`) fed by a *mounted Secret* — the signing
-  key rides the same NODE_BOOTSTRAP → mittwald-replicator lane as `tekton.git`/`tekton.docker` (the
-  OPERATOR bootstrap emits it from its keystore, exactly as it emits `sops-age`), replicated into
+  key rides the NODE_BOOTSTRAP → mittwald-replicator lane (the OPERATOR bootstrap emits it from its
+  keystore, exactly as it emits `sops-age`; the `tekton.git`/`tekton.docker` blocks that once shared
+  the lane were dropped — Tekton authenticates with the token PaC mints through the GitHub App), replicated into
   `tekton-pipelines`, mounted into `render-publish`. The bot's authority domain is the code constant.
 
 | ndh keystore (`sops-age` age key, cluster-pki)
-| Read from the sops-smudged `.ndh-ssh.d/keys.yaml`.
+| Read from `.ndh-ssh.d/keys.yaml`, encrypted at rest: `DefaultNdhKeystoreReader` decrypts it in
+memory (`sops --decrypt`) and refuses a plaintext file.
 | *Not read.* The enclosure gates `SopsAgeMaterialResolver` + the cluster-pki reads OFF in-cluster —
   `sops-age` is a NODE_BOOTSTRAP bootstrap secret already applied at the operator's first grow, never
   re-emitted by an in-cluster render.
@@ -547,12 +544,9 @@ runtime (`FloxDebugPolicy.prodImage()`) and opt into the `toolchains/git-sops` f
 step via `flox.seedmatic.io/environment.step-clone` and the render step via
 `environment.step-render` (composed with its `nix-build` runtime). No stock `alpine`/`git` image
 anywhere on the loop, and the former downstream re-smudge workaround is gone. The env makes the
-checkout secret-full by TWO mechanisms, both from the one annotation:
+render secret-full with sops and ONE key, from the one annotation — no git filter: the checkout
+stays encrypted, the render opens `.secrets` in memory and seals the Secrets it commits in memory:
 
-* *the sops filter is wired on activation* — git-sops's `manifest[hook.on-activate]` runs `git
-  config --global include.path "$FLOX_ENV/sops"`, registering the ndh `git-sops-filter` package's
-  `sops-yaml` clean/smudge filter GLOBALLY. The clone step's `git checkout FETCH_HEAD` then smudges
-  `.secrets` + the branch's sops-encrypted files IN the shared `source` workspace, at clone time;
 * *`SOPS_AGE_KEY` arrives via `spec.inject`* — git-sops's `spec.inject` declares `SOPS_AGE_KEY`
   `valueFrom` the replicated `sops-age` Secret (optional), which the flox-controller webhook adds to
   every container that annotates the env. It is NO LONGER a hand-wired Task `env:` — the env owns
@@ -564,11 +558,10 @@ checkout secret-full by TWO mechanisms, both from the one annotation:
 
 The render step opens with a FAIL-LOUD prerequisite check (a clear error, not a downstream decode
 failure): `SOPS_AGE_KEY` must be set (else the git-sops inject / the replicated `sops-age` is
-missing) and `git config --get filter.sops-yaml.smudge` must resolve (else the on-activate hook did
-not wire the filter). In-cluster the `SecretsGateway` is therefore a `DotSecretsGateway` over the
-smudged `.secrets` (the `EmptySecretsGateway` was removed), and the durable-minted materials NOT in
+missing). In-cluster the `SecretsGateway` is therefore a `DotSecretsGateway` over `.secrets`, opened
+in memory (the `EmptySecretsGateway` was removed), and the durable-minted materials NOT in
 `.secrets` (incus-identity, the workload BYO-CAs) ride a sops-encrypted branch *cellar asset* the
-render rehydrates. The ndh-keystore/signing-key narrative below predates this and is being reconciled
+render reads at HEAD and opens in memory. The ndh-keystore/signing-key narrative below predates this and is being reconciled
 to it.
 ====
 
@@ -578,7 +571,7 @@ enclosure.
 
 That reach IS the sops-age pattern, applied to the signing key — the OPERATOR grow SEEDS it so a
 later in-cluster render can consume it. A pre-synthesis `SigningKeyMaterialResolver` reads {@code
-github-signing} from the ndh key-store (OPERATOR-only, enclosure-gated) into a `SigningKeyMaterial`
+rke2lab-bot-signing} from the ndh key-store (OPERATOR-only, enclosure-gated) into a `SigningKeyMaterial`
 on the synthesis context (the twin of `SopsAgeMaterialResolver`/`SopsAgeMaterial`);
 `RenderSigningSecretManifestsUnit` renders it as the NODE_BOOTSTRAP `manifests-render-signing` Secret
 in `tekton-pipelines`, which `RenderPipelineManifestsUnit` mounts into the `render-publish` step as
@@ -720,11 +713,12 @@ order, no doc-start marker) so an unchanged render is byte-identical. Being plai
 applied by nothing and sits outside every Flux `Kustomization` path. The branch becomes self-describing:
 `git show manifests/<cluster>:manifest.yaml | yq .facet` shows the facet that produced it.
 
-*Transmission — the synthesis reads that manifest from the branch HEAD.* The render prepares its
-linked worktree on `manifests/<cluster>` (`RenderedBranch.prepare`, which first fast-forwards the
-LOCAL branch to origin's tip so a fresh clone — the in-cluster Tekton `--depth 1` checkout — reuses
-the pushed history instead of orphaning it), then the synthesis (`ManifestSynthesisScenario`) reads
-the recorded facet at HEAD THROUGH the worktree edge (`Worktree.readAtHead("manifest.yaml")`) — jgit
+*Transmission — the synthesis reads that manifest from the branch HEAD.* The render opens its head
+on `manifests/<cluster>` in memory (`TransientWorktrees.open`, which first fast-forwards the LOCAL
+branch to origin's tip so a fresh clone — the in-cluster Tekton `--depth 1` checkout — reuses
+the pushed history instead of orphaning it; the fetch authenticates as the App, with the pipeline's
+token in-cluster, never through a credential helper), then the synthesis (`ManifestSynthesisScenario`) reads
+the recorded facet at HEAD THROUGH the worktree edge (`TransientWorktree.readAtHead("manifest.yaml")`) — jgit
 is already in the boat, so there is no wrapper `git show` plumbing and no `-D` facet file. The read is
 robust to the delivery EMPTYING the working tree (it reads the COMMITTED blob, not the checkout). No
 per-cluster value is baked into the Pipeline, which stays generic. The grow WRITES the manifest (from
@@ -810,10 +804,12 @@ The pipeline runs `mvn -pl :manifests-cli -am clean verify` (not `package`): `ve
 pushed. `verify` sits before `install` in the lifecycle → the reactor discipline holds (siblings
 resolve from `target/`, nothing is installed to `~/.m2`). Speed:
 
-* A *RWO PVC* mounted at `~/.m2` carries the dependency repo + the maven-build-cache. `clean` wipes
-  the module `target/` dirs but NOT the PVC build-cache, so unchanged modules restore from cache.
-* The pipeline is *serialised* (concurrency 1) — a Maven local repo + build-cache are not
-  multi-writer safe, and two renders racing to push the branch is undesirable anyway.
+* The node's nix store is the only cache: it holds the fixed-output Maven dependency repository by
+  hash and `manifests-cli` by source, so an unchanged source is a store hit and a dependency is
+  downloaded once per change. A source change rebuilds the reactor whole — the price of a build the
+  sandbox can seal (operator, 2026-10-12: purity first).
+* The pipeline is *serialised* (concurrency 1) — the nix store is not multi-writer safe, and two
+  renders racing to push the branch is undesirable anyway.
 
 *Runtime = the flox NRI plugin (dogfooding).* The PipelineRun pod is flox-annotated → the NRI plugin
 injects a FloxEnv build-toolchain (JDK 25 / maven). No bespoke toolchain image; its lifecycle is a
@@ -825,18 +821,19 @@ FloxEnv flavor is `FloxEnvFolder=cicd`.
 == Which revision, which branch
 
 PaC fetches the *pushed commit* (`@R`) and matches `on-target-branch` — the branch the cluster was
-grown from (the source-of-truth branch: `feature/viewpoint-separation` today, `main` at term). The
-`.tekton/` PipelineRun must exist on that branch. The rendered revision is thus the triggering push's
-commit — determinism + consistency with what an operator would render.
+grown from: `main`. `main` only receives reviewed `--no-ff` merge-downs from `develop`, so a push to
+`develop` never re-renders a live cluster; only a merge-down does. The `.tekton/` PipelineRun must
+exist on that branch. The rendered revision is thus the triggering push's commit — determinism +
+consistency with what an operator would render.
 
 ⚠️ *The trigger is single-valued, and a stale value fails silently.* Exactly one source branch may
-win, because every render publishes to the shared `manifests/<cluster>` branches. So the branch name
-is a literal that must be maintained — and on 2026-09-28 it was found still naming
-`feature/nixos-node-substrate`, weeks after that branch was retired: pushes matched nothing, *no*
-`PipelineRun` was created, and there was no error to notice. The symptom surfaced elsewhere entirely
-(a newly rendered `tls-san` that never reached any cluster), which is the shape to watch for. The
-same fact is encoded a second time as ndh's `rke2lab` flake input URL and had rotted identically;
-when this branch is superseded, both move together.
+win, because every render publishes to the shared `manifests/<cluster>` branches. A working-branch
+literal rots: on 2026-09-28 it was found still naming `feature/nixos-node-substrate`, weeks after
+that branch was retired, and on 2026-10-12 naming `feature/viewpoint-separation` after its deletion.
+Each time pushes matched nothing, *no* `PipelineRun` was created, and there was no error to notice.
+The symptom surfaces elsewhere entirely (the first time, a newly rendered `tls-san` that never reached
+any cluster), which is the shape to watch for. Naming `main`, which is never deleted, ends that. ndh
+no longer encodes this fact: it reads rke2lab only through the `fabric/plan` orphan.
 
 [[webhook-delivery]]
 == Fleet render delivery — the ROOT is the fleet's event source (📐 2026-09-30)
@@ -926,7 +923,7 @@ controller here — desired state, observed state, an action that closes the gap
 
 [cols="1,3",options="header"]
 |===
-| | 
+| |
 
 | DESIRED
 | every sub-plane's branch is rendered at the source branch HEAD
@@ -1034,7 +1031,7 @@ the sub-planes it birthed, the same hierarchy as adoption.
 
 [cols="1,3",options="header"]
 |===
-| Reason | 
+| Reason |
 
 | the responsibility is ALREADY there
 | `PoolReflection` is the parent writing into its CHILD's branch what it observes of that child.
@@ -1298,6 +1295,11 @@ exactly that and was measured wrong before being believed.
 Verified three ways against the store's own layout: an identical re-render keeps the SAME blob; the
 same content with reordered keys keeps the SAME blob; a changed value still produces a NEW blob.
 
+The render now seals its Secrets itself, in memory, before staging (`RenderedSecretSeal`), and carries the
+same law: the envelope committed at the same path is written back when it opens to the same documents,
+compared as parsed trees; anything it cannot compare is sealed afresh. No git filter takes part any more,
+so the law holds for a commit built without a checkout too.
+
 ==== Why it was worth fixing — and why the reason is NOT runtime
 
 Stated plainly because two tempting justifications are false:
@@ -1306,7 +1308,7 @@ Stated plainly because two tempting justifications are false:
   plaintext yields no apiserver update, hence no watch event, hence nothing downstream restarts.
 * ❌ *the render pipeline pays for the history* — it should not: the SOURCE fetch is already
   `--depth 1` (`RenderPipelineManifestsUnit`), and the RENDERED BRANCH fetch is not
-  (`GitCli` — `git fetch origin +<ref>:<ref>`). History is never read to render, so shallow-fetching
+  (`JgitCheckout.fetchBranch` — a full `+<ref>:<ref>` fetch). History is never read to render, so shallow-fetching
   the branch is correct independently of this fix.
 * ✅ what it really buys: **diff legibility** (a human can see what a render changed), a branch that
   stops growing ~28 incompressible blobs per render, and — decisively — condition 2 above
@@ -1348,7 +1350,7 @@ source is the ndh key-store — and *IN_CLUSTER the key-store is unreachable*, w
 condition the in-cluster render runs under, and the in-cluster render is the steady state. A key-store
 read would have given the operator's render a CA and the cluster's render none.
 
-So `ManifestSynthesisScenario` derives it from `ClusterIssuerCaMaterial.caCertChainPem` — the last
+So `ManifestSynthesisScenario` derives it from `ClusterIssuerCa.caCertChainPem` — the last
 certificate of a chain the seal assembles as `chainPem(issuerCa, intermediate, root)`, whose root IS
 that key-store entry.
 
@@ -1380,7 +1382,8 @@ from either viewpoint" — including when one viewpoint can see less.
 === Open
 
 * The reconcile interval — a latency-versus-churn trade, not a correctness question: the loop
-  converges at any interval. Bounded below by the shared nix/maven cache PVC each render warms.
+  converges at any interval. Bounded below by the render's build time, which the node's nix store
+  shortens whenever the source has not moved.
 * How the parent AUTHENTICATES its poke to the child's PaC: sign a synthetic push with the shared
   `webhook.secret` (identical across clusters — measured 2026-09-30, same sha256, and both hold the
   same App id + private key), or use PaC's `/incoming` endpoint, which exists for external triggers.
@@ -1414,10 +1417,6 @@ from either viewpoint" — including when one viewpoint can see less.
   `environment.step-render=toolchains/git-sops`, or the replicated `sops-age` Secret is absent from
   `rke2lab-system` (the mittwald replicator lane). The inject is `optional:true`, so a missing Secret
   leaves the env unset — this check turns that into a clear error instead of a decode failure.
-| `render: sops-yaml git filter not registered` (the render step aborts)
-| git-sops's `[hook.on-activate]` did not wire the include — the `git-sops-filter` package shipped no
-  `$FLOX_ENV/sops` file, or the env did not activate on the container. Confirm the container carries
-  the `environment.<c>=toolchains/git-sops` annotation and the env realised on the node.
 | A `JsonParseException` on `ENC[…]` (the render reads a still-ENCRYPTED file)
 | The clone landed the sops file un-smudged: the sops-yaml filter was not wired at CLONE time. The
   clone step (`step-clone`) must ALSO carry `environment.step-clone=toolchains/git-sops`, so its `git

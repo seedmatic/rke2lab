@@ -62,11 +62,6 @@ public final class FloxControllerManifestsUnit extends AbstractManifestsUnit {
    */
   private static final String RBAC_ROLE_RESOURCE = "/rbac/flox-controller/role.yaml";
 
-  /** The replicated FloxHub token Secret (name + key match .secrets kubernetes.secrets.flox). */
-  private static final String FLOXHUB_TOKEN_SECRET = "floxhub-token";
-
-  private static final String FLOXHUB_TOKEN_KEY = "token";
-
   /**
    * Where the controller reads the (rotating) GitHub App token: a file mounted from the replicated
    * {@code github-token} Secret. A FILE, not an env — {@code buildEnv} reads it fresh per flox
@@ -110,14 +105,10 @@ public final class FloxControllerManifestsUnit extends AbstractManifestsUnit {
     clusterRoleBinding.addDependency(clusterRole);
     createDaemonSet(scope, context.resolver(), namespace, serviceAccount, clusterRoleBinding);
 
-    // Token target stubs: mittwald fills each from its replicator source in rke2lab-secrets (pull
-    // pattern, as Tailscale/Tekton do). floxhub-token feeds the DaemonSet's FLOX_FLOXHUB_TOKEN env
-    // +
-    // the webhook injection; github-token (the App token gtm mints, replicated here) feeds the
-    // controller's own nix via a mounted FILE (see the volume in createDaemonSet). Without a stub
-    // the source secret (authorised to this namespace) is never pulled.
-    createTokenReplicaStub(
-        scope, context.resolver(), namespace, FLOXHUB_TOKEN_SECRET, "secret-floxhub-token");
+    // Token target stub: mittwald fills it from its replicator source in rke2lab-secrets (pull
+    // pattern, as Tailscale/Tekton do). github-token (the App token gtm mints, replicated here)
+    // feeds the controller's own nix via a mounted FILE (see the volume in createDaemonSet).
+    // Without a stub the source secret (authorised to this namespace) is never pulled.
     createTokenReplicaStub(
         scope,
         context.resolver(),
@@ -146,7 +137,6 @@ public final class FloxControllerManifestsUnit extends AbstractManifestsUnit {
                         .labels(Map.of("app.kubernetes.io/replicated", "true"))
                         .annotations(
                             packageProfile.packageAnnotations(
-                                "|Secret|" + namespace + "|" + secretName,
                                 Map.of(
                                     "replicator.v1.mittwald.de/replicate-from",
                                     ClusterRefs.SECRETS_NAMESPACE + "/" + secretName)))
@@ -172,9 +162,7 @@ public final class FloxControllerManifestsUnit extends AbstractManifestsUnit {
                     ApiObjectMetadata.builder()
                         .name(NAME)
                         .namespace(namespace)
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "|ServiceAccount|" + namespace + "|" + NAME))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
     serviceAccount.addDependency(resolver.require(ClusterRefs.RUNTIME_SYSTEM_NAMESPACE));
@@ -192,9 +180,7 @@ public final class FloxControllerManifestsUnit extends AbstractManifestsUnit {
                 .metadata(
                     ApiObjectMetadata.builder()
                         .name(NAME)
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "rbac.authorization.k8s.io|ClusterRoleBinding||" + NAME))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
     binding.addJsonPatch(
@@ -289,24 +275,6 @@ public final class FloxControllerManifestsUnit extends AbstractManifestsUnit {
     // so enablement no longer depends on a grow-sealed secret that a secret-blind render would
     // strip.
     args.add("--enable-webhook");
-    // Tell the webhook injector which (replicated) Secret carries the FloxHub token.
-    args.add("--token-secret-name=" + FLOXHUB_TOKEN_SECRET);
-    args.add("--token-secret-key=" + FLOXHUB_TOKEN_KEY);
-    // The controller's OWN flox subprocesses (realise via nsenter) authenticate with the same
-    // token. optional: the replicated Secret's key may not have landed yet (mittwald fills the
-    // stub async) — the controller must NOT wedge on it, so an absent key just leaves flox
-    // unauthenticated (warnings only) until a restart picks up the replicated value.
-    env.add(
-        Map.of(
-            "name",
-            "FLOX_FLOXHUB_TOKEN",
-            "valueFrom",
-            Map.of(
-                "secretKeyRef",
-                Map.of(
-                    "name", FLOXHUB_TOKEN_SECRET,
-                    "key", FLOXHUB_TOKEN_KEY,
-                    "optional", true))));
     volumeMounts.add(
         Map.of(
             "name", "webhook-certs",
@@ -350,9 +318,7 @@ public final class FloxControllerManifestsUnit extends AbstractManifestsUnit {
                     ApiObjectMetadata.builder()
                         .name(NAME)
                         .namespace(namespace)
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "apps|DaemonSet|" + namespace + "|" + NAME))
+                        .annotations(packageProfile.packageAnnotations())
                         .labels(podLabels)
                         .build())
                 .build());

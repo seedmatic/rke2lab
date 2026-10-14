@@ -100,7 +100,6 @@ public final class TailnetPurgeManifestsUnit extends AbstractManifestsUnit {
                     .namespace(NAMESPACE)
                     .annotations(
                         packageProfile.packageAnnotations(
-                            "",
                             Map.of(
                                 ManifestAnnotation.MANIFEST_LAYER.key(),
                                 ManifestLayer.OPERATORS.value())))
@@ -130,7 +129,6 @@ public final class TailnetPurgeManifestsUnit extends AbstractManifestsUnit {
                         .labels(Map.of("app.kubernetes.io/replicated", "true"))
                         .annotations(
                             packageProfile.packageAnnotations(
-                                "",
                                 Map.of(
                                     "replicator.v1.mittwald.de/replicate-from",
                                     ClusterRefs.SECRETS_NAMESPACE + "/operator-oauth",
@@ -255,7 +253,6 @@ public final class TailnetPurgeManifestsUnit extends AbstractManifestsUnit {
                         .namespace(NAMESPACE)
                         .annotations(
                             packageProfile.packageAnnotations(
-                                "",
                                 Map.of(
                                     ManifestAnnotation.MANIFEST_LAYER.key(),
                                     ManifestLayer.OPERATORS.value())))

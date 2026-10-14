@@ -264,7 +264,7 @@ knowledge.
   invent a second one.
 . It names the OUTCOME, not the mechanism. `update-locks` describes `nix flake update`; `relock`
   describes what a consumer cares about — the lock is re-established.
-. House style is a short kebab-case imperative: `grow`, `lock-envs`, `mint-gh-app-token`,
+. House style is a short kebab-case imperative: `grow`, `lock-envs`, `publish-plan`,
   `manage-tailnet`.
 
 Propagation is a SCOPE, not a second name — following the per-input scope already decided for the
@@ -336,6 +336,9 @@ pipeline already had to solve once, with a token scoped to extra repos.
 * ❌ *Trusting a bump report.* ✅ Assert the consumer landed on the revision this run pushed.
 
 == Related Documentation
+
+* link:../atlas/flake-chain.adoc[Atlas — The flake chain, as delivered] - this design measured against
+  the code: what `relock` and the registry do today, where they departed from it, and the gaps left
 
 * link:flake-build-entry-point.adoc[Flake build entry point] — how a build is entered, the other half
   of the flake story

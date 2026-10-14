@@ -6,20 +6,23 @@ import com.tngtech.jgiven.annotation.Hidden;
 import com.tngtech.jgiven.annotation.ProvidedScenarioState;
 import com.tngtech.jgiven.base.ScenarioTestBase;
 import com.tngtech.jgiven.impl.Scenario;
-import inet.ipaddr.IPAddressString;
 import io.seedmatic.rke2lab.manifests.contract.ClusterRole;
 import io.seedmatic.rke2lab.netplan.contract.ClusterAsn;
 import io.seedmatic.rke2lab.netplan.contract.ClusterNetworkBlueprint;
 import io.seedmatic.rke2lab.netplan.contract.ClusterNetworkBlueprint.ClusterTopology;
 import io.seedmatic.rke2lab.netplan.contract.NetplanRunbookInput;
+import io.seedmatic.rke2lab.netplan.ingress.NetplanIngressCoordinate;
+import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.CellarReceiver;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.InputReceiver;
+import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.OsgiService;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.ScenarioInputSeed;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.ScenarioPlayer;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.SeedScenario;
 import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
+import io.seedmatic.rke2lab.seed.broker.port.Cellar;
+import io.seedmatic.rke2lab.seed.broker.port.Parcel;
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.net.InetAddress;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -62,7 +65,7 @@ public class NetplanBlueprintScenario
         NetplanBlueprintScenario.Given,
         NetplanBlueprintScenario.When,
         NetplanBlueprintScenario.Then>
-    implements InputReceiver<NetplanRunbookInput>, ScenarioPlayer.Playable {
+    implements CellarReceiver<Cellar>, InputReceiver<NetplanRunbookInput>, ScenarioPlayer.Playable {
 
   /**
    * The inbound channel the runbook handler ({@code NetplanRunbookHandler.seedFrom}) seeds the
@@ -76,6 +79,17 @@ public class NetplanBlueprintScenario
 
   @MonotonicNonNull private NetplanRunbookInput input;
 
+  // The transactional cellar the extension injects before the body; the projection is stored into
+  // it
+  // for the host to fetch back within the run. Null until receiveCellar sets it.
+  @MonotonicNonNull private Cellar cellar;
+
+  // The run's parcel, published by the seed host at its GIVEN (synchronously, before any sow), so a
+  // snapshot sees it. The plan CLI publishes none: its run only exports to the soil, and nobody
+  // fetches a projection there. Hence an optional collaborator, never awaited.
+  @OsgiService(await = false)
+  private Optional<Parcel> parcel = Optional.empty();
+
   @Override
   public Scenario<Given, When, Then> getScenario() {
     return scenario;
@@ -86,13 +100,20 @@ public class NetplanBlueprintScenario
     this.input = input;
   }
 
+  @Override
+  public void receiveCellar(Cellar cellar) {
+    this.cellar = cellar;
+  }
+
   @Test
   void the_blueprint_is_exported_to_the_soil() {
     final NetplanRunbookInput facet =
         Objects.requireNonNull(input, "the netplan runbook input was not seeded before the body");
     given().the_runbook_input(facet);
     when().the_blueprint_metadata_is_derived().and().the_blueprint_is_written_as_json();
-    then().the_blueprint_file_is_written();
+    final Cellar harvest =
+        Objects.requireNonNull(cellar, "the cellar was not injected before the body");
+    then().the_blueprint_file_is_written().and().the_projection_is_harvested(harvest, parcel);
   }
 
   /** Given: the runbook input carrying the SOIL to materialise into. */
@@ -120,9 +141,8 @@ public class NetplanBlueprintScenario
 
     private final SeedCodec codec = new SeedCodec();
 
-    // Derived by the first WHEN step, read by the second on the same stage instance — intra-stage,
-    // so a plain field, not a cross-stage @ProvidedScenarioState.
-    @MonotonicNonNull private NetworkBlueprintMetadata metadata;
+    // Derived by the first WHEN step, written by the second, harvested by the THEN.
+    @ProvidedScenarioState @MonotonicNonNull NetworkBlueprintMetadata metadata;
 
     // One blueprint, for one (cluster, node). Five identical builder chains lived here; the shape
     // is the netplan's, not this scenario's, so it is named once.
@@ -194,10 +214,12 @@ public class NetplanBlueprintScenario
                   bp.vip().vipHostInetaddr().getHostAddress(),
                   bp.fabric().gatewayInetaddr().getHostAddress(),
                   bp.nodeNetwork().nodeGatewayInetaddr().getHostAddress(),
-                  reserved ? Optional.of(mixed(bp.fabric().hostInetaddr6())) : Optional.empty(),
-                  mixed(bp.nodeNetwork().nodeHostInetaddr6()),
-                  mixed(bp.fabric().gatewayInetaddr6()),
-                  mixed(bp.nodeNetwork().nodeGatewayInetaddr6()),
+                  reserved
+                      ? Optional.of(bp.fabric().nodeCidr6().text(bp.fabric().hostInetaddr6()))
+                      : Optional.empty(),
+                  bp.nodeNetwork().nodeCidr6().text(bp.nodeNetwork().nodeHostInetaddr6()),
+                  bp.fabric().nodeCidr6().text(bp.fabric().gatewayInetaddr6()),
+                  bp.nodeNetwork().nodeCidr6().text(bp.nodeNetwork().nodeGatewayInetaddr6()),
                   bp.fabric().nodeCidr6().toString(),
                   bp.nodeNetwork().nodeCidr6().toString());
 
@@ -248,7 +270,7 @@ public class NetplanBlueprintScenario
                 bp.names().vipFabricFqdn(),
                 Optional.empty(),
                 bp.vip().vipHostInetaddr().getHostAddress(),
-                Optional.of(bp.vip().vipHostInetaddr6().getHostAddress())));
+                Optional.of(bp.vip().vipCidr6().text(bp.vip().vipHostInetaddr6()))));
         if (bp.fabricMacIsPredictable()) {
           for (String node : ClusterTopology.of(ClusterRole.of(cluster)).nodeNames()) {
             final ClusterNetworkBlueprint nodeBp = blueprintOf(cluster, node);
@@ -286,7 +308,11 @@ public class NetplanBlueprintScenario
                   cluster + "-" + node,
                   Optional.of(nodeBp.wan().hostMacaddr().value()),
                   nodeBp.nodeNetwork().nodeHostInetaddr().getHostAddress(),
-                  Optional.of(nodeBp.nodeNetwork().nodeHostInetaddr6().getHostAddress())));
+                  Optional.of(
+                      nodeBp
+                          .nodeNetwork()
+                          .nodeCidr6()
+                          .text(nodeBp.nodeNetwork().nodeHostInetaddr6()))));
         }
         segments.add(
             new Segment(
@@ -304,7 +330,8 @@ public class NetplanBlueprintScenario
                 // node /64 rather than the cluster /56 — dnsmasq rejects a DHCPv6 prefix shorter
                 // than /64.
                 Optional.of(bp.nodeNetwork().nodeCidr6().toString()),
-                Optional.of(bp.nodeNetwork().nodeGatewayInetaddr6().getHostAddress())));
+                Optional.of(
+                    bp.nodeNetwork().nodeCidr6().text(bp.nodeNetwork().nodeGatewayInetaddr6()))));
       }
       final ClusterNetworkBlueprint anyNode = blueprintOf(clusterNames.get(0), "master");
       // Shared/attribution spans, labelled with a representative cluster's ASN (anyNode = the mgmt
@@ -324,7 +351,7 @@ public class NetplanBlueprintScenario
       segments.add(Segment.attribution(anyNode.serviceCidr(), "service", anyNode.bgpLocalAsn()));
       segments.add(
           Segment.attribution(
-              ClusterNetworkBlueprint.ULA_PREFIX + "::/48", "ula", anyNode.bgpLocalAsn()));
+              anyNode.host().superNetworkCidr6().toString(), "ula", anyNode.bgpLocalAsn()));
 
       // asn → canonical AS name (the 'asns' dictionary nnh renders), derived from the enum. Home
       // (65000) is ndh's, added by its catalog when it unions the home segments.
@@ -384,17 +411,20 @@ public class NetplanBlueprintScenario
         throw new UncheckedIOException("cannot create the blueprint export dir", ex);
       }
     }
-
-    /** Format a v6 address in IPv4-embedded mixed notation (fd..:CCRR::a.b.c.d) for readability. */
-    private static String mixed(InetAddress v6) {
-      return new IPAddressString(v6.getHostAddress()).getAddress().toIPv6().toMixedString();
-    }
   }
 
-  /** Then: the export landed — {@code blueprint.json} exists and is non-empty. */
+  /**
+   * Then: the export landed — {@code blueprint.json} exists and is non-empty — and, in a seed run,
+   * the same projection is filed at {@link NetplanIngressCoordinate#PROJECTION} under the run's
+   * parcel, where the host reads the operator's addressing from instead of a file. The projection
+   * is what the netplan CODE derives, never a file it publishes (fabric/plan's {@code netplan.json}
+   * is the delivery of this same derivation, for nix).
+   */
   public static class Then extends Stage<Then> {
 
     @ExpectedScenarioState Path blueprintFile;
+
+    @ExpectedScenarioState NetworkBlueprintMetadata metadata;
 
     public Then the_blueprint_file_is_written() {
       if (!Files.exists(blueprintFile)) {
@@ -409,6 +439,12 @@ public class NetplanBlueprintScenario
       if (size <= 0) {
         throw new NetplanExportError(blueprintFile, NetplanExportError.Reason.EMPTY);
       }
+      return self();
+    }
+
+    public Then the_projection_is_harvested(
+        @Hidden Cellar cellar, @Hidden Optional<Parcel> parcel) {
+      parcel.ifPresent(run -> cellar.store(run, NetplanIngressCoordinate.PROJECTION, metadata));
       return self();
     }
   }

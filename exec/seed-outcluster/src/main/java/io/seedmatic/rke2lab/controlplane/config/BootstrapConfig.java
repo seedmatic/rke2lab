@@ -24,12 +24,10 @@ public record BootstrapConfig(
     URI incusClusterAddress,
     Path incusConfigFolder,
     String imageAlias,
-    String imageBuilderHost,
     String fabricBridgeParent,
     String tailnet,
     URI apiEndpoint,
     Path kubeconfigRef,
-    boolean automount,
     String systemdAdapterDbusHost,
     int systemdAdapterDbusPort,
     int hostAssetRotationRetentionCount,
@@ -46,7 +44,7 @@ public record BootstrapConfig(
   // the build script (build-node-base-image.sh) hardcodes the SAME literal on the import side.
   private static final String IMAGE_ALIAS = "node-base";
   private static final String DEFAULT_FABRIC_BRIDGE_PARENT = "fabric-br";
-  // The tailscale tailnet DNS suffix. Resolvable host/automount addresses use the MagicDNS FQDN
+  // The tailscale tailnet DNS suffix. Resolvable host addresses use the MagicDNS FQDN
   // <host>.<tailnet> so they route over the tailscale overlay (stable across the physical LAN),
   // rather than the LAN mDNS <host>.local. Package-visible so the ghapp CLI pre-fills the App
   // registration form's webhook URL with the same funnel FQDN the grow reconciles to.
@@ -61,14 +59,13 @@ public record BootstrapConfig(
   static final String DEFAULT_CLUSTER = "bioskop-mgmt";
 
   private static final URI DEFAULT_API_ENDPOINT = URI.create("https://10.66.106.10:6443");
-  private static final boolean DEFAULT_AUTOMOUNT = true;
   private static final int DEFAULT_SYSTEMD_ADAPTER_DBUS_PORT = 12434;
   private static final int DEFAULT_HOST_ASSET_ROTATION_RETENTION_COUNT = 3;
 
   /**
    * Derive the Stage A bootstrap config from the root DTO. The worktree root is NOT here: it is the
-   * worktree soil's harvest (its {@code Worktree} component self-locates it), fetched from the
-   * cellar by whoever needs it — storing it in config would only collide across worktrees. The
+   * worktree soil's harvest (its {@code DurableWorktree} component self-locates it), fetched from
+   * the cellar by whoever needs it — storing it in config would only collide across worktrees. The
    * mandatory config value ({@code incus.configDir}) is already validated at load, so it arrives
    * non-null; optional values get their default here.
    */
@@ -131,12 +128,10 @@ public record BootstrapConfig(
         URI.create("https://" + nixosFabricHost + ":8443"),
         config.incus().configDir(),
         IMAGE_ALIAS,
-        config.image().builderHost().orElseGet(() -> nixosFabricHost),
         config.network().fabricBridgeParent().orElse(DEFAULT_FABRIC_BRIDGE_PARENT),
         config.network().tailnet().orElse(DEFAULT_TAILNET),
         config.api().endpoint().orElse(DEFAULT_API_ENDPOINT),
         kubeconfigRef,
-        config.network().automount().orElse(DEFAULT_AUTOMOUNT),
         // The systemd adapter runs INSIDE the master container, whose dbus-over-TCP endpoint the
         // host probes over mDNS (avahi on the LAN). The container is NOT on the tailnet, so a bare
         // <cluster>-<node> does not resolve from the host (getaddrinfo fails before the port); the
@@ -182,9 +177,5 @@ public record BootstrapConfig(
 
   public String imageBuilderBinary() {
     return "nix";
-  }
-
-  public String netPrefix() {
-    return "/net/" + host + ".local";
   }
 }

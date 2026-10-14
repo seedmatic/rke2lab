@@ -40,12 +40,13 @@ nix-darwin-home's.
 
 ## Why a subtree and not a flake input
 
-rke2lab's `flake.nix` holds an INVARIANT: **nix-darwin-home must never be a flake
-input of rke2lab** (the two repos depend on each other in opposite scopes; an
-input edge would create a flake-eval cycle). The subtree shares this content over
-plain git — no eval edge, no token, no cycle — which is exactly why it is the
-right mechanism here. Treat the subtree as the *only* sanctioned channel for
-ssh.d content to reach rke2lab.
+The original reason no longer holds. The subtree was chosen because rke2lab's
+`flake.nix` forbade nix-darwin-home as an input (a flake-eval cycle). ndh has been
+an input of rke2lab since the cycle was cut (`ndh.url = "ndh"` in `flake.nix`), and the
+guard is gone. The subtree stays the channel until the booked replacement lands:
+rke2lab reads its own projection of `keys.yaml` through `inputs.ndh`, from the store,
+still encrypted. The roles, holders and lifecycles of what it reads are in ndh
+`docs/ssh-keys-architecture.adoc` (Roles × Keys).
 
 ## Sync down (nix-darwin-home → rke2lab)
 
@@ -128,9 +129,10 @@ only the root cert itself changes:
 # pathLenConstraint — step's root-ca profile stamps pathlen:1, too tight for a
 # 3-tier chain like RKE2's root -> intermediate-ca -> server-ca -> leaf).
 # Run from the repo root (the app resolves keys.yaml via `git rev-parse`).
-nix run .#authority-bootstrap-tls-root -- mammoth-skate-tls --force
-sops -d modules/home-manager/ssh.d/keys.yaml \
-  | yq -r '.authorities."mammoth-skate-tls".ca_crt' \
+nix run "git+file://$PWD?rev=$(git rev-parse HEAD)#authority-bootstrap-tls-root" -- mammoth-skate-tls --force
+# ca_crt is plaintext, per slot: the newest slot's root is the one just minted.
+yq -r '.authorities."mammoth-skate-tls".slots | to_entries | sort_by(.key) | .[-1].value.ca_crt' \
+    modules/home-manager/ssh.d/keys.yaml \
   | step certificate inspect - | grep -A1 'Basic Constraints'   # expect CA:TRUE, no pathlen
 ```
 
@@ -148,33 +150,28 @@ touches only the TLS side.
 
 ## SOPS encryption
 
-`keys.yaml` is SOPS-encrypted, with 4 age recipients:
+`keys.yaml` is SOPS-encrypted, with 3 age recipients — the `.sops.yaml` of the owning repository is
+the source; recompute a host line with `ssh-to-age < <key>.pub` rather than trusting this list:
 
-Every one of them is derived from an ed25519 SSH key via `ssh-to-age` — recompute any line with
-`ssh-to-age < <key>.pub` rather than trusting this list:
-
-- `age10ey0l...` — Operator key (primary). It is the **`github-signing-hyland`** key
-  (`~/.local/share/ndh/ssh-keys/github-signing-hyland.pub`): the same ed25519 key signs commits and
-  decrypts this content, so rotating one revokes the other.
+- `age1hlvu...` — the **operator** key. Standalone: generated on its own, derived from nothing, present
+  in no `keys.yaml`. A key that opens this file must not live inside it.
 - `age1trxp...` — **bioskop's SSH host key** (`/etc/ssh/ssh_host_ed25519_key.pub` on that host), which
   is how sops-nix decrypts there at activation. Not an operator key.
 - `age17q5k...` — **nikopol's SSH host key**, same role on that host.
-- `age1k0tc4...` — **rke2-cluster key** (derived from the `rke2-cluster` SSH key via `ssh-to-age`)
 
-CAUTION: `keys.yaml` holds the `mammoth-skate` authority's PRIVATE material, so this recipient list
-is the list of identities that can read the SSH CA — and the primary one is the operator key, which
-also lives on the corp-managed Mac to sign commits. Reading the CA there therefore only takes access
-to that machine. Narrowing it (a distinct operator identity for the sensitive files, leaving the
-signing key as a recipient of `.secrets` alone) is the real fix and is NOT done; see the note in
-`.sops.yaml`.
+CAUTION: `keys.yaml` holds the `mammoth-skate` and `mammoth-skate-tls` PRIVATE material, so this
+recipient list is the list of identities that can read the SSH CA and the TLS root.
 
-The rke2-cluster age key
-(`age1k0tc4gmaqrk5df3ujja34gkqxstu0cye7fl7fktjeuua3yych3aqxfjlak`) is:
+⛔ Until 2026-10-10 the list also held `age10ey0l...` (`github-signing-hyland@26-05-29`) and
+`age1k0tc4...` (`rke2-cluster@26-05-29`), two keys of this very file whose privates were published.
+Every version of `keys.yaml` committed before that date is readable from the public history.
+
+The rke2-cluster age key (`age16ldt7qagykh3zt609689p69vcpugth6rhzpyyufztyws7llcp4asjpvp9j`, from
+`rke2-cluster@26-10-10`) is:
 
 - Derived from the SSH key: `ssh-to-age < ~/.local/share/ndh/ssh-keys/rke2-cluster.pub`
-- Used as a recipient in rke2lab's `.sops.yaml` (operator key + flux key)
-- What lets both the operator AND Flux in-cluster decrypt the same content
-- Single source of truth: the SSH private key is stored only in nix-darwin-home secrets
+- A recipient of the cluster-side files in rke2lab's `.sops.yaml` only — what lets Flux in-cluster
+  decrypt them. It is NOT a recipient of `keys.yaml`, which holds its private.
 
 ## Git filter
 

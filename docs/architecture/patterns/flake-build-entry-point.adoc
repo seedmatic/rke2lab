@@ -106,7 +106,7 @@ the *whole reactor* once from the parent pom:
 ----
 seedOutcluster = pkgs.stdenv.mkDerivation {
   name = "rke2lab-seed-outcluster";
-  src = ./.;                                   # full repo: parent pom + all modules
+  src = mavenSource;                           # what the reactor reads: the build cache's inputs + poms, .mvn/, mvnw
   nativeBuildInputs = [ pkgs.maven pkgs.jdk25 ];
   buildPhase = ''
     mkdir -p $TMPDIR/.m2

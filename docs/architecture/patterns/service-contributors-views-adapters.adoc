@@ -214,8 +214,8 @@ coordinate can. So navigability has two tiers, and the seam between them is a gr
 
 | *In-process* (within a realm) — fine, per-access, compile-typed
 | The view holds an in-memory reference to its source; a role re-restricts to a sibling view by a plain
-  method call. Cheap, typed. (`BootstrapPaths.asStagingView` / `asAutomountView` is the working
-  exemplar: a view returning sibling views of the same source.)
+  method call. Cheap, typed. (`BootstrapPaths.asStagingView` / `asAutomountView` were the exemplar, both
+  since deleted: a view returning sibling views of the same source.)
 | an object pointer
 
 | *Cross-frontier* (host↔OSGi today, remote tomorrow) — coarse, once-per-scope, wire-typed

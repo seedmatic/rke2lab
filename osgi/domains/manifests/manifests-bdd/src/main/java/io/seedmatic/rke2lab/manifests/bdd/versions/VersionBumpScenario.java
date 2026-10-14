@@ -10,10 +10,9 @@ import com.tngtech.jgiven.annotation.Quoted;
 import com.tngtech.jgiven.annotation.ScenarioStage;
 import com.tngtech.jgiven.base.ScenarioTestBase;
 import com.tngtech.jgiven.impl.Scenario;
+import io.seedmatic.rke2lab.auth.contract.GithubAppTokens;
 import io.seedmatic.rke2lab.auth.contract.GithubWriterTokenMint;
-import io.seedmatic.rke2lab.manifests.bdd.GhAppCase;
 import io.seedmatic.rke2lab.manifests.contract.ManifestVersionsBumpInput;
-import io.seedmatic.rke2lab.manifests.contract.profiles.GithubAppMaterial;
 import io.seedmatic.rke2lab.manifests.ingress.BumpLevel;
 import io.seedmatic.rke2lab.manifests.ingress.Component;
 import io.seedmatic.rke2lab.ndh.contract.NdhKeystoreCatalog;
@@ -27,8 +26,11 @@ import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.ScenarioPlaye
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.SeedScenario;
 import io.seedmatic.rke2lab.seed.broker.port.Cellar;
 import io.seedmatic.rke2lab.seed.broker.port.Parcel;
+import io.seedmatic.rke2lab.worktree.CommitSpec;
+import io.seedmatic.rke2lab.worktree.DurableWorktree;
+import io.seedmatic.rke2lab.worktree.GitBotIdentities;
 import io.seedmatic.rke2lab.worktree.GitIdentity;
-import io.seedmatic.rke2lab.worktree.Worktree;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
@@ -50,12 +52,12 @@ import org.junit.jupiter.api.extension.RegisterExtension;
  *
  * <p>Its collaborators are INJECTED from the framework registry by the {@link OsgiService} bridge,
  * all bundle-side (unreachable to the flat host, which is exactly why the bump is a scion): the
- * {@link Worktree} (jgit stage/commit) and the {@link NdhKeystoreReader} (the tailnet {@code
- * authorityDomain} the bot email is minted from). The GitHub token for the release query is NOT
- * shelled here: it is minted ON DEMAND from the one org-owned App — the durable App credentials
- * revealed at {@link GhAppCase} + the {@link GithubWriterTokenMint} edge — empty for a standalone
- * CLI run with no sealed credentials, so the query then runs anonymously (rate-limited), never
- * against a personal {@code gh auth token}.
+ * {@link DurableWorktree} (which applies the bump's edit and commits it) and the {@link
+ * NdhKeystoreReader} (the tailnet {@code authorityDomain} the bot email is minted from). The GitHub
+ * token for the release query is NOT shelled here: it is minted ON DEMAND from the one org-owned
+ * App through {@link GithubAppTokens} and the {@link GithubWriterTokenMint} edge — empty for a
+ * standalone CLI run with no sealed credentials, so the query then runs anonymously (rate-limited),
+ * never against a personal {@code gh auth token}.
  */
 @SeedScenario
 public class VersionBumpScenario
@@ -137,7 +139,7 @@ public class VersionBumpScenario
     @ExpectedScenarioState boolean apply;
     @ExpectedScenarioState Optional<Component> component;
 
-    @OsgiService private Optional<Worktree> worktree = Optional.empty();
+    @OsgiService private Optional<DurableWorktree> worktree = Optional.empty();
 
     /**
      * The current plot — the key the sealed GitHub token is revealed under; absent for a survey.
@@ -177,9 +179,9 @@ public class VersionBumpScenario
     }
 
     private void applyBump(VersionBumper bumper) {
-      final Worktree tree =
+      final DurableWorktree tree =
           worktree.orElseThrow(
-              () -> new IllegalStateException("no Worktree service — cannot apply a bump"));
+              () -> new IllegalStateException("no DurableWorktree service — cannot apply a bump"));
       final VersionBumper.BumpApplication application = bumper.apply(component, tree.root());
       for (VersionBumper.AppliedBump bump : application.bumps()) {
         narration.the_pin_$_is_$(bump.component().slug(), change(bump));
@@ -191,33 +193,31 @@ public class VersionBumpScenario
       final NdhKeystoreReader keystore =
           ndh.orElseThrow(
               () -> new IllegalStateException("no ndh key-store — cannot mint the bot"));
-      tree.stage(application.changedPaths());
       final GitIdentity identity =
           new GitBotIdentities(keystore.authorityDomain(TAILNET_AUTHORITY)).forTool(TOOL);
-      // rke2lab signs its own bot commit with the ndh github-signing key (git SSHSIG).
+      // rke2lab signs its own bot commit with the ndh key SIGNING_KEY names (git SSHSIG).
       final String sha =
           tree.commit(
-              commitMessage(application), identity, Optional.of(keystore.sshPrivate(SIGNING_KEY)));
+              application.edit(),
+              new CommitSpec(
+                  commitMessage(application),
+                  identity,
+                  Optional.of(keystore.sshPrivate(SIGNING_KEY))));
       narration.the_change_is_committed_as_$_at_$(
           identity.name() + " <" + identity.email() + ">", sha);
     }
 
     /**
-     * The GitHub token, from the ONE source of trust: mint a FRESH token from the one org-owned App
-     * at the point of use — reveal the durable App credentials at {@link GhAppCase} (the ghapp
-     * registration sealed them) and mint via the {@code auth} {@link GithubWriterTokenMint} edge.
-     * The token is ephemeral and never stored, so it can't go stale (the trap a durable seal fell
-     * into). Empty when there is no plot, no sealed credentials (a standalone CLI bump), or the
-     * {@code cultivating}-gated mint edge is filtered out — the upstream release query then runs
-     * anonymously (rate-limited), never against a personal {@code gh auth token}.
+     * The GitHub token, minted fresh from the one org-owned App through {@link GithubAppTokens} —
+     * the same revealer the render and the fabric delivery use. Its MINT-ONLY lane: unlike the
+     * render, the bump never falls back to a pipeline token, so the upstream release query runs
+     * anonymously (rate-limited) when there is no plot, no sealed credentials (a standalone CLI
+     * bump), or the {@code cultivating}-gated mint edge is filtered out — never against a personal
+     * {@code gh auth token}.
      */
     private Optional<String> resolveGithubToken(Cellar cellar) {
-      return parcel
-          .flatMap(plot -> cellar.fetch(plot, GhAppCase.GITHUB_APP, GithubAppMaterial.class))
-          .flatMap(
-              app ->
-                  writerTokenMint.map(
-                      mint -> mint.mint(app.appId(), app.installationId(), app.privateKeyPem())));
+      return new GithubAppTokens(writerTokenMint, Optional.empty(), Map.of())
+          .writer(cellar, parcel);
     }
 
     private String commitMessage(VersionBumper.BumpApplication application) {

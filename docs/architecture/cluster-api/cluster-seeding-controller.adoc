@@ -878,8 +878,7 @@ controller" principle applied to the remote.
 .The cross-host trust is a WIRING gap, not a missing channel — the secure channel already exists
 [NOTE]
 ====
-rke2lab and ndh **already share the sops age key** (encrypt/decrypt) **and the git
-smudge/clean filters** (ndh's `git-sops-filter` SSOT). They are therefore in ONE
+rke2lab and ndh **already share the sops age key** (encrypt/decrypt). They are therefore in ONE
 sops trust domain: anything one encrypts to the shared age key, the other
 decrypts. So the cross-host trust does NOT need a new secure channel — that framing
 was overstated. Two consequences:
@@ -1175,7 +1174,7 @@ intentions** — everything about the cluster in one place (its SOT). The render
 **wholesale** (`git rm -rf .` + `git add -A` — any file it does not re-write is staged as a deletion),
 so the reflection must **escape** the render. It reuses the render's EXISTING escape mechanism: the
 rehydrate allow-list that already preserves `.secret-in-cluster-cellar.yml` across the empty
-(`smudgeFromHead` / `rehydrateInClusterAsset`). Adding the reflection document to that allow-list makes
+(`rehydrateInClusterAsset`). Adding the reflection document to that allow-list makes
 the render **rehydrate it from HEAD before staging** — it survives untouched. So **single-owner holds
 at the FILE grain**: the reflector owns the reflection document's CONTENT, the render owns everything
 else and merely PRESERVES the reflection across its regeneration.
@@ -1982,7 +1981,8 @@ one, **so the management admin certificate opens nothing there**." The host side
 **never crosses the membrane** — the realm has `workloadCas()` but no `workloadAdmins()` equivalent.
 
 The fix therefore needs plumbing, not a precedence: a per-cluster admin material sown from the seal
-and selected by subject. `WorkloadClusterCasMaterial` is the exact template to copy.
+and selected by subject. `WorkloadClusterCas` (cluster-pki), which the synthesis now takes as it is
+and looks up with `forCluster`, is the exact template to copy.
 
 ⏸️ **Or the duplicate is retired instead.** bioskop's CAPI has ALREADY fully adopted nikopol-mgmt
 (`Machine` Running, `LXCMachine` provisioned). Its self-adoption is the <<scaffold-duplication,
@@ -2403,7 +2403,7 @@ carries its primacy as the primary out-of-band seeder.
   **restore-scaled**) settled when scaling opens.
 . **rke2lab render — add the reflection document to the ESCAPE allow-list (a HARD dependency).** The
   reflection shares the wholesale `manifests/<cluster>` branch, so the render must PRESERVE it: add the
-  reflection document to the render's existing rehydrate/escape allow-list — the `smudgeFromHead` /
+  reflection document to the render's existing rehydrate/escape allow-list — the
   `rehydrateInClusterAsset` path in `ManifestSynthesisScenario`, the SAME mechanism that preserves
   `.secret-in-cluster-cellar.yml` (rehydrate from HEAD before `stageAll`). No new Flux
   `GitRepository`/`Kustomization` (Flux is out of the reflection loop), and **do NOT stage a

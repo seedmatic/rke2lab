@@ -1,8 +1,7 @@
 package io.seedmatic.rke2lab.clusterpki.core.internal;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -42,7 +41,7 @@ public final class SopsRecipients {
     }
     final JsonNode root;
     try {
-      root = new ObjectMapper(new YAMLFactory()).readTree(sopsYaml.toFile());
+      root = new SeedCodec().reading().readYaml(Files.readString(sopsYaml));
     } catch (Exception ex) {
       throw new IllegalStateException("failed to parse " + sopsYaml, ex);
     }

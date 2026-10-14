@@ -48,10 +48,11 @@ cannot be a nested step — two engines, two `ReportModel`s, and a live jGiven o
 `ClassCastException` on the flat host loader. So it is a graft, in one horticultural register: the
 scenario played in the other world grows there into a *scion*, serializes to a JSON String (the only
 thing that crosses — no live jackson type), and the host `rebuild`s a model of its own realm and
-`graftUnder`s the scion's steps onto its *rootstock* step (the host step that stands for the crossing)
+`graftUnder`s the scion's steps onto its *rootstock* step (the host step executing the crossing)
 → the operator reads ONE continuous tree, from the seed down to the scion's root cause. The verdict
-travels IN the model: if the scion is FAILED, the graft marks the rootstock step FAILED and the host's
-downstream steps SKIPPED (the local fail-fast, reproduced across the frontier). *One serialized
+travels IN the model: if the scion is FAILED, the graft marks the rootstock step FAILED, and the sow's
+default throws on it, so jGiven skips the host's downstream steps (the local fail-fast, reproduced
+across the frontier). *One serialized
 scenario suffices* — it carries both the narration (steps → the sub-tree) and the verdict
 (`executionStatus` → the propagation). The mechanism is DISSOCIATED from the worlds it grafts across:
 `ScenarioGraft` (`osgi/runtime/scenario-engine`) speaks only jGiven's report model, so the same graft
@@ -191,8 +192,8 @@ class moved host→OSGi drops one `-port`'s host-import count toward 0.
 . *The seed-broker door — SHIPPED (2026-07).* One `SeedBroker.sow(Coordinate, Document)` dispatched to
   `SeedHandler`s subsumes the former N crossing verbs; see link:seed-broker-spec.adoc[the seed-broker].
 . *The cross-world graft — SHIPPED (2026-07).* `ScenarioGraft` (`osgi/runtime/scenario-engine`, host
-  side) is the generic mechanism `rebuild(runbookJson)→ReportModel` + `graftUnder(hostTree,
-  rootstockStep, scion)` with FAILED→SKIPPED. Horticultural register, one throughout: the host sows a
+  side) is the generic mechanism `rebuild(runbookJson)→ReportModel` + `graftUnder(hostScenario,
+  hostTree, soil, scion)` under the executing step, FAILED propagated. Horticultural register, one throughout: the host sows a
   seed, it grows into a `scion` (played in-container), the scion is grafted onto the host tree at its
   `rootstock` step (the step that stands for the crossing). Proven in `ScenarioGraftTest` (was only the
   pinned `CrossWorldGraftSpikeTest`). It is a FOUNDATION every per-domain migration reuses, not a

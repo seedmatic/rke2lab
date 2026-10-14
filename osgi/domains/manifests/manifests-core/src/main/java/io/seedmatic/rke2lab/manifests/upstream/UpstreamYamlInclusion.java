@@ -79,14 +79,6 @@ public final class UpstreamYamlInclusion {
     return Collections.unmodifiableList(apiObjects);
   }
 
-  private static String upstreamIdentifierFor(
-      final String apiGroup,
-      final String kind,
-      final Optional<String> namespace,
-      final String name) {
-    return apiGroup + "|" + kind + "|" + namespace.orElse("") + "|" + name;
-  }
-
   @SuppressWarnings("unchecked")
   private static List<ApiObject> build(
       final Construct scope,
@@ -118,13 +110,9 @@ public final class UpstreamYamlInclusion {
       final Optional<String> namespace =
           metadata.map(m -> (String) m.get("namespace")).filter(ns -> !ns.isBlank());
 
-      final String apiGroup = apiGroupOf(apiVersion.get());
-      final String upstreamIdentifier =
-          upstreamIdentifierFor(apiGroup, kind.get(), namespace, name.get());
-
       final Map<String, String> annotations =
           mergeStringMap(
-              packageProfile.packageAnnotations(upstreamIdentifier),
+              packageProfile.packageAnnotations(),
               metadata.map(m -> (Map<String, String>) m.get("annotations")));
       final Optional<Map<String, String>> labels =
           metadata.map(m -> (Map<String, String>) m.get("labels")).filter(l -> !l.isEmpty());
@@ -170,11 +158,6 @@ public final class UpstreamYamlInclusion {
     final String stem = classpathResource.replaceAll(".*/", "").replaceAll("\\..*$", "");
     final String nsPart = namespace.map(ns -> "-" + ns).orElse("");
     return "upstream-" + stem + "-" + index + "-" + kind.toLowerCase() + nsPart + "-" + name;
-  }
-
-  private static String apiGroupOf(final String apiVersion) {
-    final int slash = apiVersion.indexOf('/');
-    return slash < 0 ? "" : apiVersion.substring(0, slash);
   }
 
   private static Optional<String> stringField(

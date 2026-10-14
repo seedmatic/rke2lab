@@ -164,20 +164,18 @@ public final class Main {
    * node} defaults to the single management node. Override {@code cluster=}/{@code node=} for
    * another coordinate.
    *
-   * <p>Only {@code publish} works in the branch: it prepares a linked worktree on {@code
-   * manifests/<cluster>} at {@code .local.d/render/<cluster>} (the exe locates it — never passed
-   * in), follows its HEAD facet, and delivers (signed commit + ff-push). {@code synthesize} is pure
-   * generation — it does not know jgit — so it surveys into a temp dir (empty {@code SOIL}: no
-   * branch, no commit).
+   * <p>Only {@code publish} works in the branch: it sows the plot {@code manifests/<cluster>} (a
+   * path on the render's in-memory soil, named as its branch — nothing is materialised on disk),
+   * follows the branch's HEAD facet, and delivers (signed commit + ff-push). {@code synthesize} is
+   * pure generation, so it surveys in memory (empty {@code SOIL}: no branch, no commit).
    */
   private ManifestsCliRun run(Map<String, String> options, boolean armPush, JsonNode renderMode) {
     final String cluster = option(options, "cluster").orElseGet(Main::defaultCluster);
     final ManifestsCliRun.Identity identity =
         new ManifestsCliRun.Identity(cluster, option(options, "node").orElse("master"));
-    final Optional<String> worktree =
-        armPush ? Optional.of(".local.d/render/" + cluster) : Optional.empty();
+    final Optional<String> plot = armPush ? Optional.of("manifests/" + cluster) : Optional.empty();
     return ManifestsCliRun.of(
-        worktree, Optional.of(identity), manifestsFacet(options, armPush), renderMode);
+        plot, Optional.of(identity), manifestsFacet(options, armPush), renderMode);
   }
 
   // The facet toggles the CLI accepts, mapped to their dotted JSON path in the recorded facet:
@@ -639,8 +637,9 @@ public final class Main {
     @Override
     public void run() {
       // The bump is a scion: this host root scenario sows the `manifests-versions` coordinate
-      // through the broker and grows VersionBumpScenario in-container (where Worktree /
-      // AuthTokenContact / NdhKeystoreReader resolve bundle-side, unreachable to the flat host).
+      // through the broker and grows VersionBumpScenario in-container (where DurableWorktree /
+      // GithubWriterTokenMint / NdhKeystoreReader resolve bundle-side, unreachable to the flat
+      // host).
       // The reaped runbook — the per-component report, and on apply the bumps + the bot commit — is
       // grafted into this host runbook and rendered to the console below.
       final VersionsCliRun cliRun =

@@ -318,10 +318,12 @@ Delivery is likewise one discipline, not two: the run resolves ONE plan — one 
 identity, one minted token — and each pass re-subjects it to its own branch. A per-target token mint
 would have been N+1 GitHub round-trips for no gain.
 
-Each target materialises into a sibling directory of the managing SOIL, named for its cluster
-(`<soil-parent>/<cluster>/<soil-leaf>`), which keeps every pass's exploded tree, consolidated
-`manifests.yaml` and carved `.bootstrap/` disjoint — those last two sit one level ABOVE the tree, so
-sharing a parent would have made them collide.
+Each target materialises into its own plot beside the managing one on the render's in-memory soil,
+named as its branch (`manifests/<cluster>`) — nothing is materialised on disk, only the commit's
+objects reach the repository. A pass's consolidated `manifests.yaml` and carved `.bootstrap/` live in
+its plot's own `.local.d/`, which the commit leaves out (and the `.gitignore` the render commits keeps
+out) — the way any worktree of this project keeps what is its own. So no two passes
+share them, and nothing intermediate reaches Flux.
 
 NOTE: This is what breaks the circle, not a permanent division of labour. `cicd` is structural for
 BOTH roles precisely because each cluster is meant to render its own branch through its own in-cluster
@@ -486,25 +488,29 @@ because the render is a *pure function* of `(main, config, descriptor)` and ther
 |===
 |Host staging (today) |Rendered-branch (new)
 
-|`host.N.staging.d` rotating slot |a transient git *worktree* of `manifests/<host>-<role>` to render into
-|`host.N.drift.*` (staged vs live) |`git diff` (render worktree vs branch HEAD) before push
+|`host.N.staging.d` rotating slot |the head of `manifests/<host>-<role>`, opened in memory, and its in-memory plot to render into
+|`host.N.drift.*` (staged vs live) |`git diff` (the rendered commit vs branch HEAD) before push
 |promotion rsync → `host.live.d` |`git push` (history-preserving, atomic ref update)
 |N-slot retention (rollback) |the branch history — `git revert` to a prior rendered commit (or re-render from `main@<sha>`)
 |remote reads `host.live.d` over the automount |Flux / `seed-outcluster` read the branch — no manifests rsync
 |===
 
-The render worktree lives at **`.local.d/render/<host>-<role>/`** — a linked git worktree of the
-branch, *inside* gitignored `.local.d`. That nesting is deliberate and clean: the `.local.d` ignore
-makes the main worktree never look inside it (no untracked noise, no "embedded repo" gitlink), while
-`.gitignore` being per-checkout means the parent's ignore never leaks into the rendered branch's own
-tracking. Cleanup is `git worktree remove`.
+The render needs no worktree: it opens the head of `manifests/<host>-<role>` in memory
+(`TransientWorktrees`, jgit), materialises the rendered tree into its SOIL plot on an in-memory file
+system — so no rendered Secret touches the disk in the clear — and commits that plot onto the head,
+the head's `reflections/` subtree carried over and the worktree convention's local dirs (`.local.d`,
+`.scratchpad.d`) left out. Nothing is checked out, so there is nothing to clean up. Those dirs are ONE
+rule, `KeptLocalDirs.OF_A_WORKTREE` (manifests-contract), read by the committed `.gitignore`, by the
+Secret seal (which skips them at any depth, leaving what sits there in the clear) and by the tree the
+commit carries — which leaves them out at the plot's root and REFUSES one below it, so a clear file can
+never ride a nested `.local.d` to origin.
 
 Two consequences fall out:
 
-* **The automount becomes image-only.** With manifests delivered through git, the remote NixOS host
-  no longer reads a manifests tree over the automount — the bi-machine rsync of manifests dissolves,
-  and `asAutomountView` / `netPrefix` rebase *only the incus image artefacts* (§ the `.local.d`
-  split). That is what keeps the automount machinery earning its place.
+* **The automount goes.** With manifests delivered through git, the remote NixOS host no longer reads
+  a manifests tree over the automount — the bi-machine rsync of manifests dissolves. The image was its
+  last reader, and it went too (2026-10-12): the image builds by revision and nix hands the derivations
+  to the builder itself, so `asAutomountView` / `netPrefix` and the `automount` key are deleted.
 * **Drift doubles and improves.** The single local "staged vs live" diff becomes two: `git diff`
   (pre-push, to review the change) and Flux reconciliation (post-push, git-vs-cluster — the *actual*
   drift). Neither is a local rotation file.

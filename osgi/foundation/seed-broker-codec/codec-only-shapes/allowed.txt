@@ -1,0 +1,5 @@
+private final JsonFactory json = new JsonFactory();
+final JsonNode copy = node.deepCopy();
+final ObjectNode root = JsonNodeFactory.instance.objectNode();
+final JsonNode tree = new SeedCodec().reading().readYaml(text);
+return codec.canonical().writeJson(value);

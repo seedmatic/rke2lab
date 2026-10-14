@@ -6,10 +6,8 @@ target~nxmatic/
 target~claude/
 # jGiven report JSON emitted by scenario runs (regenerable)
 jgiven-reports/
-# Claude scratch working area (never committed)
-.claude/scratch/
-# Claude usage telemetry (local only, not content)
-.claude/usage-data/
+# Claude Code's own per-checkout files (settings.local.json, the history link): nothing under .claude/ is tracked
+/.claude/
 
 # OS
 .DS_Store
@@ -21,8 +19,14 @@ jgiven-reports/
 # GitHub temporary folders
 .github/**/tmp
 
+# Operator's local re-aim of the flake-input registry. REPLACES the committed
+# flake-registry.json when present (see the [hook] in .flox/env/manifest.toml).
+# Ignored rather than tracked so a local re-aim never reads as a dirty tree to
+# relock's guard rail — which is also why it cannot simply be `git add -f`'ed:
+# .gitignore stops protecting a file the moment it is tracked.
+flake-registry.local.json
+
 # Local files
-.local.d
 result
 # Created by https://www.toptal.com/developers/gitignore/api/java
 # Edit at https://www.toptal.com/developers/gitignore?templates=java
@@ -592,7 +596,6 @@ docs/architecture/**/diag-*.svg
 
 # Superpowers skill defaults to docs/superpowers/; our plans/specs live in wip/ (flat wip/plans, wip/specs).
 docs/superpowers/
-.claude/policy-limits.json
 /.secrets
 
 # Local render/dev artifacts — `nix run .#render-manifests` (+ the dev-loop mvn) write

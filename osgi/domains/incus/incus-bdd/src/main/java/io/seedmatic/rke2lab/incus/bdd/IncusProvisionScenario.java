@@ -12,7 +12,6 @@ import com.tngtech.jgiven.base.ScenarioTestBase;
 import com.tngtech.jgiven.impl.Scenario;
 import com.tngtech.jgiven.report.model.ReportModel;
 import com.tngtech.jgiven.report.model.ScenarioModel;
-import io.seedmatic.rke2lab.auth.contract.AuthTokenContact;
 import io.seedmatic.rke2lab.doctor.contract.Checkpoint;
 import io.seedmatic.rke2lab.doctor.contract.ConsultingService;
 import io.seedmatic.rke2lab.doctor.contract.DoctorCoordinate;
@@ -29,7 +28,6 @@ import io.seedmatic.rke2lab.incus.contract.IncusRunbookInput.Image;
 import io.seedmatic.rke2lab.incus.core.GrowIdentityResolver;
 import io.seedmatic.rke2lab.incus.core.GrowNetworkResolver;
 import io.seedmatic.rke2lab.incus.core.GrowPlanAssembler;
-import io.seedmatic.rke2lab.incus.core.LaunchSecretsWriter;
 import io.seedmatic.rke2lab.incus.ingress.BootstrapPaths;
 import io.seedmatic.rke2lab.incus.ingress.GrowIdentityView;
 import io.seedmatic.rke2lab.incus.ingress.GrowImageView;
@@ -58,6 +56,7 @@ import io.seedmatic.rke2lab.seed.broker.port.Parcel;
 import io.seedmatic.rke2lab.seed.broker.port.RunbookCoordinate;
 import io.seedmatic.rke2lab.seed.broker.port.SeedBroker;
 import io.seedmatic.rke2lab.seed.broker.port.SeedEnvelope;
+import io.seedmatic.rke2lab.worktree.DurableWorktree;
 import io.seedmatic.rke2lab.worktree.WorktreeCoordinate;
 import io.seedmatic.rke2lab.worktree.WorktreeFacts;
 import java.io.IOException;
@@ -98,12 +97,10 @@ import org.junit.jupiter.api.extension.RegisterExtension;
  * seeds).
  *
  * <p>Preview inertness lives at the FRONTIER, not in the scenario: under a surveying gate the scion
- * gets the {@link SurveyingImageBuilder} (plans the build, shells nothing) and no {@code
- * AuthTokenContact} at all (the optional CLI probe is tagged cultivating, so it resolves empty and
- * secrets fall back to the environment — no CLI). The manifests synthesis is pure FS, so it runs in
- * both modes. Every step renders PENDING via E9. The image markers are fixed (the offline mock
- * ignores them; the live config-derived plumbing is the same deferral the cluster/systemd twins
- * make for their kubeconfig / endpoint).
+ * gets the {@link SurveyingImageBuilder} (plans the build, shells nothing). The manifests synthesis
+ * is pure FS, so it runs in both modes. Every step renders PENDING via E9. The image markers are
+ * fixed (the offline mock ignores them; the live config-derived plumbing is the same deferral the
+ * cluster/systemd twins make for their kubeconfig / endpoint).
  */
 @SeedScenario
 public class IncusProvisionScenario
@@ -140,7 +137,7 @@ public class IncusProvisionScenario
   @MonotonicNonNull private IncusRunbookInput input;
 
   // Injected by the OsgiServiceExtension from THIS bundle's registry before the body. The edge
-  // collaborators (imageBuilder, broker, netplan, authToken) moved to the stages that drive them
+  // collaborators (imageBuilder, broker, netplan) moved to the stages that drive them
   // (@OsgiService there, filled by the stage creator). What stays on the scenario:
   // parcel — an ambient identity the body reads (Resolved.from) and threads to the Then; doctor —
   // await=false, the consult the body raises on a failure (empty when a world booted without it).
@@ -148,6 +145,11 @@ public class IncusProvisionScenario
 
   @OsgiService(await = false)
   private Optional<ConsultingService> doctor = Optional.empty();
+
+  // The seat, read for the node-base image's source (its HEAD and the digest of its build inputs).
+  // await=false: an unamended survey builds nothing and never asks for it.
+  @OsgiService(await = false)
+  private Optional<DurableWorktree> seat = Optional.empty();
 
   // The consultations the run raised on a failed build/unreachable instance — the
   // ScenarioOutcomeExtension PULLS them (ConsultationSource) at the run boundary. Set in the @Test
@@ -194,9 +196,23 @@ public class IncusProvisionScenario
     // it
     // read (§ host-cellar-realisation, computed OSGi-side) and derives the paths the run needs —
     // the
-    // per-cluster render plot (the SOIL forwarded to manifests), the liveRoot the host renders the
+    // per-cluster render worktree (the SOIL forwarded to manifests), the liveRoot the host renders
+    // the
     // runbook into, and the worktree for provenance.
     final Optional<Resolved> resolved = Resolved.from(input.facet(), worktreeRoot);
+    // What the node-base image builds from — the seat's committed HEAD. Computed once, for the
+    // build request, the IMAGE_STATE amendment and the grow plan alike. Absent for an unamended
+    // run.
+    final Optional<NodeBaseSource> source =
+        input
+            .facet()
+            .map(
+                facet ->
+                    NodeBaseSource.of(
+                        seat.orElseThrow(
+                            () ->
+                                new IllegalStateException(
+                                    "no DurableWorktree service — cannot source the node-base image"))));
     // The @Test body OWNS the observation sink (the same discipline as the other scions): the When
     // fills it, and the consult below reads THIS reference — independent of jGiven's stage state
     // after a fail-fast step, so a failed build still reaches the consult.
@@ -216,16 +232,16 @@ public class IncusProvisionScenario
     given()
         .the_seed_node(seedNode)
         .and()
+        .the_image_source(source.map(NodeBaseSource::provenance).orElse("none (unamended)"))
+        .and()
         .prepared_through(observations)
         .and()
         .consulting_manifests_through(resolved.map(Resolved::soil), cellar);
     when()
-        .the_image_is_built(imageRequest(worktreeRoot, input.facet(), input.image()))
+        .the_image_is_built(imageRequest(worktreeRoot, source, input.image()), source)
         .and()
         .the_manifests_are_cultivated(
-            hostScenario, hostTree, input.facet(), input.image(), worktreeRoot)
-        .and()
-        .the_secrets_are_written(resolved)
+            hostScenario, hostTree, input.facet(), input.image(), worktreeRoot, source)
         .and()
         .the_network_and_identity_are_resolved(resolved);
     then()
@@ -234,7 +250,7 @@ public class IncusProvisionScenario
         .the_prep_is_stored(resolved.map(Resolved::soil).orElse(""), cellar, parcel)
         .and()
         .the_instance_grow_plan_is_published(
-            resolved, input.image().orElse(new Image("", "", "")), cellar, parcel);
+            resolved, input.image().orElse(new Image("", "")), source, cellar, parcel);
     // Pose the live root the host renders the runbook into — a within-run fact whose layout
     // convention lives only here (§ seed-broker-spec, two cellars: the ephemeral cellar). The graft
     // merges this tag into the host tree; the host reads it via ScenarioGraft.graftedValue. Posed
@@ -274,60 +290,40 @@ public class IncusProvisionScenario
   }
 
   /**
-   * The image-build request the scion drives. When both amendments are present (a live cultivating
-   * run) it is derived from them: the incus daemon lives only on the remote {@code builderHost}
-   * ({@code bioskop-nixos}), so from the seed-outcluster host the edge streams the nix build over
-   * ssh (nix alone resolves on the Mac, but no local daemon to import into). The workspace it
-   * {@code cd}s into is the worktree root rebased onto the automount view ({@code
-   * BootstrapPaths.asAutomountView}, e.g. {@code /net/bioskop.local/private/ …}), the SAME view the
-   * Mac reads the artifacts back through. The artifact dir is that root's OWN subpath, so it rides
-   * as a path RELATIVE to the workspace and the recipe joins the two — no second translation; the
-   * artifact dir is the flat state root {@code .local.d} ({@code BootstrapPaths.STATE_DIR}).
-   * Unamended (a bare survey or the offline scenario) it falls to a blank marker the surveying/mock
-   * builder ignores.
+   * The image-build request the scion drives. When the run is amended it builds the seat's
+   * committed HEAD ({@link NodeBaseSource}) into the flat state root {@code .local.d} ({@code
+   * BootstrapPaths.STATE_DIR}) under the worktree root, the same dir the plan reads the artifacts
+   * back from. Unamended (a bare survey or the offline scenario) it falls to a blank marker the
+   * surveying/mock builder ignores.
    */
   private ImageBuildRequest imageRequest(
-      Optional<Path> worktreeRoot, Optional<Facet> maybeFacet, Optional<Image> maybeImage) {
-    if (maybeFacet.isEmpty() || maybeImage.isEmpty()) {
-      return new ImageBuildRequest("nix", "/srv/host/incus-build", "artifacts", "", "", "", "");
+      Optional<Path> worktreeRoot,
+      Optional<NodeBaseSource> maybeSource,
+      Optional<Image> maybeImage) {
+    if (maybeSource.isEmpty() || maybeImage.isEmpty()) {
+      return new ImageBuildRequest("nix", "", "", "/srv/host/incus-build/artifacts");
     }
-    final Facet facet = maybeFacet.orElseThrow();
-    final Image image = maybeImage.orElseThrow();
-    final Path localRoot = worktreeRoot.orElseThrow();
-    final Path remoteRoot =
-        BootstrapPaths.fromLocalWorktree(localRoot)
-            .asAutomountView(facet.automount(), facet.netPrefix())
-            .worktreeRoot();
-    final Path artifactUnderWorktree = Path.of(BootstrapPaths.STATE_DIR);
+    final NodeBaseSource source = maybeSource.orElseThrow();
     return new ImageBuildRequest(
-        image.builderBinary(),
-        localRoot.toString(),
-        localRoot.resolve(artifactUnderWorktree).toString(),
-        image.builderHost(),
-        remoteRoot.toString(),
-        artifactUnderWorktree.toString(),
-        facet.incusProject());
+        maybeImage.orElseThrow().builderBinary(),
+        source.flakeRef(),
+        source.digest(),
+        BootstrapPaths.fromLocalWorktree(worktreeRoot.orElseThrow()).stateRoot().toString());
   }
 
   /**
    * The topology the scion resolves ONCE from the worktree scalars — the inversion made concrete:
    * the scion owns the tree and derives every path the run needs. {@code soil} is the per-cluster
-   * RENDER plot forwarded to the manifests scion ({@code .local.d/render/<cluster>}, the orphan
-   * {@code manifests/<cluster>} worktree it prepares and force-pushes from — no rotating staging
-   * slot); {@code liveRoot} is where the host renders the runbook; {@code worktreeRoot} the base
-   * for the git provenance. {@link #from(Optional, Optional)} returns EMPTY for an unamended survey
-   * (a bare {@code shape} probe) — absence is an empty {@link Optional}, never a record carried
-   * with blank fields; a present {@code Resolved} always holds a real topology.
+   * RENDER plot forwarded to the manifests scion ({@code manifests/<cluster>}, a path on the
+   * render's IN-MEMORY soil — nothing of it is materialised on disk, only the commit's objects
+   * reach the repository); {@code liveRoot} is where the host renders the runbook; {@code
+   * worktreeRoot} the base for the git provenance. {@link #from(Optional, Optional)} returns EMPTY
+   * for an unamended survey (a bare {@code shape} probe) — absence is an empty {@link Optional},
+   * never a record carried with blank fields; a present {@code Resolved} always holds a real
+   * topology.
    */
   private record Resolved(
-      String soil,
-      String liveRoot,
-      Path worktreeRoot,
-      Path secretsFile,
-      String clusterName,
-      String nodeName,
-      boolean automount,
-      String netPrefix) {
+      String soil, String liveRoot, Path worktreeRoot, String clusterName, String nodeName) {
 
     static Optional<Resolved> from(Optional<Facet> maybeFacet, Optional<Path> worktreeRoot) {
       if (maybeFacet.isEmpty()) {
@@ -338,19 +334,13 @@ public class IncusProvisionScenario
       final BootstrapPaths local = BootstrapPaths.fromLocalWorktree(root);
       return Optional.of(
           new Resolved(
-              // The manifests plot is now the per-cluster RENDER worktree the manifests scion
-              // prepares (the `manifests/<cluster>` checkout the branch is pushed from) — no
-              // rotating staging slot, no host.live.d promotion. The cluster identity is
-              // <host>-<role> = clusterName-nodeName (the same identity the mDNS FQDN and the
-              // seed-node name carry).
-              local.renderRoot().resolve(facet.clusterName() + "-" + facet.nodeName()).toString(),
+              // The per-cluster RENDER plot on the manifests scion's in-memory soil, named as its
+              // branch.
+              "manifests/" + facet.clusterName(),
               local.liveRoot().toString(),
               root,
-              local.secretsFile(),
               facet.clusterName(),
-              facet.nodeName(),
-              facet.automount(),
-              facet.netPrefix()));
+              facet.nodeName()));
     }
   }
 
@@ -365,6 +355,10 @@ public class IncusProvisionScenario
     @ProvidedScenarioState Cellar cellar;
 
     public Given the_seed_node(@Quoted String name) {
+      return self();
+    }
+
+    public Given the_image_source(@Quoted String provenance) {
       return self();
     }
 
@@ -407,11 +401,12 @@ public class IncusProvisionScenario
     // Injected straight from the bundle registry by the @OsgiService bridge (the stage creator) —
     // not threaded from the scenario as step params. The edge collaborators the WHEN drives.
     @OsgiService private Optional<ImageBuilder> imageBuilder = Optional.empty();
-    @OsgiService private Optional<SeedBroker> broker = Optional.empty();
-    @OsgiService private Optional<NetplanSynthesisService> netplan = Optional.empty();
 
     @OsgiService(await = false)
-    private Optional<AuthTokenContact> authToken = Optional.empty();
+    private Optional<DurableWorktree> seat = Optional.empty();
+
+    @OsgiService private Optional<SeedBroker> broker = Optional.empty();
+    @OsgiService private Optional<NetplanSynthesisService> netplan = Optional.empty();
 
     // The flat network + identity views the scion projects for the host GROW — assembled here (WHEN
     // fabricates), sealed into the plan by the THEN. Null for an unamended survey (no cluster to
@@ -422,7 +417,8 @@ public class IncusProvisionScenario
     private final SeedCodec codec = new SeedCodec();
     private final ScenarioGraft graft = new ScenarioGraft();
 
-    public When the_image_is_built(@Hidden ImageBuildRequest request) {
+    public When the_image_is_built(
+        @Hidden ImageBuildRequest request, @Hidden Optional<NodeBaseSource> source) {
       // Mode-blind: the frontier already chose the builder — CultivatingNixosImageBuilder
       // (shells nix/ssh) or SurveyingImageBuilder (plans, shells nothing). The scion just
       // drives it; a surveying run touches nothing and the step renders PENDING.
@@ -436,6 +432,9 @@ public class IncusProvisionScenario
         throw new IncusImageBuildError(request, failed);
       }
       record("incus image", true, SymptomKind.IMAGE_BUILD_FAILED, null);
+      // Built: a fabricated revision has served its purpose. On a failure its ref stays for the
+      // operator, until the next grow sweeps it.
+      source.ifPresent(built -> seat.orElseThrow().releaseBuildRevision(built.revision()));
       return self();
     }
 
@@ -454,7 +453,8 @@ public class IncusProvisionScenario
         @Hidden ReportModel hostTree,
         @Hidden Optional<Facet> facet,
         @Hidden Optional<Image> image,
-        @Hidden Optional<Path> worktreeRoot) {
+        @Hidden Optional<Path> worktreeRoot,
+        @Hidden Optional<NodeBaseSource> source) {
       // AMEND: hand the broker {soil → path} by neutral role; the manifests amend reflector binds
       // it
       // onto ManifestsRunbookInput and returns the reconciled input, still under the runbook
@@ -472,7 +472,7 @@ public class IncusProvisionScenario
       // plan with) + the nix-emitted rke2.version — so the workload CRs pin the exact image the
       // master
       // booted and its RKE2 version. Absent for a survey / a run that built no artifacts.
-      imageStateAmendment(facet, image, worktreeRoot)
+      imageStateAmendment(facet, image, worktreeRoot, source)
           .ifPresent(node -> roleValues.set(Amendment.IMAGE_STATE, node));
       final SeedEnvelope amended =
           broker
@@ -490,17 +490,14 @@ public class IncusProvisionScenario
       // rendered under its crossing). Pull the runbook JSON the way the host Gardening.sow does,
       // rebuild the model in THIS realm (only flat JSON crosses), and fold it under the rootstock —
       // a scion GRAFTING a sub-scion in-world, the same mechanism the root uses host-side. A
-      // manifests failure rides IN the model: graftUnder marks this step FAILED and fail-fasts the
-      // steps after it, so a broken synthesis is no longer silently green.
+      // manifests failure rides IN the model: graftUnder marks this step FAILED, and asserting the
+      // grafted scion throws, so the prep and the grow plan are never produced for a broken
+      // synthesis.
       final SeedEnvelope reaped =
           broker.orElseThrow().sow(new RunbookCoordinate("manifests"), cellar, amended);
-      final String runbookJson = codec.decode(reaped.payload()).path("runbook").asText();
-      graft.graftUnder(
-          hostScenario,
-          hostTree,
-          "manifests",
-          "the manifests are cultivated",
-          graft.rebuild(runbookJson));
+      final ReportModel scion =
+          graft.rebuild(codec.decode(reaped.payload()).path("runbook").asText());
+      graft.assertPassed(scion, graft.graftUnder(hostScenario, hostTree, "manifests", scion));
       return self();
     }
 
@@ -516,8 +513,14 @@ public class IncusProvisionScenario
      * nixosHost}).
      */
     private Optional<ObjectNode> imageStateAmendment(
-        Optional<Facet> maybeFacet, Optional<Image> maybeImage, Optional<Path> maybeWorktreeRoot) {
-      if (maybeFacet.isEmpty() || maybeImage.isEmpty() || maybeWorktreeRoot.isEmpty()) {
+        Optional<Facet> maybeFacet,
+        Optional<Image> maybeImage,
+        Optional<Path> maybeWorktreeRoot,
+        Optional<NodeBaseSource> maybeSource) {
+      if (maybeFacet.isEmpty()
+          || maybeImage.isEmpty()
+          || maybeWorktreeRoot.isEmpty()
+          || maybeSource.isEmpty()) {
         return Optional.empty();
       }
       final Facet facet = maybeFacet.orElseThrow();
@@ -527,9 +530,8 @@ public class IncusProvisionScenario
           new GrowPlanAssembler(
                   image.alias(),
                   image.builderBinary(),
-                  image.builderHost(),
                   imageBuilder.orElseThrow().recipeDigest(),
-                  worktreeRoot,
+                  maybeSource.orElseThrow().digest(),
                   BootstrapPaths.fromLocalWorktree(worktreeRoot).stateRoot())
               .imageView();
       final Path metadata = Path.of(view.metadataPath());
@@ -580,26 +582,6 @@ public class IncusProvisionScenario
       runtimeNode.put("interceptBpf", runtime.interceptBpf());
       runtimeNode.put("interceptBpfDevices", runtime.interceptBpfDevices());
       return Optional.of(node);
-    }
-
-    /**
-     * Upsert the flox launch token into the worktree's {@code .secrets} (§ provisioning-slice delta
-     * #10) — a WHEN because it FABRICATES material (a file materialisation), BEFORE the {@code
-     * worktree.dir} mount binds it into the instance. {@link LaunchSecretsWriter} resolves the
-     * token from the environment first, else the {@link AuthTokenContact} edge. Mode-blind: the
-     * inertness lives at the frontier — the {@code AuthTokenContact} CLI probe is tagged {@code
-     * cultivating}, so a surveying run resolves it empty (no {@code flox} shelled) and the writer
-     * falls back to the environment; the step renders PENDING via E9. Skipped only for an unamended
-     * survey (no worktree {@code .secrets} to upsert). (GitHub is no longer written here — its
-     * credential flows from the App via {@code ghapp}, sealed in the cellar.)
-     */
-    public When the_secrets_are_written(@Hidden Optional<Resolved> maybeResolved) {
-      if (maybeResolved.isEmpty()) {
-        return self();
-      }
-      final Resolved resolved = maybeResolved.orElseThrow();
-      new LaunchSecretsWriter(authToken).ensureTokensPresent(resolved.secretsFile());
-      return self();
     }
 
     /**
@@ -656,6 +638,9 @@ public class IncusProvisionScenario
     // the Then reads its recipe digest, no longer threaded from the scenario.
     @OsgiService private Optional<ImageBuilder> imageBuilder = Optional.empty();
 
+    @OsgiService(await = false)
+    private Optional<DurableWorktree> seat = Optional.empty();
+
     public Then the_instance_is_prepared() {
       return self();
     }
@@ -695,9 +680,10 @@ public class IncusProvisionScenario
     public Then the_instance_grow_plan_is_published(
         @Hidden Optional<Resolved> maybeResolved,
         @Hidden Image image,
+        @Hidden Optional<NodeBaseSource> source,
         @Hidden Cellar cellar,
         @Hidden Parcel parcel) {
-      if (maybeResolved.isEmpty() || networkView == null) {
+      if (maybeResolved.isEmpty() || source.isEmpty() || networkView == null) {
         return self();
       }
       final Resolved resolved = maybeResolved.orElseThrow();
@@ -708,9 +694,8 @@ public class IncusProvisionScenario
           new GrowPlanAssembler(
                   image.alias(),
                   image.builderBinary(),
-                  image.builderHost(),
                   imageBuilder.orElseThrow().recipeDigest(),
-                  resolved.worktreeRoot(),
+                  source.orElseThrow().digest(),
                   BootstrapPaths.fromLocalWorktree(resolved.worktreeRoot()).stateRoot())
               .assemble(networkView, identityView);
       cellar.store(parcel, IncusGrowCoordinate.INSTANCE_GROW_PLAN, plan);

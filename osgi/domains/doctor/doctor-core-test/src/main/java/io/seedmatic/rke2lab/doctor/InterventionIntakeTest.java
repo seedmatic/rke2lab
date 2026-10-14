@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.seedmatic.rke2lab.doctor.contract.DoctorCoordinate;
 import io.seedmatic.rke2lab.doctor.contract.InterventionRequest;
 import io.seedmatic.rke2lab.doctor.contract.ReadinessVerdict;
@@ -32,7 +31,6 @@ import org.osgi.framework.FrameworkUtil;
  */
 class InterventionIntakeTest {
 
-  private static final ObjectMapper MAPPER = new ObjectMapper();
   private static final SeedCodec CODEC = new SeedCodec();
   private static final TypeReference<Map<String, Object>> MAP = new TypeReference<>() {};
 
@@ -76,7 +74,7 @@ class InterventionIntakeTest {
         DoctorCoordinate.INTERVENTION.slug(),
         canonical.coordinate(),
         "valid facts must canonicalize, not return an error verdict");
-    final Map<String, Object> payload = MAPPER.readValue(canonical.payload(), MAP);
+    final Map<String, Object> payload = CODEC.reading().readJson(canonical.payload(), MAP);
     assertEquals("operator-manual", payload.get("provenance"));
     assertEquals("systemd-adapter/connection-refused", payload.get("problem"));
     assertEquals("nft delete ...", payload.get("what"));

@@ -59,7 +59,7 @@ public final class TektonPipelinesManifestsUnit extends AbstractManifestsUnit {
             .metadata(
                 ApiObjectMetadata.builder()
                     .name("tekton-pipelines")
-                    .annotations(packageProfile.packageAnnotations("|Namespace||tekton-pipelines"))
+                    .annotations(packageProfile.packageAnnotations())
                     .build())
             .build());
   }
@@ -75,9 +75,7 @@ public final class TektonPipelinesManifestsUnit extends AbstractManifestsUnit {
                 .metadata(
                     ApiObjectMetadata.builder()
                         .name("config")
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "operator.tekton.dev|TektonConfig|default|config"))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
 
@@ -94,11 +92,10 @@ public final class TektonPipelinesManifestsUnit extends AbstractManifestsUnit {
                 //
                 // ⚠️ The reason this was set is GONE. The default caps a TaskRun at ONE PVC
                 // workspace ("more than one PersistentVolumeClaim is bound") and the render task
-                // used to need TWO — `source` plus the maven-cache. The cache is no longer a
-                // workspace at all (RenderPipelineManifestsUnit mounts it as a raw volume, because
-                // a
-                // cache is not scratch), so `source` is the only one left and the default would now
-                // suffice. Kept rather than reverted: on a single-node cluster the two settings are
+                // used to need TWO — `source` plus a Maven cache, which is gone — so `source` is
+                // the
+                // only one left and the default would now suffice. Kept rather than reverted: on a
+                // single-node cluster the two settings are
                 // indistinguishable, and flipping Tekton's global scheduling has no way to be
                 // exercised here. A candidate for reverting the day a second node exists.
                 "pipeline",

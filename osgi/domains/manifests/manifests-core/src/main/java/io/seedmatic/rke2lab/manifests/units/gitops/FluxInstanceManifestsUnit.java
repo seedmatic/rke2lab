@@ -45,9 +45,7 @@ public final class FluxInstanceManifestsUnit extends AbstractManifestsUnit {
                     ApiObjectMetadata.builder()
                         .name("flux")
                         .namespace("flux-system")
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "fluxcd.controlplane.io|FluxInstance|flux-system|flux"))
+                        .annotations(packageProfile.packageAnnotations())
                         .labels(
                             Map.of(
                                 "app.kubernetes.io/instance",

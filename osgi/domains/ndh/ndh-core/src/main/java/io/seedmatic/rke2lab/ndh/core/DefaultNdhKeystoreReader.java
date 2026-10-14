@@ -1,21 +1,21 @@
 package io.seedmatic.rke2lab.ndh.core;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import io.seedmatic.rke2lab.ndh.contract.NdhKeystoreReader;
+import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.UnaryOperator;
 import org.osgi.service.component.annotations.Component;
 
 /**
  * The realised ndh reader — the single door to the operator's key inventory ({@code
  * .ndh-ssh.d/keys.yaml}). Like {@code worktree-core} reads git, it reads the inventory: a pure-Java
- * contact, CWD-relative (the readers run in the host JVM rooted at the worktree, where the smudge
- * filter laid the plaintext copy). The YAML is parsed per call — it is tiny, and reading fresh
+ * contact, CWD-relative (the readers run in the host JVM rooted at the worktree). The file stays
+ * sops-encrypted at rest and is opened in memory at each call — it is tiny, and reading fresh
  * avoids any staleness across a run.
  *
  * <p>The inventory is ndh's v2 shape: key material lives in dated generations, {@code
@@ -25,17 +25,20 @@ import org.osgi.service.component.annotations.Component;
  *
  * <ul>
  *   <li>a KEY is read at its NEWEST slot — the generation it presents;
- *   <li>an AUTHORITY signs with its OLDEST slot — trust in a new authority distributes one
- *       activation at a time while a signature takes effect at once, so signing with the newest
- *       would hand an un-activated verifier a certificate it cannot check.
+ *   <li>an AUTHORITY signs with its OLDEST slot that is not marked {@code compromised} — trust in a
+ *       new authority distributes one activation at a time while a signature takes effect at once,
+ *       so signing with the newest would hand an un-activated verifier a certificate it cannot
+ *       check; a compromised slot never signs, so the signature moves at once. That slot is also
+ *       the one the authority PRESENTS: its {@code ca_crt} and its {@code private} are read
+ *       together, so ClusterSeal never pairs one generation's root with the other's key.
  * </ul>
  *
- * <p>{@code ca_crt} and {@code domain} stayed at the authority level. There is no fallback to the
- * v1 flat {@code public}/{@code private}: an entry without slots raises, naming the shape.
+ * <p>{@code domain} stays at the authority level; {@code ca_crt} is per slot. There is no fallback
+ * to the v1 flat {@code public}/{@code private}: an entry without slots raises, naming the shape.
  *
  * <p>{@link #present()} is the fail-soft gate; the accessors are fail-fast — a
- * present-but-malformed store (unparseable, sops-encrypted at rest, or a missing field) raises, a
- * defect to surface.
+ * present-but-malformed store (unparseable, PLAINTEXT at rest, or a missing field) raises, a defect
+ * to surface.
  */
 @Component(service = NdhKeystoreReader.class)
 public final class DefaultNdhKeystoreReader implements NdhKeystoreReader {
@@ -43,13 +46,15 @@ public final class DefaultNdhKeystoreReader implements NdhKeystoreReader {
   private static final Path DEFAULT_PATH = Path.of(".ndh-ssh.d/keys.yaml");
 
   private final Path path;
+  private final UnaryOperator<String> decryptor;
 
   public DefaultNdhKeystoreReader() {
-    this(DEFAULT_PATH);
+    this(DEFAULT_PATH, new SopsCommandDecryptor());
   }
 
-  DefaultNdhKeystoreReader(final Path path) {
+  DefaultNdhKeystoreReader(final Path path, final UnaryOperator<String> decryptor) {
     this.path = path;
+    this.decryptor = decryptor;
   }
 
   @Override
@@ -59,7 +64,8 @@ public final class DefaultNdhKeystoreReader implements NdhKeystoreReader {
 
   @Override
   public String authorityCert(String authority) {
-    return text(read(), "authorities", authority, "ca_crt");
+    final JsonNode root = read();
+    return text(root, "authorities", authority, "slots", signingSlot(root, authority), "ca_crt");
   }
 
   @Override
@@ -70,13 +76,7 @@ public final class DefaultNdhKeystoreReader implements NdhKeystoreReader {
   @Override
   public String authorityPrivate(String authority) {
     final JsonNode root = read();
-    return text(
-        root,
-        "authorities",
-        authority,
-        "slots",
-        oldestSlot(root, "authorities", authority),
-        "private");
+    return text(root, "authorities", authority, "slots", signingSlot(root, authority), "private");
   }
 
   @Override
@@ -96,8 +96,18 @@ public final class DefaultNdhKeystoreReader implements NdhKeystoreReader {
     return slots.get(slots.size() - 1);
   }
 
-  private String oldestSlot(final JsonNode root, final String section, final String name) {
-    return slots(root, section, name).get(0);
+  /** The oldest generation not marked {@code compromised} — the one an authority signs with. */
+  private String signingSlot(final JsonNode root, final String authority) {
+    final JsonNode slots = root.path("authorities").path(authority).path("slots");
+    return slots(root, "authorities", authority).stream()
+        .filter(slot -> slots.path(slot).path("compromised").asText("").isEmpty())
+        .findFirst()
+        .orElseThrow(
+            () ->
+                new IllegalStateException(
+                    "authority '"
+                        + authority
+                        + "': every slot is marked compromised — nothing may sign"));
   }
 
   /** The entry's generations, oldest first — {@code YY-MM-DD} sorts as a date. */
@@ -138,20 +148,28 @@ public final class DefaultNdhKeystoreReader implements NdhKeystoreReader {
   private JsonNode read() {
     if (!Files.isReadable(path)) {
       throw new IllegalStateException(
-          "ndh key-store not readable at " + path + " (run from the worktree root; smudged?)");
+          "ndh key-store not readable at " + path + " (run from the worktree root)");
     }
-    final JsonNode root;
+    final String envelope;
     try {
-      root = new ObjectMapper(new YAMLFactory()).readTree(path.toFile());
+      envelope = Files.readString(path);
+    } catch (Exception ex) {
+      throw new IllegalStateException("failed to read " + path, ex);
+    }
+    if (!parse(envelope).has("sops")) {
+      throw new IllegalStateException(
+          path
+              + " is plaintext at rest; it must stay sops-encrypted "
+              + "(.gitattributes must not declare a sops filter for it).");
+    }
+    return parse(decryptor.apply(envelope));
+  }
+
+  private JsonNode parse(final String yaml) {
+    try {
+      return new SeedCodec().reading().readYaml(yaml);
     } catch (Exception ex) {
       throw new IllegalStateException("failed to parse " + path, ex);
     }
-    if (root.has("sops")) {
-      throw new IllegalStateException(
-          path
-              + " appears sops-encrypted at rest; the worktree copy must be plaintext "
-              + "(check .gitattributes declares filter=sops-yaml and the smudge ran).");
-    }
-    return root;
   }
 }

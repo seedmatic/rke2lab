@@ -3,6 +3,18 @@
 :toclevels: 3
 # :kroki-server-url: https://kroki.io
 
+[IMPORTANT]
+====
+*Since 2026-10-11 the blueprint is a delivery, and `deriveMacs` is gone.* rke2lab no longer reads a
+checked-in `network-blueprint.json`: the plan CLI's `publish` verb writes `netplan.json` (and
+`dataplan.json`) to the `fabric/plan` orphan, rke2lab pins it back as the `fabric-plan` input, and
+`lib.networkBlueprint` is that file plus `vmnetSupernet`. `blueprint-fresh` compares the pin to what
+the Java produces. `deriveMacs`, which the sections below describe as the consumable export, had no
+consumer in ndh, nnh, nch nor the orphans, and had drifted from the Java's MAC scheme
+(`52:54:00:<cluster>:<type>:<node>`, `ClusterNetworkBlueprint`); it was deleted. Read those sections
+as the design history they are.
+====
+
 == Overview
 
 The cluster network underlay — cluster/node IDs, MAC derivation scheme, IP
@@ -186,8 +198,8 @@ YAML shape are unchanged — only host-neutral JSON crosses the realm boundary (
 | `ClusterNetworkBlueprint` (Java) | the single source of truth
 | `netplan.jar yamlExport` | generator: emits the blueprint as YAML (no input)
 | rke2lab `flake.nix` (`networkBlueprintYaml` -> `networkBlueprintData`) | builds + runs the jar at eval (IFD), parses the YAML
-| `lib.networkBlueprint` (`deriveMacs` + data) | the consumable export
-| nix-darwin-home flake input `rke2lab` | consumes `rke2lab.lib.networkBlueprint.deriveMacs`
+| `lib.networkBlueprint` (data + `vmnetSupernet`) | the consumable export, read from the `fabric-plan` pin
+| ndh flake input `rke2lab` | consumes `rke2lab.lib.networkBlueprint` (until it pins `fabric/plan` itself)
 |===
 
 The YAML carries the full contract (from `NetplanBlueprintScenario`): `clusters`,

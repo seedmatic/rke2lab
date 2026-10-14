@@ -26,11 +26,6 @@ outputs = "all"
     pkg-path = "helmfile"
 outputs = "all"
 
-  [install.kpt]
-    pkg-group = "k8s-kpt-tools"
-    pkg-path = "kpt"
-outputs = "all"
-
   [install.krew]
     pkg-group = "k8s-kubectl-tools"
     pkg-path = "krew"

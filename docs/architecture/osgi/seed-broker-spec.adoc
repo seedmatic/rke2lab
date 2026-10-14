@@ -315,7 +315,7 @@ filesystem. So the WHOLE topology is computed OSGi-side, uniformly (it reads bet
 split): `HostPathCatalog` + `fromLocalWorktree` + the slot + the pure `pathOn` NFS translation all live
 bundle-side; the scion produces the resolved mount plan; the host reads it flat via Split and holds no
 catalog, no roots. The host keeps only the Pulumi engine (irreducible) + a handful of flat scalars it
-hands the scion by `@Amendment` (worktree, cluster, node, automount). No D5 leak, because the
+hands the scion by `@Amendment` (worktree, cluster, node). No D5 leak, because the
 crossing SOIL is flat and `BootstrapConfig` never crosses. See
 link:host-cellar-realisation-spec.adoc[host-cellar] § "BootstrapPaths — the WHOLE topology is computed
 OSGi-side".
@@ -739,7 +739,7 @@ its own loader is ordinary. The host is left with one door and a soil name:
 ----
   broker.sow(new RunbookCoordinate(soil), trigger)   // one door; soil is a String, no domain type
      → reaps a SeedEnvelope (the runbook as neutral JSON)
-     → ScenarioGraft.rebuild(payload) + graftUnder(hostScenario, hostTree, step)   // graft where the runbook is owned
+     → ScenarioGraft.rebuild(payload) + graftUnder(hostScenario, hostTree, soil, scion)   // under the executing step, where the runbook is owned
 ----
 
 So the SOW half of a sow-and-graft caller (link:../bdd/bdd.adoc#clusterseed-scenario-map[the scenario
@@ -758,8 +758,15 @@ carrying the rootstock step), while the scion `tagMap` merges into the `ReportMo
 (`getScenario().getModel()`, whose tag map is live and which the host reads back via `graftedValue`).
 Reading the host scenario from `getModel().getScenarios()` mid-run was the "no scenario to graft"
 defect — green in every isolated test (they played the host to completion before reading its model),
-fatal on the first live run. `ScenarioGraft.graftUnder(hostScenario, hostTree, rootstock, scion)`
+fatal on the first live run. `ScenarioGraft.graftUnder(hostScenario, hostTree, soil, scion)`
 takes both handles; `ScenarioGraft` stays report-model-pure, the caller supplies the two.
+
+NOTE: *The rootstock is FOUND, never named.* jGiven records a step when it is invoked and does not
+record the stage calls nested in it, so while a crossing step runs, the executing step is the live
+case's last top-level step — that is the rootstock, and `graftUnder` returns its name for the
+verdict's label. A name passed beside the step could disagree with it, and only a run reaching the
+crossing would say so: the publish crossings once grafted four names under one step that bore none
+of them. A graft from outside any host step finds no step and fails loudly.
 
 [[the-scenario-outcome-channel]]
 ==== How the played model comes back — the `ScenarioOutcome` channel, not a static holder
@@ -996,10 +1003,10 @@ flowchart TB
   The host cannot `== Severity.CRITICAL`, because it holds a string verdict, not a `Severity`.
 * *Egress* — OSGi emits its DAG as a `Document`; the host forwards it opaquely to `pulumi.export`.
 
-The asymmetry reaches into the codec too: OSGi owns the `DocumentCodec` as a DS `@Component` (the twin
-of `YamlMapper`), the host holds a plain instance (no DS); each realm carries its own jackson and maps
-`String` payload ↔ record independently. The rejected symmetric alternative — a rich host-side mapper
-rebuilding doctor types — re-creates a doctor vocabulary on the host, the very leak this closes.
+The asymmetry reaches into the codec too: each realm holds plain `SeedCodec` instances (no DS),
+carries its own jackson and maps `String` payload ↔ record independently. The rejected symmetric
+alternative — a rich host-side mapper rebuilding doctor types — re-creates a doctor vocabulary on the
+host, the very leak this closes.
 
 [[the-seam-types]]
 == The seam types — what actually crosses
@@ -1010,7 +1017,7 @@ package `io.seedmatic.rke2lab.seed.broker.port`:
 
 * *The envelope* — `Document(String domain, String coordinate, String payload)`. The payload is a
   serialized `String`, NOT a `JsonNode` — so jackson never crosses the seam; each realm parses the
-  string with its own mapper.
+  string with its own copy of the codec.
 +
 [NOTE]
 ====
@@ -1079,7 +1086,7 @@ drift. The contract is the **wire-record per `Coordinate`** — a flat record (s
 wire-records, seam enums; no jackson annotations) carrying `@DocumentContract(slug)`. Its
 `RecordComponents` ARE the contract: the JSON Schema is a **build-time projection** of them, never
 hand-written — no `FIELD_*` string catalog to keep in step. The wire-record *type* never crosses; only
-the serialized `String` payload does, mapped record↔`String` by each realm's own `DocumentCodec`. The
+the serialized `String` payload does, mapped record↔`String` by each realm's own `SeedCodec`. The
 codec also exposes `toMap(record)` / `fromMap(map, type)` (record ↔ opaque `Map`) and
 `decode(String)→JsonNode` (opaque tree): these are how the HOST reads a plant BY KEY and assembles a
 seed WITHOUT the class — the opacity path § <<contribution-and-opacity>> generalizes.
@@ -1092,23 +1099,50 @@ annotation), a `JavaTimeModule` (ISO-8601 `Instant`), and `Jdk8Module` (`Optiona
 dropped from `required`). It carries a `withValidation(boolean)` switch, OFF in the embedded build
 (see § <<remaining-migration>>).
 
+The seam's payloads are never committed, so they need no canonical form. The files we write and the
+APIs we call do, and they reach jackson through the same instance, by three profiles a `SeedCodec`
+holds — never a mapper of their own:
+
+* `canonical()` → `CanonicalCodec` — the files we write and read back, in JSON and YAML: map entries
+  and JSON trees sorted by key, a record in its declared component order, a null or empty `Optional`
+  dropped (so no reader of this form may need the key present), two-space indent, `"k": v`, one
+  element per line, a final newline; YAML without a document marker (a multi-document stream
+  separated by `---`), quoting only what would not read back as the same string, a YAML 1.1 reader
+  such as Go's included. The same value always yields the same bytes, so a diff of a committed file
+  shows only what changed.
+* `reading()` → `ReadingCodec` — JSON and YAML we only parse (config, secrets, other tools' files),
+  tolerant of unknown keys and of documents above SnakeYAML's 3 MiB default.
+* `wire()` → `WireCodec` — bodies exchanged with external APIs: compact JSON, nothing reordered or
+  dropped (the peer dictates the shape), tolerant of a field the peer adds.
+
+`CanonicalCodec` and `WireCodec` are derived from the instance's `ReadingCodec` (a copy of its mappers,
+reconfigured), so all three read alike and only their writers differ. No mapper is constructed
+anywhere else: the `codec-only` flake check scans every source a jar is built from and refuses one —
+a check rather than a test, because a test is cached on its own module and would never see a mapper
+added in another. A bare `JsonFactory`, a streaming tokenizer, stays allowed.
+
 === Build-time is the load-bearing contract check (we build on one codebase)
 
 We are *embedded*: the host and the OSGi exec-jar build from the same codebase, in one reactor. So the
-contract is enforced where that fact lives — at build time, by the `SCHEMA_CONCORD` staging gate
-(alongside record-purity / spec-coverage / instance-discipline / realm-boundary / duplicate-realm).
-It asserts every `Coordinate` has a wire-record, that each `<slug>.schema.json` validates against the
-JSON-Schema meta-schema, and that the schema's properties concord with the record's components. The
-gate lives in both `StagingGate` enums (the annotation module `osgi/foundation/domain-annotations` and
-the ASM mirror in `maven-embed-staging-ext/staging-extension`) and is at the locked `ERROR` default.
-Because the two worlds ship together, their contract cannot drift in version — the reactor guarantees
-the pairing.
+contract is enforced where that fact lives — at build time, by the staging gates. Because the two
+worlds ship together, their contract cannot drift in version: the reactor guarantees the pairing.
+
+⚠️ `SCHEMA_CONCORD` — the gate that would assert every `Coordinate` has a wire-record, that each
+`<slug>.schema.json` validates against the JSON-Schema meta-schema, and that the schema's properties
+concord with the record's components — is **DESIGNED, NOT IMPLEMENTED**. This passage used to claim it
+"lives in both `StagingGate` enums and is at the locked `ERROR` default"; measured on 2026-10-10, both
+enums carry the SAME SEVEN gates and none of them is it (`CONTRACT_PURITY`, `SPEC_COVERAGE`,
+`INSTANCE_DISCIPLINE`, `REALM_BOUNDARY`, `DUPLICATE_REALM_CLASS`, `REALM_WIRING_INTEGRITY`,
+`SYNTHESIS_PATTERN`), and the repository holds **zero** `*.schema.json` files. So the `shape`
+meta-coordinate projects a record's schema at RUNTIME with nothing checking it at build time, and a
+wire-record added without one is not refused by anything. The seven gates that DO run are what this
+spec's other claims rest on; this one rested on nothing.
 
 === Runtime validation is designed, but YAGNI until remote
 
 Runtime `Document` validation is *designed* but *deferred (YAGNI)* — it earns its keep only when the
 host and the OSGi exec-jar are deployed or versioned **separately** (a remote split), when a semver
-mismatch becomes possible. The `DocumentCodec.withValidation(boolean)` switch reserves its shape:
+mismatch becomes possible. The `SeedCodec.withValidation(boolean)` switch reserves its shape:
 
 * *OSGi side* — validation carried by a **fragment** that attaches to a domain's bundle and validates
   that domain's `Document`s (the proven fragment-contribution pattern). Absent in the embedded build;
@@ -1201,7 +1235,7 @@ ordinary.
 == Contribution + opacity — a domain owns its vocabulary, the host holds none of it
 
 The shipped broker collects `SeedHandler` `@Component`s by DS and dispatches by coordinate — the domain
-already contributes its LOGIC and its own encode/decode (each handler holds a `DocumentCodec` and knows
+already contributes its LOGIC and its own encode/decode (each handler holds a `SeedCodec` and knows
 its own wire-records). Two things are NOT yet contributed, and closing them is what makes a `Document`
 truly opaque to the host:
 
@@ -1434,7 +1468,7 @@ off the opaque envelope the backend hands back). It is a capability, not a core 
 black-hole `EphemeralCellar` (`seed-bdd`) — stores nothing, reveals nothing. So a reveal of a value the
 OPERATOR sealed at the grow (into its `PulumiCellar`) returns empty in-cluster, unless that same run
 re-sealed it into the overlay. Two branch secrets are exactly in this trap: `IncusIdentityCase.INCUS_IDENTITY`
-and `ClusterPkiCase.WORKLOAD_CLUSTER_CAS` — sealed operator-side (host-world incus creds / the operator sops
+and `ClusterPkiCoordinate.WORKLOAD_CLUSTER_CAS` — sealed operator-side (host-world incus creds / the operator sops
 key inventory), rendered ON THE BRANCH sops-encrypted (NOT `NODE_BOOTSTRAP`), and referenced by the CAPI CRs'
 `secretRef`. A secret-blind in-cluster re-render finds no material, emits no Secret → Flux PRUNES the ones
 the operator grow had populated → CAPN loses its `secretRef` and cannot authenticate to incus.
@@ -1448,10 +1482,12 @@ default: a new sealed secret cannot leak to the branch asset unless a producer d
 
 *The mechanism (manifests owns it — the seam only carries `reach`).* At the grow the render reads the
 durable `OpaqueCellar.fetch(parcel)` (opaque envelopes, trails CLEAR), keeps those with
-`env.trail().reach() == IN_CLUSTER`, and writes the STILL-SEALED envelopes into a branch asset (named to
-match the `.gitattributes` sops filter so the git-sops clean filter age-encrypts it at commit). This is the
+`env.trail().reach() == IN_CLUSTER`, and writes the STILL-SEALED envelopes into a branch asset
+(`BranchSecretCarrier.IN_CLUSTER_CELLAR`, `.secret-in-cluster-cellar.yml`), a Secret the delivery age-encrypts
+in memory with every other rendered Secret before it stages the branch. This is the
 symmetric twin of the `NODE_BOOTSTRAP`-annotation extraction the exploder already does on rendered documents.
-In-cluster, the git-sops smudge filter decrypts the asset on checkout, and a READ-ONLY `OpaqueCellar` backed
+The next render reads the asset at HEAD and opens it in memory with the key sops finds in its enclosure (the
+cluster key in-cluster), and a READ-ONLY `OpaqueCellar` backed
 by it REPLACES the `EphemeralCellar` as the durable read-side: `fetch(parcel, coordinate)` serves the exported
 envelopes, so the reveals resolve the same sealed materials the operator sealed. The transactional overlay
 still layers on top, so a this-run in-cluster seal (from `.secrets`) still wins over the asset.

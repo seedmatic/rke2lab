@@ -51,7 +51,7 @@ public final class FluxOperatorManifestsUnit extends AbstractManifestsUnit {
                 .metadata(
                     ApiObjectMetadata.builder()
                         .name("flux-system")
-                        .annotations(packageProfile.packageAnnotations("|Namespace||flux-system"))
+                        .annotations(packageProfile.packageAnnotations())
                         .labels(
                             Map.of(
                                 "app.kubernetes.io/name", "flux-system",
@@ -71,9 +71,7 @@ public final class FluxOperatorManifestsUnit extends AbstractManifestsUnit {
                     ApiObjectMetadata.builder()
                         .name("flux-operator")
                         .namespace("kube-system")
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "helm.cattle.io|HelmChart|kube-system|flux-operator"))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
 

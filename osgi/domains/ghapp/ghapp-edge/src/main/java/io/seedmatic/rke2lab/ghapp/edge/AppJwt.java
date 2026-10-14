@@ -1,8 +1,8 @@
 package io.seedmatic.rke2lab.ghapp.edge;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.seedmatic.rke2lab.seed.broker.codec.WireCodec;
 import java.io.IOException;
 import java.io.StringReader;
 import java.io.UncheckedIOException;
@@ -56,27 +56,25 @@ final class AppJwt {
    * A ≈10-minute RS256 JWT: {@code iss=appId}, {@code iat=now-60s} (clock skew), {@code
    * exp=now+600s}.
    */
-  static String issue(String appId, PrivateKey key, Instant now, ObjectMapper mapper) {
-    final ObjectNode header = mapper.createObjectNode();
+  static String issue(String appId, PrivateKey key, Instant now, WireCodec wire) {
+    final ObjectNode header = JsonNodeFactory.instance.objectNode();
     header.put("alg", "RS256").put("typ", "JWT");
-    final ObjectNode payload = mapper.createObjectNode();
+    final ObjectNode payload = JsonNodeFactory.instance.objectNode();
     payload
         .put("iat", now.getEpochSecond() - 60)
         .put("exp", now.getEpochSecond() + 600)
         .put("iss", appId);
     try {
       final String signingInput =
-          encode(mapper.writeValueAsBytes(header))
+          encode(wire.writeJson(header).getBytes(StandardCharsets.UTF_8))
               + "."
-              + encode(mapper.writeValueAsBytes(payload));
+              + encode(wire.writeJson(payload).getBytes(StandardCharsets.UTF_8));
       final Signature rsa = Signature.getInstance("SHA256withRSA");
       rsa.initSign(key);
       rsa.update(signingInput.getBytes(StandardCharsets.US_ASCII));
       return signingInput + "." + encode(rsa.sign());
     } catch (GeneralSecurityException e) {
       throw new IllegalStateException("could not sign the App JWT", e);
-    } catch (JsonProcessingException e) {
-      throw new UncheckedIOException("could not serialise the App JWT", e);
     }
   }
 

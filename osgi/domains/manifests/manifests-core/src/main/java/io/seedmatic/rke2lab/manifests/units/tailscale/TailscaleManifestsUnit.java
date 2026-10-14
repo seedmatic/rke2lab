@@ -105,7 +105,6 @@ public final class TailscaleManifestsUnit extends AbstractManifestsUnit {
                         // HelmChart.
                         .annotations(
                             packageProfile.packageAnnotations(
-                                "helm.cattle.io|HelmChart|${tailscale-namespace}|tailscale-operator",
                                 Map.of(
                                     ManifestAnnotation.MANIFEST_LAYER.key(),
                                     ManifestLayer.OPERATORS.value())))
@@ -174,7 +173,6 @@ public final class TailscaleManifestsUnit extends AbstractManifestsUnit {
                         // the Connector; the replicator (a separate platform cell) fills it.
                         .annotations(
                             packageProfile.packageAnnotations(
-                                "",
                                 Map.of(
                                     "replicator.v1.mittwald.de/replicate-from",
                                     ClusterRefs.SECRETS_NAMESPACE + "/operator-oauth",

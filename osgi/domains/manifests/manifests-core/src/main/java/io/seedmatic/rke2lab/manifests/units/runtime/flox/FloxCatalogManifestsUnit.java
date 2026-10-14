@@ -44,7 +44,7 @@ public final class FloxCatalogManifestsUnit extends AbstractManifestsUnit {
   /**
    * Dedicated branch carrying the catalog flake at its root (maintained directly on the branch).
    */
-  public static final String CATALOG_BRANCH = "flox-catalog";
+  public static final String CATALOG_BRANCH = "flox-catalog/develop";
 
   /** The single catalog FloxCatalog, referenced as {@code floxcatalog:rke2lab-system/catalog#…}. */
   public static final String FLOX_CATALOG_NAME = "catalog";
@@ -89,10 +89,7 @@ public final class FloxCatalogManifestsUnit extends AbstractManifestsUnit {
                     ApiObjectMetadata.builder()
                         .name(GIT_REPOSITORY_NAME)
                         .namespace("flux-system")
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "source.toolkit.fluxcd.io|GitRepository|flux-system|"
-                                    + GIT_REPOSITORY_NAME))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
     gitRepo.addJsonPatch(
@@ -132,12 +129,7 @@ public final class FloxCatalogManifestsUnit extends AbstractManifestsUnit {
                     ApiObjectMetadata.builder()
                         .name(FLOX_CATALOG_NAME)
                         .namespace(namespace)
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "flox.seedmatic.io|FloxCatalog|"
-                                    + namespace
-                                    + "|"
-                                    + FLOX_CATALOG_NAME))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
     floxCatalog.addDependency(resolver.require(ClusterRefs.RUNTIME_SYSTEM_NAMESPACE));

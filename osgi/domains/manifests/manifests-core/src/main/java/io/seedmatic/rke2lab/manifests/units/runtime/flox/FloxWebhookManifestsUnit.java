@@ -115,12 +115,7 @@ public final class FloxWebhookManifestsUnit extends AbstractManifestsUnit {
                     ApiObjectMetadata.builder()
                         .name(CERTIFICATE_NAME)
                         .namespace(namespace)
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "cert-manager.io|Certificate|"
-                                    + namespace
-                                    + "|"
-                                    + CERTIFICATE_NAME))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
     certificate.addDependency(resolver.require(ClusterRefs.RUNTIME_SYSTEM_NAMESPACE));
@@ -148,9 +143,7 @@ public final class FloxWebhookManifestsUnit extends AbstractManifestsUnit {
                     ApiObjectMetadata.builder()
                         .name(SERVICE_NAME)
                         .namespace(namespace)
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "|Service|" + namespace + "|" + SERVICE_NAME))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
     service.addDependency(resolver.require(ClusterRefs.RUNTIME_SYSTEM_NAMESPACE));
@@ -184,8 +177,6 @@ public final class FloxWebhookManifestsUnit extends AbstractManifestsUnit {
                         // Secret and keeps it in sync on renewal — no inline caBundle, no reveal.
                         .annotations(
                             packageProfile.packageAnnotations(
-                                "admissionregistration.k8s.io|MutatingWebhookConfiguration||"
-                                    + WEBHOOK_CONFIG_NAME,
                                 Map.of(
                                     "cert-manager.io/inject-ca-from",
                                     namespace + "/" + CERTIFICATE_NAME)))

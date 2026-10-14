@@ -1,10 +1,12 @@
 package io.seedmatic.rke2lab.ghapp.edge;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.seedmatic.rke2lab.ghapp.contract.GithubAppCredentials;
 import io.seedmatic.rke2lab.ghapp.contract.GithubAppWebhookConfigurer;
 import io.seedmatic.rke2lab.ghapp.contract.WebhookConfig;
+import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
+import io.seedmatic.rke2lab.seed.broker.codec.WireCodec;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.URI;
@@ -40,13 +42,13 @@ public final class GithubAppWebhookConfigurerEdge implements GithubAppWebhookCon
 
   private final HttpClient http =
       HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(20)).build();
-  private final ObjectMapper mapper = new ObjectMapper();
+  private final WireCodec wire = new SeedCodec().wire();
 
   @Override
   public void configure(GithubAppCredentials credentials, WebhookConfig config) {
     final PrivateKey key = AppJwt.readPrivateKey(credentials.privateKeyPem());
-    final String jwt = AppJwt.issue(credentials.appId(), key, Instant.now(), mapper);
-    final ObjectNode body = mapper.createObjectNode();
+    final String jwt = AppJwt.issue(credentials.appId(), key, Instant.now(), wire);
+    final ObjectNode body = JsonNodeFactory.instance.objectNode();
     body.put("url", config.url());
     body.put("content_type", "json");
     body.put("secret", config.secret());
@@ -71,8 +73,7 @@ public final class GithubAppWebhookConfigurerEdge implements GithubAppWebhookCon
               .header("X-GitHub-Api-Version", API_VERSION)
               .method(
                   "PATCH",
-                  HttpRequest.BodyPublishers.ofString(
-                      mapper.writeValueAsString(body), StandardCharsets.UTF_8))
+                  HttpRequest.BodyPublishers.ofString(wire.writeJson(body), StandardCharsets.UTF_8))
               .build();
       return http.send(request, HttpResponse.BodyHandlers.ofString());
     } catch (IOException e) {

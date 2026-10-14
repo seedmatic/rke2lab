@@ -108,7 +108,7 @@ public final class ClusterApiOperatorManifestsUnit extends AbstractManifestsUnit
               .metadata(
                   ApiObjectMetadata.builder()
                       .name(namespace)
-                      .annotations(packageProfile.packageAnnotations(namespace))
+                      .annotations(packageProfile.packageAnnotations())
                       .build())
               .build());
     }
@@ -126,9 +126,7 @@ public final class ClusterApiOperatorManifestsUnit extends AbstractManifestsUnit
                     ApiObjectMetadata.builder()
                         .name("cluster-api")
                         .namespace("capi-system")
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "operator.cluster.x-k8s.io|CoreProvider|capi-system|cluster-api"))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
 
@@ -147,9 +145,7 @@ public final class ClusterApiOperatorManifestsUnit extends AbstractManifestsUnit
                     ApiObjectMetadata.builder()
                         .name("incus")
                         .namespace(CAPN_NAMESPACE)
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "operator.cluster.x-k8s.io|InfrastructureProvider|capn-system|incus"))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
 
@@ -254,7 +250,6 @@ public final class ClusterApiOperatorManifestsUnit extends AbstractManifestsUnit
                         .namespace(CAPN_NAMESPACE)
                         .annotations(
                             packageProfile.packageAnnotations(
-                                "|Secret|" + CAPN_NAMESPACE + "|" + TRUST_ANCHOR_SECRET,
                                 Map.of(ManifestAnnotation.NODE_BOOTSTRAP.key(), "true")))
                         .build())
                 .build());
@@ -286,9 +281,7 @@ public final class ClusterApiOperatorManifestsUnit extends AbstractManifestsUnit
                     ApiObjectMetadata.builder()
                         .name(PROVIDER_CONFIG_SECRET)
                         .namespace(CAPN_NAMESPACE)
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "|Secret|" + CAPN_NAMESPACE + "|" + PROVIDER_CONFIG_SECRET))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
     secret.addJsonPatch(
@@ -325,9 +318,7 @@ public final class ClusterApiOperatorManifestsUnit extends AbstractManifestsUnit
                     ApiObjectMetadata.builder()
                         .name("rke2")
                         .namespace("caprke2-system")
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "operator.cluster.x-k8s.io|ControlPlaneProvider|caprke2-system|rke2"))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
 
@@ -346,9 +337,7 @@ public final class ClusterApiOperatorManifestsUnit extends AbstractManifestsUnit
                     ApiObjectMetadata.builder()
                         .name("rke2")
                         .namespace("caprke2-system")
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "operator.cluster.x-k8s.io|BootstrapProvider|caprke2-system|rke2"))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
 

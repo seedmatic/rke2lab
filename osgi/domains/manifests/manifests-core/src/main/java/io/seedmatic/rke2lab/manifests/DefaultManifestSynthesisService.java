@@ -21,9 +21,9 @@ import io.seedmatic.rke2lab.ndh.contract.NdhKeystoreReader;
 import io.seedmatic.rke2lab.seed.broker.port.EnclosureGate;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -230,8 +230,7 @@ public final class DefaultManifestSynthesisService implements ManifestSynthesisS
           final Path synthOutdir = state.request.synthOutdir();
           final Path synthManifestFile = state.request.synthManifestFile();
 
-          final App app =
-              Cdk8sApps.create(AppProps.builder().outdir(synthOutdir.toString()).build());
+          final App app = Cdk8sApps.create(AppProps.builder().build());
           final Chart chart = new Chart(app, "manifests");
 
           sink.scaffold(new Scaffold(app, chart, synthOutdir, synthManifestFile));
@@ -382,17 +381,17 @@ public final class DefaultManifestSynthesisService implements ManifestSynthesisS
         SynthesisPhase synthAndPostprocess() {
           final Scaffold scaffold = state.scaffold();
           try {
-            LOG.info(
-                "Calling app.synth() to synthesize K8s manifests to: {}", scaffold.synthOutdir());
-            scaffold.app().synth();
+            // synthYaml(), not synth(): the YAML comes back as a string through jsii instead of
+            // being
+            // written by node into an outdir, so the tree may live on any java.nio file system —
+            // an in-memory one included — and no rendered Secret touches the disk in the clear.
+            // Measured byte-identical to the file synth() writes (2026-10-12).
+            final Path manifest = scaffold.synthManifestFile();
+            LOG.info("Synthesizing K8s manifests into {}", manifest);
+            Files.createDirectories(manifest.getParent());
+            Files.writeString(manifest, scaffold.app().synthYaml(), StandardCharsets.UTF_8);
 
-            final Path synthesizedFile = getSynthesizedFile();
-
-            enforceLiteralBlockStyleForConfigMapScripts(synthesizedFile);
-
-            Files.createDirectories(scaffold.synthManifestFile().getParent());
-            Files.move(
-                synthesizedFile, scaffold.synthManifestFile(), StandardCopyOption.REPLACE_EXISTING);
+            enforceLiteralBlockStyleForConfigMapScripts(manifest);
 
             LOG.info(
                 "Synthesized K8s manifests from canonical manifest units (manifest unit hits={})",
@@ -422,27 +421,6 @@ public final class DefaultManifestSynthesisService implements ManifestSynthesisS
             return this;
           } catch (IOException e) {
             throw new UncheckedIOException(e);
-          }
-        }
-
-        private Path getSynthesizedFile() throws IOException {
-          final Path synthOutdir = state.scaffold().synthOutdir();
-          try (var files = Files.list(synthOutdir)) {
-            return files
-                .filter(
-                    p -> {
-                      final String name = p.getFileName().toString();
-                      return name.endsWith("-manifests.k8s.yaml")
-                          || name.equals("manifests.k8s.yaml");
-                    })
-                .filter(Files::exists)
-                .findFirst()
-                .orElseThrow(
-                    () ->
-                        new IllegalStateException(
-                            "Expected synthesized manifest file (manifests.k8s.yaml or"
-                                + " *-manifests.k8s.yaml) is missing in: "
-                                + synthOutdir));
           }
         }
       }

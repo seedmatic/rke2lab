@@ -49,9 +49,7 @@ public final class CertManagerManifestsUnit extends AbstractManifestsUnit {
                     ApiObjectMetadata.builder()
                         .name("cert-manager")
                         .namespace("kube-system")
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "helm.cattle.io|HelmChart|kube-system|cert-manager"))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
 

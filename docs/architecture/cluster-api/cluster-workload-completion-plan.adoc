@@ -250,7 +250,7 @@ Recommended execution order — respects what unblocks what, leaves room to skip
   returning only the openebs-zfs internal types. RKE2's logs show "Extracting …
   rke2-snapshot-controller-crd.yaml" followed 27 seconds later by "Deleting manifest …
   rke2-snapshot-controller-crd.yaml" because of the project's `disable:` list.
-* The deprecated branch `deprecated/rke2lab-pre-pulumi-main` shipped Tekton via raw kpt-rendered
+* The deprecated branch `deprecated/rke2lab-pre-pulumi-main` shipped Tekton via raw rendered
   upstream YAML in `rke2.d/bioskop/master/catalog/cicd/tekton-pipelines/release-operator-v0.78.1.yaml`.
   Same approach now lives in `UpstreamYamlInclusion`; `release-v0.79.1.yaml` is its current pinned
   successor.

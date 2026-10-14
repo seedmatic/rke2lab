@@ -460,8 +460,9 @@ The host fills the operator's policy onto the neutral `FACET` role — the wire 
 `AmendCoordinate("manifests-versions")` door (the twin of `WorktreeAmendReflector`);
 `VersionsRunbookHandler` serves `ManifestsCoordinate.VERSIONS` and grows `VersionBumpScenario`
 in-container. The scenario `@OsgiService`-injects `Worktree` (jgit stage/commit), the optional
-`GithubWriterTokenMint` (the `auth` edge that mints a fresh writer token on demand from the App
-credentials revealed at `GhAppCase`, not a long-lived env token), and `NdhKeystoreReader` (the
+`GithubWriterTokenMint` (the `auth` edge that mints a fresh writer token on demand, through
+`GithubAppTokens` reading the App from its owner — not a long-lived env token), and
+`NdhKeystoreReader` (the
 tailnet `authorityDomain` the bot email is minted from). On `apply` it rewrites `Component.java`,
 stages the changed paths (including the deleted old `release-<oldPin>.yaml`) through `Worktree`, and
 commits as the identity `GitBotIdentities` mints — `rke2lab:manifests-bumper` /

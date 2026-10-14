@@ -7,8 +7,9 @@ refinement in <<refinement>> is fully ✅ landed — Q1 (self-contained grow pla
 OSGi-side), AND the final fold of `worktree-contract-host` into an OSGi-only `worktree-contract`.
 
 This spec discharges the `SPEC_COVERAGE` obligation of the worktree contract packages by naming every
-exported type: `Worktree`, `GatePolicy`, `WorktreeRunbookInput`, `WorktreeFacts`, `WorktreeCoordinate`,
-`Provenance`, `WorkingState`, `GitIdentity`, `RenderedBranch`, `LinkedWorktree`.
+exported type: `Worktree`, `DurableWorktree`, `TransientWorktrees`, `TransientWorktree`, `TreeEdit`,
+`CommitSpec`, `BuildRevision`, `GatePolicy`, `WorktreeRunbookInput`, `WorktreeFacts`,
+`WorktreeCoordinate`, `Provenance`, `WorkingState`, `GitIdentity`, `GitBotIdentities`.
 
 toc::[]
 
@@ -30,16 +31,19 @@ The domain has three modules:
 | Module | Role
 
 | `worktree-contract` (`type=contract`, pkg `io.seedmatic.rke2lab.worktree`)
-| The jgit-free `Worktree` service interface (OSGi consumers `@Reference` it — the incus scion), the
-`RenderedBranch` factory + its `LinkedWorktree` handle (the rendered-branch delivery seam), the
+| The jgit-free `Worktree` model and its two realizations — the `DurableWorktree` service (OSGi
+consumers `@Reference` it — the incus scion) and the `TransientWorktrees` factory + its
+`TransientWorktree` heads (the rendered-branch delivery seam) — the `TreeEdit` / `CommitSpec` edit
+model, the
 entry-gate wire types `GatePolicy` and `WorktreeRunbookInput` (`@SeedContract("runbook")`), AND the
 cellar-harvested wire types folded in from the former `worktree-contract-host` (see <<refinement>>):
 `WorktreeFacts`, `WorktreeCoordinate`, `Provenance`, `WorkingState`. OSGi-only.
 
 | `worktree-core` (pkg `io.seedmatic.rke2lab.worktree.internal`)
-| `JgitWorktree` and `JgitRenderedBranch` `@Component`s, composing the jgit-holder `JgitCheckout` (all
-git facts + write verbs for one worktree path), the `GitCli` (the sole `git worktree` shell), the
-`JgitLinkedWorktree` handle, and the `SshCommitSigner`. jgit lives only here.
+| `JgitWorktree` and `JgitTransientWorktrees` `@Component`s, composing the jgit-holder `JgitCheckout`
+(the seat's git facts, its write verb and the fetch), the `JgitTransientWorktree` head (objects,
+signed commits, the checked fast-forward push), the `ContentGuards` port of the pre-commit guards, and
+the `SshCommitSigner`. jgit lives only here; no `git` process is launched.
 
 | `worktree-bdd`
 | `WorktreeScenario` — the worktree SOIL (harvest + entry-gate THEN), `WorktreeRunbookHandler`
@@ -49,10 +53,28 @@ amend door that binds the injected `GatePolicy` FACET — the twin of `IncusAmen
 
 == The exported types
 
-* **`Worktree`** (contract) — the service: `root()` (the absolute, normalised anchor every
-  provisioning path derives from), `provenance()`, `workingState()`, and `flakeLockCoherent()` (the
-  `HEAD~1..HEAD` check — a `flake.nix` inputs change without its `flake.lock`). jgit-free — only JDK
+* **`Worktree`** (contract) — the git model both realizations share: `readAtHead(path)` (the
+  COMMITTED blob, never a working file) and `commit(TreeEdit, CommitSpec)`. One model, two places a
+  tree lives: on disk and durable (the seat), in memory and transient (a head the seed commits onto).
+* **`DurableWorktree`** (contract) — the seat, the service: `root()` (the absolute, normalised anchor
+  every provisioning path derives from), `provenance()`, `workingState()`, and `flakeLockCoherent()` (the
+  `HEAD~1..HEAD` check — a `flake.nix` inputs change without its `flake.lock`). For a build of the seat
+  it adds `repository()` (the common dir, the bare a revision is read through), `buildRevision(paths)`,
+  `releaseBuildRevision(revision)` and `treeDigest(revision, paths)` — see
+  link:incus-edge-spec.adoc#build-by-revision[the rule: nix builds only a revision]. jgit-free — only JDK
   types and the `worktree` records cross it.
+* **`TransientWorktrees`** / **`TransientWorktree`** (contract) — a head the seed commits onto WITHOUT
+  materializing it, opened in the seat's repository (its common dir, where the branches live):
+  `open(branch, fetchToken)` fetches the branch with the caller's explicit credential, or starts on a
+  README-only base when it does not exist (jgit cannot pack the empty tree); `readAtHead(path)`;
+  `commit(TreeEdit, CommitSpec)` writes objects only and moves no ref; `publish(pushToken)` pushes
+  fast-forward first and advances the local branch only once origin accepted it — or, without a token,
+  advances the local branch only. No working file, no checkout, nothing to release. Its users: the
+  manifests render (onto `manifests/<cluster>`) and the Fabric delivery (onto `fabric/plan`).
+* **`BuildRevision`** — the revision a build of the seat reads: the `sha`, whether it was `fabricated`
+  (HEAD's tree with the dirty build inputs taken from the working tree, pinned under
+  `refs/rke2lab/grow/<sha>`, never pushed), and the `changed` and `untracked` paths that made it so —
+  the run's provenance names them.
 * **`GatePolicy`** (contract) — the entry-gate POLICY, injected into the worktree crossing as the
   `FACET` amendment. Two sub-gates, each toggled: `cleanWorktreeRequired` (+ the `toleratedPaths`
   allowed to be uncommitted) and `flakeLockRequired` (default OFF). Its `enforce(WorktreeFacts)`
@@ -80,49 +102,53 @@ amend door that binds the injected `GatePolicy` FACET — the twin of `IncusAmen
 * **`GitIdentity`** — the author/committer a `commit` stamps onto an automated change: a bot identity
   (name + email), so a machine-made commit is attributable to the tool, never the ambient
   `user.name`/`user.email` of whoever ran it. Domain-neutral — the worktree carries no specific
-  identity; the caller supplies one (the manifests version bumper mints `rke2lab:manifests-bumper` /
-  `manifests-bumper@<tailnet-domain>`, the domain single-sourced from the PKI keystore).
+  identity; the caller supplies one.
+* **`GitBotIdentities`** — mints that identity: `rke2lab:<tool>` / `rke2lab+<tool>@<authorityDomain>`,
+  the base OWNED here and the tool supplying only its own discriminator (guarded to a bare suffix, so
+  a tool can add provenance but never replace the base). An INSTANCE holding the one thing that varies
+  by deployment, the tailnet authority domain, read from the ndh key-store rather than re-typed.
+  It moved here from `manifests-bdd` on 2026-10-10, when the fabric delivery became a second automated
+  committer: its javadoc calls itself "the single source of trust for the bot identity", and a single
+  source only ONE domain can reach is not one — fabric would have minted a second convention. It sits
+  beside `GitIdentity` because the identity of a git commit belongs to the domain that owns the git
+  mechanism. Users: the manifests render, the manifests version bumper, the fabric delivery.
 
-The `Worktree` service also carries TWO write verbs — the first the domain gained (survey stayed
-read-only until a consumer needed to cultivate the tree), jgit still sealed behind the implementation
-so only JDK types cross:
+The `Worktree` service also carries ONE write verb, `commit(TreeEdit, CommitSpec)` — a writer hands
+bytes in memory and never touches files itself; jgit stays sealed behind the implementation so only
+JDK types cross:
 
-* **`stage(List<Path>)`** — stage additions/modifications for paths that exist, removals for paths
-  that no longer do; each path absolute or worktree-relative, resolved against `root()`.
-* **`commit(String message, GitIdentity identity, Optional<String> sshSigningKey)`** — commit the
-  staged changes authored AND committed as `identity`, optionally SSH-signed with the caller's OpenSSH
-  private key (git SSHSIG, `git` namespace, via an injected `ssh-keygen` signer since jgit ships
-  none), returning the new commit sha. LOCAL to the seed's OWN worktree — pushing a rendered branch is
-  the separate `RenderedBranch` service below.
+* **`TreeEdit`** — the edit model, sealed: an **`Overlay`** (`files` laid over the head's tree, the
+  `removed` paths dropped — a version bump, a delivery of a few files) or a **`Replace`** (the whole
+  tree replaced by `files`, the head's `carried` subtrees kept — a render). Paths worktree-relative.
+* **`CommitSpec`** — the `message`, the `identity` authored AND committed as, and the OpenSSH private
+  key the commit is SSH-signed with (git SSHSIG, `git` namespace, via an injected `ssh-keygen` signer
+  since jgit ships none), or empty for unsigned.
+* **`commit(TreeEdit, CommitSpec)`** — the seat (on disk) takes an `Overlay`: it writes the files,
+  deletes the removed paths, stages them and commits, returning the sha (the unchanged tip when the
+  result matches HEAD). A `Replace` is refused there — it would empty the operator's working tree —
+  and a path leaving the worktree is refused. LOCAL to the seed's OWN worktree — pushing a rendered
+  branch is the separate `TransientWorktrees` service below. The manifests version bumper is its user.
 
-=== The rendered-branch delivery — `RenderedBranch` / `LinkedWorktree`
+=== The rendered-branch delivery — `TransientWorktrees`
 
-Where `Worktree` is "the worktree the seed IS" (it self-locates and reports its own facts),
-`RenderedBranch` is "a worktree the seed MAKES": the delivery seam that carries a rendered tree to a
-`manifests/<host>-<role>` branch (see
-link:../cluster-api/manifests-rendered-branches.adoc[Manifests Rendered Branches]). It is the socle
-that replaces the old host-staging rotation/promotion (`host.N.staging.d` → `host.live.d`) with a
-render-then-force-push of a git branch.
+Where `DurableWorktree` is "the worktree the seed IS" (it self-locates and reports its own facts), a
+`TransientWorktree` is "a head the seed COMMITS ONTO": the delivery seam that carries a rendered tree
+to a `manifests/<host>-<role>` branch (see
+link:../cluster-api/manifests-rendered-branches.adoc[Manifests Rendered Branches]) and the plan to
+`fabric/plan`, with no checkout. It replaced the linked worktrees (`git worktree add`, a checkout,
+`git worktree remove`), and with them the last `git` process of rke2lab: everything is jgit.
 
-* **`RenderedBranch`** (contract) — the factory: `prepare(Path worktreePath, String branch)` shells
-  `git worktree add --orphan -b <branch> <worktreePath>` (jgit exposes no worktree porcelain —
-  verified against 7.7.x, which can OPEN a linked worktree but not CREATE one), an ORPHAN worktree
-  (empty tree, unborn branch) so the rendered branch carries only the rendered YAML, never the source.
-  Idempotent across re-runs (a prior worktree at the path AND any stale local branch are removed +
-  pruned first, then a fresh orphan is checked out — a rendered branch is regenerated as a single root
-  commit each render, never accreted). Domain-neutral like `Worktree`/`GatePolicy`:
-  the caller supplies the branch name (`manifests/<host>-<role>`) and the path
-  (`.local.d/render/<host>-<role>/`), so no consumer vocabulary leaks in. Published as an
-  `@Component(service = RenderedBranch.class)` that `@Reference`s `Worktree` to learn the repo root
-  (instance-passing — the root flows in, it is not re-located).
-* **`LinkedWorktree`** (contract) — the `AutoCloseable` handle `prepare` returns: `path()` (the render
-  target), `branch()`, `stage(List<Path>)` and `commit(…)` (the same signed-commit mechanism as
-  `Worktree`, against THIS worktree), `forcePush(String token)` (push `branch()` to `origin` over
-  HTTPS as `x-access-token`:`token` with a forced refspec — a rendered branch is desired-state; the
-  token is a short-lived GitHub token the caller reveals from the sealed cellar, held only in jgit's
-  in-memory credential provider), and `close()` (`git worktree remove --force`). jgit and `git
-  worktree` stay sealed behind `worktree-core`'s `JgitCheckout` (the sole jgit-holder instance both
-  worktrees compose) and `GitCli` (the sole `git worktree` shell); only JDK types cross.
+* **The render** materialises into its SOIL plot resolved on an in-memory file system
+  (`memoryfilesystem`), so no rendered Secret touches the disk in the clear; the delivery seals the
+  Secrets there, then commits the plot as a `TreeEdit.Replace` carrying the head's `reflections/`
+  subtree (the reflector owns it), the worktree convention's local dirs (`.local.d`, `.scratchpad.d`)
+  left out.
+* **Fabric** commits its two files as a `TreeEdit.Overlay` straight from the harvests — no plot.
+* **Both publish** with the caller's token: fast-forward push first, then the local branch; without
+  a token, the local branch only. The fetch and the push carry an EXPLICIT credential
+  (`x-access-token`), never one the machine's git config names. Published as an
+  `@Component(service = TransientWorktrees.class)` that `@Reference`s `DurableWorktree` to learn the
+  repository (instance-passing — the seat flows in, it is not re-located).
 
 == The soil crossing — harvest, not push
 
@@ -186,7 +212,7 @@ Two changes removed both host-side reads, and with them the reason for the dual-
 
 . **The grow plan became self-contained (Q1 — ✅).** The `InstanceGrowPlan` (`incus-ingress-contract`)
   now carries the resolved disk mounts as `GrowMountView`s: the incus scion (which `@Reference`s
-  `Worktree`) computes the live + automount `BootstrapPaths` view OSGi-side and projects the 13
+  `Worktree`) computes the live `BootstrapPaths` view OSGi-side and projects the 13
   source↔target pairs into the plan, so the host GROW actualises the plan ALONE — no separate
   `WorktreeCoordinate.FACTS` fetch for `root()`.
 . **The entry gate moved OSGi-side (Q2 — ✅).** The host-flat `EntryGatePolicyEnforcer` (with its

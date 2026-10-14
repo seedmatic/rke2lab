@@ -123,10 +123,6 @@ public record Rke2labConfig(
     return infra.fragment(InfraDomainCatalog.INCUS, IncusConfig.class);
   }
 
-  public ImageConfig image() {
-    return infra.fragment(InfraDomainCatalog.IMAGE, ImageConfig.class);
-  }
-
   public NetworkConfig network() {
     return infra.fragment(InfraDomainCatalog.NETWORK, NetworkConfig.class);
   }
@@ -144,10 +140,7 @@ public record Rke2labConfig(
   public record IncusConfig(Optional<String> project, Optional<URI> remoteAddress, Path configDir)
       implements InfraConfigFragment {}
 
-  public record ImageConfig(Optional<String> builderHost) implements InfraConfigFragment {}
-
-  public record NetworkConfig(
-      Optional<String> fabricBridgeParent, Optional<Boolean> automount, Optional<String> tailnet)
+  public record NetworkConfig(Optional<String> fabricBridgeParent, Optional<String> tailnet)
       implements InfraConfigFragment {}
 
   public record SystemdAdapterConfig(Optional<String> dbusHost, Optional<Integer> dbusPort)

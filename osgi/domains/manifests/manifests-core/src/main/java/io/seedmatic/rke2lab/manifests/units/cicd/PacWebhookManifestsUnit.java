@@ -63,17 +63,19 @@ public final class PacWebhookManifestsUnit extends AbstractManifestsUnit {
                         .name(funnel.hostname())
                         .namespace(NAMESPACE)
                         .annotations(
-                            packageProfile.packageAnnotations(
-                                "networking.k8s.io|Ingress|" + NAMESPACE + "|pac-webhook",
-                                // Funnel = public internet; the Tailscale operator provisions the
-                                // funnel + Let's Encrypt cert. proxy-class opts this proxy into the
-                                // stable TS_KUBE_SECRET so its identity/cert persists across grows
-                                // (FunnelStatePersistenceManifestsUnit) — no LE re-issuance.
-                                Map.of(
-                                    "tailscale.com/funnel",
-                                    "true",
-                                    "tailscale.com/proxy-class",
-                                    funnel.proxyClass())))
+                            packageProfile
+                                .packageAnnotations( // Funnel = public internet; the Tailscale
+                                    // operator provisions the
+                                    // funnel + Let's Encrypt cert. proxy-class opts this proxy into
+                                    // the
+                                    // stable TS_KUBE_SECRET so its identity/cert persists across
+                                    // grows
+                                    // (FunnelStatePersistenceManifestsUnit) — no LE re-issuance.
+                                    Map.of(
+                                        "tailscale.com/funnel",
+                                        "true",
+                                        "tailscale.com/proxy-class",
+                                        funnel.proxyClass())))
                         .build())
                 .build());
     ingress.addJsonPatch(

@@ -7,15 +7,6 @@ schema-version = "1.10.0"
 ##  $ flox show gum     <- show all versions of a package
 ## -------------------------------------------------------------------
 [install]
-pulumi.pkg-path = "pulumi-bin"
-pulumictl.pkg-path = "pulumictl"
-cdk8s-cli.pkg-path = "cdk8s-cli"
-dasel.pkg-path = "dasel"
-graphviz.pkg-path = "graphviz"
-## bats: suites de tests pour les scripts shell de .claude/bin (gardes de session).
-## Entrée de catalogue simple — PAS un ref de flake : rien ne couple bats à une version du
-## réacteur, contrairement à shfmt que spotless vérifie.
-bats.pkg-path = "bats"
 ## incus client, for both the Darwin shells (where we run `incus exec master`) and the Linux
 ## NixOS VM. DEFINED IN ndh, which owns the incus daemon's NixOS modules and the operator's trust
 ## to it; the flake ref below is rke2lab RE-EXPORTING it. Why a client-only build at all, and why
@@ -27,21 +18,40 @@ bats.pkg-path = "bats"
 ## image-builder host (which only sees the repo via NFS at a different
 ## absolute path).
 ##
-## Pinned to the WORKING branch, like flux9s and manage-tailnet below: a lock taken on the default
-## branch resolves whatever that branch happens to hold, so the dev loop would not see a change until
-## it merged — the opposite of what a lock is for here. The branch must be PUSHED for this to
-## resolve. Bumping: `flox upgrade incus-client`. At merge, all three of these refs drop the branch
-## together.
+## Pinned to the DEFAULT branch, like jdk25/maven/shfmt/shellcheck below. These three used to track a
+## working branch so the dev loop saw a change before it merged; `feature/viewpoint-separation` has
+## since merged and been deleted, so they drop the branch together — exactly what the note they
+## carried said would happen at merge. rke2lab's own flake calls this form the intended one: "this end
+## keeps the `.#incus-client` output name so the flox manifest's
+## `incus-client.flake = "github:seedmatic/rke2lab#incus-client"` and its lock stay valid".
 ##
-## ⚠️ This pin ROTS SILENTLY, and it did: all three tracked `feature/nixos-node-substrate` long after
-## that branch was retired, so the dev loop kept resolving tools built from a dead line while the work
-## lived elsewhere — no error, just the wrong binary (measured 2026-09-29; ndh's flake.nix carries the
-## same lesson for its own rke2lab input, where a `nix flake update` was advancing along that dead
-## branch). There is NO command-line override for a flox flake ref — `flox activate` takes only
+## ⚠️ A branch pin here ROTS SILENTLY, and it did TWICE. First all three tracked
+## `feature/nixos-node-substrate` long after it was retired (measured 2026-09-29; ndh's flake.nix
+## carries the same lesson for its own rke2lab input, where `nix flake update` kept advancing along
+## that dead branch). Then all three tracked `feature/viewpoint-separation` after ITS deletion
+## (measured 2026-10-06 — `git ls-remote` shows no such head, while the lock still resolved a commit
+## from it). Neither time was there an error: just the wrong binary, built from a line nobody is on.
+## Being branch-less is the fix, not a preference — a default-branch ref cannot name something that
+## has been deleted.
+##
+## There is NO command-line override for a flox flake ref — `flox activate` takes only
 ## --dir/--reference/--mode/--generation and `flox upgrade` takes no ref — so unlike a nix flake input
-## (`--override-input`), the manifest is the ONLY lever. Which is why the rename must land HERE, in the
-## same change as the branch it names.
-incus-client.flake = "github:seedmatic/rke2lab/feature/viewpoint-separation#incus-client"
+## (`--override-input`), the manifest is the ONLY lever. If a working branch is ever pinned here
+## again, its rename must land HERE, in the same change as the branch it names.
+incus-client.flake = "github:seedmatic/rke2lab#incus-client"
+
+## The operator toolchain, from the rke2lab flake (`operatorToolchain` in flake.nix): the apps run
+## these same store paths, so the seat and the grow cannot diverge. Only the agent tools below
+## (claude-code, flox-mcp-server) stay in the catalog.
+pulumi.flake = "github:seedmatic/rke2lab#pulumi"
+pulumi-java.flake = "github:seedmatic/rke2lab#pulumi-java"
+pulumictl.flake = "github:seedmatic/rke2lab#pulumictl"
+cdk8s-cli.flake = "github:seedmatic/rke2lab#cdk8s-cli"
+tektoncd-cli.flake = "github:seedmatic/rke2lab#tektoncd-cli"
+clusterctl.flake = "github:seedmatic/rke2lab#clusterctl"
+k9s.flake = "github:seedmatic/rke2lab#k9s"
+dasel.flake = "github:seedmatic/rke2lab#dasel"
+graphviz.flake = "github:seedmatic/rke2lab#graphviz"
 
 ## Maven-build toolchain consumed from the rke2lab flake, which is the single
 ## source of truth (see `mavenToolchain` / `devShells.default` in flake.nix).
@@ -59,15 +69,12 @@ maven.flake = "github:seedmatic/rke2lab#maven"
 shfmt.flake = "github:seedmatic/rke2lab#shfmt"
 shellcheck.flake = "github:seedmatic/rke2lab#shellcheck"
 claude-code.pkg-path = "claude-code"
-flux9s.flake = "github:seedmatic/rke2lab/feature/viewpoint-separation#flux9s"
+flux9s.flake = "github:seedmatic/rke2lab#flux9s"
 # ndh's manage-tailnet on PATH, so the incus GROW's local.Command prunes stale
 # tailscale devices on a plain `pulumi up` (not only via `nix run .#deploy`).
 # darwin-only: ndh exposes the package for aarch64-darwin (the operator host) alone.
-manage-tailnet.flake = "github:seedmatic/rke2lab/feature/viewpoint-separation#manage-tailnet"
+manage-tailnet.flake = "github:seedmatic/rke2lab#manage-tailnet"
 manage-tailnet.systems = ["aarch64-darwin"]
-k9s.pkg-path = "k9s"
-tektoncd-cli.pkg-path = "tektoncd-cli"
-clusterctl.pkg-path = "clusterctl"
 flox-mcp-server.pkg-path = "flox/flox-mcp-server"
 flox-mcp-server.pkg-group = "flox-mcp-server"
 
@@ -81,7 +88,6 @@ flox-mcp-server.pkg-group = "flox-mcp-server"
   PULUMI_HOME='${XDG_STATE_HOME:-$HOME/.local/state}/pulumi'
   PULUMI_BACKEND_URL='file://${FLOX_ENV_PROJECT}/.pulumi-state'
   GITHUB_OWNER='seedmatic'
-  M2_REPO="${HOME}/.m2/repository"
 
 
 # INTRO_MESSAGE = "It's gettin' Flox in here"
@@ -91,15 +97,20 @@ flox-mcp-server.pkg-group = "flox-mcp-server"
 ##  ... run by _bash_ shell when you run 'flox activate'.
 ## -------------------------------------------------------------------
 [hook]
+## ⓘ The flake-input registry indirection used to be written out here, by hand. It now lives in
+## fleet's `nix` env, included below — the logic was identical in every seat and only
+## `$FLOX_ENV_PROJECT` differed, so a copy per repo was a copy that could drift. And half the
+## seedmatic repos with a flake had no seat at all, which made a per-seat hook structurally
+## unable to be uniform.
 on-activate = """
   mkdir -p "${PULUMI_HOME}"
   mkdir -p "${FLOX_ENV_PROJECT}/.pulumi-state"
   if command -v javac >/dev/null 2>&1; then
     export JAVA_HOME="$(dirname "$(dirname "$(command -v javac)")")"
   fi
-  if command -v gh >/dev/null 2>&1 && [ -z "${GH_TOKEN:-}" ]; then
-    export GH_TOKEN="$(gh auth token 2>/dev/null)"
-  fi
+  # No GH_TOKEN export here, on purpose: a copy taken at activation goes stale at the next
+  # `gh auth refresh`, and every process launched from this shell (VS Code, agent sessions)
+  # inherits it and shadows the fresh keyring token. gh reads the keyring itself when unset.
   export KUBECONFIG="${FLOX_ENV_PROJECT}/.local.d/kubeconfig.yaml"
 """
 
@@ -140,7 +151,20 @@ on-activate = """
     { dir = "./.flox-envs.d/jdk" },
     { dir = "./.flox-envs.d/k8s" },
     { dir = "./.flox-envs.d/keyhole" },
-    { dir = "./.flox-envs.d/pulumi" },
+    ## `flake-registry` carries the flake-input registry indirection — one hook, no packages —
+    ## that puts this repo's `flake-registry.json`, or the gitignored `flake-registry.local.json`
+    ## when one is present, into nix's GLOBAL registry slot. It is what makes `url = "ndh"`
+    ## resolvable and re-aimable by a LOCAL edit. It replaces the copy this seat's own [hook]
+    ## used to carry.
+    ##
+    ## ⓘ Not `nix`, which also offers it: this seat did not include `nix` before the registry
+    ## chantier, so it takes the registry alone rather than inheriting a nix toolchain through a
+    ## registry change. If the toolchain is wanted here, that is its own include, decided for
+    ## its own sake.
+    { dir = "./.flox-envs.d/flake-registry" },
+    ## Not fleet's `pulumi` env any more: its three packages come from the rke2lab flake above,
+    ## and its two vars (PULUMI_CONFIG_PASSPHRASE, PULUMI_HOME) and its `mkdir -p $PULUMI_HOME`
+    ## hook are already this seat's own. Kept, it would only let a catalog pulumi back in.
     { dir = "./.flox-envs.d/shell" },
   ]
 

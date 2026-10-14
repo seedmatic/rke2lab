@@ -114,6 +114,12 @@
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>manifests-ingress-contract</artifactId>
     </dependency>
+    <!-- The dual-realm host face of the netplan contract: the operator kubeconfig contexts fetch the
+         netplan projection at NetplanIngressCoordinate.PROJECTION, harvested by the netplan soil. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>netplan-ingress-contract</artifactId>
+    </dependency>
     <dependency>
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>framework-launcher</artifactId>
@@ -322,6 +328,14 @@
       <artifactId>worktree-bdd</artifactId>
       <scope>runtime</scope>
     </dependency>
+    <!-- netplan-bdd: the netplan soil the "netplan is projected" crossing sows — it derives the
+         addressing projection and harvests it into the cellar. Without it staged, the sow throws
+         "no SeedHandler serves coordinate". runtime scope, embedded INTACT under META-INF/bundles. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>netplan-bdd</artifactId>
+      <scope>runtime</scope>
+    </dependency>
     <dependency>
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>incus-bdd</artifactId>
@@ -363,10 +377,9 @@
     </dependency>
     <!-- The auth edge: embedded INTACT under META-INF/bundles and installed by OsgiRuntime, NOT
          flattened into the uber-jar. runtime scope — seed-outcluster never compiles against the edge impl.
-         It publishes TWO @Components: CliAuthTokenContact (the launch-secrets updater resolves
-         AuthTokenContact from the registry for the FloxHub token) and GithubWriterTokenMintEdge (the
-         on-demand push-token mint the manifests synthesis reveals a fresh WRITER token through — it
-         @References ghapp's GithubAppMinter, embedded above). MUST be embedded or neither publishes. -->
+         It publishes TWO @Components, GithubWriterTokenMintEdge and GithubReaderTokenMintEdge (the
+         on-demand mints the manifests synthesis reveals a fresh WRITER / READER token through — both
+         @Reference ghapp's GithubAppMinter, embedded above). MUST be embedded or neither publishes. -->
     <dependency>
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>auth-edge</artifactId>
@@ -610,10 +623,6 @@
             <phase>generate-resources</phase>
             <configuration>
               <target>
-                <mkdir dir="${project.build.directory}/generated-resources/META-INF/io.seedmatic/rke2lab/controlplane/incus/assets"/>
-                <copy overwrite="true" todir="${project.build.directory}/generated-resources/META-INF/io.seedmatic/rke2lab/controlplane/incus/assets">
-                  <fileset dir="${maven.multiModuleProjectDirectory}/assets/incus" erroronmissingdir="false"/>
-                </copy>
                 <mkdir dir="${project.build.directory}/generated-resources/META-INF/io.seedmatic/rke2lab/controlplane/incus"/>
                 <copy overwrite="true" todir="${project.build.directory}/generated-resources/META-INF/io.seedmatic/rke2lab/controlplane/incus">
                   <fileset dir="${project.basedir}/src/main/resources/incus"/>

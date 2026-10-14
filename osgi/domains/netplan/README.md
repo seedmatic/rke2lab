@@ -23,7 +23,7 @@ Integration intent:
 
 - Keep one canonical network model in `rke2lab-netplan` (supernet, per-cluster slice CIDRs,
 	gateway conventions, and stable cluster indexing).
-- Consume those values in `nix-darwin-home` host modules for static routes, Lima cluster mapping,
+- Consume those values in `nix-darwin-home` host modules for static routes
 	and D-Bus TCP bind addresses.
 - Avoid hand-maintained duplicate CIDRs in host-specific Nix code paths; derive from the shared
 	catalog shape instead.

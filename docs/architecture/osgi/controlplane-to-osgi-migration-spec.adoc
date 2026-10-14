@@ -85,8 +85,8 @@ existing gateway suffices; the sweep added no new machinery.
 | was `CultivatingBboxReconciler` + `SurveyingBboxReconciler`; the excision took java-bbox-api-client with it
 | link:bbox-edge-spec.adoc[spec] (pattern only)
 | auth
-| `AuthTokenContact`
-| `CliAuthTokenContact` (`gh auth token` / `flox auth token`)
+| `GithubWriterTokenMint` + `GithubReaderTokenMint`
+| `GithubWriterTokenMintEdge` + `GithubReaderTokenMintEdge` (delegate to ghapp's `GithubAppMinter`)
 | link:auth-edge-spec.adoc[spec]
 | pulumi
 | (host-side edge)
@@ -158,7 +158,7 @@ are not on the host's flat classpath and the host cannot consume them by `awaitS
 
 The frontier therefore runs THROUGH the host Pulumi GROW (`InstanceGrow`, `host/pulumi/incus-ingress`),
 not around it: the `com.pulumi.*` provisioning graph is host (Pulumi cannot enter Felix); the
-contact-consuming metier (`ImageBuilder`, `AuthTokenContact`, the network blueprint) is the domain's
+contact-consuming metier (`ImageBuilder`, the network blueprint) is the domain's
 in-container scion (`incus-bdd`), reached by `sow`. Incus is a graft-caller in
 link:../bdd/bdd.adoc#clusterseed-scenario-map[the ClusterSeed scenario map] — the host sows the incus
 scenario and grafts its scion, holding no incus vocabulary.

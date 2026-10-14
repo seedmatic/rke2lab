@@ -1,17 +1,6 @@
 {
   description = "RKE2 lab infrastructure and network blueprints";
 
-  # The seed-outcluster build reuses the host `~/.m2` (resolved via getEnv "HOME")
-  # to reach private GitHub Packages deps without plumbing a token into the
-  # sandbox, so its eval is necessarily impure. Declare that here — like
-  # extra-substituters, nixConfig is applied before outputs are evaluated, so
-  # `nix build .#seed-outcluster` works without a manual `--impure`. This only takes
-  # effect when rke2lab is the TOP-LEVEL flake; when consumed as an input (e.g.
-  # nix-darwin-home reading `lib.networkBlueprint`), it is ignored and that pure
-  # path never forces the impure getEnv. First use prompts to trust the config
-  # unless `accept-flake-config = true` is set.
-  nixConfig.pure-eval = false;
-
   # The binary caches this flake's builds — chiefly the NixOS node-base image
   # (nixosConfigurations.rke2-node-base) — resolve their closure from, beyond the cache.nixos.org
   # default. Declared here so ANY consumer (CI, a fresh machine, an external clone) substitutes
@@ -35,28 +24,42 @@
   ];
 
   inputs = {
-    # INVARIANT: nix-darwin-home must NEVER be an input of this flake.
-    # The two repos relate in opposite scopes: nix-darwin-home depends on rke2lab
-    # at BUILD/eval time (it imports this flake's networkBlueprint as the netplan
-    # source of truth), while rke2lab depends on nix-darwin-home only at RUNTIME
-    # (its incus instances run on the NixOS host nix-darwin-home provisions). That
-    # runtime edge is invisible to nix eval, so there is no cycle. Adding
-    # nix-darwin-home here would close the loop into a real flake-eval cycle.
-    # Keep the dependency one-directional at the flake level: nix-darwin-home -> rke2lab.
+    # ndh (nix-darwin-home) IS an input of this flake — see `ndh` at the bottom of this block.
+    # ndh does not pin this flake back: it pins its DELIVERY, the fabric/plan orphan, which pins
+    # nothing — so the edge is one-directional and nothing is cut. What keeps it so is relock's
+    # plan, which refuses any pin cycle among the heads of fabric/heads, read from their locks;
+    # no guard here names an input (one did, `nix-darwin-home`, which no input was ever called).
+    #
+    # ★ Why it survived is the part worth keeping: the comment said `nix-darwin-home` while the
+    # input says `ndh`, so NO search ever touched both. An incomplete rename does not leave a
+    # visible inconsistency — it leaves two vocabularies that never meet. The repo's memory
+    # records that trap for NOTES ("translate renamed words before searching"); it applies to
+    # code just as hard, and every rotten pin found alongside this one was hiding behind a
+    # renamed word.
+    #
+    # Every SEEDMATIC-owned input below is an INDIRECT id (`url = "ndh"`), resolved through
+    # nix's registry: the default targets live in the committed flake-registry.json, and a
+    # gitignored flake-registry.local.json re-aims one locally (see the [hook] in
+    # .flox/env/manifest.toml). FOUR of the five used to name `/develop` — the sneakiest form
+    # of this rot, because a branch that will never be deleted never errors: it just silently
+    # supplies whatever `develop` holds instead of the line actually being worked on.
+    #
+    # Hermeticity is unaffected, measured: an indirect id is consulted only when RE-locking,
+    # and flake.lock still records a revision, so anyone evaluating from the lock — with no
+    # registry at all — resolves exactly what we resolved.
 
     # Use flake-commons as aggregator to stay synchronized with nix-darwin-home
-    flake-commons.url = "github:seedmatic/nix-flake-commons/develop";
-    # Cut the devenv/cachix/nix cluster: we consume NONE of it (no devShell here uses devenv/cachix),
-    # yet flake-commons pulls `cachix` → `devenv` → the `nix` flake, a MUTUALLY-RECURSIVE input tree
-    # (~470 devenv_N + ~505 nix_N + cachix_N + duplicate nixpkgs-23-11) — ~11.5k lock nodes that bloat
-    # eval + every `nix run` closure. `follows = ""` aliases each to this root (the cut idiom, like
-    # ndh.inputs.rke2lab). ndh + flox-* follow THIS flake-commons, so one cut cascades to all.
-    flake-commons.inputs.cachix.follows = "";
-    flake-commons.inputs.devenv.follows = "";
+    flake-commons.url = "flake-commons";
+    # Cut the `nix` flake flake-commons carries: nothing here consumes it, and its input tree would
+    # land in this lock and every `nix run` closure. `follows = ""` aliases it to this root (the cut
+    # idiom, like ndh.inputs.rke2lab). ndh + flox-* follow THIS flake-commons, so one cut cascades.
     flake-commons.inputs.nix.follows = "";
 
     # Follow flake-commons versions
     nixpkgs.follows = "flake-commons/nixpkgs";
+    # The unstable nixpkgs flake-commons already locks, for the tools the stable line lags on: the
+    # pulumi toolchain (26.05 stable has pulumi 3.192 and no pulumi-java).
+    nixpkgs-unstable.follows = "flake-commons/nixpkgs-unstable";
     flake-utils.follows = "flake-commons/flake-utils";
     # flox baked into the NixOS node substrate (nixosConfigurations.rke2-node-base) as a nix
     # derivation, replacing the Debian-era runtime installer. Same source the family already
@@ -67,7 +70,7 @@
     # boot over devlxd (never baked), and sops-install-secrets decrypts the cluster-CA bundle +
     # tokens into /run. Followed through flake-commons so the version stays in lock-step with
     # nix-darwin-home. Only the flake input and its `nixosModules.sops` are consumed here — the
-    # nix-darwin-home sops *module* is NOT imported (that would breach the invariant above).
+    # nix-darwin-home sops *module* is NOT imported.
     sops-nix.follows = "flake-commons/sops-nix";
 
     # The flox runtime flake owns the NRI plugin + per-workload package
@@ -78,7 +81,7 @@
     # releases abandoned for now, co-dev on develop alongside flox-controller); the
     # `follows` below dedup its aggregator + nixpkgs against ours so there is a
     # single resolved version set across the flakes.
-    flox-runtime.url = "github:seedmatic/flox-nri-plugin/develop";
+    flox-runtime.url = "flox-runtime";
     flox-runtime.inputs.nixpkgs.follows = "nixpkgs";
     flox-runtime.inputs.flake-utils.follows = "flake-utils";
     flox-runtime.inputs.flake-commons.follows = "flake-commons";
@@ -89,7 +92,7 @@
     # entry point (image cross-builds via the linux-builder, like the NRI plugin).
     # Referenced on the `develop` integration branch (seedmatic convention);
     # follows dedup its aggregator + nixpkgs against ours.
-    flox-controller.url = "github:seedmatic/flox-controller/develop";
+    flox-controller.url = "flox-controller";
     flox-controller.inputs.nixpkgs.follows = "nixpkgs";
     flox-controller.inputs.flake-utils.follows = "flake-utils";
     flox-controller.inputs.flake-commons.follows = "flake-commons";
@@ -100,46 +103,27 @@
     # on a DEDICATED orphan branch of THIS repo (a separate Go build artifact, not the Maven
     # reactor) — a same-repo branch input, pinned by rev in flake.lock. Re-exported so the
     # OCI image cross-builds via the linux-builder, like flox-controller. follows dedup.
-    seed-incluster.url = "github:seedmatic/rke2lab/seed-incluster";
+    seed-incluster.url = "seed-incluster";
     seed-incluster.inputs.nixpkgs.follows = "nixpkgs";
     seed-incluster.inputs.flake-utils.follows = "flake-utils";
     seed-incluster.inputs.flake-commons.follows = "flake-commons";
 
     # Federation (Direction A): rke2lab consumes ndh's home-LAN facts
-    # (catalog.netplan.lan). ndh already imports rke2lab's lib.networkBlueprint,
-    # so this closes a mutual edge — cut with a reciprocal EMPTY follows: ndh's
-    # back-reference to rke2lab follows THIS root, which breaks the lock cycle
-    # while both flakes still build standalone. Consume ONLY `.lan` (a
-    # self-contained constant); NEVER `.segments`/`.asns` (they union
-    # networkBlueprint → value cycle). Pinned as a github rev now that the cut is
-    # proven (a local path during prototyping).
-    ndh.url = "github:seedmatic/ndh/develop";
-    ndh.inputs.rke2lab.follows = "";
+    # (catalog.netplan.lan). ndh pins rke2lab's DELIVERY — the fabric/plan orphan — not
+    # this flake, so the pair is no cycle and nothing is cut. Consume ONLY `.lan` (a
+    # self-contained constant); NEVER `.segments`/`.asns`: they union rke2lab's own plan,
+    # so reading them back would feed the plan into itself.
+    ndh.url = "ndh";
+
+    # rke2lab's own delivery, pinned back like any head: netplan.json + dataplan.json on the
+    # fabric/plan orphan, which `nix run .#publish-plan` writes. Data, not a flake.
+    fabric-plan.url = "fabric-plan";
+    fabric-plan.flake = false;
     ndh.inputs.flake-commons.follows = "flake-commons";
   };
 
   outputs = inputs@{ self, nixpkgs, flake-utils, flox-runtime, flox-controller, seed-incluster, flox, sops-nix, ... }:
     let
-      # Enforce the INVARIANT above mechanically, not just by comment: fail eval
-      # (any `nix build`/`nix eval` of this flake) with a printed diagnostic if
-      # nix-darwin-home is ever wired in as an input. The `...` in the argument
-      # set would otherwise swallow it silently. The dependency must stay
-      # one-directional — nix-darwin-home -> rke2lab — so this edge never closes
-      # into a flake-eval cycle.
-      _invariantGuard =
-        if inputs ? nix-darwin-home then
-          throw ''
-            rke2lab flake INVARIANT violated: `nix-darwin-home` is an input.
-            The two repos relate in opposite scopes — nix-darwin-home depends on
-            rke2lab at build/eval time (it imports lib.networkBlueprint), while
-            rke2lab depends on nix-darwin-home only at runtime (incus instances
-            run on the host it provisions). Adding nix-darwin-home as an input
-            here closes that into a real flake-eval cycle. Remove the input;
-            keep the dependency one-directional: nix-darwin-home -> rke2lab.
-          ''
-        else
-          null;
-
       # The network blueprint is OS-independent data (cluster/node IDs, MAC
       # patterns, addressing): the netplan jar is a portable JDK/Maven build, so
       # the YAML — and the data parsed from it — is identical regardless of which
@@ -175,33 +159,16 @@
       # `which`, so without it the gate fails even though shfmt is on PATH; the
       # dev loop never hit this because flox/the system provides `which`.
       mavenToolchain = pkgs: { inherit (pkgs) jdk25 maven shfmt shellcheck which; };
+      # The operator toolchain: what the flox seat installs as `github:seedmatic/rke2lab#…` and the
+      # apps (the grow) run, so the two cannot diverge. Applied to the UNSTABLE nixpkgs below — the
+      # stable line has pulumi 3.192 and no pulumi-java. Not `pulumi-bin`: Hydra never builds it
+      # ("Output limit exceeded"), so every host assembled 4.6 GiB of providers this repo does not
+      # use. Resource providers (`command`, `incus`) are fetched by pulumi at runtime.
+      operatorToolchain = pkgs: {
+        inherit (pkgs) pulumi pulumictl cdk8s-cli tektoncd-cli clusterctl k9s dasel graphviz;
+        pulumi-java = pkgs.pulumiPackages.pulumi-java;
+      };
       mavenBuildInputs = pkgs: builtins.attrValues (mavenToolchain pkgs);
-
-      # Host ~/.m2 reuse for the Maven-in-nix builds. These read the host env at eval
-      # time — they resolve ONLY when the eval is IMPURE. rke2lab as the top-level flake
-      # has `nixConfig.pure-eval = false`, but when nix-darwin-home consumes it as an
-      # input (building planJar via lib.networkBlueprint) that config is ignored and
-      # the eval is PURE → getEnv returns "" → hostM2Repo becomes "/.m2/repository". So that path
-      # MUST be evaluated impurely: `darwin-rebuild … --impure` (or the equivalent on the consuming
-      # flake). Without it the seed below copies nothing and the build dies resolving
-      # staging-extension from central.
-      #
-      # M2_REPO is the ONLY host value read here now. GH_TOKEN used to be read the same way and
-      # interpolated into two build phases, which put it in their derivation hashes — and since PaC
-      # mints a fresh token per PipelineRun, every render asked nix for derivations it had never
-      # seen. It is still needed by the SHELL (flake-input fetches, the ff-push), just never by a
-      # derivation.
-      hostM2Repo = "${builtins.getEnv "M2_REPO"}";
-
-      # Optional PERSISTENT maven primary repo + build-cache. When set — a dev cache dir (must
-      # be writable by the nix BUILD user, i.e. nixbld on a multi-user daemon: use /tmp/…, NOT
-      # $HOME) or the in-cluster PVC (single-user nix builds as the pod user) — the reactor build
-      # writes its resolved deps AND its maven-build-cache there, so successive builds are
-      # INCREMENTAL. The maven-build-cache hash is stable across nix builds ONLY once volatile
-      # absolute paths are excluded from it (see .mvn/maven-build-cache-config.xml — the compiler
-      # compilerArgs exclusion). Empty ⇒ a fresh tmpfs primary each build (the pure default: the
-      # nix store already caches the jar per-src, so seed-outcluster/CI need nothing more).
-      buildCache = "${builtins.getEnv "MAVEN_BUILD_CACHE"}";
 
       # The io.seedmatic closure the `.mvn/extensions.xml` core extension needs at
       # bootstrap: staging-extension + its bnd-read dep + the parent-POM chain
@@ -222,46 +189,101 @@
         "io/seedmatic/rke2lab/rke2lab"
       ];
 
+      # The Maven invocations of each build, written ONCE and replayed twice: online by mavenDepsFor,
+      # which is how its repository holds exactly what the builds resolve (a dependency:go-offline
+      # misses the plugins' lazily resolved deps), and offline by the builds themselves. `mvn` is the
+      # name of the shell function the caller defined.
+      stagingExtensionSteps = mvn: ''
+        ${mvn} -f bom/pom.xml install
+        ${mvn} -f build-parent/pom.xml install
+        ${mvn} -f maven-embed-staging-ext/pom.xml -pl :staging-extension -am clean install
+      '';
+      # java-systemd is the one dependency no public Maven repository serves: Central stops at 2.1.0,
+      # and GitHub Packages refuses an anonymous read even of a public package. So it is built from
+      # its public tag, at the version the bom pins — the same jar, without a token anywhere.
+      javaSystemdVersion =
+        builtins.head (builtins.match ".*<java-systemd.version>([^<]*)</java-systemd.version>.*"
+          (builtins.readFile ./bom/pom.xml));
+      javaSystemdSrcFor = pkgs: pkgs.fetchFromGitHub {
+        owner = "seedmatic";
+        repo = "java-systemd";
+        rev = "v${javaSystemdVersion}";
+        hash = "sha256-TtlrxZ1Nqg0/tcz1BIP/1ds2vshXI6vFBcTSikFX4Jw=";
+      };
+      javaSystemdSteps = pkgs: mvn: ''
+        cp -r ${javaSystemdSrcFor pkgs} "$TMPDIR/java-systemd"
+        chmod -R u+w "$TMPDIR/java-systemd"
+        (cd "$TMPDIR/java-systemd" && ${mvn} -t "$NIX_BUILD_TOP/$sourceRoot/.mvn/toolchains.xml" -DskipTests install)
+      '';
+      planSteps = pkgs: mvn: ''
+        ${mvn} install:install-file -Dfile=pom.xml -DpomFile=pom.xml
+        ${mvn} -f build-parent/pom.xml install
+        ${mvn} -f bom/pom.xml install
+        ${mvn} -pl :plan-cli -am -Dshfmt.version=${pkgs.shfmt.version} clean package -DskipTests
+      '';
+
+      # Every third-party artifact the Maven builds resolve, as ONE fixed-output derivation: the
+      # only derivation here allowed the network, which the sandbox grants a FOD because its content
+      # is pinned by outputHash. It replays the builds' own steps online (the whole reactor covers
+      # manifests-cli's `-pl` subset), then drops what is not a download — rke2lab's own artifacts and
+      # java-systemd, which embed their build time and are why stagingExtensionRepoFor cannot be a
+      # FOD — and the
+      # resolver's bookkeeping, which records WHEN and FROM WHERE rather than WHAT. The CRD staging
+      # is skipped: it puts files in the jars, not dependencies in the repository.
+      #
+      # A dependency change fails every Maven build with a hash mismatch until outputHash is
+      # updated: set it to lib.fakeHash, build `maven-deps` by revision, take the hash it reports.
+      mavenDepsFor = pkgs: pkgs.stdenv.mkDerivation {
+        name = "rke2lab-maven-deps";
+        src = mavenSource;
+        nativeBuildInputs = mavenBuildInputs pkgs;
+        buildPhase = ''
+          export HOME="$TMPDIR"
+          mvnDeps() { mvn -Dmaven.repo.local="$out" -Dmaven.build.cache.enabled=false "$@"; }
+          ${javaSystemdSteps pkgs "mvnDeps"}
+          cp -r . "$TMPDIR/bootstrap"
+          (cd "$TMPDIR/bootstrap" && rm .mvn/extensions.xml && ${stagingExtensionSteps "mvnDeps"})
+          ${planSteps pkgs "mvnDeps"}
+          mvnDeps -Dshfmt.version=${pkgs.shfmt.version} -DskipTests -Dflox.crd-staging.skip=true clean package
+          rm -rf "$out/io/seedmatic/rke2lab" "$out/com/github/thjomnx/java-systemd"
+          find "$out" -type f \( -name _remote.repositories -o -name '*.lastUpdated' \
+            -o -name resolver-status.properties -o -name 'maven-metadata-*.xml' \) -delete
+        '';
+        installPhase = "true";
+        dontFixup = true;
+        outputHashMode = "recursive";
+        outputHashAlgo = "sha256";
+        outputHash = "sha256-x2wS0FGbgYOeAJMEX/6HOQZMnqNKUczxroRTd02xHIo=";
+      };
+
       # Shared Maven-in-nix plumbing for both reactor derivations: a buildPhase prelude
-      # that sets up a writable $M2_REPO, SEEDS the staging-extension closure into it
-      # (mechanism 1 below), and defines `mvnHost` — an `mvn` wrapper pinning that primary
-      # + the host ~/.m2 as a READ-ONLY tail (mechanism 2). Each derivation
-      # opens its buildPhase with `${mavenHostPrelude}`, then calls `mvnHost <goals>`.
+      # that sets up a writable $M2_REPO over the fixed-output dependency repository, SEEDS
+      # the staging-extension closure into it, and defines `mvnHost` — an OFFLINE `mvn`
+      # pinned to that primary. Each derivation opens its buildPhase with
+      # `${mavenHostPrelude pkgs}`, then calls `mvnHost <goals>`.
       #
-      # (1) The CORE extension resolves at bootstrap from the seeded primary (the tail is
-      #     invisible to that early resolver — see stagingExtensionClosure).
-      # (2) The MAIN build's released private dep (java-systemd 3.0.0-rc.2) comes from the
-      #     host ~/.m2 as a read-only tail — the build user can't
-      #     WRITE the host repo (Maven tracking files → AccessDeniedException), so it's a
-      #     tail, not the primary; public deps download into the temp primary.
-      #
-      # Both mechanisms read host state (hostM2Repo) → the eval must be impure (see above).
-      # The seed guard turns an empty getEnv into a clear error instead of a cryptic
-      # "staging-extension not found in central" 200 lines later.
-      mavenHostPrelude = ''   
+      # The CORE extensions resolve at bootstrap from the primary itself (that early resolver
+      # consults no tail — see stagingExtensionClosure), hence a symlinked copy of the
+      # dependency repository rather than a read-only tail over it: links keep it cheap, and
+      # the directories stay writable for what Maven records.
+      mavenHostPrelude = pkgs: ''
         : "Point M2_REPO at the writable build dir so the JVM's user.home-derived default"
         : "local repo ($HOME/.m2/repository\) IS the seeded primary — covers the bootstrap"
-        : "resolver whether it honors -Dmaven.repo.local or falls back to user.home. The"
-        : "tail path ($hostM2Repo) is baked at eval time, so this override doesn't touch it."
+        : "resolver whether it honors -Dmaven.repo.local or falls back to user.home."
         export HOME="$TMPDIR"
-        # Persistent primary local repo (MAVEN_BUILD_CACHE) when set, else a fresh tmpfs
-        # primary. The maven-build-cache extension defaults its location to the PARENT of
-        # maven.repo.local, so it lands at $cache/build-cache on its own → a persistent
-        # MAVEN_BUILD_CACHE makes successive builds incremental.
-        if [ -n "${buildCache}" ]; then
-          M2_REPO="${buildCache}/repository"
-        else
-          M2_REPO="$HOME/.m2/repository"
-        fi
+        M2_REPO="$HOME/.m2/repository"
         mkdir -p "$M2_REPO"
+        cp -rs --no-preserve=mode ${mavenDepsFor pkgs}/. "$M2_REPO/"
 
-        # Seed the staging-extension closure from the NIX-built repo ($STAGING_EXTENSION_REPO,
-        # set by each caller before this prelude) — the same store path for every mode, so the
-        # operator standalone build and the in-cluster render replay the identical bootstrap.
+        cp -r ${javaSystemdRepoFor pkgs}/. "$M2_REPO/"
+        chmod -R u+w "$M2_REPO/com/github/thjomnx"
+
+        # Seed the staging-extension closure from the NIX-built repo — the same store path for
+        # every mode, so the operator standalone build and the in-cluster render replay the
+        # identical bootstrap.
         for a in ${builtins.concatStringsSep " " stagingExtensionClosure}; do
-          src="$STAGING_EXTENSION_REPO/$a"
-          # Idempotent when the primary persists across builds (skip if already seeded).
-          if [ -d "$src" ] && [ ! -e "$M2_REPO/$a" ]; then
+          src="${stagingExtensionRepoFor pkgs}/$a"
+          if [ -d "$src" ]; then
             mkdir -p "$M2_REPO/$(dirname "$a")"
             cp -r "$src" "$M2_REPO/$a"
             chmod -R u+w "$M2_REPO/$a"
@@ -269,72 +291,140 @@
         done
 
         if [ ! -d "$M2_REPO/io/seedmatic/rke2lab/staging-extension" ]; then
-          echo "FATAL: staging-extension not seeded from '$STAGING_EXTENSION_REPO'" >&2
+          echo "FATAL: staging-extension not seeded from '${stagingExtensionRepoFor pkgs}'" >&2
           exit 1
         fi
 
-        # NO GH_TOKEN here either, for the same CACHING reason as the staging closure: interpolating
-        # it puts it in the derivation hash, and PaC mints a fresh token per PipelineRun — so both
-        # reactor derivations were rebuilt on every render even when no source had changed, which is
-        # the largest single waste in the render (the whole 40-module reactor).
+        # The maven-build-cache is off: the nix store already caches the jars per source, and a
+        # build cache in a fresh $TMPDIR could only record entries no later build reads.
         #
-        # Measured 2026-09-24 before removing it: manifests-cli builds with GH_TOKEN=dummyTOKEN, an
-        # EMPTY tail (M2_REPO to a fresh dir) and HOME redirected — so every dependency resolved from
-        # a public source, with nothing borrowed from a warm host repo. The private java-systemd the
-        # comment above warns about did not block it.
-        #
+        # NO GH_TOKEN, for a CACHING reason: interpolating it puts it in the derivation hash, and PaC
+        # mints a fresh token per PipelineRun, so the reactor was rebuilt on every render. Nothing
+        # resolved here is private (measured 2026-09-24: every dependency comes from a public source).
         # ⚠️ The GitHub Packages repos in .mvn/settings.xml are still declared; anonymous requests to
-        # them fail and maven falls through to the next repository. If an artifact ever becomes truly
-        # private, the build fails LOUDLY on resolution — the moment to supply the token by a stable
-        # PATH whose CONTENT is not hashed (the pattern nixos/rke2.nix uses with
-        # /run/rke2lab/nix-github.conf), rather than by interpolating its value here again.
+        # them fail and maven falls through. If an artifact ever becomes truly private, mavenDepsFor
+        # fails LOUDLY on resolution — the moment to supply the token by a stable PATH whose CONTENT
+        # is not hashed (the pattern nixos/rke2.nix uses with /run/rke2lab/nix-github.conf).
         mvnHost() {
-          mvn \
-            -Dmaven.repo.local="$M2_REPO" \
-            -Dmaven.repo.local.tail="${hostM2Repo}" \
-            -Dmaven.repo.local.tail.ignoreAvailability=true \
-            "$@"
+          mvn -o -Dmaven.repo.local="$M2_REPO" -Dmaven.build.cache.enabled=false "$@"
         }
       '';
+
+      # The jars' SOURCE: what their Maven builds read, not the whole repository. Under `src = ./.`
+      # every commit — a doc, the flake.lock a relock writes — moved the jars' derivations (a
+      # doc-only commit moved 8 of 27 packages), so none was ever reused and no impact guard could
+      # set a change aside. The list is the Maven build cache's own: its glob and includes are what
+      # a module's cache key hashes, so reading them here keeps the two from drifting. Outside that
+      # key a build still needs the poms, the `.mvn/` directories and `mvnw`, and the bnd fragment
+      # every bundle -includes from bundle-parent (a project input of its own there).
+      mavenSource =
+        let
+          lib = nixpkgs.lib;
+          root = ./.;
+          config = builtins.readFile ./.mvn/maven-build-cache-config.xml;
+          tagged = tag:
+            map builtins.head
+              (builtins.filter builtins.isList (builtins.split "<${tag}>([^<]*)</${tag}>" config));
+          globs = tagged "glob";
+          patterns =
+            lib.splitString ","
+              (lib.removeSuffix "}" (lib.removePrefix "{" (lib.trim (builtins.head globs))));
+          includes = map lib.trim (tagged "include");
+          matchesGlob = name:
+            lib.any
+              (pattern:
+                let around = lib.splitString "*" pattern; in
+                lib.hasPrefix (builtins.elemAt around 0) name
+                && lib.hasSuffix (builtins.elemAt around 1) name
+                && builtins.stringLength name >= builtins.stringLength pattern - 1)
+              patterns;
+          isModule = dir: builtins.pathExists (if dir == "" then root + "/pom.xml" else root + "/${dir}/pom.xml");
+          moduleInput = rel:
+            let
+              segments = lib.splitString "/" rel;
+              name = lib.last segments;
+              prefixOf = n: lib.concatStringsSep "/" (lib.take n segments);
+              underInclude = include:
+                if lib.hasSuffix "/" include then
+                  let
+                    dir = lib.removeSuffix "/" include;
+                    at = lib.lists.findFirstIndex (segment: segment == dir) null (lib.init segments);
+                  in
+                  at != null && isModule (prefixOf at) && matchesGlob name
+                else
+                  name == include && isModule (prefixOf (builtins.length segments - 1));
+            in
+            lib.any underInclude includes;
+          declared = rel:
+            let segments = lib.splitString "/" rel; in
+            builtins.elem (lib.last segments) [ "pom.xml" "mvnw" "mvnw.cmd" ]
+            || builtins.elem ".mvn" segments
+            || rel == "osgi/bundle-parent/annotations.bnd";
+        in
+        assert lib.assertMsg (builtins.length globs == 1 && patterns != [ ] && includes != [ ])
+          "mavenSource: no <glob> or <include> parsed from .mvn/maven-build-cache-config.xml";
+        assert lib.assertMsg (lib.all (pattern: builtins.length (lib.splitString "*" pattern) == 2) patterns)
+          "mavenSource: every build-cache glob pattern must hold exactly one '*'";
+        assert lib.assertMsg (builtins.pathExists (root + "/osgi/bundle-parent/annotations.bnd"))
+          "mavenSource: osgi/bundle-parent/annotations.bnd is declared but gone";
+        lib.fileset.toSource {
+          inherit root;
+          fileset = lib.fileset.fromSource (lib.sources.cleanSourceWith {
+            src = root;
+            filter = path: type:
+              let rel = lib.removePrefix "${toString root}/" (toString path); in
+              type == "directory" || declared rel || moduleInput rel;
+          });
+        };
 
       # The staging-extension build closure, built by NIX (not seeded from a host ~/.m2 nor a
       # per-mode Tekton bootstrap task). The `.mvn/extensions.xml` core extension is a reactor
       # module needed at mvn STARTUP (before any reactor build) — a chicken-egg — so it is built
-      # WITHOUT itself (rm .mvn/extensions.xml) and installed into $out, a maven-repo store path.
-      # Every downstream reactor build (`mavenHostPrelude`) then SEEDS the closure from this ONE
-      # store path — so the operator standalone (seed-outcluster's build) and the in-cluster render
-      # replay the identical bootstrap, zero per-mode duplication.
-      #
-      # NO GH_TOKEN, deliberately, and this is a CACHING property rather than a tidiness one. The
-      # token used to be interpolated into the buildPhase below "for any GitHub Packages dep of the
-      # parent chain" — at the conditional. Interpolating it puts it in the DERIVATION HASH, and PaC
-      # mints a fresh App token per PipelineRun, so every in-cluster render saw a different
-      # derivation and re-downloaded this whole closure from scratch, however warm the nix store was.
-      # (It also deposited a live token in the world-readable store.)
-      #
-      # Measured 2026-09-24: the closure builds with a DUMMY token, so nothing here is private —
-      # bom, build-parent, staging-extension and bnd-read are all rke2lab, a public repo. The
-      # `impureEnvVars` route (pass the token without hashing it) was the first choice and is not
-      # available: it requires a fixed-output derivation, and two builds of this closure produce
-      # DIFFERENT content hashes even after dropping maven's resolver bookkeeping — the jars built
-      # here embed their build time. Removing the token reaches the same end without that fight.
-      #
-      # ⚠️ If a private dependency ever enters this chain, the build fails LOUDLY on a 401 rather
-      # than silently — which is the right failure, and the moment to revisit the FOD route.
+      # WITHOUT itself (rm .mvn/extensions.xml), offline over mavenDepsFor, and its rke2lab
+      # artifacts alone go to $out, a maven-repo store path. Every downstream reactor build
+      # (`mavenHostPrelude`) then SEEDS the closure from this ONE store path — so the operator
+      # standalone (seed-outcluster's build) and the in-cluster render replay the identical
+      # bootstrap, zero per-mode duplication. Not a FOD itself: the jars built here embed their
+      # build time, so two builds never hash the same.
       stagingExtensionRepoFor = pkgs: pkgs.stdenv.mkDerivation {
         name = "rke2lab-staging-extension-repo";
-        src = ./.;
+        src = mavenSource;
         nativeBuildInputs = mavenBuildInputs pkgs;
         buildPhase = ''
           export HOME="$TMPDIR"
-          mkdir -p $out
+          repo="$TMPDIR/repository"
+          mkdir -p "$repo"
+          cp -rs --no-preserve=mode ${mavenDepsFor pkgs}/. "$repo/"
+          mvnOffline() { mvn -o -Dmaven.repo.local="$repo" "$@"; }
           rm .mvn/extensions.xml
-          mvn -f bom/pom.xml install -Dmaven.repo.local="$out"
-          mvn -f build-parent/pom.xml install -Dmaven.repo.local="$out"
-          mvn -f maven-embed-staging-ext/pom.xml -pl :staging-extension -am \
-            clean install -Dmaven.repo.local="$out"
+          ${stagingExtensionSteps "mvnOffline"}
         '';
-        installPhase = "true";
+        installPhase = ''
+          mkdir -p $out/io/seedmatic
+          cp -r "$repo/io/seedmatic/rke2lab" $out/io/seedmatic/
+        '';
+        dontFixup = true;
+      };
+
+      # java-systemd at the bom's version, built offline over mavenDepsFor; its artifacts alone go
+      # to $out, seeded into every reactor build by `mavenHostPrelude`.
+      javaSystemdRepoFor = pkgs: pkgs.stdenv.mkDerivation {
+        name = "rke2lab-java-systemd-repo";
+        src = mavenSource;
+        nativeBuildInputs = mavenBuildInputs pkgs;
+        buildPhase = ''
+          export HOME="$TMPDIR"
+          repo="$TMPDIR/repository"
+          mkdir -p "$repo"
+          cp -rs --no-preserve=mode ${mavenDepsFor pkgs}/. "$repo/"
+          mvnOffline() { mvn -o -Dmaven.repo.local="$repo" "$@"; }
+          ${javaSystemdSteps pkgs "mvnOffline"}
+        '';
+        installPhase = ''
+          mkdir -p $out/com/github/thjomnx
+          cp -r "$repo/com/github/thjomnx/java-systemd" $out/com/github/thjomnx/
+          rm -f $out/com/github/thjomnx/java-systemd/maven-metadata-local.xml
+        '';
         dontFixup = true;
       };
 
@@ -342,23 +432,18 @@
       # output can build it locally while `lib` uses the pinned set.
       planJarFor = pkgs: pkgs.stdenv.mkDerivation {
         name = "rke2lab-plan";
-        src = ./.;  # Need full repo for parent POM + BOM resolution
+        src = mavenSource;
 
         nativeBuildInputs = mavenBuildInputs pkgs;
 
         buildPhase = ''
-          STAGING_EXTENSION_REPO=${stagingExtensionRepoFor pkgs}
-          ${mavenHostPrelude}
+          ${mavenHostPrelude pkgs}
 
           # Install parent POM and BOM first, then build the plan CLI module. plan-cli
           # multiplexes both plan exports (network + dataset), driving the netplan +
           # dataplan scions; it builds through the reactor (`-pl :plan-cli -am`) so `-am`
           # pulls the netplan-core / dataplan-contract siblings from source.
-          mvnHost install:install-file -Dfile=pom.xml -DpomFile=pom.xml
-          mvnHost -f build-parent/pom.xml install
-          mvnHost -f bom/pom.xml install
-          mvnHost -pl :plan-cli -am \
-            -Dshfmt.version=${pkgs.shfmt.version} clean package -DskipTests
+          ${planSteps pkgs "mvnHost"}
         '';
 
         installPhase = ''
@@ -389,9 +474,9 @@
         };
 
       # The dataplan (ZFS dataset layout) export — the `dataset` plane. The scion writes
-      # dataplan.json (already JSON), so the CLI emits it raw; no yq conversion needed. The
-      # REGEN artifact for the checked-in ./dataplan.json, the storage twin of
-      # networkBlueprintJson; seed-outcluster's DataplanLayout stays the source of truth.
+      # dataplan.json (already JSON), so the CLI emits it raw; no yq conversion needed. What the
+      # sources produce, which dataplan-fresh compares to the pinned delivery — the storage twin
+      # of networkBlueprintJson; seed-outcluster's DataplanLayout stays the source of truth.
       dataplanJsonFor = pkgs:
         let planJar = planJarFor pkgs;
         in pkgs.runCommand "dataplan.json" { buildInputs = [ pkgs.jdk25 ]; } ''
@@ -403,25 +488,16 @@
             | sed -n '/^{/,$p' > $out
         '';
 
-      # The consumed blueprint is PURE committed data — read from the checked-in
-      # network-blueprint.json, no IFD, no build. The reason is NOT "no builder": the
-      # blueprint sits on the eval hot-path of *every* host config — the catalog's
-      # netplan.lan.hosts `//`-merges the addressing map, so reading any host entry
-      # forces the whole JSON. An IFD here would drag a Java/Maven jar build onto that
-      # path and break routine ops that no remote builder fixes: with the darwin-pinned
-      # jar, any aarch64-linux box evaluating locally has no darwin builder to realize
-      # it; drop the pin to per-system instead and the companion's own first bringup
-      # goes circular (its aarch64-linux jar offloads to the very <host>-nixos being
-      # brought up). Committed data has zero infra dependency. The Java stays the
-      # source of truth, materialized into the JSON at regen time on a jar-capable host:
-      #   nix build .#networkBlueprintJson && cp result network-blueprint.json && commit
-      networkBlueprintData = builtins.fromJSON (builtins.readFile ./network-blueprint.json);
-
-      # The consumed dataplan is PURE committed data too — the ZFS dataset layout read from
-      # the checked-in dataplan.json (regen: `nix build .#dataplanJson && cp result
-      # dataplan.json && commit`). ndh pulls this via `lib.dataplan` and unions it into
-      # catalog.datasets; seed-outcluster's DataplanLayout is the source of truth.
-      dataplanData = builtins.fromJSON (builtins.readFile ./dataplan.json);
+      # The consumed plan is rke2lab's own DELIVERY, pinned back: netplan.json and dataplan.json on
+      # the fabric/plan orphan, read as pure data — no IFD, no build. The reason is NOT "no
+      # builder": the blueprint sits on the eval hot-path of *every* host config — the catalog's
+      # netplan.lan.hosts `//`-merges the addressing map, so reading any host entry forces the
+      # whole JSON. An IFD here would drag a Java/Maven jar build onto that path and break routine
+      # ops that no remote builder fixes. The Java stays the source of truth: publish-plan delivers
+      # it, and blueprint-fresh / dataplan-fresh compare the pin to what the sources produce. ndh
+      # pulls both through `lib`; seed-outcluster's DataplanLayout is the dataplan's truth.
+      networkBlueprintData = builtins.fromJSON (builtins.readFile "${inputs.fabric-plan}/netplan.json");
+      dataplanData = builtins.fromJSON (builtins.readFile "${inputs.fabric-plan}/dataplan.json");
 
       # Regeneration only (NOT on the consumed data path): the jar-built YAML on the
       # pinned blueprintSystem, surfaced via networkBlueprintYamlPath for inspection.
@@ -429,9 +505,7 @@
       blueprintPkgs = nixpkgs.legacyPackages.${blueprintSystem};
       networkBlueprintYaml = networkBlueprintYamlFor blueprintPkgs;
 
-      # Export network blueprint with Nix helpers. `deriveMacs` uses the
-      # system-independent `nixpkgs.lib` (pure int/string functions) so the whole
-      # export is platform-agnostic.
+      # The network blueprint, with what its nix consumers search for once here.
       networkBlueprint = networkBlueprintData // {
         # The vmnet SUPERNET — the span every cluster's /21 is carved from, so a node can name
         # "all my sibling clusters on this host" without knowing which cluster it is. Searched
@@ -439,24 +513,10 @@
         # networkd config has no business walking it.
         vmnetSupernet =
           (nixpkgs.lib.findFirst (segment: segment.name == "vmnet")
-            (throw "network-blueprint.json carries no 'vmnet' segment")
+            (throw "fabric-plan's netplan.json carries no 'vmnet' segment")
             networkBlueprintData.segments).cidr;
-        # Helper to derive MACs for a cluster/node pair, using the cluster/node
-        # ID mappings from the Java-generated YAML.
-        deriveMacs = cluster: node:
-          let
-            clusterId = networkBlueprintData.clusters.${cluster};
-            nodeId = networkBlueprintData.nodes.${node};
-            toHex = n: if n < 16 then "0${nixpkgs.lib.toLower (nixpkgs.lib.toHexString n)}" else nixpkgs.lib.toLower (nixpkgs.lib.toHexString n);
-          in {
-            lan = "10:66:6a:4c:${toHex clusterId}:${toHex nodeId}";
-            wan = "52:54:00:${toHex clusterId}:${toHex nodeId}:00";
-          };
       };
     in
-    # Force the invariant guard before returning any output, so a forbidden
-    # nix-darwin-home input fails eval with the diagnostic rather than slipping by.
-    builtins.seq _invariantGuard
     (flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
@@ -468,10 +528,8 @@
         # from the immutable store rather than a mutable target/. seed-outcluster
         # depends on manifests, netplan, systemd-contract and sdks/incus, so the
         # whole reactor is built once from the parent pom. Mirrors netplanJar's
-        # Maven-in-nix pattern (shared `mavenHostPrelude` — full rationale there);
-        # the build runs with sandbox=false (per the host nix.conf) so Maven can
-        # resolve its dependency tree. java-systemd 3.0.0-rc.2 is a release now, so
-        # the tail serves it — no seed needed beyond the staging-extension closure.
+        # Maven-in-nix pattern (shared `mavenHostPrelude` — full rationale there):
+        # offline, every dependency from mavenDepsFor.
         # The flox-controller CRD staging snippet (single-sourced from the flake input,
         # never vendored) onto the manifest-synthesis classpath so
         # FloxControllerManifestsUnit emits it into the cluster's crds layer. Shared by
@@ -524,13 +582,12 @@
         # come from the SAME build logic, no drift.
         buildReactorExe = { pname, mvnArgs ? "", jars }: pkgs.stdenv.mkDerivation {
           name = "rke2lab-${pname}";
-          src = ./.;
+          src = mavenSource;
 
           nativeBuildInputs = mavenBuildInputs pkgs;
 
           buildPhase = ''
-            STAGING_EXTENSION_REPO=${stagingExtensionRepoFor pkgs}
-            ${mavenHostPrelude}
+            ${mavenHostPrelude pkgs}
             # CRDs stage into target/generated-resources/crds (crdStagingDir), which `clean` wipes —
             # so clean FIRST, then install the store CRDs, then package. `-Dflox.crd-staging.skip`
             # tells manifests-core's exec plugin to SKIP its own `nix run .#stage-*-crd` (a nested
@@ -571,7 +628,7 @@
         };
 
         # The manifests-cli render exe alone — a lean `-pl :manifests-cli -am` build the
-        # `render-manifests` app runs (`nix build .#manifests-cli` → run the jar), mirroring
+        # `render-manifests` app runs (build manifests-cli from its own store source → run the jar), mirroring
         # deploy/seed-outcluster. Same shared closure, so CRD staging + spotless gate are
         # identical; the resulting fat jar is self-contained (CRDs baked in) so running it
         # needs no maven cache, bootstrap or CRD staging at runtime.
@@ -583,11 +640,10 @@
           ];
         };
 
-        # Per-system inspectable build of the blueprint YAML, plus its JSON projection.
-        # networkBlueprintJson is the REGEN artifact for the checked-in data file — run
-        # on a jar-capable host (darwin/bioskop): `nix build .#networkBlueprintJson`,
-        # then `cp result network-blueprint.json` and commit. The consumed data reads
-        # that committed JSON purely (see the flat `lib`), so this is off the eval path.
+        # Per-system inspectable build of the blueprint YAML, plus its JSON projection: what the
+        # sources produce, which blueprint-fresh compares to the pinned delivery. Computed from
+        # the sources alone — the generator never reads what it publishes: its drvPath does not
+        # move with ndh or fabric-plan overridden by an empty input. Off the eval path.
         networkBlueprintYaml = networkBlueprintYamlFor pkgs;
         networkBlueprintJson = pkgs.runCommand "network-blueprint.json" {
           nativeBuildInputs = [ pkgs.yq-go ];
@@ -595,8 +651,8 @@
           yq -o=json '.' ${networkBlueprintYamlFor pkgs}/network-blueprint.yaml > $out
         '';
 
-        # The dataplan REGEN artifact — the `dataset` plane emits JSON directly, so this
-        # is the export as-is (no yq). `nix build .#dataplanJson`, then cp to ./dataplan.json.
+        # The dataplan as the sources produce it — the `dataset` plane emits JSON directly, so
+        # this is the export as-is (no yq); dataplan-fresh compares it to the pin.
         dataplanJson = dataplanJsonFor pkgs;
 
         # Darwin-buildable incus client, now OWNED BY ndh and re-exported here.  ndh owns the incus
@@ -609,10 +665,12 @@
         # `incus.passthru.client` needs just Go + cmd/incus. That reasoning now lives once, in ndh.)
         incusClient = inputs.ndh.packages.${system}.incus-client;
 
-        # Prebuilt pulumi CLI for the deploy wrapper (matches the flox env's
-        # `pulumi.pkg-path = "pulumi-bin"`); the `-bin` variant avoids a Go
-        # compile and tracks the same release line the dev loop uses.
-        pulumiPkg = pkgs.pulumi-bin;
+        # The operator toolchain (see `operatorToolchain`), from the unstable nixpkgs flake-commons
+        # locks: pulumi 3.263 and pulumi-java 1.37.2, the versions fleet's `pulumi` env takes from the
+        # flox catalog. The grow takes pulumi and its Java language host from this same set.
+        operatorToolchainPackages = operatorToolchain inputs.nixpkgs-unstable.legacyPackages.${system};
+        pulumiPkg = operatorToolchainPackages.pulumi;
+        pulumiJavaPkg = operatorToolchainPackages.pulumi-java;
 
         # NRI plugin (+ debug) re-exported from the flox runtime flake, so the
         # aarch64-linux Go binary builds through this entry point at build time
@@ -776,45 +834,6 @@
         # a JRE to run the seed-outcluster jar, and the incus client the provider
         # shells out to. The PULUMI_* vars are set here too, mirroring the flox
         # env's [vars]: local file:// backend under the repo, empty passphrase.
-        # Mint a short-lived (~1h) GitHub App INSTALLATION token from the one org-owned App's
-        # credentials in .secrets (github.app), so the maven build resolves private GitHub Packages
-        # (java-systemd) AS THE APP — never a personal `gh auth token`. There
-        # is no cluster/cellar at BUILD time, so this is the shell twin of the OSGi ghapp minter
-        # (which is itself what the build produces — chicken-and-egg forbids reusing it here). Least
-        # privilege: packages:read, the only scope maven needs. The grow / render wrappers export its
-        # output as GH_TOKEN before the inner `nix build`; in-cluster there is no .secrets and the
-        # caller sets GH_TOKEN from PaC's App token instead.
-        mintGhAppTokenApp = pkgs.writeShellApplication {
-          name = "mint-gh-app-token";
-          runtimeInputs = [ pkgs.coreutils pkgs.openssl pkgs.curl pkgs.yq-go ];
-          text = ''
-            secrets="''${1:-.secrets}"
-            if [ ! -f "$secrets" ]; then
-              echo "mint-gh-app-token: no $secrets (github.app credentials)" >&2
-              exit 1
-            fi
-            appId=$(yq -r '.github.app.appId' "$secrets")
-            installationId=$(yq -r '.github.app.installationId' "$secrets")
-            b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
-            now=$(date +%s)
-            header=$(printf '%s' '{"alg":"RS256","typ":"JWT"}' | b64url)
-            payload=$(printf '%s' "{\"iat\":$((now - 60)),\"exp\":$((now + 540)),\"iss\":\"$appId\"}" | b64url)
-            # Sign WITHOUT ever writing the private key to disk: the key is fed to openssl through a
-            # process-substitution fd (an anonymous pipe, never a tmpfs file), and the data to sign
-            # arrives on stdin. openssl reads the key sequentially so a pipe is fine.
-            signature=$(printf '%s' "$header.$payload" \
-              | openssl dgst -sha256 -sign <(yq -r '.github.app.privateKeyPem' "$secrets") -binary \
-              | b64url)
-            jwt="$header.$payload.$signature"
-            curl -sS -X POST \
-              -H "Authorization: Bearer $jwt" \
-              -H "Accept: application/vnd.github+json" \
-              -d '{"permissions":{"packages":"read"}}' \
-              "https://api.github.com/app/installations/$installationId/access_tokens" \
-              | yq -p json -r '.token'
-          '';
-        };
-
         growApp = pkgs.writeShellApplication {
           name = "rke2lab-grow";
           runtimeInputs = [
@@ -822,9 +841,9 @@
             pkgs.nix
             pkgs.git
             pulumiPkg
+            pulumiJavaPkg
             pkgs.jdk25
             incusClient
-            mintGhAppTokenApp
           ]
           # ndh's manage-tailnet on PATH: InstanceGrow runs it as a local.Command to prune the old
           # node's stale tailscale devices when the instance is replaced (they orphan their MagicDNS
@@ -903,15 +922,7 @@ USAGE
               git checkout -- Pulumi.yaml
             fi
 
-            # Maven-in-nix cache knob — SAME model as `.#render-manifests`: M2_REPO is the ONE knob
-            # (the read-only tail with the released private deps), and the persistent maven-build-cache
-            # is DERIVED beside it (its parent) unless MAVEN_BUILD_CACHE is set explicitly. Both are
-            # read IMPURELY (getEnv) by the inner `nix build .#seed-outcluster`, so exporting them here
-            # makes that build INCREMENTAL instead of a cold tmpfs primary every `nix run .#grow`.
-            : "''${M2_REPO:?set M2_REPO to your maven repository, e.g. \$HOME/.m2/repository}"
-            export MAVEN_BUILD_CACHE="''${MAVEN_BUILD_CACHE:-$(dirname "$M2_REPO")}"
-
-            # The inner `nix build .#seed-outcluster` is a SEPARATE child nix process — flags on the
+            # The inner seed-outcluster build is a SEPARATE child nix process — flags on the
             # OUTER `nix run` (e.g. `nix run .#grow -L …`) go to building THIS wrapper, not it. So it
             # always gets `-L` (surface the build log), plus whatever the shared NIX_FLAGS env adds,
             # e.g. `NIX_FLAGS='--rebuild -Lvv' nix run .#grow -- dev up`. Same var across every app.
@@ -919,28 +930,11 @@ USAGE
             read -r -a extraNixFlags <<< "''${NIX_FLAGS:-}"
             nixFlags+=( "''${extraNixFlags[@]}" )
 
-            # GH_TOKEN for the flake-input fetches and the ff-push — NOT for the inner maven
-            # build any more, which resolves everything from public sources and no longer bakes the
-            # token into its derivation hash. Mint from the one org-owned GitHub App
-            # (.secrets github.app), never a personal `gh auth token`.
-            # Mint ONLY when no token is already provided. In-cluster the Tekton step already set
-            # GH_TOKEN from PaC's App git_auth (the App-provided k8s Secret) AND .secrets is present
-            # but sops-ENCRYPTED at rest (no git smudge filter) — so keying off `[ -f .secrets ]`
-            # would wrongly try to mint from an unreadable encrypted key. Key off GH_TOKEN instead:
-            # set ⇒ in-cluster/explicit, use it; empty ⇒ the operator dropped `gh auth token`, mint.
-            if [ -z "''${GH_TOKEN:-}" ] && [ -f .secrets ]; then
-              # Non-fatal: if the mint fails (e.g. an encrypted key), do not abort the whole build.
-              # The `if` condition swallows the non-zero exit (set -e does not fire on a tested cmd).
-              if minted="$(mint-gh-app-token)"; then
-                GH_TOKEN="$minted"; export GH_TOKEN
-                echo "==> using a GitHub App token for the build (packages:read)" >&2
-              else
-                echo "==> mint-gh-app-token failed; falling back to the ambient GH_TOKEN" >&2
-              fi
-            fi
-
+            # The inner build names THIS flake's own store source, never `.`: the checkout it runs in
+            # may hold decrypted sops files, and evaluating the working tree would copy them into the
+            # store in clear. So it builds what the outer `nix run` was given, not the working tree.
             echo "==> building seed-outcluster from the store" >&2
-            jar="$(nix build .#seed-outcluster "''${nixFlags[@]}" --no-link --print-out-paths)/share/java/seed-outcluster.jar"
+            jar="$(nix build "${self}#seed-outcluster" "''${nixFlags[@]}" --no-link --print-out-paths)/share/java/seed-outcluster.jar"
             [ -f "$jar" ] || { echo "error: store jar not found at $jar" >&2; exit 1; }
 
             # Swap Pulumi.yaml's binary to the store jar for the duration; always
@@ -968,13 +962,10 @@ USAGE
         # In-cluster / standalone render: `nix run .#render-manifests`. The ONE
         # definition of the render (build manifests-cli + `publish`), so the Tekton step
         # no longer hand-scripts an mvn+java block that drifts from the dev/release build
-        # — it just calls this app. It is deliberately NOT a hermetic nix build: the mvn
-        # runs against an EXTERNAL cache DIR ($MAVEN_BUILD_CACHE — a repo-local default
-        # standalone, the maven-cache PVC mount in-cluster), so the build is INCREMENTAL
-        # across renders (a nix sandbox would wall the cache off → a cold build each time).
-        # Nix's role is the toolchain SSOT (jdk25/maven/shfmt/shellcheck/which via
-        # runtimeInputs — no `flox activate` needed) + the single definition; it is
-        # oblivious to what backs the cache dir (a host dir or a PVC — just a path).
+        # — it just calls this app. The manifests-cli build is a sealed nix build (offline over
+        # maven-deps), so the node's store is its only cache. Nix's role is also the toolchain
+        # SSOT (jdk25/maven/shfmt/shellcheck/which via runtimeInputs — no `flox activate`
+        # needed).
         renderApp = pkgs.writeShellApplication {
           name = "rke2lab-render-manifests";
           # nodejs: the render's `publish` runs the cdk8s App, whose Java bindings (jsii) shell out
@@ -982,7 +973,7 @@ USAGE
           # openssh: the publish signs the rendered commit with RKE2LAB_SIGNING_KEY via `ssh-keygen`
           # (SshCommitSigner → jgit), which openssh provides (`Cannot run program "ssh-keygen"`
           # without it). Both were implicit on dev / the deleted cicd/nix FloxEnv.
-          runtimeInputs = [ pkgs.coreutils pkgs.nix pkgs.git pkgs.jdk25 pkgs.nodejs pkgs.openssh mintGhAppTokenApp ];
+          runtimeInputs = [ pkgs.coreutils pkgs.nix pkgs.git pkgs.jdk25 pkgs.nodejs pkgs.openssh ];
           text = ''
             if [ ! -f pom.xml ] || [ ! -f flake.nix ]; then
               echo "error: run from the rke2lab repo root" >&2
@@ -997,47 +988,19 @@ USAGE
             node="''${2:?usage: nix run .#render-manifests -- <cluster> <node> [publish args...]}"
             shift 2
 
-            # ONE knob: M2_REPO. The persistent build cache is DERIVED from it (its parent), so
-            # maven.repo.local == M2_REPO and the maven-build-cache lands beside it
-            # ($M2_REPO/../build-cache) → incremental across renders without a second variable.
-            # M2_REPO must be writable by the nix build user (in-cluster: the PVC, single-user nix;
-            # dev multi-user: a world-writable ~/.m2 or a /tmp repo). Override MAVEN_BUILD_CACHE
-            # only for a deliberately split layout.
-            : "''${M2_REPO:?set M2_REPO to your maven repository, e.g. \$HOME/.m2/repository}"
-            export MAVEN_BUILD_CACHE="''${MAVEN_BUILD_CACHE:-$(dirname "$M2_REPO")}"
-
             # Build the manifests-cli exe from the store — the shared reactor derivation
             # stages the CRDs, resolves deps + gates spotless, so the fat jar is
             # self-contained (no runtime maven cache, bootstrap or CRD staging). Mirrors
-            # `grow`'s `nix build .#seed-outcluster`. The build is IMPURE (mvnHost reads M2_REPO) —
-            # the caller sets it (in-cluster: the maven-cache PVC). GH_TOKEN is no longer read by
-            # the build, only by the fetches and the push around it. The inner build is a SEPARATE child nix process, so it always
+            # `grow`'s inner build, and like it names this flake's store source, never `.` (a checkout
+            # may hold decrypted sops files). GH_TOKEN is not read by the build, only by the
+            # fetches and the push around it. The inner build is a SEPARATE child nix process, so it always
             # gets `-L` (surface the build log) plus the shared NIX_FLAGS env (e.g.
             # `NIX_FLAGS='--rebuild -Lvv'`); OUTER `nix run` flags build THIS wrapper, not the child.
             nixFlags=( -L )
             read -r -a extraNixFlags <<< "''${NIX_FLAGS:-}"
             nixFlags+=( "''${extraNixFlags[@]}" )
-            # GH_TOKEN for the inner maven build: on the operator (dev render), mint from the one
-            # org-owned GitHub App (.secrets github.app), never a personal token. In-cluster the
-            # Tekton step already set GH_TOKEN from PaC's App token, so the guard below skips.
-            # Mint ONLY when no token is already provided. In-cluster the Tekton step already set
-            # GH_TOKEN from PaC's App git_auth (the App-provided k8s Secret) AND .secrets is present
-            # but sops-ENCRYPTED at rest (no git smudge filter) — so keying off `[ -f .secrets ]`
-            # would wrongly try to mint from an unreadable encrypted key. Key off GH_TOKEN instead:
-            # set ⇒ in-cluster/explicit, use it; empty ⇒ the operator dropped `gh auth token`, mint.
-            if [ -z "''${GH_TOKEN:-}" ] && [ -f .secrets ]; then
-              # Non-fatal: if the mint fails (e.g. an encrypted key), do not abort the whole build.
-              # The `if` condition swallows the non-zero exit (set -e does not fire on a tested cmd).
-              if minted="$(mint-gh-app-token)"; then
-                GH_TOKEN="$minted"; export GH_TOKEN
-                echo "==> using a GitHub App token for the build (packages:read)" >&2
-              else
-                echo "==> mint-gh-app-token failed; falling back to the ambient GH_TOKEN" >&2
-              fi
-            fi
-
             echo "==> building manifests-cli from the store" >&2
-            jar="$(nix build .#manifests-cli "''${nixFlags[@]}" --no-link --print-out-paths)/share/java/manifests.jar"
+            jar="$(nix build "${self}#manifests-cli" "''${nixFlags[@]}" --no-link --print-out-paths)/share/java/manifests.jar"
             [ -f "$jar" ] || { echo "error: store jar not found at $jar" >&2; exit 1; }
 
             # publish prepares a linked worktree on manifests/<cluster> and FOLLOWS its HEAD facet, so
@@ -1055,10 +1018,14 @@ USAGE
               # -w0 so no newline breaks the header.
               authHeader="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
               git config --local "http.https://github.com/.extraheader" "$authHeader"
+              # The header holds the token in the clear in .git/config, and the source workspace may
+              # outlive the run: it lives exactly as long as the render that needs it. JGit reads the
+              # repo config, not GIT_CONFIG_* env, so the env route would not reach the push.
+              trap 'git config --local --unset-all "http.https://github.com/.extraheader" || true' EXIT
             fi
 
             # Steady-state re-render: `update` FOLLOWS the branch HEAD facet (the grow's recorded
-            # posture), renders into the plot the exe LOCATES itself (.local.d/render/<cluster>) +
+            # posture), renders into an in-memory plot (manifests/<cluster>, nothing checked out) +
             # signed ff-push manifests/<cluster>. cluster/node are trailing key=value args
             # (discoverable in `update` help); RKE2LAB_SIGNING_KEY + RKE2LAB_PUSH_TOKEN come from the
             # caller's environment (the Tekton step / the operator). A first render of a cluster is
@@ -1096,62 +1063,15 @@ USAGE
           };
         });
 
-      # The repos that pin US — the one fact a lock cannot answer (it says who I consume,
-      # never who consumes me). DECLARED here rather than discovered, because in a model
-      # where each repo owns its own lock it must also own the list of those it notifies;
-      # discovering it by scanning sibling checkouts would make our behaviour depend on
-      # another repo's working state. See
-      # docs/architecture/patterns/flake-lock-propagation.adoc § who-consumes-me.
-      #
-      # rke2lab's own orphan branches (seed-incluster, flox-catalog) are NOT listed: they
-      # are ours, handled in-tree below, not asked by request.
-      relockConsumers = [ "github:seedmatic/ndh" ];
-
-      # relock — reconcile every DERIVED, COMMITTED artifact of THIS repo, and only this repo's.
-      #
-      # The rule (docs/architecture/patterns/flake-lock-propagation.adoc): bumping an input is
-      # editing YOUR lock; making someone pin YOU is THEIR act. So this touches rke2lab's own
-      # artifacts and its own orphan BRANCHES' (seed-incluster, flox-catalog — branches of this
-      # repo, discovered via `git worktree list`, never hard-coded paths), and crosses a repo
-      # boundary only as a REQUEST (`--downstream` runs the consumer's own `relock`).
-      #
-      # ★ A lock and a generated artifact are the SAME KIND of thing: a committed file derived
-      # from a source that can go stale. `flake.lock` derives from inputs, `dataplan.json` from
-      # DataplanLayout, an env's `manifest.lock` from its manifest. The repo already GATES their
-      # staleness in `nix flake check` and already carries per-artifact regen apps; relock is the
-      # one verb that REPAIRS what those gates only report. Hence targets, not just inputs — the
-      # operator names what to reconcile, and no target means all of it.
-      #
-      # ★ And a lock is a statement about OUTPUTS, not about freshness: an input bump whose
-      # exported derivations do not move is REVERTED, not carried. It adds no information, costs a
-      # revision, and would keep the rke2lab <-> ndh CYCLE turning — a round that changes no
-      # derivation commits nothing, so it notifies nobody and the chain dies. Measured 2026-09-30:
-      # the whole exported package set evaluates to drv paths in ~9s, cheap enough to run PER
-      # INPUT, which also attributes impact per input.
-      #
-      # The chain is push-gated: a `github:` input only sees a revision once pushed, so each hop
-      # pushes before the next resolves it.
-      # The IMPLEMENTATION is `lib.mkRelockApp` — shared, so every repo in the chain applies the SAME
-      # rule rather than a copy that can drift exactly where it matters: the derivation-impact guard
-      # that TERMINATES the rke2lab <-> ndh cycle. This call supplies only what is rke2lab's OWN.
-      relockApp = import ./nix/relock.nix {
+      # relock — nix-flake-commons' `lib.mkRelockApp`, the one implementation every seedmatic flake
+      # shares, so every repo in the chain applies the same rule (docs/architecture/patterns/
+      # flake-lock-propagation.adoc). rke2lab supplies its name; the heads, the order and what each
+      # head pins are read from nix-flake-commons:fabric/heads.
+      relockApp = inputs.flake-commons.lib.mkRelockApp {
         inherit pkgs;
         name = "rke2lab";
-        slug = "seedmatic/rke2lab";
-        url = "https://github.com/seedmatic/rke2lab.git";
-        consumers = relockConsumers;
-        # Artifacts relock rewrites itself, so the dirty-guard must not read them as operator edits.
-        ownedArtifacts = [
-          "dataplan.json"
-          "network-blueprint.json"
-        ];
-        # Pushed BEFORE inputs resolve: a `github:` input sees only what is pushed.
-        pushFirstBranch = "seed-incluster";
-        # The branch that pins rke2lab and carries the flox envs.
-        catalogBranch = "flox-catalog";
-        selfPinName = "rke2lab";
       };
-      in {
+      in pkgs.lib.recursiveUpdate {
         packages = {
           inherit planJar networkBlueprintYaml networkBlueprintJson dataplanJson seedOutclusterJar;
           seed-outcluster = seedOutclusterJar;
@@ -1160,15 +1080,16 @@ USAGE
           # only interpolated into two other build phases, which makes it impossible to measure
           # (determinism, size, what it actually downloaded) without building something else first.
           staging-extension-repo = stagingExtensionRepoFor pkgs;
+          maven-deps = mavenDepsFor pkgs;
           incus-client = incusClient;
           grow = growApp;
-          mint-gh-app-token = mintGhAppTokenApp;
           flux9s = flux9sPkg;
         }
         // floxNriPluginPackages
         // floxControllerPackages
         // seedInclusterPackages
         // toolchainPackages
+        // operatorToolchainPackages
         # manage-tailnet (darwin-only): rke2lab OVER-SEEDS ndh's bare package with its own context —
         # the OAuth client ndh user-mirrors at ~/.local/share/ndh/tailnet.tailscale.client
         # (TailscaleOauthClientGateway.NDH_CLIENT_PATH). The wrapper pre-supplies --client-secret-file
@@ -1193,7 +1114,7 @@ USAGE
         # tailnet one, "which is what a renew changes". Measured 2026-09-27: a factory-reset
         # nikopol-nixos came back on a new tailnet address under a new device, and this app was
         # unaffected while `tailscale ssh` to the same host failed on a stale host key.
-        apps.nikopol-incus-cluster-join = inputs.ndh.apps.${system}.nikopol-incus-cluster-join;
+        # (the re-export itself is merged in at the end of this block, for the systems ndh serves)
 
         apps.grow = {
           type = "app";
@@ -1204,43 +1125,28 @@ USAGE
         apps.render-manifests = {
           type = "app";
           program = "${renderApp}/bin/rke2lab-render-manifests";
-          meta.description = "Render manifests/<cluster> + signed ff-push (build manifests-cli against $MAVEN_BUILD_CACHE, then publish)";
+          meta.description = "Render manifests/<cluster> + signed ff-push (build manifests-cli from the store, then publish)";
         };
 
-        # Standalone: `GH_TOKEN=$(nix run .#mint-gh-app-token) …` — mint a packages:read GitHub
-        # App token from .secrets. No longer needed by `nix build .#seed-outcluster` itself (the reactor
-        # resolves from public sources); it is for the flake-input fetches and the push.
-        apps.mint-gh-app-token = {
+        # Derive the plan and DELIVER it: `nix run .#publish-plan`, from the repo root. The plan jar's
+        # `publish` verb sows and grafts ghapp → netplan → dataplan → fabric; the fabric scion commits
+        # netplan.json + dataplan.json onto fabric/plan's head in memory (jgit, no checkout), signs the
+        # commit and fast-forward pushes fabric/plan with a token minted from the App. openssh:
+        # ssh-keygen signs the commit (SshCommitSigner → jgit); no git on the PATH.
+        apps.publish-plan = {
           type = "app";
-          program = "${mintGhAppTokenApp}/bin/mint-gh-app-token";
-          meta.description = "Mint a short-lived packages:read GitHub App installation token from .secrets (github.app)";
-        };
-
-        # Regenerate the committed network-blueprint.json from the netplan jar. Run on a
-        # jar-capable host (bioskop/darwin) from the repo root: `nix run .#regen-blueprint`.
-        # The Java stays the source of truth; this materializes it into the checked-in file
-        # that every system then reads purely (no darwin builder on the consume path).
-        apps.regen-blueprint = {
-          type = "app";
-          program = toString (pkgs.writeShellScript "regen-blueprint" ''
-            set -euo pipefail
-            cat ${networkBlueprintJson} > network-blueprint.json
-            echo "regenerated network-blueprint.json from ${networkBlueprintJson}"
-          '');
-          meta.description = "Regenerate the committed network-blueprint.json from the netplan jar";
-        };
-
-        # Regenerate the committed dataplan.json from the plan jar (`dataset` plane). The storage
-        # twin of regen-blueprint: `nix run .#regen-dataplan` on a jar-capable host, then ndh pulls
-        # the refreshed layout via `lib.dataplan`. seed-outcluster's DataplanLayout stays the truth.
-        apps.regen-dataplan = {
-          type = "app";
-          program = toString (pkgs.writeShellScript "regen-dataplan" ''
-            set -euo pipefail
-            cat ${dataplanJson} > dataplan.json
-            echo "regenerated dataplan.json from ${dataplanJson}"
-          '');
-          meta.description = "Regenerate the committed dataplan.json from the plan jar (dataset plane)";
+          program = toString (pkgs.writeShellApplication {
+            name = "publish-plan";
+            runtimeInputs = [ pkgs.coreutils pkgs.jdk25 pkgs.openssh ];
+            text = ''
+              if [ ! -f pom.xml ] || [ ! -f flake.nix ]; then
+                echo "error: run from the rke2lab repo root" >&2
+                exit 1
+              fi
+              exec java -jar ${planJar}/share/java/rke2lab-plan.jar publish
+            '';
+          } + "/bin/publish-plan");
+          meta.description = "Derive the plan and deliver it to fabric/plan (signed commit, fast-forward push)";
         };
 
         # The envs vendored under .flox-envs.d arrive WITHOUT their manifest.lock: fleet ignores
@@ -1373,11 +1279,11 @@ USAGE
         apps.relock = {
           type = "app";
           program = "${relockApp}/bin/relock";
-          meta.description = "Reconcile THIS repo's locks: bump each input, DROP any bump that moves no exported derivation, push, then pin+re-lock the flox-catalog branch. --downstream requests each declared consumer's own relock";
+          meta.description = "Relock rke2lab through nix-flake-commons' shared relock: the heads, their order and what each pins come from fabric/heads";
         };
 
-        # Anti-drift gate: fail if the committed JSON diverges from the jar output
-        # (compared canonically via jq -S, so formatting never trips it). Defined ONLY on
+        # Anti-drift gate: fail if the pinned delivery diverges from the jar output
+        # (compared with keys sorted by yq, so formatting never trips it). Defined ONLY on
         # blueprintSystem — absent elsewhere, so `nix flake check` on an aarch64-linux node
         # never realizes the darwin-pinned jar.
         checks = {
@@ -1400,32 +1306,65 @@ USAGE
             fi
             touch $out
           '';
-        } // pkgs.lib.optionalAttrs (system == blueprintSystem) {
-          blueprint-fresh =
-            pkgs.runCommand "blueprint-fresh" { nativeBuildInputs = [ pkgs.jq ]; } ''
-              jq -S . ${./network-blueprint.json} > committed.json
-              jq -S . ${networkBlueprintJson} > fresh.json
-              if ! diff -u committed.json fresh.json; then
-                echo "network-blueprint.json is STALE vs the netplan Java source." >&2
-                echo "Regenerate on this jar-capable host: nix run .#regen-blueprint" >&2
+          # Every Jackson mapper is a codec profile (seed-broker-codec): none is constructed
+          # anywhere else. A check, not a test: a test in one module is keyed on that module, so a
+          # mapper added in another gets a cache hit on the checker and is never seen. This one is
+          # built from mavenSource, every file it scans, so any such edit re-runs it. A bare
+          # JsonFactory stays allowed — a streaming tokenizer, not a mapper (FlakeLock). The one
+          # pattern serves the scan and its self-test over the codec's shape fixtures: every
+          # refused shape caught, no allowed one.
+          codec-only =
+            let
+              refused = ''new ([a-z0-9_]+\.)*(ObjectMapper|YAMLMapper|JsonMapper|XmlMapper|CsvMapper|YAMLFactory)\(|(JsonMapper|YAMLMapper|JsonFactory|YAMLFactory)\.builder\(|extends ([a-z0-9_]+\.)*(ObjectMapper|YAMLMapper|JsonMapper)\b|(MAPPER|[Mm]apper)\w*\.copy\(\)'';
+              shapes = ./osgi/foundation/seed-broker-codec/codec-only-shapes;
+            in
+            pkgs.runCommand "codec-only" { nativeBuildInputs = [ pkgs.gnugrep ]; } ''
+              missed=$(grep -cvE '${refused}' ${shapes}/refused.txt || true)
+              wrongly=$(grep -cE '${refused}' ${shapes}/allowed.txt || true)
+              if [ "$missed" != 0 ] || [ "$wrongly" != 0 ]; then
+                echo "codec-only pattern: $missed refused shape(s) not caught, $wrongly allowed one(s) caught" >&2
+                exit 1
+              fi
+              if grep -rnE '${refused}' --include='*.java' ${mavenSource} | grep -v '/seed-broker-codec/'; then
+                echo "a Jackson mapper is constructed outside seed-broker-codec. Use a profile of" >&2
+                echo "new SeedCodec(): canonical() for a file we write and read back, reading() for" >&2
+                echo "what we only parse, wire() for an external API's bodies." >&2
                 exit 1
               fi
               touch $out
             '';
-          # The dataplan twin: fail if committed dataplan.json diverges from the plan jar output.
+        } // pkgs.lib.optionalAttrs (system == blueprintSystem) {
+          blueprint-fresh =
+            pkgs.runCommand "blueprint-fresh" { nativeBuildInputs = [ pkgs.yq-go ]; } ''
+              yq -p=json -o=json 'sort_keys(..)' ${inputs.fabric-plan}/netplan.json > pinned.json
+              yq -p=json -o=json 'sort_keys(..)' ${networkBlueprintJson} > fresh.json
+              if ! diff -u pinned.json fresh.json; then
+                echo "the pinned fabric/plan netplan.json is STALE vs the netplan Java source." >&2
+                echo "Deliver it (nix run .#publish-plan), then relock rke2lab's fabric-plan pin." >&2
+                exit 1
+              fi
+              touch $out
+            '';
+          # The dataplan twin: fail if the pinned dataplan.json diverges from the plan jar output.
           dataplan-fresh =
-            pkgs.runCommand "dataplan-fresh" { nativeBuildInputs = [ pkgs.jq ]; } ''
-              jq -S . ${./dataplan.json} > committed.json
-              jq -S . ${dataplanJson} > fresh.json
-              if ! diff -u committed.json fresh.json; then
-                echo "dataplan.json is STALE vs the dataplan Java source (DataplanLayout)." >&2
-                echo "Regenerate on this jar-capable host: nix run .#regen-dataplan" >&2
+            pkgs.runCommand "dataplan-fresh" { nativeBuildInputs = [ pkgs.yq-go ]; } ''
+              yq -p=json -o=json 'sort_keys(..)' ${inputs.fabric-plan}/dataplan.json > pinned.json
+              yq -p=json -o=json 'sort_keys(..)' ${dataplanJson} > fresh.json
+              if ! diff -u pinned.json fresh.json; then
+                echo "the pinned fabric/plan dataplan.json is STALE vs the dataplan Java source." >&2
+                echo "Deliver it (nix run .#publish-plan), then relock rke2lab's fabric-plan pin." >&2
                 exit 1
               fi
               touch $out
             '';
         };
       }
+      # Re-exported ONLY where ndh provides it: ndh declares its apps for aarch64-darwin alone
+      # (its defaultSystems), and an unconditional `inputs.ndh.apps.${system}` broke every
+      # evaluation of another system — `nix flake show` first among them.
+      (pkgs.lib.optionalAttrs (inputs.ndh.apps ? ${system}) {
+        apps.nikopol-incus-cluster-join = inputs.ndh.apps.${system}.nikopol-incus-cluster-join;
+      })
     )) // {
       # The NixOS node substrate — the immutable Incus container image every RKE2 node
       # boots from (docs/architecture/nixos-substrate/substrate-model.adoc). System-pinned to
@@ -1449,22 +1388,15 @@ USAGE
         ];
       };
 
-      # Flat, system-independent export consumed by nix-darwin-home as
-      # `rke2lab.lib.networkBlueprint.deriveMacs` (no `lib.${system}` selector).
-      # Built once on `blueprintSystem`; the data is the same everywhere.
+      # Flat, system-independent export (no `lib.${system}` selector): the data is the same
+      # everywhere. ndh reads networkBlueprint and dataplan from here until it pins fabric/plan.
       lib = {
         inherit networkBlueprint;
         # The ZFS dataset layout ndh pulls into catalog.datasets (the dataplan — storage twin
-        # of networkBlueprint). Pure committed data, system-independent; seed-outcluster's
-        # DataplanLayout is the source of truth, materialised into ./dataplan.json at regen.
+        # of networkBlueprint), read from the pinned delivery like networkBlueprint.
         dataplan = dataplanData;
         # Raw YAML store path for inspection (the pinned, canonical build).
         networkBlueprintYamlPath = "${networkBlueprintYaml}/network-blueprint.yaml";
-
-        # The `relock` app factory — exported so every repo in the chain applies the SAME rule
-        # instead of a copy of it. ndh reads this exactly as it already reads networkBlueprint and
-        # dataplan, so it adds no edge and no new cycle. Arguments documented at the factory.
-        mkRelockApp = import ./nix/relock.nix;
       };
 
       # TEMP federation probe (Phase 1): proves rke2lab sees ndh's home-LAN facts

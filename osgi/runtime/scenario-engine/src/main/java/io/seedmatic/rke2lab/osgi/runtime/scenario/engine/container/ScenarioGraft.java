@@ -43,15 +43,16 @@ import java.util.Optional;
  * <p>The vocabulary is horticultural, one register end to end: the host sows a seed toward the
  * other world (the seed-broker's {@code sow}), it grows there into a scion (played in-container),
  * and the scion is GRAFTED onto the host tree — onto the host's <em>rootstock step</em>, the step
- * that stands for that crossing and receives the graft.
+ * executing that crossing, which receives the graft.
  *
  * <p>The verdict travels IN the model: if the scion scenario is {@link ExecutionStatus#FAILED}, the
- * rootstock step is marked FAILED, every host step AFTER it is set {@link StepStatus#SKIPPED} (the
- * local fail-fast reproduced across the frontier), and the scion's failure text (the case
- * errorMessage + stackTrace — jGiven holds it at case level, never on a step) is carried onto the
- * host case so the reason survives the crossing. One serialized scenario suffices: it carries the
- * narration (its steps → the sub-tree), the verdict (its execution status → the propagation), and
- * the reason (its case failure → the host case).
+ * rootstock step is marked FAILED and the scion's failure text (the case errorMessage + stackTrace
+ * — jGiven holds it at case level, never on a step) is carried onto the host case so the reason
+ * survives the crossing. The fail-fast is the grafter's: it {@link #assertPassed asserts} the scion
+ * it grafted, and jGiven skips the host steps after a throwing step as it does after any failed
+ * one. One serialized scenario suffices: it carries the narration (its steps → the sub-tree), the
+ * verdict (its execution status → the propagation), and the reason (its case failure → the host
+ * case).
  */
 public final class ScenarioGraft {
 
@@ -76,11 +77,16 @@ public final class ScenarioGraft {
   }
 
   /**
-   * Graft {@code scion}'s scenario under the host runbook's step named {@code rootstockStepName}:
-   * the scion scenario's steps become that step's nested children (one continuous tree — the
-   * operator descends from the seed to the scion root cause), and the scion verdict propagates.
-   * When the scion scenario is FAILED, the rootstock step is marked FAILED and every top-level host
-   * step after it is set SKIPPED (fail-fast across the frontier).
+   * Graft {@code scion}'s scenario under the host step that is EXECUTING — the crossing step the
+   * caller runs in: the scion scenario's steps become that step's nested children (one continuous
+   * tree — the operator descends from the seed to the scion root cause), and the scion verdict
+   * propagates. When the scion scenario is FAILED, the rootstock step is marked FAILED. Returns the
+   * rootstock's name, the label the caller's {@link #assertPassed} names the crossing with.
+   *
+   * <p>The rootstock is FOUND, never named: jGiven records a step when it is invoked and does not
+   * record the stage calls nested in it, so mid-step the executing step is the live case's last
+   * top-level step. A name handed in beside it could disagree with the step it stands for, and
+   * would only fail once a run reached it.
    *
    * <p>The host side is given as TWO live handles, not one: the crossing happens MID-run (inside a
    * host WHEN step), and jGiven does not append the current {@link ScenarioModel} to its {@link
@@ -91,24 +97,15 @@ public final class ScenarioGraft {
    * through {@link #graftedValue}). Fishing the host scenario out of {@code
    * hostTree.getScenarios()} was the "no scenario to graft" defect — it read empty every live run.
    *
-   * @throws IllegalArgumentException if no top-level host step is named {@code rootstockStepName},
-   *     or the scion model carries no scenario — a wiring bug, surfaced loudly rather than silently
-   *     grafting nothing.
+   * @throws IllegalArgumentException if the host case has no step yet — a graft from outside any
+   *     host step — or the scion model carries no scenario: a wiring bug, surfaced loudly rather
+   *     than silently grafting nothing.
    */
-  public void graftUnder(
-      ScenarioModel hostScenario,
-      ReportModel hostTree,
-      String soil,
-      String rootstockStepName,
-      ReportModel scion) {
+  public String graftUnder(
+      ScenarioModel hostScenario, ReportModel hostTree, String soil, ReportModel scion) {
     final ScenarioModel scionScenario = firstScenarioOf(scion);
-    final List<StepModel> hostSteps = topLevelStepsOf(hostScenario);
-    final int rootstockIndex = indexOfStep(hostSteps, rootstockStepName);
-    if (rootstockIndex < 0) {
-      throw new IllegalArgumentException(
-          "no host rootstock step named '" + rootstockStepName + "' to graft under");
-    }
-    final StepModel rootstock = hostSteps.get(rootstockIndex);
+    final StepModel rootstock = executingStepOf(hostScenario);
+    final String rootstockStepName = rootstock.getName();
 
     scionScenario.getScenarioCases().get(0).getSteps().forEach(rootstock::addNestedStep);
 
@@ -170,10 +167,8 @@ public final class ScenarioGraft {
           hostTree.addTag(failureTag);
         }
       }
-      for (int i = rootstockIndex + 1; i < hostSteps.size(); i++) {
-        hostSteps.get(i).setStatus(StepStatus.SKIPPED);
-      }
     }
+    return rootstockStepName;
   }
 
   /**
@@ -360,16 +355,12 @@ public final class ScenarioGraft {
     return model.getScenarios().get(0);
   }
 
-  private List<StepModel> topLevelStepsOf(ScenarioModel scenario) {
-    return scenario.getScenarioCases().get(0).getSteps();
-  }
-
-  private int indexOfStep(List<StepModel> steps, String name) {
-    for (int i = 0; i < steps.size(); i++) {
-      if (name.equals(steps.get(i).getName())) {
-        return i;
-      }
+  private StepModel executingStepOf(ScenarioModel hostScenario) {
+    final List<StepModel> steps = hostScenario.getScenarioCases().get(0).getSteps();
+    if (steps.isEmpty()) {
+      throw new IllegalArgumentException(
+          "no host step is executing to graft under — a crossing grafts from inside its host step");
     }
-    return -1;
+    return steps.get(steps.size() - 1);
   }
 }

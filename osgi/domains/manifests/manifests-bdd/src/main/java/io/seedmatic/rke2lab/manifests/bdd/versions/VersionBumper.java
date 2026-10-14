@@ -1,24 +1,30 @@
 package io.seedmatic.rke2lab.manifests.bdd.versions;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.seedmatic.rke2lab.manifests.ingress.BumpLevel;
 import io.seedmatic.rke2lab.manifests.ingress.Component;
 import io.seedmatic.rke2lab.manifests.ingress.ComponentSource;
+import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
+import io.seedmatic.rke2lab.seed.broker.codec.WireCodec;
+import io.seedmatic.rke2lab.worktree.TreeEdit;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -34,9 +40,9 @@ import java.util.regex.Pattern;
  * that is all that is newer), {@code minor} stays within the current major, {@code micro} within
  * the current major.minor.
  *
- * <p>{@link #apply} resolves its targets under a {@code worktreeRoot} (the {@code Worktree} the
- * scion injects), rewrites the {@code "<slug>", "<pin>"} literal of the matching {@link Component}
- * constant in {@code Component.java} in place, refreshes the vendored {@code
+ * <p>{@link #apply} resolves its targets under a {@code worktreeRoot} (the {@code DurableWorktree}
+ * the scion injects), rewrites the {@code "<slug>", "<pin>"} literal of the matching {@link
+ * Component} constant in {@code Component.java} in place, refreshes the vendored {@code
  * release-<version>.yaml} for the manifest-vendoring components, and RETURNS the paths it touched
  * so the scion stages exactly them (asset FIRST, so a failed fetch never leaves a pin pointing at a
  * missing asset).
@@ -66,18 +72,18 @@ public final class VersionBumper {
       boolean assetRefreshed,
       String note) {}
 
-  /** The whole apply: the per-component outcomes AND the deduped paths the scion must stage. */
-  public record BumpApplication(List<AppliedBump> bumps, List<Path> changedPaths) {
+  /** The whole apply: the per-component outcomes AND the edit the scion commits. */
+  public record BumpApplication(List<AppliedBump> bumps, TreeEdit.Overlay edit) {
 
     public boolean anyChanged() {
-      return !changedPaths.isEmpty();
+      return !edit.isEmpty();
     }
   }
 
   private final BumpLevel level;
   private final Optional<String> githubToken;
   private final HttpClient http;
-  private final ObjectMapper mapper;
+  private final WireCodec wire;
 
   public VersionBumper(final BumpLevel level, final Optional<String> githubToken) {
     this.level = level;
@@ -87,7 +93,7 @@ public final class VersionBumper {
             .connectTimeout(Duration.ofSeconds(10))
             .followRedirects(HttpClient.Redirect.NORMAL)
             .build();
-    this.mapper = new ObjectMapper();
+    this.wire = new SeedCodec().wire();
   }
 
   public BumpLevel level() {
@@ -104,16 +110,19 @@ public final class VersionBumper {
   }
 
   /**
-   * Apply the bump in place under {@code worktreeRoot}: rewrite the pin literal in {@code
-   * Component.java} and refresh the vendored assets under {@code manifests-core}. When {@code
+   * Compute the bump against {@code worktreeRoot}: the pin literal rewritten in {@code
+   * Component.java} and the vendored assets refreshed under {@code manifests-core}, as an edit —
+   * nothing is written here; the worktree applies the edit when it commits. When {@code
    * onlyComponent} is present, only that component is touched; otherwise every source-bearing
-   * component is. Returns the per-component outcomes and the deduped set of paths changed.
+   * component is. Returns the per-component outcomes and the edit.
    */
   public BumpApplication apply(final Optional<Component> onlyComponent, final Path worktreeRoot) {
     final Path componentSource = worktreeRoot.resolve(COMPONENT_SOURCE).normalize();
     final Path resourcesRoot = worktreeRoot.resolve(CORE_RESOURCES).normalize();
     final List<AppliedBump> bumps = new ArrayList<>();
-    final LinkedHashSet<Path> changed = new LinkedHashSet<>();
+    final Map<String, byte[]> files = new LinkedHashMap<>();
+    final LinkedHashSet<String> removed = new LinkedHashSet<>();
+    boolean sourceChanged = false;
 
     String sourceText;
     try {
@@ -179,9 +188,15 @@ public final class VersionBumper {
       boolean assetRefreshed = false;
       if (source.get().hasUpstreamYaml()) {
         try {
-          changed.addAll(
-              refreshVendoredAsset(
-                  source.get(), target.get().tag(), oldPin, newPin, resourcesRoot));
+          refreshVendoredAsset(
+              source.get(),
+              target.get().tag(),
+              oldPin,
+              newPin,
+              resourcesRoot.resolve(source.get().vendoredResourceDir().orElseThrow()),
+              worktreeRoot,
+              files,
+              removed);
           assetRefreshed = true;
         } catch (final InterruptedException interrupted) {
           Thread.currentThread().interrupt();
@@ -197,16 +212,16 @@ public final class VersionBumper {
         }
       }
       sourceText = pin.replaceFirst("$1" + Matcher.quoteReplacement(newPin) + "$2");
-      changed.add(componentSource);
+      sourceChanged = true;
       bumps.add(new AppliedBump(component, oldPin, Optional.of(newPin), assetRefreshed, ""));
     }
 
-    try {
-      Files.writeString(componentSource, sourceText);
-    } catch (final IOException failed) {
-      throw new UncheckedIOException("cannot write " + componentSource, failed);
+    if (sourceChanged) {
+      files.put(
+          relative(worktreeRoot, componentSource), sourceText.getBytes(StandardCharsets.UTF_8));
     }
-    return new BumpApplication(List.copyOf(bumps), List.copyOf(changed));
+    return new BumpApplication(
+        List.copyOf(bumps), new TreeEdit.Overlay(files, List.copyOf(removed)));
   }
 
   private static AppliedBump unchanged(
@@ -271,32 +286,32 @@ public final class VersionBumper {
   }
 
   /**
-   * Fetch the release asset for {@code tag} and drop it as {@code release-<newPin>.yaml} under the
-   * component's vendored dir, then remove the {@code release-<oldPin>.yaml} it replaces. Returns
-   * the paths touched (the new file, and the old one when it differs). Fetch + write happen before
-   * the old file is removed, so a failure leaves the working tree intact.
+   * Fetch the release asset for {@code tag} into the edit as {@code release-<newPin>.yaml} under
+   * the component's vendored {@code dir}, and mark the {@code release-<oldPin>.yaml} it replaces as
+   * removed. A failed fetch leaves the edit untouched.
    */
-  private List<Path> refreshVendoredAsset(
+  private void refreshVendoredAsset(
       final ComponentSource source,
       final String tag,
       final String oldPin,
       final String newPin,
-      final Path resourcesRoot)
+      final Path dir,
+      final Path worktreeRoot,
+      final Map<String, byte[]> files,
+      final Set<String> removed)
       throws IOException, InterruptedException {
     final byte[] asset =
         fetchReleaseAsset(source.githubRepo(), tag, source.releaseAssetName().orElseThrow());
-    final Path dir = resourcesRoot.resolve(source.vendoredResourceDir().orElseThrow());
-    Files.createDirectories(dir);
     final Path newFile = dir.resolve("release-" + newPin + ".yaml");
-    Files.write(newFile, asset);
+    files.put(relative(worktreeRoot, newFile), asset);
     final Path oldFile = dir.resolve("release-" + oldPin + ".yaml");
-    final List<Path> touched = new ArrayList<>();
-    touched.add(newFile);
     if (!oldFile.equals(newFile)) {
-      Files.deleteIfExists(oldFile);
-      touched.add(oldFile);
+      removed.add(relative(worktreeRoot, oldFile));
     }
-    return touched;
+  }
+
+  private static String relative(final Path worktreeRoot, final Path file) {
+    return worktreeRoot.relativize(file).toString().replace('\\', '/');
   }
 
   /** The bytes of {@code assetName} on the {@code tag} release of {@code repo}. */
@@ -323,7 +338,7 @@ public final class VersionBumper {
     if (response.statusCode() != 200) {
       throw new IOException("HTTP " + response.statusCode() + " from " + url);
     }
-    return mapper.readTree(response.body());
+    return wire.readJson(response.body());
   }
 
   private byte[] getBytes(final String url) throws IOException, InterruptedException {

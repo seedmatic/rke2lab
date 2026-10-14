@@ -263,3 +263,4 @@ write it — and *reports the failure while exiting 0*, so `set -e` does not cat
 * link:concern-ownership.adoc[Concern ownership] — where image-side responsibilities land.
 * link:../atlas/nixos-substrate.adoc[Atlas — NixOS substrate] — the before/after delta this becomes a component of.
 * link:tailscale-fork-supply-chain.adoc[Tailscale fork supply chain] — the sibling `ndh`-as-SSOT pattern, with its own bump runbook.
+* link:../atlas/fabric-control-plane.adoc#private-binary-cache[Fabric control-plane atlas — the private binary cache] — the same read-only lower, reused by the Incus containers through `local-overlay-store`; the GC-root invariant becomes "nix knows which paths come from the lower", which is why the lower ships a DB.

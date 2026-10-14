@@ -21,7 +21,7 @@ import java.util.Map;
  *       grows {@code soil}'s scenario through the gardener and reaps the runbook JSON. The driver
  *       holds the open gardening today; a scion-peer could hold one in-container tomorrow (remote).
  *   <li>GRAFT — {@link ScenarioGraft} (host-flat): builds a host-realm {@link ReportModel} from
- *       that JSON and grafts the scion's steps under the root step named for this crossing,
+ *       that JSON and grafts the scion's steps under the root step executing this crossing,
  *       propagating the scion verdict (fail-fast across the frontier). The graft is LOCAL to
  *       whoever owns the runbook tree, so it stays in this non-exported base package.
  * </ul>
@@ -89,17 +89,17 @@ public class SowAndGraftStage extends Stage<SowAndGraftStage> {
   }
 
   /**
-   * Sow the soil's runbook through the gardening, graft the reaped scion under {@code
-   * rootStepName}, then PROPAGATE its verdict: a FAILED scion THROWS, failing the sower (fail-fast
-   * across the frontier — the honest default, so a failed crossing never reads as a green run and
-   * {@code pulumi up} exits non-zero). A sower that wants the crossings AFTER this one to still run
-   * and aggregate their failures in one runbook (systemd AND cluster) keeps the hand with {@link
-   * #the_scion_is_sown_and_grafted_tolerating_failure}, and enforces the overall verdict from its
-   * own closing gate ({@link ScenarioGraft#assertNoCrossingFailed}).
+   * Sow the soil's runbook through the gardening, graft the reaped scion under the host step
+   * executing this crossing, then PROPAGATE its verdict: a FAILED scion THROWS, failing the sower
+   * (fail-fast across the frontier — the honest default, so a failed crossing never reads as a
+   * green run and {@code pulumi up} exits non-zero). A sower that wants the crossings AFTER this
+   * one to still run and aggregate their failures in one runbook (systemd AND cluster) keeps the
+   * hand with {@link #the_scion_is_sown_and_grafted_tolerating_failure}, and enforces the overall
+   * verdict from its own closing gate ({@link ScenarioGraft#assertNoCrossingFailed}).
    */
-  public SowAndGraftStage the_scion_is_sown_and_grafted(@Hidden String rootStepName) {
-    final ReportModel scion = sowAndGraft(rootStepName);
-    graft.assertPassed(scion, rootStepName);
+  public SowAndGraftStage the_scion_is_sown_and_grafted() {
+    final ReportModel scion = sown();
+    graft.assertPassed(scion, graft.graftUnder(hostScenario, hostTree, soil, scion));
     return self();
   }
 
@@ -111,17 +111,13 @@ public class SowAndGraftStage extends Stage<SowAndGraftStage> {
    * overall from its closing gate, not here. NOT the default — a crossing whose failure makes the
    * rest meaningless uses {@link #the_scion_is_sown_and_grafted}.
    */
-  public SowAndGraftStage the_scion_is_sown_and_grafted_tolerating_failure(
-      @Hidden String rootStepName) {
-    sowAndGraft(rootStepName);
+  public SowAndGraftStage the_scion_is_sown_and_grafted_tolerating_failure() {
+    graft.graftUnder(hostScenario, hostTree, soil, sown());
     return self();
   }
 
-  /** Sow the soil and graft the reaped scion under {@code rootStepName}; return the scion model. */
-  private ReportModel sowAndGraft(String rootStepName) {
-    final String runbookJson = gardening.sow(soil, amendments, cellar);
-    final ReportModel scion = graft.rebuild(runbookJson);
-    graft.graftUnder(hostScenario, hostTree, soil, rootStepName, scion);
-    return scion;
+  /** Sow the soil through the gardening and rebuild the reaped scion in this realm. */
+  private ReportModel sown() {
+    return graft.rebuild(gardening.sow(soil, amendments, cellar));
   }
 }

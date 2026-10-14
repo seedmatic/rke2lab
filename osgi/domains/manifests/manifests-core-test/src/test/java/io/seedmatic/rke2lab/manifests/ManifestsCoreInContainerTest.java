@@ -44,6 +44,7 @@ class ManifestsCoreInContainerTest {
   // comes from Fragment-Host.
   private static final String CORE_FIXTURE = "(&(type=fixture)(suite=manifests)(role=core))";
   private static final String RUNNER_FQN = "io.seedmatic.rke2lab.manifests.ManifestsCoreTests";
+  private static final String SOPS_EDGE = "(&(type=edge)(edge=sops))";
 
   @RegisterExtension
   static final OutOfContainerFrameworkExtension felix =
@@ -77,10 +78,21 @@ class ManifestsCoreInContainerTest {
         felix,
         RUNNER_FQN,
         f -> {
-          final Bundle host = f.installFixtureWithHost(CORE_FIXTURE).host();
+          final OutOfContainerFrameworkExtension.FixtureWithHost fixture =
+              f.installFixtureWithHost(CORE_FIXTURE);
+          final Bundle host = fixture.host();
           final List<Bundle> toResolve = new ArrayList<>(List.of(host));
-          toResolve.addAll(f.installImportClosureOf(host));
-          return new Provisioning(host, toResolve, false);
+          // The fragment is seeded too: its imports merge into the host's at resolve time, and the
+          // in-memory file system the seal test renders into is one only the fixture imports.
+          toResolve.addAll(f.installImportClosureOf(host, fixture.fragment()));
+          // The sops edge exports nothing — it only publishes the sops services — so no import
+          // closure reaches it; RenderedSecretSealTest seals with it, so it is installed by its
+          // capability. Its own imports (cluster-pki-contract, slf4j) are already in the host's
+          // closure; a second closure walk would install the osgi.core API jar, which never
+          // resolves and fails the whole graph. The whole graph is started: the edge's
+          // components publish only from an ACTIVE bundle.
+          toResolve.addAll(f.installMatching(SOPS_EDGE));
+          return new Provisioning(host, toResolve, true);
         });
   }
 }

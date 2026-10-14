@@ -23,7 +23,7 @@ import software.constructs.Construct;
  * Tekton {@code render-publish} step mounts as {@code RKE2LAB_SIGNING_KEY} to sign the rendered
  * {@code manifests/<cluster>} commit. The CI twin of {@link
  * io.seedmatic.rke2lab.manifests.units.gitops.SopsAgeSecretManifestsUnit}: the operator's grow
- * reads the {@code github-signing} key from its ndh key-store (pre-synthesis, {@link
+ * reads the {@code rke2lab-bot-signing} key from its ndh key-store (pre-synthesis, {@link
  * SigningKeyMaterial}) and emits this Secret so the future in-cluster render can sign, exactly as
  * it emits {@code sops-age} for Flux.
  *
@@ -73,9 +73,7 @@ public final class RenderSigningSecretManifestsUnit extends AbstractManifestsUni
                     ApiObjectMetadata.builder()
                         .name(SECRET_NAME)
                         .namespace(NAMESPACE)
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "|Secret|" + NAMESPACE + "|" + SECRET_NAME))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
 

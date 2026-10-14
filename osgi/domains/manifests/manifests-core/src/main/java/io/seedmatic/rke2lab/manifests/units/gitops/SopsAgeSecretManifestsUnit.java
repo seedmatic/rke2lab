@@ -81,14 +81,13 @@ public final class SopsAgeSecretManifestsUnit extends AbstractManifestsUnit {
                         .namespace("flux-system")
                         // Allow the mittwald replicator to fan the LIVE (decrypted) age key out to
                         // rke2lab-system, where the in-cluster render Task reads it as SOPS_AGE_KEY
-                        // to smudge .secrets + the cellar asset (secret-full render). The
+                        // to open .secrets + the cellar asset (secret-full render). The
                         // replicator
                         // copies the in-cluster Secret, not the branch blob — so this is
                         // independent
                         // of how sops-age itself reaches flux-system (the Stage-A bootstrap path).
                         .annotations(
                             packageProfile.packageAnnotations(
-                                "|Secret|flux-system|" + SECRET_NAME,
                                 Map.of(
                                     "replicator.v1.mittwald.de/replication-allowed",
                                     "true",
@@ -124,10 +123,6 @@ public final class SopsAgeSecretManifestsUnit extends AbstractManifestsUnit {
                         .labels(Map.of("app.kubernetes.io/replicated", "true"))
                         .annotations(
                             packageProfile.packageAnnotations(
-                                "|Secret|"
-                                    + ClusterRefs.RUNTIME_SYSTEM_NAMESPACE.name()
-                                    + "|"
-                                    + SECRET_NAME,
                                 Map.of(
                                     "replicator.v1.mittwald.de/replicate-from",
                                     "flux-system/" + SECRET_NAME)))

@@ -11,12 +11,10 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
  * catalog and the host-asset materialisation roots are gone; and the rendered-branch model moved
  * the manifests delivery to git, so the staging-slot rebase and its {@code manifestsRoot}/{@code
  * assetsRoot} went with it. What remains is the worktree base, the per-node state tree ({@code
- * stateRoot}, from which {@link #renderRoot} and {@link #liveRoot} derive), and the {@code
- * secretsFile}. Felix is embedded in the host JVM, so the scion computes the whole topology
- * OSGi-side, here. {@link #fromLocalWorktree} builds the DARWIN-local view; {@link
- * #asAutomountView} rebases onto the automount view the remote NixOS host reads through.
+ * stateRoot}, from which {@link #liveRoot} derives). Felix is embedded in the host JVM, so the
+ * scion computes the whole topology OSGi-side, here. {@link #fromLocalWorktree} builds it.
  */
-public record BootstrapPaths(Path worktreeRoot, Path stateRoot, Path secretsFile) {
+public record BootstrapPaths(Path worktreeRoot, Path stateRoot) {
 
   private static Builder builder() {
     return new Builder();
@@ -36,22 +34,7 @@ public record BootstrapPaths(Path worktreeRoot, Path stateRoot, Path secretsFile
    * {@code var/{run,lib}/incus/...} split to translate.
    */
   public static BootstrapPaths fromLocalWorktree(Path worktreeRoot) {
-    return builder()
-        .worktreeRoot(worktreeRoot)
-        .stateRoot(worktreeRoot.resolve(STATE_DIR))
-        .secretsFile(worktreeRoot.resolve(".secrets"))
-        .build();
-  }
-
-  /**
-   * The root the per-cluster RENDERED trees live under — {@code .local.d/render}. Each cluster gets
-   * an orphan {@code manifests/<cluster>} worktree at {@code renderRoot()/<cluster>} that the
-   * manifests scion prepares, materialises the rendered YAML into, and force-pushes from. It
-   * replaces the old rotating staging slot: a rendered branch is regenerated in place and delivered
-   * through git, so there is no slot rotation and no {@code host.live.d} promotion to size it for.
-   */
-  public Path renderRoot() {
-    return stateRoot.resolve("render");
+    return builder().worktreeRoot(worktreeRoot).stateRoot(worktreeRoot.resolve(STATE_DIR)).build();
   }
 
   /**
@@ -62,43 +45,9 @@ public record BootstrapPaths(Path worktreeRoot, Path stateRoot, Path secretsFile
     return stateRoot.resolve("host.live.d");
   }
 
-  /**
-   * The layout rebased onto the automount view the remote NIXOS host mounts the assets from.
-   * Provisioning is BI-MACHINE: Felix (on the Mac) WRITES the assets under the DARWIN-local paths,
-   * the remote NIXOS host reads them over its automount. When {@code automount} is off the paths
-   * are unchanged (same machine); otherwise each absolute path is rebased under {@code netPrefix}
-   * (e.g. {@code /net/<cluster>.<tailnet>}, the tailscale MagicDNS FQDN).
-   */
-  public BootstrapPaths asAutomountView(boolean automount, String netPrefix) {
-    return builder()
-        .worktreeRoot(automountPath(worktreeRoot, automount, netPrefix))
-        .stateRoot(automountPath(stateRoot, automount, netPrefix))
-        .secretsFile(automountPath(secretsFile, automount, netPrefix))
-        .build();
-  }
-
-  /**
-   * Rebase one absolute path onto the automount view. With automount off (or a path already under
-   * {@code /net/}) the path is returned unchanged; any absolute path is rebased under {@code
-   * netPrefix} (host-agnostic, the input root is already canonicalised at the source via {@link
-   * io.seedmatic.rke2lab.worktree.Worktree}).
-   */
-  Path automountPath(Path rawPath, boolean automount, String netPrefix) {
-    final Path normalized = rawPath.toAbsolutePath().normalize();
-    if (!automount) {
-      return normalized;
-    }
-    final String path = normalized.toString();
-    if (path.startsWith("/net/")) {
-      return normalized;
-    }
-    return Path.of(netPrefix + path).normalize();
-  }
-
   private static final class Builder {
     @MonotonicNonNull private Path worktreeRoot;
     @MonotonicNonNull private Path stateRoot;
-    @MonotonicNonNull private Path secretsFile;
 
     private Builder worktreeRoot(Path value) {
       this.worktreeRoot = value;
@@ -110,16 +59,9 @@ public record BootstrapPaths(Path worktreeRoot, Path stateRoot, Path secretsFile
       return this;
     }
 
-    private Builder secretsFile(Path value) {
-      this.secretsFile = value;
-      return this;
-    }
-
     private BootstrapPaths build() {
       return new BootstrapPaths(
-          Objects.requireNonNull(worktreeRoot),
-          Objects.requireNonNull(stateRoot),
-          Objects.requireNonNull(secretsFile));
+          Objects.requireNonNull(worktreeRoot), Objects.requireNonNull(stateRoot));
     }
   }
 }

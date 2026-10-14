@@ -45,12 +45,6 @@
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>seed-broker-port</artifactId>
     </dependency>
-    <!-- The auth port LaunchSecretsWriter asks for the gh/flox token (§ provisioning-slice #10):
-         the value crosses via AuthTokenContact, realised by auth-edge (gh/flox CLI). -->
-    <dependency>
-      <groupId>io.seedmatic.rke2lab</groupId>
-      <artifactId>auth-contract</artifactId>
-    </dependency>
     <dependency>
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>domain-annotations</artifactId>

@@ -318,14 +318,15 @@ link:../cluster-api/cluster-seeding-controller.adoc[the seeding controller] for 
 surfaces so far from the cause).
 ====
 
-The certificate's PUBLIC half carries no secret, so it travels as a fleet fact on the edge ndh
-already consumes from rke2lab (`lib.networkBlueprint`, `lib.dataplan`):
+The certificate's PUBLIC half carries no secret, so it is committed in seed-outcluster's resources
+(`exec/seed-outcluster/src/main/resources/incus/capn-client.crt`, Step 3 below), and the grow makes
+the daemon trust it:
 
-* rke2lab publishes it as `lib.capnProviderCert` (read from
-  `exec/seed-outcluster/src/main/resources/incus/capn-client.crt`, Step 3 below);
-* ndh reads it through `catalog.incus.trustedClients` — the same nature as `catalog.caches`, named
-  public trust material — and `modules/nixos/incus.d/ensure-incus-trust.sh` re-asserts it after every
-  `incus.service` start, probing the fingerprint first so it is idempotent.
+* `InstanceGrow.ensureCapnTrust` declares the trust entry, addressed by the certificate's
+  fingerprint: when the daemon already trusts that exact certificate it is adopted by omission,
+  and a rotated certificate reads as absent and is created — nothing is corrected in place;
+* the private half stays in `.secrets` (`incus.capn.clientKey`) and reaches CAPN only inside its
+  identity Secret, sealed by the render.
 
 NOTE: `virtualisation.incus.preseed` does have a `certificates:` section, and it is NOT usable here:
 upstream applies it with a blind `CreateCertificate`, where its storage-pool / network / project
@@ -570,8 +571,8 @@ the material path is re-wired it will read in the in-container scion, not host-s
 the certificate was missing from seed-outcluster's resources. It does not occur today.
 
 **Fix**: keep the certificate committed at
-`exec/seed-outcluster/src/main/resources/incus/capn-client.crt` — that path is what `lib.capnProviderCert`
-reads, so ndh's trust assertion (Step 2) depends on it.
+`exec/seed-outcluster/src/main/resources/incus/capn-client.crt` — the grow's trust entry and CAPN's
+identity Secret both read it, beside `.secrets:incus.capn.clientKey`.
 
 === "incus.capn.clientKey not found in .secrets"
 

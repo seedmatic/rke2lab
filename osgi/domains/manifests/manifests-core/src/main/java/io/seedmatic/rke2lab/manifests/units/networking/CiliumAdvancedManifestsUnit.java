@@ -63,9 +63,7 @@ public final class CiliumAdvancedManifestsUnit extends AbstractManifestsUnit {
                 .metadata(
                     ApiObjectMetadata.builder()
                         .name("cluster")
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "cilium.io|CiliumLoadBalancerIPPool|default|cluster"))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
     cluster.addJsonPatch(
@@ -90,9 +88,7 @@ public final class CiliumAdvancedManifestsUnit extends AbstractManifestsUnit {
                 .metadata(
                     ApiObjectMetadata.builder()
                         .name("fabric")
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "cilium.io|CiliumLoadBalancerIPPool|default|fabric"))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
     // The externally-reachable LB pool is this cluster's fabric lbCidr /26 (holds headscale =
@@ -120,9 +116,7 @@ public final class CiliumAdvancedManifestsUnit extends AbstractManifestsUnit {
                 .metadata(
                     ApiObjectMetadata.builder()
                         .name("vip")
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "cilium.io|CiliumLoadBalancerIPPool|default|vip"))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
     // Same per-cluster derivation as the cluster pool: the vip pool is this cluster's vipCidr
@@ -144,9 +138,7 @@ public final class CiliumAdvancedManifestsUnit extends AbstractManifestsUnit {
                 .metadata(
                     ApiObjectMetadata.builder()
                         .name("control-plane-advertisement")
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "cilium.io|CiliumBGPAdvertisement|default|control-plane-advertisement"))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
 
@@ -177,9 +169,7 @@ public final class CiliumAdvancedManifestsUnit extends AbstractManifestsUnit {
                 .metadata(
                     ApiObjectMetadata.builder()
                         .name("host")
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "cilium.io|CiliumL2AnnouncementPolicy|default|host"))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
 
@@ -240,9 +230,7 @@ public final class CiliumAdvancedManifestsUnit extends AbstractManifestsUnit {
                 .metadata(
                     ApiObjectMetadata.builder()
                         .name("bgp-cluster-config")
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "cilium.io|CiliumBGPClusterConfig|default|bgp-cluster-config"))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
 

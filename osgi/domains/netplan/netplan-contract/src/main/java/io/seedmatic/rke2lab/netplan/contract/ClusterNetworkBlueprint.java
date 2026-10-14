@@ -61,7 +61,7 @@ public record ClusterNetworkBlueprint(
    * <p>Ids are LOAD-BEARING and written explicitly, never derived from position: nikopol kept id 1
    * through its rename from alcide, and a reordering that silently reassigned ids would renumber
    * live networks. Order is kept because {@link #HOST_IDS} is derived from this list and serialised
-   * into {@code network-blueprint.json}, whose byte-stability is what makes a regeneration
+   * into the delivered {@code netplan.json}, whose byte-stability is what makes a delivery
    * reviewable as a diff.
    *
    * <p>{@code test} is the reserved slice a blank / unknown cluster identity falls into (surveys,

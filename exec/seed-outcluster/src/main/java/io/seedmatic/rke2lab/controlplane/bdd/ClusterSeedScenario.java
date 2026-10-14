@@ -1,7 +1,6 @@
 package io.seedmatic.rke2lab.controlplane.bdd;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -37,6 +36,7 @@ import io.seedmatic.rke2lab.manifests.ingress.NodeGithubTokenCoordinate;
 import io.seedmatic.rke2lab.manifests.ingress.PacWebhookFunnel;
 import io.seedmatic.rke2lab.manifests.ingress.ServerManifestsBundle;
 import io.seedmatic.rke2lab.manifests.ingress.ServerManifestsCoordinate;
+import io.seedmatic.rke2lab.netplan.ingress.NetplanIngressCoordinate;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.ConnectionReceiver;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.OsgiConnection;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.SeedRuntime;
@@ -84,11 +84,11 @@ import org.junit.jupiter.api.extension.RegisterExtension;
  * The ClusterSeed root scenario — the host runbook, spoken in the gardening register, composed on
  * the common {@code seed-bdd} stages (link:docs/architecture/osgi/seed-bdd-module-spec.adoc). It is
  * the concrete instance of link:docs/architecture/bdd/bdd.adoc#clusterseed-scenario-map[the
- * ClusterSeed scenario map]: a GIVEN that bootstraps the open gardening, then the twelve WHENs —
- * the {@code Cellar.fetch} bookend, the eight sow-and-graft crossings (worktree · cluster-pki ·
- * ghapp · replicator-secrets · ghapp-webhook · incus-provision · systemd · cluster) and the
- * host-flat beats interleaved among them (the GROW, the operator kubeconfig, the readiness-budget
- * tuning) — closed by the {@code Cellar.store} THEN.
+ * ClusterSeed scenario map]: a GIVEN that bootstraps the open gardening, then the thirteen WHENs —
+ * the {@code Cellar.fetch} bookend, the nine sow-and-graft crossings (worktree · netplan ·
+ * cluster-pki · ghapp · replicator-secrets · ghapp-webhook · incus-provision · systemd · cluster)
+ * and the host-flat beats interleaved among them (the GROW, the operator kubeconfig, the
+ * readiness-budget tuning) — closed by the {@code Cellar.store} THEN.
  *
  * <p>The amorce is two-layered (§ the amorce): {@code Main} — inside {@code Pulumi.run} — captures
  * the {@link RunMode} (the one fact only it can know) and seeds it through the launcher session
@@ -189,6 +189,8 @@ public class ClusterSeedScenario
     when()
         .the_worktree_is_surveyed(hostScenario, hostTree)
         .and()
+        .the_netplan_is_projected(hostScenario, hostTree)
+        .and()
         .the_parcels_state_is_fetched()
         .and()
         .the_cluster_ca_is_sealed(hostScenario, hostTree)
@@ -266,9 +268,9 @@ public class ClusterSeedScenario
       return JsonNodeFactory.instance.objectNode();
     }
     try {
-      final JsonNode parsed = new ObjectMapper().readTree(raw);
+      final JsonNode parsed = new SeedCodec().reading().readJson(raw);
       return parsed instanceof ObjectNode object ? object : JsonNodeFactory.instance.objectNode();
-    } catch (IOException ex) {
+    } catch (UncheckedIOException ex) {
       throw new IllegalStateException(
           "the rke2lab:manifests: facet is not readable as JSON: " + raw, ex);
     }
@@ -331,12 +333,12 @@ public class ClusterSeedScenario
       // buildChecksum and the artifact paths it projects for the GROW. A blind subtree: the host
       // names only the neutral IMAGE role's schema fields, no incus type. (The worktree ROOT is no
       // longer sown: the worktree soil harvests it into the cellar and the scion reads it from its
-      // own Worktree component; the stable cluster/node identity is contributed as the incus FACET
+      // own DurableWorktree component; the stable cluster/node identity is contributed as the incus
+      // FACET
       // below.)
       final ObjectNode imageScalars = JsonNodeFactory.instance.objectNode();
       imageScalars.put("alias", run.config().imageAlias());
       imageScalars.put("builderBinary", run.config().imageBuilderBinary());
-      imageScalars.put("builderHost", run.config().imageBuilderHost());
       this.imageScalars = imageScalars;
       // The host GROW derives the instance mounts + provider context from the run's config.
       this.config = run.config();
@@ -413,8 +415,9 @@ public class ClusterSeedScenario
       // The incus-identity seal's host-world creds — assembled from config + ~/.config/incus + the
       // bundled capn client cert, offered to the incus-identity crossing.
       this.incusIdentityHostCreds = incusIdentityHostCreds(run.config());
-      // The incus FACET — the stable provisioning identity (cluster/node, automount, netPrefix)
-      // the scion combines with the worktree root it reads from its Worktree component. A FACET,
+      // The incus FACET — the stable provisioning identity (cluster/node, incus project)
+      // the scion combines with the worktree root it reads from its DurableWorktree component. A
+      // FACET,
       // not
       // a per-consult ROW: the value never changes across the run, so it is contributed AMBIENT
       // (the
@@ -424,8 +427,6 @@ public class ClusterSeedScenario
       final ObjectNode incusFacet = JsonNodeFactory.instance.objectNode();
       incusFacet.put("clusterName", run.config().clusterName());
       incusFacet.put("nodeName", run.config().nodeName());
-      incusFacet.put("automount", run.config().automount());
-      incusFacet.put("netPrefix", run.config().netPrefix());
       incusFacet.put("incusProject", run.config().incusProject());
       gardening
           .connection()
@@ -556,11 +557,11 @@ public class ClusterSeedScenario
   }
 
   /**
-   * The twelve WHENs — the worktree survey (harvest + entry gate), the {@code Cellar.fetch}
-   * bookend, the eight sow-and-graft crossings (worktree · cluster-pki · ghapp · replicator-secrets
-   * · ghapp-webhook · incus-provision · systemd · cluster), and the host-flat beats interleaved
-   * among them (the GROW, the operator kubeconfig, the readiness-budget tuning). The closing {@code
-   * Cellar.store} is the THEN, not a WHEN.
+   * The thirteen WHENs — the worktree survey (harvest + entry gate), the netplan projection, the
+   * {@code Cellar.fetch} bookend, the nine sow-and-graft crossings (worktree · netplan ·
+   * cluster-pki · ghapp · replicator-secrets · ghapp-webhook · incus-provision · systemd ·
+   * cluster), and the host-flat beats interleaved among them (the GROW, the operator kubeconfig,
+   * the readiness-budget tuning). The closing {@code Cellar.store} is the THEN, not a WHEN.
    */
   public static class When extends Stage<When> {
 
@@ -616,7 +617,20 @@ public class ClusterSeedScenario
       // jgit.
       sowAndGraft
           .sowing("worktree", gardening, hostScenario, hostTree)
-          .the_scion_is_sown_and_grafted("the worktree is surveyed");
+          .the_scion_is_sown_and_grafted();
+      return self();
+    }
+
+    @NestedSteps
+    @As("the netplan is projected")
+    public When the_netplan_is_projected(
+        @Hidden ScenarioModel hostScenario, @Hidden ReportModel hostTree) {
+      // The netplan soil derives the addressing projection from its code and harvests it into the
+      // cellar at NetplanIngressCoordinate.PROJECTION; the operator's kubeconfig contexts read it
+      // back from there. A pure derivation, no live system: it runs in both modes.
+      sowAndGraft
+          .sowing("netplan", gardening, hostScenario, hostTree)
+          .the_scion_is_sown_and_grafted();
       return self();
     }
 
@@ -645,7 +659,7 @@ public class ClusterSeedScenario
               hostScenario,
               hostTree,
               Map.of(Amendment.WORKLOAD_TARGETS, workloadClusterNames))
-          .the_scion_is_sown_and_grafted("the cluster CA is sealed");
+          .the_scion_is_sown_and_grafted();
       return self();
     }
 
@@ -669,7 +683,7 @@ public class ClusterSeedScenario
               hostScenario,
               hostTree,
               Map.of(Amendment.INCUS_IDENTITY, incusIdentityHostCreds))
-          .the_scion_is_sown_and_grafted("the incus identity is sealed");
+          .the_scion_is_sown_and_grafted();
       return self();
     }
 
@@ -688,7 +702,7 @@ public class ClusterSeedScenario
       // the writer push and the reader render need them.
       sowAndGraft
           .sowing("ghapp", gardening, hostScenario, hostTree)
-          .the_scion_is_sown_and_grafted("the github app is registered");
+          .the_scion_is_sown_and_grafted();
       return self();
     }
 
@@ -704,7 +718,7 @@ public class ClusterSeedScenario
       // trigger.
       sowAndGraft
           .sowing("replicator-secrets", gardening, hostScenario, hostTree)
-          .the_scion_is_sown_and_grafted("the replicator secrets are sealed");
+          .the_scion_is_sown_and_grafted();
       return self();
     }
 
@@ -731,7 +745,7 @@ public class ClusterSeedScenario
               hostScenario,
               hostTree,
               Map.of(Amendment.FUNNEL, funnelUrl))
-          .the_scion_is_sown_and_grafted("the github app webhook is reconciled");
+          .the_scion_is_sown_and_grafted();
       return self();
     }
 
@@ -744,7 +758,8 @@ public class ClusterSeedScenario
       // projects for the GROW (§ host-cellar-realisation, computed OSGi-side). The stable cluster/
       // node identity is the ambient incus FACET (contributed at the GIVEN, merged at the door);
       // the
-      // worktree root the scion reads from its own Worktree component. The host names only the
+      // worktree root the scion reads from its own DurableWorktree component. The host names only
+      // the
       // neutral IMAGE role — never an incus field nor a path.
       sowAndGraft
           .sowing(
@@ -753,7 +768,7 @@ public class ClusterSeedScenario
               hostScenario,
               hostTree,
               Map.of(Amendment.IMAGE, imageScalars))
-          .the_scion_is_sown_and_grafted("the instance is provisioned");
+          .the_scion_is_sown_and_grafted();
       return self();
     }
 
@@ -918,11 +933,10 @@ public class ClusterSeedScenario
     }
 
     /**
-     * The operator's ways IN to the management cluster, read from the netplan's own materialised
-     * projection ({@code network-blueprint.json}) rather than re-derived here — the host does not
-     * compile against netplan (runtime scope) and must not restate its addressing law. The netplan
-     * deliberately keeps no cellar harvest and materialises to that file instead, which ndh already
-     * consumes the same way.
+     * The operator's ways IN to the management cluster, read from the netplan's own projection —
+     * the one its soil derived and harvested into the cellar this run — rather than re-derived
+     * here: the host does not compile against netplan (runtime scope) and must not restate its
+     * addressing law.
      *
      * <p>THREE contexts, because none of them subsumes the others (measured from the operator's
      * Mac):
@@ -974,7 +988,7 @@ public class ClusterSeedScenario
                 + cluster
                 + "/"
                 + node
-                + " — regenerate it with `nix run .#regen-blueprint`");
+                + " — netplan plans no such entry: declare it in ClusterNetworkBlueprint");
       }
       return fqdn.asText();
     }
@@ -991,7 +1005,7 @@ public class ClusterSeedScenario
         throw new IllegalStateException(
             "the netplan projection describes no cluster "
                 + cluster
-                + " — regenerate it with `nix run .#regen-blueprint`");
+                + " — netplan plans no such entry: declare it in ClusterNetworkBlueprint");
       }
       return apiserver(nodes.iterator().next().path("ips"), "vipHost", cluster);
     }
@@ -1004,16 +1018,15 @@ public class ClusterSeedScenario
                 + field
                 + " for "
                 + cluster
-                + " — regenerate it with `nix run .#regen-blueprint`");
+                + " — netplan plans no such entry: declare it in ClusterNetworkBlueprint");
       }
       return "https://" + address.asText() + ":6443";
     }
 
     /**
-     * One node's {@code ips} block in the committed projection. Absent it, the tree is broken — the
-     * file is checked in and a nix check ({@code blueprint-fresh}) already fails the build when it
-     * drifts from the Java source — so this throws rather than degrading to a guessed endpoint: a
-     * kubeconfig pointing somewhere plausible and wrong is worse than none.
+     * One node's {@code ips} block in the projection. Absent it, the derivation does not describe
+     * the node, so this throws rather than degrading to a guessed endpoint: a kubeconfig pointing
+     * somewhere plausible and wrong is worse than none.
      */
     private JsonNode nodeIps(final String cluster, final String node) {
       final JsonNode ips = addressing().path(cluster).path(node).path("ips");
@@ -1024,23 +1037,25 @@ public class ClusterSeedScenario
       return ips;
     }
 
-    /** The committed projection's {@code addressing} tree, {@code <cluster>.<node>.ips}. */
-    private JsonNode addressing() {
-      // Resolved against the process CWD, the way Main resolves `.secrets`: the host deliberately
-      // carries no worktree root ("that is the worktree soil's harvest, no longer a host-carried
-      // scalar"), and pulumi runs in the project directory.
-      final Path projection = Path.of("network-blueprint.json").toAbsolutePath().normalize();
-      try {
-        final JsonNode addressing =
-            new ObjectMapper().readTree(Files.readString(projection)).path("addressing");
-        if (addressing.isMissingNode()) {
-          throw new IllegalStateException(
-              "the netplan projection at " + projection + " carries no addressing tree");
-        }
-        return addressing;
-      } catch (IOException ex) {
-        throw new UncheckedIOException("cannot read the netplan projection at " + projection, ex);
+    /**
+     * The projection's {@code addressing} tree, {@code <cluster>.<node>.ips}, as the netplan soil
+     * harvested it this run. No file is read, not even the delivered {@code netplan.json}: a
+     * missing harvest is a broken run, never a reason to fall back to a copy.
+     */
+    JsonNode addressing() {
+      final JsonNode addressing =
+          workingCellar
+              .fetch(parcel, NetplanIngressCoordinate.PROJECTION, JsonNode.class)
+              .orElseThrow(
+                  () ->
+                      new IllegalStateException(
+                          "the netplan projection was not harvested in this run — the netplan"
+                              + " crossing must run before the operator kubeconfig is published"))
+              .path("addressing");
+      if (addressing.isMissingNode()) {
+        throw new IllegalStateException("the netplan projection carries no addressing tree");
       }
+      return addressing;
     }
 
     @As("the readiness budget is tuned to the growth")
@@ -1074,7 +1089,7 @@ public class ClusterSeedScenario
       // closing gate (the THEN) fails the run overall if either ended FAILED.
       sowAndGraft
           .sowing("systemd", gardening, hostScenario, hostTree)
-          .the_scion_is_sown_and_grafted_tolerating_failure("the systemd adapter is launched");
+          .the_scion_is_sown_and_grafted_tolerating_failure();
       return self();
     }
 
@@ -1086,7 +1101,7 @@ public class ClusterSeedScenario
       // closing gate in the THEN enforces the overall verdict.
       sowAndGraft
           .sowing("cluster", gardening, hostScenario, hostTree)
-          .the_scion_is_sown_and_grafted_tolerating_failure("the cluster becomes ready");
+          .the_scion_is_sown_and_grafted_tolerating_failure();
       return self();
     }
   }

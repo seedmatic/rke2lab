@@ -10,7 +10,10 @@ curl -L https://downloads.flox.dev/by-env/stable/install | sh
 # The envs are a git subtree of fleet, which does not track their manifest.lock,
 # and an env without a lock cannot be included: `flox activate` fails with
 # "manifest and lockfile are out of sync" until this has run once.
-nix run .#lock-flox-envs
+# By REVISION, never `nix run .#…`: the git sops smudge decrypts .secrets on disk, and any
+# evaluation that names this checkout copies it into /nix/store in clear. The program locks
+# the envs of the current checkout, so the revision form does the same work.
+nix run "git+file://$PWD?rev=$(git rev-parse HEAD)#lock-flox-envs"
 
 # Activate flox environment (provides JDK 25 toolchain)
 flox activate
@@ -433,7 +436,3 @@ When writing or updating architecture/design docs (AsciiDoc under `docs/`), the
 C4/Mermaid quality bar, ✅/❌ usage patterns, cross-referencing + `docs/README.adoc`
 upkeep, and the pre-completion checklist. It auto-loads for documentation tasks;
 invoke `/doc-standards` if it doesn't.
-
-# Common instructions (shared via the claude-hub subtree)
-
-@.claude/hub/instructions.md

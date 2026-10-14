@@ -3,10 +3,9 @@ package io.seedmatic.rke2lab.manifests.contract.profiles;
 
 /**
  * Cross-cutting identity slice published to synth-time domains via {@link
- * io.seedmatic.rke2lab.manifests.ManifestSynthesisContext}. Replaces the kpt-setter {@code
- * ${cluster-name}} / {@code ${cluster-env}} / {@code ${node-name}} placeholders the deprecated
- * branch carried through {@code apply-setters} — those values now resolve at synth time because the
- * rendered objects ship straight to the rke2 addon controller (no kpt round trip).
+ * io.seedmatic.rke2lab.manifests.ManifestSynthesisContext}. The cluster name, environment and node
+ * name resolve at synth time, because the rendered objects ship straight to the rke2 addon
+ * controller.
  *
  * <p>Mirrors the canonical accessors on {@link
  * io.seedmatic.rke2lab.manifests.contract.node.NodeEnvContext} (which env contributors already

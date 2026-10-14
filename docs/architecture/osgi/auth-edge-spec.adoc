@@ -1,86 +1,89 @@
-= auth-edge — the credential-CLI token contact, put in its place
+= auth-edge — the on-demand GitHub token mints
 :toc: left
 :toclevels: 3
 
 [NOTE]
 ====
-*Status:* IMPLEMENTED (2026-07-07). The seventh external edge of the frontier-playability model, after
-link:pulumi-edge-handoff.adoc[pulumi-edge], link:ssh-to-age-edge-handoff.adoc[ssh-to-age-edge],
-link:dbus-systemd-edge-spec.adoc[dbus-systemd-edge], link:cluster-edge-spec.adoc[cluster-edge],
-link:incus-edge-spec.adoc[incus-edge] and link:bbox-edge-spec.adoc[bbox-edge]. It mirrors the
-bare-`ProcessBuilder` shape of incus-edge: a single `@Component` shells the external tool; everything
-else consumes a port.
+*Status:* IMPLEMENTED (2026-07-07); the credential-CLI token contact RETIRED (2026-10-11). The seventh
+external edge of the frontier-playability model, after link:pulumi-edge-handoff.adoc[pulumi-edge],
+link:ssh-to-age-edge-handoff.adoc[ssh-to-age-edge], link:dbus-systemd-edge-spec.adoc[dbus-systemd-edge],
+link:cluster-edge-spec.adoc[cluster-edge], link:incus-edge-spec.adoc[incus-edge] and
+link:bbox-edge-spec.adoc[bbox-edge].
 
-Same working unit as the rest of the control-plane→OSGi sweep: *one external contact, extracted
-atomically* — the port, the edge, AND the re-wiring of the consumer, in one change. The criterion
-holds: a type migrates to a bundle only if a bundle `@Component` contacts an external system (→ edge)
-or rides its verb (→ port). Reading an environment variable is not a contact — it stays host.
+It was born as a bare-`ProcessBuilder` edge mirroring incus-edge: `CliAuthTokenContact` shelled
+`gh auth token` / `flox auth token` for the launch-secrets writer, which upserted the result into
+`.secrets`. GitHub left it first, for the one org-owned App (link:ghapp-domain-spec.adoc[ghapp]); the
+FloxHub token then lost its last consumer — nothing in-cluster pulls from FloxHub with auth — and was
+removed with its writer, its `.secrets` blocks and its replicated `floxhub-token` Secret. The edge
+shells nothing any more: what remains are the two mint verbs, delegated to ghapp.
 ====
 
-== The contact today — inlined in the host launch-secrets updater
+== The contract — two mint verbs
 
-`IncusResourceBootstrap.LaunchSecretsUpdater` (seed-outcluster) upserts two credentials into the
-launch-secrets YAML: a GitHub token and a FloxHub token. Each is resolved by a two-step precedence —
-first an environment variable (`GITHUB_TOKEN`/`GH_TOKEN`, `FLOXHUB_TOKEN`/`FLOX_TOKEN`/`FLOX_AUTH_TOKEN`),
-then, failing that, by *asking the provider's CLI*: `gh auth token` / `flox auth token`, run through a
-`ProcessBuilder` (`captureCommandOutput`).
+`auth-contract` (`type=contract`) declares the GitHub token mints a consumer calls AT THE POINT OF USE,
+from the App's durable credentials:
 
-Only that CLI call is an edge. The environment-variable precedence, the YAML upsert that preserves
-comments, and the dry-run guard are host orchestration that genuinely stays — reading `System.getenv`
-crosses no frontier.
+* `GithubWriterTokenMint` — `mint(GithubAppCredentials) → String`, a FRESH `contents:write`
+  installation token (the rendered-branch force-push, the version bump's bot commit).
+* `GithubReaderTokenMint` — the least-privilege twin, same signature, a `contents:read` token for a
+  consumer that only READS a private repo (a node fetching its rendered `manifests/<cluster>` branch).
 
-== Resolution — an `auth-edge` `@Component` and an `auth-contract`
+Both throw when no usable token can be minted — a caller that must not mint (a survey/preview, an
+enclosure without App credentials) never resolves the edge.
 
-* *auth-contract* (`type=contract`): `AuthTokenContact` — the verb `tokenFor(AuthTokenSource) →
-  Optional<String>` (empty = the CLI is absent/unauthenticated/non-zero, a present value is trimmed and
-  non-blank); and `AuthTokenSource`, the flat contract enum (`GITHUB`, `FLOXHUB`). No host config type
-  crosses; the host maps its own env-var precedence and only asks the contact when the environment
-  yielded nothing. It also carries the GitHub push-token *mint verb*: `GithubWriterTokenMint`, a
-  pure-JDK `mint(appId, installationId, privateKeyPem) → Optional<String>` that mints a FRESH
-  `contents:write` installation token AT THE POINT OF USE from the durable App credentials a consumer
-  reveals from its own cellar case. The credential fields cross as plain strings so no `ghapp-contract`
-  type is dragged into a consumer that mirrors the App material; empty = the mint edge is filtered out
-  (survey/preview) so the caller skips the push. Its least-privilege twin `GithubReaderTokenMint` has
-  the SAME signature but mints a `contents:read` token — for a consumer that only READS a private repo
-  (a node fetching its rendered `manifests/<cluster>` branch to install its rke2 config), where a
-  write-scoped token is over-privileged. This SUPERSEDES the former durable auth-seal
-  (`GithubToken` filed SEALED at an `AuthCoordinate` and revealed on fetch): an installation token is
-  ephemeral (≈1 h), so a token sealed before provisioning had gone stale by the reveal after the cluster
-  came up — mint-on-demand is the fix. `GithubToken` and `AuthCoordinate` are deleted.
-* *auth-edge* (`type=edge`, `@Component`): `CliAuthTokenContact` — maps `GITHUB → gh auth token`,
-  `FLOXHUB → flox auth token`, and shells nothing else. Pure `ProcessBuilder` over the JDK, no embedded
-  jars, mirroring incus-edge's ssh contact. Its sibling `GithubWriterTokenMintEdge` realises
-  `GithubWriterTokenMint` by delegating to the ghapp `GithubAppMinter` (the JWT-signing GitHub contact);
-  it is `cultivating`-gated, so it activates only when the minter is present. `GithubReaderTokenMintEdge`
-  is its least-privilege twin — same delegation, `TokenScope.READER` (`contents:read`).
-* *seed-outcluster* (host): the updater keeps the env-var precedence and the YAML upsert;
-  `ensureLaunchSecretsToken` resolves `AuthTokenContact` from the registry
-  (`singleSpiProvider(AuthTokenContact.class)` on the already-held `BootedFramework`) and passes it into
-  `LaunchSecretsUpdater.ensureTokensPresent`. The host `captureCommandOutput` is gone.
+Both take the owner's `GithubAppCredentials` (ghapp-contract). They used to take three plain strings,
+"so no `ghapp-contract` type is dragged into a consumer that mirrors the App material" — but the edges
+re-packed those strings into that very record before delegating to ghapp's `GithubAppMinter`. The
+strings were a round trip through a mirror, and they went with the change below.
+
+*`GithubAppTokens` — the one place a GitHub token is obtained (2026-10-10).* A record holding the two
+mints and the process environment, with three lanes: `writer` (mint only), `writerOrPipeline` (mint,
+else the token Pipelines-as-Code exported in a Tekton run, under `PIPELINE_TOKEN_ENV`) and `reader`. It
+reads the App from its OWNER, `GhAppCoordinate.GITHUB_APP`, never from a consumer's mirror. It
+replaced three copies of "reveal the App, then mint" — the manifests render's push token, the grown
+node's reader token, and the version bump's release-query token — each grown on the manifests mirror.
+The lanes stay named because the callers differ: the bump never fell back to the pipeline token, and
+folding the copies must not give it one (a test pins it). auth-contract therefore depends on
+ghapp-contract; that is not a new coupling, since auth-edge already imported those types to delegate
+to the minter. The manifests synthesis renders the same owner record for the `githubapp` Secret: its
+manifests-side copy (`GhAppCase` + `GithubAppMaterial`) was deleted right after, with the four other
+copies of foreign sealed records, once their reason was found dead.
+
+This SUPERSEDES the former durable auth-seal (`GithubToken` filed SEALED at an `AuthCoordinate` and
+revealed on fetch): an installation token is ephemeral (≈1 h), so a token sealed before provisioning
+had gone stale by the reveal after the cluster came up — mint-on-demand is the fix.
+
+== The edge — delegation to ghapp
+
+`auth-edge` (`type=edge`) publishes `GithubWriterTokenMintEdge` and `GithubReaderTokenMintEdge`, each
+`@Reference`-ing the ghapp `GithubAppMinter` (the JWT-signing GitHub contact) with the matching
+`TokenScope`. Both are `cultivating`-gated, so they activate only when the minter is present.
 
 [mermaid]
 ....
 flowchart LR
-  world["EXTERNAL<br/>gh / flox CLIs (auth token)"]
-  edge["auth domain — EDGE<br/>auth-edge: @Component AuthTokenContact<br/>(gh auth token / flox auth token)"]
-  aport["auth domain — PORT<br/>auth-contract: AuthTokenContact, AuthTokenSource"]
-  host["control-plane — HOST<br/>LaunchSecretsUpdater<br/>(env-var precedence + YAML upsert)"]
-  host -->|env var first| host
-  host -->|composes the contact when env empty| aport
+  world["EXTERNAL<br/>GitHub API (installation tokens)"]
+  ghapp["ghapp domain — EDGE<br/>GithubAppMinter (JWT-signed)"]
+  edge["auth domain — EDGE<br/>auth-edge: GithubWriterTokenMintEdge,<br/>GithubReaderTokenMintEdge"]
+  aport["auth domain — PORT<br/>auth-contract: GithubAppTokens,<br/>GithubWriterTokenMint, GithubReaderTokenMint"]
+  consumer["manifests domain — SCION<br/>synthesis push, version bump"]
+  consumer -->|mint at the point of use| aport
   edge -.->|implements| aport
-  edge -->|gh / flox auth token| world
+  edge -->|WRITER / READER scope| ghapp
+  ghapp -->|POST access_tokens| world
   classDef e fill:#eef,stroke:#88a,stroke-width:2px;
   classDef p fill:#fde,stroke:#a58,stroke-width:2px;
   classDef h fill:#dfd,stroke:#2a2,stroke-width:2px;
   classDef w fill:#eee,stroke:#999,stroke-width:1px;
-  class edge e;
+  class edge,ghapp e;
   class aport p;
-  class host h;
+  class consumer h;
   class world w;
 ....
 
 == Related documentation
 
-* link:incus-edge-spec.adoc[incus-edge] — the edge this most closely mirrors (bare `ProcessBuilder`).
-* link:bbox-edge-spec.adoc[bbox-edge] — the sibling extraction, library-backed shape.
+* link:ghapp-domain-spec.adoc[ghapp domain] — the App minter both edges delegate to.
+* link:../cluster-api/github-credential-model.adoc[GitHub credential model] — why every GitHub credential flows from the one App.
+* link:incus-edge-spec.adoc[incus-edge] — the bare-`ProcessBuilder` shape this edge started from.
 * link:../patterns/port-edge-domain-ownership.adoc[port-edge-domain ownership] — domain CALLS / port DECLARES / edge PROVIDES.

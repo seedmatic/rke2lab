@@ -1,7 +1,6 @@
 package io.seedmatic.rke2lab.clusterpki.core;
 
-import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator;
-import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
 import io.seedmatic.rke2lab.clusterpki.contract.AdminCredentials;
 import io.seedmatic.rke2lab.clusterpki.contract.ClusterAgeKey;
 import io.seedmatic.rke2lab.clusterpki.contract.ClusterCaBundle;
@@ -16,6 +15,7 @@ import io.seedmatic.rke2lab.clusterpki.core.internal.SopsRecipients;
 import io.seedmatic.rke2lab.manifests.contract.SshToAgeConverter;
 import io.seedmatic.rke2lab.ndh.contract.NdhKeystoreCatalog;
 import io.seedmatic.rke2lab.ndh.contract.NdhKeystoreReader;
+import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -49,6 +49,8 @@ import java.util.stream.Collectors;
  * docs/architecture/cluster-api/deterministic-cluster-access.adoc.
  */
 public final class ClusterSeal {
+
+  private static final SeedCodec CODEC = new SeedCodec();
 
   private final NdhKeystoreReader keystore;
   private final SshToAgeConverter sshToAge;
@@ -229,15 +231,12 @@ public final class ClusterSeal {
   }
 
   private static LinkedHashMap<String, String> parseBundleYaml(String yaml) {
-    final YAMLMapper mapper = YAMLMapper.builder().build();
     try {
-      return mapper.readValue(
-          yaml,
-          mapper
-              .getTypeFactory()
-              .constructMapType(LinkedHashMap.class, String.class, String.class));
-    } catch (Exception ex) {
-      throw new IllegalStateException("failed to parse the decrypted cluster CA bundle YAML", ex);
+      return CODEC.reading().readYaml(yaml, new TypeReference<LinkedHashMap<String, String>>() {});
+    } catch (Exception unreadable) {
+      // No cause: the parser's message quotes its source, and the source is the decrypted bundle
+      // with its private keys.
+      throw new IllegalStateException("failed to parse the decrypted cluster CA bundle YAML");
     }
   }
 
@@ -246,14 +245,8 @@ public final class ClusterSeal {
    * block scalars so each PEM stays readable and its trailing newline is preserved.
    */
   private static String renderYaml(LinkedHashMap<String, String> bundle) {
-    final YAMLMapper mapper =
-        YAMLMapper.builder()
-            .enable(YAMLGenerator.Feature.LITERAL_BLOCK_STYLE)
-            .enable(YAMLGenerator.Feature.MINIMIZE_QUOTES)
-            .disable(YAMLGenerator.Feature.WRITE_DOC_START_MARKER)
-            .build();
     try {
-      return mapper.writeValueAsString(bundle);
+      return CODEC.canonical().writeYaml(bundle);
     } catch (Exception ex) {
       throw new IllegalStateException("failed to render the cluster CA bundle YAML", ex);
     }

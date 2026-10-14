@@ -346,20 +346,12 @@ the replacement scions existed. The result is seven open deltas:
 | incus-core (I6, § host-cellar CORRECTION)
 
 | 10
-| **the SECRETS write** — `LaunchSecretsUpdater.ensureTokensPresent`: upsert the
-  gh/flox token into `.secrets` (YAML upsert preserving comments, env-var precedence).
-  CORRECTED 2026-07-16: this is NOT host-only. It was host in `main` only because
-  `LaunchSecretsUpdater` was nested in `IncusResourceBootstrap` (an accident of place, not
-  a necessity). It is a FILE MATERIALISATION (regex YAML upsert, no Pulumi engine), and in
-  I6 every materialisation is a scion gesture. The token VALUE is already OSGi-resolvable —
-  `AuthTokenContact` is an `auth-contract` port with a `@Component` realisation
-  (`CliAuthTokenContact`, `gh auth token`/flox), resolved from the registry like any contact;
-  and the scion computes `worktreeRoot` OSGi-side (incus-core `BootstrapPaths`) over the SAME
-  FS. So the scion resolves the token + upserts `<worktree>/.secrets`, BEFORE the `worktree.dir`
-  mount (#1 of the 13) binds it. Homed as a BEAT of the incus PREPARE scenario
-  (`IncusProvisionScenario`, a `Then` after materialisation — mirrors main, where secrets sat in
-  the PREPARE phase after `materializeAssets`), not a distinct scenario.
-| incus scion (PREPARE beat, OSGi — was mis-scoped host-only)
+| **the SECRETS write** — RETIRED 2026-10-11. It upserted the gh/flox launch token into
+  `.secrets`, first host-side (`LaunchSecretsUpdater`), then as a beat of the incus PREPARE
+  scenario (corrected 2026-07-16: a file materialisation is a scion gesture). GitHub left it for
+  the App (link:../cluster-api/github-credential-model.adoc[GitHub credential model]); the FloxHub
+  token then lost its last consumer, so the beat, its writer and the auth CLI contact went with it.
+| — (removed)
 
 | 11
 | **`HostMountSourceVerifier`** — assert the mount sources exist before the grow binds

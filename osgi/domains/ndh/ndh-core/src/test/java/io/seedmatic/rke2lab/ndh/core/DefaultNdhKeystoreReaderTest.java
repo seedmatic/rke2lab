@@ -14,7 +14,8 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * The v2 inventory shape, read the way ndh means it. The two generations are deliberately written
  * NEWEST FIRST in the document, so a reader that took document order instead of sorting the dated
- * slots would fail here.
+ * slots would fail here. The store is written envelope, and the decryptor stands in for sops by
+ * stripping the envelope.
  */
 class DefaultNdhKeystoreReaderTest {
 
@@ -23,11 +24,19 @@ class DefaultNdhKeystoreReaderTest {
       authorities:
         mammoth-skate-tls:
           type: ecdsa-sha2-nistp256
-          ca_crt: CA-CRT
           domain: mammoth-skate.ts.net
           slots:
-            26-10-05: { public: new-auth-pub, private: new-auth-priv }
-            26-05-29: { public: old-auth-pub, private: old-auth-priv }
+            26-10-05: { public: new-auth-pub, private: new-auth-priv, ca_crt: NEW-CA-CRT }
+            26-05-29: { public: old-auth-pub, private: old-auth-priv, ca_crt: OLD-CA-CRT }
+        leaked-tls:
+          type: ecdsa-sha2-nistp256
+          slots:
+            26-10-05: { private: new-leaked-priv, ca_crt: NEW-LEAKED-CRT }
+            26-05-29: { private: old-leaked-priv, ca_crt: OLD-LEAKED-CRT, compromised: published }
+        all-leaked:
+          type: ecdsa-sha2-nistp256
+          slots:
+            26-05-29: { private: p, ca_crt: c, compromised: published }
       keys:
         rke2-cluster:
           type: ssh-ed25519
@@ -44,12 +53,14 @@ class DefaultNdhKeystoreReaderTest {
           private: v1-priv
       """;
 
+  private static final String ENVELOPE = "sops:\n  version: 3.13.3\n";
+
   @TempDir Path dir;
 
   private DefaultNdhKeystoreReader reader(final String yaml) throws IOException {
     final Path file = dir.resolve("keys.yaml");
-    Files.writeString(file, yaml);
-    return new DefaultNdhKeystoreReader(file);
+    Files.writeString(file, yaml + ENVELOPE);
+    return new DefaultNdhKeystoreReader(file, envelope -> envelope.replace(ENVELOPE, ""));
   }
 
   @Test
@@ -60,8 +71,24 @@ class DefaultNdhKeystoreReaderTest {
   }
 
   @Test
-  void anAuthoritySignsWithItsOldestGeneration() throws IOException {
-    assertEquals("old-auth-priv", reader(V2).authorityPrivate("mammoth-skate-tls"));
+  void anAuthoritySignsWithItsOldestGenerationAndPresentsThatRoot() throws IOException {
+    final DefaultNdhKeystoreReader keystore = reader(V2);
+    assertEquals("old-auth-priv", keystore.authorityPrivate("mammoth-skate-tls"));
+    assertEquals("OLD-CA-CRT", keystore.authorityCert("mammoth-skate-tls"));
+  }
+
+  @Test
+  void aCompromisedOldestSlotNeverSignsTheNewerOneDoesAtOnce() throws IOException {
+    final DefaultNdhKeystoreReader keystore = reader(V2);
+    assertEquals("new-leaked-priv", keystore.authorityPrivate("leaked-tls"));
+    assertEquals("NEW-LEAKED-CRT", keystore.authorityCert("leaked-tls"));
+  }
+
+  @Test
+  void whenEverySlotIsCompromisedNothingSigns() throws IOException {
+    final IllegalStateException raised =
+        assertThrows(IllegalStateException.class, () -> reader(V2).authorityPrivate("all-leaked"));
+    assertTrue(raised.getMessage().contains("compromised"), raised.getMessage());
   }
 
   @Test
@@ -72,10 +99,8 @@ class DefaultNdhKeystoreReaderTest {
   }
 
   @Test
-  void theCertificateAndDomainStayAtTheAuthorityLevel() throws IOException {
-    final DefaultNdhKeystoreReader keystore = reader(V2);
-    assertEquals("CA-CRT", keystore.authorityCert("mammoth-skate-tls"));
-    assertEquals("mammoth-skate.ts.net", keystore.authorityDomain("mammoth-skate-tls"));
+  void theDomainStaysAtTheAuthorityLevel() throws IOException {
+    assertEquals("mammoth-skate.ts.net", reader(V2).authorityDomain("mammoth-skate-tls"));
   }
 
   @Test
@@ -93,15 +118,23 @@ class DefaultNdhKeystoreReaderTest {
   }
 
   @Test
-  void aStoreStillEncryptedAtRestIsRefused() throws IOException {
-    final DefaultNdhKeystoreReader keystore = reader(V2 + "sops:\n  version: 3.9.0\n");
+  void aStorePlaintextAtRestIsRefusedBeforeAnyDecryption() throws IOException {
+    final Path file = dir.resolve("keys.yaml");
+    Files.writeString(file, V2);
+    final DefaultNdhKeystoreReader keystore =
+        new DefaultNdhKeystoreReader(
+            file,
+            envelope -> {
+              throw new AssertionError("a plaintext store must not reach the decryptor");
+            });
     final IllegalStateException raised =
         assertThrows(IllegalStateException.class, () -> keystore.sshPublic("rke2-cluster"));
-    assertTrue(raised.getMessage().contains("sops-encrypted"), raised.getMessage());
+    assertTrue(raised.getMessage().contains("plaintext at rest"), raised.getMessage());
   }
 
   @Test
   void anAbsentStoreIsNotPresent() {
-    assertFalse(new DefaultNdhKeystoreReader(dir.resolve("nowhere.yaml")).present());
+    assertFalse(
+        new DefaultNdhKeystoreReader(dir.resolve("nowhere.yaml"), envelope -> envelope).present());
   }
 }

@@ -16,9 +16,8 @@ import java.util.List;
  * its own admin certificate. So the credentials are a COMPONENT of a cluster's entry here, and
  * {@link AdminCredentials} stays what its name says: three PEM blocks, no rendering.
  *
- * <p>NOTE: {@code manifests-contract}'s {@code OperatorPkiMaterial} still duplicates a
- * single-endpoint variant of this template on the other side of the manifests seam — one renderer
- * in two realms, worth collapsing when a third appears.
+ * <p>The ONE kubeconfig renderer: the manifests kubeconfig unit renders its single-endpoint Secrets
+ * through this record too — one cluster, one access whose context bears the cluster's name.
  */
 public record OperatorKubeconfig(List<ClusterAccess> clusters) {
 

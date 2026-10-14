@@ -1,0 +1,226 @@
+package io.seedmatic.rke2lab.fabric.bdd;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import io.seedmatic.rke2lab.dataplan.ingress.DataplanIngressCoordinate;
+import io.seedmatic.rke2lab.fabric.contract.FabricDelivery;
+import io.seedmatic.rke2lab.fabric.contract.FabricRunbookInput;
+import io.seedmatic.rke2lab.netplan.ingress.NetplanIngressCoordinate;
+import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
+import io.seedmatic.rke2lab.seed.broker.port.Parcel;
+import io.seedmatic.rke2lab.seed.broker.testkit.InMemoryCellar;
+import io.seedmatic.rke2lab.worktree.GitIdentity;
+import java.util.List;
+import java.util.Optional;
+import org.junit.jupiter.api.Test;
+
+/**
+ * The fabric delivery: it reads the two harvests the run filed and commits them, canonically, onto
+ * its branch's head. The git MECHANISM is the worktree domain's and is proven by {@code
+ * JgitTransientWorktreeTest} — here it is a recording double, so what is under test is fabric's own
+ * behaviour: which coordinates it reads, which files it writes, in what form, and what it asks of
+ * the worktree.
+ */
+class FabricDeliveryTest {
+
+  private static final Parcel PARCEL = new Parcel("rke2lab", "bioskop-mgmt");
+
+  private static JsonNode tree(String json) {
+    return new SeedCodec().reading().readJson(json);
+  }
+
+  private InMemoryCellar harvested(String netplan, String dataplan) {
+    final InMemoryCellar cellar = new InMemoryCellar();
+    if (netplan != null) {
+      cellar.store(PARCEL, NetplanIngressCoordinate.PROJECTION, tree(netplan));
+    }
+    if (dataplan != null) {
+      cellar.store(PARCEL, DataplanIngressCoordinate.LAYOUT, tree(dataplan));
+    }
+    return cellar;
+  }
+
+  private FabricDeliveryScenario.When when() {
+    final FabricDeliveryScenario.When when = new FabricDeliveryScenario.When();
+    when.facet = new FabricRunbookInput();
+    return when;
+  }
+
+  @Test
+  void the_delivery_writes_both_harvests_in_the_canonical_form() {
+    final FabricDeliveryScenario.When when = when();
+    final RecordingTransientWorktrees worktrees = new RecordingTransientWorktrees();
+
+    when.the_harvested_plan_is_read(
+            harvested("{\"b\":1,\"a\":{\"d\":4,\"c\":3}}", "{\"datasets\":[\"tank/rke2lab\"]}"),
+            Optional.of(PARCEL))
+        .the_delivery_is_written(
+            Optional.of(worktrees), Optional.empty(), Optional.empty(), Optional.empty());
+
+    final FabricDelivery delivery = FabricDelivery.canonical();
+    assertEquals(
+        """
+        {
+          "a": {
+            "c": 3,
+            "d": 4
+          },
+          "b": 1
+        }
+        """,
+        worktrees.made.readAtHead(delivery.netplanFile()).orElseThrow());
+    assertEquals(
+        """
+        {
+          "datasets": [
+            "tank/rke2lab"
+          ]
+        }
+        """,
+        worktrees.made.readAtHead(delivery.dataplanFile()).orElseThrow());
+  }
+
+  @Test
+  void the_delivery_lands_on_its_own_branch() {
+    final RecordingTransientWorktrees worktrees = new RecordingTransientWorktrees();
+
+    when()
+        .the_harvested_plan_is_read(harvested("{}", "{}"), Optional.of(PARCEL))
+        .the_delivery_is_written(
+            Optional.of(worktrees), Optional.empty(), Optional.empty(), Optional.empty());
+
+    assertEquals("fabric/plan", worktrees.made.branch());
+  }
+
+  @Test
+  void the_commit_is_signed_and_attributed_when_the_keystore_is_reachable() {
+    final RecordingTransientWorktrees worktrees = new RecordingTransientWorktrees();
+
+    when()
+        .the_harvested_plan_is_read(harvested("{}", "{}"), Optional.of(PARCEL))
+        .the_delivery_is_written(
+            Optional.of(worktrees),
+            Optional.of(new FakeKeystore()),
+            Optional.empty(),
+            Optional.empty());
+
+    assertEquals(
+        new GitIdentity(
+            "rke2lab:fabric-delivery", "rke2lab+fabric-delivery@mammoth-skate.example.invalid"),
+        worktrees.made.committedAs.orElseThrow());
+    assertTrue(
+        worktrees.made.signedWith.orElseThrow().contains("rke2lab-bot-signing"),
+        "the signing key is named through NdhKeystoreCatalog, not re-typed");
+  }
+
+  /** No token — a survey, a preview, a frontier that filtered the mint out — means no push. */
+  @Test
+  void without_a_token_the_delivery_is_committed_and_never_pushed() {
+    final RecordingTransientWorktrees worktrees = new RecordingTransientWorktrees();
+
+    when()
+        .the_harvested_plan_is_read(harvested("{}", "{}"), Optional.of(PARCEL))
+        .the_delivery_is_written(
+            Optional.of(worktrees), Optional.empty(), Optional.empty(), Optional.empty());
+
+    assertTrue(worktrees.made.calls.stream().anyMatch(call -> call.startsWith("commit:")));
+    assertFalse(worktrees.made.calls.contains("push"), "no token, no push");
+    assertTrue(worktrees.made.calls.contains("publish-local"), "only the local branch moves");
+    assertEquals(
+        Optional.empty(),
+        worktrees.made.signedWith,
+        "without a key-store the local commit is unsigned, never silently self-signed");
+  }
+
+  /** A revealed token pushes the SIGNED delivery, with exactly that token, after the commit. */
+  @Test
+  void with_a_token_the_signed_delivery_is_pushed_with_it() {
+    final RecordingTransientWorktrees worktrees = new RecordingTransientWorktrees();
+
+    when()
+        .the_harvested_plan_is_read(harvested("{}", "{}"), Optional.of(PARCEL))
+        .the_delivery_is_written(
+            Optional.of(worktrees),
+            Optional.of(new FakeKeystore()),
+            Optional.of("read-token"),
+            Optional.of("write-token"));
+
+    assertEquals(
+        Optional.of("read-token"),
+        worktrees.fetchedWith,
+        "the branch is fetched with the read token, never the write one");
+    assertEquals(Optional.of("write-token"), worktrees.made.pushedWith);
+    assertTrue(worktrees.made.signedWith.isPresent(), "a pushed delivery is signed");
+    final List<String> calls = worktrees.made.calls;
+    assertTrue(
+        calls.indexOf("push")
+            > calls.indexOf(
+                calls.stream().filter(c -> c.startsWith("commit:")).findFirst().orElseThrow()),
+        "the push follows the commit");
+  }
+
+  /**
+   * A token with no key-store to sign with is refused BEFORE anything is prepared or committed: an
+   * unsigned bot commit on a branch other repos pin is what a signature exists to rule out.
+   */
+  @Test
+  void a_token_without_a_keystore_is_refused_before_any_commit() {
+    final RecordingTransientWorktrees worktrees = new RecordingTransientWorktrees();
+    final FabricDeliveryScenario.When when = when();
+    when.the_harvested_plan_is_read(harvested("{}", "{}"), Optional.of(PARCEL));
+
+    assertEquals(
+        FabricDeliveryError.Reason.UNSIGNABLE,
+        assertThrows(
+                FabricDeliveryError.class,
+                () ->
+                    when.the_delivery_is_written(
+                        Optional.of(worktrees),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.of("write-token")))
+            .reason());
+    assertEquals(null, worktrees.made, "nothing was prepared, so nothing was committed or pushed");
+  }
+
+  @Test
+  void a_run_that_harvested_nothing_is_a_broken_run_not_an_empty_delivery() {
+    assertEquals(
+        FabricDeliveryError.Reason.NO_PARCEL,
+        assertThrows(
+                FabricDeliveryError.class,
+                () -> when().the_harvested_plan_is_read(harvested("{}", "{}"), Optional.empty()))
+            .reason());
+    assertEquals(
+        FabricDeliveryError.Reason.NO_NETPLAN,
+        assertThrows(
+                FabricDeliveryError.class,
+                () -> when().the_harvested_plan_is_read(harvested(null, "{}"), Optional.of(PARCEL)))
+            .reason());
+    assertEquals(
+        FabricDeliveryError.Reason.NO_DATAPLAN,
+        assertThrows(
+                FabricDeliveryError.class,
+                () -> when().the_harvested_plan_is_read(harvested("{}", null), Optional.of(PARCEL)))
+            .reason());
+  }
+
+  @Test
+  void a_missing_worktree_mechanism_is_a_wiring_defect() {
+    final FabricDeliveryScenario.When when = when();
+    when.the_harvested_plan_is_read(harvested("{}", "{}"), Optional.of(PARCEL));
+
+    assertEquals(
+        FabricDeliveryError.Reason.NO_WORKTREES,
+        assertThrows(
+                FabricDeliveryError.class,
+                () ->
+                    when.the_delivery_is_written(
+                        Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()))
+            .reason());
+  }
+}

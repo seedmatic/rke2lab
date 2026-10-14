@@ -752,6 +752,91 @@ readiness-budget tuning (a post-grow WHEN of `ClusterSeedScenario` folds `WARM` 
 fail-fast `ReadinessOverrides`, `COLD` keeps the patient config-derived one), but the transient bus
 is general — any scion of the run can read the frozen fact.
 
+*The netplan projection — `netplan-ingress-contract`, the second domain host face (2026-10-10).* The
+operator's kubeconfig contexts (`ClusterSeedScenario`, the fabric address, the VIP, each node's IPs) need
+netplan's addressing. They used to read the checked-in `network-blueprint.json` from the process CWD; that
+file is a copy for nix, and leaves the root once `rke2lab:fabric/plan` delivers it. So the netplan soil
+(`NetplanBlueprintScenario`, the same derivation the plan CLI exports) also files its projection under
+`NetplanIngressCoordinate.PROJECTION` (slug `netplan-projection`) when the run publishes a `Parcel` — a seed
+run; the plan CLI publishes none and only exports. The host sows the `netplan` crossing right after the
+worktree survey and fetches the projection as a `JsonNode`: no netplan type crosses, so the coordinate is
+all the host face holds, `type=dual-realm` like `incus-ingress-contract` and for the same reason
+(`netplan-contract` is OSGi-only, a host-side slug is the magic-string anti-pattern). A missing harvest is a
+broken run: the host throws, it never falls back to a file.
+
+*The dataplan layout — the same harvest, and the rule that placed it, applied both ways.* The dataset
+tree (`DataplanLayout.canonical()`, the `tank/rke2lab/*` plane) is harvested the same way:
+`DataplanScenario` files it under `DataplanIngressCoordinate.LAYOUT` (slug `dataplan-layout`) when the run
+publishes a `Parcel`, and files nothing when it does not.
+
+Where that coordinate lives follows one rule: a value coordinate earns a dual-realm module **iff the host
+fetches it** — what `NetplanCoordinate`'s own javadoc already said. netplan's host does
+(`ClusterSeedScenario` reads the addressing for the operator's kubeconfig contexts), so
+`NetplanIngressCoordinate` lives in a dual-realm `netplan-ingress-contract`. When the layout was first
+harvested, nothing host-side read it, so its coordinate went into the OSGi-only `DataplanCoordinate`; a
+dual-realm module built for it at the time was deleted, for that reason. Then the plan CLI's `export`
+started rendering from the harvests instead of re-reading the soil file the scion wrote, which makes the
+host a reader — and the same rule moved the coordinate to a dual-realm `dataplan-ingress-contract`,
+`DataplanCoordinate` going back to an empty enum of meta-coordinates. The rule did not change; the fact
+it tests did.
+
+The harvests have two readers now. The `fabric` scion writes `netplan.json` and `dataplan.json` into the
+`fabric/plan` worktree from them; the plan CLI's `export` reads both back within its own run and renders
+them. That run publishes a `Parcel` at its GIVEN, synchronously, before any sow, or the scions would file
+nothing; its durable side is the `EphemeralCellar`, so the harvest lives only in the run's transactional
+overlay — read back before the drain, and gone after it. Publishing a parcel did not make the export
+persist anything.
+
+*The fabric domain — the two harvests become one commit (2026-10-10).* `fabric` is what seedmatic READS
+of rke2lab, and it is a domain because the DELIVERY is one commit carrying both files, so it has one
+owner. netplan and dataplan each derive and harvest; neither knows the branch, the other's file, or
+that git is involved. `FabricDeliveryScenario` reads `NetplanIngressCoordinate.PROJECTION` and
+`DataplanCoordinate.LAYOUT` as `JsonNode` — opaque, so no foreign vocabulary enters fabric and this
+seam does not test the realm boundary — and commits them through the codec's `canonical()` profile
+onto the head of `FabricDelivery.branch`, in memory.
+
+* **`FabricCoordinate`** — an EMPTY enum, and here the justified case rather than the default one:
+  fabric DELIVERS, it derives nothing, so it files no harvest and owns no value-coordinate. Where
+  `DataplanCoordinate.LAYOUT` exists because the dataplan scion has a derivation to hand on, fabric
+  IS the hand-on. It holds the `AMEND` / `SHAPE` / `RUNBOOK` meta-coordinates only.
+* **`FabricDelivery`** — what the delivery is: branch `fabric/plan`, carrying `netplan.json` (netplan's
+  projection, the file that used to sit at the repository root as `network-blueprint.json`) and
+  `dataplan.json`. Single-sourced because these names are read from three sides — the scion writes
+  them, nix pins the same branch as the `fabric-plan` input and reads the same two files, and the
+  other repos pin it. A name spelled twice is the mismatch class that cost this project the
+  `clusterApi` bug.
+* **`FabricRunbookInput`** — no amendment: the delivery commits onto its branch's head in memory, so
+  it needs no plot. WHAT to deliver is deliberately NOT an input — it is the two
+  harvests. A delivery with no harvest to read is a broken run, raised as `FabricDeliveryError` with
+  the link that is missing (`NO_PARCEL` / `NO_NETPLAN` / `NO_DATAPLAN` / `NO_WORKTREES` / `UNSIGNABLE`),
+  never an empty result.
+
+*The push.* The delivery is pushed when a token is revealed, and only then — a fresh `contents:write`
+token minted from the sealed App through `GithubAppTokens`, the one revealer the render, the version
+bump and the delivery share. Its MINT-only lane: no Tekton run publishes a plan, so a pipeline token in
+the environment has no legitimate meaning here, and honouring it would let a stray variable push. A
+pushed delivery is always SIGNED — the identity minted by the worktree domain's `GitBotIdentities`,
+the signing key named through `NdhKeystoreCatalog`, so neither is re-typed — and a token with no
+key-store to sign with is refused (`UNSIGNABLE`) before anything is prepared or committed. With no
+token (a survey, a preview, a frontier that filtered the mint out) the commit stays local and is never
+pushed. The push is a fast-forward: `fabric/plan` accretes, it is never rewritten. `FabricDeliveryTest`
+pins all three: no token → no push; token → the signed commit pushed with exactly that token, after
+the commit; token without key-store → refused.
+
+*Who triggers it: the plan CLI's `publish`, by choice.* `nix run .#publish-plan` runs
+`PublishPlanScenario`, four crossings sharing the run's cellar and `Parcel` — `ghapp` (rehydrates the
+App from `.secrets` and seals it in the run), `netplan` and `dataplan` (derive and harvest), `fabric`
+(delivers). EVERY crossing sows AND grafts through `SowAndGraftStage`: the graft is what folds a
+scion's writes into the host's overlay, and the next sow inherits that overlay, so the App the first
+crossing sealed is what the fabric scion's token is minted from. Sown raw, it would stay in the
+ghapp scion's runbook and the push would be skipped in silence — the mechanism
+`ScenarioGraftTest.a_scion_tag_rides_up_with_the_graft_and_the_host_reads_it_back` and
+`ScenarioCellarTrailTest.aSownScionInheritsTheExtendedPathAndAccumulatesTheFullRoute` pin. The CLI is
+the trigger because the operator's run is the only one that publishes a plan; nothing in the
+delivery requires a CLI. The token never reaches the run's record:
+`FabricTokenStaysOutOfTheRunTest` greps the serialised runbook — steps AND the cellar's write set —
+for the minted value.
+
 *The scion-side producers (incus-core, OSGi-only).* Collaborators assemble the plan, each named
 by `IncusProvisionScenario`'s PREPARE beats: `GrowNetworkResolver` (resolves `NetplanSynthesisService`
 → the `GrowNetworkView`), `GrowIdentityResolver` (same blueprint → the `GrowIdentityView`, the four
@@ -1094,8 +1179,7 @@ these the scion produces the three PREPARE outputs in-container:
 
 *The host keeps only TWO gestures.* (a) the Pulumi engine (`com.pulumi.incus`, the sole host-irreducible
 — the control flow cannot enter Felix, shape B); (b) extracting a HANDFUL of FLAT SCALARS from
-`BootstrapConfig` — `worktreeRoot`, `clusterName`, `nodeName`, `automount` (netPrefix derives from
-cluster) — and handing them to the scion by `@Amendment`. `BootstrapConfig` itself NEVER crosses
+`BootstrapConfig` — `worktreeRoot`, `clusterName`, `nodeName` — and handing them to the scion by `@Amendment`. `BootstrapConfig` itself NEVER crosses
 (consistent with "the flat host fills it from BootstrapConfig", the SystemdProbeRequest pattern). The
 host reads the resolved mount plan back (flat, via Split) to build the `InstanceDeviceArgs`.
 
@@ -1105,14 +1189,13 @@ already sows `broker.sow(new AmendCoordinate("manifests"), …)` (the reflector 
 the computed `rke2-manifests.d` is handed through that SAME amend-by-coordinate — neutral JSON, ZERO
 added typed cross-domain dependency. That is what keeps the boundary clean.
 
-*The automount translation, and WHY it survives.* `BootstrapPaths.asAutomountView(automount, netPrefix)`
-(the pure `automountPath` helper, ex-`BootstrapConfig.pathOn`, extracted into incus-core 2026-07-15)
-rewrites a DARWIN path into its automount NIXOS view (`/private/x` → `/net/<cluster>.local/private/x`)
-because provisioning is BI-MACHINE: the Mac WRITES the assets (Felix runs there), the remote NIXOS host
-MOUNTS them over NFS to grow the instance. It is dormant in the feature branch (its only caller,
-`seedInstanceDevices`, was deleted with the grow) but NOT dead — it returns with the mount plan. As a
-pure method on the record (fed `automount` + `netPrefix`) the scion applies it without naming
-`BootstrapConfig`, which never crosses.
+*The automount translation — deleted (2026-10-12).* `BootstrapPaths.asAutomountView(automount, netPrefix)`
+rewrote a DARWIN path into its automount NIXOS view (`/private/x` → `/net/<cluster>.local/private/x`)
+because provisioning was BI-MACHINE: the Mac wrote the assets, the remote NIXOS host read them over NFS.
+Its last reader was the image's remote ssh build. The image now builds by revision
+(`git+file://<repository>?rev=<sha>`, see link:incus-edge-spec.adoc[incus-edge spec]) and nix hands the
+derivations to the builder itself, so the translation, the `automount` / `netPrefix` scalars and the
+ssh mode went together.
 
 *The true consumer of the 17 roots is the GROW, not the two phantom reads.* Today's scenario reads only
 `clusterNodeRoot()` (feed the slot) and `manifestsRoot()` (the SOIL) — vestiges. The real client is
@@ -1184,8 +1267,8 @@ letting load-bearing facts hide in unrendered state.
   `fromLocalWorktree → HostSlotSelector.nextStaging → asStagingView.manifestsRoot()` to resolve the
   SOIL and forwards THAT to the manifests scion it consults, so the synthesis materialises under
   `host.N.staging.d/rke2-manifests.d` — a temp dir only when the scalars are blank (a bare survey). The
-  intermediate `manifests.yaml` sits a level ABOVE the synthesis root (sibling of `rke2-manifests.d`),
-  outside the checksummed/mounted subtree.
+  intermediate `manifests.yaml` now sits in the synthesis root's ignored `.local.d/` (the render
+  worktree keeps its intermediates the way any worktree does), never in the committed tree.
 * The reconcile (I6) — DESIGNED, NOT YET WIRED (verified 2026-09). The design below is the target; the
   ONLY thing that ships today is the routing SOIL — `IncusScenario.RECONCILE("incus-reconcile")` is
   declared as an enum value (`osgi/domains/incus/incus-bdd/IncusScenario`), but NOTHING references it:

@@ -13,7 +13,7 @@
   <name>osgi/domains/ghapp/ghapp-bdd</name>
   <description>The ghapp scion: the in-container @SeedScenario the grow sows to make the one org-owned
     GitHub App's credentials available to the run. A pure rehydrate — cellar hit (idempotent-keep) or
-    rehydrate from the .secrets githubApp block (via the read-only SecretsGateway), sealing the
+    rehydrate from the .secrets github.app block (via the read-only SecretsGateway), sealing the
     resolved GithubAppCredentials at GhAppCoordinate.GITHUB_APP. It does NOT declare the App: that
     out-of-band ceremony (create / install / seed .secrets) is the standalone `ghapp` CLI, kept out of
     the pulumi-driven grow. GithubAppRunbookHandler is the broker's host-to-scion door (no input).</description>

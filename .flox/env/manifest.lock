@@ -34,11 +34,8 @@
         "pkg-path": "bash",
         "outputs": "all"
       },
-      "bats": {
-        "pkg-path": "bats"
-      },
       "cdk8s-cli": {
-        "pkg-path": "cdk8s-cli"
+        "flake": "github:seedmatic/rke2lab#cdk8s-cli"
       },
       "checkstyle": {
         "pkg-path": "checkstyle"
@@ -52,10 +49,10 @@
         "pkg-path": "claude-code"
       },
       "clusterctl": {
-        "pkg-path": "clusterctl"
+        "flake": "github:seedmatic/rke2lab#clusterctl"
       },
       "dasel": {
-        "pkg-path": "dasel"
+        "flake": "github:seedmatic/rke2lab#dasel"
       },
       "etcdctl": {
         "pkg-path": "etcdctl",
@@ -68,7 +65,7 @@
         "pkg-group": "flox-mcp-server"
       },
       "flux9s": {
-        "flake": "github:seedmatic/rke2lab/feature/viewpoint-separation#flux9s"
+        "flake": "github:seedmatic/rke2lab#flux9s"
       },
       "fluxcd": {
         "pkg-path": "fluxcd",
@@ -100,7 +97,7 @@
         "pkg-path": "go-2fa"
       },
       "graphviz": {
-        "pkg-path": "graphviz"
+        "flake": "github:seedmatic/rke2lab#graphviz"
       },
       "helmfile": {
         "pkg-path": "helmfile",
@@ -112,7 +109,7 @@
         "outputs": "all"
       },
       "incus-client": {
-        "flake": "github:seedmatic/rke2lab/feature/viewpoint-separation#incus-client"
+        "flake": "github:seedmatic/rke2lab#incus-client"
       },
       "jdk": {
         "pkg-path": "jdk",
@@ -124,16 +121,11 @@
         "priority": 1
       },
       "k9s": {
-        "pkg-path": "k9s"
+        "flake": "github:seedmatic/rke2lab#k9s"
       },
       "keychain": {
         "pkg-path": "keychain",
         "pkg-group": "keyhole"
-      },
-      "kpt": {
-        "pkg-path": "kpt",
-        "pkg-group": "k8s-kpt-tools",
-        "outputs": "all"
       },
       "krew": {
         "pkg-path": "krew",
@@ -199,7 +191,7 @@
         "pkg-path": "lazygit"
       },
       "manage-tailnet": {
-        "flake": "github:seedmatic/rke2lab/feature/viewpoint-separation#manage-tailnet",
+        "flake": "github:seedmatic/rke2lab#manage-tailnet",
         "systems": [
           "aarch64-darwin"
         ]
@@ -250,10 +242,13 @@
         "pkg-path": "pstree"
       },
       "pulumi": {
-        "pkg-path": "pulumi-bin"
+        "flake": "github:seedmatic/rke2lab#pulumi"
+      },
+      "pulumi-java": {
+        "flake": "github:seedmatic/rke2lab#pulumi-java"
       },
       "pulumictl": {
-        "pkg-path": "pulumictl"
+        "flake": "github:seedmatic/rke2lab#pulumictl"
       },
       "pwgen-secure": {
         "pkg-path": "pwgen-secure",
@@ -281,7 +276,7 @@
         "pkg-group": "keyhole"
       },
       "tektoncd-cli": {
-        "pkg-path": "tektoncd-cli"
+        "flake": "github:seedmatic/rke2lab#tektoncd-cli"
       },
       "tubekit": {
         "pkg-path": "tubekit",
@@ -306,13 +301,12 @@
     },
     "vars": {
       "GITHUB_OWNER": "seedmatic",
-      "M2_REPO": "${HOME}/.m2/repository",
       "PULUMI_BACKEND_URL": "file://${FLOX_ENV_PROJECT}/.pulumi-state",
       "PULUMI_CONFIG_PASSPHRASE": "",
       "PULUMI_HOME": "${XDG_STATE_HOME:-$HOME/.local/state}/pulumi"
     },
     "hook": {
-      "on-activate": "    if [ -z \"${PUPPETEER_EXECUTABLE_PATH:-}\" ]; then\n      for _shell in \"$HOME\"/.cache/puppeteer/chrome-headless-shell/*/chrome-headless-shell-*/chrome-headless-shell; do\n        [ -x \"$_shell\" ] && export PUPPETEER_EXECUTABLE_PATH=\"$_shell\"\n      done\n      unset _shell\n    fi\n  \n    if [ -d \"${FLOX_ENV_PROJECT}/.github\" ]; then\n      remote=$(git -C \"${FLOX_ENV_PROJECT}\" remote get-url origin 2>/dev/null || true)\n      if [ -n \"${remote}\" ]; then\n        remote_host=\"github.com\"\n        case \"${remote}\" in\n          git@*:* )\n            remote_host=$(printf '%s' \"${remote}\" | cut -d'@' -f 2 | cut -d':' -f 1)\n            ;;\n          http://*|https://*)\n            remote_host=$(printf '%s' \"${remote}\" | cut -d'/' -f 3)\n            ;;\n          ssh://*)\n            remote_host=$(printf '%s' \"${remote}\" | cut -d'/' -f 3 | cut -d':' -f 1)\n            ;;\n        esac\n    \n        if [ -n \"${GH_TOKEN:-}\" ] && ! gh auth status --hostname \"${remote_host}\" >/dev/null 2>&1; then\n          echo \"Detected GH_TOKEN, logging in gh for ${remote_host}...\" >&2\n          printf '%s' \"${GH_TOKEN}\" | gh auth login --with-token --hostname \"${remote_host}\" >/dev/null 2>&1 || true\n        fi\n    \n        if gh auth status --hostname \"${remote_host}\" >/dev/null 2>&1; then\n          gh auth setup-git --hostname \"${remote_host}\" >/dev/null 2>&1 || true\n        fi\n      fi\n    fi\n  \n    mkdir -p \"$PULUMI_HOME\"\n  \n  mkdir -p \"${PULUMI_HOME}\"\n  mkdir -p \"${FLOX_ENV_PROJECT}/.pulumi-state\"\n  if command -v javac >/dev/null 2>&1; then\n    export JAVA_HOME=\"$(dirname \"$(dirname \"$(command -v javac)\")\")\"\n  fi\n  if command -v gh >/dev/null 2>&1 && [ -z \"${GH_TOKEN:-}\" ]; then\n    export GH_TOKEN=\"$(gh auth token 2>/dev/null)\"\n  fi\n  export KUBECONFIG=\"${FLOX_ENV_PROJECT}/.local.d/kubeconfig.yaml\"\n"
+      "on-activate": "    if [ -z \"${PUPPETEER_EXECUTABLE_PATH:-}\" ]; then\n      for _shell in \"$HOME\"/.cache/puppeteer/chrome-headless-shell/*/chrome-headless-shell-*/chrome-headless-shell; do\n        [ -x \"$_shell\" ] && export PUPPETEER_EXECUTABLE_PATH=\"$_shell\"\n      done\n      unset _shell\n    fi\n  \n  _flox_nix_registry=\"\"\n  if [ -f \"${FLOX_ENV_PROJECT}/flake-registry.local.json\" ]; then\n    _flox_nix_registry=\"${FLOX_ENV_PROJECT}/flake-registry.local.json\"\n  elif [ -f \"${FLOX_ENV_PROJECT}/flake-registry.json\" ]; then\n    _flox_nix_registry=\"${FLOX_ENV_PROJECT}/flake-registry.json\"\n  fi\n  if [ -n \"$_flox_nix_registry\" ]; then\n    # nix.conf settings are newline-separated and NIX_CONFIG may already carry some — notably\n    # the access-tokens for the private inputs, which have to survive this.\n    _flox_nix_nl='\n'\n    export NIX_CONFIG=\"${NIX_CONFIG:+${NIX_CONFIG}${_flox_nix_nl}}flake-registry = $_flox_nix_registry\"\n    unset _flox_nix_nl\n  fi\n  unset _flox_nix_registry\n\n  mkdir -p \"${PULUMI_HOME}\"\n  mkdir -p \"${FLOX_ENV_PROJECT}/.pulumi-state\"\n  if command -v javac >/dev/null 2>&1; then\n    export JAVA_HOME=\"$(dirname \"$(dirname \"$(command -v javac)\")\")\"\n  fi\n  # No GH_TOKEN export here, on purpose: a copy taken at activation goes stale at the next\n  # `gh auth refresh`, and every process launched from this shell (VS Code, agent sessions)\n  # inherits it and shadows the fresh keyring token. gh reads the keyring itself when unset.\n  export KUBECONFIG=\"${FLOX_ENV_PROJECT}/.local.d/kubeconfig.yaml\"\n"
     },
     "profile": {
       "common": "    GITHUB_SIGNING_KEYFILE=\"$HOME\"/.ssh/keys.d/github-signing\n    if [[ -r \"$GITHUB_SIGNING_KEYFILE\" ]]; then\n      set -a\n      SOPS_AGE_KEY=$( ssh-to-age -private-key < \"$GITHUB_SIGNING_KEYFILE\" )\n      set +a\n    else\n      echo no signing key\n    fi\n  \n    export ANTORA_CACHE_DIR=\"${FLOX_ENV_PROJECT}/.cache/antora\"\n    export DOCS_BUILD_DIR=\"${FLOX_ENV_PROJECT}/.output/docs\"\n  \n    GITHUB_SIGNING_KEYFILE=\"$HOME\"/.ssh/keys.d/github-signing\n    if [[ -r \"$GITHUB_SIGNING_KEYFILE\" ]]; then\n      set -a\n      SOPS_AGE_KEY=$( ssh-to-age -private-key < \"$GITHUB_SIGNING_KEYFILE\" )\n      set +a\n    else\n      echo no signing key\n    fi\n  \n    if [ -d \"${FLOX_ENV_PROJECT}/.github\" ]; then\n      gh_login=\"\"\n      if [ -n \"${GH_TOKEN:-}\" ]; then\n        gh_login=$(gh api user --jq '.login' 2>/dev/null || true)\n      elif command -v pass >/dev/null 2>&1; then\n        gh_secret=$(pass show coding/github@work 2>/dev/null | head -n 1 || true)\n        if [ -n \"${gh_secret}\" ]; then\n          gh_login=$(env GH_TOKEN=\"${gh_secret}\" gh api user --jq '.login' 2>/dev/null || true)\n        fi\n      fi\n      if [ -n \"${gh_login}\" ]; then\n        remote=$(git -C \"${FLOX_ENV_PROJECT}\" remote get-url origin 2>/dev/null || true)\n        if [ -n \"${remote}\" ]; then\n          owner=$(printf '%s' \"${remote}\" | cut -d'/' -f 4)\n          repo_name=$(printf '%s' \"${remote}\" | cut -d'/' -f 5 | cut -d'.' -f 1)\n          export GITHUB_LOGIN=\"${gh_login}\"\n          export GITHUB_OWNER=\"${owner}\"\n          export GITHUB_REPOSITORY=\"${owner}/${repo_name}\"\n        fi\n      fi\n    fi\n  \n    GITHUB_SIGNING_KEYFILE=\"$HOME\"/.ssh/keys.d/github-signing\n    if [[ -r \"$GITHUB_SIGNING_KEYFILE\" ]]; then\n      set -a\n      SOPS_AGE_KEY=$( ssh-to-age -private-key < \"$GITHUB_SIGNING_KEYFILE\" )\n      set +a\n    else\n      echo no signing key\n    fi\n  "
@@ -1158,64 +1152,6 @@
       },
       "system": "aarch64-linux",
       "group": "k8s-etcd-tools",
-      "priority": 5
-    },
-    {
-      "attr_path": "kpt",
-      "broken": false,
-      "derivation": "/nix/store/21m8qkbvxjzh0hxq7100skqs00g98bxj-kpt-1.0.0-beta.55.drv",
-      "description": "Automate Kubernetes Configuration Editing",
-      "install_id": "kpt",
-      "license": "Apache-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "name": "kpt-1.0.0-beta.55",
-      "pname": "kpt",
-      "rev": "e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "rev_count": 1079315,
-      "rev_date": "2026-09-25T08:03:29Z",
-      "scrape_date": "2026-09-26T04:58:37.324412Z",
-      "stabilities": [
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "1.0.0-beta.55",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/0qcpkizpdmwd73dgx57y7f94b4x9s8fv-kpt-1.0.0-beta.55"
-      },
-      "system": "aarch64-darwin",
-      "group": "k8s-kpt-tools",
-      "priority": 5
-    },
-    {
-      "attr_path": "kpt",
-      "broken": false,
-      "derivation": "/nix/store/ryamg4g7gbz1hw4q06xbwqwcn6fq5f0v-kpt-1.0.0-beta.55.drv",
-      "description": "Automate Kubernetes Configuration Editing",
-      "install_id": "kpt",
-      "license": "Apache-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "name": "kpt-1.0.0-beta.55",
-      "pname": "kpt",
-      "rev": "e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "rev_count": 1079315,
-      "rev_date": "2026-09-25T08:03:29Z",
-      "scrape_date": "2026-09-26T05:30:02.437845Z",
-      "stabilities": [
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "1.0.0-beta.55",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/ifmkkvwbhj1qwmgd8qg86vs3hvhwsxnl-kpt-1.0.0-beta.55"
-      },
-      "system": "aarch64-linux",
-      "group": "k8s-kpt-tools",
       "priority": 5
     },
     {
@@ -2901,122 +2837,6 @@
       "priority": 5
     },
     {
-      "attr_path": "bats",
-      "broken": false,
-      "derivation": "/nix/store/rk7n4pvrz8fjn8mhxyha0zl09s57msjy-bats-1.14.0.drv",
-      "description": "Bash Automated Testing System",
-      "install_id": "bats",
-      "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "name": "bats-1.14.0",
-      "pname": "bats",
-      "rev": "e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "rev_count": 1079315,
-      "rev_date": "2026-09-25T08:03:29Z",
-      "scrape_date": "2026-09-26T04:58:19.575853Z",
-      "stabilities": [
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "1.14.0",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/3qxkgcdc5dngrf4d73xfsca8hhydypg1-bats-1.14.0"
-      },
-      "system": "aarch64-darwin",
-      "group": "toplevel",
-      "priority": 5
-    },
-    {
-      "attr_path": "bats",
-      "broken": false,
-      "derivation": "/nix/store/z5r35vvcbfi2sh9ckryn990axwzacq58-bats-1.14.0.drv",
-      "description": "Bash Automated Testing System",
-      "install_id": "bats",
-      "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "name": "bats-1.14.0",
-      "pname": "bats",
-      "rev": "e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "rev_count": 1079315,
-      "rev_date": "2026-09-25T08:03:29Z",
-      "scrape_date": "2026-09-26T05:29:37.992895Z",
-      "stabilities": [
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "1.14.0",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/57brk6cs451zz65x6q3zhfadb6bckg66-bats-1.14.0"
-      },
-      "system": "aarch64-linux",
-      "group": "toplevel",
-      "priority": 5
-    },
-    {
-      "attr_path": "cdk8s-cli",
-      "broken": false,
-      "derivation": "/nix/store/0bns6f7834112zgq7c1vmkv669i4xzna-cdk8s-cli-2.207.58.drv",
-      "description": "Command-line-interface for CDK for Kubernetes",
-      "install_id": "cdk8s-cli",
-      "license": "Apache-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "name": "cdk8s-cli-2.207.58",
-      "pname": "cdk8s-cli",
-      "rev": "e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "rev_count": 1079315,
-      "rev_date": "2026-09-25T08:03:29Z",
-      "scrape_date": "2026-09-26T04:58:19.710454Z",
-      "stabilities": [
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "2.207.58",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/rflvm3mz2r6x2fvivy2gxp2bkpmdzjv9-cdk8s-cli-2.207.58"
-      },
-      "system": "aarch64-darwin",
-      "group": "toplevel",
-      "priority": 5
-    },
-    {
-      "attr_path": "cdk8s-cli",
-      "broken": false,
-      "derivation": "/nix/store/5z2rajf1615zxmvis069i0r8saksh216-cdk8s-cli-2.207.58.drv",
-      "description": "Command-line-interface for CDK for Kubernetes",
-      "install_id": "cdk8s-cli",
-      "license": "Apache-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "name": "cdk8s-cli-2.207.58",
-      "pname": "cdk8s-cli",
-      "rev": "e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "rev_count": 1079315,
-      "rev_date": "2026-09-25T08:03:29Z",
-      "scrape_date": "2026-09-26T05:29:38.184863Z",
-      "stabilities": [
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "2.207.58",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/96kzi1jlcdky375janhyx7cgfqxivssp-cdk8s-cli-2.207.58"
-      },
-      "system": "aarch64-linux",
-      "group": "toplevel",
-      "priority": 5
-    },
-    {
       "attr_path": "checkstyle",
       "broken": false,
       "derivation": "/nix/store/dwqp2nsg5xbmzz83avsqkfqfw20gli47-checkstyle-14.0.0.drv",
@@ -3133,122 +2953,6 @@
       "priority": 5
     },
     {
-      "attr_path": "clusterctl",
-      "broken": false,
-      "derivation": "/nix/store/4zrz1kmnrkp1ib15g0vkkl5f7m49lia7-clusterctl-1.13.4.drv",
-      "description": "Kubernetes cluster API tool",
-      "install_id": "clusterctl",
-      "license": "Apache-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "name": "clusterctl-1.13.4",
-      "pname": "clusterctl",
-      "rev": "e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "rev_count": 1079315,
-      "rev_date": "2026-09-25T08:03:29Z",
-      "scrape_date": "2026-09-26T04:58:19.923980Z",
-      "stabilities": [
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "1.13.4",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/ncqil3bpkma1vqss6fy1j55h9c4jkh9v-clusterctl-1.13.4"
-      },
-      "system": "aarch64-darwin",
-      "group": "toplevel",
-      "priority": 5
-    },
-    {
-      "attr_path": "clusterctl",
-      "broken": false,
-      "derivation": "/nix/store/rykmw50n95xmrpavl8yc93vy6xznw4yh-clusterctl-1.13.4.drv",
-      "description": "Kubernetes cluster API tool",
-      "install_id": "clusterctl",
-      "license": "Apache-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "name": "clusterctl-1.13.4",
-      "pname": "clusterctl",
-      "rev": "e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "rev_count": 1079315,
-      "rev_date": "2026-09-25T08:03:29Z",
-      "scrape_date": "2026-09-26T05:29:38.450196Z",
-      "stabilities": [
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "1.13.4",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/1phcacf93k1jxpc8yha5siw887kpzyhl-clusterctl-1.13.4"
-      },
-      "system": "aarch64-linux",
-      "group": "toplevel",
-      "priority": 5
-    },
-    {
-      "attr_path": "dasel",
-      "broken": false,
-      "derivation": "/nix/store/j3i0z0hy4pvcxaqvd67bxw3k2jwy8r5v-dasel-3.11.2.drv",
-      "description": "Query and update data structures from the command line",
-      "install_id": "dasel",
-      "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "name": "dasel-3.11.2",
-      "pname": "dasel",
-      "rev": "e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "rev_count": 1079315,
-      "rev_date": "2026-09-25T08:03:29Z",
-      "scrape_date": "2026-09-26T04:58:20.132449Z",
-      "stabilities": [
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "3.11.2",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/lyrfprwj2z89jzaygy8013h3zf4irkc7-dasel-3.11.2"
-      },
-      "system": "aarch64-darwin",
-      "group": "toplevel",
-      "priority": 5
-    },
-    {
-      "attr_path": "dasel",
-      "broken": false,
-      "derivation": "/nix/store/9xn7kzwr3cwb9frvyskkw4c9xrn9cjxi-dasel-3.11.2.drv",
-      "description": "Query and update data structures from the command line",
-      "install_id": "dasel",
-      "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "name": "dasel-3.11.2",
-      "pname": "dasel",
-      "rev": "e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "rev_count": 1079315,
-      "rev_date": "2026-09-25T08:03:29Z",
-      "scrape_date": "2026-09-26T05:29:38.724714Z",
-      "stabilities": [
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "3.11.2",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/q5jp9kprf3lwsa09p5xq245m2gm8yiiw-dasel-3.11.2"
-      },
-      "system": "aarch64-linux",
-      "group": "toplevel",
-      "priority": 5
-    },
-    {
       "attr_path": "go-2fa",
       "broken": false,
       "derivation": "/nix/store/iv126fignp5imclb5x4jn9j1la5nv3f7-2fa-1.2.0.drv",
@@ -3307,65 +3011,6 @@
       "priority": 5
     },
     {
-      "attr_path": "graphviz",
-      "broken": false,
-      "derivation": "/nix/store/8arlxqmysjscqpqfnm9zb12yaz7an365-graphviz-15.1.1.drv",
-      "description": "Graph visualization tools",
-      "install_id": "graphviz",
-      "license": "EPL-1.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "name": "graphviz-15.1.1",
-      "pname": "graphviz",
-      "rev": "e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "rev_count": 1079315,
-      "rev_date": "2026-09-25T08:03:29Z",
-      "scrape_date": "2026-09-26T04:58:21.191943Z",
-      "stabilities": [
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "15.1.1",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/g6fn2m8mjm7w2yxzbq1077lg50s26ycv-graphviz-15.1.1"
-      },
-      "system": "aarch64-darwin",
-      "group": "toplevel",
-      "priority": 5
-    },
-    {
-      "attr_path": "graphviz",
-      "broken": false,
-      "derivation": "/nix/store/ayazbis42h8c4y853zdpw5iq442v7q3i-graphviz-15.1.1.drv",
-      "description": "Graph visualization tools",
-      "install_id": "graphviz",
-      "license": "EPL-1.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "name": "graphviz-15.1.1",
-      "pname": "graphviz",
-      "rev": "e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "rev_count": 1079315,
-      "rev_date": "2026-09-25T08:03:29Z",
-      "scrape_date": "2026-09-26T05:29:41.033336Z",
-      "stabilities": [
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "15.1.1",
-      "outputs_to_install": [
-        "out",
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/243dk2na84dr8p38jcbvqzn5s57fnx3h-graphviz-15.1.1"
-      },
-      "system": "aarch64-linux",
-      "group": "toplevel",
-      "priority": 5
-    },
-    {
       "attr_path": "html2text",
       "broken": false,
       "derivation": "/nix/store/nhfn8436a0ipa6w4mxcn822hxafwjd9x-html2text-2.4.0.drv",
@@ -3418,64 +3063,6 @@
       ],
       "outputs": {
         "out": "/nix/store/611plv25xssd4nlphflnj3k5fagsbdby-html2text-2.4.0"
-      },
-      "system": "aarch64-linux",
-      "group": "toplevel",
-      "priority": 5
-    },
-    {
-      "attr_path": "k9s",
-      "broken": false,
-      "derivation": "/nix/store/268vgzsm1mvyss4x2snw01lf96zsqi3s-k9s-0.51.0.drv",
-      "description": "Kubernetes CLI To Manage Your Clusters In Style",
-      "install_id": "k9s",
-      "license": "Apache-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "name": "k9s-0.51.0",
-      "pname": "k9s",
-      "rev": "e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "rev_count": 1079315,
-      "rev_date": "2026-09-25T08:03:29Z",
-      "scrape_date": "2026-09-26T04:58:36.791306Z",
-      "stabilities": [
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "0.51.0",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/3kva8vx9rnk5qbza32xmksqms522km5l-k9s-0.51.0"
-      },
-      "system": "aarch64-darwin",
-      "group": "toplevel",
-      "priority": 5
-    },
-    {
-      "attr_path": "k9s",
-      "broken": false,
-      "derivation": "/nix/store/rrvvajhl6y0x8c5wrrn8cys73v3rga81-k9s-0.51.0.drv",
-      "description": "Kubernetes CLI To Manage Your Clusters In Style",
-      "install_id": "k9s",
-      "license": "Apache-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "name": "k9s-0.51.0",
-      "pname": "k9s",
-      "rev": "e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "rev_count": 1079315,
-      "rev_date": "2026-09-25T08:03:29Z",
-      "scrape_date": "2026-09-26T05:30:00.802819Z",
-      "stabilities": [
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "0.51.0",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/yca7sbm0lky5w6jzw8sz98lq888maxzq-k9s-0.51.0"
       },
       "system": "aarch64-linux",
       "group": "toplevel",
@@ -3714,122 +3301,6 @@
       "priority": 5
     },
     {
-      "attr_path": "pulumi-bin",
-      "broken": false,
-      "derivation": "/nix/store/q2b6nq9r8pwyxvhnfg9lmz8w8scjb9yx-pulumi-3.261.0.drv",
-      "description": "Pulumi is a cloud development platform that makes creating cloud programs easy and productive",
-      "install_id": "pulumi",
-      "license": "Apache-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "name": "pulumi-3.261.0",
-      "pname": "pulumi-bin",
-      "rev": "e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "rev_count": 1079315,
-      "rev_date": "2026-09-25T08:03:29Z",
-      "scrape_date": "2026-09-26T04:58:59.880665Z",
-      "stabilities": [
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "3.261.0",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/1b9q7zw15n0xvzg26nxrpx2v1qxjkwfl-pulumi-3.261.0"
-      },
-      "system": "aarch64-darwin",
-      "group": "toplevel",
-      "priority": 5
-    },
-    {
-      "attr_path": "pulumi-bin",
-      "broken": false,
-      "derivation": "/nix/store/ka4lvz38zj7ifb584azxxbszsscfl8gh-pulumi-3.261.0.drv",
-      "description": "Pulumi is a cloud development platform that makes creating cloud programs easy and productive",
-      "install_id": "pulumi",
-      "license": "Apache-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "name": "pulumi-3.261.0",
-      "pname": "pulumi-bin",
-      "rev": "e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "rev_count": 1079315,
-      "rev_date": "2026-09-25T08:03:29Z",
-      "scrape_date": "2026-09-26T05:30:39.615781Z",
-      "stabilities": [
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "3.261.0",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/psl5c67jm3fjammbmdagspcak1qxb5mg-pulumi-3.261.0"
-      },
-      "system": "aarch64-linux",
-      "group": "toplevel",
-      "priority": 5
-    },
-    {
-      "attr_path": "pulumictl",
-      "broken": false,
-      "derivation": "/nix/store/ybjplrjglpjr32zyrd1mqyb0xfvlhi9r-pulumictl-0.0.50.drv",
-      "description": "Swiss Army Knife for Pulumi Development",
-      "install_id": "pulumictl",
-      "license": "Apache-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "name": "pulumictl-0.0.50",
-      "pname": "pulumictl",
-      "rev": "e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "rev_count": 1079315,
-      "rev_date": "2026-09-25T08:03:29Z",
-      "scrape_date": "2026-09-26T04:58:59.917397Z",
-      "stabilities": [
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "0.0.50",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/hiq5493i2648zwa2r394xb4z675w3pb0-pulumictl-0.0.50"
-      },
-      "system": "aarch64-darwin",
-      "group": "toplevel",
-      "priority": 5
-    },
-    {
-      "attr_path": "pulumictl",
-      "broken": false,
-      "derivation": "/nix/store/f76npaymswm890pkdz6wqflmfllajxzm-pulumictl-0.0.50.drv",
-      "description": "Swiss Army Knife for Pulumi Development",
-      "install_id": "pulumictl",
-      "license": "Apache-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "name": "pulumictl-0.0.50",
-      "pname": "pulumictl",
-      "rev": "e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "rev_count": 1079315,
-      "rev_date": "2026-09-25T08:03:29Z",
-      "scrape_date": "2026-09-26T05:30:39.660186Z",
-      "stabilities": [
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "0.0.50",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/5qi93lpn5xar48m99kxzjjyy7ykwy9rm-pulumictl-0.0.50"
-      },
-      "system": "aarch64-linux",
-      "group": "toplevel",
-      "priority": 5
-    },
-    {
       "attr_path": "screen",
       "broken": false,
       "derivation": "/nix/store/ksxpihlkq6gf1im9cbrcnnzksxb5bzb1-screen-5.0.2.drv",
@@ -3947,64 +3418,6 @@
       ],
       "outputs": {
         "out": "/nix/store/ba9a731w7nlpbx3jjylvbjknyn5jy65f-socat-1.8.1.3"
-      },
-      "system": "aarch64-linux",
-      "group": "toplevel",
-      "priority": 5
-    },
-    {
-      "attr_path": "tektoncd-cli",
-      "broken": false,
-      "derivation": "/nix/store/57scaa2hkszag1q474ggf66l7dmbfygy-tektoncd-cli-0.46.1.drv",
-      "description": "Provides a CLI for interacting with Tekton - tkn",
-      "install_id": "tektoncd-cli",
-      "license": "Apache-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "name": "tektoncd-cli-0.46.1",
-      "pname": "tektoncd-cli",
-      "rev": "e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "rev_count": 1079315,
-      "rev_date": "2026-09-25T08:03:29Z",
-      "scrape_date": "2026-09-26T05:00:19.336762Z",
-      "stabilities": [
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "0.46.1",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/zv36k9kfd3v2sg3i459xfib6glnfnrwf-tektoncd-cli-0.46.1"
-      },
-      "system": "aarch64-darwin",
-      "group": "toplevel",
-      "priority": 5
-    },
-    {
-      "attr_path": "tektoncd-cli",
-      "broken": false,
-      "derivation": "/nix/store/6hsh565m26fc5b517ha9jyn96bg41zy1-tektoncd-cli-0.46.1.drv",
-      "description": "Provides a CLI for interacting with Tekton - tkn",
-      "install_id": "tektoncd-cli",
-      "license": "Apache-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "name": "tektoncd-cli-0.46.1",
-      "pname": "tektoncd-cli",
-      "rev": "e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
-      "rev_count": 1079315,
-      "rev_date": "2026-09-25T08:03:29Z",
-      "scrape_date": "2026-09-26T05:32:17.771517Z",
-      "stabilities": [
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "0.46.1",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/y8ac5inisd7s1dmhrcp3qk0bbh89fi03-tektoncd-cli-0.46.1"
       },
       "system": "aarch64-linux",
       "group": "toplevel",
@@ -4197,8 +3610,182 @@
       "priority": 5
     },
     {
+      "install_id": "cdk8s-cli",
+      "locked-url": "github:seedmatic/rke2lab/640ff685491ae51d6ccb16c62eff625169dbb879?narHash=sha256-h015Nm%2BShiJImEsbacXDETJUWMxIPPAUvtSwlxv%2BzG0%3D",
+      "flake-description": "RKE2 lab infrastructure and network blueprints",
+      "locked-flake-attr-path": "packages.aarch64-darwin.cdk8s-cli",
+      "derivation": "/nix/store/ns1an8rj04k5fhnb20pr4y25j8crp21b-cdk8s-cli-2.207.62.drv",
+      "outputs": {
+        "out": "/nix/store/ylm0fb56f9zaxr6mrx79jffxz1g2c4sa-cdk8s-cli-2.207.62"
+      },
+      "output-names": [
+        "out"
+      ],
+      "outputs-to-install": [
+        "out"
+      ],
+      "requested-outputs-to-install": [],
+      "package-system": "aarch64-darwin",
+      "system": "aarch64-darwin",
+      "name": "cdk8s-cli-2.207.62",
+      "pname": "cdk8s-cli",
+      "version": "2.207.62",
+      "description": "Command-line-interface for CDK for Kubernetes",
+      "licenses": [
+        "Apache-2.0"
+      ],
+      "broken": false,
+      "unfree": false,
+      "priority": 5
+    },
+    {
+      "install_id": "cdk8s-cli",
+      "locked-url": "github:seedmatic/rke2lab/640ff685491ae51d6ccb16c62eff625169dbb879?narHash=sha256-h015Nm%2BShiJImEsbacXDETJUWMxIPPAUvtSwlxv%2BzG0%3D",
+      "flake-description": "RKE2 lab infrastructure and network blueprints",
+      "locked-flake-attr-path": "packages.aarch64-linux.cdk8s-cli",
+      "derivation": "/nix/store/72r9lkj5ncwxhb2gj3yxrl8i21svz60f-cdk8s-cli-2.207.62.drv",
+      "outputs": {
+        "out": "/nix/store/wx3jn99zwyvmjrllk2yq11xzxlg6m0a5-cdk8s-cli-2.207.62"
+      },
+      "output-names": [
+        "out"
+      ],
+      "outputs-to-install": [
+        "out"
+      ],
+      "requested-outputs-to-install": [],
+      "package-system": "aarch64-linux",
+      "system": "aarch64-linux",
+      "name": "cdk8s-cli-2.207.62",
+      "pname": "cdk8s-cli",
+      "version": "2.207.62",
+      "description": "Command-line-interface for CDK for Kubernetes",
+      "licenses": [
+        "Apache-2.0"
+      ],
+      "broken": false,
+      "unfree": false,
+      "priority": 5
+    },
+    {
+      "install_id": "clusterctl",
+      "locked-url": "github:seedmatic/rke2lab/640ff685491ae51d6ccb16c62eff625169dbb879?narHash=sha256-h015Nm%2BShiJImEsbacXDETJUWMxIPPAUvtSwlxv%2BzG0%3D",
+      "flake-description": "RKE2 lab infrastructure and network blueprints",
+      "locked-flake-attr-path": "packages.aarch64-darwin.clusterctl",
+      "derivation": "/nix/store/3jw9i9dwl7nxfqvlxsm8c91813cl1v3f-clusterctl-1.13.4.drv",
+      "outputs": {
+        "out": "/nix/store/hrk10ssq5q8vnyw742zz4ri29vsdw8c3-clusterctl-1.13.4"
+      },
+      "output-names": [
+        "out"
+      ],
+      "outputs-to-install": [
+        "out"
+      ],
+      "requested-outputs-to-install": [],
+      "package-system": "aarch64-darwin",
+      "system": "aarch64-darwin",
+      "name": "clusterctl-1.13.4",
+      "pname": "clusterctl",
+      "version": "1.13.4",
+      "description": "Kubernetes cluster API tool",
+      "licenses": [
+        "Apache-2.0"
+      ],
+      "broken": false,
+      "unfree": false,
+      "priority": 5
+    },
+    {
+      "install_id": "clusterctl",
+      "locked-url": "github:seedmatic/rke2lab/640ff685491ae51d6ccb16c62eff625169dbb879?narHash=sha256-h015Nm%2BShiJImEsbacXDETJUWMxIPPAUvtSwlxv%2BzG0%3D",
+      "flake-description": "RKE2 lab infrastructure and network blueprints",
+      "locked-flake-attr-path": "packages.aarch64-linux.clusterctl",
+      "derivation": "/nix/store/bjp22mfjamy2iayhz8b848jn7h10jzmr-clusterctl-1.13.4.drv",
+      "outputs": {
+        "out": "/nix/store/v545w50wsj1qsccz2m328h9nkc7d51sx-clusterctl-1.13.4"
+      },
+      "output-names": [
+        "out"
+      ],
+      "outputs-to-install": [
+        "out"
+      ],
+      "requested-outputs-to-install": [],
+      "package-system": "aarch64-linux",
+      "system": "aarch64-linux",
+      "name": "clusterctl-1.13.4",
+      "pname": "clusterctl",
+      "version": "1.13.4",
+      "description": "Kubernetes cluster API tool",
+      "licenses": [
+        "Apache-2.0"
+      ],
+      "broken": false,
+      "unfree": false,
+      "priority": 5
+    },
+    {
+      "install_id": "dasel",
+      "locked-url": "github:seedmatic/rke2lab/640ff685491ae51d6ccb16c62eff625169dbb879?narHash=sha256-h015Nm%2BShiJImEsbacXDETJUWMxIPPAUvtSwlxv%2BzG0%3D",
+      "flake-description": "RKE2 lab infrastructure and network blueprints",
+      "locked-flake-attr-path": "packages.aarch64-darwin.dasel",
+      "derivation": "/nix/store/q8pnb2yj1anxhwq9aryp6v53rrpjp7bg-dasel-3.11.2.drv",
+      "outputs": {
+        "out": "/nix/store/z3yilbnximd17bcnips6dxbld1i08q5v-dasel-3.11.2"
+      },
+      "output-names": [
+        "out"
+      ],
+      "outputs-to-install": [
+        "out"
+      ],
+      "requested-outputs-to-install": [],
+      "package-system": "aarch64-darwin",
+      "system": "aarch64-darwin",
+      "name": "dasel-3.11.2",
+      "pname": "dasel",
+      "version": "3.11.2",
+      "description": "Query and update data structures from the command line",
+      "licenses": [
+        "MIT"
+      ],
+      "broken": false,
+      "unfree": false,
+      "priority": 5
+    },
+    {
+      "install_id": "dasel",
+      "locked-url": "github:seedmatic/rke2lab/640ff685491ae51d6ccb16c62eff625169dbb879?narHash=sha256-h015Nm%2BShiJImEsbacXDETJUWMxIPPAUvtSwlxv%2BzG0%3D",
+      "flake-description": "RKE2 lab infrastructure and network blueprints",
+      "locked-flake-attr-path": "packages.aarch64-linux.dasel",
+      "derivation": "/nix/store/0yyjr2lqdkzj4gnc1krc21fy3jffrlyz-dasel-3.11.2.drv",
+      "outputs": {
+        "out": "/nix/store/a5s5ydryd4clvhv10h7vjjc2s5q1ywj5-dasel-3.11.2"
+      },
+      "output-names": [
+        "out"
+      ],
+      "outputs-to-install": [
+        "out"
+      ],
+      "requested-outputs-to-install": [],
+      "package-system": "aarch64-linux",
+      "system": "aarch64-linux",
+      "name": "dasel-3.11.2",
+      "pname": "dasel",
+      "version": "3.11.2",
+      "description": "Query and update data structures from the command line",
+      "licenses": [
+        "MIT"
+      ],
+      "broken": false,
+      "unfree": false,
+      "priority": 5
+    },
+    {
       "install_id": "flux9s",
-      "locked-url": "github:seedmatic/rke2lab/1b112ae98520a56ebee0cf5fb27f6f7714cff115?narHash=sha256-Juw2lnNuaTTN5gT4/1zUbspf2mcODYqEgG0PXwOZacQ%3D",
+      "locked-url": "github:seedmatic/rke2lab/5495e02c83a5cdd0cd136730d8ae9c051e235e2c?narHash=sha256-%2BWT6TJR8p46WSkUpBz/Jbh%2B2NX7oyYeUSDN/aD4VwOs%3D",
       "flake-description": "RKE2 lab infrastructure and network blueprints",
       "locked-flake-attr-path": "packages.aarch64-darwin.flux9s",
       "derivation": "/nix/store/fvpjmvmq2z5437wlx1yqddyr3kcid1rg-flux9s-1.0.3.drv",
@@ -4227,7 +3814,7 @@
     },
     {
       "install_id": "flux9s",
-      "locked-url": "github:seedmatic/rke2lab/1b112ae98520a56ebee0cf5fb27f6f7714cff115?narHash=sha256-Juw2lnNuaTTN5gT4/1zUbspf2mcODYqEgG0PXwOZacQ%3D",
+      "locked-url": "github:seedmatic/rke2lab/5495e02c83a5cdd0cd136730d8ae9c051e235e2c?narHash=sha256-%2BWT6TJR8p46WSkUpBz/Jbh%2B2NX7oyYeUSDN/aD4VwOs%3D",
       "flake-description": "RKE2 lab infrastructure and network blueprints",
       "locked-flake-attr-path": "packages.aarch64-linux.flux9s",
       "derivation": "/nix/store/3yjnfil6gvba2qxq215dzalivqxnigdq-flux9s-1.0.3.drv",
@@ -4255,8 +3842,66 @@
       "priority": 5
     },
     {
+      "install_id": "graphviz",
+      "locked-url": "github:seedmatic/rke2lab/640ff685491ae51d6ccb16c62eff625169dbb879?narHash=sha256-h015Nm%2BShiJImEsbacXDETJUWMxIPPAUvtSwlxv%2BzG0%3D",
+      "flake-description": "RKE2 lab infrastructure and network blueprints",
+      "locked-flake-attr-path": "packages.aarch64-darwin.graphviz",
+      "derivation": "/nix/store/h25cbfz3qjih4shsrjylrni94ypszy55-graphviz-15.1.1.drv",
+      "outputs": {
+        "out": "/nix/store/mc99a6bpbk2waym2cnw6ifmxli4ndb4x-graphviz-15.1.1"
+      },
+      "output-names": [
+        "out"
+      ],
+      "outputs-to-install": [
+        "out"
+      ],
+      "requested-outputs-to-install": [],
+      "package-system": "aarch64-darwin",
+      "system": "aarch64-darwin",
+      "name": "graphviz-15.1.1",
+      "pname": "graphviz",
+      "version": "15.1.1",
+      "description": "Graph visualization tools",
+      "licenses": [
+        "EPL-1.0"
+      ],
+      "broken": false,
+      "unfree": false,
+      "priority": 5
+    },
+    {
+      "install_id": "graphviz",
+      "locked-url": "github:seedmatic/rke2lab/640ff685491ae51d6ccb16c62eff625169dbb879?narHash=sha256-h015Nm%2BShiJImEsbacXDETJUWMxIPPAUvtSwlxv%2BzG0%3D",
+      "flake-description": "RKE2 lab infrastructure and network blueprints",
+      "locked-flake-attr-path": "packages.aarch64-linux.graphviz",
+      "derivation": "/nix/store/vdqhm7l2n3fgf1b00pmdfvf93pkxwkcd-graphviz-15.1.1.drv",
+      "outputs": {
+        "out": "/nix/store/vz4zb8d1rfigzzdn3i0hd4kff28vk02l-graphviz-15.1.1"
+      },
+      "output-names": [
+        "out"
+      ],
+      "outputs-to-install": [
+        "out"
+      ],
+      "requested-outputs-to-install": [],
+      "package-system": "aarch64-linux",
+      "system": "aarch64-linux",
+      "name": "graphviz-15.1.1",
+      "pname": "graphviz",
+      "version": "15.1.1",
+      "description": "Graph visualization tools",
+      "licenses": [
+        "EPL-1.0"
+      ],
+      "broken": false,
+      "unfree": false,
+      "priority": 5
+    },
+    {
       "install_id": "incus-client",
-      "locked-url": "github:seedmatic/rke2lab/1b112ae98520a56ebee0cf5fb27f6f7714cff115?narHash=sha256-Juw2lnNuaTTN5gT4/1zUbspf2mcODYqEgG0PXwOZacQ%3D",
+      "locked-url": "github:seedmatic/rke2lab/5495e02c83a5cdd0cd136730d8ae9c051e235e2c?narHash=sha256-%2BWT6TJR8p46WSkUpBz/Jbh%2B2NX7oyYeUSDN/aD4VwOs%3D",
       "flake-description": "RKE2 lab infrastructure and network blueprints",
       "locked-flake-attr-path": "packages.aarch64-darwin.incus-client",
       "derivation": "/nix/store/7ksq3h46dyrc75r24sv41x3chmpwq8w4-incus-client-7.4.0.drv",
@@ -4285,7 +3930,7 @@
     },
     {
       "install_id": "incus-client",
-      "locked-url": "github:seedmatic/rke2lab/1b112ae98520a56ebee0cf5fb27f6f7714cff115?narHash=sha256-Juw2lnNuaTTN5gT4/1zUbspf2mcODYqEgG0PXwOZacQ%3D",
+      "locked-url": "github:seedmatic/rke2lab/5495e02c83a5cdd0cd136730d8ae9c051e235e2c?narHash=sha256-%2BWT6TJR8p46WSkUpBz/Jbh%2B2NX7oyYeUSDN/aD4VwOs%3D",
       "flake-description": "RKE2 lab infrastructure and network blueprints",
       "locked-flake-attr-path": "packages.aarch64-linux.incus-client",
       "derivation": "/nix/store/bkxsmg2fvsmssd7kiixc8k9nz5wxk82f-incus-client-7.4.0.drv",
@@ -4373,13 +4018,71 @@
       "priority": 1
     },
     {
+      "install_id": "k9s",
+      "locked-url": "github:seedmatic/rke2lab/640ff685491ae51d6ccb16c62eff625169dbb879?narHash=sha256-h015Nm%2BShiJImEsbacXDETJUWMxIPPAUvtSwlxv%2BzG0%3D",
+      "flake-description": "RKE2 lab infrastructure and network blueprints",
+      "locked-flake-attr-path": "packages.aarch64-darwin.k9s",
+      "derivation": "/nix/store/ry4ms000i5672dmig1vbfvw79c72fffg-k9s-0.51.0.drv",
+      "outputs": {
+        "out": "/nix/store/017kmndpfz0x9l4j2j8k83yxpf9rlnp7-k9s-0.51.0"
+      },
+      "output-names": [
+        "out"
+      ],
+      "outputs-to-install": [
+        "out"
+      ],
+      "requested-outputs-to-install": [],
+      "package-system": "aarch64-darwin",
+      "system": "aarch64-darwin",
+      "name": "k9s-0.51.0",
+      "pname": "k9s",
+      "version": "0.51.0",
+      "description": "Kubernetes CLI To Manage Your Clusters In Style",
+      "licenses": [
+        "Apache-2.0"
+      ],
+      "broken": false,
+      "unfree": false,
+      "priority": 5
+    },
+    {
+      "install_id": "k9s",
+      "locked-url": "github:seedmatic/rke2lab/640ff685491ae51d6ccb16c62eff625169dbb879?narHash=sha256-h015Nm%2BShiJImEsbacXDETJUWMxIPPAUvtSwlxv%2BzG0%3D",
+      "flake-description": "RKE2 lab infrastructure and network blueprints",
+      "locked-flake-attr-path": "packages.aarch64-linux.k9s",
+      "derivation": "/nix/store/13l86kaisihm0gnx9gjm3m1j2zppa3ad-k9s-0.51.0.drv",
+      "outputs": {
+        "out": "/nix/store/kfnnj8vhpyd3zl577n1hp3arzgd0rplp-k9s-0.51.0"
+      },
+      "output-names": [
+        "out"
+      ],
+      "outputs-to-install": [
+        "out"
+      ],
+      "requested-outputs-to-install": [],
+      "package-system": "aarch64-linux",
+      "system": "aarch64-linux",
+      "name": "k9s-0.51.0",
+      "pname": "k9s",
+      "version": "0.51.0",
+      "description": "Kubernetes CLI To Manage Your Clusters In Style",
+      "licenses": [
+        "Apache-2.0"
+      ],
+      "broken": false,
+      "unfree": false,
+      "priority": 5
+    },
+    {
       "install_id": "manage-tailnet",
-      "locked-url": "github:seedmatic/rke2lab/1b112ae98520a56ebee0cf5fb27f6f7714cff115?narHash=sha256-Juw2lnNuaTTN5gT4/1zUbspf2mcODYqEgG0PXwOZacQ%3D",
+      "locked-url": "github:seedmatic/rke2lab/5495e02c83a5cdd0cd136730d8ae9c051e235e2c?narHash=sha256-%2BWT6TJR8p46WSkUpBz/Jbh%2B2NX7oyYeUSDN/aD4VwOs%3D",
       "flake-description": "RKE2 lab infrastructure and network blueprints",
       "locked-flake-attr-path": "packages.aarch64-darwin.manage-tailnet",
-      "derivation": "/nix/store/ac69kkqm951852k724b6dy89spvck2hi-manage-tailnet.drv",
+      "derivation": "/nix/store/cin9kj5f2q22a40zlj63aygv1vs5fhnq-manage-tailnet.drv",
       "outputs": {
-        "out": "/nix/store/s8n6440629hcb69g157k8c86i5vjx164-manage-tailnet"
+        "out": "/nix/store/n0ir30gxjiz4c5rpk43iz9823gdg4w5m-manage-tailnet"
       },
       "output-names": [
         "out"
@@ -4495,6 +4198,180 @@
       "package-system": "aarch64-linux",
       "system": "aarch64-linux",
       "name": "docker",
+      "broken": false,
+      "unfree": false,
+      "priority": 5
+    },
+    {
+      "install_id": "pulumi",
+      "locked-url": "github:seedmatic/rke2lab/640ff685491ae51d6ccb16c62eff625169dbb879?narHash=sha256-h015Nm%2BShiJImEsbacXDETJUWMxIPPAUvtSwlxv%2BzG0%3D",
+      "flake-description": "RKE2 lab infrastructure and network blueprints",
+      "locked-flake-attr-path": "packages.aarch64-darwin.pulumi",
+      "derivation": "/nix/store/cdicwnxh096rnqz3wyqr5ac2g2gwsm9i-pulumi-3.263.0.drv",
+      "outputs": {
+        "out": "/nix/store/3wgmnvf052606v8iwzxr8jg0fjkwanqy-pulumi-3.263.0"
+      },
+      "output-names": [
+        "out"
+      ],
+      "outputs-to-install": [
+        "out"
+      ],
+      "requested-outputs-to-install": [],
+      "package-system": "aarch64-darwin",
+      "system": "aarch64-darwin",
+      "name": "pulumi-3.263.0",
+      "pname": "pulumi",
+      "version": "3.263.0",
+      "description": "Cloud development platform that makes creating cloud programs easy and productive",
+      "licenses": [
+        "Apache-2.0"
+      ],
+      "broken": false,
+      "unfree": false,
+      "priority": 5
+    },
+    {
+      "install_id": "pulumi",
+      "locked-url": "github:seedmatic/rke2lab/640ff685491ae51d6ccb16c62eff625169dbb879?narHash=sha256-h015Nm%2BShiJImEsbacXDETJUWMxIPPAUvtSwlxv%2BzG0%3D",
+      "flake-description": "RKE2 lab infrastructure and network blueprints",
+      "locked-flake-attr-path": "packages.aarch64-linux.pulumi",
+      "derivation": "/nix/store/h44l4fdz09p8h2s9bcy4ahhn9xkzlmf6-pulumi-3.263.0.drv",
+      "outputs": {
+        "out": "/nix/store/cl8rpnyd5vv36552x99q8rg94c8y44j6-pulumi-3.263.0"
+      },
+      "output-names": [
+        "out"
+      ],
+      "outputs-to-install": [
+        "out"
+      ],
+      "requested-outputs-to-install": [],
+      "package-system": "aarch64-linux",
+      "system": "aarch64-linux",
+      "name": "pulumi-3.263.0",
+      "pname": "pulumi",
+      "version": "3.263.0",
+      "description": "Cloud development platform that makes creating cloud programs easy and productive",
+      "licenses": [
+        "Apache-2.0"
+      ],
+      "broken": false,
+      "unfree": false,
+      "priority": 5
+    },
+    {
+      "install_id": "pulumi-java",
+      "locked-url": "github:seedmatic/rke2lab/640ff685491ae51d6ccb16c62eff625169dbb879?narHash=sha256-h015Nm%2BShiJImEsbacXDETJUWMxIPPAUvtSwlxv%2BzG0%3D",
+      "flake-description": "RKE2 lab infrastructure and network blueprints",
+      "locked-flake-attr-path": "packages.aarch64-darwin.pulumi-java",
+      "derivation": "/nix/store/d0fxlwvsywwdb5w9h3vc4sz2lhjvnj01-pulumi-java-1.37.2.drv",
+      "outputs": {
+        "out": "/nix/store/mzq6qc3x5f0nq6p3bmg6qq7wynj3as70-pulumi-java-1.37.2"
+      },
+      "output-names": [
+        "out"
+      ],
+      "outputs-to-install": [
+        "out"
+      ],
+      "requested-outputs-to-install": [],
+      "package-system": "aarch64-darwin",
+      "system": "aarch64-darwin",
+      "name": "pulumi-java-1.37.2",
+      "pname": "pulumi-java",
+      "version": "1.37.2",
+      "description": "Language host for Pulumi programs written in Java",
+      "licenses": [
+        "Apache-2.0"
+      ],
+      "broken": false,
+      "unfree": false,
+      "priority": 5
+    },
+    {
+      "install_id": "pulumi-java",
+      "locked-url": "github:seedmatic/rke2lab/640ff685491ae51d6ccb16c62eff625169dbb879?narHash=sha256-h015Nm%2BShiJImEsbacXDETJUWMxIPPAUvtSwlxv%2BzG0%3D",
+      "flake-description": "RKE2 lab infrastructure and network blueprints",
+      "locked-flake-attr-path": "packages.aarch64-linux.pulumi-java",
+      "derivation": "/nix/store/49j9dy1ffairjjr2x14qnxzwlacjrxmf-pulumi-java-1.37.2.drv",
+      "outputs": {
+        "out": "/nix/store/dfnbq6qsf01ckm1513fwcrlygbjvy7sq-pulumi-java-1.37.2"
+      },
+      "output-names": [
+        "out"
+      ],
+      "outputs-to-install": [
+        "out"
+      ],
+      "requested-outputs-to-install": [],
+      "package-system": "aarch64-linux",
+      "system": "aarch64-linux",
+      "name": "pulumi-java-1.37.2",
+      "pname": "pulumi-java",
+      "version": "1.37.2",
+      "description": "Language host for Pulumi programs written in Java",
+      "licenses": [
+        "Apache-2.0"
+      ],
+      "broken": false,
+      "unfree": false,
+      "priority": 5
+    },
+    {
+      "install_id": "pulumictl",
+      "locked-url": "github:seedmatic/rke2lab/640ff685491ae51d6ccb16c62eff625169dbb879?narHash=sha256-h015Nm%2BShiJImEsbacXDETJUWMxIPPAUvtSwlxv%2BzG0%3D",
+      "flake-description": "RKE2 lab infrastructure and network blueprints",
+      "locked-flake-attr-path": "packages.aarch64-darwin.pulumictl",
+      "derivation": "/nix/store/mzb1gfkil7q49wl74bflxhw82hvv3qyd-pulumictl-0.0.50.drv",
+      "outputs": {
+        "out": "/nix/store/a400n6dsazd1612nx1bl47j48ycbllzk-pulumictl-0.0.50"
+      },
+      "output-names": [
+        "out"
+      ],
+      "outputs-to-install": [
+        "out"
+      ],
+      "requested-outputs-to-install": [],
+      "package-system": "aarch64-darwin",
+      "system": "aarch64-darwin",
+      "name": "pulumictl-0.0.50",
+      "pname": "pulumictl",
+      "version": "0.0.50",
+      "description": "Swiss Army Knife for Pulumi Development",
+      "licenses": [
+        "Apache-2.0"
+      ],
+      "broken": false,
+      "unfree": false,
+      "priority": 5
+    },
+    {
+      "install_id": "pulumictl",
+      "locked-url": "github:seedmatic/rke2lab/640ff685491ae51d6ccb16c62eff625169dbb879?narHash=sha256-h015Nm%2BShiJImEsbacXDETJUWMxIPPAUvtSwlxv%2BzG0%3D",
+      "flake-description": "RKE2 lab infrastructure and network blueprints",
+      "locked-flake-attr-path": "packages.aarch64-linux.pulumictl",
+      "derivation": "/nix/store/d4qqkr130wb6ymak2z1z9b76lv80fd17-pulumictl-0.0.50.drv",
+      "outputs": {
+        "out": "/nix/store/nnjba0x79iyglbwqy5zd7vqqhj3d8jy7-pulumictl-0.0.50"
+      },
+      "output-names": [
+        "out"
+      ],
+      "outputs-to-install": [
+        "out"
+      ],
+      "requested-outputs-to-install": [],
+      "package-system": "aarch64-linux",
+      "system": "aarch64-linux",
+      "name": "pulumictl-0.0.50",
+      "pname": "pulumictl",
+      "version": "0.0.50",
+      "description": "Swiss Army Knife for Pulumi Development",
+      "licenses": [
+        "Apache-2.0"
+      ],
       "broken": false,
       "unfree": false,
       "priority": 5
@@ -4630,49 +4507,104 @@
       "broken": false,
       "unfree": false,
       "priority": 5
+    },
+    {
+      "install_id": "tektoncd-cli",
+      "locked-url": "github:seedmatic/rke2lab/640ff685491ae51d6ccb16c62eff625169dbb879?narHash=sha256-h015Nm%2BShiJImEsbacXDETJUWMxIPPAUvtSwlxv%2BzG0%3D",
+      "flake-description": "RKE2 lab infrastructure and network blueprints",
+      "locked-flake-attr-path": "packages.aarch64-darwin.tektoncd-cli",
+      "derivation": "/nix/store/gvh01ksjl5fzc3wi1d38azjg7fc2acvl-tektoncd-cli-0.46.1.drv",
+      "outputs": {
+        "out": "/nix/store/kfwd78rr9km7d9q182815sx8rrapd82n-tektoncd-cli-0.46.1"
+      },
+      "output-names": [
+        "out"
+      ],
+      "outputs-to-install": [
+        "out"
+      ],
+      "requested-outputs-to-install": [],
+      "package-system": "aarch64-darwin",
+      "system": "aarch64-darwin",
+      "name": "tektoncd-cli-0.46.1",
+      "pname": "tektoncd-cli",
+      "version": "0.46.1",
+      "description": "Provides a CLI for interacting with Tekton - tkn",
+      "licenses": [
+        "Apache-2.0"
+      ],
+      "broken": false,
+      "unfree": false,
+      "priority": 5
+    },
+    {
+      "install_id": "tektoncd-cli",
+      "locked-url": "github:seedmatic/rke2lab/640ff685491ae51d6ccb16c62eff625169dbb879?narHash=sha256-h015Nm%2BShiJImEsbacXDETJUWMxIPPAUvtSwlxv%2BzG0%3D",
+      "flake-description": "RKE2 lab infrastructure and network blueprints",
+      "locked-flake-attr-path": "packages.aarch64-linux.tektoncd-cli",
+      "derivation": "/nix/store/d05x9lqrq0n3cihmw00rbhxs65vki8rv-tektoncd-cli-0.46.1.drv",
+      "outputs": {
+        "out": "/nix/store/3fjy45gibr6c9zkkspsp4gn535189v60-tektoncd-cli-0.46.1"
+      },
+      "output-names": [
+        "out"
+      ],
+      "outputs-to-install": [
+        "out"
+      ],
+      "requested-outputs-to-install": [],
+      "package-system": "aarch64-linux",
+      "system": "aarch64-linux",
+      "name": "tektoncd-cli-0.46.1",
+      "pname": "tektoncd-cli",
+      "version": "0.46.1",
+      "description": "Provides a CLI for interacting with Tekton - tkn",
+      "licenses": [
+        "Apache-2.0"
+      ],
+      "broken": false,
+      "unfree": false,
+      "priority": 5
     }
   ],
   "compose": {
     "composer": {
       "schema-version": "1.10.0",
       "install": {
-        "bats": {
-          "pkg-path": "bats"
-        },
         "cdk8s-cli": {
-          "pkg-path": "cdk8s-cli"
+          "flake": "github:seedmatic/rke2lab#cdk8s-cli"
         },
         "claude-code": {
           "pkg-path": "claude-code"
         },
         "clusterctl": {
-          "pkg-path": "clusterctl"
+          "flake": "github:seedmatic/rke2lab#clusterctl"
         },
         "dasel": {
-          "pkg-path": "dasel"
+          "flake": "github:seedmatic/rke2lab#dasel"
         },
         "flox-mcp-server": {
           "pkg-path": "flox/flox-mcp-server",
           "pkg-group": "flox-mcp-server"
         },
         "flux9s": {
-          "flake": "github:seedmatic/rke2lab/feature/viewpoint-separation#flux9s"
+          "flake": "github:seedmatic/rke2lab#flux9s"
         },
         "graphviz": {
-          "pkg-path": "graphviz"
+          "flake": "github:seedmatic/rke2lab#graphviz"
         },
         "incus-client": {
-          "flake": "github:seedmatic/rke2lab/feature/viewpoint-separation#incus-client"
+          "flake": "github:seedmatic/rke2lab#incus-client"
         },
         "jdk25": {
           "flake": "github:seedmatic/rke2lab#jdk25",
           "priority": 1
         },
         "k9s": {
-          "pkg-path": "k9s"
+          "flake": "github:seedmatic/rke2lab#k9s"
         },
         "manage-tailnet": {
-          "flake": "github:seedmatic/rke2lab/feature/viewpoint-separation#manage-tailnet",
+          "flake": "github:seedmatic/rke2lab#manage-tailnet",
           "systems": [
             "aarch64-darwin"
           ]
@@ -4681,10 +4613,13 @@
           "flake": "github:seedmatic/rke2lab#maven"
         },
         "pulumi": {
-          "pkg-path": "pulumi-bin"
+          "flake": "github:seedmatic/rke2lab#pulumi"
+        },
+        "pulumi-java": {
+          "flake": "github:seedmatic/rke2lab#pulumi-java"
         },
         "pulumictl": {
-          "pkg-path": "pulumictl"
+          "flake": "github:seedmatic/rke2lab#pulumictl"
         },
         "shellcheck": {
           "flake": "github:seedmatic/rke2lab#shellcheck"
@@ -4693,18 +4628,17 @@
           "flake": "github:seedmatic/rke2lab#shfmt"
         },
         "tektoncd-cli": {
-          "pkg-path": "tektoncd-cli"
+          "flake": "github:seedmatic/rke2lab#tektoncd-cli"
         }
       },
       "vars": {
         "GITHUB_OWNER": "seedmatic",
-        "M2_REPO": "${HOME}/.m2/repository",
         "PULUMI_BACKEND_URL": "file://${FLOX_ENV_PROJECT}/.pulumi-state",
         "PULUMI_CONFIG_PASSPHRASE": "",
         "PULUMI_HOME": "${XDG_STATE_HOME:-$HOME/.local/state}/pulumi"
       },
       "hook": {
-        "on-activate": "  mkdir -p \"${PULUMI_HOME}\"\n  mkdir -p \"${FLOX_ENV_PROJECT}/.pulumi-state\"\n  if command -v javac >/dev/null 2>&1; then\n    export JAVA_HOME=\"$(dirname \"$(dirname \"$(command -v javac)\")\")\"\n  fi\n  if command -v gh >/dev/null 2>&1 && [ -z \"${GH_TOKEN:-}\" ]; then\n    export GH_TOKEN=\"$(gh auth token 2>/dev/null)\"\n  fi\n  export KUBECONFIG=\"${FLOX_ENV_PROJECT}/.local.d/kubeconfig.yaml\"\n"
+        "on-activate": "  mkdir -p \"${PULUMI_HOME}\"\n  mkdir -p \"${FLOX_ENV_PROJECT}/.pulumi-state\"\n  if command -v javac >/dev/null 2>&1; then\n    export JAVA_HOME=\"$(dirname \"$(dirname \"$(command -v javac)\")\")\"\n  fi\n  # No GH_TOKEN export here, on purpose: a copy taken at activation goes stale at the next\n  # `gh auth refresh`, and every process launched from this shell (VS Code, agent sessions)\n  # inherits it and shadows the fresh keyring token. gh reads the keyring itself when unset.\n  export KUBECONFIG=\"${FLOX_ENV_PROJECT}/.local.d/kubeconfig.yaml\"\n"
       },
       "profile": {},
       "options": {},
@@ -4726,7 +4660,7 @@
             "dir": "./.flox-envs.d/keyhole"
           },
           {
-            "dir": "./.flox-envs.d/pulumi"
+            "dir": "./.flox-envs.d/flake-registry"
           },
           {
             "dir": "./.flox-envs.d/shell"
@@ -4927,9 +4861,6 @@
               "pkg-group": "keyhole"
             }
           },
-          "hook": {
-            "on-activate": "    if [ -d \"${FLOX_ENV_PROJECT}/.github\" ]; then\n      remote=$(git -C \"${FLOX_ENV_PROJECT}\" remote get-url origin 2>/dev/null || true)\n      if [ -n \"${remote}\" ]; then\n        remote_host=\"github.com\"\n        case \"${remote}\" in\n          git@*:* )\n            remote_host=$(printf '%s' \"${remote}\" | cut -d'@' -f 2 | cut -d':' -f 1)\n            ;;\n          http://*|https://*)\n            remote_host=$(printf '%s' \"${remote}\" | cut -d'/' -f 3)\n            ;;\n          ssh://*)\n            remote_host=$(printf '%s' \"${remote}\" | cut -d'/' -f 3 | cut -d':' -f 1)\n            ;;\n        esac\n    \n        if [ -n \"${GH_TOKEN:-}\" ] && ! gh auth status --hostname \"${remote_host}\" >/dev/null 2>&1; then\n          echo \"Detected GH_TOKEN, logging in gh for ${remote_host}...\" >&2\n          printf '%s' \"${GH_TOKEN}\" | gh auth login --with-token --hostname \"${remote_host}\" >/dev/null 2>&1 || true\n        fi\n    \n        if gh auth status --hostname \"${remote_host}\" >/dev/null 2>&1; then\n          gh auth setup-git --hostname \"${remote_host}\" >/dev/null 2>&1 || true\n        fi\n      fi\n    fi\n  "
-          },
           "profile": {
             "common": "    GITHUB_SIGNING_KEYFILE=\"$HOME\"/.ssh/keys.d/github-signing\n    if [[ -r \"$GITHUB_SIGNING_KEYFILE\" ]]; then\n      set -a\n      SOPS_AGE_KEY=$( ssh-to-age -private-key < \"$GITHUB_SIGNING_KEYFILE\" )\n      set +a\n    else\n      echo no signing key\n    fi\n  \n    if [ -d \"${FLOX_ENV_PROJECT}/.github\" ]; then\n      gh_login=\"\"\n      if [ -n \"${GH_TOKEN:-}\" ]; then\n        gh_login=$(gh api user --jq '.login' 2>/dev/null || true)\n      elif command -v pass >/dev/null 2>&1; then\n        gh_secret=$(pass show coding/github@work 2>/dev/null | head -n 1 || true)\n        if [ -n \"${gh_secret}\" ]; then\n          gh_login=$(env GH_TOKEN=\"${gh_secret}\" gh api user --jq '.login' 2>/dev/null || true)\n        fi\n      fi\n      if [ -n \"${gh_login}\" ]; then\n        remote=$(git -C \"${FLOX_ENV_PROJECT}\" remote get-url origin 2>/dev/null || true)\n        if [ -n \"${remote}\" ]; then\n          owner=$(printf '%s' \"${remote}\" | cut -d'/' -f 4)\n          repo_name=$(printf '%s' \"${remote}\" | cut -d'/' -f 5 | cut -d'.' -f 1)\n          export GITHUB_LOGIN=\"${gh_login}\"\n          export GITHUB_OWNER=\"${owner}\"\n          export GITHUB_REPOSITORY=\"${owner}/${repo_name}\"\n        fi\n      fi\n    fi\n  "
           },
@@ -4995,11 +4926,6 @@
             "helmfile": {
               "pkg-path": "helmfile",
               "pkg-group": "k8s-kubectl-tools",
-              "outputs": "all"
-            },
-            "kpt": {
-              "pkg-path": "kpt",
-              "pkg-group": "k8s-kpt-tools",
               "outputs": "all"
             },
             "krew": {
@@ -5148,28 +5074,15 @@
       },
       {
         "manifest": {
-          "schema-version": "1.10.0",
-          "install": {
-            "pulumi": {
-              "pkg-path": "pulumi-bin"
-            },
-            "pulumictl": {
-              "pkg-path": "pulumictl"
-            }
-          },
-          "vars": {
-            "PULUMI_CONFIG_PASSPHRASE": "",
-            "PULUMI_HOME": "${XDG_STATE_HOME:-$HOME/.local/state}/pulumi"
-          },
+          "schema-version": "1.11.0",
           "hook": {
-            "on-activate": "    mkdir -p \"$PULUMI_HOME\"\n  "
+            "on-activate": "  _flox_nix_registry=\"\"\n  if [ -f \"${FLOX_ENV_PROJECT}/flake-registry.local.json\" ]; then\n    _flox_nix_registry=\"${FLOX_ENV_PROJECT}/flake-registry.local.json\"\n  elif [ -f \"${FLOX_ENV_PROJECT}/flake-registry.json\" ]; then\n    _flox_nix_registry=\"${FLOX_ENV_PROJECT}/flake-registry.json\"\n  fi\n  if [ -n \"$_flox_nix_registry\" ]; then\n    # nix.conf settings are newline-separated and NIX_CONFIG may already carry some — notably\n    # the access-tokens for the private inputs, which have to survive this.\n    _flox_nix_nl='\n'\n    export NIX_CONFIG=\"${NIX_CONFIG:+${NIX_CONFIG}${_flox_nix_nl}}flake-registry = $_flox_nix_registry\"\n    unset _flox_nix_nl\n  fi\n  unset _flox_nix_registry\n"
           },
-          "profile": {},
           "options": {}
         },
-        "name": "pulumi",
+        "name": "flake-registry",
         "descriptor": {
-          "dir": "./.flox-envs.d/pulumi"
+          "dir": "./.flox-envs.d/flake-registry"
         }
       },
       {
@@ -5444,24 +5357,6 @@
         "warning": {
           "Overriding": [
             "install",
-            "pulumi"
-          ]
-        },
-        "higher_priority_name": "Current manifest"
-      },
-      {
-        "warning": {
-          "Overriding": [
-            "install",
-            "pulumictl"
-          ]
-        },
-        "higher_priority_name": "Current manifest"
-      },
-      {
-        "warning": {
-          "Overriding": [
-            "install",
             "shellcheck"
           ]
         },
@@ -5472,24 +5367,6 @@
           "Overriding": [
             "install",
             "shfmt"
-          ]
-        },
-        "higher_priority_name": "Current manifest"
-      },
-      {
-        "warning": {
-          "Overriding": [
-            "vars",
-            "PULUMI_CONFIG_PASSPHRASE"
-          ]
-        },
-        "higher_priority_name": "Current manifest"
-      },
-      {
-        "warning": {
-          "Overriding": [
-            "vars",
-            "PULUMI_HOME"
           ]
         },
         "higher_priority_name": "Current manifest"

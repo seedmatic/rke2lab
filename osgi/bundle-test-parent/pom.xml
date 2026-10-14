@@ -22,6 +22,14 @@
     them yet. The out-of-container harness (src/test) gets junit-platform-launcher too; it pulls
     platform-engine/commons + opentest4j/apiguardian transitively.</description>
 
+  <properties>
+    <!-- scenario-testkit's jgiven-fragment.bnd is -included by the fragments that run jGiven, yet
+         lives in another module, where their build cache never looks: an edit there served each of
+         them its cached manifest. Keyed here for every fragment, the BDD-capable default above —
+         the few that include no jGiven yet rebuild with the others, which is never stale. -->
+    <maven.build.cache.input.2>${maven.multiModuleProjectDirectory}/osgi/runtime/scenario-testkit/src/main/resources/jgiven-fragment.bnd</maven.build.cache.input.2>
+  </properties>
+
   <dependencies>
     <!-- The runtime-playable machinery, now in the engine module (JUnit/jGiven are runtime-scope):
          OutOfContainerFrameworkExtension (src/test harness), InContainerJUnitRunner (src/main, runs

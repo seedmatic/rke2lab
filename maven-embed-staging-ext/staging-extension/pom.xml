@@ -50,7 +50,7 @@
     </dependency>
     <!-- The SCHEMA_CONCORD gate validates each Document coordinate's <slug>.schema.json against the
          JSON-Schema meta-schema. networknt is jackson-based; this is build-tooling only (no runtime
-         bundle imports it in 2D — DocumentCodec.validate is off until the remote capstone). Version
+         bundle imports it in 2D — SeedCodec.validate is off until the remote capstone). Version
          from ${networknt.json-schema.version} in the project BOM, imported via build-parent (same as
          the ASM deps above) — single source of truth, no inline pin. -->
     <dependency>

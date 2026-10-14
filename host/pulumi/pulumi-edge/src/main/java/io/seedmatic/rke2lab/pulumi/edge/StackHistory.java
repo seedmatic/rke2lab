@@ -1,9 +1,10 @@
 package io.seedmatic.rke2lab.pulumi.edge;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import io.seedmatic.rke2lab.seed.broker.codec.ReadingCodec;
+import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -40,7 +41,7 @@ import java.util.Optional;
  */
 public record StackHistory(Path historyDir) {
 
-  private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+  private static final ReadingCodec READING = new SeedCodec().reading();
 
   /** Factory — resolves the history dir from the backend root via the canonical layout. */
   public static StackHistory of(Path backendDir, String project, String stack) {
@@ -92,7 +93,7 @@ public record StackHistory(Path historyDir) {
     // timeline; the file name is the authority.
     Instant when = deploymentInstant(historyFile);
     try {
-      JsonNode root = OBJECT_MAPPER.readTree(historyFile.toFile());
+      JsonNode root = READING.readJson(Files.readString(historyFile));
 
       JsonNode versionNode = root.get("version");
       if (versionNode == null || !versionNode.canConvertToInt()) {
@@ -114,7 +115,7 @@ public record StackHistory(Path historyDir) {
 
       return new Entry(version, when, result, checkpointFile);
 
-    } catch (JsonProcessingException e) {
+    } catch (UncheckedIOException e) {
       // Malformed JSON — content is broken, never retry
       throw new StackContentException(historyFile, e);
     } catch (IOException e) {

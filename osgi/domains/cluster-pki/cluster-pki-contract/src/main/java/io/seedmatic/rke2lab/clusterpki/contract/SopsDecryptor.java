@@ -12,6 +12,9 @@ package io.seedmatic.rke2lab.clusterpki.contract;
  * already possess — with the cluster age identity the seal itself derives, mints only the missing
  * leaf from the recovered {@code server-ca}, and files it. Decryption is thus not an operator
  * secret we lack; it is a key we hold, and this is the door we had not yet built.
+ *
+ * <p>A failure of the tool is a {@link SopsEncryptionException}, whose message never quotes sops'
+ * stderr.
  */
 public interface SopsDecryptor {
 
@@ -27,4 +30,16 @@ public interface SopsDecryptor {
    * @return the plaintext YAML document
    */
   String decryptYaml(String sopsYaml, String ageIdentity);
+
+  /**
+   * Open {@code sopsYaml} with whatever identity sops finds on its own ({@code SOPS_AGE_KEY},
+   * {@code SOPS_AGE_KEY_FILE}, the default key file). The manifests render reads back the carrier
+   * it sealed on a previous run this way: in-cluster the cluster key is injected into its
+   * environment, on the operator's host the operator key is in place, and neither is ever held by
+   * the render itself.
+   *
+   * @param sopsYaml the sops-encrypted YAML document (piped through the tool, never touches disk)
+   * @return the plaintext YAML document
+   */
+  String decryptYaml(String sopsYaml);
 }

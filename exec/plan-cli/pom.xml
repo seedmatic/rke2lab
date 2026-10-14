@@ -24,6 +24,10 @@
     contract type crosses to the flat host. The domains stay separate; only the ingress is unified.</description>
 
   <dependencies>
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>seed-broker-codec</artifactId>
+    </dependency>
     <!-- The host-world boot infrastructure: OsgiRuntime + (transitively) the whole boot stack
          (felix.framework + osgi.core compile, felix.scr + felix.resolver + pax-logging + the
          DS-runtime API runtime). The CLI compiles against OsgiRuntime; the felix/pax jars it only
@@ -81,6 +85,17 @@
       <artifactId>pax-logback-config</artifactId>
       <scope>runtime</scope>
     </dependency>
+    <!-- The two harvests the export reads back, by their coordinates: compile scope, because the
+         host NAMES them (that is what earns each a dual-realm ingress module — it is staged as a
+         bundle for the scions AND kept flat for this host). Never a slug literal. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>netplan-ingress-contract</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>dataplan-ingress-contract</artifactId>
+    </dependency>
     <!-- The netplan SCION bundle (embed type=model): serves the `netplan` coordinates and grows
          NetplanBlueprintScenario in-container. Staged INTACT; it pulls netplan-contract into the
          staged world via its import closure (no flat host copy). The `network` plane's door. -->
@@ -96,6 +111,69 @@
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>dataplan-bdd</artifactId>
       <scope>runtime</scope>
+    </dependency>
+    <!-- The fabric DELIVERY scion (embed type=model): reads the netplan + dataplan harvests of the
+         run and writes fabric/plan; the `publish` verb sows it. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>fabric-bdd</artifactId>
+    </dependency>
+    <!-- The publish verb's PUSH closure, the same set manifests-cli's publish stages and for the same
+         reasons; it is the path by which auth-contract and ghapp-contract enter this assembly ON
+         PURPOSE. ghapp-bdd (the `ghapp` scion — rehydrates the one org App's credentials from
+         .secrets through the SecretsGateway seam) + ghapp-edge (the GithubAppMinter, the JWT signer);
+         auth-edge (GithubWriterTokenMintEdge — the mint GithubAppTokens calls); ndh-core
+         (DefaultNdhKeystoreReader — the authority domain and the signing key the delivery commit is
+         signed with); worktree-core (JgitTransientWorktrees — the fabric/plan head committed in memory
+         and its fast-forward push). runtime scope: the host compiles against none of them, it stages them. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>ghapp-bdd</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>ghapp-edge</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>auth-edge</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>ndh-core</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>worktree-core</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <!-- bouncycastle on the FLAT host classpath so BootPlanner can system-export the packages
+         ghapp-edge's GithubAppMinter imports (JWT signing from the App's RSA private-key PEM).
+         Without them the boot fails deriving system.packages.extra — manifests-cli's reason too. -->
+    <dependency>
+      <groupId>org.bouncycastle</groupId>
+      <artifactId>bcprov-jdk18on</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.bouncycastle</groupId>
+      <artifactId>bcpkix-jdk18on</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.bouncycastle</groupId>
+      <artifactId>bcutil-jdk18on</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <!-- host-runtime (COMPILE): the publish scenario registers the SecretsGateway the ghapp scion
+         reads, resolved container-blind through new ExecutionEnvironment(System.getenv()). -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>host-runtime</artifactId>
     </dependency>
     <!-- jGiven-in-OSGi wrap, dual-realm (staged as a bundle AND kept host-flat): the host root
          scenario is a jGiven ScenarioTest, so jgiven runs FLAT for it and as a BUNDLE for the scion. -->

@@ -8,7 +8,7 @@ schema-version = "1.10.0"
 ## -------------------------------------------------------------------
 [install]
 tart.pkg-path = "tart"
-tart.systems = ["x86_64-darwin", "aarch64-darwin"]
+tart.systems = ["aarch64-darwin"]
 packer.pkg-path = "packer"
 socat.pkg-path = "socat"
 screen.pkg-path = "screen"

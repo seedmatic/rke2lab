@@ -1,12 +1,8 @@
 package io.seedmatic.rke2lab.host.runtime;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.json.JsonMapper;
-import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
+import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
 import io.seedmatic.rke2lab.seed.broker.port.SecretsGateway;
-import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
@@ -17,23 +13,24 @@ import java.util.Optional;
  * in-container scion can rehydrate an anchor through the seam without any {@code .secrets} logic
  * crossing a realm boundary.
  *
- * <p>Read navigates the smudged (plaintext) {@code .secrets} YAML by dotted path and returns the
- * subtree as JSON. Writing {@code .secrets} is the operator's hand — the one App key is seeded by
- * hand once — so this seam is read-only.
+ * <p>Read opens the encrypted-at-rest {@code .secrets} YAML in memory through {@link SopsAtRest},
+ * navigates it by dotted path and returns the subtree as JSON. Writing {@code .secrets} is the
+ * operator's hand — the one App key is seeded by hand once — so this seam is read-only.
  */
 public final class DotSecretsGateway implements SecretsGateway {
 
-  private static final YAMLMapper YAML = new YAMLMapper();
-  private static final ObjectMapper JSON = JsonMapper.builder().build();
+  private static final SeedCodec CODEC = new SeedCodec();
 
   private final Path secretsFile;
+  private final SopsAtRest sops;
 
   public DotSecretsGateway() {
-    this(Path.of(".secrets"));
+    this(Path.of(".secrets"), new SopsAtRest());
   }
 
-  public DotSecretsGateway(Path secretsFile) {
+  public DotSecretsGateway(Path secretsFile, SopsAtRest sops) {
     this.secretsFile = secretsFile;
+    this.sops = sops;
   }
 
   @Override
@@ -41,17 +38,13 @@ public final class DotSecretsGateway implements SecretsGateway {
     if (!Files.isReadable(secretsFile)) {
       return Optional.empty();
     }
-    try {
-      JsonNode node = YAML.readTree(secretsFile.toFile());
-      for (final String part : dottedPath.split("\\.")) {
-        node = node == null ? null : node.path(part);
-      }
-      if (node == null || node.isMissingNode() || node.isNull()) {
-        return Optional.empty();
-      }
-      return Optional.of(JSON.writeValueAsString(node));
-    } catch (IOException ex) {
-      throw new UncheckedIOException("failed to read the secrets file at " + secretsFile, ex);
+    JsonNode node = CODEC.reading().readYaml(sops.open(secretsFile));
+    for (final String part : dottedPath.split("\\.")) {
+      node = node == null ? null : node.path(part);
     }
+    if (node == null || node.isMissingNode() || node.isNull()) {
+      return Optional.empty();
+    }
+    return Optional.of(CODEC.encode(node));
   }
 }

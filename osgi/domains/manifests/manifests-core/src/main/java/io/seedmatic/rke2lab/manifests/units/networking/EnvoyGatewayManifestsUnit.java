@@ -58,9 +58,7 @@ public final class EnvoyGatewayManifestsUnit extends AbstractManifestsUnit {
                 .metadata(
                     ApiObjectMetadata.builder()
                         .name("envoy-gateway-installer")
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "rbac.authorization.k8s.io|ClusterRoleBinding|default|envoy-gateway-installer"))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
 
@@ -101,7 +99,6 @@ public final class EnvoyGatewayManifestsUnit extends AbstractManifestsUnit {
                         .name("envoy")
                         .annotations(
                             packageProfile.packageAnnotations(
-                                "gateway.networking.k8s.io|GatewayClass|default|envoy",
                                 Map.of(
                                     ManifestAnnotation.MANIFEST_LAYER.key(),
                                     ManifestLayer.WORKLOADS.value())))
@@ -123,9 +120,7 @@ public final class EnvoyGatewayManifestsUnit extends AbstractManifestsUnit {
             .metadata(
                 ApiObjectMetadata.builder()
                     .name("envoy-gateway-system")
-                    .annotations(
-                        packageProfile.packageAnnotations(
-                            "|Namespace|default|${envoy-gateway-namespace}"))
+                    .annotations(packageProfile.packageAnnotations())
                     .build())
             .build());
   }
@@ -143,9 +138,7 @@ public final class EnvoyGatewayManifestsUnit extends AbstractManifestsUnit {
                     ApiObjectMetadata.builder()
                         .name("envoy-gateway-installer-script")
                         .namespace("envoy-gateway-system")
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "|ConfigMap|${envoy-gateway-namespace}|envoy-gateway-installer-script"))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
     configMap.addDependency(namespace);
@@ -185,9 +178,7 @@ public final class EnvoyGatewayManifestsUnit extends AbstractManifestsUnit {
                     ApiObjectMetadata.builder()
                         .name("envoy-gateway-installer")
                         .namespace("envoy-gateway-system")
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "|ServiceAccount|${envoy-gateway-namespace}|envoy-gateway-installer"))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
     serviceAccount.addDependency(namespace);
@@ -220,9 +211,7 @@ public final class EnvoyGatewayManifestsUnit extends AbstractManifestsUnit {
                     ApiObjectMetadata.builder()
                         .name(jobName)
                         .namespace("envoy-gateway-system")
-                        .annotations(
-                            packageProfile.packageAnnotations(
-                                "batch|Job|${envoy-gateway-namespace}|" + jobName))
+                        .annotations(packageProfile.packageAnnotations())
                         .build())
                 .build());
 

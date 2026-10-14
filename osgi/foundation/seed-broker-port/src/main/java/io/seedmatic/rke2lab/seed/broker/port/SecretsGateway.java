@@ -18,9 +18,9 @@ import java.util.Optional;
 public interface SecretsGateway {
 
   /**
-   * The JSON of the {@code .secrets} subtree at {@code dottedPath} (e.g. {@code "githubApp"}), or
-   * empty when the block is absent. The worktree copy is smudged plaintext, so the JSON is
-   * readable.
+   * The JSON of the {@code .secrets} subtree at {@code dottedPath} (e.g. {@code "github"}), or
+   * empty when the block is absent. The worktree copy stays sops-encrypted; the gateway opens it in
+   * memory, so the JSON is readable.
    */
   Optional<String> read(String dottedPath);
 }

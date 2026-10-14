@@ -1,21 +1,30 @@
 package io.seedmatic.rke2lab.manifests.bdd;
 
-import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator;
-import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
-import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
+import com.github.marschall.memoryfilesystem.MemoryFileSystemBuilder;
 import com.tngtech.jgiven.Stage;
 import com.tngtech.jgiven.annotation.ExpectedScenarioState;
 import com.tngtech.jgiven.annotation.Hidden;
 import com.tngtech.jgiven.annotation.ProvidedScenarioState;
 import com.tngtech.jgiven.base.ScenarioTestBase;
 import com.tngtech.jgiven.impl.Scenario;
+import io.seedmatic.rke2lab.auth.contract.GithubAppTokens;
 import io.seedmatic.rke2lab.auth.contract.GithubReaderTokenMint;
 import io.seedmatic.rke2lab.auth.contract.GithubWriterTokenMint;
-import io.seedmatic.rke2lab.manifests.bdd.versions.GitBotIdentities;
+import io.seedmatic.rke2lab.clusterpki.contract.AdminCredentials;
+import io.seedmatic.rke2lab.clusterpki.contract.ClusterIssuerCa;
+import io.seedmatic.rke2lab.clusterpki.contract.ClusterPkiCoordinate;
+import io.seedmatic.rke2lab.clusterpki.contract.ManagementClusterCa;
+import io.seedmatic.rke2lab.clusterpki.contract.SopsDecryptor;
+import io.seedmatic.rke2lab.clusterpki.contract.SopsEncryptor;
+import io.seedmatic.rke2lab.clusterpki.contract.WorkloadClusterCas;
+import io.seedmatic.rke2lab.ghapp.contract.GhAppCoordinate;
+import io.seedmatic.rke2lab.ghapp.contract.GithubAppCredentials;
+import io.seedmatic.rke2lab.manifests.RenderedSecretSeal;
+import io.seedmatic.rke2lab.manifests.YamlMapper;
+import io.seedmatic.rke2lab.manifests.contract.BranchSecretCarrier;
 import io.seedmatic.rke2lab.manifests.contract.ClusterCoordinate;
 import io.seedmatic.rke2lab.manifests.contract.ClusterFleet;
 import io.seedmatic.rke2lab.manifests.contract.ClusterRole;
@@ -28,17 +37,12 @@ import io.seedmatic.rke2lab.manifests.contract.ManifestsRunbookInput;
 import io.seedmatic.rke2lab.manifests.contract.NodeBootstrapArtifact;
 import io.seedmatic.rke2lab.manifests.contract.RenderMode;
 import io.seedmatic.rke2lab.manifests.contract.profiles.BootstrapIdentity;
-import io.seedmatic.rke2lab.manifests.contract.profiles.ClusterIssuerCaMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.FloxDebugPolicy;
-import io.seedmatic.rke2lab.manifests.contract.profiles.GithubAppMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ImageState;
 import io.seedmatic.rke2lab.manifests.contract.profiles.IncusIdentityMaterial;
-import io.seedmatic.rke2lab.manifests.contract.profiles.ManagementClusterCaMaterial;
-import io.seedmatic.rke2lab.manifests.contract.profiles.OperatorPkiMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.ReplicatorSourceSecretsMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.TlsAuthorityCaMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.WorkloadBootstrapBundlesMaterial;
-import io.seedmatic.rke2lab.manifests.contract.profiles.WorkloadClusterCasMaterial;
 import io.seedmatic.rke2lab.manifests.ingress.NodeGithubToken;
 import io.seedmatic.rke2lab.manifests.ingress.NodeGithubTokenCoordinate;
 import io.seedmatic.rke2lab.manifests.ingress.ServerManifestsBundle;
@@ -59,13 +63,14 @@ import io.seedmatic.rke2lab.seed.broker.port.Parcel;
 import io.seedmatic.rke2lab.seed.broker.port.Persistence;
 import io.seedmatic.rke2lab.seed.broker.port.SeedCoordinate;
 import io.seedmatic.rke2lab.seed.broker.port.Sensitivity;
+import io.seedmatic.rke2lab.worktree.DurableWorktree;
+import io.seedmatic.rke2lab.worktree.GitBotIdentities;
 import io.seedmatic.rke2lab.worktree.GitIdentity;
-import io.seedmatic.rke2lab.worktree.LinkedWorktree;
 import io.seedmatic.rke2lab.worktree.Provenance;
-import io.seedmatic.rke2lab.worktree.RenderedBranch;
-import io.seedmatic.rke2lab.worktree.Worktree;
+import io.seedmatic.rke2lab.worktree.TransientWorktrees;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.file.FileSystem;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -109,11 +114,11 @@ import org.junit.jupiter.api.extension.RegisterExtension;
  * the {@link ManifestSynthesisService} (the SCR-published synthesis). MODE-BLIND — it injects no
  * run gate: manifests is a pure FS materialiser with no live touch (no {@code Cultivating}/{@code
  * Surveying} pair), so it runs identically in both modes; the materialisation target is carried by
- * the SOIL amendment alone (the real tree when the host amended a plot, a temp dir for a bare
- * survey), and rendering the run PENDING under a surveying gate is the frontier's business (the
- * engine's survey executor), not the scenario's. The activation facet is seeded by the front-door
- * via the inbound {@link #INPUT} channel and received here ({@link InputReceiver}) before the play;
- * the outbound {@code ScenarioOutcome} channel harvests the played runbook.
+ * the SOIL amendment alone (the branch's plot when the host amended one, an in-memory survey plot
+ * for a bare survey), and rendering the run PENDING under a surveying gate is the frontier's
+ * business (the engine's survey executor), not the scenario's. The activation facet is seeded by
+ * the front-door via the inbound {@link #INPUT} channel and received here ({@link InputReceiver})
+ * before the play; the outbound {@code ScenarioOutcome} channel harvests the played runbook.
  */
 @SeedScenario
 public class ManifestSynthesisScenario
@@ -148,9 +153,8 @@ public class ManifestSynthesisScenario
   @MonotonicNonNull private ManifestsRunbookInput input;
 
   // The shared in-container cellar (injected by ScenarioCellarExtension before the body) + the
-  // current plot — the seam through which the sealed admin-credentials case the seal scion filed is
-  // revealed (decoded into OperatorPkiMaterial via a neutral wire coordinate), in-container, never
-  // crossing the host membrane.
+  // current plot — the seam through which the sealed cases other scions filed are revealed as their
+  // owners' records, in-container, never crossing the host membrane.
   @MonotonicNonNull private ScenarioCellar cellar;
 
   // await=false: the parcel is genuinely OPTIONAL — a bare survey or a run before the seal filed
@@ -161,27 +165,39 @@ public class ManifestSynthesisScenario
   private Optional<Parcel> parcel = Optional.empty();
 
   // The rendered-branch delivery seam and the ndh key-store, both OPTIONAL (await=false): a bare
-  // survey / the standalone manifests-cli renders into a temp dir with no branch and no signature,
-  // so
-  // absence is honest — the render still materialises, only the git delivery is skipped. Present in
-  // a
-  // provisioning run (worktree-core + ndh-core embedded), where the render lands in the linked
-  // worktree the GROW mounts and is sealed with a signed commit.
+  // survey / the standalone manifests-cli renders with no branch and no signature, so absence is
+  // honest — the render still materialises, only the git delivery is skipped. Present in a
+  // provisioning run (worktree-core + ndh-core embedded), where the render commits onto its
+  // branch's head in memory — no checkout — and seals it with a signed commit.
   @OsgiService(await = false)
-  private Optional<RenderedBranch> renderedBranch = Optional.empty();
+  private Optional<TransientWorktrees> transientWorktrees = Optional.empty();
 
   // The SOURCE worktree — the checkout the process runs in (the Tekton FETCH_HEAD clone in-cluster,
   // the grow's worktree otherwise). Its jgit provenance (HEAD sha + dirty) stamps the render's
   // commit subject and the recorded manifest, so a rendered branch is traceable to the exact
   // rke2lab
   // rev that synthesised it — no wrapper plumbing, jgit is already in the boat. Same await=false
-  // shape as renderedBranch: present together (RenderedBranch is built @Reference Worktree), absent
+  // shape as transientWorktrees: present together (TransientWorktrees is built @Reference
+  // DurableWorktree),
+  // absent
   // on a bare survey.
   @OsgiService(await = false)
-  private Optional<Worktree> sourceWorktree = Optional.empty();
+  private Optional<DurableWorktree> sourceWorktree = Optional.empty();
 
   @OsgiService(await = false)
   private Optional<NdhKeystoreReader> keystore = Optional.empty();
+
+  // The sops edge and the YAML reader the delivery seals the rendered Secrets with, in memory,
+  // before staging. OPTIONAL like the worktree seam (a survey delivers nothing), but a delivery
+  // without them is refused rather than committed unsealed: deliveryPlan fails before synthesis.
+  @OsgiService(await = false)
+  private Optional<SopsEncryptor> sopsEncryptor = Optional.empty();
+
+  @OsgiService(await = false)
+  private Optional<SopsDecryptor> sopsDecryptor = Optional.empty();
+
+  @OsgiService(await = false)
+  private Optional<YamlMapper> yamlMapper = Optional.empty();
 
   // The ambient enclosure gate (host-published, § pac-in-cluster-render-spec auth): the
   // deterministic
@@ -192,7 +208,7 @@ public class ManifestSynthesisScenario
   private Optional<EnclosureGate> enclosure = Optional.empty();
 
   // The on-demand push-token mint (auth-edge, cultivating). OPERATOR mints a FRESH WRITER token
-  // here at the moment of the push, from the durable App credentials revealed at GhAppCase — the
+  // here at the moment of the push, through GithubAppTokens, from the App ghapp sealed — the
   // ephemeral (~1 h) token is never sealed, so it can't go stale between a mint and a much later
   // reveal. Absent under a survey/preview frontier → the push is skipped.
   @OsgiService(await = false)
@@ -222,64 +238,32 @@ public class ManifestSynthesisScenario
     this.cellar = cellar;
   }
 
-  // Reveal the operator's admin PKI straight into the manifests-side OperatorPkiMaterial: its three
-  // PEM fields mirror the cluster-pki AdminCredentials record exactly, so the codec's structural
-  // decode reads the sealed case 1:1. Addressed by the NEUTRAL wire coordinate (see
-  // ClusterPkiCase),
-  // so no cluster-pki type is ever touched and manifests-bdd carries no cluster-pki-contract
-  // dependency — the standalone manifests-cli assembly never drags that domain's dual-realm flat
-  // copy. Empty when no cellar/plot (a bare survey) or the seal has not filed yet.
-  private Optional<OperatorPkiMaterial> revealOperatorPki() {
-    if (cellar == null || parcel.isEmpty()) {
-      return Optional.empty();
-    }
-    return cellar.fetch(
-        parcel.orElseThrow(), ClusterPkiCase.ADMIN_CREDENTIALS, OperatorPkiMaterial.class);
+  // The cluster-pki seal's sealed cases, revealed as the OWNER's records and handed to synthesis as
+  // they are: the operator's admin PKI, the cluster-issuer CA, the workload clusters' BYO-CA sets
+  // and the management cluster's own. Empty when no cellar/plot (a bare survey), before the seal
+  // filed, or on a secret-blind in-cluster render (EphemeralCellar) — the delivering unit then
+  // renders no Secret onto the branch, the material riding the durable NODE_BOOTSTRAP lane.
+  private Optional<AdminCredentials> revealOperatorPki() {
+    return reveal(ClusterPkiCoordinate.ADMIN_CREDENTIALS, AdminCredentials.class);
   }
 
-  // Reveal the cluster-issuer CA (mirror of cluster-pki ClusterIssuerCa) via the neutral wire
-  // coordinate — same treatment as revealOperatorPki(). Empty on a bare survey / before the seal
-  // filed / a secret-blind in-cluster render (EphemeralCellar) → the delivering unit renders no
-  // Secret onto the branch (the material rides the durable NODE_BOOTSTRAP lane).
-  private Optional<ClusterIssuerCaMaterial> revealClusterIssuerCa() {
-    if (cellar == null || parcel.isEmpty()) {
-      return Optional.empty();
-    }
-    return cellar.fetch(
-        parcel.orElseThrow(), ClusterPkiCase.CLUSTER_ISSUER_CA, ClusterIssuerCaMaterial.class);
+  private Optional<ClusterIssuerCa> revealClusterIssuerCa() {
+    return reveal(ClusterPkiCoordinate.CLUSTER_ISSUER_CA, ClusterIssuerCa.class);
   }
 
-  // Reveal the workload clusters' BYO-CA sets (mirror of cluster-pki WorkloadClusterCas) via the
-  // neutral wire coordinate — same treatment as revealClusterIssuerCa(). Empty on a bare survey /
-  // before the seal filed / a secret-blind in-cluster render → ClusterApiWorkloadManifestsUnit
-  // renders no <cluster>-{ca,cca,etcd,peer-etcd} Secret (they ride the durable NODE_BOOTSTRAP
-  // lane).
-  private Optional<WorkloadClusterCasMaterial> revealWorkloadCas() {
-    if (cellar == null || parcel.isEmpty()) {
-      return Optional.empty();
-    }
-    return cellar.fetch(
-        parcel.orElseThrow(),
-        ClusterPkiCase.WORKLOAD_CLUSTER_CAS,
-        WorkloadClusterCasMaterial.class);
+  private Optional<WorkloadClusterCas> revealWorkloadCas() {
+    return reveal(ClusterPkiCoordinate.WORKLOAD_CLUSTER_CAS, WorkloadClusterCas.class);
   }
 
-  // Reveal the MANAGEMENT cluster's own CA set (mirror of cluster-pki ManagementClusterCa) via the
-  // neutral wire coordinate — same treatment as revealWorkloadCas(). Empty on a bare survey /
-  // before
-  // the seal filed / a secret-blind in-cluster render → ClusterApiManagementManifestsUnit renders
-  // no
-  // <mgmt>-{ca,cca,etcd,peer-etcd} Secret (the mgmt CA also rides the durable NODE_BOOTSTRAP lane
-  // as
-  // the cluster-ca-bundle blob).
-  private Optional<ManagementClusterCaMaterial> revealManagementCas() {
+  private Optional<ManagementClusterCa> revealManagementCas() {
+    return reveal(ClusterPkiCoordinate.MANAGEMENT_CLUSTER_CAS, ManagementClusterCa.class);
+  }
+
+  private <T> Optional<T> reveal(SeedCoordinate coordinate, Class<T> type) {
     if (cellar == null || parcel.isEmpty()) {
       return Optional.empty();
     }
-    return cellar.fetch(
-        parcel.orElseThrow(),
-        ClusterPkiCase.MANAGEMENT_CLUSTER_CAS,
-        ManagementClusterCaMaterial.class);
+    return cellar.fetch(parcel.orElseThrow(), coordinate, type);
   }
 
   // Reveal the CAPN provider incus identity (assembled + sealed by the incus-identity seal scion)
@@ -288,27 +272,16 @@ public class ManifestSynthesisScenario
   // <host>-incus-identity
   // Secret (it rides the durable NODE_BOOTSTRAP lane).
   private Optional<IncusIdentityMaterial> revealIncusIdentity() {
-    if (cellar == null || parcel.isEmpty()) {
-      return Optional.empty();
-    }
-    return cellar.fetch(
-        parcel.orElseThrow(), IncusIdentityCase.INCUS_IDENTITY, IncusIdentityMaterial.class);
+    return reveal(IncusIdentityCase.INCUS_IDENTITY, IncusIdentityMaterial.class);
   }
 
   /**
-   * The one org-owned App's credentials the ghapp registration sealed, revealed from the cellar so
-   * the {@code githubapp} Secret unit renders them for Flux's native App auth. Empty on a bare
-   * survey / before the registration filed — the unit then renders nothing. Addressed by the
-   * NEUTRAL {@code github-app} wire coordinate ({@link GhAppCase}) into the manifests-side {@link
-   * GithubAppMaterial} mirror, so no {@code ghapp-contract} flat copy is dragged into the
-   * standalone {@code manifests-cli} assembly — the exact treatment {@link #revealOperatorPki()}
-   * gives cluster-pki.
+   * The one org-owned App's credentials the ghapp registration sealed, revealed as the owner's
+   * record so the {@code githubapp} Secret unit renders them for Flux's native App auth. Empty on a
+   * bare survey / before the registration filed — the unit then renders nothing.
    */
-  private Optional<GithubAppMaterial> revealGithubApp() {
-    if (cellar == null || parcel.isEmpty()) {
-      return Optional.empty();
-    }
-    return cellar.fetch(parcel.orElseThrow(), GhAppCase.GITHUB_APP, GithubAppMaterial.class);
+  private Optional<GithubAppCredentials> revealGithubApp() {
+    return reveal(GhAppCoordinate.GITHUB_APP, GithubAppCredentials.class);
   }
 
   /**
@@ -318,13 +291,7 @@ public class ManifestSynthesisScenario
    * before the seal filed (an empty material seals nothing) → the unit renders no source secrets.
    */
   private Optional<ReplicatorSourceSecretsMaterial> revealReplicatorSources() {
-    if (cellar == null || parcel.isEmpty()) {
-      return Optional.empty();
-    }
-    return cellar.fetch(
-        parcel.orElseThrow(),
-        ReplicatorSecretsCase.REPLICATOR_SECRETS,
-        ReplicatorSourceSecretsMaterial.class);
+    return reveal(ReplicatorSecretsCase.REPLICATOR_SECRETS, ReplicatorSourceSecretsMaterial.class);
   }
 
   private static final String TAILNET_AUTHORITY = NdhKeystoreCatalog.TAILNET_AUTHORITY.entryName();
@@ -341,48 +308,31 @@ public class ManifestSynthesisScenario
   private static final String RENDER_TOOL = "manifests-render";
   private static final String BRANCH_PREFIX = "manifests/";
 
-  // The cluster's FIRST control node — the one a per-target pass renders as, and the leaf of its
-  // render plot. Taken from the blueprint's canonical roster, never spelled "master" here.
+  // The cluster's FIRST control node — the one a per-target pass renders as. Taken from the
+  // blueprint's canonical roster, never spelled "master" here.
   private static final String FIRST_CONTROL_NODE =
       ClusterNetworkBlueprint.CANONICAL_NODE_NAMES.get(0);
 
   /**
-   * Prepare the rendered-branch worktree for THIS run's cluster — an orphan linked worktree at the
-   * SOIL path on branch {@code manifests/<cluster>}, into which the synthesis materialises the
-   * rendered tree (the GROW then mounts this worktree). Present only when the delivery seam is
-   * reachable (a provisioning run) AND the host amended a SOIL plot AND the cluster identity is
-   * known; a bare survey / the standalone CLI leaves it empty and the synthesis falls back to a
-   * temp dir, with no branch and no commit.
+   * The head THIS run's cluster commits onto, {@code manifests/<cluster>}, opened in memory, and
+   * its soil: the SOIL plot resolved on the run's in-memory file system, into which the synthesis
+   * materialises the rendered tree — so no rendered Secret touches the disk in the clear. Present
+   * only when the delivery seam is reachable (a provisioning run) AND the host amended a SOIL plot
+   * AND the cluster identity is known; a bare survey / the standalone CLI leaves it empty and the
+   * synthesis renders into an in-memory survey plot, with no branch and no commit.
    */
-  private Optional<LinkedWorktree> prepareRenderWorktree(ManifestsRunbookInput facet) {
-    if (renderedBranch.isEmpty()
+  private Optional<RenderSoil> prepareRenderSoil(ManifestsRunbookInput facet, FileSystem soil) {
+    if (transientWorktrees.isEmpty()
         || facet.materializationRoot().isEmpty()
         || facet.identity().isEmpty()) {
       return Optional.empty();
     }
     final String cluster = facet.identity().orElseThrow().clusterId();
-    final Path worktreePath =
-        Path.of(facet.materializationRoot().orElseThrow()).toAbsolutePath().normalize();
-    return Optional.of(renderedBranch.orElseThrow().prepare(worktreePath, BRANCH_PREFIX + cluster));
+    return Optional.of(
+        new RenderSoil(
+            transientWorktrees.orElseThrow().open(BRANCH_PREFIX + cluster, revealFetchToken()),
+            soil.getPath(facet.materializationRoot().orElseThrow()).toAbsolutePath().normalize()));
   }
-
-  // Reads the branch HEAD's recorded facet — a plain YAMLMapper, native record binding (jackson
-  // reads the record component names). Symmetric with the Then's write of the same {source, facet}.
-  // Tolerant of unknown keys: a branch recorded before the publish facet was removed still carries
-  // a `publish:` sub-map under `facet:`; the domain set is now role-derived, so that key is stale
-  // and ignored rather than failing the replay decode.
-  // UNTYPED only: this parses the recorded yaml into a tree. Turning that tree into a wire record
-  // is
-  // the CODEC's job, because decoding one is a SET of rules — Optional via Jdk8Module, seam enums,
-  // Instant, unknown keys tolerated — and a hand-configured mapper is one more place to get them
-  // wrong. Measured 2026-09-28: it was, the moment a sub-facet component became Optional
-  // (`Optional<NetworkFacet> not supported by default: add Module jackson-datatype-jdk8`).
-  // SeedCodec's
-  // own javadoc names this reader among what it supersedes: its tolerance is "the contract the
-  // hand-rolled *Reader classes had".
-  private static final YAMLMapper FACET_READER =
-      (YAMLMapper)
-          new YAMLMapper().configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
   /** The ONE set of wire-record decoding rules — never a bare mapper. */
   private static final SeedCodec CODEC = new SeedCodec();
@@ -410,7 +360,7 @@ public class ManifestSynthesisScenario
    * empty. Absent a rendered worktree (a survey) the seeded facet always stands (GROW default).
    */
   private ManifestsRunbookInput resolveFacet(
-      ManifestsRunbookInput seeded, Optional<LinkedWorktree> rendered) {
+      ManifestsRunbookInput seeded, Optional<RenderSoil> rendered) {
     final RenderMode mode = seeded.renderMode().orElseGet(RenderMode::grow);
     final RenderMode.Verb verb = mode.verb();
     final Optional<String> headManifest =
@@ -532,7 +482,7 @@ public class ManifestSynthesisScenario
     // Both ends through the CODEC, so the round-trip obeys ONE set of rules: a bare mapper here
     // would
     // drop an Optional sub-facet on the way out and fail to read it back on the way in.
-    final ObjectNode json = FACET_READER.valueToTree(CODEC.toMap(base));
+    final ObjectNode json = (ObjectNode) CODEC.reading().toTree(CODEC.toMap(base));
     overrides.forEach((path, value) -> setBooleanAtPath(json, path, value));
     try {
       return CODEC.fromMap(json, ManifestsRunbookInput.Facets.class);
@@ -570,9 +520,9 @@ public class ManifestSynthesisScenario
    */
   private boolean recordsFacet(String manifestYaml) {
     try {
-      final JsonNode facet = FACET_READER.readTree(manifestYaml).path("facet");
+      final JsonNode facet = CODEC.reading().readYaml(manifestYaml).path("facet");
       return !facet.isMissingNode() && !facet.isNull();
-    } catch (IOException unreadableContext) {
+    } catch (UncheckedIOException unreadableContext) {
       throw new IllegalStateException(
           "the render context recorded at HEAD is unreadable, so whether it records a facet cannot be"
               + " decided; refusing to guess",
@@ -583,8 +533,8 @@ public class ManifestSynthesisScenario
   private Optional<ManifestsRunbookInput.Facets> recordedFacets(String manifestYaml) {
     final JsonNode facet;
     try {
-      facet = FACET_READER.readTree(manifestYaml).path("facet");
-    } catch (IOException unreadableContext) {
+      facet = CODEC.reading().readYaml(manifestYaml).path("facet");
+    } catch (UncheckedIOException unreadableContext) {
       throw new IllegalStateException(
           "the render context recorded at HEAD is unreadable, so the facet it records cannot be"
               + " replayed; refusing to render as though the branch carried no policy",
@@ -614,8 +564,8 @@ public class ManifestSynthesisScenario
   private Optional<ImageState> recordedImage(String manifestYaml) {
     final JsonNode image;
     try {
-      image = FACET_READER.readTree(manifestYaml).path("image");
-    } catch (IOException unreadableContext) {
+      image = CODEC.reading().readYaml(manifestYaml).path("image");
+    } catch (UncheckedIOException unreadableContext) {
       throw new IllegalStateException(
           "the render context recorded at HEAD is unreadable, so the image it records cannot be"
               + " replayed; refusing to render as though the cluster had none",
@@ -655,12 +605,12 @@ public class ManifestSynthesisScenario
   /**
    * The delivery plan for a prepared worktree — the bot identity + signing key the rendered commit
    * carries, whether the operator armed the push, and (only then) the revealed GitHub token. Empty
-   * when there is no worktree (a survey / CLI render). The commit is ALWAYS signed as the rke2lab
-   * bot; the force-push is opt-in ({@code rke2lab:manifests:push}, default off) and needs the
+   * when there is no head (a survey / CLI render). The commit is ALWAYS signed as the rke2lab bot;
+   * the fast-forward push is opt-in ({@code rke2lab:manifests:push}, default off) and needs the
    * sealed token.
    */
-  private Optional<Delivery> deliveryPlan(
-      ManifestsRunbookInput facet, Optional<LinkedWorktree> rendered) {
+  private Optional<RenderDelivery> deliveryPlan(
+      ManifestsRunbookInput facet, Optional<RenderSoil> rendered) {
     if (rendered.isEmpty()) {
       return Optional.empty();
     }
@@ -671,7 +621,7 @@ public class ManifestSynthesisScenario
     // blank token), so a present token is always usable and the caller holds no empty-token case.
     final Optional<String> token = push ? revealGithubToken() : Optional.empty();
     // The bot identity + signing key are enclosure-resolved (§ pac-in-cluster-render-spec, auth):
-    // OPERATOR reads the sops-smudged ndh key-store at hand; IN_CLUSTER the git tree is
+    // OPERATOR opens the ndh key-store at hand in memory; IN_CLUSTER the git tree is
     // sops-encrypted
     // at rest, so the signing key rides the mounted Secret (revealSigningKey, RKE2LAB_SIGNING_KEY)
     // and
@@ -696,19 +646,34 @@ public class ManifestSynthesisScenario
       bot = new GitBotIdentities(ks.authorityDomain(TAILNET_AUTHORITY)).forTool(RENDER_TOOL);
       signingKey = ks.sshPrivate(SIGNING_KEY);
     }
-    return Optional.of(new Delivery(renderCommitMessage(cluster), bot, signingKey, push, token));
+    final RenderedSecretSeal secrets =
+        new RenderedSecretSeal(
+            sopsEncryptor.orElseThrow(
+                () ->
+                    new IllegalStateException(
+                        "no SopsEncryptor edge — the rendered Secrets cannot be sealed, so the"
+                            + " branch is not delivered")),
+            sopsDecryptor.orElseThrow(
+                () ->
+                    new IllegalStateException(
+                        "no SopsDecryptor edge — the committed Secrets cannot be compared, so the"
+                            + " branch is not delivered")),
+            yamlMapper.orElseThrow(
+                () -> new IllegalStateException("no YamlMapper — cannot read the rendered tree")));
+    return Optional.of(
+        new RenderDelivery(renderCommitMessage(cluster), bot, signingKey, push, token, secrets));
   }
 
   /**
    * The render commit subject, stamped with the SOURCE provenance so the branch is traceable to the
    * rke2lab rev that synthesised it: {@code render <cluster> manifests @ <short-sha>[ (dirty)]}.
    * The sha rides the worktree domain's jgit provenance (no wrapper plumbing); an empty sha (a
-   * first run with no {@code .git}) or an absent Worktree falls back to the bare subject.
+   * first run with no {@code .git}) or an absent DurableWorktree falls back to the bare subject.
    */
   private String renderCommitMessage(String cluster) {
     final String subject = "render " + cluster + " manifests";
     return sourceWorktree
-        .map(Worktree::provenance)
+        .map(DurableWorktree::provenance)
         .filter(provenance -> !provenance.sha().isBlank())
         .map(
             provenance ->
@@ -733,77 +698,36 @@ public class ManifestSynthesisScenario
   }
 
   /**
-   * The GitHub token for the force-push, resolved by CONTAINER (the two lanes the {@code
-   * host/host-runtime} {@code ExecutionEnclosure} FACT names):
-   *
-   * <ul>
-   *   <li>OPERATOR — mint a FRESH {@code WRITER} installation token HERE, at the moment of the
-   *       push, from the durable App credentials revealed at {@link GhAppCase} (the ghapp
-   *       registration sealed them). The {@code auth} {@link GithubWriterTokenMint} edge holds the
-   *       mint; the token is ephemeral (≈1 h) and never sealed, so it cannot go stale between a
-   *       mint and a much later reveal (the trap a pre-provisioning seal fell into — minted before
-   *       the cluster came up, dead by the time the push ran).
-   *   <li>IN_CLUSTER — the renderer runs inside a Tekton PipelineRun; there is no cellar and the
-   *       mint edge is absent. Pipelines-as-Code has already minted an App token and the {@code
-   *       render-publish} step extracts it from the mounted {@code git_auth} secret into {@code
-   *       RKE2LAB_PUSH_TOKEN}. Read in-container — the token never crosses the host↔OSGi membrane
-   *       (no seam word), the twin locality of the mint.
-   * </ul>
-   *
-   * <p>Empty when neither is present (a survey / preview, where the {@code cultivating}-gated mint
-   * edge is filtered out; or a render that isn't a push) — the push is then simply skipped. The
-   * OPERATOR mint wins when both are reachable (an operator run never sets the env).
+   * The GitHub token for the fast-forward push, resolved by CONTAINER (the two lanes the {@code
+   * host/host-runtime} {@code ExecutionEnclosure} FACT names) through {@link GithubAppTokens}, the
+   * one revealer every consumer shares: OPERATOR mints a fresh {@code WRITER} token from the sealed
+   * App at the moment of the push; IN_CLUSTER there is no cellar and no mint edge, and the token is
+   * the one Pipelines-as-Code minted and the {@code render-publish} step exported. Empty when
+   * neither is present (a survey / preview, or a render that isn't a push) — the push is then
+   * skipped. The OPERATOR mint wins when both are reachable.
    */
   private Optional<String> revealGithubToken() {
-    // The edge (writerTokenMint) and the App credentials (revealGithubApp) are each Optional —
-    // absent
-    // in a survey/preview or an enclosure that does not mint. But mint itself returns a token or
-    // THROWS (GithubWriterTokenMintEdge fails loud on a blank), so once both are present the value
-    // is
-    // a real token — no empty-token case to filter here.
-    final Optional<String> minted =
-        writerTokenMint.flatMap(
-            mint ->
-                revealGithubApp()
-                    .map(app -> mint.mint(app.appId(), app.installationId(), app.privateKeyPem())));
-    return minted.or(
-        () ->
-            Optional.ofNullable(System.getenv("RKE2LAB_PUSH_TOKEN"))
-                .map(String::trim)
-                .filter(token -> !token.isEmpty()));
+    final GithubAppTokens tokens = tokens();
+    return cellar == null ? tokens.pipeline() : tokens.writerOrPipeline(cellar, parcel);
   }
 
-  /** The rendered-branch delivery plan carried from the scenario into the THEN. */
-  private record Delivery(
-      String message,
-      GitIdentity identity,
-      String signingKey,
-      boolean push,
-      Optional<String> token) {
+  /**
+   * The token the rendered branch is FETCHED with, by the same two lanes: OPERATOR mints a fresh
+   * {@code contents:read} token from the sealed App; IN_CLUSTER it is the pipeline's, which
+   * Pipelines-as-Code minted from the same App. Empty when neither is present — the fetch then goes
+   * anonymous, never through a credential the machine holds.
+   */
+  private Optional<String> revealFetchToken() {
+    final GithubAppTokens tokens = tokens();
+    return cellar == null ? tokens.pipeline() : tokens.readerOrPipeline(cellar, parcel);
+  }
 
-    /**
-     * The same plan for another cluster's branch — identity, signing key and token are per-RUN (one
-     * bot, one keystore read, one minted token), only the commit subject names the cluster. So the
-     * manager's per-target passes derive their plans from the managing one instead of re-minting a
-     * token per target.
-     */
-    Delivery forBranchOf(String message) {
-      return new Delivery(message, identity, signingKey, push, token);
-    }
-
-    /**
-     * Seal {@code worktree} with this plan: stage the whole rendered tree, commit it SIGNED as the
-     * rke2lab bot, and force-push only when the operator armed the push AND the token was revealed
-     * (the gardening gate). Behaviour of the plan itself, so the managing branch's THEN and each
-     * per-target pass deliver through ONE path — a change to the push discipline has one site.
-     */
-    void seal(LinkedWorktree worktree) {
-      worktree.stageAll();
-      worktree.commit(message, identity, Optional.of(signingKey));
-      if (push) {
-        token.ifPresent(worktree::push);
-      }
-    }
+  /**
+   * The token revealer, built from this scenario's injected mints: they are only known once the
+   * stage creator has resolved them, so it is built at use rather than held.
+   */
+  private GithubAppTokens tokens() {
+    return new GithubAppTokens(writerTokenMint, readerTokenMint, System.getenv());
   }
 
   /**
@@ -814,13 +738,13 @@ public class ManifestSynthesisScenario
    * every pass signature.
    */
   private record Materials(
-      Optional<OperatorPkiMaterial> operatorPki,
-      Optional<GithubAppMaterial> githubApp,
+      Optional<AdminCredentials> operatorPki,
+      Optional<GithubAppCredentials> githubApp,
       Optional<ReplicatorSourceSecretsMaterial> replicatorSources,
-      Optional<ClusterIssuerCaMaterial> clusterIssuerCa,
+      Optional<ClusterIssuerCa> clusterIssuerCa,
       Optional<TlsAuthorityCaMaterial> tlsAuthorityCa,
-      Optional<WorkloadClusterCasMaterial> workloadCas,
-      Optional<ManagementClusterCaMaterial> managementCas,
+      Optional<WorkloadClusterCas> workloadCas,
+      Optional<ManagementClusterCa> managementCas,
       Optional<IncusIdentityMaterial> incusIdentity) {}
 
   /**
@@ -850,52 +774,28 @@ public class ManifestSynthesisScenario
       Optional<WorkloadBootstrapBundlesMaterial> bundles) {}
 
   /**
-   * A workload target's own render pass: the target, the linked worktree of its {@code
-   * manifests/<cluster>} branch, and the plan that seals it. Prepared by the scenario (which owns
-   * the delivery seam) and played by the WHEN (which owns the synthesis).
+   * A workload target's own render pass: the target, the head of its {@code manifests/<cluster>}
+   * branch with its in-memory plot, and the plan that seals it. Prepared by the scenario (which
+   * owns the delivery seam) and played by the WHEN (which owns the synthesis).
    */
-  private record TargetPass(ClusterCoordinate child, LinkedWorktree worktree, Delivery delivery) {}
+  private record TargetPass(ClusterCoordinate child, RenderSoil soil, RenderDelivery delivery) {}
 
-  /**
-   * The cluster-pki seal's {@code admin-credentials} cellar case, addressed by its NEUTRAL wire
-   * coordinate so the manifests realm reveals it without a compile link to {@code
-   * cluster-pki-contract}. Naming that domain's {@code ClusterPkiCoordinate} enum would drag its
-   * {@code type=dual-realm} flat copy into the standalone {@code manifests-cli} assembly — a dead
-   * flat copy the staging gate rightly flags. The membrane speaks slugs; the {@code slug}/{@code
-   * domain} here MUST match {@code ClusterPkiCoordinate.ADMIN_CREDENTIALS}. This is the one place
-   * the manifests realm knows that cross-realm wire name (the cellar matches a read case by slug).
-   */
-  private enum ClusterPkiCase implements SeedCoordinate {
-    ADMIN_CREDENTIALS("admin-credentials"),
-    CLUSTER_ISSUER_CA("cluster-issuer-ca"),
-    WORKLOAD_CLUSTER_CAS("workload-cluster-cas"),
-    MANAGEMENT_CLUSTER_CAS("management-cluster-cas");
-
-    private final String slug;
-
-    ClusterPkiCase(String slug) {
-      this.slug = slug;
-    }
-
-    @Override
-    public String slug() {
-      return slug;
-    }
-
-    @Override
-    public String domain() {
-      return "cluster-pki";
+  @Test
+  void the_manifests_are_synthesized_from_the_activation_facet() throws IOException {
+    final ManifestsRunbookInput facet =
+        Objects.requireNonNull(input, "the activation facet was not seeded before the body");
+    // The run's soil is IN MEMORY: every plot the synthesis materialises into lives here, so no
+    // rendered Secret ever touches the disk in the clear, and closing it drops the whole tree.
+    try (FileSystem soil = MemoryFileSystemBuilder.newEmpty().build()) {
+      render(facet, soil);
     }
   }
 
-  @Test
-  void the_manifests_are_synthesized_from_the_activation_facet() {
-    final ManifestsRunbookInput facet =
-        Objects.requireNonNull(input, "the activation facet was not seeded before the body");
-    // Prepare the rendered-branch worktree (a provisioning run) — the synthesis materialises INTO
-    // it, and the THEN seals + delivers it. Empty for a bare survey / the standalone CLI: the
-    // synthesis then falls back to a temp dir with no branch, and the delivery THEN is a no-op.
-    final Optional<LinkedWorktree> rendered = prepareRenderWorktree(facet);
+  private void render(ManifestsRunbookInput facet, FileSystem soil) {
+    // Open the head and its soil (a provisioning run) — the synthesis materialises INTO the soil,
+    // and the THEN seals + delivers it. Empty for a bare survey / the standalone CLI: the synthesis
+    // then renders into an in-memory survey plot with no branch, and the delivery THEN is a no-op.
+    final Optional<RenderSoil> rendered = prepareRenderSoil(facet, soil);
     // Rehydrate the in-cluster cellar asset (§ in-cluster-cellar-asset): a secret-blind in-cluster
     // publish sows no seal, so the IN_CLUSTER reveals below would find nothing and Flux would prune
     // the branch secrets — reading the prior render's asset back onto the overlay makes them
@@ -903,13 +803,6 @@ public class ManifestSynthesisScenario
     // as if the operator's seal had run. A no-op on a first grow (no asset yet) / a survey; on a
     // re-grow the fresh seal wins (importSealed skips a coordinate the overlay already carries).
     rehydrateInClusterAsset(rendered);
-    // Preserve the reflector's reflections/ documents across the wholesale render: prepare emptied
-    // the tree, so without this the cluster→git reflector's committed PoolReflection files would be
-    // staged as deletions and pushed away. The reflector owns those files' content; the render owns
-    // their SURVIVAL (the "escape" carve-out — a reflector-owned subtree the render never generates
-    // but must not delete). Tolerant of the dir being absent (a first render). See the reflector
-    // design in docs/architecture/cluster-api/cluster-seeding-controller.adoc.
-    rendered.ifPresent(worktree -> worktree.restoreFromHead(REFLECTIONS_DIR));
     // Resolve the effective facet per the sower's RenderMode: GROW/INIT keep the seeded facet
     // (the grow's Pulumi SSOT / the CLI args), UPDATE follows the branch HEAD, EDIT overlays the
     // sparse operator overrides on HEAD — so a steady-state render never silently resets the branch
@@ -921,7 +814,7 @@ public class ManifestSynthesisScenario
     // Resolved BEFORE the passes, because each per-target pass delivers its own branch inside the
     // WHEN and re-subjects THIS plan to it — one keystore read and one token mint per run, not one
     // per branch. The OPERATOR token lives ~1 h, so covering the synthesis is well inside its life.
-    final Optional<Delivery> delivery = deliveryPlan(effective, rendered);
+    final Optional<RenderDelivery> delivery = deliveryPlan(effective, rendered);
     // The manager's PER-TARGET passes: each workload target's own branch, rendered with the WRKLD
     // unit set, sealed, and its carved bootstrap bundle handed back — the material the managing
     // pass
@@ -930,7 +823,7 @@ public class ManifestSynthesisScenario
     // § per-target-pass).
     final List<TargetPass> workloadPasses = prepareWorkloadPasses(effective, rendered, delivery);
     given().the_activation_facet(effective);
-    final Optional<ClusterIssuerCaMaterial> issuerCa = revealClusterIssuerCa();
+    final Optional<ClusterIssuerCa> issuerCa = revealClusterIssuerCa();
     final Materials materials =
         new Materials(
             revealOperatorPki(),
@@ -950,12 +843,16 @@ public class ManifestSynthesisScenario
         .and()
         .the_workload_targets_are_rendered(workloadPasses, materials)
         .and()
-        .the_manifests_are_synthesized(materials, rendered);
+        .the_manifests_are_synthesized(
+            materials,
+            rendered,
+            rendered.map(RenderSoil::root).orElseGet(() -> soil.getPath("/survey")));
     // Extract the IN_CLUSTER-reaching sealed materials to the branch asset (§ in-cluster-cellar
     // -asset): the operator's grow captures its fresh seals, a publish re-captures the rehydrated
-    // set (a fixpoint). Written plaintext into the tree; the git clean filter sops-encrypts it at
-    // stageAll, so the passphrase-sealed payloads gain age protection at rest. Before delivery so
-    // the THEN's stageAll picks it up. A no-op when nothing reaches in-cluster (a mgmt-only run).
+    // set (a fixpoint). Written plaintext into the tree; the delivery seals it with the other
+    // Secrets before staging, so the passphrase-sealed payloads gain age protection at rest. Before
+    // delivery so the THEN's seal and stageAll pick it up. A no-op when nothing reaches in-cluster
+    // (a mgmt-only run).
     extractInClusterAsset(rendered);
     then()
         .every_enabled_domain_produced_its_units()
@@ -968,28 +865,21 @@ public class ManifestSynthesisScenario
   }
 
   /**
-   * Prepare one render pass per workload target — a linked worktree of its {@code
-   * manifests/<cluster>} branch beside the managing render, plus the plan that seals it.
+   * Prepare one render pass per workload target — the head of its {@code manifests/<cluster>}
+   * branch with a plot beside the managing render's, plus the plan that seals it.
    *
-   * <p>Empty unless the managing render itself has a worktree: a bare survey / the standalone CLI
-   * renders the one cluster into a temp dir with no branch, and a target's pass exists only to
-   * produce a branch and a bundle. Present ⟹ a {@link Delivery} was resolved (both hang off the
-   * same worktree seam), so each target's plan is the managing one re-subjected to its own branch.
+   * <p>Empty unless the managing render itself has a head: a bare survey / the standalone CLI
+   * renders the one cluster into an in-memory survey plot with no branch, and a target's pass
+   * exists only to produce a branch and a bundle. Present ⟹ a {@link RenderDelivery} was resolved
+   * (both hang off the same worktree seam), so each target's plan is the managing one re-subjected
+   * to its own branch.
    *
-   * <p>Each target renders at {@code <render-root>/<cluster>/<cluster>-<first-control-node>} — a
-   * directory of its OWN under the shared render root, its leaf on the same {@code
-   * <cluster>-<node>} convention the managing SOIL uses.
-   *
-   * <p>The extra level is REQUIRED, not tidiness: the consolidated {@code manifests.yaml} and the
-   * carved {@code .bootstrap/rke2lab-bootstrap.yaml} sit one level ABOVE their tree (see {@link
-   * NodeBootstrapArtifact}), so two passes sharing a parent write the SAME two files — the target's
-   * carve would overwrite the manager's bundle and {@link #fileNodeBootstrap} would seal a
-   * WORKLOAD's bundle as the managing node's. A flat sibling of the managing SOIL is exactly that
-   * case. The managing pass keeps its historical path (it is the plot the GROW mounts), so the
-   * asymmetry is forced.
-   *
-   * <p>Not closed, for the same reason the managing worktree is not — and {@code prepare} is
-   * idempotent, so a re-run starts clean while the last render stays inspectable on disk.
+   * <p>Each target renders at {@code <plots-root>/<cluster>} on the run's in-memory soil — beside
+   * the managing plot, each on its own branch {@code manifests/<cluster>}. The render's
+   * intermediates (the consolidated {@code manifests.yaml}, the carved {@code
+   * .bootstrap/rke2lab-bootstrap.yaml}) live in each tree's own ignored {@link
+   * NodeBootstrapArtifact#LOCAL_DIR}, so two passes never write the same file and a target's carve
+   * can never be sealed as the managing node's bundle.
    */
   /**
    * The branches this render WRITES — the TRANSITIVE closure of the owner rule ({@link
@@ -1025,8 +915,8 @@ public class ManifestSynthesisScenario
 
   private List<TargetPass> prepareWorkloadPasses(
       ManifestsRunbookInput effective,
-      Optional<LinkedWorktree> rendered,
-      Optional<Delivery> delivery) {
+      Optional<RenderSoil> rendered,
+      Optional<RenderDelivery> delivery) {
     // DEEPEST-FIRST. `renderedBy` is breadth-first, so parents precede children; reversing it puts
     // every child before the pass that ADOPTS it, which is what lets a bundle exist by the time its
     // adopter renders. On a tree that reversal IS a post-order, and the adopter relation is a tree.
@@ -1035,20 +925,21 @@ public class ManifestSynthesisScenario
     if (rendered.isEmpty() || delivery.isEmpty() || children.isEmpty()) {
       return List.of();
     }
-    final Path renderRoot = rendered.orElseThrow().path().getParent();
-    if (renderRoot == null) {
+    final Path plotsRoot = rendered.orElseThrow().root().getParent();
+    if (plotsRoot == null) {
       return List.of();
     }
-    final RenderedBranch branch = renderedBranch.orElseThrow();
-    final Delivery plan = delivery.orElseThrow();
+    final TransientWorktrees heads = transientWorktrees.orElseThrow();
+    final RenderDelivery plan = delivery.orElseThrow();
+    final Optional<String> fetchToken = revealFetchToken();
     final List<TargetPass> passes = new ArrayList<>();
     for (final ClusterCoordinate child : children) {
       final String cluster = child.clusterName();
-      final Path soil = renderRoot.resolve(cluster).resolve(cluster + "-" + FIRST_CONTROL_NODE);
       passes.add(
           new TargetPass(
               child,
-              branch.prepare(soil, BRANCH_PREFIX + cluster),
+              new RenderSoil(
+                  heads.open(BRANCH_PREFIX + cluster, fetchToken), plotsRoot.resolve(cluster)),
               plan.forBranchOf(renderCommitMessage(cluster))));
     }
     return List.copyOf(passes);
@@ -1075,7 +966,9 @@ public class ManifestSynthesisScenario
    * surface as a cryptic node-boot fetch failure. So: fail LOUD.
    */
   private void fileNodeGithubToken(
-      ManifestsRunbookInput facet, Optional<LinkedWorktree> rendered, Optional<Delivery> delivery) {
+      ManifestsRunbookInput facet,
+      Optional<RenderSoil> rendered,
+      Optional<RenderDelivery> delivery) {
     // The role is only ever asked one question below — "is this a WORKLOAD?" — so an ABSENT
     // identity
     // must stay absent rather than be flattened into a blank name. The previous `.orElse("")`
@@ -1120,12 +1013,9 @@ public class ManifestSynthesisScenario
         Persistence.TRANSIENT);
   }
 
-  /** Mint the node's fresh {@code contents:read} token from the revealed App creds, or empty. */
+  /** The node's fresh {@code contents:read} token, minted from the sealed App, or empty. */
   private Optional<String> revealNodeGithubToken() {
-    return readerTokenMint.flatMap(
-        mint ->
-            revealGithubApp()
-                .map(app -> mint.mint(app.appId(), app.installationId(), app.privateKeyPem())));
+    return cellar == null ? Optional.empty() : tokens().reader(cellar, parcel);
   }
 
   /**
@@ -1137,11 +1027,11 @@ public class ManifestSynthesisScenario
    * the cluster-pki cases ride. A no-op on a bare survey / the standalone CLI (no worktree, no
    * parcel) and when no unit marked anything node-bootstrap (the file is absent).
    */
-  private void fileNodeBootstrap(Optional<LinkedWorktree> rendered) {
+  private void fileNodeBootstrap(Optional<RenderSoil> rendered) {
     if (rendered.isEmpty() || cellar == null || parcel.isEmpty()) {
       return;
     }
-    final Path bootstrapFile = NodeBootstrapArtifact.MANIFESTS.in(rendered.orElseThrow().path());
+    final Path bootstrapFile = NodeBootstrapArtifact.MANIFESTS.in(rendered.orElseThrow().root());
     if (!Files.exists(bootstrapFile)) {
       return;
     }
@@ -1157,68 +1047,43 @@ public class ManifestSynthesisScenario
     }
   }
 
-  // The in-cluster cellar asset at the branch ROOT (§ in-cluster-cellar-asset): a hidden Secret
-  // carrier holding the SEALED IN_CLUSTER-reaching envelopes as one stringData scalar. The
-  // `.secret-`
-  // prefix matches the exploder's `.gitattributes` (`**/.secret-*.yml filter=sops-yaml`), so the
-  // git
-  // clean filter sops-encrypts the stringData at commit; local-config + its root placement (outside
-  // every Flux Kustomization path) keep it unapplied — pure operator/render carrier.
-  private static final String IN_CLUSTER_ASSET_FILE = ".secret-in-cluster-cellar.yml";
-  // The cluster→git reflector's subtree on the managing branch — a reflector-owned path the render
-  // never generates but PRESERVES across its wholesale regeneration (the escape carve-out).
-  private static final String REFLECTIONS_DIR = "reflections";
-  private static final String ASSET_ENVELOPES_KEY = "envelopes";
-
   /**
    * Rehydrate the prior render's in-cluster asset onto the run's overlay so the IN_CLUSTER reveals
-   * resolve on a secret-blind publish (§ in-cluster-cellar-asset). Reads the COMMITTED asset back
-   * THROUGH the sops smudge filter ({@link LinkedWorktree#smudgeFromHead}, since jgit's {@code
-   * readAtHead} would hand back the encrypted blob), unwraps its {@code stringData} scalar, and
-   * hands the sealed envelopes to the cellar. A no-op on a survey / no cellar / no asset at HEAD.
+   * resolve on a secret-blind publish (§ in-cluster-cellar-asset). Reads the COMMITTED carrier at
+   * HEAD, opens its sops envelope in memory with the key sops finds in this enclosure (the cluster
+   * key in-cluster, the operator's on the host), unwraps its {@code stringData} scalar, and hands
+   * the sealed envelopes to the cellar. A no-op on a survey / no cellar / no asset at HEAD; a
+   * carrier present but unreadable REFUSES the render ({@link InClusterAssetAtHead}) — before any
+   * synthesis or delivery, so nothing is committed and Flux prunes nothing.
    */
-  private void rehydrateInClusterAsset(Optional<LinkedWorktree> rendered) {
+  private void rehydrateInClusterAsset(Optional<RenderSoil> rendered) {
     if (rendered.isEmpty() || cellar == null || parcel.isEmpty()) {
       return;
     }
     final ScenarioCellar tx = cellar;
     final Parcel plot = parcel.orElseThrow();
-    rendered
-        .orElseThrow()
-        .smudgeFromHead(IN_CLUSTER_ASSET_FILE)
-        .flatMap(this::assetEnvelopesJson)
+    new InClusterAssetAtHead(
+            sopsDecryptor.orElseThrow(
+                () ->
+                    new IllegalStateException(
+                        "no SopsDecryptor edge — cannot open the sealed in-cluster cellar asset")))
+        .envelopes(rendered.orElseThrow())
         .ifPresent(json -> tx.importSealed(plot, json));
   }
 
   /**
    * Extract the IN_CLUSTER-reaching sealed materials to the branch asset — the grow captures its
    * fresh seals, a publish re-captures the rehydrated set (a fixpoint). Written PLAINTEXT into the
-   * tree; the git clean filter sops-encrypts the {@code stringData} at {@code stageAll}. A no-op on
-   * a survey / no cellar / nothing reaching in-cluster (a mgmt-only run leaves the branch
-   * untouched).
+   * tree; the delivery seals its {@code stringData} in memory before {@code stageAll}. A no-op on a
+   * survey / no cellar / nothing reaching in-cluster (a mgmt-only run leaves the branch untouched).
    */
-  private void extractInClusterAsset(Optional<LinkedWorktree> rendered) {
+  private void extractInClusterAsset(Optional<RenderSoil> rendered) {
     if (rendered.isEmpty() || cellar == null || parcel.isEmpty()) {
       return;
     }
     final ScenarioCellar tx = cellar;
     tx.exportReaching(parcel.orElseThrow(), io.seedmatic.rke2lab.seed.broker.port.Reach.IN_CLUSTER)
-        .ifPresent(json -> writeInClusterAsset(rendered.orElseThrow().path(), json));
-  }
-
-  /**
-   * The {@code stringData.envelopes} scalar of a smudged asset carrier; empty if absent/unreadable.
-   */
-  private Optional<String> assetEnvelopesJson(String secretYaml) {
-    try {
-      final JsonNode envelopes =
-          FACET_READER.readTree(secretYaml).path("stringData").path(ASSET_ENVELOPES_KEY);
-      return envelopes.isMissingNode() || envelopes.isNull()
-          ? Optional.empty()
-          : Optional.of(envelopes.asText());
-    } catch (IOException ex) {
-      return Optional.empty();
-    }
+        .ifPresent(json -> writeInClusterAsset(rendered.orElseThrow().root(), json));
   }
 
   /**
@@ -1226,17 +1091,17 @@ public class ManifestSynthesisScenario
    * plain.
    */
   private void writeInClusterAsset(Path root, String envelopesJson) {
-    final ObjectNode secret = FACET_READER.createObjectNode();
+    final ObjectNode secret = JsonNodeFactory.instance.objectNode();
     secret.put("apiVersion", "v1");
     secret.put("kind", "Secret");
     final ObjectNode metadata = secret.putObject("metadata");
     metadata.put("name", "in-cluster-cellar");
     metadata.putObject("annotations").put("config.kubernetes.io/local-config", "true");
     secret.put("type", "Opaque");
-    secret.putObject("stringData").put(ASSET_ENVELOPES_KEY, envelopesJson);
+    secret.putObject("stringData").put(InClusterAssetAtHead.ENVELOPES_KEY, envelopesJson);
     try {
       Files.writeString(
-          root.resolve(IN_CLUSTER_ASSET_FILE), FACET_READER.writeValueAsString(secret));
+          BranchSecretCarrier.IN_CLUSTER_CELLAR.in(root), CODEC.canonical().writeYaml(secret));
     } catch (IOException ex) {
       throw new UncheckedIOException(
           "cannot write the in-cluster cellar asset at the branch root", ex);
@@ -1259,7 +1124,7 @@ public class ManifestSynthesisScenario
    * When: the transposition of {@code HostSlotManifest.Builder.policy()}. Derives the {@link
    * ManifestDomainPolicy} + {@link FloxDebugPolicy} from the facet and synthesises. The policy
    * drives the synth-time domain filter (which layers synthesise). Mode-blind: the materialisation
-   * target follows the SOIL amendment alone (a temp dir here), never a run gate.
+   * target follows the SOIL amendment alone (an in-memory survey plot here), never a run gate.
    */
   public static class When extends Stage<When> {
 
@@ -1272,7 +1137,7 @@ public class ManifestSynthesisScenario
     // The source worktree (see the scenario field): its jgit provenance stamps the recorded render
     // manifest with the rke2lab rev + dirty bit that synthesised this tree.
     @OsgiService(await = false)
-    private Optional<Worktree> sourceWorktree = Optional.empty();
+    private Optional<DurableWorktree> sourceWorktree = Optional.empty();
 
     @ProvidedScenarioState ManifestDomainPolicy domainPolicy;
     @ProvidedScenarioState ManifestSynthesisResult result;
@@ -1320,7 +1185,7 @@ public class ManifestSynthesisScenario
       final Map<String, String> carvedByCluster = new LinkedHashMap<>();
       for (final TargetPass pass : passes) {
         final String cluster = pass.child().clusterName();
-        final Path root = pass.worktree().path();
+        final Path root = pass.soil().root();
         synthesize(
             new Pass(
                 // The CHILD's own role, not WRKLD. This was hardcoded, which was right only while
@@ -1388,7 +1253,7 @@ public class ManifestSynthesisScenario
         recordRenderFacet(root, childFacets.build(), facet.image());
         recordSopsPolicy(root);
         recordInstallConfigFlake(root);
-        pass.delivery().seal(pass.worktree());
+        pass.delivery().seal(pass.soil());
         carvedBundle(root).ifPresent(yaml -> carvedByCluster.put(cluster, yaml));
       }
       // The managing pass renders the bundles of the children the RENDERER adopts — NOT every
@@ -1456,11 +1321,10 @@ public class ManifestSynthesisScenario
     }
 
     public When the_manifests_are_synthesized(
-        @Hidden Materials materials, @Hidden Optional<LinkedWorktree> rendered) {
-      // Materialise INTO the rendered-branch worktree when one was prepared (a provisioning run —
-      // the GROW mounts it and the THEN seals + delivers it), else a temp dir (a survey / the
-      // standalone CLI). Mode-blind: whether the run is a survey is the frontier's business.
-      final Path root = rendered.map(LinkedWorktree::path).orElseGet(this::freshTempDir);
+        @Hidden Materials materials, @Hidden Optional<RenderSoil> rendered, @Hidden Path root) {
+      // Materialise INTO the head's plot when one was opened (a provisioning run — the THEN seals +
+      // delivers it), else the in-memory survey plot (a survey / the standalone CLI). Mode-blind:
+      // whether the run is a survey is the frontier's business.
       // The managing pass runs LAST, after the per-target ones, because it consumes what they
       // carve:
       // its OWNED CHILDREN are the DIFFERENT clusters whose CAPI CR set lands on
@@ -1488,10 +1352,10 @@ public class ManifestSynthesisScenario
       // here
       // is the raw facet (incl. delivery) in hand, and the exploder has no root path.
       rendered.ifPresent(
-          linkedWorktree -> {
-            recordRenderFacet(linkedWorktree.path(), facet.facets(), facet.image());
-            recordSopsPolicy(linkedWorktree.path());
-            recordInstallConfigFlake(linkedWorktree.path());
+          plot -> {
+            recordRenderFacet(plot.root(), facet.facets(), facet.image());
+            recordSopsPolicy(plot.root());
+            recordInstallConfigFlake(plot.root());
           });
       return self();
     }
@@ -1519,10 +1383,9 @@ public class ManifestSynthesisScenario
      * {@code materials} are the run's, revealed once and identical for every pass — the units
      * decide what each role actually renders from them.
      *
-     * <p>{@code manifests.yaml} is the INTERMEDIATE aggregate, not part of the mounted/checksummed
-     * tree — it sits a level ABOVE the synthesis root (sibling of {@code rke2-manifests.d}), so the
-     * staging replica the scion checksums holds only the manifest units, never the merged file. It
-     * falls back into the root when the root has no usable parent (a bare temp dir).
+     * <p>{@code manifests.yaml} is the INTERMEDIATE aggregate, never part of the committed tree: it
+     * sits in the root's ignored {@link NodeBootstrapArtifact#LOCAL_DIR}, beside the carved
+     * bootstrap set.
      */
     private ManifestSynthesisResult synthesize(Pass pass, Materials materials) {
       final ManifestsRunbookInput.DebugFacet debug = facet.facets().debug();
@@ -1531,8 +1394,8 @@ public class ManifestSynthesisScenario
               debug.mesh().enabled(),
               debug.networking().enabled(),
               debug.nriPlugins().flox().enabled());
-      final Path parent = pass.root().getParent();
-      final Path manifestFile = (parent == null ? pass.root() : parent).resolve("manifests.yaml");
+      final Path manifestFile =
+          pass.root().resolve(NodeBootstrapArtifact.LOCAL_DIR).resolve("manifests.yaml");
       final ManifestSynthesisRequest request =
           ManifestSynthesisRequest.builder(pass.root(), manifestFile)
               .manifestDomainPolicy(Optional.of(pass.policy()))
@@ -1567,14 +1430,6 @@ public class ManifestSynthesisScenario
       }
     }
 
-    private Path freshTempDir() {
-      try {
-        return Files.createTempDirectory("rke2lab-manifests-").toAbsolutePath().normalize();
-      } catch (IOException ex) {
-        throw new UncheckedIOException("cannot create the synthesis outdir", ex);
-      }
-    }
-
     // The self-describing render manifest at the branch root: a k8s ConfigMap carrying the
     // effective
     // facet, annotated config.kubernetes.io/local-config so nothing applies it (it also sits
@@ -1582,23 +1437,6 @@ public class ManifestSynthesisScenario
     // every Flux Kustomization path). The facet is serialised with the same field-named records the
     // amend reflector binds, so read → decode → re-serialise is a fixpoint (no empty-commit churn).
     private static final String RENDER_FACET_FILE = "manifest.yaml";
-
-    // A human-readable YAML doc, NOT a ConfigMap: it sits at the branch root, outside every Flux
-    // Kustomization path, so nothing ever applies it — and native YAML reads far better than a JSON
-    // blob stuffed in a scalar. Deterministic serialisation (record component order, no doc-start
-    // marker, minimal quotes) keeps the empty-commit guard's fixpoint: same source + facet →
-    // identical bytes → no commit.
-    private static final YAMLMapper YAML_MAPPER =
-        YAMLMapper.builder()
-            .disable(YAMLGenerator.Feature.WRITE_DOC_START_MARKER)
-            .enable(YAMLGenerator.Feature.MINIMIZE_QUOTES)
-            .enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS)
-            // Jdk8Module so the recorded image (Optional<ImageState>) serialises as its value /
-            // null,
-            // registered EXPLICITLY like SeedCodec (never findAndRegisterModules — OSGi
-            // classloading).
-            .addModule(new Jdk8Module())
-            .build();
 
     private void recordRenderFacet(
         Path root, ManifestsRunbookInput.Facets facets, Optional<ImageState> image) {
@@ -1613,10 +1451,12 @@ public class ManifestSynthesisScenario
           Provenance source, ManifestsRunbookInput.Facets facet, Optional<ImageState> image) {}
       try {
         final Provenance source =
-            sourceWorktree.map(Worktree::provenance).orElse(new Provenance("", false));
+            sourceWorktree.map(DurableWorktree::provenance).orElse(new Provenance("", false));
         Files.writeString(
             root.resolve(RENDER_FACET_FILE),
-            YAML_MAPPER.writeValueAsString(new RenderContext(source, facets, image)));
+            // A human-readable YAML doc at the branch root, outside every Flux path, so nothing
+            // applies it; canonical, so the same source + facet give the same bytes and no commit.
+            CODEC.canonical().writeYaml(new RenderContext(source, facets, image)));
       } catch (IOException ex) {
         throw new UncheckedIOException("cannot record the render facet at the branch root", ex);
       }
@@ -1625,12 +1465,13 @@ public class ManifestSynthesisScenario
     /**
      * Copy the source repo's {@code .sops.yaml} policy verbatim to the rendered branch ROOT — the
      * declarative half of the two static sops assets (the exploder writes the other, {@code
-     * .gitattributes}, marking {@code *-secret-*.yml filter=sops-yaml}). This policy names the
-     * fields to encrypt ({@code encrypted_regex: ^(data|stringData)$}) and the age recipients —
-     * crucially the cluster key, so Flux decrypts the committed Secrets in-cluster. Verbatim from
-     * source, so the recipients stay SSOT (a key rotation propagates on the next render). The
-     * git-sops clean filter (run when the THEN stages) reads it from the worktree root (its CWD). A
-     * no-op on a bare survey or a source with no readable {@code .sops.yaml}.
+     * .gitattributes}, marking {@code *-secret-*.yml diff=sops-yaml}). This policy names the fields
+     * to encrypt ({@code encrypted_regex: ^(data|stringData)$}) and the age recipients — crucially
+     * the cluster key, so Flux decrypts the committed Secrets in-cluster. Verbatim from source, so
+     * the recipients stay SSOT (a key rotation propagates on the next render). The delivery's
+     * {@link RenderedSecretSeal} seals each rendered Secret under it, in memory, before the THEN
+     * stages. A no-op on a bare survey or a source with no readable {@code .sops.yaml} — and then a
+     * tree that holds a Secret is refused at the seal.
      */
     private void recordSopsPolicy(Path root) {
       sourceWorktree
@@ -1727,7 +1568,7 @@ public class ManifestSynthesisScenario
                         name="$(yq eval -r '.metadata.name' "$manifest")"
                         # Extract the config payload (ConfigMap .data), parsing each value from its
                         # embedded YAML. The fragments are non-secret ConfigMaps committed plaintext
-                        # (the sops gitattributes binds only *-secret-* files), so no decryption.
+                        # (the render seals only Secrets), so no decryption.
                         yq eval -o=yaml \
                           '(.data // {}) | with_entries(.value |= from_yaml)' \
                           "$manifest" > "$dest/$name"
@@ -1783,14 +1624,14 @@ public class ManifestSynthesisScenario
     }
 
     /**
-     * Seal + deliver the rendered branch: stage the whole rendered tree, commit it SIGNED as the
-     * rke2lab bot, and — only when the operator armed {@code rke2lab:manifests:push} and the sealed
-     * token was revealed — force-push {@code manifests/<cluster>} to origin. The worktree is NOT
-     * closed: it persists at the SOIL path for the GROW to mount. A no-op for a survey / CLI render
-     * (no worktree prepared) — the tree was materialised, nothing is delivered.
+     * Seal + deliver the rendered branch: commit the whole rendered tree onto the head SIGNED as
+     * the rke2lab bot, and — only when the operator armed {@code rke2lab:manifests:push} and the
+     * sealed token was revealed — push {@code manifests/<cluster>} to origin fast-forward, the
+     * local branch moving after it; otherwise only the local branch moves. A no-op for a survey /
+     * CLI render (no head opened) — the tree was materialised in memory, nothing is delivered.
      */
     public Then the_rendered_branch_is_delivered(
-        @Hidden Optional<LinkedWorktree> rendered, @Hidden Optional<Delivery> delivery) {
+        @Hidden Optional<RenderSoil> rendered, @Hidden Optional<RenderDelivery> delivery) {
       if (rendered.isEmpty() || delivery.isEmpty()) {
         return self();
       }

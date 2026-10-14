@@ -59,7 +59,7 @@ See link:bootstrap-identity-provider.adoc[Bootstrap Identity Provider] for the i
 
 **Fleet k8s environment**: `fleet/flox/k8s/.flox/env/manifest.toml`
 
-- kubectl, helm, helmfile, cilium-cli, fluxcd, kpt, etcdctl
+- kubectl, helm, helmfile, cilium-cli, fluxcd, etcdctl
 - kubectl plugins: doctor, tree, view-secret, etc.
 
 **Fleet keyhole environment**: `fleet/flox/keyhole/.flox/env/manifest.toml`
@@ -173,7 +173,7 @@ webhook, no per-pod cert, and keys on the per-container annotation rather than a
 
 - kubectl, helm, helmfile
 - cilium-cli, fluxcd
-- kpt, etcdctl
+- etcdctl
 - kubectl plugins: doctor, tree, view-secret, graph, etc.
 
 **Use cases**:
