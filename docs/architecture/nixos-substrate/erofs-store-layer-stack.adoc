@@ -287,6 +287,89 @@ profile and its generations, and only the nested-VM installer ever writes a prof
 the bundle's own fresh pools, never the live ones. So the gate now *refuses*, naming
 `VM_FACTORY_RESET=true` as the operator's way forward (`ndh` `e3451f13`).
 
+[[abi-amendment-nerd-nixos]]
+=== Amended for nerd-nixos: frozen layers, built at boot, no rollback
+
+*Status: target* — ndh `docs/store-freeze-spec.adoc`, increment 1 of the private-cache work,
+validated on 2026-10-14 by the operator, the integration, security, nix and incus.
+
+nerd-nixos freezes its own store upper into a read-only layer, *by command*: the operator switches
+at runtime, then `ndh-store freeze` takes one ZFS snapshot of the upper and the nix DB and reboots.
+That changes the two invariants above for nerd-nixos, and for nerd-nixos only:
+
+[mermaid]
+----
+flowchart TB
+  subgraph BEFORE["the rule above — depth baked in"]
+    B1["a generation bakes its lowerdir list<br/>(fileSystems, at build time)"]
+    B2["append is safe, replacement is not<br/>append-only is the CONDITION for rollback"]
+    B1 --> B2
+  end
+  subgraph AFTER["nerd-nixos under store-freeze — depth read at boot"]
+    A1["a stage-1 unit builds the stack from a manifest on the pool<br/>frozen ZFS layers on top of the EROFS ones"]
+    A2["no rollback of the stack: it moves forward<br/>at the pace of the repositories' head"]
+    A3["two generations in the bootloader until the next compaction,<br/>both initrds reading the manifest"]
+    A4["a compaction keeps only the current generation —<br/>never before it has booted once"]
+    A1 --> A2 --> A3 --> A4
+  end
+  BEFORE -. "amended for nerd-nixos" .-> AFTER
+----
+
+Legend: left, the rule as it stands for the EROFS stack; right, what nerd-nixos does instead under
+store-freeze.
+
+* *A generation no longer bakes its depth.* It cannot name the frozen layer that holds it, since it
+  was built before its own freeze. A systemd stage-1 unit builds the stack from an A/B manifest on the
+  pool. It checks every snapshot by GUID and dataset, and the booted toplevel must resolve in the stack
+  plus the upper. Any failure falls back loudly, in a degraded mode: `nix-daemon` masked, the store
+  read-only.
+* *There is no rollback of the stack*, so a *compaction* (a replacement, in this spec's terms) is
+  allowed. It keeps only the current generation in the bootloader. Until it runs, two generations
+  stay there, both initrds reading the manifest, so a bad initrd change is undone from the
+  bootloader. A compaction never runs before the current generation has booted once.
+* *The materializer's rule is unchanged.* Replacing an EROFS layer's content still requires
+  `VM_FACTORY_RESET=true`, which recreates the pools, frozen layers included.
+
+[[layer-consumers]]
+== The layers' other consumers — the layer contract
+
+The stack is no longer read by the guest alone. ndh renders a *layer contract*,
+`/etc/ndh/store-layers.json`, from `erofs-store-layers.nix` through `erofs-store-mount.nix`. Every
+other overlay built on these layers reads it, instead of keeping a second, hand-written list.
+
+[mermaid]
+----
+flowchart TB
+  L["erofs-store-layers.nix — the single source"] --> J["/etc/ndh/store-layers.json<br/>lowerdirs (newest first) · requiredOptions · upperRoot"]
+  J --> G["nerd-nixos's own store"]
+  J --> C["ndh's Incus NixOS containers (attic-nixos, headscale-nixos)<br/>store = a snapshot of nerd-nixos's upper over the layers"]
+  J -. "candidate" .-> P["the flox NRI plugin's pod stores"]
+----
+
+Legend: plain edge, a consumer that reads the contract today; dotted, a candidate.
+
+[cols="1,3",options="header"]
+|===
+| Rule | Why
+
+| a consumer mounts the layers *flat*, never an overlay of them
+| an overlay as a lowerdir mounts, but the kernel silently falls back to `index=off`
+
+| an `index=on` upper is bound to its lower set, so an append, a freeze or a replacement changes the
+set under *every* consumer's upper, not only the guest's
+| the ESTALE of the invariants above, at one more level
+
+| the binding is the consumer's own *stamp* (the snapshot and the layer set), not the kernel's
+| the kernel does not refuse an upper over a newer snapshot of the same dataset; with two snapshot
+lowers or more it runs without `index` at all, since ZFS snapshots have a null filesystem UUID
+(measured 2026-10-14)
+
+| a consumer mounts with the layer list *stamped at its delivery*, never the current contract; only a
+re-delivery moves it to a new list
+| after a freeze-reboot, a consumer comes back on its old snapshot while the contract already
+describes the new stack: mixing them makes the DB call absent paths valid
+|===
+
 == C3c — Generalising: every generation is a layer
 
 Does the model that builds the *bringup* system also serve the *target* system? Yes — and the
@@ -611,6 +694,12 @@ whole fleet.
 | *`ndh` owns the ESP*
 | a consequence: if it builds the generation and its layer, it installs the bootloader entry
 
+| *for nerd-nixos, generations are frozen by command and the stack is read at boot* (amendment,
+2026-10-14)
+| the operator's way of working: switch at runtime, then freeze into a ZFS snapshot layer. No
+rollback, so a compaction keeps only the current generation; two generations until it runs (see
+<<abi-amendment-nerd-nixos>>)
+
 | *appending a layer is routine; replacing one requires re-provisioning*
 | a generation's initrd bakes its `lowerdir` list, so it ignores appended layers but cannot
   survive its own closure being re-cut out of the stack. The materializer refuses the
@@ -712,4 +801,6 @@ Fixed in ndh `47943f0b` and `6213a553`:
 * link:node-bootstrap-delivery.adoc[Node-side bootstrap delivery] — the other half of what reaches a node with no `/srv/host`.
 * link:../atlas/nixos-substrate.adoc[Atlas — NixOS substrate] — the before/after delta this becomes a component of.
 * link:tailscale-fork-supply-chain.adoc[Tailscale fork supply chain] — the sibling `ndh`-as-SSOT pattern, with its own bump runbook.
-* link:../atlas/fabric-control-plane.adoc#private-binary-cache[Fabric control-plane atlas — the private binary cache] — the layers gain consumers beyond the guest: the Incus containers (attic-nixos, headscale-nixos, the cluster nodes) take them as read-only lowers, newest first, projected from `erofs-store-layers.nix`, with a lower DB generated once per layer set. Both invariants extend to them: a layer replaced under a running container is an ESTALE.
+* link:../atlas/fabric-control-plane.adoc#private-binary-cache[Fabric control-plane atlas — the private binary cache] — the layers gain consumers beyond the guest: the Incus containers (attic-nixos, headscale-nixos) take a snapshot of nerd-nixos's upper over them as read-only lowers, newest first, projected from `erofs-store-layers.nix`, with the snapshot's DB copied. See <<layer-consumers>>.
+* ndh `docs/store-freeze-spec.adoc` — nerd-nixos freezes its store upper into a read-only layer by command; the source of <<abi-amendment-nerd-nixos>>.
+* ndh `docs/private-binary-cache-spec.adoc`, section _The containers' /nix/store_ — the containers that consume the layers.
