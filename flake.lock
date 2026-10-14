@@ -2,9 +2,6 @@
   "nodes": {
     "flake-commons": {
       "inputs": {
-        "bird": [
-          "nixpkgs"
-        ],
         "chromium-bin": [
           "nixpkgs"
         ],
@@ -66,11 +63,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1791917675,
-        "narHash": "sha256-9nrDYoFpZxyMBo2l1/I2BTvctcFlTr7wK884OZsKtrA=",
+        "lastModified": 1791979034,
+        "narHash": "sha256-2g3QtKfl+f+oqGIT1znhR/UMSWdbioZMm2vSf9F9UZo=",
         "owner": "seedmatic",
         "repo": "nix-flake-commons",
-        "rev": "337f08b156f4a0e3281819cc31ed563989ccdcd4",
+        "rev": "f50b98300f8802befbb6d4e644884c21371ec547",
         "type": "github"
       },
       "original": {
