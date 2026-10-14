@@ -38,6 +38,13 @@
       <artifactId>manifests-contract</artifactId>
       <scope>provided</scope>
     </dependency>
+    <!-- ServerManifestsCoordinate — the passenger checks whether the render filed the node-bootstrap
+         bundle. provided: it rides the manifests-bdd host's import of the ingress contract. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>manifests-ingress-contract</artifactId>
+      <scope>provided</scope>
+    </dependency>
     <!-- NdhKeystoreReader — the synthesis now binds it (mandatory); the passenger registers an
          absent-keystore stub. provided: the interface rides the staged ndh-contract bundle (pulled
          into the bench by manifests-core's import), the stub is the only impl the test publishes. -->
