@@ -1,5 +1,6 @@
 package io.seedmatic.rke2lab.sops.edge;
 
+import io.seedmatic.rke2lab.clusterpki.contract.SopsEncryptionException;
 import io.seedmatic.rke2lab.clusterpki.contract.SopsEncryptor;
 import java.io.IOException;
 import java.nio.file.FileSystems;

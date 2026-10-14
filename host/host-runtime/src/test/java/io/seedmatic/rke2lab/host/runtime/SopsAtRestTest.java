@@ -8,6 +8,8 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -28,6 +30,8 @@ class SopsAtRestTest {
           # sops:encrypted
           privateKeyPem: dummy-key
       """;
+
+  private static final String MARKER = "LEAK7f3a";
 
   @TempDir Path dir;
   private SopsAtRest sops;
@@ -75,6 +79,47 @@ class SopsAtRestTest {
     final Path secrets = dir.resolve(".secrets");
     Files.writeString(secrets, PLAIN);
     assertThrows(IllegalStateException.class, () -> sops.open(secrets));
+  }
+
+  @Test
+  void aFailedSealQuotesNothingOfThePlaintext() {
+    // A YAML scalar where sops expects a mapping: it answers `cannot unmarshal !!str `<value>``,
+    // the value whole when it is short.
+    final IllegalStateException failure =
+        assertThrows(
+            IllegalStateException.class, () -> sops.seal(dir.resolve(".secrets"), MARKER + "\n"));
+
+    assertTrue(failure.getMessage().contains("unparseable input"), failure.getMessage());
+    for (Throwable link = failure; link != null; link = link.getCause()) {
+      assertFalse(String.valueOf(link.getMessage()).contains(MARKER), "a message quotes sops");
+      assertFalse(link.toString().contains(MARKER), "a toString quotes sops");
+    }
+  }
+
+  @Test
+  void theOptedInStderrGoesToTheDebugLineAndNeverToTheMessage() {
+    final List<String> debug = new ArrayList<>();
+    System.setProperty(SopsAtRest.STDERR_OPT_IN, "true");
+    try {
+      final SopsAtRest optedIn = new SopsAtRest(Map.of(), debug::add);
+      final IllegalStateException failure =
+          assertThrows(
+              IllegalStateException.class,
+              () -> optedIn.seal(dir.resolve(".secrets"), MARKER + "\n"));
+      assertFalse(failure.toString().contains(MARKER), "the message stays sanitized");
+    } finally {
+      System.clearProperty(SopsAtRest.STDERR_OPT_IN);
+    }
+    assertTrue(debug.stream().anyMatch(line -> line.contains(MARKER)), "the stderr is on DEBUG");
+  }
+
+  @Test
+  void withoutTheOptInNothingOfTheStderrIsLogged() {
+    final List<String> debug = new ArrayList<>();
+    assertThrows(
+        IllegalStateException.class,
+        () -> new SopsAtRest(Map.of(), debug::add).seal(dir.resolve(".secrets"), MARKER + "\n"));
+    assertTrue(debug.isEmpty(), "no debug line without the operator's opt-in");
   }
 
   private static boolean onPath(String tool) {

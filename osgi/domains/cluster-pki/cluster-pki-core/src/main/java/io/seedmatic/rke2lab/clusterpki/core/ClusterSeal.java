@@ -233,8 +233,10 @@ public final class ClusterSeal {
   private static LinkedHashMap<String, String> parseBundleYaml(String yaml) {
     try {
       return CODEC.reading().readYaml(yaml, new TypeReference<LinkedHashMap<String, String>>() {});
-    } catch (Exception ex) {
-      throw new IllegalStateException("failed to parse the decrypted cluster CA bundle YAML", ex);
+    } catch (Exception unreadable) {
+      // No cause: the parser's message quotes its source, and the source is the decrypted bundle
+      // with its private keys.
+      throw new IllegalStateException("failed to parse the decrypted cluster CA bundle YAML");
     }
   }
 

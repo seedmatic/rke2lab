@@ -12,6 +12,9 @@ package io.seedmatic.rke2lab.clusterpki.contract;
  * already possess — with the cluster age identity the seal itself derives, mints only the missing
  * leaf from the recovered {@code server-ca}, and files it. Decryption is thus not an operator
  * secret we lack; it is a key we hold, and this is the door we had not yet built.
+ *
+ * <p>A failure of the tool is a {@link SopsEncryptionException}, whose message never quotes sops'
+ * stderr.
  */
 public interface SopsDecryptor {
 

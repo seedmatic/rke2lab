@@ -16,6 +16,9 @@ import java.util.List;
  * identity AND the cluster age recipient (so both {@code us} and the node can decrypt); the edge
  * forces default encrypt-all ({@code --config /dev/null}) so the repo's {@code .sops.yaml}
  * comment-regex rule cannot leave values in the clear.
+ *
+ * <p>A failure of the tool is a {@link SopsEncryptionException}, whose message never quotes sops'
+ * stderr.
  */
 public interface SopsEncryptor {
 

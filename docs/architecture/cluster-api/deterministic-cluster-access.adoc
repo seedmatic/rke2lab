@@ -238,6 +238,13 @@ key), so the seal re-opens the bundle with `SopsDecryptor` (the twin of `SopsEnc
 re-seal — the next grow of an existing cluster simply fills `WEBHOOK_SERVING` and the webhook
 activates. This is the general mechanism for adding any future sealed case to a live cluster.
 
+Both seams fail with a `SopsEncryptionException`, and its message is safe to show: the operation, the
+exit code and a fixed classification of sops' stderr, never the stderr itself — sops' parsers quote
+what they failed to read (`cannot unmarshal !!str` followed by the value), and what the edge feeds
+sops is a plaintext to seal or a blob that opens to one. So a caller may carry that message into a
+failure reason, and only that one: any other exception from a seam is named by its class alone. The
+stderr reaches a local DEBUG line only when the operator opts in with `-Drke2lab.sops.stderr=true`.
+
 The kubeconfig user name is `<cluster>-admin`, unique per cluster: `users`/`clusters`/`contexts` are
 global lists merged BY NAME, so a shared user name would collapse across clusters and both contexts
 would point at one (wrong) user cert. The cluster + context names are already the cluster name; the
