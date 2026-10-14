@@ -1,24 +1,33 @@
 {
   "schema": "seedmatic.relock/v1",
   "head": "rke2lab",
-  "rev": "d78100268bdcab2c078bf9e97c585b0b9d6513d8",
+  "rev": "787e77170a5be70ad2ea263ffe67e35c01f819da",
   "status": {
-    "wave": "flake-commons@2026-10-13T20:05:59Z",
-    "tool": "ab9ed4142b9736920e237973f2deafba0677f8306f73d3db5c719e9a30a711f0",
+    "wave": "flake-commons@2026-10-14T12:34:17Z",
+    "tool": "86be1ecfd7d9b28e3810862652e40b9f25ae6bfd19a4787b0b1d99d3f965404c",
     "bumped": {
+      "flox-controller": [
+        "fef0c9c0fd37f737be658c5492857e766ddd319e",
+        "a8780e2d560ec1b9c0759573ed887729499386bb"
+      ],
       "flox-runtime": [
-        "91dcb857fee1bd31c640394e2c58f4e922a90eda",
-        "ca0f7ebf4fe849d6f22fb9669bfec07cd4cd7abd"
+        "ca0f7ebf4fe849d6f22fb9669bfec07cd4cd7abd",
+        "5354c315574072a61207ca40dc33692cb15f68b4"
       ],
       "ndh": [
-        "7652f46037022e0afa632933caaed873696ffd77",
-        "625b67e6cbd1ae97bff890947cb197da1e1a5378"
+        "625b67e6cbd1ae97bff890947cb197da1e1a5378",
+        "066b6ad76ead838db329221d201b6127be97d5b6"
       ],
       "seed-incluster": [
-        "038de00f0df4477b2f3549034cb78ad56104b8db",
-        "3b7a6b50b98d3c227aa546382b7a6ab0c87b94a7"
+        "3b7a6b50b98d3c227aa546382b7a6ab0c87b94a7",
+        "ff6b332e639f1811e3fe9329faa8df9a49aba0e6"
+      ],
+      "flake-commons": [
+        "337f08b156f4a0e3281819cc31ed563989ccdcd4",
+        "d2aefe87a7451b65a6910ef620f02b3ab43519df"
       ]
     },
+    "pruned": {},
     "dropped": [],
     "after": [],
     "unmeasured": [
@@ -27,6 +36,6 @@
       "apps of x86_64-darwin: one of them does not evaluate before any bump, so none of x86_64-darwin is measured — error: Nixpkgs 26.11 has dropped support for x86_64-darwin.",
       "apps of x86_64-linux: one of them does not evaluate before any bump, so none of x86_64-linux is measured — error: attribute 'x86_64-linux' missing"
     ],
-    "seconds": 275
+    "seconds": 240
   }
 }
