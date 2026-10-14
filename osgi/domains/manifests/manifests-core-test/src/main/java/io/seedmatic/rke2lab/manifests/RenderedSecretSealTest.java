@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import com.github.marschall.memoryfilesystem.MemoryFileSystemBuilder;
 import io.seedmatic.rke2lab.clusterpki.contract.SopsDecryptor;
+import io.seedmatic.rke2lab.clusterpki.contract.SopsEncryptionException;
 import io.seedmatic.rke2lab.clusterpki.contract.SopsEncryptor;
 import io.seedmatic.rke2lab.manifests.contract.BranchSecretCarrier;
 import io.seedmatic.rke2lab.manifests.contract.ManifestAnnotation;
@@ -49,6 +50,7 @@ import org.osgi.framework.FrameworkUtil;
 class RenderedSecretSealTest {
 
   private static final String POLICY = ".sops.yaml";
+  private static final String MARKER = "LEAK7f3a";
 
   @Test
   void aNamespacedSecretAndTheCellarCarrierAreSealedUnderTheRepositoryPolicy(@TempDir Path tmp)
@@ -194,6 +196,40 @@ class RenderedSecretSealTest {
   }
 
   @Test
+  void aSealedArrivalThatDoesNotOpenIsRefusedByItsClassAloneWhenTheFailureIsNotSops(
+      @TempDir Path tmp) throws IOException {
+    final Path tree = sealedArrival(tmp);
+    final IllegalStateException refused =
+        assertThrows(
+            IllegalStateException.class,
+            () ->
+                seal(failingWith(new UncheckedIOException(MARKER, new IOException(MARKER))))
+                    .seal(tree, path -> Optional.empty()));
+    assertTrue(refused.getMessage().contains("02-secret-arrived"), refused.getMessage());
+    assertTrue(
+        refused.getMessage().contains(UncheckedIOException.class.getName()), refused.getMessage());
+    for (Throwable link = refused; link != null; link = link.getCause()) {
+      assertFalse(String.valueOf(link.getMessage()).contains(MARKER), "a message quotes the cause");
+    }
+  }
+
+  @Test
+  void aSealedArrivalThatDoesNotOpenCarriesTheSopsEdgesReason(@TempDir Path tmp)
+      throws IOException {
+    final Path tree = sealedArrival(tmp);
+    final String reason =
+        "sops --decrypt exited with code 128 (no key opens the data key; 14 stderr lines)";
+    final IllegalStateException refused =
+        assertThrows(
+            IllegalStateException.class,
+            () ->
+                seal(failingWith(new SopsEncryptionException(reason)))
+                    .seal(tree, path -> Optional.empty()));
+    assertTrue(refused.getMessage().contains("02-secret-arrived"), refused.getMessage());
+    assertTrue(refused.getMessage().contains(reason), refused.getMessage());
+  }
+
+  @Test
   void aTreeWithSecretsAndNoPolicyIsRefused(@TempDir Path tmp) throws IOException {
     final Path tree = renderedTree(tmp);
     assertThrows(
@@ -307,6 +343,33 @@ class RenderedSecretSealTest {
     service(YamlMapper.class)
         .write(BranchSecretCarrier.IN_CLUSTER_CELLAR.in(tree))
         .document(carrier);
+  }
+
+  /** A tree holding one Secret that arrives already sealed, so the seal must first open it. */
+  private static Path sealedArrival(Path tmp) throws IOException {
+    final Path tree = Files.createDirectories(tmp.resolve("rendered"));
+    Files.writeString(tree.resolve(POLICY), "creation_rules: []\n");
+    final Path arrived = tree.resolve("probe-system/02-secret-arrived.yaml");
+    Files.createDirectories(arrived.getParent());
+    Files.writeString(
+        arrived,
+        "apiVersion: v1\nkind: Secret\nmetadata:\n  name: arrived\n  namespace: probe-system\n"
+            + "stringData:\n  token: ENC[AES256_GCM,data:x,type:str]\n");
+    return tree;
+  }
+
+  private static SopsDecryptor failingWith(RuntimeException failure) {
+    return new SopsDecryptor() {
+      @Override
+      public String decryptYaml(String sopsYaml, String ageIdentity) {
+        throw failure;
+      }
+
+      @Override
+      public String decryptYaml(String sopsYaml) {
+        throw failure;
+      }
+    };
   }
 
   private static RenderedSecretSeal seal(SopsDecryptor decryptor) {

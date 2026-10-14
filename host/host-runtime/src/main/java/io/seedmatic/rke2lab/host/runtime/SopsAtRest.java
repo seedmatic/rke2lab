@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 /**
  * The host's one door to a sops YAML file that stays ENCRYPTED AT REST: {@link #open} decrypts it
@@ -26,23 +27,32 @@ import java.util.concurrent.TimeUnit;
  * <p>⚠️ A failure NEVER carries sops' stderr: its parsers quote what they failed to read — {@code
  * cannot unmarshal !!str `<value>`} — and what this class feeds sops is a plaintext to seal or a
  * file that opens to one. It carries the operation, the exit code, a fixed classification of the
- * stderr and its line count, so every caller is safe by construction. The stderr itself joins the
- * message only when the operator opts in for a debugging run ({@value #STDERR_OPT_IN}{@code
- * =true}).
+ * stderr and its line count, so every caller is safe by construction. The stderr itself is never in
+ * the message — that becomes a scenario's failure reason and its report — but when the operator
+ * opts in for a debugging run ({@value #STDERR_OPT_IN}{@code =true}) it goes to a separate DEBUG
+ * log line, local to the machine that ran sops.
  */
 public final class SopsAtRest {
 
   static final String STDERR_OPT_IN = "rke2lab.sops.stderr";
 
+  private static final System.Logger LOG = System.getLogger(SopsAtRest.class.getName());
+
   private final Map<String, String> env;
   private final boolean stderrOptIn = Boolean.getBoolean(STDERR_OPT_IN);
+  private final Consumer<String> stderrDebug;
 
   public SopsAtRest() {
     this(Map.of());
   }
 
   public SopsAtRest(Map<String, String> env) {
+    this(env, line -> LOG.log(System.Logger.Level.DEBUG, line));
+  }
+
+  SopsAtRest(Map<String, String> env, Consumer<String> stderrDebug) {
     this.env = Map.copyOf(env);
+    this.stderrDebug = stderrDebug;
   }
 
   /**
@@ -147,6 +157,9 @@ public final class SopsAtRest {
   }
 
   private String failure(String operation, String outcome, String stderr) {
+    if (stderrOptIn) {
+      stderrDebug.accept("sops " + operation + " stderr (" + STDERR_OPT_IN + "): " + stderr);
+    }
     return "sops "
         + operation
         + " "
@@ -155,8 +168,7 @@ public final class SopsAtRest {
         + classify(stderr)
         + "; "
         + stderr.lines().count()
-        + " stderr lines)"
-        + (stderrOptIn ? ": " + stderr : "");
+        + " stderr lines)";
   }
 
   /** A fixed label for sops' stderr — words of this class only, never a fragment of the stderr. */

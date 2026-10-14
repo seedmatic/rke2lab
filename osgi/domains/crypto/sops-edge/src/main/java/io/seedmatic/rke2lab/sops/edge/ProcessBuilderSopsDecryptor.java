@@ -1,6 +1,7 @@
 package io.seedmatic.rke2lab.sops.edge;
 
 import io.seedmatic.rke2lab.clusterpki.contract.SopsDecryptor;
+import io.seedmatic.rke2lab.clusterpki.contract.SopsEncryptionException;
 import java.util.List;
 import java.util.Map;
 import org.osgi.service.component.annotations.Component;

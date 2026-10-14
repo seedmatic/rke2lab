@@ -7,10 +7,13 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.seedmatic.rke2lab.clusterpki.contract.SopsDecryptor;
+import io.seedmatic.rke2lab.clusterpki.contract.SopsEncryptionException;
 import io.seedmatic.rke2lab.manifests.contract.BranchSecretCarrier;
 import io.seedmatic.rke2lab.worktree.CommitSpec;
 import io.seedmatic.rke2lab.worktree.TransientWorktree;
 import io.seedmatic.rke2lab.worktree.TreeEdit;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Map;
@@ -61,6 +64,26 @@ class InClusterAssetAtHeadTest {
     assertTrue(refused.getMessage().contains(UndecryptableCarrier.REASON), refused.getMessage());
   }
 
+  @Test
+  void a_carrier_whose_decryptor_fails_otherwise_is_refused_by_its_class_alone() {
+    final SopsDecryptor failing =
+        new SopsDecryptor() {
+          @Override
+          public String decryptYaml(String sopsYaml, String ageIdentity) {
+            return decryptYaml(sopsYaml);
+          }
+
+          @Override
+          public String decryptYaml(String sopsYaml) {
+            throw new UncheckedIOException(MARKER, new IOException(MARKER));
+          }
+        };
+    final IllegalStateException refused =
+        assertRefused(new InClusterAssetAtHead(failing), "sops: sealed\n");
+    assertTrue(
+        refused.getMessage().contains(UncheckedIOException.class.getName()), refused.getMessage());
+  }
+
   private static IllegalStateException assertRefused(InClusterAssetAtHead asset, String atHead) {
     final IllegalStateException refused =
         assertThrows(
@@ -108,7 +131,7 @@ class InClusterAssetAtHeadTest {
 
     @Override
     public String decryptYaml(String sopsYaml) {
-      throw new IllegalStateException(REASON);
+      throw new SopsEncryptionException(REASON);
     }
   }
 

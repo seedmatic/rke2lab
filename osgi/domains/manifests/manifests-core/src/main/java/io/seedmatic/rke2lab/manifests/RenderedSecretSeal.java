@@ -3,6 +3,7 @@ package io.seedmatic.rke2lab.manifests;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.seedmatic.rke2lab.clusterpki.contract.SopsDecryptor;
+import io.seedmatic.rke2lab.clusterpki.contract.SopsEncryptionException;
 import io.seedmatic.rke2lab.clusterpki.contract.SopsEncryptor;
 import io.seedmatic.rke2lab.manifests.contract.KeptLocalDirs;
 import java.io.ByteArrayInputStream;
@@ -158,17 +159,27 @@ public final class RenderedSecretSeal {
             .orElse(fresh));
   }
 
+  /**
+   * Only a {@link SopsEncryptionException} lends its message, which never carries sops' stderr;
+   * anything else — an I/O failure, another decryptor, a parser inside one — is named by its class.
+   */
   private String open(String path, String sealedContent) {
     try {
       return decryptor.decryptYaml(sealedContent);
+    } catch (SopsEncryptionException ex) {
+      throw unopenable(path, String.valueOf(ex.getMessage()));
     } catch (RuntimeException ex) {
-      throw new IllegalStateException(
-          path
-              + " arrives already sealed and cannot be opened here ("
-              + ex.getMessage()
-              + "), so it cannot be re-sealed under "
-              + POLICY);
+      throw unopenable(path, ex.getClass().getName());
     }
+  }
+
+  private static IllegalStateException unopenable(String path, String reason) {
+    return new IllegalStateException(
+        path
+            + " arrives already sealed and cannot be opened here ("
+            + reason
+            + "), so it cannot be re-sealed under "
+            + POLICY);
   }
 
   private boolean sameEnvelope(String committedBlob, String fresh) {

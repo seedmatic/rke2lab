@@ -8,6 +8,8 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -95,18 +97,29 @@ class SopsAtRestTest {
   }
 
   @Test
-  void theStderrJoinsTheMessageOnlyOnTheOperatorsOptIn() {
+  void theOptedInStderrGoesToTheDebugLineAndNeverToTheMessage() {
+    final List<String> debug = new ArrayList<>();
     System.setProperty(SopsAtRest.STDERR_OPT_IN, "true");
     try {
-      final SopsAtRest optedIn = new SopsAtRest();
+      final SopsAtRest optedIn = new SopsAtRest(Map.of(), debug::add);
       final IllegalStateException failure =
           assertThrows(
               IllegalStateException.class,
               () -> optedIn.seal(dir.resolve(".secrets"), MARKER + "\n"));
-      assertTrue(failure.getMessage().contains(MARKER), "the opted-in run shows sops' stderr");
+      assertFalse(failure.toString().contains(MARKER), "the message stays sanitized");
     } finally {
       System.clearProperty(SopsAtRest.STDERR_OPT_IN);
     }
+    assertTrue(debug.stream().anyMatch(line -> line.contains(MARKER)), "the stderr is on DEBUG");
+  }
+
+  @Test
+  void withoutTheOptInNothingOfTheStderrIsLogged() {
+    final List<String> debug = new ArrayList<>();
+    assertThrows(
+        IllegalStateException.class,
+        () -> new SopsAtRest(Map.of(), debug::add).seal(dir.resolve(".secrets"), MARKER + "\n"));
+    assertTrue(debug.isEmpty(), "no debug line without the operator's opt-in");
   }
 
   private static boolean onPath(String tool) {

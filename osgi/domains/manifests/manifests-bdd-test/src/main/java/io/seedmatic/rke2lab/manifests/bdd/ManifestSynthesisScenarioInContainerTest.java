@@ -10,6 +10,7 @@ import com.tngtech.jgiven.report.model.ExecutionStatus;
 import com.tngtech.jgiven.report.model.ReportModel;
 import com.tngtech.jgiven.report.model.StepModel;
 import io.seedmatic.rke2lab.clusterpki.contract.SopsDecryptor;
+import io.seedmatic.rke2lab.clusterpki.contract.SopsEncryptionException;
 import io.seedmatic.rke2lab.clusterpki.contract.SopsEncryptor;
 import io.seedmatic.rke2lab.manifests.contract.BranchSecretCarrier;
 import io.seedmatic.rke2lab.manifests.contract.ManifestsRunbookInput;
@@ -487,7 +488,7 @@ public class ManifestSynthesisScenarioInContainerTest {
 
       @Override
       public String decryptYaml(String sopsYaml) {
-        throw new IllegalStateException(UNDECRYPTABLE);
+        throw new SopsEncryptionException(UNDECRYPTABLE);
       }
     };
   }

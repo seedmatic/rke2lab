@@ -2,6 +2,7 @@ package io.seedmatic.rke2lab.manifests.bdd;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.seedmatic.rke2lab.clusterpki.contract.SopsDecryptor;
+import io.seedmatic.rke2lab.clusterpki.contract.SopsEncryptionException;
 import io.seedmatic.rke2lab.manifests.contract.BranchSecretCarrier;
 import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
 import java.io.UncheckedIOException;
@@ -37,20 +38,27 @@ final class InClusterAssetAtHead {
 
   /**
    * The carrier opened with the key sops finds in this enclosure — or a refusal naming it when it
-   * does not open (sealed to recipients this enclosure no longer holds). The edge's message is
-   * kept: it never carries sops' stderr, only the operation and a fixed classification.
+   * does not open (sealed to recipients this enclosure no longer holds). Only a {@link
+   * SopsEncryptionException} lends its message, which never carries sops' stderr; anything else —
+   * an I/O failure, another decryptor, a parser inside one — is named by its class alone.
    */
   private String opened(String file, String carrier) {
     try {
       return decryptor.decryptYaml(carrier);
+    } catch (SopsEncryptionException undecryptable) {
+      throw refusal(file, String.valueOf(undecryptable.getMessage()));
     } catch (RuntimeException undecryptable) {
-      throw new IllegalStateException(
-          "HEAD carries "
-              + file
-              + " but it does not open here ("
-              + undecryptable.getMessage()
-              + "); refusing to render as though the branch carried no in-cluster asset");
+      throw refusal(file, undecryptable.getClass().getName());
     }
+  }
+
+  private static IllegalStateException refusal(String file, String reason) {
+    return new IllegalStateException(
+        "HEAD carries "
+            + file
+            + " but it does not open here ("
+            + reason
+            + "); refusing to render as though the branch carried no in-cluster asset");
   }
 
   /**
