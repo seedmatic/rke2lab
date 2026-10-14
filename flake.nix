@@ -263,17 +263,16 @@
       };
 
       # relock — nix-flake-commons' `lib.mkRelockApp`, the one implementation every seedmatic
-      # flake shares. This head supplies its name; the heads, the order and what each head pins
-      # are read from nix-flake-commons:fabric/heads. lock-envs runs AFTER the inputs: the envs
-      # lock `path:../../..#<attr>` against this flake, so locked before its rke2lab pin moves they
-      # would record the old derivations.
+      # flake shares. This head supplies its name; the heads, the order, what each head pins and the
+      # apps it runs after its inputs are read from nix-flake-commons:fabric/heads. This head's
+      # `after` there is lock-envs: the envs lock `path:../../..#<attr>` against this flake, so
+      # locked before its rke2lab pin moves they would record the old derivations.
       apps.relock = {
         type = "app";
         program = "${
           inputs.flake-commons.lib.mkRelockApp {
             inherit pkgs;
             name = "flox-catalog";
-            afterInputs = [ "lock-envs" ];
           }
         }/bin/relock";
         meta.description = "Reconcile THIS head's locks: bump each input, DROP any bump that moves nothing it exports, then re-lock the envs, push. --plan shows a pass, --downstream plays it over every head of fabric/heads";
