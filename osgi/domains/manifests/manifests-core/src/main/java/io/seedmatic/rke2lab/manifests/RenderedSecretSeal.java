@@ -36,10 +36,12 @@ import org.slf4j.LoggerFactory;
  * its {@code kind} — at the top of a document, among a {@code List}'s items or a top-level array's,
  * in any file of the tree whatever its extension — never by its file name, and the seal fails
  * closed: once every file is sealed, any Secret whose {@code data}/{@code stringData} is not a map
- * of {@code ENC[…]} values refuses the render, and the files still in the clear are removed. That
- * is the failure the name-anchored policy rule allowed in silence — a namespaced Secret named
- * {@code 02-secret-*} matched no Kubernetes rule and sops wrapped its values, in the clear, in a
- * valid envelope.
+ * of {@code ENC[…]} values under a sops envelope refuses the render, and the files still in the
+ * clear are removed. A Secret with no value at all — a replica stub another controller fills
+ * in-cluster — has nothing to seal and is committed as rendered (see {@link #holding}). That is the
+ * failure the name-anchored policy rule allowed in silence — a namespaced Secret named {@code
+ * 02-secret-*} matched no Kubernetes rule and sops wrapped its values, in the clear, in a valid
+ * envelope.
  *
  * <p>Unchanged content keeps its committed ciphertext. sops takes a fresh IV and ephemeral key on
  * every encryption, so re-sealing an unchanged Secret is always a new blob — every render would
@@ -106,18 +108,27 @@ public final class RenderedSecretSeal {
           "the rendered tree holds Secrets but no " + POLICY + " at " + root + " to seal them");
     }
     final List<String> unopenable = new ArrayList<>();
+    final List<String> nothingToSeal = new ArrayList<>();
     try {
       for (Path file : secrets) {
-        sealOne(root, file, policy, committed, unopenable);
+        if (sealOne(root, file, policy, committed, unopenable) == Holding.NOTHING) {
+          nothingToSeal.add(relative(root, file));
+        }
       }
     } catch (RuntimeException ex) {
       throw refuse(
           root,
-          secrets.stream().filter(file -> !sealed(readString(file))).toList(),
+          secrets.stream().filter(file -> !settled(readString(file))).toList(),
           // Our own refusals name paths only; anything else — a parser's message — could quote a
           // value, so only its class is kept.
           "cannot seal the rendered Secrets: "
               + (ex instanceof IllegalStateException ? ex.getMessage() : ex.getClass().getName()));
+    }
+    if (!nothingToSeal.isEmpty()) {
+      LOG.info(
+          "{} Secret files hold no value, so there is nothing to seal; committed as rendered: {}",
+          nothingToSeal.size(),
+          nothingToSeal);
     }
     if (!unopenable.isEmpty()) {
       LOG.warn(
@@ -126,7 +137,7 @@ public final class RenderedSecretSeal {
           unopenable.size(),
           unopenable);
     }
-    final List<Path> clear = secrets.stream().filter(file -> !sealed(readString(file))).toList();
+    final List<Path> clear = secrets.stream().filter(file -> !settled(readString(file))).toList();
     if (!clear.isEmpty()) {
       throw refuse(
           root,
@@ -139,7 +150,7 @@ public final class RenderedSecretSeal {
     }
   }
 
-  private void sealOne(
+  private Holding sealOne(
       Path root,
       Path file,
       Path policy,
@@ -147,16 +158,23 @@ public final class RenderedSecretSeal {
       List<String> unopenable) {
     final String path = relative(root, file);
     final String content = readString(file);
-    final String plaintext = sealed(content) ? open(path, content) : content;
+    final Holding holding = holding(path, content);
+    if (holding == Holding.NOTHING) {
+      return holding;
+    }
+    final String plaintext = holding == Holding.SEALED ? open(path, content) : content;
     final String fresh = encryptor.encryptYaml(plaintext, policy, path);
     final Optional<String> prior =
-        committed.apply(path).or(() -> sealed(content) ? Optional.of(content) : Optional.empty());
+        committed
+            .apply(path)
+            .or(() -> holding == Holding.SEALED ? Optional.of(content) : Optional.empty());
     replace(
         file,
         prior
-            .filter(blob -> sealed(blob) && sameEnvelope(blob, fresh))
+            .filter(blob -> sealedQuietly(blob) && sameEnvelope(blob, fresh))
             .filter(blob -> opensTo(blob, plaintext, path, unopenable))
             .orElse(fresh));
+    return holding;
   }
 
   /**
@@ -300,14 +318,123 @@ public final class RenderedSecretSeal {
     }
   }
 
-  private boolean sealed(String content) {
-    return secrets(content).allMatch(RenderedSecretSeal::valuesEncrypted);
+  /**
+   * What a rendered file asks of the seal, read PER DOCUMENT — a multi-document file is as sealed
+   * as each of its documents:
+   *
+   * <ul>
+   *   <li>SEALED — the document carries the top-level {@code sops} block with its {@code mac}, and
+   *       every Secret value is {@code ENC[…]};
+   *   <li>a DAMAGED or hand-edited envelope — the {@code sops} block without a {@code mac}, or with
+   *       a value that is not {@code ENC[…]} — is REFUSED, naming the key and never the value;
+   *   <li>CLEAR — no {@code sops} block and some Secret value, even an empty string or an {@code
+   *       ENC[}-looking one: it is sealed, and the post-seal check still applies;
+   *   <li>NOTHING to seal — no {@code sops} block and no Secret value at all (absent, null, empty
+   *       maps, null-valued keys): a replica stub another controller fills in-cluster.
+   * </ul>
+   *
+   * A file is NOTHING only if every document is; it is SEALED only if every document is — sops
+   * envelopes each document, so a sealed document beside a bare one is refused as damaged. Never is
+   * "sealed" inferred from absent values: that is how a value-less stub was once read as sealed and
+   * sent to sops to be opened.
+   */
+  private Holding holding(String path, String content) {
+    boolean clear = false;
+    boolean sealed = false;
+    boolean bare = false;
+    for (JsonNode document : documents(content).toList()) {
+      final List<JsonNode> secrets =
+          resources(document).filter(RenderedSecretSeal::isSecret).toList();
+      final JsonNode envelope = document.path(ENVELOPE);
+      if (!envelope.isMissingNode() && !envelope.isNull()) {
+        final Optional<String> clearKey =
+            secrets.stream().flatMap(RenderedSecretSeal::clearKeys).findFirst();
+        if (!envelope.hasNonNull("mac") || clearKey.isPresent()) {
+          throw new IllegalStateException(
+              path
+                  + " carries a damaged or hand-edited sops envelope ("
+                  + clearKey.map(key -> "the value of " + key + " is not ENC[…]").orElse("no mac")
+                  + "); refusing to render");
+        }
+        sealed = true;
+      } else if (secrets.stream().anyMatch(secret -> values(secret).findAny().isPresent())) {
+        clear = true;
+      } else {
+        bare = true;
+      }
+    }
+    if (sealed && (clear || bare)) {
+      throw new IllegalStateException(
+          path + " mixes sops-sealed documents with bare ones; refusing to render");
+    }
+    return sealed ? Holding.SEALED : clear ? Holding.CLEAR : Holding.NOTHING;
+  }
+
+  /** NOTHING or SEALED — what a file may be committed as. A refusal reads as not settled. */
+  private boolean settled(String content) {
+    try {
+      return holding("", content) != Holding.CLEAR;
+    } catch (RuntimeException unsettled) {
+      return false;
+    }
+  }
+
+  private boolean sealedQuietly(String content) {
+    try {
+      return holding("", content) == Holding.SEALED;
+    } catch (RuntimeException unsealed) {
+      return false;
+    }
+  }
+
+  private enum Holding {
+    NOTHING,
+    CLEAR,
+    SEALED
+  }
+
+  private static boolean isSecret(JsonNode resource) {
+    return SECRET_KIND.equals(resource.path("kind").asText());
+  }
+
+  /**
+   * A Secret's values as {@code field.key → value}. A null value counts as none; a field that is
+   * neither absent, null nor a map (a scalar, a list) is ITSELF a value, keyed by the field alone —
+   * never "nothing to seal", and never sealed either (see {@link #clearKeys}).
+   */
+  private static Stream<Map.Entry<String, JsonNode>> values(JsonNode secret) {
+    return VALUE_FIELDS.stream()
+        .filter(field -> !secret.path(field).isMissingNode() && !secret.path(field).isNull())
+        .flatMap(
+            field -> {
+              final JsonNode values = secret.path(field);
+              return values.isObject()
+                  ? values.properties().stream()
+                      .filter(entry -> !entry.getValue().isNull())
+                      .map(entry -> Map.entry(field + "." + entry.getKey(), entry.getValue()))
+                  : Stream.of(Map.entry(field, values));
+            });
+  }
+
+  /**
+   * The keys whose value is not {@code ENC[…]} — named in a refusal, never their values. A field
+   * that is not a map is one of them whatever it holds: a Secret's {@code data} is a map, so sops
+   * wrapping a scalar in {@code ENC[…]} does not make it a sealed Secret.
+   */
+  private static Stream<String> clearKeys(JsonNode secret) {
+    return values(secret)
+        .filter(
+            entry ->
+                VALUE_FIELDS.contains(entry.getKey())
+                    || !(entry.getValue().isTextual()
+                        && entry.getValue().asText().startsWith("ENC[")))
+        .map(Map.Entry::getKey);
   }
 
   private Stream<JsonNode> secrets(String content) {
     return documents(content)
         .flatMap(RenderedSecretSeal::resources)
-        .filter(document -> SECRET_KIND.equals(document.path("kind").asText()));
+        .filter(RenderedSecretSeal::isSecret);
   }
 
   /** The resources a document carries: itself, a {@code List}'s items, a top-level array's. */
@@ -321,19 +448,6 @@ public final class RenderedSecretSeal {
           .flatMap(RenderedSecretSeal::resources);
     }
     return Stream.of(document);
-  }
-
-  private static boolean valuesEncrypted(JsonNode secret) {
-    return VALUE_FIELDS.stream()
-        .map(secret::path)
-        .allMatch(
-            values ->
-                values.isMissingNode()
-                    || values.isNull()
-                    || (values.isObject()
-                        && StreamSupport.stream(values.spliterator(), false)
-                            .allMatch(
-                                value -> value.isTextual() && value.asText().startsWith("ENC["))));
   }
 
   private Stream<JsonNode> documents(String content) {

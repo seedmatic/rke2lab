@@ -847,6 +847,12 @@ public class ManifestSynthesisScenario
             materials,
             rendered,
             rendered.map(RenderSoil::root).orElseGet(() -> soil.getPath("/survey")));
+    // Once a step has failed, jGiven skips the steps after it but this body runs on: a write below
+    // would then meet a half-written tree, and its exception would MASK the step's (a missing soil
+    // root hid a refused seal at the T4 preview). Nothing writes after a failed step.
+    if (aStepFailed()) {
+      return;
+    }
     // Extract the IN_CLUSTER-reaching sealed materials to the branch asset (§ in-cluster-cellar
     // -asset): the operator's grow captures its fresh seals, a publish re-captures the rehydrated
     // set (a fixpoint). Written plaintext into the tree; the delivery seals it with the other
@@ -860,8 +866,15 @@ public class ManifestSynthesisScenario
         .the_manifests_file_is_written()
         .and()
         .the_rendered_branch_is_delivered(rendered, delivery);
+    if (aStepFailed()) {
+      return;
+    }
     fileNodeBootstrap(rendered);
     fileNodeGithubToken(effective, rendered, delivery);
+  }
+
+  private boolean aStepFailed() {
+    return scenario.getExecutor().hasFailed();
   }
 
   /**
