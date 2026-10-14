@@ -20,7 +20,6 @@
     nixpkgs.follows = "flake-commons/nixpkgs";
     flake-utils.follows = "flake-commons/flake-utils";
 
-    flake-commons.inputs.bird.follows = "nixpkgs";
     flake-commons.inputs.chromium-bin.follows = "nixpkgs";
     flake-commons.inputs.darwin.follows = "nixpkgs";
     flake-commons.inputs.determinate.follows = "nixpkgs";
