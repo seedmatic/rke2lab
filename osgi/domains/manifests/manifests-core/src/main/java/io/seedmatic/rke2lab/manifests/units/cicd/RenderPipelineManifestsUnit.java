@@ -229,7 +229,7 @@ public final class RenderPipelineManifestsUnit extends AbstractManifestsUnit {
                       : "The publish narrates live to stdout: it runs STANDALONE (not seed-outcluster under Pulumi), so PaxLogbackConfigurer keeps its console appender on and the render/delivery logs land in this container's logs"
                       GIT_AUTH_DIR="$(workspaces.basic-auth.path)"
                       : "PaC mints the App token into the git_auth secret's git-provider-token key; read it RAW (not scraped from the .git-credentials URL) into @PUSH_TOKEN_ENV@ for the ff-push (the scion reveals it in-container, ManifestSynthesisScenario.revealGithubToken) + nix + maven. Backticks, not the dollar-paren form, so Tekton does not claim the substitution as one of its own vars"
-                      : "nix must authenticate its flake-input fetches: the closure pulls a PRIVATE input, seedmatic/claude-hub transitively via ndh; the flox NRI sets NIX_CONFIG but no access-tokens, so an unauthenticated github fetch 404s on the private repo. Append the App token so nix reads it AS the App. Requires PaC to scope the git_auth token to include claude-hub via secret-github-app-scope-extra-repos"
+                      : "nix authenticates its flake-input fetches: every seedmatic input is PUBLIC, but the flox NRI sets NIX_CONFIG with no access-tokens, and an authenticated fetch is not held to github anonymous rate limit. Append the App token so nix fetches AS the App; the token PaC scopes to the payload repo suffices for public inputs"
                       : "xtrace is disabled across the next block so the App token is never echoed to the logs"
                       set +x
                       if [ -f "$GIT_AUTH_DIR/git-provider-token" ]; then

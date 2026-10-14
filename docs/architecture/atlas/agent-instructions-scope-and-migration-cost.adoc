@@ -184,10 +184,12 @@ sources and commits twice
   `~/.claude/CLAUDE.md`.
 * ⬜ **Memory per repository** — one `memory/seedmatic` branch carries rke2lab's memory. The memories of the other
   repositories are not merged into it yet; that design is in progress.
-* ⬜ **Deleting `claude-hub`** — after its 42 memory notes, and the 128 `[[hub:]]` links pointing at them, are
-  brought home. Before that, the references that still name it (comments around the GitHub token, a token scope
-  entry, a transitive lock node in rke2lab, nnh and nch) go. The token itself stays: reading private repositories
-  is useful on its own.
+* ⬜ **Deleting `claude-hub`** — in progress, to be done before T4. rke2lab's lock no longer reaches it (no node),
+  and every seedmatic input it pulls is public; `chore/drop-claude-hub` removes the PaC token's extra scope entry
+  and the comments that said a private `claude-hub` input was fetched through ndh. The token itself stays: an
+  empty token is rejected even on a public repository, and an authenticated fetch is not held to the anonymous
+  rate limit. Still to check before the deletion: its 42 memory notes, and the 128 `[[hub:]]` links pointing at
+  them, brought home.
 * ⬜ **Which compaction it was** — the checkpoint still does not record the hook's `trigger`, so a reader cannot tell
   an automatic instant from a chosen one (see the auto-compaction section below).
 
