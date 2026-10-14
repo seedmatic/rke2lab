@@ -290,9 +290,9 @@ public final class FloxControllerManifestsUnit extends AbstractManifestsUnit {
     // replicated into this namespace: mounted as a FILE (read GITHUB_ACCESS_TOKEN_FILE) so
     // `buildEnv` passes it to the host nix as `access-tokens = github.com=<token>` (NIX_CONFIG),
     // and
-    // a FloxEnv flake resolving a PRIVATE input (claude-hub via ndh) fetches AS the App instead of
-    // 404ing anonymously. optional: absent before gtm mints + mittwald replicates it — the
-    // controller starts anyway and private-input envs realise once the file lands (kubelet live
+    // a FloxEnv flake fetches its inputs AS the App instead of anonymously, out of github's
+    // anonymous rate limit. optional: absent before gtm mints + mittwald replicates it — the
+    // controller starts anyway and fetches authenticated once the file lands (kubelet live
     // refresh, no restart), the whole point of a file over a pod-start-frozen env var.
     volumeMounts.add(
         Map.of("name", "github-token", "mountPath", GITHUB_TOKEN_MOUNT_DIR, "readOnly", true));

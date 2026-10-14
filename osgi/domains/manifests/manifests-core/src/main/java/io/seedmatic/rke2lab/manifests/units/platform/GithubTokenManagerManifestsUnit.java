@@ -27,13 +27,13 @@ import software.constructs.Construct;
  * {@code github-token} Secret the flox-controller consumes.
  *
  * <p><b>Why.</b> The flox-controller realises FloxEnvs by running {@code flox activate} on the node
- * (via nsenter); resolving a FloxEnv flake re-fetches its inputs — including the PRIVATE {@code
- * github:seedmatic/claude-hub} (via ndh) — and the node's nix has NO {@code access-tokens}, so the
- * anonymous fetch 404s and the mesh/cicd envs never realise. gtm mints a short-lived App token into
- * {@code github-token}; the flox-controller reads it and passes {@code access-tokens =
- * github.com=<token>} as {@code NIX_CONFIG} to that nix. The controller does NOT mint (not its
- * role) — gtm owns the mint+refresh, as the memory {@code flox-controller-github-token-via-gtm}
- * decided.
+ * (via nsenter); resolving a FloxEnv flake re-fetches its inputs from github, and the node's nix
+ * has NO {@code access-tokens}: every seedmatic input is public, but an anonymous fetch is held to
+ * github's anonymous rate limit, which a node realising its envs can exhaust. gtm mints a
+ * short-lived App token into {@code github-token}; the flox-controller reads it and passes {@code
+ * access-tokens = github.com=<token>} as {@code NIX_CONFIG} to that nix. The controller does NOT
+ * mint (not its role) — gtm owns the mint+refresh, as the memory {@code
+ * flox-controller-github-token-via-gtm} decided.
  *
  * <p><b>Shape.</b> Like {@link CertManagerManifestsUnit}, the chart rides an RKE2 {@code
  * helm.cattle.io/v1 HelmChart} (kube-system → {@code targetNamespace} rke2lab-system) pinned via
