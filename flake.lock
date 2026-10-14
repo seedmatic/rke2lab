@@ -822,11 +822,6 @@
     },
     "ndh": {
       "inputs": {
-        "bird": [
-          "ndh",
-          "flake-commons",
-          "bird"
-        ],
         "chromium-bin": [
           "ndh",
           "flake-commons",
@@ -907,11 +902,11 @@
         "treefmt-nix": "treefmt-nix_2"
       },
       "locked": {
-        "lastModified": 1791921254,
-        "narHash": "sha256-Ql3OH6jzP4XUaKaC40HZ6/NCJ1XKNtvpApv2LWIkRAA=",
+        "lastModified": 1791981532,
+        "narHash": "sha256-PSJaGeDP59d9nf65bzTw9wbVARdP/NrAnLHrfcpwrkE=",
         "owner": "seedmatic",
         "repo": "ndh",
-        "rev": "625b67e6cbd1ae97bff890947cb197da1e1a5378",
+        "rev": "066b6ad76ead838db329221d201b6127be97d5b6",
         "type": "github"
       },
       "original": {
