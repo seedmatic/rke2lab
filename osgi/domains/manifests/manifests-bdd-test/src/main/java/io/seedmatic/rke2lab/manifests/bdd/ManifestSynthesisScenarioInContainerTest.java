@@ -78,6 +78,8 @@ public class ManifestSynthesisScenarioInContainerTest {
   private static final String CLUSTER = "test-mgmt";
   private static final String CARRIER = BranchSecretCarrier.IN_CLUSTER_CELLAR.file();
   private static final String MARKER = "SECRET-MARKER-7f3a";
+  private static final String UNDECRYPTABLE =
+      "sops --decrypt exited with code 128 (no key opens the data key; 14 stderr lines)";
   private static final String CARRIER_WITHOUT_ENVELOPES =
       "apiVersion: v1\nkind: Secret\nmetadata:\n  name: in-cluster-cellar\nstringData:\n  other: "
           + MARKER
@@ -159,11 +161,10 @@ public class ManifestSynthesisScenarioInContainerTest {
   }
 
   @Test
-  void an_in_cluster_asset_that_does_not_open_fails_the_render_without_quoting_sops()
+  void an_in_cluster_asset_that_does_not_open_fails_the_render_before_any_commit()
       throws Exception {
     // The carrier T4 meets: sealed to recipients this enclosure no longer holds, so its decrypt
-    // throws — with sops' stderr in the message. Same verdict, and none of that stderr in the
-    // reason the runbook, the graft and the logs carry.
+    // throws. The render fails naming the carrier, with the edge's classification as its reason.
     final SpyHead head = new SpyHead(Map.of(CARRIER, "sops: sealed\n"));
     final String before = head.head();
     final ScenarioOutcome outcome = playRenderOnto(head, undecryptableCarrier());
@@ -175,7 +176,7 @@ public class ManifestSynthesisScenarioInContainerTest {
     final String reason =
         outcome.runbook().getScenarios().get(0).getScenarioCases().get(0).getErrorMessage();
     assertTrue(reason.contains(CARRIER), "the refusal names the carrier: " + reason);
-    assertFalse(reason.contains(MARKER), "the refusal carries nothing of sops' stderr: " + reason);
+    assertTrue(reason.contains(UNDECRYPTABLE), "the refusal carries the edge's reason: " + reason);
     assertEquals(0, head.commits, "nothing was committed onto the render branch");
     assertEquals(before, head.head(), "the render branch head is unchanged");
     assertEquals(0, head.publishes, "nothing was pushed");
@@ -475,7 +476,7 @@ public class ManifestSynthesisScenarioInContainerTest {
 
   /**
    * Fails the way the sops edge does for a carrier sealed to recipients this enclosure no longer
-   * holds: its message quotes sops' stderr, here the marker.
+   * holds: the operation and a fixed classification, never sops' stderr.
    */
   private static SopsDecryptor undecryptableCarrier() {
     return new SopsDecryptor() {
@@ -486,8 +487,7 @@ public class ManifestSynthesisScenarioInContainerTest {
 
       @Override
       public String decryptYaml(String sopsYaml) {
-        throw new IllegalStateException(
-            "sops --decrypt exited with code 128: no key could decrypt the data key; " + MARKER);
+        throw new IllegalStateException(UNDECRYPTABLE);
       }
     };
   }

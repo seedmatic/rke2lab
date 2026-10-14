@@ -36,9 +36,9 @@ final class InClusterAssetAtHead {
   }
 
   /**
-   * The carrier opened with the key sops finds in this enclosure — or a refusal when it does not
-   * open (sealed to recipients this enclosure no longer holds). Only the exception's class is kept:
-   * the sops edge's message embeds sops' stderr, which can quote what it failed to read.
+   * The carrier opened with the key sops finds in this enclosure — or a refusal naming it when it
+   * does not open (sealed to recipients this enclosure no longer holds). The edge's message is
+   * kept: it never carries sops' stderr, only the operation and a fixed classification.
    */
   private String opened(String file, String carrier) {
     try {
@@ -48,7 +48,7 @@ final class InClusterAssetAtHead {
           "HEAD carries "
               + file
               + " but it does not open here ("
-              + undecryptable.getClass().getName()
+              + undecryptable.getMessage()
               + "); refusing to render as though the branch carried no in-cluster asset");
     }
   }

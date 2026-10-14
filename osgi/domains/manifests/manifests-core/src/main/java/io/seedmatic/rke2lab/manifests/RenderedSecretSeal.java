@@ -113,8 +113,8 @@ public final class RenderedSecretSeal {
       throw refuse(
           root,
           secrets.stream().filter(file -> !sealed(readString(file))).toList(),
-          // Our own refusals name paths only; anything else — sops' stderr, a parser's message —
-          // could quote a value, so only its class is kept.
+          // Our own refusals name paths only; anything else — a parser's message — could quote a
+          // value, so only its class is kept.
           "cannot seal the rendered Secrets: "
               + (ex instanceof IllegalStateException ? ex.getMessage() : ex.getClass().getName()));
     }
@@ -165,7 +165,7 @@ public final class RenderedSecretSeal {
       throw new IllegalStateException(
           path
               + " arrives already sealed and cannot be opened here ("
-              + ex.getClass().getName()
+              + ex.getMessage()
               + "), so it cannot be re-sealed under "
               + POLICY);
     }

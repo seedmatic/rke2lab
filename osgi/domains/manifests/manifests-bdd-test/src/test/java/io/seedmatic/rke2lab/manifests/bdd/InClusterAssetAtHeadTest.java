@@ -55,11 +55,13 @@ class InClusterAssetAtHeadTest {
   }
 
   @Test
-  void a_carrier_that_does_not_open_refuses_the_render_without_quoting_sops() {
-    assertRefused(new InClusterAssetAtHead(new UndecryptableCarrier()), "sops: sealed\n");
+  void a_carrier_that_does_not_open_refuses_the_render_by_name_with_the_edges_reason() {
+    final IllegalStateException refused =
+        assertRefused(new InClusterAssetAtHead(new UndecryptableCarrier()), "sops: sealed\n");
+    assertTrue(refused.getMessage().contains(UndecryptableCarrier.REASON), refused.getMessage());
   }
 
-  private static void assertRefused(InClusterAssetAtHead asset, String atHead) {
+  private static IllegalStateException assertRefused(InClusterAssetAtHead asset, String atHead) {
     final IllegalStateException refused =
         assertThrows(
             IllegalStateException.class, () -> asset.envelopes(soil(Map.of(FILE, atHead))));
@@ -67,6 +69,7 @@ class InClusterAssetAtHeadTest {
     assertFalse(
         refused.getMessage().contains(MARKER), "the refusal carries nothing of the carrier");
     assertNull(refused.getCause(), "no cause: a parser's message would quote the decrypted source");
+    return refused;
   }
 
   private static String carrier(String stringData) {
@@ -92,9 +95,12 @@ class InClusterAssetAtHeadTest {
 
   /**
    * A decryptor that fails the way the sops edge does for a carrier sealed to recipients this
-   * enclosure no longer holds — its message quoting sops' stderr, here the marker.
+   * enclosure no longer holds: the operation and a fixed classification, never sops' stderr.
    */
   private static final class UndecryptableCarrier implements SopsDecryptor {
+    static final String REASON =
+        "sops --decrypt exited with code 128 (no key opens the data key; 14 stderr lines)";
+
     @Override
     public String decryptYaml(String sopsYaml, String ageIdentity) {
       return decryptYaml(sopsYaml);
@@ -102,8 +108,7 @@ class InClusterAssetAtHeadTest {
 
     @Override
     public String decryptYaml(String sopsYaml) {
-      throw new IllegalStateException(
-          "sops --decrypt exited with code 128: no key could decrypt the data key; " + MARKER);
+      throw new IllegalStateException(REASON);
     }
   }
 

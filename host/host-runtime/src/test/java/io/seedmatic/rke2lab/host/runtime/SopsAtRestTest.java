@@ -29,6 +29,8 @@ class SopsAtRestTest {
           privateKeyPem: dummy-key
       """;
 
+  private static final String MARKER = "LEAK7f3a";
+
   @TempDir Path dir;
   private SopsAtRest sops;
 
@@ -75,6 +77,36 @@ class SopsAtRestTest {
     final Path secrets = dir.resolve(".secrets");
     Files.writeString(secrets, PLAIN);
     assertThrows(IllegalStateException.class, () -> sops.open(secrets));
+  }
+
+  @Test
+  void aFailedSealQuotesNothingOfThePlaintext() {
+    // A YAML scalar where sops expects a mapping: it answers `cannot unmarshal !!str `<value>``,
+    // the value whole when it is short.
+    final IllegalStateException failure =
+        assertThrows(
+            IllegalStateException.class, () -> sops.seal(dir.resolve(".secrets"), MARKER + "\n"));
+
+    assertTrue(failure.getMessage().contains("unparseable input"), failure.getMessage());
+    for (Throwable link = failure; link != null; link = link.getCause()) {
+      assertFalse(String.valueOf(link.getMessage()).contains(MARKER), "a message quotes sops");
+      assertFalse(link.toString().contains(MARKER), "a toString quotes sops");
+    }
+  }
+
+  @Test
+  void theStderrJoinsTheMessageOnlyOnTheOperatorsOptIn() {
+    System.setProperty(SopsAtRest.STDERR_OPT_IN, "true");
+    try {
+      final SopsAtRest optedIn = new SopsAtRest();
+      final IllegalStateException failure =
+          assertThrows(
+              IllegalStateException.class,
+              () -> optedIn.seal(dir.resolve(".secrets"), MARKER + "\n"));
+      assertTrue(failure.getMessage().contains(MARKER), "the opted-in run shows sops' stderr");
+    } finally {
+      System.clearProperty(SopsAtRest.STDERR_OPT_IN);
+    }
   }
 
   private static boolean onPath(String tool) {
