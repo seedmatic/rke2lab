@@ -1047,14 +1047,14 @@ public class ManifestSynthesisScenario
     }
   }
 
-  private static final String ASSET_ENVELOPES_KEY = "envelopes";
-
   /**
    * Rehydrate the prior render's in-cluster asset onto the run's overlay so the IN_CLUSTER reveals
    * resolve on a secret-blind publish (§ in-cluster-cellar-asset). Reads the COMMITTED carrier at
    * HEAD, opens its sops envelope in memory with the key sops finds in this enclosure (the cluster
    * key in-cluster, the operator's on the host), unwraps its {@code stringData} scalar, and hands
-   * the sealed envelopes to the cellar. A no-op on a survey / no cellar / no asset at HEAD.
+   * the sealed envelopes to the cellar. A no-op on a survey / no cellar / no asset at HEAD; a
+   * carrier present but unreadable REFUSES the render ({@link InClusterAssetAtHead}) — before any
+   * synthesis or delivery, so nothing is committed and Flux prunes nothing.
    */
   private void rehydrateInClusterAsset(Optional<RenderSoil> rendered) {
     if (rendered.isEmpty() || cellar == null || parcel.isEmpty()) {
@@ -1062,19 +1062,12 @@ public class ManifestSynthesisScenario
     }
     final ScenarioCellar tx = cellar;
     final Parcel plot = parcel.orElseThrow();
-    rendered
-        .orElseThrow()
-        .readAtHead(BranchSecretCarrier.IN_CLUSTER_CELLAR.file())
-        .map(
-            carrier ->
-                sopsDecryptor
-                    .orElseThrow(
-                        () ->
-                            new IllegalStateException(
-                                "no SopsDecryptor edge — cannot open the sealed in-cluster"
-                                    + " cellar asset"))
-                    .decryptYaml(carrier))
-        .flatMap(this::assetEnvelopesJson)
+    new InClusterAssetAtHead(
+            sopsDecryptor.orElseThrow(
+                () ->
+                    new IllegalStateException(
+                        "no SopsDecryptor edge — cannot open the sealed in-cluster cellar asset")))
+        .envelopes(rendered.orElseThrow())
         .ifPresent(json -> tx.importSealed(plot, json));
   }
 
@@ -1094,21 +1087,6 @@ public class ManifestSynthesisScenario
   }
 
   /**
-   * The {@code stringData.envelopes} scalar of an opened asset carrier; empty if absent/unreadable.
-   */
-  private Optional<String> assetEnvelopesJson(String secretYaml) {
-    try {
-      final JsonNode envelopes =
-          CODEC.reading().readYaml(secretYaml).path("stringData").path(ASSET_ENVELOPES_KEY);
-      return envelopes.isMissingNode() || envelopes.isNull()
-          ? Optional.empty()
-          : Optional.of(envelopes.asText());
-    } catch (UncheckedIOException ex) {
-      return Optional.empty();
-    }
-  }
-
-  /**
    * Write the asset carrier (a local-config Secret) at the branch root, {@code envelopesJson}
    * plain.
    */
@@ -1120,7 +1098,7 @@ public class ManifestSynthesisScenario
     metadata.put("name", "in-cluster-cellar");
     metadata.putObject("annotations").put("config.kubernetes.io/local-config", "true");
     secret.put("type", "Opaque");
-    secret.putObject("stringData").put(ASSET_ENVELOPES_KEY, envelopesJson);
+    secret.putObject("stringData").put(InClusterAssetAtHead.ENVELOPES_KEY, envelopesJson);
     try {
       Files.writeString(
           BranchSecretCarrier.IN_CLUSTER_CELLAR.in(root), CODEC.canonical().writeYaml(secret));
