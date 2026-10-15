@@ -196,6 +196,116 @@ class RenderedSecretSealTest {
   }
 
   @Test
+  void aValueLessReplicaStubIsCommittedAsRenderedAndNeverSentToSops(@TempDir Path tmp)
+      throws IOException {
+    final Map<String, String> stubs =
+        Map.of(
+            "flox/02-secret-github-token.yml", stub("github-token", ""),
+            "tekton/02-secret-empty-data.yml", stub("empty-data", "data: {}\n"),
+            "tailscale/02-secret-null-values.yml",
+                stub("null-values", "stringData:\n  token: null\n"));
+    final Path tree = treeWith(tmp, "creation_rules: []\n", stubs);
+
+    seal(failingWith(new IllegalStateException("a value-less stub was sent to sops to be opened")))
+        .seal(tree, path -> Optional.empty());
+
+    for (Map.Entry<String, String> file : stubs.entrySet()) {
+      assertEquals(file.getValue(), Files.readString(tree.resolve(file.getKey())), file.getKey());
+    }
+  }
+
+  @Test
+  void aSopsEnvelopeHoldingAClearValueIsRefusedNamingTheKeyOnly(@TempDir Path tmp)
+      throws IOException {
+    final Path tree =
+        treeWith(
+            tmp,
+            "creation_rules: []\n",
+            Map.of(
+                "probe-system/02-secret-damaged.yaml",
+                stub("damaged", "stringData:\n  token: " + MARKER + "\n")
+                    + "sops:\n  mac: ENC[AES256_GCM,data:x,type:str]\n"));
+    final IllegalStateException refused =
+        assertThrows(
+            IllegalStateException.class,
+            () -> seal(service(SopsDecryptor.class)).seal(tree, path -> Optional.empty()));
+    assertTrue(refused.getMessage().contains("02-secret-damaged"), refused.getMessage());
+    assertTrue(refused.getMessage().contains("stringData.token"), refused.getMessage());
+    assertTrue(refused.getMessage().contains("damaged or hand-edited"), refused.getMessage());
+    assertFalse(
+        refused.getMessage().contains(MARKER), "the refusal names the key, never the value");
+  }
+
+  @Test
+  void aSopsEnvelopeWithoutAMacIsRefused(@TempDir Path tmp) throws IOException {
+    final Path tree =
+        treeWith(
+            tmp,
+            "creation_rules: []\n",
+            Map.of(
+                "probe-system/02-secret-nomac.yaml",
+                stub("nomac", "stringData:\n  token: ENC[AES256_GCM,data:x,type:str]\n")
+                    + "sops:\n  version: 3.13.3\n"));
+    final IllegalStateException refused =
+        assertThrows(
+            IllegalStateException.class,
+            () -> seal(service(SopsDecryptor.class)).seal(tree, path -> Optional.empty()));
+    assertTrue(refused.getMessage().contains("no mac"), refused.getMessage());
+  }
+
+  @Test
+  void aStubBesideAClearSecretInOneFileSealsTheClearOneAndLeavesTheStubValueLess(@TempDir Path tmp)
+      throws IOException, InterruptedException {
+    assumeTrue(onPath("sops") && onPath("age-keygen"), "needs sops and age-keygen on PATH");
+    final Path key = tmp.resolve("operator.txt");
+    final String file = "probe-system/02-secret-pair.yaml";
+    final Path tree =
+        treeWith(
+            tmp,
+            policyFor(throwawayRecipient(key)),
+            Map.of(
+                file,
+                stub("stub", "")
+                    + "---\n"
+                    + stub("clear", "stringData:\n  token: dummy-pair-token\n")));
+
+    seal(decryptingWith(key)).seal(tree, path -> Optional.empty());
+
+    final String sealed = Files.readString(tree.resolve(file));
+    assertFalse(sealed.contains("dummy-pair-token"), "the clear Secret is sealed");
+    assertTrue(sealed.contains("token: ENC["), "its value is an ENC[…]");
+    assertTrue(sealed.contains("name: stub"), "the stub stays, readable");
+    assertEquals(
+        1,
+        sealed
+            .lines()
+            .map(String::strip)
+            .filter(line -> line.contains(": ENC[") && !line.startsWith("mac:"))
+            .count(),
+        "only the clear Secret's one value is encrypted");
+  }
+
+  @Test
+  void anEncLookingValueWithoutSopsMetadataIsSealedNotTrusted(@TempDir Path tmp)
+      throws IOException, InterruptedException {
+    assumeTrue(onPath("sops") && onPath("age-keygen"), "needs sops and age-keygen on PATH");
+    final Path key = tmp.resolve("operator.txt");
+    final String file = "probe-system/02-secret-lookalike.yaml";
+    final Path tree =
+        treeWith(
+            tmp,
+            policyFor(throwawayRecipient(key)),
+            Map.of(file, stub("lookalike", "stringData:\n  token: ENC[AES256_GCM,data:fake]\n")));
+
+    seal(failingWith(new IllegalStateException("a lookalike was opened as sealed")))
+        .seal(tree, path -> Optional.empty());
+
+    final String sealed = Files.readString(tree.resolve(file));
+    assertFalse(sealed.contains("data:fake"), "the lookalike went through sops");
+    assertTrue(sealed.contains("mac:"), "and came back with its own envelope");
+  }
+
+  @Test
   void aSealedArrivalThatDoesNotOpenIsRefusedByItsClassAloneWhenTheFailureIsNotSops(
       @TempDir Path tmp) throws IOException {
     final Path tree = sealedArrival(tmp);
@@ -354,8 +464,29 @@ class RenderedSecretSealTest {
     Files.writeString(
         arrived,
         "apiVersion: v1\nkind: Secret\nmetadata:\n  name: arrived\n  namespace: probe-system\n"
-            + "stringData:\n  token: ENC[AES256_GCM,data:x,type:str]\n");
+            + "stringData:\n  token: ENC[AES256_GCM,data:x,type:str]\n"
+            + "sops:\n  mac: ENC[AES256_GCM,data:x,type:str]\n");
     return tree;
+  }
+
+  /** A tree holding {@code files} (path → content) and a policy, as a render left it. */
+  private static Path treeWith(Path tmp, String policy, Map<String, String> files)
+      throws IOException {
+    final Path tree = Files.createDirectories(tmp.resolve("rendered"));
+    Files.writeString(tree.resolve(POLICY), policy);
+    for (Map.Entry<String, String> file : files.entrySet()) {
+      final Path target = tree.resolve(file.getKey());
+      Files.createDirectories(target.getParent());
+      Files.writeString(target, file.getValue());
+    }
+    return tree;
+  }
+
+  private static String stub(String name, String values) {
+    return "apiVersion: v1\nkind: Secret\nmetadata:\n  name: "
+        + name
+        + "\n  namespace: probe-system\n"
+        + values;
   }
 
   private static SopsDecryptor failingWith(RuntimeException failure) {

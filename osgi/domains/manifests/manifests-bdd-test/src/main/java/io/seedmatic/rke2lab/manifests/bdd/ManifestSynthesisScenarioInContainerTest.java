@@ -15,6 +15,7 @@ import io.seedmatic.rke2lab.clusterpki.contract.SopsEncryptor;
 import io.seedmatic.rke2lab.manifests.contract.BranchSecretCarrier;
 import io.seedmatic.rke2lab.manifests.contract.ManifestsRunbookInput;
 import io.seedmatic.rke2lab.manifests.contract.SshToAgeConverter;
+import io.seedmatic.rke2lab.manifests.ingress.ServerManifestsCoordinate;
 import io.seedmatic.rke2lab.ndh.contract.NdhKeystoreReader;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.ScenarioOutcome;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.ScenarioPlayer;
@@ -77,6 +78,14 @@ import org.osgi.framework.ServiceRegistration;
 public class ManifestSynthesisScenarioInContainerTest {
 
   private static final String CLUSTER = "test-mgmt";
+  // What the seat holds at HEAD: a flake.lock pinning nixpkgs for the branch's installer flake, and
+  // the .sops.yaml its Secrets are sealed under.
+  private static final Map<String, String> SEAT =
+      Map.of(
+          "flake.lock",
+          "{\"nodes\":{\"nixpkgs\":{\"locked\":{\"rev\":\"" + "2".repeat(40) + "\"}}}}",
+          ".sops.yaml",
+          "creation_rules: []\n");
   private static final String CARRIER = BranchSecretCarrier.IN_CLUSTER_CELLAR.file();
   private static final String MARKER = "SECRET-MARKER-7f3a";
   private static final String UNDECRYPTABLE =
@@ -129,7 +138,7 @@ public class ManifestSynthesisScenarioInContainerTest {
     // The control: the same provisioning render, with no carrier at HEAD (a first grow), reaches
     // the delivery — so the refusal below is what stops the commit, not a harness that never could.
     final SpyHead head = new SpyHead(Map.of());
-    final ScenarioOutcome outcome = playRenderOnto(head, openingDecryptor());
+    final ScenarioOutcome outcome = playRenderOnto(head, openingDecryptor(), SEAT);
 
     assertEquals(
         ExecutionStatus.SUCCESS,
@@ -137,6 +146,33 @@ public class ManifestSynthesisScenarioInContainerTest {
         outcome.runbook().getScenarios().get(0).getScenarioCases().get(0).getErrorMessage());
     assertEquals(1, head.commits, "the render committed onto its head");
     assertEquals(1, head.publishes, "and published it");
+    assertTrue(
+        filed(outcome, ServerManifestsCoordinate.SERVER_MANIFESTS),
+        "and filed the node-bootstrap bundle — the write the failed-step case must not make");
+  }
+
+  @Test
+  void a_failed_step_is_the_reason_and_nothing_is_written_after_it() throws Exception {
+    // A seat with no flake.lock fails the synthesis step at its LAST write (the installer flake),
+    // after the tree and its bootstrap bundle are written. jGiven skips the steps after it, but the
+    // body runs on: before the guard, it went on filing the bundle and extracting the cellar asset,
+    // and a missing root there hid the step's own reason (the T4 preview).
+    final SpyHead head = new SpyHead(Map.of());
+    final ScenarioOutcome outcome =
+        playRenderOnto(head, openingDecryptor(), Map.of(".sops.yaml", "creation_rules: []\n"));
+
+    assertEquals(
+        ExecutionStatus.FAILED,
+        outcome.runbook().getScenarios().get(0).getExecutionStatus(),
+        "the synthesis step failed");
+    final String reason =
+        outcome.runbook().getScenarios().get(0).getScenarioCases().get(0).getErrorMessage();
+    assertTrue(reason.contains("install-rke2-config"), "the step's own reason: " + reason);
+    assertFalse(
+        filed(outcome, ServerManifestsCoordinate.SERVER_MANIFESTS),
+        "nothing was filed after the failed step");
+    assertEquals(0, head.commits, "nothing was committed");
+    assertEquals(0, head.publishes, "nothing was pushed");
   }
 
   @Test
@@ -146,7 +182,7 @@ public class ManifestSynthesisScenarioInContainerTest {
     // The render must fail, with the branch head where it was and nothing pushed.
     final SpyHead head = new SpyHead(Map.of(CARRIER, CARRIER_WITHOUT_ENVELOPES));
     final String before = head.head();
-    final ScenarioOutcome outcome = playRenderOnto(head, openingDecryptor());
+    final ScenarioOutcome outcome = playRenderOnto(head, openingDecryptor(), SEAT);
 
     assertEquals(
         ExecutionStatus.FAILED,
@@ -168,7 +204,7 @@ public class ManifestSynthesisScenarioInContainerTest {
     // throws. The render fails naming the carrier, with the edge's classification as its reason.
     final SpyHead head = new SpyHead(Map.of(CARRIER, "sops: sealed\n"));
     final String before = head.head();
-    final ScenarioOutcome outcome = playRenderOnto(head, undecryptableCarrier());
+    final ScenarioOutcome outcome = playRenderOnto(head, undecryptableCarrier(), SEAT);
 
     assertEquals(
         ExecutionStatus.FAILED,
@@ -210,8 +246,8 @@ public class ManifestSynthesisScenarioInContainerTest {
    * empty durable cellar, the sops edges and a key-store that only names the signing identity — the
    * spy head never signs, so nothing real is reached.
    */
-  private static ScenarioOutcome playRenderOnto(SpyHead head, SopsDecryptor decryptor)
-      throws Exception {
+  private static ScenarioOutcome playRenderOnto(
+      SpyHead head, SopsDecryptor decryptor, Map<String, String> seat) throws Exception {
     final BundleContext context =
         FrameworkUtil.getBundle(ManifestsBddTests.class).getBundleContext();
     final List<ServiceRegistration<?>> registrations = new ArrayList<>();
@@ -221,7 +257,7 @@ public class ManifestSynthesisScenarioInContainerTest {
             (TransientWorktrees) (branch, fetchToken) -> head,
             new Hashtable<>()));
     registrations.add(
-        context.registerService(DurableWorktree.class, sourceSeat(), new Hashtable<>()));
+        context.registerService(DurableWorktree.class, sourceSeat(seat), new Hashtable<>()));
     registrations.add(
         context.registerService(Parcel.class, new Parcel("rke2lab", "test"), new Hashtable<>()));
     registrations.add(context.registerService(Cellar.class, emptyCellar(), new Hashtable<>()));
@@ -322,6 +358,16 @@ public class ManifestSynthesisScenarioInContainerTest {
   }
 
   /**
+   * Whether the run filed {@code coordinate} into the cellar: the cellar's entries ride the model
+   * as tags whose value names the coordinate in the clear (only the payload is sealed).
+   */
+  private static boolean filed(ScenarioOutcome outcome, SeedCoordinate coordinate) {
+    return outcome.runbook().getTagMap().values().stream()
+        .flatMap(tag -> tag.getValues().stream())
+        .anyMatch(value -> value.contains("\"" + coordinate.slug() + "\""));
+  }
+
+  /**
    * The render branch's head, in memory: it serves {@code atHead} as the committed files and counts
    * what the delivery does to it — a commit moves its sha, a publish pushes it (or, unarmed, moves
    * the local ref).
@@ -371,7 +417,7 @@ public class ManifestSynthesisScenarioInContainerTest {
    * nixpkgs for the branch's installer flake and the {@code .sops.yaml} its Secrets are sealed
    * under. Nothing else of it is reached.
    */
-  private static DurableWorktree sourceSeat() {
+  private static DurableWorktree sourceSeat(Map<String, String> atHead) {
     return new DurableWorktree() {
       @Override
       public Path root() {
@@ -415,13 +461,7 @@ public class ManifestSynthesisScenarioInContainerTest {
 
       @Override
       public Optional<String> readAtHead(String path) {
-        return switch (path) {
-          case "flake.lock" ->
-              Optional.of(
-                  "{\"nodes\":{\"nixpkgs\":{\"locked\":{\"rev\":\"" + "2".repeat(40) + "\"}}}}");
-          case ".sops.yaml" -> Optional.of("creation_rules: []\n");
-          default -> Optional.empty();
-        };
+        return Optional.ofNullable(atHead.get(path));
       }
 
       @Override
@@ -494,8 +534,9 @@ public class ManifestSynthesisScenarioInContainerTest {
   }
 
   /**
-   * Seals each rendered Secret by replacing its {@code data}/{@code stringData} values with an
-   * {@code ENC[…]} marker — the shape the seal checks, with no sops and no key behind it.
+   * Seals each rendered Secret as sops shapes it — every {@code data}/{@code stringData} value an
+   * {@code ENC[…]} marker, and a top-level {@code sops} block with its {@code mac} — the shape the
+   * seal checks, with no sops and no key behind it.
    */
   private static SopsEncryptor markingEncryptor() {
     final SeedCodec codec = new SeedCodec();
@@ -520,6 +561,7 @@ public class ManifestSynthesisScenarioInContainerTest {
               values.fieldNames().forEachRemaining(key -> values.put(key, "ENC[test]"));
             }
           }
+          document.putObject("sops").put("mac", "ENC[test]");
         }
         return codec.canonical().writeYamlDocuments(documents);
       }
