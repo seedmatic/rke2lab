@@ -1,30 +1,30 @@
 {
   "schema": "seedmatic.relock/v1",
   "head": "rke2lab",
-  "rev": "787e77170a5be70ad2ea263ffe67e35c01f819da",
+  "rev": "2a5ddc41a718faa999a031f561b3e4d9f438e22f",
   "status": {
-    "wave": "flake-commons@2026-10-14T12:34:17Z",
-    "tool": "86be1ecfd7d9b28e3810862652e40b9f25ae6bfd19a4787b0b1d99d3f965404c",
+    "wave": "flake-commons@2026-10-15T05:02:01Z",
+    "tool": "5dc283dbf05b6381aaeade7c72444f80b48a2b2c13bed1febcfdefcd243f0d64",
     "bumped": {
+      "flake-commons": [
+        "d2aefe87a7451b65a6910ef620f02b3ab43519df",
+        "dcad528a375a24e06fdfc6e1bbc3cbf11fb3e0f9"
+      ],
       "flox-controller": [
-        "fef0c9c0fd37f737be658c5492857e766ddd319e",
-        "a8780e2d560ec1b9c0759573ed887729499386bb"
+        "a8780e2d560ec1b9c0759573ed887729499386bb",
+        "d3e7ecdc7ef5342894868eb10a3bd01c0570b0de"
       ],
       "flox-runtime": [
-        "ca0f7ebf4fe849d6f22fb9669bfec07cd4cd7abd",
-        "5354c315574072a61207ca40dc33692cb15f68b4"
+        "5354c315574072a61207ca40dc33692cb15f68b4",
+        "3788fadea80aee5e6e2b0a2c6858f121d387d228"
       ],
       "ndh": [
-        "625b67e6cbd1ae97bff890947cb197da1e1a5378",
-        "066b6ad76ead838db329221d201b6127be97d5b6"
+        "066b6ad76ead838db329221d201b6127be97d5b6",
+        "8479805899f48aeb6b49026dccd85922ce8c4c6a"
       ],
       "seed-incluster": [
-        "3b7a6b50b98d3c227aa546382b7a6ab0c87b94a7",
-        "ff6b332e639f1811e3fe9329faa8df9a49aba0e6"
-      ],
-      "flake-commons": [
-        "337f08b156f4a0e3281819cc31ed563989ccdcd4",
-        "d2aefe87a7451b65a6910ef620f02b3ab43519df"
+        "ff6b332e639f1811e3fe9329faa8df9a49aba0e6",
+        "811e429a88535a678fbdd75727d9127091b1cd34"
       ]
     },
     "pruned": {},
@@ -36,6 +36,6 @@
       "apps of x86_64-darwin: one of them does not evaluate before any bump, so none of x86_64-darwin is measured — error: Nixpkgs 26.11 has dropped support for x86_64-darwin.",
       "apps of x86_64-linux: one of them does not evaluate before any bump, so none of x86_64-linux is measured — error: attribute 'x86_64-linux' missing"
     ],
-    "seconds": 240
+    "seconds": 94
   }
 }
