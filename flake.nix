@@ -17,7 +17,6 @@
     # Every flake-commons input this flake does not consume is CUT (`follows = ""`, the ecosystem's
     # idiom, as seat-roster and nnh use). Only nixpkgs and flake-utils are borrowed, and never an
     # output of flake-commons, so nothing here evaluates what these inputs would have fed.
-    flake-commons.inputs.bird.follows = "";
     flake-commons.inputs.chromium-bin.follows = "";
     flake-commons.inputs.darwin.follows = "";
     flake-commons.inputs.determinate.follows = "";
