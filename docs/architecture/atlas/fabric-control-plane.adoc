@@ -435,10 +435,13 @@ runtime guests, sftp and `nix-daemon --stdio` over Tailscale SSH, `tart exec` fo
 |===
 
 [[private-binary-cache]]
-== The private binary cache — from a public watch-store to one builder
+== The private binary cache — from a public watch-store to one private cache per seat
 
 The second tenant of the fabric's Incus containers. The target is ndh
-`docs/private-binary-cache-spec.adoc`; this section carries the delta from today. Everything marked
+`docs/private-binary-cache-spec.adoc`, whose section _One private cache per seat_ (decided by the
+operator on 2026-10-15) supersedes the one common cache and the one builder this section first
+described: **each seat builds from revisions and pushes into its own attic, and every seat host
+reads both**. This section carries the delta from today. Everything marked
 *measured* was read on 2026-10-10 from store paths that already existed, or on 2026-10-11 in an
 isolated throwaway store, without evaluating a flake of ours.
 
@@ -454,10 +457,11 @@ configuration, and each one rebuilds it.**
 === Diagram F — Who builds, who publishes: BEFORE vs AFTER
 
 Reads: the BEFORE has every host building for itself and a daemon publishing whatever entered any
-store, a worktree copy included. The AFTER has one builder evaluating revisions only. It publishes
-to the public cache only what passes a closure rule, and sends each host its closure. A private cache
-keeps everything else for the active session, and three store tiers each inherit the immutable EROFS
-base and substitute only their delta.
+store, a worktree copy included. The AFTER has each seat building from revisions only, and pushing
+into its own private cache, which every seat host reads; what is trusted enough is published to the
+public cache under a closure rule (who publishes is still open). Each private cache keeps the active
+session only, and three store tiers each inherit the immutable EROFS base and substitute only their
+delta.
 
 [mermaid]
 ....
@@ -470,11 +474,11 @@ flowchart TB
     b4["nxmatic.cachix.org — PUBLIC, anonymous read"]:::ko
     b1 --- b2 --- b3 --- b4
   end
-  subgraph AFTER["After — build once from a revision, publish what is trusted, keep the rest private"]
+  subgraph AFTER["After — each seat builds from revisions, keeps its builds private, publishes what is trusted"]
     direction TB
-    a1["the fill job on bioskop — revisions only, its own fetcher cache, sends each host its closure"]:::ok
-    a2["public tier — nxmatic.cachix.org, only the computed publishable set, signed seedmatic-publish-1"]:::ok
-    a3["private tier — attic-nixos, a watch-store on every host, every read needs a token, the session only"]:::ok
+    a1["each seat builds — its darwin seat and its nerd-nixos, revisions only"]:::ok
+    a2["public tier — nxmatic.cachix.org, only the computed publishable set, signed seedmatic-publish-1 (who publishes: open)"]:::ok
+    a3["private tier — one attic per seat on its nerd-nixos, its own key, read by every seat host, the session only"]:::ok
     a4["tiers — nerd-nixos EROFS, then containers and nodes, then pods — each substitutes its delta"]:::ok
     a1 --- a2 --- a3 --- a4
   end
@@ -486,8 +490,8 @@ flowchart TB
 
 === What rke2lab gains — the nodes and their workloads
 
-The cluster nodes are Incus containers in the same Incus cluster as attic-nixos (project `rke2lab`,
-members `bioskop` and `nikopol`). So the mechanism ndh builds for its own containers is the one the
+The cluster nodes are Incus containers on the same Incus as their seat's attic (project `rke2lab`;
+since 2026-10-14 nikopol's Incus is standalone). So the mechanism ndh builds for its own containers is the one the
 nodes **inherit**: a `/nix/store` that is an overlay on nerd-nixos's EROFS layers, a lower DB shipped
 with the layers, and an upper that receives only the node's delta. The clusters read the **public
 tier only**: what they need from us is what the allow-list must name.
@@ -534,9 +538,9 @@ flowchart TB
   c0["c0 · watch-store disabled on every host — DONE, ndh 395b34a1"]:::done
   c1["c1 · re-lock ndh's rke2lab input from GitHub — DONE, ndh 3492ca41"]:::done
   c2["c2 · purge the plaintext paths from nxmatic.cachix.org — DONE, 173 of 173 answer 404"]:::done
-  c3["c3 · attic-nixos on bioskop — private tier, read tokens, an anonymous read gets 401"]
-  c4["c4 · a watch-store on every host into the private tier — a write token each"]
-  c5["c5 · the fill job — revisions only, own fetcher cache, sends each host its closure"]
+  c3["c3 · one attic per seat, on its nerd-nixos — read tokens, an anonymous read gets 401"]
+  c4["c4 · a watch-store on every seat host into its own seat's attic — a write token each"]
+  c5["c5 · each seat builds from revisions, with its own fetcher cache"]
   c6["c6 · publication — closure rule, content guard, seedmatic-publish-1, cachix push of the set"]
   c7["c7 · cluster nodes on the EROFS layers, public tier only, building through their nerd-nixos"]
   c8["c8 · pod tier — decide its lower"]:::later
@@ -563,30 +567,35 @@ and the purge would have broken ndh's evaluation had the relock not come first.
 | ✅ *DONE by the operator*: 173 of the 173 listed paths answer 404 on `nxmatic.cachix.org`
 | the list is held outside the repo (counts and paths only). Rotations are the operator's gestures.
 
-| c3 — attic-nixos
-| the shared ndh container module (ndh `feature/incus-nixos-container`), with project and target
-stated. `services.atticd` from stable nixpkgs, its package from unstable (attic `7a19204d`). SQLite
-with a GC every 15 minutes, no database service. `tank/nerd/attic` mounted at
-`/var/lib/private/atticd`. The cache created **without** `--public`, a retention of hours (6
-proposed)
-| the quota, 16G or about 8G, stays **open** until the public/private split is measured on the four
-hosts. The upper bound without that split is 1.15 GiB + 0.52 U compressed, now that `pulumi-bin` (4.59
-GiB) left the seat in rke2lab `2ef9dab8f`. The test that closes the step: an anonymous narinfo request
-gets **401**, a request with a read token gets 200.
+| c3 — one attic per seat
+| attic.bioskop and attic.nikopol, each an Incus container on its seat's nerd-nixos, through the
+shared ndh container module (merged in ndh develop, inc 1), with project and target stated, and
+signed with its own key (`seedmatic-<seat>-attic-1`). `services.atticd` from stable nixpkgs, its
+package from unstable (attic `7a19204d`). SQLite with a GC every 15 minutes, no database service.
+`tank/nerd/attic` mounted at `/var/lib/private/atticd`, a quota of **8G**. The cache created
+**without** `--public`, a retention of **6 hours**; a TLS leaf from mammoth-skate tls; it listens
+on its fabric address only (all decided by the operator on 2026-10-15)
+| read across seats through the tailnet: each nerd-nixos advertises its fabric /21, the `.bioskop`
+and `.nikopol` split zones resolve 172.16.x, and only the WireGuard tunnel crosses the LAN. The
+test that closes the step: an anonymous narinfo request gets **401**, a request with a read token
+gets 200, on both caches and from both seats.
 
 | c4 — watch-stores
-| an `attic watch-store` on each of the four hosts, each with its own write token (`--sub {host}`).
+| an `attic watch-store` on each seat host (the bioskop Mac, bioskop-nixos, rdp.nikopol,
+nikopol-nixos), into its **own seat's** attic, each with its own write token (`--sub {host}`). The
+corporate bare-metal (vzhost.nikopol) builds nothing and holds no token: it receives `nix copy`.
 attic's upstream key names: the upstream substituters, the layer key, `seedmatic-publish-1` and
 `nxmatic.cachix.org-1`, never the fleet's build key
 | decided 2026-10-10 and kept on 2026-10-11 for the private tier. The price, stated in the ndh
 spec's trust model: one slipped `.#x` on bioskop puts a plaintext `-source` in attic, unsigned so
 never skipped; it is detected by a store sweep, and prevented only by the fork
 
-| c5 — the fill job
-| one job on bioskop, its own user and fetcher cache. It evaluates **revisions only**
-(`github:…/{sha}` or `git+file:///Volumes/git-bare-store/seedmatic/{repo}.git?ref=develop&rev={sha}`),
-builds every configuration, the Linux ones on bioskop-nixos, and sends each host its closure with
-`nix copy --to ssh-ng://nix-store.{host}`. No other host builds from source
+| c5 — each seat builds
+| superseding the one fill job on bioskop (operator, 2026-10-15): **each seat builds** its own
+configurations, from **revisions only** (`github:…/{sha}` or
+`git+file:///Volumes/git-bare-store/seedmatic/{repo}.git?ref=develop&rev={sha}`), with its own
+fetcher cache, and its builds reach its own attic through the watch-stores. Who publishes to the
+public tier is **open**
 | *measured by develop-2a, 2026-10-11*: any evaluation naming a decrypted checkout copies `.secrets`
 in clear, clean or dirty. And the fetcher cache keys a commit's source by revision, first
 evaluation wins, so one `nix build .#x` in a worktree poisons every later `?rev=` build of that
@@ -641,8 +650,9 @@ fix_), and upstream of it, no plaintext on disk in a flake tree.
 
 | What stays out of reach?
 | the size of the package outputs and of the node and env closures, since none is realised in any
-store today; the public/private split on the four hosts, which the quota waits for; and the pod
-tier's lower, which is rke2lab's decision.
+store today; the public/private split on the four seat hosts (the quota no longer waits for it: 8G
+per seat, decided 2026-10-15); who publishes to the public tier now that each seat builds; and the
+pod tier's lower, which is rke2lab's decision.
 |===
 
 == Related documentation
