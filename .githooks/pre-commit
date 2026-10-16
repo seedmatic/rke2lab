@@ -119,7 +119,31 @@ EOF
   return 0
 }
 
+# Refuse, in a repository that holds a flake, a staged attribute routing a file through a sops filter.
+# The global git config defines the sops clean/smudge filters, and their smudge leaves secrets in the clear
+# on disk: flake repositories are protected by naming none. Read from the STAGED .gitattributes (any
+# depth) by `git check-attr --cached`, so this guard stands alone where the global hooks are absent; the
+# global pre-commit also checks the worktree, .git/info/attributes and the global attributes file.
+sops_filter_attribute_guard() {
+  # A flake at ANY depth: one evaluated from a subdirectory still copies the whole repository.
+  [[ -n "$(git ls-files -- flake.nix ':(glob)**/flake.nix')" ]] || return 0
+  local hits
+  hits="$(git ls-files -z | git check-attr --cached -z --stdin filter | tr '\0' '\n' | paste - - - |
+    awk -F'\t' '$3 ~ /^sops-/ { print "  ⛔ " $1 "  filter=" $3 }')"
+  [[ -z "$hits" ]] && return 0
+  head -20 <<<"$hits" >&2
+  cat >&2 <<'EOF'
+
+Refusing the commit. This repository holds a flake, and a staged .gitattributes routes these files
+through a sops filter: its smudge would leave them in the clear on disk. Keep `diff=sops-*` if you
+want a decrypted `git diff`, but never `filter=sops-*` here.
+
+EOF
+  return 1
+}
+
 status=0
 secret_material_guard || status=1
 token_shape_guard || status=1
+sops_filter_attribute_guard || status=1
 exit "$status"
