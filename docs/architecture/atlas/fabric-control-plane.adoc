@@ -491,9 +491,9 @@ flowchart TB
 
 === What rke2lab gains — the nodes and their workloads
 
-The cluster nodes are Incus containers on the same Incus as their metalspace's cache container
-(project `rke2lab`; since 2026-10-14, by the operator, nikopol's NixOS guest is a standalone Incus, no
-longer a member of bioskop's). So the mechanism ndh builds for its own Incus containers is the one the
+The cluster nodes are Incus containers in the same Incus cluster as the cache containers (project
+`rke2lab`; Incus members `bioskop`, the database leader, and `nikopol`, a database-client, one per
+metalspace). So the mechanism ndh builds for its own Incus containers is the one the
 nodes **inherit**: a `/nix/store` that is an overlay on the NixOS guest's EROFS layers, a lower DB shipped
 with the layers, and an upper that receives only the node's delta. The clusters read the **public
 tier only**: what they need from us is what the allow-list must name.
@@ -571,8 +571,9 @@ and the purge would have broken ndh's evaluation had the relock not come first.
 
 | c3 — one cache container per metalspace
 | attic.bioskop and attic.nikopol, each a cache container on its metalspace's NixOS guest, through
-the shared ndh Incus container module (merged in ndh develop, inc 1), with project and target stated,
-and signed with its own key (`seedmatic-<metalspace>-attic-1`). `services.atticd` from stable nixpkgs, its
+the shared ndh Incus container module (merged in ndh develop, inc 1), with project stated and its own
+metalspace's Incus member as target (bioskop for attic.bioskop, nikopol for attic.nikopol: each depends
+on that member's lowers and `nerd/attic` dataset, so neither migrates on evacuation), and signed with its own key (`seedmatic-<metalspace>-attic-1`). `services.atticd` from stable nixpkgs, its
 package from unstable (attic `7a19204d`). SQLite with a GC every 15 minutes, no database service.
 `tank/nerd/attic` mounted at `/var/lib/private/atticd`, a quota of **8G**. The cache created
 **without** `--public`, a retention of **6 hours**; a TLS leaf from mammoth-skate tls; it listens
