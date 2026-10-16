@@ -205,7 +205,7 @@ flowchart LR
 * **The local overlay replaces, never merges.** `flake-registry.local.json` is gitignored in all four
   repos (`.gitignore` line 27 in rke2lab, 26 in ndh, 10 in nnh, 15 in nch). A stale overlay missing a
   new id fails loudly (`cannot find flake 'flake:x'`) instead of resolving the wrong thing.
-* **The seat** gets the registry from fleet's `flake-registry` flox env (vendored at
+* **The flox seat** gets the registry from fleet's `flake-registry` flox env (vendored at
   `.flox-envs.d/flake-registry`): its `on-activate` hook appends `flake-registry = <file>` to
   `NIX_CONFIG`, keeping the access tokens already there.
 * **relock** reads the same precedence itself (`set_registry_flag`, `relock.sh:227`) and passes
@@ -488,7 +488,7 @@ does with `realpath`.
   `seed-incluster` `3458512`
 | `git … show origin/<b>:flake.lock \| jq -r '.nodes["flake-commons"].locked.rev'`
 
-| **Locks in `flox-catalog` are seat-bound**
+| **Locks in `flox-catalog` are worktree-bound**
 | `path:` includes are recorded ABSOLUTE in `locked-url`; `lock-envs` drops that churn and commits
   only real bumps
 | `jq '.packages[]."locked-url"' <env>/manifest.lock`

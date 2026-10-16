@@ -15,26 +15,26 @@ import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
-/** The node-base image builds a REVISION of the seat, and nothing else. */
+/** The node-base image builds a REVISION of the worktree, and nothing else. */
 class NodeBaseSourceTest {
 
   private static final String SHA = "0123456789abcdef0123456789abcdef01234567";
 
   @Test
-  void a_clean_seat_builds_its_head_by_revision() {
+  void a_clean_worktree_builds_its_head_by_revision() {
     final NodeBaseSource source =
         NodeBaseSource.of(
-            seat("/bare/rke2lab.git", new BuildRevision(SHA, false, List.of(), List.of())));
+            worktree("/bare/rke2lab.git", new BuildRevision(SHA, false, List.of(), List.of())));
     assertEquals("git+file:///bare/rke2lab.git?rev=" + SHA, source.flakeRef());
     assertEquals("digest:" + SHA + ":" + NodeBaseSource.BUILD_INPUTS, source.digest());
     assertEquals("0123456789ab", source.provenance());
   }
 
   @Test
-  void a_dirty_seat_builds_its_fabricated_revision_and_says_so() {
+  void a_dirty_worktree_builds_its_fabricated_revision_and_says_so() {
     final NodeBaseSource source =
         NodeBaseSource.of(
-            seat(
+            worktree(
                 "/bare/rke2lab.git",
                 new BuildRevision(
                     SHA, true, List.of("nixos/a.nix", "nixos/new.nix"), List.of("nixos/new.nix"))));
@@ -45,23 +45,23 @@ class NodeBaseSourceTest {
 
   @Test
   void a_flake_ref_that_is_not_a_revision_is_refused() {
-    for (DurableWorktree seat :
+    for (DurableWorktree worktree :
         List.of(
-            seat("/bare/rke2lab.git", new BuildRevision("abc", false, List.of(), List.of())),
-            seat(
+            worktree("/bare/rke2lab.git", new BuildRevision("abc", false, List.of(), List.of())),
+            worktree(
                 "/bare/rke2lab.git?ref=develop&x=",
                 new BuildRevision(SHA, false, List.of(), List.of())))) {
       final IllegalStateException refused =
-          assertThrows(IllegalStateException.class, () -> NodeBaseSource.of(seat));
+          assertThrows(IllegalStateException.class, () -> NodeBaseSource.of(worktree));
       assertTrue(refused.getMessage().contains("nix builds only a revision"), refused.getMessage());
     }
   }
 
-  private static DurableWorktree seat(String repository, BuildRevision revision) {
+  private static DurableWorktree worktree(String repository, BuildRevision revision) {
     return new DurableWorktree() {
       @Override
       public Path root() {
-        return Path.of("/seat");
+        return Path.of("/worktree");
       }
 
       @Override

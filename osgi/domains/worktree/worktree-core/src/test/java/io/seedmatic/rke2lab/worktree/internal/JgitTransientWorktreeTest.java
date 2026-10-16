@@ -33,7 +33,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * A head committed onto in memory, on throwaway repositories built by jgit — a bare origin and a
- * seat cloned from it, no git binary anywhere.
+ * worktree cloned from it, no git binary anywhere.
  */
 class JgitTransientWorktreeTest {
 
@@ -46,13 +46,13 @@ class JgitTransientWorktreeTest {
   private static final Optional<String> TOKEN = Optional.of("unused-by-file-transport");
 
   @TempDir Path origin;
-  @TempDir Path seatDir;
+  @TempDir Path worktreeDir;
   @TempDir Path noHooks;
-  private Git seat;
+  private Git worktree;
   private JgitCheckout checkout;
 
   @BeforeEach
-  void an_origin_and_a_seat() throws Exception {
+  void an_origin_and_a_worktree() throws Exception {
     Git.init()
         .setBare(true)
         .setDirectory(origin.toFile())
@@ -65,26 +65,26 @@ class JgitTransientWorktreeTest {
       noHooksIn(upstream);
       Files.writeString(upstreamDir.resolve("flake.nix"), "{ }");
       upstream.add().addFilepattern(".").call();
-      commit(upstream, "seat base");
+      commit(upstream, "worktree base");
       upstream
           .push()
           .setRemote(origin.toUri().toString())
           .setRefSpecs(new RefSpec("refs/heads/develop:refs/heads/develop"))
           .call();
     }
-    seat =
+    worktree =
         Git.cloneRepository()
             .setURI(origin.toUri().toString())
-            .setDirectory(seatDir.toFile())
+            .setDirectory(worktreeDir.toFile())
             .call();
-    noHooksIn(seat);
-    checkout = new JgitCheckout(seatDir);
+    noHooksIn(worktree);
+    checkout = new JgitCheckout(worktreeDir);
   }
 
   @AfterEach
   void close() {
-    if (seat != null) {
-      seat.close();
+    if (worktree != null) {
+      worktree.close();
     }
   }
 
@@ -157,17 +157,19 @@ class JgitTransientWorktreeTest {
     final String landed = localTip();
     final TransientWorktree stale = open();
 
-    // Another seat pushes in between, so origin moves while this seat's branch stays put: only the
-    // push's own status can stop the local branch from advancing past what origin refused.
+    // Another worktree pushes in between, so origin moves while this worktree's branch stays put:
+    // only the push's own status can stop the local branch from advancing past what origin refused.
     try (Git other =
         Git.cloneRepository()
             .setURI(origin.toUri().toString())
             .setDirectory(Files.createTempDirectory(noHooks, "other").toFile())
             .call()) {
       noHooksIn(other);
-      final JgitCheckout otherSeat = new JgitCheckout(other.getRepository().getWorkTree().toPath());
-      otherSeat.fetchBranch(BRANCH, Optional.empty(), java.time.Duration.ofSeconds(10));
-      final TransientWorktree racer = JgitTransientWorktree.open(otherSeat.repository(), BRANCH);
+      final JgitCheckout otherWorktree =
+          new JgitCheckout(other.getRepository().getWorkTree().toPath());
+      otherWorktree.fetchBranch(BRANCH, Optional.empty(), java.time.Duration.ofSeconds(10));
+      final TransientWorktree racer =
+          JgitTransientWorktree.open(otherWorktree.repository(), BRANCH);
       racer.commit(replace(Map.of("a.yaml", "racer"), List.of()), RENDER);
       racer.publish(TOKEN);
     }
@@ -186,7 +188,7 @@ class JgitTransientWorktreeTest {
         head.commit(
             replace(Map.of("a.yaml", "a"), List.of()),
             new CommitSpec(RENDER.message(), RENDER.identity(), Optional.of(signingKey())));
-    try (RevWalk walk = new RevWalk(seat.getRepository())) {
+    try (RevWalk walk = new RevWalk(worktree.getRepository())) {
       final RevCommit commit = walk.parseCommit(ObjectId.fromString(sha));
       assertTrue(
           new String(commit.getRawGpgSignature(), StandardCharsets.US_ASCII)
@@ -219,7 +221,7 @@ class JgitTransientWorktreeTest {
   }
 
   private String localTip() throws IOException {
-    final Ref ref = seat.getRepository().exactRef(Constants.R_HEADS + BRANCH);
+    final Ref ref = worktree.getRepository().exactRef(Constants.R_HEADS + BRANCH);
     return ref == null ? null : ref.getObjectId().name();
   }
 
@@ -231,7 +233,7 @@ class JgitTransientWorktreeTest {
   }
 
   private String parentOf(String sha) throws IOException {
-    try (RevWalk walk = new RevWalk(seat.getRepository())) {
+    try (RevWalk walk = new RevWalk(worktree.getRepository())) {
       return walk.parseCommit(ObjectId.fromString(sha)).getParent(0).name();
     }
   }

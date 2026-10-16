@@ -153,7 +153,7 @@ implemented; the medical-model extensions are Design Only. All docs live in `arc
 == Workspace & worktrees
 
 ⚠️ *These two documents live on the orphan `workspace` branch, not in this tree.* The manifest they
-specify describes the workspace itself — the set of worktrees a seat materialises — so it cannot sit
+specify describes the workspace itself — the set of worktrees an operator seat materialises — so it cannot sit
 inside one of its own folders. Locally they are the `workspace` folder of the editor workspace.
 
 They are cited as **branch-qualified paths, deliberately not as links**. A relative `link:` resolves

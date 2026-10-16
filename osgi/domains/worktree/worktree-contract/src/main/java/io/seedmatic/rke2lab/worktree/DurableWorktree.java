@@ -4,12 +4,12 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * The seat: the worktree the seed cultivates — the DURABLE realization of {@link Worktree}, on
- * disk, as ONE OSGi service — it KNOWS its own git facts. The seed process runs inside its
- * worktree, so the component locates its root once (walking up to the {@code .git}) and answers the
- * facts that root carries: its {@link #provenance()} (HEAD sha + dirty) and its {@link
- * #workingState()} (clean, and which paths are uncommitted). The one place the "is the worktree
- * clean?" and "what did we provision from?" knowledge lives.
+ * The worktree the seed cultivates — the DURABLE realization of {@link Worktree}, on disk, as ONE
+ * OSGi service — it KNOWS its own git facts. The seed process runs inside its worktree, so the
+ * component locates its root once (walking up to the {@code .git}) and answers the facts that root
+ * carries: its {@link #provenance()} (HEAD sha + dirty) and its {@link #workingState()} (clean, and
+ * which paths are uncommitted). The one place the "is the worktree clean?" and "what did we
+ * provision from?" knowledge lives.
  *
  * <p>Governance: the interface is jgit-FREE — only JDK types and the worktree records cross it.
  * jgit lives behind the implementation ({@code worktree-core}'s {@code JgitWorktree}) and is never

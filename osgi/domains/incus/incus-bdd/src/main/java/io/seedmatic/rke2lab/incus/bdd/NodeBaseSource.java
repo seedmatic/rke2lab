@@ -6,16 +6,16 @@ import java.util.List;
 import java.util.regex.Pattern;
 
 /**
- * What the node-base image is built FROM: a REVISION of the seat, as a nix flake ref read through
- * the seat's repository ({@code git+file://<repository>?rev=<sha>}, so a local commit builds with
- * no push and no working file reaches the store), and the content digest of that revision's build
- * inputs — ONE digest, read by the build script's freshness gate and folded into the plan's {@code
- * buildChecksum}.
+ * What the node-base image is built FROM: a REVISION of the worktree, as a nix flake ref read
+ * through the worktree's repository ({@code git+file://<repository>?rev=<sha>}, so a local commit
+ * builds with no push and no working file reaches the store), and the content digest of that
+ * revision's build inputs — ONE digest, read by the build script's freshness gate and folded into
+ * the plan's {@code buildChecksum}.
  *
- * <p>The revision is the seat's HEAD when the build inputs are clean; when they are dirty, the seat
- * fabricates one ({@link DurableWorktree#buildRevision}) — the grow tests what is on disk, still by
- * revision. The rule is enforced here: a source whose flake ref names anything but a revision does
- * not exist.
+ * <p>The revision is the worktree's HEAD when the build inputs are clean; when they are dirty, the
+ * worktree fabricates one ({@link DurableWorktree#buildRevision}) — the grow tests what is on disk,
+ * still by revision. The rule is enforced here: a source whose flake ref names anything but a
+ * revision does not exist.
  */
 record NodeBaseSource(BuildRevision revision, String flakeRef, String digest) {
 
@@ -34,12 +34,12 @@ record NodeBaseSource(BuildRevision revision, String flakeRef, String digest) {
     }
   }
 
-  static NodeBaseSource of(DurableWorktree seat) {
-    final BuildRevision revision = seat.buildRevision(BUILD_INPUTS);
+  static NodeBaseSource of(DurableWorktree worktree) {
+    final BuildRevision revision = worktree.buildRevision(BUILD_INPUTS);
     return new NodeBaseSource(
         revision,
-        "git+file://" + seat.repository() + "?rev=" + revision.sha(),
-        seat.treeDigest(revision.sha(), BUILD_INPUTS));
+        "git+file://" + worktree.repository() + "?rev=" + revision.sha(),
+        worktree.treeDigest(revision.sha(), BUILD_INPUTS));
   }
 
   /** The revision as the runbook names it: its sha and, when fabricated, what made it dirty. */

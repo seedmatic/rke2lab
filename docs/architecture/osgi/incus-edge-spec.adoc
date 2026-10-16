@@ -86,14 +86,14 @@ recipe script as a classpath resource.
 * *incus-contract* declares `ImageBuilder` — `build(ImageBuildRequest)` (produce the artifacts, throwing
   an unchecked exception on failure) and `recipeDigest()` (a stable digest of the edge-owned recipe).
   `ImageBuildRequest` is the flat contract record: the builder binary, the `flakeRef` — a REVISION,
-  `git+file://<repository>?rev=<sha>`, the seat's commit read through its common dir — the `sourceDigest`
+  `git+file://<repository>?rev=<sha>`, the worktree's commit read through its common dir — the `sourceDigest`
   (the jgit content digest of that revision's build inputs) and the absolute `artifactDir`. The recipe is
   NOT a field — the edge owns it (see below).
 * *incus-edge* provides TWO paired `@Component`s implementing `ImageBuilder`: `CultivatingNixosImageBuilder`
   (cultivate = run — it builds) and `SurveyingImageBuilder` (survey = preview — it plans only and returns
   without touching anything), selected at the collaborator frontier by the gardening mode. The cultivating
   builder runs `nix build <flakeRef>#nixosConfigurations.rke2-node-base…` to produce `incus.tar.xz` +
-  `rootfs.squashfs`; nix itself hands the aarch64-linux derivations to the seat's configured builder
+  `rootfs.squashfs`; nix itself hands the aarch64-linux derivations to the operator seat's configured builder
   (`/etc/nix/machines`), so the edge has no transport of its own and the script runs no git. The recipe is owned by `BuildRecipe` (a bundle
   resource — this edge is its single source). `ImageBuildException` (unchecked) lives HERE in `incus-edge`,
   not in the contract.
@@ -108,7 +108,8 @@ The recipe is the NixOS build (`nix build …#nixosConfigurations.rke2-node-base
 `BuildRecipe` as a bundle resource of `incus-edge` — the single source. There is no distrobuilder config
 (`incus-distrobuilder.yaml`) and no distrobuilder invocation any more; the earlier two-channel
 distrobuilder scheme (an NFS-pathed yaml + an ssh-streamed driver) is fully superseded by the substrate.
-nix runs on the seat and hands the aarch64-linux derivations to the seat's own configured builder
+nix runs on the operator seat and hands the aarch64-linux derivations to the operator seat's own
+configured builder
 (`/etc/nix/machines`); the edge has no transport of its own.
 
 `recipeDigest()` is a stable digest of that edge-owned recipe, so a recipe change invalidates the host's
@@ -117,19 +118,19 @@ image cache. The host still holds only the digest, never the recipe — it folds
 the source digest of the revision it builds.
 
 [[build-by-revision]]
-=== The rule — nix builds only a REVISION; a dirty seat builds a fabricated one
+=== The rule — nix builds only a REVISION; a dirty worktree builds a fabricated one
 
 [mermaid]
 ....
 flowchart LR
-  SEAT["seat worktree<br/>(rdp.bioskop or rdp.nikopol)"]
+  WT["worktree<br/>(on darwin.bioskop or darwin.nikopol)"]
   CLEAN{"flake.lock · flake.nix · nixos/<br/>clean?"}
   HEAD["HEAD's sha"]
   FAB["fabricated commit<br/>HEAD's tree + the dirty inputs<br/>pinned refs/rke2lab/grow/&lt;sha&gt;"]
   GUARD["scion guard<br/>git+file://…?rev=&lt;40-hex&gt; or refuse"]
-  NIX["nix build by ?rev=<br/>source read on the seat,<br/>derivations to the builder"]
+  NIX["nix build by ?rev=<br/>source read on the operator seat,<br/>derivations to the builder"]
   DROP["ref deleted after a successful build<br/>swept after 7 days otherwise"]
-  SEAT --> CLEAN
+  WT --> CLEAN
   CLEAN -- yes --> HEAD --> GUARD
   CLEAN -- no --> FAB --> GUARD
   GUARD --> NIX --> DROP
@@ -137,11 +138,11 @@ flowchart LR
 
 Any nix evaluation that names a working tree copies that tree into the store, and the store's new paths
 are published by the cache's watch-store — the 2026-10-10 leak. So the image is built from a REVISION
-only: `git+file://<repository>?rev=<sha>`, `<repository>` being the seat's common dir
-(`Worktree.repository()`), read on the seat; the builder receives store paths, never the repository.
+only: `git+file://<repository>?rev=<sha>`, `<repository>` being the worktree's common dir
+(`Worktree.repository()`), read on the operator seat; the builder receives store paths, never the repository.
 `NodeBaseSource` refuses any other flake ref.
 
-When the build inputs are dirty — the usual case while testing a grow — the seat FABRICATES the revision
+When the build inputs are dirty — the usual case while testing a grow — the worktree FABRICATES the revision
 (`Worktree.buildRevision`): HEAD's tree with only the allow-listed inputs (`flake.lock`, `flake.nix`,
 `nixos/**`) taken from the working tree, committed as `rke2lab:grow`, unsigned, subject naming the dirty
 paths, and pinned under `refs/rke2lab/grow/<sha>`. What enters it is guarded, failing closed and naming

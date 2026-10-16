@@ -51,7 +51,7 @@ All Maven commands must run through flox: `flox activate -- ./mvnw ...`
 - `sdks/incus/` - Incus API client SDK
 - `bom/` - Bill of materials for dependency management
 - `docs/` - Architecture documentation (40+ AsciiDoc files)
-- `.flox-envs.d/` - fleet's flox env tree, vendored as a git subtree; the seat's `[include]`
+- `.flox-envs.d/` - fleet's flox env tree, vendored as a git subtree; the flox seat's `[include]`
   entries point into it. Never edit it here — edits go to fleet and come back through the
   **`flox-envs-subtree-sync` skill**, which also covers the mandatory re-lock after a pull.
 

@@ -133,7 +133,7 @@ flowchart TB
 | `172.16.0.0/12`
 | 20
 | *The fabric* — the plane on which a thing is reachable across bare-metals: node addresses, per-host
-  infra, the vz `/30`, everything advertised into the tailnet. Deliberately co-tenanted (host infra at
+  infra, the vz `/30`, everything advertised into the tailnet. Deliberately shared (host infra at
   ASN 65000, cluster nodes at 6501x): the tier is defined by *nature*, not by owner, which is what makes
   its boundary decidable for the next thing added.
 
@@ -177,7 +177,7 @@ flowchart TB
     b1 --> b2 --> b3
   end
   subgraph AFTER[After — derived from the cluster name, legible by octet]
-    a1["172.16.hostId*16 .0/20 — ONE /20 per bare-metal<br/>= advertiseCidr, one tailnet route<br/>bioskop .0/20 · nikopol .16/20 · test .32/20"]
+    a1["172.16.hostId*16 .0/20 — ONE /20 per metalspace<br/>= advertiseCidr, one tailnet route<br/>bioskop .0/20 · nikopol .16/20 · test .32/20"]
     a2["slot 0 — host infra (ndh owns)<br/>bare-br gateway .1 · nnh pool · vz /30"]
     a3["slot 1+roleId — ONE /24 per cluster (rke2lab owns)<br/>mgmt slot 1 · wrkld slot 2"]
     a4["inside a cluster /24:<br/>.0/26 nodes (62 places) · .64/26 LB · .128/25 free"]
@@ -205,7 +205,7 @@ Third octet reads as `hostId*16 + slot`, mirroring the vmnet plane's multiple-of
 `/24`s are an *addressing* convention, not separate broadcast domains. The ndh module changes only its
 prefix, and the single `.<host>` DNS zone survives — which is the choice that keeps this cheap.
 
-*Why `/20` per bare-metal and not the more legible `/16`.* `172.<16+hostId>.0.0/16` would give each
+*Why `/20` per metalspace and not the more legible `/16`.* `172.<16+hostId>.0.0/16` would give each
 machine a whole octet, unbeatable to read. It is rejected for a reason that targets exactly the machine
 this migration is for: `nikopol-vzhost` is a *corporate* Mac on a company-governed network, and
 enterprise networks consume `172.16.0.0/12` heavily. A `/16` advertised into the tailnet is 512× more
@@ -291,7 +291,7 @@ planes do not agree on how many bare-metals the fleet may have.*
 | *4 bare-metals*
 | 64 ÷ 8 = 8 clusters, and `clusterId = hostId<<1\|roleId`, so `hostId` 0..3
 
-| the fabric `/20` per bare-metal inside `172.16.0.0/16`
+| the fabric `/20` per metalspace inside `172.16.0.0/16`
 | *16 bare-metals*
 | 16 `/20`s in a `/16` — the most generous plane, and the only one needing no change
 
@@ -356,7 +356,7 @@ boundary:
   disjoint (sparsely filled, which is harmless).
 
 | the fabric
-| unchanged. `/20` per bare-metal at `hostId*16` holds 16 hosts, and each `/20` has 16 `/24` slots —
+| unchanged. `/20` per metalspace at `hostId*16` holds 16 hosts, and each `/20` has 16 `/24` slots —
   one for host infra, four for roles, eleven spare. It was already the plane with headroom.
 |===
 
@@ -450,7 +450,7 @@ Everything below is a function of `(hostId, roleId, nodeId)`. Ranges shown at `C
 | `172.16.0.0/17` (8 × `/20`)
 
 |
-| per bare-metal (= `advertiseCidr`, one tailnet route)
+| per metalspace (= `advertiseCidr`, one tailnet route)
 | `172.16.<hostId*16>.0/20` → `.0.0/20` … `.112.0/20`
 
 |
@@ -475,7 +475,7 @@ Everything below is a function of `(hostId, roleId, nodeId)`. Ranges shown at `C
 | `172.16.<hostId*16 + 8>.0/30` — guest `.1`, vz-host `.2`. Uniform across both bare-metals, and for a
   *functional* reason rather than symmetry: once the nodes live in the fabric they cannot reach
   `192.168.0.0/16` (excluded from the masquerade, no return route), so a vz-host that answered only at a
-  LAN address would be unreachable from the very tenants that now share its host. The Mac keeps its LAN
+  LAN address would be unreachable from the very instances that now share its host. The Mac keeps its LAN
   address; it *gains* a fabric one.
 
 | *clusters*
@@ -570,7 +570,7 @@ The simplification, stated as removals — each is a red box above with no succe
   one, because the name stops naming a node
 
 | the `hostId*48` term in the LAN carve — `hostId` as a coordinate *inside* one `/24`
-| `hostId` lifted into the third octet: one segment per bare-metal
+| `hostId` lifted into the third octet: one segment per metalspace
 
 | `lanSliceBase` squeezing a single-node management cluster into a `/29`
 | `.32-.123` free inside the low half. The `/29` is what made a management cluster that enumerated the
@@ -759,7 +759,7 @@ Verified live on 2026-09-23:
 
 * `bare-br` exists on `bioskop-nixos` — `ipv4.address: 172.16.7.1/25`, `dns.domain: bioskop`,
   `status: Created` — and is **empty**: `used_by: []`, link `DOWN` (a Linux bridge with no member).
-  The per-host logic needed no extension; it has no tenant.
+  The per-host logic needed no extension; it has no instance.
 * the reconcile path is a *oneshot*, added because the nixpkgs incus preseed is create-only — so a
   renumbering re-applies on a plain `nixos-rebuild switch`, with no cold start on the ndh side.
 * public egress from the segment *already works*: `baremetal-nat` masquerades only public-bound traffic,

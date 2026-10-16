@@ -67,13 +67,13 @@ class RenderDeliveryTest {
 
   @TempDir Path dir;
   private Path origin;
-  private Path seatDir;
-  private Git seat;
+  private Path worktreeDir;
+  private Git worktree;
   private String recipient;
   private String signingKey;
 
   @BeforeEach
-  void an_origin_holding_the_branch_and_a_seat_cloned_from_it() throws Exception {
+  void an_origin_holding_the_branch_and_a_worktree_cloned_from_it() throws Exception {
     assumeTrue(
         onPath("sops") && onPath("age-keygen") && onPath("ssh-keygen"),
         "needs sops, age-keygen and ssh-keygen on PATH");
@@ -89,7 +89,7 @@ class RenderDeliveryTest {
         Git.init().setDirectory(upstreamDir.toFile()).setInitialBranch("develop").call()) {
       noHooks(upstream);
       write(upstreamDir, "flake.nix", "{ }");
-      commit(upstream, "seat base");
+      commit(upstream, "worktree base");
       upstream.checkout().setOrphan(true).setName(BRANCH).call();
       upstream.rm().addFilepattern("flake.nix").call();
       write(upstreamDir, "reflections/pool.yaml", "pool: reflected\n");
@@ -103,21 +103,21 @@ class RenderDeliveryTest {
               new RefSpec("refs/heads/" + BRANCH + ":refs/heads/" + BRANCH))
           .call();
     }
-    seatDir = dir.resolve("seat");
-    seat =
+    worktreeDir = dir.resolve("worktree");
+    worktree =
         Git.cloneRepository()
             .setURI(origin.toUri().toString())
-            .setDirectory(seatDir.toFile())
+            .setDirectory(worktreeDir.toFile())
             .call();
-    noHooks(seat);
+    noHooks(worktree);
     recipient = ageRecipient();
     signingKey = sshKey();
   }
 
   @AfterEach
   void close() {
-    if (seat != null) {
-      seat.close();
+    if (worktree != null) {
+      worktree.close();
     }
   }
 
@@ -168,7 +168,7 @@ class RenderDeliveryTest {
 
       assertThrows(IllegalStateException.class, () -> delivery().seal(plot));
 
-      assertEquals(raced, originTip(), "origin kept the other seat's commit");
+      assertEquals(raced, originTip(), "origin kept the other worktree's commit");
       assertEquals(local, localTip(), "never a local ref ahead of a refused push");
     }
   }
@@ -198,7 +198,7 @@ class RenderDeliveryTest {
             new YamlMapper()));
   }
 
-  /** The head opened in the seat's repository, its plot on the in-memory soil, rendered. */
+  /** The head opened in the worktree's repository, its plot on the in-memory soil, rendered. */
   private RenderSoil renderedPlot(FileSystem soil) throws IOException {
     final Path root = soil.getPath(BRANCH);
     write(root, ".sops.yaml", policy());
@@ -206,7 +206,8 @@ class RenderDeliveryTest {
     write(root, "probe-system/02-secret-probe.yaml", SECRET);
     write(root, ".local.d/manifests.yaml", "intermediate: " + SECRET.length() + "\n");
     write(root, ".scratchpad.d/note.md", "scratch\n");
-    return new RenderSoil(new JgitTransientWorktrees(seat()).open(BRANCH, Optional.empty()), root);
+    return new RenderSoil(
+        new JgitTransientWorktrees(worktree()).open(BRANCH, Optional.empty()), root);
   }
 
   private String policy() {
@@ -218,7 +219,7 @@ class RenderDeliveryTest {
         + "\n";
   }
 
-  /** Another seat pushes onto the branch first, so this one's push is not a fast-forward. */
+  /** Another worktree pushes onto the branch first, so this one's push is not a fast-forward. */
   private String raceOrigin() throws Exception {
     try (Git other =
         Git.cloneRepository()
@@ -228,7 +229,7 @@ class RenderDeliveryTest {
             .call()) {
       noHooks(other);
       write(other.getRepository().getWorkTree().toPath(), "raced.yaml", "first: true\n");
-      commit(other, "another seat's render");
+      commit(other, "another worktree's render");
       other
           .push()
           .setRefSpecs(new RefSpec("refs/heads/" + BRANCH + ":refs/heads/" + BRANCH))
@@ -237,8 +238,8 @@ class RenderDeliveryTest {
     return originTip();
   }
 
-  private DurableWorktree seat() {
-    final Path root = seatDir;
+  private DurableWorktree worktree() {
+    final Path root = worktreeDir;
     return new DurableWorktree() {
       @Override
       public Path root() {
@@ -299,7 +300,7 @@ class RenderDeliveryTest {
   }
 
   private String localTip() throws IOException {
-    return seat.getRepository().exactRef(Constants.R_HEADS + BRANCH).getObjectId().name();
+    return worktree.getRepository().exactRef(Constants.R_HEADS + BRANCH).getObjectId().name();
   }
 
   private static List<String> paths(Repository repository, RevCommit commit) throws IOException {

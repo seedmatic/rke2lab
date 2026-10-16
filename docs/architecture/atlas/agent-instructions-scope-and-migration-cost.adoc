@@ -542,7 +542,7 @@ Two distinct authorisations were also in play, which made it hard to see: an org
 the GitHub CLI application (*"Allowed"*) while a **given token** has never been validated in an SSO
 session. Only the refresh produced a token validated for `HylandSoftware`.
 
-✅ The export is removed from the seat (this commit). ⚠️ Processes already running keep the copy
+✅ The export is removed from the flox seat (this commit). ⚠️ Processes already running keep the copy
 until VS Code is restarted from a shell where it is unset.
 
 ==== In scope: which HylandExperience skills seedmatic should import

@@ -1151,7 +1151,7 @@ USAGE
 
         # The envs vendored under .flox-envs.d arrive WITHOUT their manifest.lock: fleet ignores
         # it, and the lock is what makes an env includable — so a fresh checkout cannot activate
-        # the seat until this runs ("manifest and lockfile are out of sync"). The locks stay
+        # the flox seat until this runs ("manifest and lockfile are out of sync"). The locks stay
         # gitignored on purpose: fleet publishes manifests, each checkout realises its own lock.
         # The include graph is WALKED, not listed — a composed env must be locked after the ones
         # it includes, and a hardcoded list rots the next time fleet adds an include.
@@ -1190,7 +1190,7 @@ USAGE
 
             echo "vendored flox envs locked — 'flox activate' is ready"
           '');
-          meta.description = "Lock the flox envs vendored under .flox-envs.d so the seat can activate (fresh-checkout bootstrap)";
+          meta.description = "Lock the flox envs vendored under .flox-envs.d so the flox seat can activate (fresh-checkout bootstrap)";
         };
 
         # Stage the flox-controller CRD (single-sourced from the flox-controller flake)

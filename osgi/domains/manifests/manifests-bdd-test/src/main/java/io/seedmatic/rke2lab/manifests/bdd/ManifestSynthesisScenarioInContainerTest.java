@@ -78,9 +78,9 @@ import org.osgi.framework.ServiceRegistration;
 public class ManifestSynthesisScenarioInContainerTest {
 
   private static final String CLUSTER = "test-mgmt";
-  // What the seat holds at HEAD: a flake.lock pinning nixpkgs for the branch's installer flake, and
-  // the .sops.yaml its Secrets are sealed under.
-  private static final Map<String, String> SEAT =
+  // What the worktree holds at HEAD: a flake.lock pinning nixpkgs for the branch's installer flake,
+  // and the .sops.yaml its Secrets are sealed under.
+  private static final Map<String, String> WORKTREE =
       Map.of(
           "flake.lock",
           "{\"nodes\":{\"nixpkgs\":{\"locked\":{\"rev\":\"" + "2".repeat(40) + "\"}}}}",
@@ -138,7 +138,7 @@ public class ManifestSynthesisScenarioInContainerTest {
     // The control: the same provisioning render, with no carrier at HEAD (a first grow), reaches
     // the delivery — so the refusal below is what stops the commit, not a harness that never could.
     final SpyHead head = new SpyHead(Map.of());
-    final ScenarioOutcome outcome = playRenderOnto(head, openingDecryptor(), SEAT);
+    final ScenarioOutcome outcome = playRenderOnto(head, openingDecryptor(), WORKTREE);
 
     assertEquals(
         ExecutionStatus.SUCCESS,
@@ -153,10 +153,11 @@ public class ManifestSynthesisScenarioInContainerTest {
 
   @Test
   void a_failed_step_is_the_reason_and_nothing_is_written_after_it() throws Exception {
-    // A seat with no flake.lock fails the synthesis step at its LAST write (the installer flake),
-    // after the tree and its bootstrap bundle are written. jGiven skips the steps after it, but the
-    // body runs on: before the guard, it went on filing the bundle and extracting the cellar asset,
-    // and a missing root there hid the step's own reason (the T4 preview).
+    // A worktree with no flake.lock fails the synthesis step at its LAST write (the installer
+    // flake), after the tree and its bootstrap bundle are written. jGiven skips the steps after it,
+    // but the body runs on: before the guard, it went on filing the bundle and extracting the
+    // cellar
+    // asset, and a missing root there hid the step's own reason (the T4 preview).
     final SpyHead head = new SpyHead(Map.of());
     final ScenarioOutcome outcome =
         playRenderOnto(head, openingDecryptor(), Map.of(".sops.yaml", "creation_rules: []\n"));
@@ -182,7 +183,7 @@ public class ManifestSynthesisScenarioInContainerTest {
     // The render must fail, with the branch head where it was and nothing pushed.
     final SpyHead head = new SpyHead(Map.of(CARRIER, CARRIER_WITHOUT_ENVELOPES));
     final String before = head.head();
-    final ScenarioOutcome outcome = playRenderOnto(head, openingDecryptor(), SEAT);
+    final ScenarioOutcome outcome = playRenderOnto(head, openingDecryptor(), WORKTREE);
 
     assertEquals(
         ExecutionStatus.FAILED,
@@ -204,7 +205,7 @@ public class ManifestSynthesisScenarioInContainerTest {
     // throws. The render fails naming the carrier, with the edge's classification as its reason.
     final SpyHead head = new SpyHead(Map.of(CARRIER, "sops: sealed\n"));
     final String before = head.head();
-    final ScenarioOutcome outcome = playRenderOnto(head, undecryptableCarrier(), SEAT);
+    final ScenarioOutcome outcome = playRenderOnto(head, undecryptableCarrier(), WORKTREE);
 
     assertEquals(
         ExecutionStatus.FAILED,
@@ -242,12 +243,12 @@ public class ManifestSynthesisScenarioInContainerTest {
 
   /**
    * Play a PROVISIONING render of {@code test-mgmt} onto {@code head}, opening its carrier with
-   * {@code decryptor}: the delivery seam and the source seat it is rendered from, a parcel over an
-   * empty durable cellar, the sops edges and a key-store that only names the signing identity — the
-   * spy head never signs, so nothing real is reached.
+   * {@code decryptor}: the delivery seam and the source worktree it is rendered from, a parcel over
+   * an empty durable cellar, the sops edges and a key-store that only names the signing identity —
+   * the spy head never signs, so nothing real is reached.
    */
   private static ScenarioOutcome playRenderOnto(
-      SpyHead head, SopsDecryptor decryptor, Map<String, String> seat) throws Exception {
+      SpyHead head, SopsDecryptor decryptor, Map<String, String> worktree) throws Exception {
     final BundleContext context =
         FrameworkUtil.getBundle(ManifestsBddTests.class).getBundleContext();
     final List<ServiceRegistration<?>> registrations = new ArrayList<>();
@@ -257,7 +258,8 @@ public class ManifestSynthesisScenarioInContainerTest {
             (TransientWorktrees) (branch, fetchToken) -> head,
             new Hashtable<>()));
     registrations.add(
-        context.registerService(DurableWorktree.class, sourceSeat(seat), new Hashtable<>()));
+        context.registerService(
+            DurableWorktree.class, sourceWorktree(worktree), new Hashtable<>()));
     registrations.add(
         context.registerService(Parcel.class, new Parcel("rke2lab", "test"), new Hashtable<>()));
     registrations.add(context.registerService(Cellar.class, emptyCellar(), new Hashtable<>()));
@@ -413,11 +415,11 @@ public class ManifestSynthesisScenarioInContainerTest {
   }
 
   /**
-   * The seat the render is synthesised from: a clean provenance, a {@code flake.lock} pinning
+   * The worktree the render is synthesised from: a clean provenance, a {@code flake.lock} pinning
    * nixpkgs for the branch's installer flake and the {@code .sops.yaml} its Secrets are sealed
    * under. Nothing else of it is reached.
    */
-  private static DurableWorktree sourceSeat(Map<String, String> atHead) {
+  private static DurableWorktree sourceWorktree(Map<String, String> atHead) {
     return new DurableWorktree() {
       @Override
       public Path root() {
