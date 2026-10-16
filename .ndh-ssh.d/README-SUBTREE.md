@@ -53,16 +53,19 @@ still encrypted. The roles, holders and lifecycles of what it reads are in ndh
 After committing changes to `modules/home-manager/ssh.d` in nix-darwin-home:
 
 ```bash
-# nix-darwin-home: refresh ITS OWN branch from the latest ssh.d
-git subtree split --prefix=modules/home-manager/ssh.d \
-  --branch=split/nix-darwin-home/hm-ssh.d --rejoin HEAD
-git push origin split/nix-darwin-home/hm-ssh.d
+# nix-darwin-home: publish ssh.d's tree as ONE signed commit on top of the published head.
+# Not `subtree split --rejoin`: the full split is thousands of unsigned commits, and --rejoin
+# adds a commit to develop. A squashed pull needs only the tree.
+git fetch origin split/nix-darwin-home/hm-ssh.d
+tree="$(git rev-parse HEAD:modules/home-manager/ssh.d)"
+commit="$(git commit-tree -S "$tree" -p FETCH_HEAD -m "ssh.d at $(git rev-parse --short HEAD)")"
+git push origin "$commit:refs/heads/split/nix-darwin-home/hm-ssh.d"
 ```
 
 ```bash
-# rke2lab: pull nix-darwin-home's branch into the subtree (squashed)
+# rke2lab: pull nix-darwin-home's branch into the subtree, squashed and signed (both commits)
 git fetch nix-darwin-home split/nix-darwin-home/hm-ssh.d
-git subtree pull --prefix=.ndh-ssh.d \
+git subtree pull -S --prefix=.ndh-ssh.d \
   nix-darwin-home split/nix-darwin-home/hm-ssh.d --squash
 ```
 
