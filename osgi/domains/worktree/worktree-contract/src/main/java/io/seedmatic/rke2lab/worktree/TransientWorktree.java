@@ -4,10 +4,10 @@ import java.time.Duration;
 import java.util.Optional;
 
 /**
- * A head the seed commits onto WITHOUT materializing it: the branch's tip read from the seat's
+ * A head the seed commits onto WITHOUT materializing it: the branch's tip read from the worktree's
  * repository, edited in memory, committed as objects, then published. No working file, no linked
- * worktree, nothing to release — the transient realization of {@link Worktree}, twin of the seat's
- * {@link DurableWorktree}.
+ * worktree, nothing to release — the transient realization of {@link Worktree}, twin of the {@link
+ * DurableWorktree}.
  *
  * <p>jgit-free — only JDK types and the {@code worktree} records cross it.
  */

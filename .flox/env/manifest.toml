@@ -41,7 +41,7 @@ schema-version = "1.10.0"
 incus-client.flake = "github:seedmatic/rke2lab#incus-client"
 
 ## The operator toolchain, from the rke2lab flake (`operatorToolchain` in flake.nix): the apps run
-## these same store paths, so the seat and the grow cannot diverge. Only the agent tools below
+## these same store paths, so the flox seat and the grow cannot diverge. Only the agent tools below
 ## (claude-code, flox-mcp-server) stay in the catalog.
 pulumi.flake = "github:seedmatic/rke2lab#pulumi"
 pulumi-java.flake = "github:seedmatic/rke2lab#pulumi-java"
@@ -98,9 +98,9 @@ flox-mcp-server.pkg-group = "flox-mcp-server"
 ## -------------------------------------------------------------------
 [hook]
 ## ⓘ The flake-input registry indirection used to be written out here, by hand. It now lives in
-## fleet's `nix` env, included below — the logic was identical in every seat and only
+## fleet's `nix` env, included below — the logic was identical in every flox seat and only
 ## `$FLOX_ENV_PROJECT` differed, so a copy per repo was a copy that could drift. And half the
-## seedmatic repos with a flake had no seat at all, which made a per-seat hook structurally
+## seedmatic repos with a flake had no flox seat at all, which made a per-flox-seat hook structurally
 ## unable to be uniform.
 on-activate = """
   mkdir -p "${PULUMI_HOME}"
@@ -154,17 +154,17 @@ on-activate = """
     ## `flake-registry` carries the flake-input registry indirection — one hook, no packages —
     ## that puts this repo's `flake-registry.json`, or the gitignored `flake-registry.local.json`
     ## when one is present, into nix's GLOBAL registry slot. It is what makes `url = "ndh"`
-    ## resolvable and re-aimable by a LOCAL edit. It replaces the copy this seat's own [hook]
+    ## resolvable and re-aimable by a LOCAL edit. It replaces the copy this flox seat's own [hook]
     ## used to carry.
     ##
-    ## ⓘ Not `nix`, which also offers it: this seat did not include `nix` before the registry
+    ## ⓘ Not `nix`, which also offers it: this flox seat did not include `nix` before the registry
     ## chantier, so it takes the registry alone rather than inheriting a nix toolchain through a
     ## registry change. If the toolchain is wanted here, that is its own include, decided for
     ## its own sake.
     { dir = "./.flox-envs.d/flake-registry" },
     ## Not fleet's `pulumi` env any more: its three packages come from the rke2lab flake above,
     ## and its two vars (PULUMI_CONFIG_PASSPHRASE, PULUMI_HOME) and its `mkdir -p $PULUMI_HOME`
-    ## hook are already this seat's own. Kept, it would only let a catalog pulumi back in.
+    ## hook are already this flox seat's own. Kept, it would only let a catalog pulumi back in.
     { dir = "./.flox-envs.d/shell" },
   ]
 

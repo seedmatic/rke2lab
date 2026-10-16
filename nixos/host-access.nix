@@ -50,9 +50,9 @@
   # systemd-adapter probe resolved it through mDNS on the shared home L2.
   #
   # Both halves of that are gone. The node's NIC moved to the FABRIC bridge, and mDNS is link-local —
-  # `224.0.0.251` is not routed — so an advertisement there reaches only co-tenants of the same
-  # bare-metal, never the operator, who now arrives over the tailnet. And the name itself moved: the
-  # bare-metal's dnsmasq registers `<cluster>-<node>.<host>` from the node's own DHCP hostname
+  # `224.0.0.251` is not routed — so an advertisement there reaches only the other instances of
+  # the same metalspace, never the operator, who now arrives over the tailnet. And the name itself moved: the
+  # fabric's dnsmasq registers `<cluster>-<node>.<host>` from the node's own DHCP hostname
   # (`dns.mode=dynamic`), served to the tailnet by split-DNS. Every consumer was repointed —
   # the apiserver SANs, the operator kubeconfig's first-contact context, and the systemd probe
   # (SystemdAdapterScenario now reads `names().nodeFabricFqdn()`).

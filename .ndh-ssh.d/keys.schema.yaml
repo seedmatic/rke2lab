@@ -184,8 +184,9 @@ $defs:
       schema enforces what the shell also asserts. Two digits for the year keeps
       the key a plain string: YAML types a four-digit date as !!timestamp, and the
       enrichment writes with `yq -i`, which may re-serialise a typed key.
-      A slot may be EMPTY, which is how a renewal is requested: the enrichment
-      generates material for whichever slot has none.
+      A slot is filled on the seat (ssh-keys-renew) and an SSH certificate is signed there
+      (ssh-keys-certify): the activation generates nothing for a key with an SSH cert_usage,
+      and refuses one whose material or certificate is not recorded.
       See docs/ssh-keys-renewal-spec.adoc.
     minProperties: 1
     maxProperties: 2

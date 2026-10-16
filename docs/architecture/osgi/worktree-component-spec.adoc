@@ -41,7 +41,7 @@ cellar-harvested wire types folded in from the former `worktree-contract-host` (
 
 | `worktree-core` (pkg `io.seedmatic.rke2lab.worktree.internal`)
 | `JgitWorktree` and `JgitTransientWorktrees` `@Component`s, composing the jgit-holder `JgitCheckout`
-(the seat's git facts, its write verb and the fetch), the `JgitTransientWorktree` head (objects,
+(the durable worktree's git facts, its write verb and the fetch), the `JgitTransientWorktree` head (objects,
 signed commits, the checked fast-forward push), the `ContentGuards` port of the pre-commit guards, and
 the `SshCommitSigner`. jgit lives only here; no `git` process is launched.
 
@@ -55,23 +55,23 @@ amend door that binds the injected `GatePolicy` FACET — the twin of `IncusAmen
 
 * **`Worktree`** (contract) — the git model both realizations share: `readAtHead(path)` (the
   COMMITTED blob, never a working file) and `commit(TreeEdit, CommitSpec)`. One model, two places a
-  tree lives: on disk and durable (the seat), in memory and transient (a head the seed commits onto).
-* **`DurableWorktree`** (contract) — the seat, the service: `root()` (the absolute, normalised anchor
+  tree lives: on disk and durable (the durable worktree), in memory and transient (a head the seed commits onto).
+* **`DurableWorktree`** (contract) — the worktree the seed cultivates, the service: `root()` (the absolute, normalised anchor
   every provisioning path derives from), `provenance()`, `workingState()`, and `flakeLockCoherent()` (the
-  `HEAD~1..HEAD` check — a `flake.nix` inputs change without its `flake.lock`). For a build of the seat
+  `HEAD~1..HEAD` check — a `flake.nix` inputs change without its `flake.lock`). For a build of the worktree
   it adds `repository()` (the common dir, the bare a revision is read through), `buildRevision(paths)`,
   `releaseBuildRevision(revision)` and `treeDigest(revision, paths)` — see
   link:incus-edge-spec.adoc#build-by-revision[the rule: nix builds only a revision]. jgit-free — only JDK
   types and the `worktree` records cross it.
 * **`TransientWorktrees`** / **`TransientWorktree`** (contract) — a head the seed commits onto WITHOUT
-  materializing it, opened in the seat's repository (its common dir, where the branches live):
+  materializing it, opened in the durable worktree's repository (its common dir, where the branches live):
   `open(branch, fetchToken)` fetches the branch with the caller's explicit credential, or starts on a
   README-only base when it does not exist (jgit cannot pack the empty tree); `readAtHead(path)`;
   `commit(TreeEdit, CommitSpec)` writes objects only and moves no ref; `publish(pushToken)` pushes
   fast-forward first and advances the local branch only once origin accepted it — or, without a token,
   advances the local branch only. No working file, no checkout, nothing to release. Its users: the
   manifests render (onto `manifests/<cluster>`) and the Fabric delivery (onto `fabric/plan`).
-* **`BuildRevision`** — the revision a build of the seat reads: the `sha`, whether it was `fabricated`
+* **`BuildRevision`** — the revision a build of the worktree reads: the `sha`, whether it was `fabricated`
   (HEAD's tree with the dirty build inputs taken from the working tree, pinned under
   `refs/rke2lab/grow/<sha>`, never pushed), and the `changed` and `untracked` paths that made it so —
   the run's provenance names them.
@@ -123,7 +123,7 @@ JDK types cross:
 * **`CommitSpec`** — the `message`, the `identity` authored AND committed as, and the OpenSSH private
   key the commit is SSH-signed with (git SSHSIG, `git` namespace, via an injected `ssh-keygen` signer
   since jgit ships none), or empty for unsigned.
-* **`commit(TreeEdit, CommitSpec)`** — the seat (on disk) takes an `Overlay`: it writes the files,
+* **`commit(TreeEdit, CommitSpec)`** — the durable worktree (on disk) takes an `Overlay`: it writes the files,
   deletes the removed paths, stages them and commits, returning the sha (the unchanged tip when the
   result matches HEAD). A `Replace` is refused there — it would empty the operator's working tree —
   and a path leaving the worktree is refused. LOCAL to the seed's OWN worktree — pushing a rendered
@@ -148,7 +148,7 @@ link:../cluster-api/manifests-rendered-branches.adoc[Manifests Rendered Branches
   a token, the local branch only. The fetch and the push carry an EXPLICIT credential
   (`x-access-token`), never one the machine's git config names. Published as an
   `@Component(service = TransientWorktrees.class)` that `@Reference`s `DurableWorktree` to learn the
-  repository (instance-passing — the seat flows in, it is not re-located).
+  repository (instance-passing — the durable worktree flows in, it is not re-located).
 
 == The soil crossing — harvest, not push
 

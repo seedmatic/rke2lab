@@ -32,8 +32,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * A dirty seat builds a FABRICATED revision — one test per condition security set (2026-10-12): the
- * allow-list, gitignored files never captured, untracked ones listed, the sops attribute and
+ * A dirty worktree builds a FABRICATED revision — one test per condition security set (2026-10-12):
+ * the allow-list, gitignored files never captured, untracked ones listed, the sops attribute and
  * envelope refusals, the content guards, the symlink refusal, the ref lifecycle.
  */
 class JgitCheckoutBuildRevisionTest {
@@ -43,11 +43,11 @@ class JgitCheckoutBuildRevisionTest {
 
   @TempDir Path dir;
   private Git git;
-  private JgitCheckout seat;
+  private JgitCheckout worktree;
   private String head;
 
   @BeforeEach
-  void a_committed_seat() throws Exception {
+  void a_committed_worktree() throws Exception {
     git = Git.init().setDirectory(dir.toFile()).setInitialBranch("develop").call();
     write(".gitignore", "nixos/local.d/\n");
     write("flake.nix", "{ }");
@@ -55,7 +55,7 @@ class JgitCheckoutBuildRevisionTest {
     write("nixos/a.nix", "a");
     write("docs/x.md", "x");
     head = commit("base");
-    seat = new JgitCheckout(dir);
+    worktree = new JgitCheckout(dir);
   }
 
   @AfterEach
@@ -66,7 +66,7 @@ class JgitCheckoutBuildRevisionTest {
   @Test
   void clean_inputs_build_head_and_pin_nothing() throws Exception {
     write("docs/x.md", "a doc edit is not a build input");
-    final BuildRevision revision = seat.buildRevision(INPUTS);
+    final BuildRevision revision = worktree.buildRevision(INPUTS);
     assertEquals(new BuildRevision(head, false, List.of(), List.of()), revision);
     assertEquals(List.of(), growRefs());
   }
@@ -76,7 +76,7 @@ class JgitCheckoutBuildRevisionTest {
       throws Exception {
     write("nixos/a.nix", "edited");
     write("docs/x.md", "not captured");
-    final BuildRevision revision = seat.buildRevision(INPUTS);
+    final BuildRevision revision = worktree.buildRevision(INPUTS);
 
     assertTrue(revision.fabricated());
     assertEquals(List.of("nixos/a.nix"), revision.changed());
@@ -96,7 +96,7 @@ class JgitCheckoutBuildRevisionTest {
   @Test
   void an_untracked_input_is_captured_and_listed() throws Exception {
     write("nixos/new.nix", "new");
-    final BuildRevision revision = seat.buildRevision(INPUTS);
+    final BuildRevision revision = worktree.buildRevision(INPUTS);
     assertEquals(List.of("nixos/new.nix"), revision.untracked());
     assertEquals(List.of("nixos/new.nix"), revision.changed());
   }
@@ -104,10 +104,10 @@ class JgitCheckoutBuildRevisionTest {
   @Test
   void a_gitignored_file_is_never_captured() throws Exception {
     write("nixos/local.d/key.nix", "local material");
-    assertFalse(seat.buildRevision(INPUTS).fabricated(), "an ignored file alone is not dirt");
+    assertFalse(worktree.buildRevision(INPUTS).fabricated(), "an ignored file alone is not dirt");
 
     write("nixos/a.nix", "edited");
-    final BuildRevision revision = seat.buildRevision(INPUTS);
+    final BuildRevision revision = worktree.buildRevision(INPUTS);
     final Repository repository = git.getRepository();
     try (RevWalk walk = new RevWalk(repository)) {
       final RevCommit commit = walk.parseCommit(ObjectId.fromString(revision.sha()));
@@ -120,7 +120,7 @@ class JgitCheckoutBuildRevisionTest {
   @Test
   void a_removed_input_is_removed_from_the_fabricated_tree() throws Exception {
     Files.delete(dir.resolve("nixos/a.nix"));
-    final BuildRevision revision = seat.buildRevision(INPUTS);
+    final BuildRevision revision = worktree.buildRevision(INPUTS);
     assertEquals(List.of("nixos/a.nix"), revision.changed());
     final Repository repository = git.getRepository();
     try (RevWalk walk = new RevWalk(repository)) {
@@ -163,7 +163,7 @@ class JgitCheckoutBuildRevisionTest {
   @Test
   void a_symlink_leaving_the_repository_is_refused_and_one_inside_is_captured() throws Exception {
     Files.createSymbolicLink(dir.resolve("nixos/inside.nix"), Path.of("a.nix"));
-    assertEquals(List.of("nixos/inside.nix"), seat.buildRevision(INPUTS).untracked());
+    assertEquals(List.of("nixos/inside.nix"), worktree.buildRevision(INPUTS).untracked());
 
     Files.createSymbolicLink(dir.resolve("nixos/out.nix"), Path.of("../../outside.nix"));
     assertRefused("nixos/out.nix: a symlink leaving the repository", "../../outside.nix");
@@ -172,24 +172,24 @@ class JgitCheckoutBuildRevisionTest {
   @Test
   void release_drops_the_pin_and_head_releases_nothing() throws Exception {
     write("nixos/a.nix", "edited");
-    final BuildRevision revision = seat.buildRevision(INPUTS);
-    seat.releaseBuildRevision(revision);
+    final BuildRevision revision = worktree.buildRevision(INPUTS);
+    worktree.releaseBuildRevision(revision);
     assertEquals(List.of(), growRefs());
-    seat.releaseBuildRevision(new BuildRevision(head, false, List.of(), List.of()));
+    worktree.releaseBuildRevision(new BuildRevision(head, false, List.of(), List.of()));
   }
 
   @Test
   void a_pin_older_than_seven_days_is_swept_by_the_next_build() throws Exception {
     final String stale = pinAged(Instant.now().minusSeconds(8L * 24 * 3600));
     final String fresh = pinAged(Instant.now().minusSeconds(24L * 3600));
-    seat.buildRevision(INPUTS);
+    worktree.buildRevision(INPUTS);
     assertEquals(List.of(JgitCheckout.GROW_REFS + fresh), growRefs());
     assertNotEquals(stale, fresh);
   }
 
   private void assertRefused(String finding, String content) {
     final IllegalStateException refused =
-        assertThrows(IllegalStateException.class, () -> seat.buildRevision(INPUTS));
+        assertThrows(IllegalStateException.class, () -> worktree.buildRevision(INPUTS));
     assertTrue(refused.getMessage().contains(finding), refused.getMessage());
     assertFalse(refused.getMessage().contains(content), "the refusal never carries captured text");
   }

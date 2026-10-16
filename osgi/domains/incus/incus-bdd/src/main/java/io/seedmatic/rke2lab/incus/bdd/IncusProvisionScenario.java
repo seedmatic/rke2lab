@@ -146,10 +146,10 @@ public class IncusProvisionScenario
   @OsgiService(await = false)
   private Optional<ConsultingService> doctor = Optional.empty();
 
-  // The seat, read for the node-base image's source (its HEAD and the digest of its build inputs).
+  // The worktree, read for the node-base image's source (its HEAD and its build-input digest).
   // await=false: an unamended survey builds nothing and never asks for it.
   @OsgiService(await = false)
-  private Optional<DurableWorktree> seat = Optional.empty();
+  private Optional<DurableWorktree> worktree = Optional.empty();
 
   // The consultations the run raised on a failed build/unreachable instance — the
   // ScenarioOutcomeExtension PULLS them (ConsultationSource) at the run boundary. Set in the @Test
@@ -200,7 +200,7 @@ public class IncusProvisionScenario
     // the
     // runbook into, and the worktree for provenance.
     final Optional<Resolved> resolved = Resolved.from(input.facet(), worktreeRoot);
-    // What the node-base image builds from — the seat's committed HEAD. Computed once, for the
+    // What the node-base image builds from — the worktree's committed HEAD. Computed once, for the
     // build request, the IMAGE_STATE amendment and the grow plan alike. Absent for an unamended
     // run.
     final Optional<NodeBaseSource> source =
@@ -209,7 +209,7 @@ public class IncusProvisionScenario
             .map(
                 facet ->
                     NodeBaseSource.of(
-                        seat.orElseThrow(
+                        worktree.orElseThrow(
                             () ->
                                 new IllegalStateException(
                                     "no DurableWorktree service — cannot source the node-base image"))));
@@ -290,7 +290,7 @@ public class IncusProvisionScenario
   }
 
   /**
-   * The image-build request the scion drives. When the run is amended it builds the seat's
+   * The image-build request the scion drives. When the run is amended it builds the worktree's
    * committed HEAD ({@link NodeBaseSource}) into the flat state root {@code .local.d} ({@code
    * BootstrapPaths.STATE_DIR}) under the worktree root, the same dir the plan reads the artifacts
    * back from. Unamended (a bare survey or the offline scenario) it falls to a blank marker the
@@ -403,7 +403,7 @@ public class IncusProvisionScenario
     @OsgiService private Optional<ImageBuilder> imageBuilder = Optional.empty();
 
     @OsgiService(await = false)
-    private Optional<DurableWorktree> seat = Optional.empty();
+    private Optional<DurableWorktree> worktree = Optional.empty();
 
     @OsgiService private Optional<SeedBroker> broker = Optional.empty();
     @OsgiService private Optional<NetplanSynthesisService> netplan = Optional.empty();
@@ -434,7 +434,7 @@ public class IncusProvisionScenario
       record("incus image", true, SymptomKind.IMAGE_BUILD_FAILED, null);
       // Built: a fabricated revision has served its purpose. On a failure its ref stays for the
       // operator, until the next grow sweeps it.
-      source.ifPresent(built -> seat.orElseThrow().releaseBuildRevision(built.revision()));
+      source.ifPresent(built -> worktree.orElseThrow().releaseBuildRevision(built.revision()));
       return self();
     }
 
@@ -639,7 +639,7 @@ public class IncusProvisionScenario
     @OsgiService private Optional<ImageBuilder> imageBuilder = Optional.empty();
 
     @OsgiService(await = false)
-    private Optional<DurableWorktree> seat = Optional.empty();
+    private Optional<DurableWorktree> worktree = Optional.empty();
 
     public Then the_instance_is_prepared() {
       return self();

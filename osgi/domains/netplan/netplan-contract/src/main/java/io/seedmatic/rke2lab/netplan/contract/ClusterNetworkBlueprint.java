@@ -357,17 +357,19 @@ public record ClusterNetworkBlueprint(
         new NamePlan(
             clusterName + "-" + nodeName,
             clusterName + "-" + nodeName + "." + hostOf(clusterName),
-            // The incus/nixos daemon host = <host>-nixos (the bare host, not the <host>-<role>
+            // The incus/nixos daemon host = <host>-nixos (the metalspace name, not the
+            // <host>-<role>
             // cluster). The operator-facing authority is config's rke2lab:cluster:remoteIncus; this
-            // is the netplan-domain mirror derived from the same bare host.
+            // is the netplan-domain mirror derived from the same metalspace name.
             hostOf(clusterName) + "-nixos",
-            // The INCUS CLUSTER MEMBER — the bare host, WITHOUT the -nixos suffix. A pool's
+            // The INCUS CLUSTER MEMBER — the metalspace name, without the -nixos suffix. A pool's
             // `spec.target` states this for placement, and `incusTargets` lists exactly these.
             //
             // ★ Split out of nixosHost rather than renamed, because that one field was serving TWO
             // concepts: the NixOS HOSTNAME (which systemd/dbus resolve to reach the host, and which
-            // must KEEP its suffix — `nikopol` is already the name of the RDP host, a different
-            // machine) and the incus MEMBER name. `incus cluster rename` makes a member's name
+            // must KEEP its suffix — `nikopol` is already the name of the darwin host nikopol, a
+            // different machine) and the incus MEMBER name. `incus cluster rename` makes a member's
+            // name
             // independent of the OS hostname, which is what allows the two to differ at all.
             //
             // ⚠️ Ordering: the live members must be renamed BEFORE a render states this, or
@@ -420,7 +422,7 @@ public record ClusterNetworkBlueprint(
         + fabric.lbCidr();
   }
 
-  /** The bare host token — the {@code <host>} of {@code <host>-<role>} (up to the first dash). */
+  /** The metalspace name — the {@code <host>} of {@code <host>-<role>} (up to the first dash). */
   private static String hostOf(String clusterName) {
     final int dash = clusterName.indexOf('-');
     return dash < 0 ? clusterName : clusterName.substring(0, dash);
@@ -664,17 +666,16 @@ public record ClusterNetworkBlueprint(
    * serves the asker who cannot yet reach the cluster. That is the only audience needing it: once
    * the cluster answers, the cluster is authoritative about its own nodes.
    *
-   * <p>The infra host keeps {@code nixosHost} (bare) for two uses, and the distinction between them
-   * is the whole point. As a NAME TO RESOLVE it is correct only on the host itself, which means
-   * MYSELF by it — NixOS writes {@code 127.0.0.2 <hostname>} in {@code /etc/hosts}. Everything with
-   * an audience resolves {@link #nixosFabricFqdn} instead, and that is ONE form, not three.
+   * <p>The infra host keeps {@code nixosHost} (unqualified) for two uses, and the distinction
+   * between them is the whole point. As a NAME TO RESOLVE it is correct only on the host itself,
+   * which means MYSELF by it — NixOS writes {@code 127.0.0.2 <hostname>} in {@code /etc/hosts}.
+   * Everything with an audience resolves {@link #nixosFabricFqdn} instead, and that is ONE form,
+   * not three.
    *
-   * <p>As an IDENTITY it is the Incus CLUSTER MEMBER name, and the warning above does not apply
-   * because nothing resolves it: it is a key in Incus's own member table, used to place an instance
-   * ({@code LXCMachineTemplate.spec.target}, {@code incus cluster add}). ndh derives the same
-   * string independently ({@code memberNameOf entry = "${entry.domain}-nixos"} in {@code
-   * modules/nixos/incus-cluster.nix}), which is the contract the two repos share — one is an
-   * address, the other an identity, and conflating them is how a pod came to dial itself.
+   * <p>The Incus member is {@code incusMember}, the metalspace name; ndh derives the same string
+   * ({@code memberNameOf = entry: entry.domain}, {@code modules/nixos/incus-cluster.nix:67}), which
+   * is the contract the two repos share — one is an address, the other an identity, and conflating
+   * them is how a pod came to dial itself.
    *
    * <p>Why one and not three. The two forms it replaces each had a hidden dependency the name did
    * not show. A bare host name is worse than unresolvable from a pod: the vmnet bridge's dnsmasq —

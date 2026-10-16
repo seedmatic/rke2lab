@@ -1857,8 +1857,8 @@ that decoupling is what makes `incusTargets: [bioskop, nikopol]` possible at all
 
 | NixOS hostname
 | stays `<host>-nixos`
-| ndh. ⚠️ It CANNOT become `<host>`: `nikopol` is already the name of the **RDP host**
-  (`rdp.nikopol`), a different machine — renaming the VM to `nikopol` collides.
+| ndh. ⚠️ It CANNOT become `<host>`: `nikopol` is already the name of the **darwin host**
+  (`darwin.nikopol`), a different machine — renaming the VM to `nikopol` collides.
 
 | incus cluster member
 | becomes `<host>`
@@ -1873,7 +1873,7 @@ So `NamePlan.nixosHost` (today `<host>-nixos`, read only by the `target:` field)
 AND should lose its name: calling it `nixosHost` when it names an incus member rather than a NixOS
 host is the same species of lie as `workloadTargets` holding a mgmt entry. -> `incusMember`.
 
-⚠️ Recorded because I got this wrong first: `ssh rdp.nikopol hostname` answers `nikopol`, and
+⚠️ Recorded because I got this wrong first: `ssh darwin.nikopol hostname` answers `nikopol`, and
 reading that as "the NixOS host is already renamed" conflates two machines. The NixOS hosts both
 still answer `<host>-nixos` (`ssh bioskop-nixos hostname` -> `bioskop-nixos`).
 
