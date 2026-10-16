@@ -112,6 +112,11 @@ func (r *ClusterAdoptionReconciler) reconcileSteps(
 		r.mark(a, adoptionv1alpha1.ConditionCRSetCreated, false, "Error", err.Error())
 		return ctrl.Result{}, err
 	}
+	if key := secretGap(&idSecret, incusIdentityKeys); key != "" {
+		r.mark(a, adoptionv1alpha1.ConditionCRSetCreated, false, "MaterialMissing",
+			"waiting for seed-master identity Secret "+spec.Remote.IdentitySecretName+" (key "+key+" missing or empty)")
+		return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
+	}
 
 	// 1. The cluster-scoped CR-set: Cluster (UNPAUSED) + LXCCluster, OWNED by this ClusterAdoption
 	//    (adopting a cluster makes us its owner, so deleting the adoption cascades to the Cluster).

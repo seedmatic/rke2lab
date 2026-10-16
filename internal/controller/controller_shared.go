@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -77,6 +78,27 @@ func newObj(gvk schema.GroupVersionKind, name, namespace string) *unstructured.U
 	obj.SetName(name)
 	obj.SetNamespace(namespace)
 	return obj
+}
+
+// The data keys rke2lab renders into the material Secrets (ClusterApiCrRenderer). A gate that asks
+// only whether the Secret EXISTS lets an emptied one through — a render that could not read its
+// cellar back emits the Secret with empty values — and CAPRKE2 would then mint a fresh CA, or CAPN
+// dial nowhere. So the gates ask for every key, non-empty.
+var (
+	caSecretKeys       = []string{corev1.TLSCertKey, corev1.TLSPrivateKeyKey}
+	incusIdentityKeys  = []string{"server", "client-crt", "client-key", "project"}
+	serverManifestKeys = []string{serverManifestsSecretKey}
+)
+
+// secretGap names the first of keys the Secret lacks or carries empty, "" when every one is set. It
+// names the KEY, never the value: the answer lands in a condition message.
+func secretGap(s *corev1.Secret, keys []string) string {
+	for _, k := range keys {
+		if len(s.Data[k]) == 0 {
+			return k
+		}
+	}
+	return ""
 }
 
 // ensure creates obj if it does not exist; an already-existing object is left untouched (the

@@ -98,7 +98,7 @@ func (r *PoolAdoptionReconciler) reconcileSteps(
 	// Guard: the material a provisioned node cannot do without. The BYO-CA Secrets come from
 	// seed-master (branch, sops); the bootstrap bundle from the render. CAPRKE2 adopts the LIVE
 	// CA from <cluster>-{ca,cca,etcd,peer-etcd}; without them it would generate a fresh CA and the
-	// adopted apiserver would reject the minted admin cert. Wait until present.
+	// adopted apiserver would reject the minted admin cert. Wait until present AND populated.
 	missing, err := r.materialMissing(ctx, spec)
 	if err != nil {
 		r.mark(a, adoptionv1alpha1.PoolConditionMaterialReady, false, "Error", err.Error())
@@ -594,13 +594,18 @@ func (r *PoolAdoptionReconciler) bootstrapFiles(
 	return append([]any{bundle}, configFiles...)
 }
 
-// materialMissing returns the name of the first required Secret that is absent, or "".
+// materialMissing describes the first required Secret that is absent or has a required key missing
+// or empty, "" when all are ready.
 func (r *PoolAdoptionReconciler) materialMissing(ctx context.Context, spec adoptionv1alpha1.PoolAdoptionSpec) (string, error) {
-	names := []string{
-		spec.ClusterName + "-ca",
-		spec.ClusterName + "-cca",
-		spec.ClusterName + "-etcd",
-		spec.ClusterName + "-peer-etcd",
+	type required struct {
+		name string
+		keys []string
+	}
+	secrets := []required{
+		{spec.ClusterName + "-ca", caSecretKeys},
+		{spec.ClusterName + "-cca", caSecretKeys},
+		{spec.ClusterName + "-etcd", caSecretKeys},
+		{spec.ClusterName + "-peer-etcd", caSecretKeys},
 	}
 	// The bootstrap bundle is required only where CAPRKE2 is the poser. The SELF cluster's node is
 	// grown by the HOST, which poses the bundle over devlxd from the cellar — there is no Secret for
@@ -612,16 +617,19 @@ func (r *PoolAdoptionReconciler) materialMissing(ctx context.Context, spec adopt
 	// greenfielded node takes RKE2's default cilium chart, which dials the apiserver at the in-cluster
 	// ClusterIP before any CNI exists: it never reaches Ready, and nothing runs there, Flux included.
 	if r.SelfCluster == "" || spec.ClusterName != r.SelfCluster {
-		names = append(names, serverManifestsSecretName(spec.ClusterName))
+		secrets = append(secrets, required{serverManifestsSecretName(spec.ClusterName), serverManifestKeys})
 	}
-	for _, name := range names {
+	for _, want := range secrets {
 		var s corev1.Secret
-		err := r.Get(ctx, types.NamespacedName{Namespace: spec.Namespace, Name: name}, &s)
+		err := r.Get(ctx, types.NamespacedName{Namespace: spec.Namespace, Name: want.name}, &s)
 		if apierrors.IsNotFound(err) {
-			return name, nil
+			return want.name, nil
 		}
 		if err != nil {
 			return "", err
+		}
+		if key := secretGap(&s, want.keys); key != "" {
+			return want.name + " (key " + key + " missing or empty)", nil
 		}
 	}
 	return "", nil
