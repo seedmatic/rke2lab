@@ -103,7 +103,7 @@ func TestMaterialMissing(t *testing.T) {
 			want: cluster + "-server-manifests (key rke2lab-bootstrap.yaml missing or empty)",
 		},
 		{
-			name: "the SELF cluster needs no bundle Secret — the host poses it",
+			name: "the SELF cluster needs no bundle Secret — the operator's grow poses it",
 			self: cluster,
 			secrets: with(func(m map[string]corev1.Secret) {
 				delete(m, cluster+"-server-manifests")
