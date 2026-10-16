@@ -595,7 +595,9 @@ never skipped; it is detected by a store sweep, and prevented only by the fork
 configurations, from **revisions only** (`github:…/{sha}` or
 `git+file:///Volumes/git-bare-store/seedmatic/{repo}.git?ref=develop&rev={sha}`), with its own
 fetcher cache, and its builds reach its own attic through the watch-stores. **Both seats publish**
-to the public tier, each with its own publication key and cachix token (operator, 2026-10-16)
+to the public tier, each with its own publication key and cachix token (operator, 2026-10-16). Since
+nikopol's publisher runs under the corporate hypervisor and the clusters trust the public tier, the
+corporate bare-metal's reach extends to every cluster: an accepted risk, not an absent one
 | *measured by develop-2a, 2026-10-11*: any evaluation naming a decrypted checkout copies `.secrets`
 in clear, clean or dirty. And the fetcher cache keys a commit's source by revision, first
 evaluation wins, so one `nix build .#x` in a worktree poisons every later `?rev=` build of that
