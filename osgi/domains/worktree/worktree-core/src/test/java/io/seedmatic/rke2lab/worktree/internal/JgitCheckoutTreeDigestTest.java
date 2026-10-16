@@ -15,7 +15,7 @@ import org.eclipse.jgit.lib.PersonIdent;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** The seat's HEAD read for the node-base image: its repository and its build-input digest. */
+/** The worktree's HEAD read for the node-base image: its repository and its build-input digest. */
 class JgitCheckoutTreeDigestTest {
 
   private static final List<String> BUILD_INPUTS = List.of("flake.lock", "flake.nix", "nixos");
@@ -31,21 +31,23 @@ class JgitCheckoutTreeDigestTest {
       write("nixos/a.nix", "a");
       write("docs/x.md", "x");
       commit(git, "base");
-      final JgitCheckout seat = new JgitCheckout(dir);
-      final String base = seat.treeDigest("HEAD", BUILD_INPUTS);
+      final JgitCheckout worktree = new JgitCheckout(dir);
+      final String base = worktree.treeDigest("HEAD", BUILD_INPUTS);
 
-      assertEquals(base, seat.treeDigest("HEAD", BUILD_INPUTS), "the same tree digests the same");
+      assertEquals(
+          base, worktree.treeDigest("HEAD", BUILD_INPUTS), "the same tree digests the same");
 
       write("docs/x.md", "y");
       commit(git, "a doc moves");
       assertEquals(
-          base, seat.treeDigest("HEAD", BUILD_INPUTS), "a path outside the inputs is blind");
+          base, worktree.treeDigest("HEAD", BUILD_INPUTS), "a path outside the inputs is blind");
 
       write("nixos/a.nix", "edited, not committed");
-      assertEquals(base, seat.treeDigest("HEAD", BUILD_INPUTS), "the working tree is blind");
+      assertEquals(base, worktree.treeDigest("HEAD", BUILD_INPUTS), "the working tree is blind");
 
       commit(git, "a module moves");
-      assertNotEquals(base, seat.treeDigest("HEAD", BUILD_INPUTS), "a committed input moves it");
+      assertNotEquals(
+          base, worktree.treeDigest("HEAD", BUILD_INPUTS), "a committed input moves it");
     }
   }
 
@@ -62,8 +64,8 @@ class JgitCheckoutTreeDigestTest {
   @Test
   void no_head_refuses_to_digest() throws Exception {
     try (Git git = init()) {
-      final JgitCheckout seat = new JgitCheckout(dir);
-      assertThrows(IllegalStateException.class, () -> seat.treeDigest("HEAD", BUILD_INPUTS));
+      final JgitCheckout worktree = new JgitCheckout(dir);
+      assertThrows(IllegalStateException.class, () -> worktree.treeDigest("HEAD", BUILD_INPUTS));
     }
   }
 

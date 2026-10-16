@@ -24,7 +24,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** The seat's one write verb: an Overlay applied on disk, staged and committed as its spec says. */
+/**
+ * The worktree's one write verb: an Overlay applied on disk, staged and committed as its spec says.
+ */
 class JgitCheckoutCommitEditTest {
 
   private static final GitIdentity BUMPER =
@@ -34,11 +36,11 @@ class JgitCheckoutCommitEditTest {
   @TempDir Path dir;
   @TempDir Path noHooks;
   private Git git;
-  private JgitCheckout seat;
+  private JgitCheckout worktree;
   private String head;
 
   @BeforeEach
-  void a_committed_seat() throws Exception {
+  void a_committed_worktree() throws Exception {
     git = Git.init().setDirectory(dir.toFile()).setInitialBranch("develop").call();
     final StoredConfig config = git.getRepository().getConfig();
     config.setString("core", null, "hooksPath", noHooks.toString());
@@ -56,7 +58,7 @@ class JgitCheckoutCommitEditTest {
             .setNoVerify(true)
             .call()
             .name();
-    seat = new JgitCheckout(dir);
+    worktree = new JgitCheckout(dir);
   }
 
   @AfterEach
@@ -67,7 +69,7 @@ class JgitCheckoutCommitEditTest {
   @Test
   void an_overlay_rewrites_adds_removes_and_commits_as_its_spec() throws Exception {
     final String sha =
-        seat.commit(
+        worktree.commit(
             new TreeEdit.Overlay(
                 Map.of(
                     "Component.java", bytes("pin 1.1"),
@@ -91,22 +93,24 @@ class JgitCheckoutCommitEditTest {
   void an_overlay_that_changes_nothing_commits_nothing() {
     assertEquals(
         head,
-        seat.commit(
+        worktree.commit(
             new TreeEdit.Overlay(Map.of("Component.java", bytes("pin 1.0")), List.of()), SPEC));
   }
 
   @Test
-  void a_replace_is_refused_on_the_seat() {
+  void a_replace_is_refused_on_the_worktree() {
     assertThrows(
         IllegalArgumentException.class,
-        () -> seat.commit(new TreeEdit.Replace(Map.of(), List.of()), SPEC));
+        () -> worktree.commit(new TreeEdit.Replace(Map.of(), List.of()), SPEC));
   }
 
   @Test
   void a_path_leaving_the_worktree_is_refused() {
     assertThrows(
         IllegalArgumentException.class,
-        () -> seat.commit(new TreeEdit.Overlay(Map.of("../escape", bytes("x")), List.of()), SPEC));
+        () ->
+            worktree.commit(
+                new TreeEdit.Overlay(Map.of("../escape", bytes("x")), List.of()), SPEC));
     assertFalse(Files.exists(dir.getParent().resolve("escape")));
   }
 

@@ -95,7 +95,7 @@ prefixes its content to every `.adoc` it renders:
 ----
 
 `bioskop-nixos.local` is the *mDNS* name of the host running the Kroki container. seed-outcluster is always
-operated from `bioskop` (reached by screen-sharing the RDP host → VSCode), and `bioskop-nixos` sits on
+operated from `bioskop` (reached by screen-sharing the darwin host → VSCode), and `bioskop-nixos` sits on
 the same LAN, so both this shell and the VSCode webview resolve `bioskop-nixos.local` directly — no
 tailscale route involved. (An earlier revision pinned the *tailscale* IP `100.64.0.15` as "stable
 across networks"; that was a mix-up with a different machine on a guest network — it is not routable

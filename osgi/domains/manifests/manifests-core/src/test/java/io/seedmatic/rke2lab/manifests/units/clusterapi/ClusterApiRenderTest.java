@@ -303,11 +303,12 @@ class ClusterApiRenderTest {
   void requireThePoolTargetsTheBareIncusMemberNotTheNixosHostname(@TempDir Path outdir) {
     final List<Map<String, Object>> documents = render(outdir, clusterApiUnits());
 
-    // ★ `spec.target` names the incus CLUSTER MEMBER, which is the bare host — NOT the NixOS
-    // hostname. The two were one field (`nixosHost`) serving two concepts, and they must differ:
-    // the hostname keeps its `-nixos` suffix because `nikopol` is already the name of the RDP host,
-    // a DIFFERENT machine, while the member drops it. `incus cluster rename` is what makes a
-    // member's name independent of the OS hostname.
+    // ★ `spec.target` names the incus CLUSTER MEMBER, which is the metalspace name — NOT the
+    // NixOS hostname. The two were one field (`nixosHost`) serving two concepts, and they must
+    // differ: the hostname keeps its `-nixos` suffix because `nikopol` is already the name of the
+    // darwin host nikopol, a DIFFERENT machine, while the member drops it. `incus cluster rename`
+    // is
+    // what makes a member's name independent of the OS hostname.
     for (final Map<String, Object> doc : documents) {
       if (!"PoolIntention".equals(kindOf(doc))) {
         continue;

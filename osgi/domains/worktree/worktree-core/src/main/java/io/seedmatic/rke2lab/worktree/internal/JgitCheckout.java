@@ -62,8 +62,8 @@ import org.eclipse.jgit.treewalk.filter.PathFilterGroup;
 
 /**
  * A jgit view of ONE git worktree at a path — the SOLE holder of jgit in this domain, and the
- * instance the seat composes rather than a static utility: {@link JgitWorktree} (the seed the
- * process runs inside) holds a checkout of its self-located root, and {@link
+ * instance the durable worktree composes rather than a static utility: {@link JgitWorktree} (the
+ * seed the process runs inside) holds a checkout of its self-located root, and {@link
  * JgitTransientWorktrees} fetches through it. Each opens its repository on demand — provenance and
  * working state change as the tree is edited, so they are never cached. jgit stays sealed here;
  * nothing jgit crosses back to a caller.
@@ -204,7 +204,7 @@ final class JgitCheckout {
       }
       if (!refusals.isEmpty()) {
         throw new IllegalStateException(
-            "refusing to build the dirty seat — fix or commit these paths, then grow: "
+            "refusing to build the dirty worktree — fix or commit these paths, then grow: "
                 + String.join("; ", refusals));
       }
 
@@ -343,7 +343,7 @@ final class JgitCheckout {
     return Files.readAllBytes(file);
   }
 
-  /** The seat's write verb: apply an {@link TreeEdit.Overlay} on disk, stage it, commit it. */
+  /** The worktree's write verb: apply an {@link TreeEdit.Overlay} on disk, stage it, commit it. */
   String commit(TreeEdit edit, CommitSpec spec) {
     final TreeEdit.Overlay overlay =
         switch (edit) {

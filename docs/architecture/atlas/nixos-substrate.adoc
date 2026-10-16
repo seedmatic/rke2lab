@@ -231,7 +231,7 @@ Store-Resolved Runtime] §Runtime env delivery.
 * link:../patterns/flox-store-resolved-runtime-and-builder.adoc[Flox Store-Resolved Runtime + Remote Nix Builder] — Diagram D's target: runtime env delivery via the FloxEnv CRD + flox controller.
 * link:seed.adoc[Seed orchestration L1] — the host pipeline that seeds master and runs the GROW.
 * link:../osgi/incus-edge-spec.adoc#build-by-revision[The rule — nix builds only a revision] — how the GROW
-  builds the node-base image: the seat's HEAD, or a fabricated revision of a dirty seat, never a working
+  builds the node-base image: the worktree's HEAD, or a fabricated revision of a dirty worktree, never a working
   tree; the guards on what a fabricated revision may carry.
-* link:fabric-control-plane.adoc#private-binary-cache[Fabric control-plane L1 — the private binary cache] — the node's store as an overlay on nerd-nixos's EROFS layers, its delta and its `FloxEnv` closures substituted from attic instead of rebuilt per host.
+* link:fabric-control-plane.adoc#private-binary-cache[Fabric control-plane L1 — the private binary cache] — the node's store as an overlay on the NixOS guest's EROFS layers, its delta and its `FloxEnv` closures substituted from attic instead of rebuilt per host.
 * link:netplan.adoc[Netplan address-plane L1] — the sibling delta for the node's *addresses*: `nixos/network.nix`'s `lan0` moves off the home LAN onto the node's bare-metal segment, so the image stops depending on a DHCP authority we do not run. Carries the consequence for this view — `tls-san` and `NamePlan`'s three name forms both change with the address, in one commit.

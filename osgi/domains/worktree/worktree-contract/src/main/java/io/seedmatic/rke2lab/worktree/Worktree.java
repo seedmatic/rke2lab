@@ -3,10 +3,10 @@ package io.seedmatic.rke2lab.worktree;
 import java.util.Optional;
 
 /**
- * A git worktree: a head and the tree a commit edits. Two realizations — the seat, {@link
- * DurableWorktree}, on disk and durable; a head the seed commits onto, {@link TransientWorktree},
- * in memory and transient. Both read the committed state the same way and take the same edit model
- * ({@link TreeEdit}, {@link CommitSpec}); what differs is where the tree lives.
+ * A git worktree: a head and the tree a commit edits. Two realizations — the durable worktree,
+ * {@link DurableWorktree}, on disk and durable; a head the seed commits onto, {@link
+ * TransientWorktree}, in memory and transient. Both read the committed state the same way and take
+ * the same edit model ({@link TreeEdit}, {@link CommitSpec}); what differs is where the tree lives.
  *
  * <p>jgit-free — only JDK types and the {@code worktree} records cross it.
  */
