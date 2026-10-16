@@ -42,15 +42,3 @@ outputs = "all"
     pkg-path = "ssh-to-age"
 
 [options]
-
-[profile]
-  common = """
-    GITHUB_SIGNING_KEYFILE="$HOME"/.ssh/keys.d/github-signing
-    if [[ -r "$GITHUB_SIGNING_KEYFILE" ]]; then
-      set -a
-      SOPS_AGE_KEY=$( ssh-to-age -private-key < "$GITHUB_SIGNING_KEYFILE" )
-      set +a
-    else
-      echo no signing key
-    fi
-  """
