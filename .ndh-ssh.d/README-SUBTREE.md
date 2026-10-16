@@ -56,10 +56,11 @@ After committing changes to `modules/home-manager/ssh.d` in nix-darwin-home:
 # nix-darwin-home: publish ssh.d's tree as ONE signed commit on top of the published head.
 # Not `subtree split --rejoin`: the full split is thousands of unsigned commits, and --rejoin
 # adds a commit to develop. A squashed pull needs only the tree.
-git fetch origin split/nix-darwin-home/hm-ssh.d
-tree="$(git rev-parse HEAD:modules/home-manager/ssh.d)"
-commit="$(git commit-tree -S "$tree" -p FETCH_HEAD -m "ssh.d at $(git rev-parse --short HEAD)")"
-git push origin "$commit:refs/heads/split/nix-darwin-home/hm-ssh.d"
+# Chained: a failed fetch must stop here, or a stale FETCH_HEAD becomes the parent.
+git fetch origin split/nix-darwin-home/hm-ssh.d &&
+  tree="$(git rev-parse HEAD:modules/home-manager/ssh.d)" &&
+  commit="$(git commit-tree -S "$tree" -p FETCH_HEAD -m "ssh.d at $(git rev-parse --short HEAD)")" &&
+  git push origin "$commit:refs/heads/split/nix-darwin-home/hm-ssh.d"
 ```
 
 ```bash
