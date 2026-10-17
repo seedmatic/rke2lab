@@ -442,13 +442,16 @@ runtime guests, sftp and `nix-daemon --stdio` over Tailscale SSH, `tart exec` fo
 |===
 
 [[private-binary-cache]]
-== The private binary cache — from a public watch-store to one private cache per metalspace
+== The private binary cache — from a public watch-store to private caches only
 
 The second consumer of the fabric's Incus containers. The target is ndh
 `docs/private-binary-cache-spec.adoc`, whose section _One private cache per metalspace_ (decided by
 the operator on 2026-10-15) supersedes the one common cache and the one fill job this section first
 described: **each metalspace builds from revisions and pushes into its own cache container, and every
-machine reads both**. This section carries the delta from today. Everything marked
+machine reads both**. Since 2026-10-17 (the operator, after consulting security and nix), **nothing of
+ours is public** and **a cluster builds through its metalspace's cluster builder**, which holds no
+attic token (ndh spec, _No public cache of ours_ and _The clusters build through a cluster builder_).
+This section carries the delta from today. Everything marked
 *measured* was read on 2026-10-10 from store paths that already existed, or on 2026-10-11 in an
 isolated throwaway store, without evaluating a flake of ours.
 
@@ -461,14 +464,14 @@ dirty. Only a revision read from git objects stays encrypted. The operator
 wants the cache back for a different reason than speed of one host: **the hosts share most of one
 configuration, and each one rebuilds it.**
 
-=== Diagram F — Who builds, who publishes: BEFORE vs AFTER
+=== Diagram F — Who builds, who reads: BEFORE vs AFTER
 
 Reads: the BEFORE has every host building for itself and a daemon publishing whatever entered any
 store, a worktree copy included. The AFTER has each metalspace building from revisions only, and
-pushing into its own cache container, which every machine reads; what is trusted enough is published
-to the public cache under a closure rule, by both access points, each with its own publication key. Each private cache keeps the active
-session only, and three store tiers each inherit the immutable EROFS base and substitute only their
-delta.
+pushing into its own cache container, which every machine reads; nothing of ours is public. A
+cluster's nodes and workloads delegate every build to their metalspace's cluster builder, which reads
+upstream only. Each private cache keeps the active session only, and the store tiers each inherit the
+immutable EROFS base and substitute only their delta.
 
 [mermaid]
 ....
@@ -481,13 +484,13 @@ flowchart TB
     b4["nxmatic.cachix.org — PUBLIC, anonymous read"]:::ko
     b1 --- b2 --- b3 --- b4
   end
-  subgraph AFTER["After — each metalspace builds from revisions, keeps its builds private, publishes what is trusted"]
+  subgraph AFTER["After — each metalspace builds from revisions, keeps its builds private, publishes nothing"]
     direction TB
     a1["each metalspace builds — its access point, the darwin host and the NixOS guest, revisions only"]:::ok
-    a2["public tier — nxmatic.cachix.org, only the computed publishable set, signed by each metalspace's seedmatic-#lt;metalspace#gt;-publish-1"]:::ok
-    a3["private tier — one cache container per metalspace on its NixOS guest, its own key, read by every machine, the session only"]:::ok
+    a3["private caches only — one cache container per metalspace on its NixOS guest, its own key, read by every machine, the session only"]:::ok
+    a2["a cluster builder per metalspace — its own Incus container, no attic token: the nodes and workloads delegate every build"]:::ok
     a4["tiers — the NixOS guest's EROFS, then Incus containers and cluster nodes, then pods — each substitutes its delta"]:::ok
-    a1 --- a2 --- a3 --- a4
+    a1 --- a3 --- a2 --- a4
   end
   BEFORE ==>|"migration"| AFTER
 
@@ -501,8 +504,10 @@ The cluster nodes are Incus containers in the same Incus cluster as the cache co
 `rke2lab`; Incus members `bioskop`, the database leader, and `nikopol`, a database-client, one per
 metalspace). So the mechanism ndh builds for its own Incus containers is the one the
 nodes **inherit**: a `/nix/store` that is an overlay on the NixOS guest's EROFS layers, a lower DB shipped
-with the layers, and an upper that receives only the node's delta. The clusters read the **public
-tier only**: what they need from us is what the allow-list must name.
+with the layers, and an upper that receives only the node's delta. The clusters hold **no attic
+token**: they read upstream (cache.nixos.org, flox) and delegate every build to their metalspace's
+**cluster builder**, its own Incus container, never the NixOS guest. Our packages they consume are
+locked by flake ref, never by a bare store path, so the builder can build them.
 
 [cols="1,2,2",options="header"]
 |===
@@ -511,25 +516,23 @@ tier only**: what they need from us is what the allow-list must name.
 | node store
 | no node running on 2026-10-10. Its closure was realised in neither bioskop's nor bioskop-nixos's
 store, so it is unmeasured.
-| overlay on the EROFS layers. The node's closure and its `FloxEnv` closures are built by the fill
-job, and published when they pass the closure rule.
+| overlay on the EROFS layers. What it builds, its `FloxEnv` closures included, is built by its
+cluster builder.
 
 | env closures
 | realised on each node by the flox controller, which GC-roots them. The node collects on disk
 pressure (`nixos/nix-env.nix`: `min-free = 128MB`, `max-free = 1GB`).
-| built once per metalspace from the pushed `flox-catalog` lock. A node that collected one
-re-substitutes it from the public tier, or **through the NixOS guest of its metalspace, its builder**, holding no attic
-token. The flox controller realises with `flox activate` in the node's namespace, so it follows the
-node-base nix configuration.
+| built by the cluster builder from the pushed `flox-catalog` lock, kept in its store. A node that
+collected one gets it back from that builder, holding no attic token. The flox controller realises
+with `flox activate` in the node's namespace, so it follows the node-base nix configuration.
 
 | pod store
 | `flox-nri-overlay-hook.sh`: the lower is a read-only bind of the node's **live** `/nix`, the upper a
 2 GiB tmpfs or a PVC. The DB is reconciled at every pod container start (`--dump-db \| --load-db`, then
 `--verify`), after a defect measured on 2026-09-30.
 | unchanged in mechanism; it reads the env closures the node substituted. Remote builds of unknown
-packages (`max-jobs = 0` → `{bioskop,nikopol}-nixos`) go to the **private** tier through that host's
-watch-store, never to the public one. No attic token in pods: the remote builder substitutes for
-them (`builders-use-substitutes = true`).
+packages (`max-jobs = 0` → its cluster builder) stay in that builder's store: no cache receives them,
+and no attic token is in a pod.
 |===
 
 ⚠️ The pod tier's lower is the node's live store, which the controller grows and the node's GC
@@ -549,11 +552,12 @@ flowchart TB
   c3["c3 · one cache container per metalspace, on its NixOS guest — read tokens, an anonymous read gets 401"]
   c4["c4 · a watch-store on both machines of each access point, into its own metalspace's cache — a write token each"]
   c5["c5 · each metalspace builds from revisions, with its own fetcher cache"]
-  c6["c6 · publication by both access points — closure rule, content guard, own publish key, cachix push of the set"]
-  c7["c7 · cluster nodes on the EROFS layers, public tier only, building through their NixOS guest"]
+  c6["c6 · no public cache — nxmatic.cachix.org leaves the trust config, the publication code is deleted"]
+  c7["c7 · a cluster builder per metalspace — its own Incus container, no attic token (a chantier of its own)"]
   c8["c8 · pod tier — decide its lower"]:::later
-  c9["c9 · remove the cachix-watch-store modules"]
-  c0 --> c1 --> c2 --> c3 --> c4 --> c5 --> c6 --> c7 --> c9
+  c9["c9 · the cachix account emptied — the operator's gestures"]
+  c0 --> c1 --> c2 --> c3 --> c4 --> c5 --> c7
+  c2 --> c6 --> c9
   c7 -.-> c8
 
   classDef done fill:#d9f2e0,stroke:#2d7a4b,stroke-width:2px;
@@ -594,8 +598,7 @@ from both metalspaces.
 | an `attic watch-store` on both machines of each access point (darwin.bioskop, bioskop-nixos,
 darwin.nikopol, nikopol-nixos), into its **own metalspace's** cache container, each with its own write token (`--sub {host}`). The
 corporate bare-metal (vzhost.nikopol) builds nothing and holds no token: it receives `nix copy`.
-attic's upstream key names: the upstream substituters, the layer key, both `seedmatic-<metalspace>-publish-1` and
-`nxmatic.cachix.org-1`, never the fleet's build key
+attic's upstream key names: the upstream substituters and the layer key, never the fleet's build key
 | decided 2026-10-10 and kept on 2026-10-11 for the private tier. The price, stated in the ndh
 spec's trust model: one slipped `.#x` on bioskop puts a plaintext `-source` in attic, unsigned so
 never skipped; it is detected by a store sweep, and prevented only by the fork
@@ -604,42 +607,61 @@ never skipped; it is detected by a store sweep, and prevented only by the fork
 | superseding the one fill job on bioskop (operator, 2026-10-15): **each metalspace builds** its own
 configurations, from **revisions only** (`github:…/{sha}` or
 `git+file:///Volumes/git-bare-store/seedmatic/{repo}.git?ref=develop&rev={sha}`), with its own
-fetcher cache, and its builds reach its own attic through the watch-stores. **Both access points publish**
-to the public tier, each with its own publication key and cachix token (operator, 2026-10-16). Since
-nikopol's publisher runs under the corporate hypervisor and the clusters trust the public tier, the
-corporate bare-metal's reach extends to every cluster: an accepted risk, not an absent one
+fetcher cache, and its builds reach its own attic through the watch-stores
 | *measured by develop-2a, 2026-10-11*: any evaluation naming a decrypted checkout copies `.secrets`
 in clear, clean or dirty. And the fetcher cache keys a commit's source by revision, first
 evaluation wins, so one `nix build .#x` in a worktree poisons every later `?rev=` build of that
 commit. Hence each builder's own fetcher cache
 
-| c6 — publication
-| each access point publishes the paths whose **whole closure** is upstream-served or meets four
-conditions: allow-listed, built (has a deriver), from a revision, passing the content guard. It signs
-them with its own `seedmatic-<metalspace>-publish-1` (sops, never in `secret-key-files`), `cachix push`es that set explicitly, then
-checks that cachix holds exactly that set
-| *measured 2026-10-11*: `secret-key-files` signs built paths only, never added ones (a `-source`,
-`toFile`, a sops-nix file); 15 of 15 added paths have no deriver. On bioskop's system closure, 161
-of 179 built paths (341 MiB) are publishable; the 18 private ones (2 MiB) are the host's
-aggregates
+| c6 — no public cache
+| decided by the operator on 2026-10-17: nothing of seedmatic or the fabric needs one, and the lab is
+not meant to be replicated elsewhere. `nxmatic.cachix.org` leaves ndh's `catalog/cache-trust.nix`
+(hosts and clusters); the publication code goes (the cachix watch-stores, `cache-publish`, its
+publishing user and token), keeping the **content guard** as a library and the sessions' deny of
+`cachix push`
+| 🛡️: a security gain, one trust root and one leak path fewer. ❄️: nothing in ndh's relock, builds,
+bringup or EROFS layers relies on `nxmatic.cachix.org` (0 paths from it in a dry run of the four
+systems). ⚠️ **rke2lab does, read 2026-10-17**: `nixos/nix-env.nix` lists it in the nodes'
+substituters and trusted keys; `flake.nix`'s `nixConfig` lists it for "our own published artifacts
+(the flox-runtime NRI plugin, flox-controller, the carriers) the node-base bakes" (its "nixpkgs
+fork" wording is stale: rke2lab follows upstream NixOS 26.05 through flake-commons, a Hydra-built
+channel); `.secrets` carries a cachix token (_cellar-secrets_). These go with c6. *Measured by ❄️,
+2026-10-17* (test 0 on `rke2-node-base` at rke2lab `5bb9603e`): 99 to build and 101 to fetch, **the
+same with or without `nxmatic.cachix.org`**, which serves the node-base nothing today — removing it
+costs no rebuild
 
-| c7 — cluster nodes
-| the nodes take the EROFS layers as lowers. They substitute from the **public tier only**, and
-write and build **through the NixOS guest of their metalspace** (operator, 2026-10-10): the node-base
-nix configuration carries `builders = ssh-ng://…`, `max-jobs = 0`, `builders-use-substitutes = true`
-and `require-sigs = true`, and the NRI plugin mounts the same for pods. **No attic token in a
-cluster**
+| c7 — a cluster builder per metalspace
+| the nodes take the EROFS layers as lowers, substitute from upstream, and delegate every build to
+their metalspace's **cluster builder**: its own unprivileged Incus container (not the NixOS guest, so
+a sandbox escape from a node-supplied derivation reaches none of the access point's secrets), **no
+attic token**, its keys born inside and trusted by that cluster's nodes only, an OpenSSH account
+`cluster-build` forced to `nix-daemon --stdio`. The node-base nix configuration carries
+`builders = ssh-ng://…` (generated from the builder role; arm64 only, so `aarch64-linux` builders
+only), `max-jobs = 0`, `builders-use-substitutes = true`, `require-sigs = true`, and the NRI plugin
+mounts the same for pods. Our packages are locked by flake ref, never a bare store path
 | ⚠️ *design only*: measured 2026-10-10, nothing declares `builders`, `max-jobs` or
 `builders-use-substitutes`, neither `nixos/*.nix` nor flox-nri-plugin. That configuration is
-**rke2lab's follow-up**. The build clients must not be `trusted-users` of the builder: nix 2.34 then
-forces signature checks on their imports and builds their derivations itself (ndh spec,
-_cluster-builds_). The three builder tests decide between this and fallback B (nodes never build).
+**rke2lab's follow-up**; the cluster builder is a chantier of its own (🖥️ + ❄️). Test 1 decides
+whether `cluster-build` stays an untrusted user (nix 2.34.9's `build-remote` copies the `.drv`
+closure and asks for `buildPaths`); test 0 measures that a node does not rebuild the world.
+*Measured 2026-10-17 on the node-base* (❄️): the 99 builds are configuration glue, our own Go
+packages and their images (flox-nri-plugin, flox-controller, the carriers), and upstream's static
+aarch64-musl security wrapper set, which cache.nixos.org does not serve: minutes for the Go builds,
+about 10–20 minutes for the musl set, once per revision, cachix or not
+
+| c9 — the cachix account
+| the operator revokes every cachix push token and purges or deletes the `nxmatic` cache, which still
+holds what was pushed before the 2026-10-10 purge
+| after c6's deletion merges
 |===
 
 === What the transition deletes
 
 * the `cachix-watch-store` modules (`modules/.common.d/`, `modules/darwin/`, `modules/nixos/`),
-  disabled since `395b34a1` and still in the tree. The public cache stays, fed by the two access points' publication only;
+  disabled since `395b34a1` and still in the tree, with `cache-publish` and its publishing user: there
+  is no public cache of ours any more;
+* in rke2lab, `nxmatic.cachix.org` in `nixos/nix-env.nix` and in `flake.nix`'s `nixConfig` (with its
+  stale "nixpkgs fork" comment), and the cachix token in `.secrets` and its k8s Secret;
 * the per-machine rebuild of the shared paths: each metalspace builds once, every machine substitutes.
 
 === Verdict — does it hold?
@@ -652,25 +674,24 @@ _cluster-builds_). The three builder tests decide between this and fallback B (n
 | Yes. Its one hard order, c1 before c2, has been kept: the relock landed before the purge.
 
 | Does it fix the leak?
-| For the **public** cache, it closes the path the incident took. Only the two access points publish, from
-revisions, under a closure rule that refuses any added path no upstream serves, and after a content
-guard. A signature attests content, not how it was evaluated, so the guard is the last line and
-"revisions only" stays mandatory. For the **private** tier it **confines**: a worktree copy can still
-reach attic through a host's watch-store, read only by token holders, kept for the session only.
+| It **removes** the path the incident took: there is no public cache of ours, so nothing reaches
+one by watching a store. For the **private** caches it **confines**: a worktree copy can still reach
+attic through a host's watch-store, read only by token holders (never a cluster), kept for the
+session only.
 The real fix there is an attic fork that refuses secret-bearing paths at upload (ndh spec, _The real
 fix_), and upstream of it, no plaintext on disk in a flake tree.
 
 | What stays out of reach?
 | the size of the package outputs and of the node and env closures, since none is realised in any
-store today; the public/private split on the four access-point machines (the quota no longer waits
-for it: 8G per cache container, decided 2026-10-15); and the pod tier's lower, which is rke2lab's decision.
+store today (test 0 measures what a cluster would build); the cluster builder's trust form, which its
+test 1 decides; and the pod tier's lower, which is rke2lab's decision.
 |===
 
 == Related documentation
 
 * ndh `docs/fabric-control-plane-spec.adoc` — the target this atlas migrates to.
-* ndh `docs/private-binary-cache-spec.adoc` — the cache's target: who fills it, retention, sizing,
-  the Incus containers' store.
+* ndh `docs/private-binary-cache-spec.adoc` — the cache's target: who fills it, no public cache, the
+  cluster builder, retention, sizing, the Incus containers' store.
 * link:../nixos-substrate/erofs-store-layer-stack.adoc[The EROFS layer stack] — the immutable base
   the Incus containers and the cluster nodes inherit.
 * link:../patterns/flox-store-resolved-runtime-and-builder.adoc[Flox Store-Resolved Runtime] — the
