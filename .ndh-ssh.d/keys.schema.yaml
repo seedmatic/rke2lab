@@ -52,6 +52,22 @@ properties:
       "^[a-z][a-z0-9-]*@[0-9]{2}-[0-9]{2}-[0-9]{2}$":
         $ref: "#/$defs/revokedKey"
     additionalProperties: false
+  revoked_certificates:
+    type: object
+    description: >
+      Host certificates no client may accept any more while their key stays valid,
+      keyed `<key>@<YY-MM-DD>/<serial>` — the slot it was recorded under and its
+      serial, since one slot's successive certificates may each be revoked (the
+      union certificate, then nikopol's interim one). Each is cut by its EXACT key
+      id under the authority slot that signed it (sshd's RevokedKeys and every
+      client's RevokedHostKeys, one KRL), never by serial: the certificates signed
+      before roles × keys S3a all carry serial 0. Written by `ssh-keys-renew
+      --revoke-certificate`, from the revision that recorded the certificate; the
+      build refuses a live certificate sharing a revoked id. All public, in clear.
+    patternProperties:
+      "^[a-z][a-z0-9-]*@[0-9]{2}-[0-9]{2}-[0-9]{2}/[0-9]+$":
+        $ref: "#/$defs/revokedCertificate"
+    additionalProperties: false
   sops:
     type: object
     description: "Opaque sops metadata; validated by sops itself."
@@ -78,6 +94,36 @@ $defs:
           signs at once, breakage accepted); an ordinary retirement requires the
           slot that now signs to carry `trusted`. Written by `ssh-keys-renew
           --replace`.
+
+  revokedCertificate:
+    type: object
+    required: [authority, authority_slot, key_id, serial, revision, reason]
+    additionalProperties: false
+    properties:
+      authority:
+        type: string
+        pattern: "^[a-z][a-z0-9-]*$"
+      authority_slot:
+        type: string
+        pattern: "^[0-9]{2}-[0-9]{2}-[0-9]{2}$"
+        description: The generation that signed it, whose public the KRL revokes the id under.
+      key_id:
+        type: string
+        # ssh-keygen reads a `#` in a KRL line as a comment and trims edge spaces: such an id
+        # would revoke another one.
+        pattern: "^[^\\s#]([^#\\n]*[^\\s#])?$"
+        description: The certificate's key id, exactly as `ssh-keygen -L` reads it.
+      serial:
+        type: integer
+        minimum: 0
+        description: Recorded to name the certificate; the KRL never revokes by serial.
+      revision:
+        type: string
+        pattern: "^[0-9a-f]{40}$"
+        description: The commit whose keys.yaml recorded the certificate.
+      reason:
+        type: string
+        minLength: 1
 
   sshKeyType:
     type: string
