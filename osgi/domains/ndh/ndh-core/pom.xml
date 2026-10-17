@@ -28,6 +28,11 @@
       <artifactId>seed-broker-port</artifactId>
       <scope>provided</scope>
     </dependency>
+    <!-- The ONE sops runner the key-store is opened through, shared with the sops edges. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>sops-process</artifactId>
+    </dependency>
     <dependency>
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>ndh-contract</artifactId>
