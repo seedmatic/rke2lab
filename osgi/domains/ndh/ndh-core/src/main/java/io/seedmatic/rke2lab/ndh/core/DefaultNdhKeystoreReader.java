@@ -3,13 +3,21 @@ package io.seedmatic.rke2lab.ndh.core;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.seedmatic.rke2lab.ndh.contract.NdhKeystoreReader;
 import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
+import io.seedmatic.rke2lab.seed.broker.port.EnclosureGate;
+import io.seedmatic.rke2lab.sops.process.SopsProcess;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.function.UnaryOperator;
+import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
+import org.osgi.service.component.annotations.ReferenceCardinality;
+import org.osgi.service.component.annotations.ReferencePolicyOption;
 
 /**
  * The realised ndh reader — the single door to the operator's key inventory ({@code
@@ -45,11 +53,43 @@ public final class DefaultNdhKeystoreReader implements NdhKeystoreReader {
 
   private static final Path DEFAULT_PATH = Path.of(".ndh-ssh.d/keys.yaml");
 
+  // Opened with sops' own key lookup — the operator identity — so no identity is passed. The
+  // plaintext never touches the disk: a plaintext copy in the worktree is what a dirty-tree flake
+  // evaluation copies into /nix/store, and on 2026-10-10 those copies reached a public cache.
+  private static final List<String> DECRYPT =
+      List.of(
+          "--decrypt",
+          "--config",
+          "/dev/null",
+          "--input-type",
+          "yaml",
+          "--output-type",
+          "yaml",
+          "/dev/stdin");
+
   private final Path path;
   private final UnaryOperator<String> decryptor;
 
+  /** Outside a framework (a test, a standalone tool): the OPERATOR enclosure. */
   public DefaultNdhKeystoreReader() {
-    this(DEFAULT_PATH, new SopsCommandDecryptor());
+    this((EnclosureGate) null);
+  }
+
+  /**
+   * The store opened through the one sops runner; the enclosure decides whether its stderr opt-in
+   * may hold (never IN_CLUSTER), and is the OPERATOR one when absent.
+   */
+  @Activate
+  public DefaultNdhKeystoreReader(
+      @Reference(
+              cardinality = ReferenceCardinality.OPTIONAL,
+              policyOption = ReferencePolicyOption.GREEDY)
+          EnclosureGate enclosure) {
+    this(DEFAULT_PATH, new SopsProcess(Map.of(), Optional.ofNullable(enclosure)));
+  }
+
+  DefaultNdhKeystoreReader(final Path path, final SopsProcess sops) {
+    this(path, envelope -> sops.run(DECRYPT, envelope));
   }
 
   DefaultNdhKeystoreReader(final Path path, final UnaryOperator<String> decryptor) {

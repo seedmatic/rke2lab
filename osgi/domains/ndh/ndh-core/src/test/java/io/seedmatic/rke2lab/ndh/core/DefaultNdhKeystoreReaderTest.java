@@ -4,10 +4,15 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import io.seedmatic.rke2lab.clusterpki.contract.SopsEncryptionException;
+import io.seedmatic.rke2lab.sops.process.SopsProcess;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -136,5 +141,31 @@ class DefaultNdhKeystoreReaderTest {
   void anAbsentStoreIsNotPresent() {
     assertFalse(
         new DefaultNdhKeystoreReader(dir.resolve("nowhere.yaml"), envelope -> envelope).present());
+  }
+
+  @Test
+  void aStoreThatDoesNotOpenFailsThroughTheOneRunnerWithoutItsStderr() throws IOException {
+    assumeTrue(onPath("sops"), "needs sops on PATH");
+    // A sops entry that is not a mapping: the real sops refuses it on stderr ("Found sops entry
+    // that is not a mapping"); the failure must name the operation and its class, not that text.
+    final Path file = dir.resolve("broken.yaml");
+    Files.writeString(file, "a: b\nsops: not-a-mapping\n");
+    final DefaultNdhKeystoreReader keystore =
+        new DefaultNdhKeystoreReader(file, new SopsProcess(Map.of(), Optional.empty()));
+
+    final SopsEncryptionException failure =
+        assertThrows(SopsEncryptionException.class, () -> keystore.authorityDomain("any"));
+    assertTrue(
+        failure.getMessage().startsWith("sops --decrypt exited with code"), failure.getMessage());
+    assertFalse(failure.getMessage().contains("Found sops entry"), "no stderr in the message");
+  }
+
+  private static boolean onPath(String tool) {
+    for (String entry : System.getenv("PATH").split(":")) {
+      if (Files.isExecutable(Path.of(entry, tool))) {
+        return true;
+      }
+    }
+    return false;
   }
 }

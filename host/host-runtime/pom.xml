@@ -21,6 +21,11 @@
     Pulumi-free (unlike its sibling pulumi-edge) so the Pulumi-free manifests CLI can depend on it.</description>
 
   <dependencies>
+    <!-- The ONE sops runner SopsAtRest drives, shared with sops-edge (dual-realm). -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>sops-process</artifactId>
+    </dependency>
     <dependency>
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>seed-broker-codec</artifactId>

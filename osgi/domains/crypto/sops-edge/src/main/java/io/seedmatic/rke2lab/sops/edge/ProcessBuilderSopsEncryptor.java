@@ -2,6 +2,8 @@ package io.seedmatic.rke2lab.sops.edge;
 
 import io.seedmatic.rke2lab.clusterpki.contract.SopsEncryptionException;
 import io.seedmatic.rke2lab.clusterpki.contract.SopsEncryptor;
+import io.seedmatic.rke2lab.seed.broker.port.EnclosureGate;
+import io.seedmatic.rke2lab.sops.process.SopsProcess;
 import java.io.IOException;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
@@ -9,8 +11,14 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
+import org.osgi.service.component.annotations.ReferenceCardinality;
+import org.osgi.service.component.annotations.ReferencePolicyOption;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,7 +37,29 @@ public final class ProcessBuilderSopsEncryptor implements SopsEncryptor {
 
   private static final Logger LOG = LoggerFactory.getLogger(ProcessBuilderSopsEncryptor.class);
 
-  private final SopsProcess sops = new SopsProcess();
+  private final SopsProcess sops;
+
+  /** Outside a framework (a test, a standalone tool): the OPERATOR enclosure. */
+  public ProcessBuilderSopsEncryptor() {
+    this((EnclosureGate) null);
+  }
+
+  /**
+   * The enclosure decides whether the sops stderr opt-in may hold (never IN_CLUSTER); absent, it is
+   * the OPERATOR one.
+   */
+  @Activate
+  public ProcessBuilderSopsEncryptor(
+      @Reference(
+              cardinality = ReferenceCardinality.OPTIONAL,
+              policyOption = ReferencePolicyOption.GREEDY)
+          EnclosureGate enclosure) {
+    this(new SopsProcess(Map.of(), Optional.ofNullable(enclosure)));
+  }
+
+  ProcessBuilderSopsEncryptor(SopsProcess sops) {
+    this.sops = sops;
+  }
 
   @Override
   public String encryptYaml(String plaintextYaml, List<String> ageRecipients) {

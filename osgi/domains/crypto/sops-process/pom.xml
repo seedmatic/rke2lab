@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>io.seedmatic.rke2lab</groupId>
+    <artifactId>bundle-parent</artifactId>
+    <version>0.0.0-SNAPSHOT</version>
+    <relativePath>../../../bundle-parent/pom.xml</relativePath>
+  </parent>
+
+  <artifactId>sops-process</artifactId>
+  <name>osgi/domains/crypto/sops-process</name>
+  <description>The ONE sops runner, dual-realm: one run of the sops CLI over stdin, its binary resolved once
+    (RKE2LAB_SOPS, else the first sops on PATH whose real path lies in /nix/store), its failures raised as
+    a SopsEncryptionException that names the operation, the exit code and a fixed classification of the
+    stderr, never the stderr itself. sops-edge (OSGi) and host-runtime's SopsAtRest (host realm) both
+    drive it, so the runner, the classification and the in-cluster refusal of the stderr opt-in exist
+    once. See docs/architecture/cluster-api/deterministic-cluster-access.adoc.</description>
+
+  <dependencies>
+    <!-- SopsEncryptionException, the failure type the seams name. Itself dual-realm. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>cluster-pki-contract</artifactId>
+    </dependency>
+    <!-- EnclosureGate. provided: the seed-broker seam is system-exported OSGi-side and flat host-side,
+         so it must NOT be embedded (a realm collision) — the seed-broker-codec treatment. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>seed-broker-port</artifactId>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter-api</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter-engine</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+      </plugin>
+      <plugin>
+        <groupId>biz.aQute.bnd</groupId>
+        <artifactId>bnd-maven-plugin</artifactId>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+      </plugin>
+    </plugins>
+  </build>
+</project>

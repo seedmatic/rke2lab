@@ -247,8 +247,10 @@ public final class ClusterSeal {
   private static String renderYaml(LinkedHashMap<String, String> bundle) {
     try {
       return CODEC.canonical().writeYaml(bundle);
-    } catch (Exception ex) {
-      throw new IllegalStateException("failed to render the cluster CA bundle YAML", ex);
+    } catch (Exception unwritable) {
+      // No cause, as in parseBundleYaml: a serializer's message can name what it was writing, and
+      // the bundle holds the CA private keys.
+      throw new IllegalStateException("failed to render the cluster CA bundle YAML");
     }
   }
 }
