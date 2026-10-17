@@ -16,17 +16,18 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The realised {@code sops} decrypt edge, twin of {@link ProcessBuilderSopsEncryptor}: opens a
+ * The realised {@code sops} decrypt edge, twin of {@link SopsProcessEncryptor}: opens a
  * sops-encrypted YAML by piping it to {@code sops --decrypt --config /dev/null --input-type yaml
- * --output-type yaml /dev/stdin}. An explicit age identity goes out-of-band through the {@code
- * SOPS_AGE_KEY} environment variable (never on the command line — it would leak to the process
- * table); without one, sops looks the key up itself. {@code --config /dev/null} mirrors the encrypt
- * edge (the repo's {@code .sops.yaml} plays no part in a decrypt).
+ * --output-type yaml /dev/stdin}, run by the one sops runner, {@link SopsProcess}. An explicit age
+ * identity goes out-of-band through the {@code SOPS_AGE_KEY} environment variable (never on the
+ * command line — it would leak to the process table); without one, sops looks the key up itself.
+ * {@code --config /dev/null} mirrors the encrypt edge (the repo's {@code .sops.yaml} plays no part
+ * in a decrypt).
  */
 @Component(service = SopsDecryptor.class)
-public final class ProcessBuilderSopsDecryptor implements SopsDecryptor {
+public final class SopsProcessDecryptor implements SopsDecryptor {
 
-  private static final Logger LOG = LoggerFactory.getLogger(ProcessBuilderSopsDecryptor.class);
+  private static final Logger LOG = LoggerFactory.getLogger(SopsProcessDecryptor.class);
 
   private static final List<String> DECRYPT =
       List.of(
@@ -43,7 +44,7 @@ public final class ProcessBuilderSopsDecryptor implements SopsDecryptor {
   private final Optional<EnclosureGate> enclosure;
 
   /** Outside a framework (a test, a standalone tool): the OPERATOR enclosure. */
-  public ProcessBuilderSopsDecryptor() {
+  public SopsProcessDecryptor() {
     this((EnclosureGate) null);
   }
 
@@ -52,7 +53,7 @@ public final class ProcessBuilderSopsDecryptor implements SopsDecryptor {
    * the OPERATOR one.
    */
   @Activate
-  public ProcessBuilderSopsDecryptor(
+  public SopsProcessDecryptor(
       @Reference(
               cardinality = ReferenceCardinality.OPTIONAL,
               policyOption = ReferencePolicyOption.GREEDY)
@@ -60,11 +61,11 @@ public final class ProcessBuilderSopsDecryptor implements SopsDecryptor {
     this(Optional.ofNullable(enclosure));
   }
 
-  private ProcessBuilderSopsDecryptor(Optional<EnclosureGate> enclosure) {
+  private SopsProcessDecryptor(Optional<EnclosureGate> enclosure) {
     this(new SopsProcess(Map.of(), enclosure), enclosure);
   }
 
-  ProcessBuilderSopsDecryptor(SopsProcess ambient, Optional<EnclosureGate> enclosure) {
+  SopsProcessDecryptor(SopsProcess ambient, Optional<EnclosureGate> enclosure) {
     this.ambient = ambient;
     this.enclosure = enclosure;
   }

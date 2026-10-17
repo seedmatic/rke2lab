@@ -9,8 +9,8 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import com.github.marschall.memoryfilesystem.MemoryFileSystemBuilder;
 import io.seedmatic.rke2lab.manifests.RenderedSecretSeal;
 import io.seedmatic.rke2lab.manifests.YamlMapper;
-import io.seedmatic.rke2lab.sops.edge.ProcessBuilderSopsDecryptor;
-import io.seedmatic.rke2lab.sops.edge.ProcessBuilderSopsEncryptor;
+import io.seedmatic.rke2lab.sops.edge.SopsProcessDecryptor;
+import io.seedmatic.rke2lab.sops.edge.SopsProcessEncryptor;
 import io.seedmatic.rke2lab.worktree.BuildRevision;
 import io.seedmatic.rke2lab.worktree.CommitSpec;
 import io.seedmatic.rke2lab.worktree.DurableWorktree;
@@ -193,9 +193,7 @@ class RenderDeliveryTest {
         true,
         Optional.of("unused-by-the-file-transport"),
         new RenderedSecretSeal(
-            new ProcessBuilderSopsEncryptor(),
-            new ProcessBuilderSopsDecryptor(),
-            new YamlMapper()));
+            new SopsProcessEncryptor(), new SopsProcessDecryptor(), new YamlMapper()));
   }
 
   /** The head opened in the worktree's repository, its plot on the in-memory soil, rendered. */

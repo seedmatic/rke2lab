@@ -24,7 +24,8 @@ import org.slf4j.LoggerFactory;
 
 /**
  * The realised {@code sops} edge: seals a plaintext YAML by piping it through {@code sops
- * --encrypt}. The whole adapter — the single door toward this one external tool.
+ * --encrypt}, run by the one sops runner, {@link SopsProcess}, which owns the binary, the failure
+ * message and the stderr opt-in; this adapter owns only the arguments.
  *
  * <p>Two shapes. For explicit recipients, {@code --age <r1,r2> --config /dev/null}: {@code
  * /dev/null} is load-bearing, without it sops discovers the repo's {@code .sops.yaml}, whose {@code
@@ -33,14 +34,14 @@ import org.slf4j.LoggerFactory;
  * the matching creation rule decides, exactly as for a file sops encrypts in place.
  */
 @Component(service = SopsEncryptor.class)
-public final class ProcessBuilderSopsEncryptor implements SopsEncryptor {
+public final class SopsProcessEncryptor implements SopsEncryptor {
 
-  private static final Logger LOG = LoggerFactory.getLogger(ProcessBuilderSopsEncryptor.class);
+  private static final Logger LOG = LoggerFactory.getLogger(SopsProcessEncryptor.class);
 
   private final SopsProcess sops;
 
   /** Outside a framework (a test, a standalone tool): the OPERATOR enclosure. */
-  public ProcessBuilderSopsEncryptor() {
+  public SopsProcessEncryptor() {
     this((EnclosureGate) null);
   }
 
@@ -49,7 +50,7 @@ public final class ProcessBuilderSopsEncryptor implements SopsEncryptor {
    * the OPERATOR one.
    */
   @Activate
-  public ProcessBuilderSopsEncryptor(
+  public SopsProcessEncryptor(
       @Reference(
               cardinality = ReferenceCardinality.OPTIONAL,
               policyOption = ReferencePolicyOption.GREEDY)
@@ -57,7 +58,7 @@ public final class ProcessBuilderSopsEncryptor implements SopsEncryptor {
     this(new SopsProcess(Map.of(), Optional.ofNullable(enclosure)));
   }
 
-  ProcessBuilderSopsEncryptor(SopsProcess sops) {
+  SopsProcessEncryptor(SopsProcess sops) {
     this.sops = sops;
   }
 

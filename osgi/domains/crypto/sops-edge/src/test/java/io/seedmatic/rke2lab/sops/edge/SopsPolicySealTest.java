@@ -70,13 +70,13 @@ class SopsPolicySealTest {
   @Test
   void aSecretSealedUnderThePolicyOpensAgainWithTheAmbientKey() {
     final String sealed =
-        new ProcessBuilderSopsEncryptor().encryptYaml(SECRET, policy, "a/b/02-secret-probe.yml");
+        new SopsProcessEncryptor().encryptYaml(SECRET, policy, "a/b/02-secret-probe.yml");
     assertTrue(sealed.contains("token: ENC["), "the stringData value is encrypted");
     assertTrue(sealed.contains("name: probe"), "metadata stays readable for Flux");
     assertFalse(sealed.contains("dummy-token"));
 
     final String opened =
-        new ProcessBuilderSopsDecryptor(
+        new SopsProcessDecryptor(
                 new SopsProcess(Map.of("SOPS_AGE_KEY_FILE", key.toString()), Optional.empty()),
                 Optional.empty())
             .decryptYaml(sealed);
@@ -87,7 +87,7 @@ class SopsPolicySealTest {
   @Test
   void aPathNoRuleEncryptsComesBackInTheClear() {
     final String sealed =
-        new ProcessBuilderSopsEncryptor().encryptYaml(SECRET, policy, "01-secret-probe.yml");
+        new SopsProcessEncryptor().encryptYaml(SECRET, policy, "01-secret-probe.yml");
     assertTrue(sealed.contains("token: dummy-token"), "a valid envelope around a clear value");
   }
 
@@ -107,13 +107,13 @@ class SopsPolicySealTest {
       final Path tree = memory.getPath("/tree");
       Files.createDirectories(tree);
       final Path memoryPolicy = Files.write(tree.resolve(".sops.yaml"), Files.readAllBytes(policy));
-      final ProcessBuilderSopsEncryptor encryptor = new ProcessBuilderSopsEncryptor();
+      final SopsProcessEncryptor encryptor = new SopsProcessEncryptor();
 
       final String sealed = encryptor.encryptYaml(SECRET, memoryPolicy, "a/b/02-secret-probe.yml");
       assertTrue(sealed.contains("token: ENC["), "the first rule matched through the copy");
       assertFalse(sealed.contains("dummy-token"));
       final String opened =
-          new ProcessBuilderSopsDecryptor(
+          new SopsProcessDecryptor(
                   new SopsProcess(Map.of("SOPS_AGE_KEY_FILE", key.toString()), Optional.empty()),
                   Optional.empty())
               .decryptYaml(sealed);

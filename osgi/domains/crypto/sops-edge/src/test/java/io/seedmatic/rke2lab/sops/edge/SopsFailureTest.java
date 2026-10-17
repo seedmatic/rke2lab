@@ -48,7 +48,7 @@ class SopsFailureTest {
     final SopsEncryptionException failure =
         assertThrows(
             SopsEncryptionException.class,
-            () -> new ProcessBuilderSopsEncryptor().encryptYaml(MARKER + "\n", policy, "x.yaml"));
+            () -> new SopsProcessEncryptor().encryptYaml(MARKER + "\n", policy, "x.yaml"));
 
     assertTrue(failure.getMessage().contains("unparseable input"), failure.getMessage());
     for (Throwable link = failure; link != null; link = link.getCause()) {
