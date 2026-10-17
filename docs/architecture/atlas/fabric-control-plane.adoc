@@ -623,9 +623,12 @@ publishing user and token), keeping the **content guard** as a library and the s
 bringup or EROFS layers relies on `nxmatic.cachix.org` (0 paths from it in a dry run of the four
 systems). ⚠️ **rke2lab does, read 2026-10-17**: `nixos/nix-env.nix` lists it in the nodes'
 substituters and trusted keys; `flake.nix`'s `nixConfig` lists it for "our own published artifacts
-(the flox-runtime NRI plugin, flox-controller, the carriers) the node-base bakes, built against
-flake-commons' nixpkgs fork"; `.secrets` carries a cachix token (_cellar-secrets_). These go with c6,
-and the node-base's artefacts are then built by the fleet's builders and the cluster builders
+(the flox-runtime NRI plugin, flox-controller, the carriers) the node-base bakes" (its "nixpkgs
+fork" wording is stale: rke2lab follows upstream NixOS 26.05 through flake-commons, a Hydra-built
+channel); `.secrets` carries a cachix token (_cellar-secrets_). These go with c6. *Measured by ❄️,
+2026-10-17* (test 0 on `rke2-node-base` at rke2lab `5bb9603e`): 99 to build and 101 to fetch, **the
+same with or without `nxmatic.cachix.org`**, which serves the node-base nothing today — removing it
+costs no rebuild
 
 | c7 — a cluster builder per metalspace
 | the nodes take the EROFS layers as lowers, substitute from upstream, and delegate every build to
@@ -640,9 +643,11 @@ mounts the same for pods. Our packages are locked by flake ref, never a bare sto
 `builders-use-substitutes`, neither `nixos/*.nix` nor flox-nri-plugin. That configuration is
 **rke2lab's follow-up**; the cluster builder is a chantier of its own (🖥️ + ❄️). Test 1 decides
 whether `cluster-build` stays an untrusted user (nix 2.34.9's `build-remote` copies the `.drv`
-closure and asks for `buildPaths`); test 0 measures that a node does not rebuild the world — the
-nodes' nixpkgs is **flake-commons' fork**, which Hydra does not build, so its distance from
-upstream decides what a cluster builder rebuilds (to measure first)
+closure and asks for `buildPaths`); test 0 measures that a node does not rebuild the world.
+*Measured 2026-10-17 on the node-base* (❄️): the 99 builds are configuration glue, our own Go
+packages and their images (flox-nri-plugin, flox-controller, the carriers), and upstream's static
+aarch64-musl security wrapper set, which cache.nixos.org does not serve: minutes for the Go builds,
+about 10–20 minutes for the musl set, once per revision, cachix or not
 
 | c9 — the cachix account
 | the operator revokes every cachix push token and purges or deletes the `nxmatic` cache, which still
@@ -655,8 +660,8 @@ holds what was pushed before the 2026-10-10 purge
 * the `cachix-watch-store` modules (`modules/.common.d/`, `modules/darwin/`, `modules/nixos/`),
   disabled since `395b34a1` and still in the tree, with `cache-publish` and its publishing user: there
   is no public cache of ours any more;
-* in rke2lab, `nxmatic.cachix.org` in `nixos/nix-env.nix` and in `flake.nix`'s `nixConfig`, and the
-  cachix token in `.secrets` and its k8s Secret;
+* in rke2lab, `nxmatic.cachix.org` in `nixos/nix-env.nix` and in `flake.nix`'s `nixConfig` (with its
+  stale "nixpkgs fork" comment), and the cachix token in `.secrets` and its k8s Secret;
 * the per-machine rebuild of the shared paths: each metalspace builds once, every machine substitutes.
 
 === Verdict — does it hold?
