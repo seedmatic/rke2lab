@@ -26,7 +26,7 @@ config*.
 | native NixOS + `flox` input
 | `nixos/nix-env.nix`
 
-| Cachix store watch (`cachix-watch-store`)
+| Binary caches (one private attic per metalspace; no public cache of ours)
 | declarative module
 | host-side (ndh)
 

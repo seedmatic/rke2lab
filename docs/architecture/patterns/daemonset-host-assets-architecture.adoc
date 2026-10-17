@@ -102,7 +102,7 @@ needs it, so it is not a specialisation:
 The shim source is a *fork* of flox's containerd plugin, extracted to
 `github:seedmatic/flox-nri-plugin` and consumed as the rke2lab flake input
 `flox-runtime`; it is built at IMAGE time on the ARM64 build infra
-(linux-builder / remote nix-store / cachix), not on the node at runtime. See
+(linux-builder / remote nix-store / the metalspace's private cache), not on the node at runtime. See
 link:../nixos-substrate/flox-containerd-runtime.adoc[The flox containerd runtime].
 
 == The envs tier (runtime, FloxEnv CRs)

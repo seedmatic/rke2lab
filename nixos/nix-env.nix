@@ -22,12 +22,10 @@
     ];
     substituters = [
       "https://aseipp-nix-cache.freetls.fastly.net"
-      "https://nxmatic.cachix.org"
       "https://cache.nixos.org/"
     ];
     trusted-public-keys = [
       "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
-      "nxmatic.cachix.org-1:huMghYiwDpPa1PMXHXK4G1Dp4QOZjgsNqxcjf/AjuJ0="
     ];
     # flox public store (mirrors the family's flox.conf).
     extra-trusted-substituters = [ "https://cache.flox.dev" ];
@@ -54,7 +52,7 @@
   # What the flox profiles ALSO carried, and where it goes instead (NOT here):
   #   - /srv/host RKE2LAB_* path vars  -> dissolve with the /srv/host delivery mechanism itself.
   #   - RKE2LAB_NODE_{ID,NAME,KIND}    -> per-node identity, injected via a generated EnvironmentFile.
-  #   - .secrets tokens (flox/cachix)  -> sops-nix (CACHIX_AUTH_TOKEN et al. as secret env vars).
+  #   - .secrets tokens (flox)         -> sops-nix (as secret env vars).
   environment.systemPackages = [
     flox.packages.${pkgs.stdenv.hostPlatform.system}.default
     pkgs.yq-go

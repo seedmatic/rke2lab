@@ -103,7 +103,7 @@ Consequences:
 * future specialised workers — `rke2lab-worker-gpu-node`, `rke2lab-worker-storage-node`, … — each =
   base + its specialisation module. Homogeneity lives at the *base*; specialisation is *additive*.
 
-Because NixOS shares the store across closures (cachix dedup), a derived image is only a thin delta
+Because NixOS shares the store across closures (store dedup), a derived image is only a thin delta
 over the base — "based on the base" literally, and cheap.
 
 [mermaid]
