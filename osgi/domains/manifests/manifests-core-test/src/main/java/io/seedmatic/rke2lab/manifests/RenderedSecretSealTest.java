@@ -306,6 +306,42 @@ class RenderedSecretSealTest {
   }
 
   @Test
+  void aLibrarysIllegalStateExceptionInTheSealIsNamedByItsClassAlone(@TempDir Path tmp)
+      throws IOException {
+    // Only RenderRefusal and SopsEncryptionException lend their message: an IllegalStateException
+    // from a library is text the seal does not control, and could quote what it was handling.
+    final Path tree =
+        treeWith(
+            tmp,
+            "creation_rules: []\n",
+            Map.of(
+                "probe-system/02-secret-clear.yaml",
+                stub("clear", "stringData:\n  token: dummy-clear\n")));
+    final SopsEncryptor failing =
+        new SopsEncryptor() {
+          @Override
+          public String encryptYaml(String plaintextYaml, List<String> ageRecipients) {
+            throw new IllegalStateException(MARKER);
+          }
+
+          @Override
+          public String encryptYaml(String plaintextYaml, Path policy, String path) {
+            throw new IllegalStateException(MARKER);
+          }
+        };
+    final IllegalStateException refused =
+        assertThrows(
+            IllegalStateException.class,
+            () ->
+                new RenderedSecretSeal(
+                        failing, service(SopsDecryptor.class), service(YamlMapper.class))
+                    .seal(tree, path -> Optional.empty()));
+    assertTrue(
+        refused.getMessage().contains(IllegalStateException.class.getName()), refused.getMessage());
+    assertFalse(refused.getMessage().contains(MARKER), "the library's text is not lent");
+  }
+
+  @Test
   void aSealedArrivalThatDoesNotOpenIsRefusedByItsClassAloneWhenTheFailureIsNotSops(
       @TempDir Path tmp) throws IOException {
     final Path tree = sealedArrival(tmp);

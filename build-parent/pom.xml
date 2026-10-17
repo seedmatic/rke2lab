@@ -186,6 +186,12 @@
         <artifactId>cluster-pki-bdd</artifactId>
         <version>${rke2lab.version}</version>
       </dependency>
+      <!-- The ONE sops runner, dual-realm: sops-edge (OSGi) and host-runtime's SopsAtRest drive it. -->
+      <dependency>
+        <groupId>io.seedmatic.rke2lab</groupId>
+        <artifactId>sops-process</artifactId>
+        <version>${rke2lab.version}</version>
+      </dependency>
       <!-- The sops external edge is TOP-LEVEL (a generic tool, like ssh-to-age-edge), not a
            cluster-pki module — its SopsEncryptor seam is consumer-owned in cluster-pki-contract. -->
       <dependency>

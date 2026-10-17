@@ -1,0 +1,11 @@
+-include: ../../../bundle-parent/annotations.bnd
+Import-Package: ${annotation-noimports}, *
+Bundle-SymbolicName: io.seedmatic.rke2lab.sops.process
+Export-Package: \
+    io.seedmatic.rke2lab.sops.process
+# Our OWN dual-realm library: the ONE sops runner both sops edges drive — sops-edge in the OSGi world
+# and host-runtime's SopsAtRest in the host realm. type=dual-realm is staged as a bundle (importing the
+# seed-broker seam and cluster-pki-contract, both dual-realm themselves) AND kept flat in the host
+# uber-jar, like seed-broker-codec. Only SopsProcess is the API; its resolution and its stderr
+# classification are package-private. No @Component, so it does NOT Require the SCR extender.
+Provide-Capability: io.seedmatic.rke2lab.embed; type=dual-realm; library=sops

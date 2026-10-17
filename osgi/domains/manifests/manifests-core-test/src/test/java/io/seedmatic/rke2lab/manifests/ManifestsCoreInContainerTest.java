@@ -45,6 +45,7 @@ class ManifestsCoreInContainerTest {
   private static final String CORE_FIXTURE = "(&(type=fixture)(suite=manifests)(role=core))";
   private static final String RUNNER_FQN = "io.seedmatic.rke2lab.manifests.ManifestsCoreTests";
   private static final String SOPS_EDGE = "(&(type=edge)(edge=sops))";
+  private static final String SOPS_PROCESS = "(&(type=dual-realm)(library=sops))";
 
   @RegisterExtension
   static final OutOfContainerFrameworkExtension felix =
@@ -92,6 +93,9 @@ class ManifestsCoreInContainerTest {
           // resolves and fails the whole graph. The whole graph is started: the edge's
           // components publish only from an ACTIVE bundle.
           toResolve.addAll(f.installMatching(SOPS_EDGE));
+          // ...and so is the one sops runner it drives, which no closure of the host reaches
+          // either.
+          toResolve.addAll(f.installMatching(SOPS_PROCESS));
           return new Provisioning(host, toResolve, true);
         });
   }

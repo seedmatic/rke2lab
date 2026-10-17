@@ -1300,6 +1300,14 @@ same law: the envelope committed at the same path is written back when it opens 
 compared as parsed trees; anything it cannot compare is sealed afresh. No git filter takes part any more,
 so the law holds for a commit built without a checkout too.
 
+It classifies each document before sealing it: SEALED (a `sops` block with its `mac`, every value
+`ENC[…]`) is opened and possibly kept; a damaged envelope (a `sops` block without a `mac`, or with a
+clear value) is refused naming the key, never the value; CLEAR is sealed; a Secret with no value at all
+— a replica stub another controller fills in-cluster — has nothing to seal and is committed as rendered.
+Its own refusals are a `RenderRefusal`, whose message names paths and keys only; with a
+`SopsEncryptionException` it is the only exception whose message reaches a failure reason, any other —
+a library's `IllegalStateException` among them — being named by its class alone.
+
 ==== Why it was worth fixing — and why the reason is NOT runtime
 
 Stated plainly because two tempting justifications are false:

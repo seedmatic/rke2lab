@@ -6,11 +6,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import com.github.marschall.memoryfilesystem.MemoryFileSystemBuilder;
+import io.seedmatic.rke2lab.sops.process.SopsProcess;
 import java.io.IOException;
 import java.nio.file.FileSystem;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.BeforeEach;
@@ -75,7 +77,8 @@ class SopsPolicySealTest {
 
     final String opened =
         new ProcessBuilderSopsDecryptor(
-                new SopsProcess(Map.of("SOPS_AGE_KEY_FILE", key.toString())))
+                new SopsProcess(Map.of("SOPS_AGE_KEY_FILE", key.toString()), Optional.empty()),
+                Optional.empty())
             .decryptYaml(sealed);
     assertTrue(opened.contains("token: dummy-token"));
     assertFalse(opened.contains("ENC["));
@@ -111,7 +114,8 @@ class SopsPolicySealTest {
       assertFalse(sealed.contains("dummy-token"));
       final String opened =
           new ProcessBuilderSopsDecryptor(
-                  new SopsProcess(Map.of("SOPS_AGE_KEY_FILE", key.toString())))
+                  new SopsProcess(Map.of("SOPS_AGE_KEY_FILE", key.toString()), Optional.empty()),
+                  Optional.empty())
               .decryptYaml(sealed);
       assertTrue(opened.contains("token: dummy-token"));
 

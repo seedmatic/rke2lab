@@ -25,6 +25,18 @@
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>cluster-pki-contract</artifactId>
     </dependency>
+    <!-- The ONE sops runner this edge drives. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>sops-process</artifactId>
+    </dependency>
+    <!-- EnclosureGate, the optional reference the runner reads the enclosure from. provided: the
+         seed-broker seam is system-exported, never embedded. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>seed-broker-port</artifactId>
+      <scope>provided</scope>
+    </dependency>
     <dependency>
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-api</artifactId>

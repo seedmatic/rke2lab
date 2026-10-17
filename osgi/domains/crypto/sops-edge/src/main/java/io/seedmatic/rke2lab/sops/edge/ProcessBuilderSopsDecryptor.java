@@ -2,9 +2,16 @@ package io.seedmatic.rke2lab.sops.edge;
 
 import io.seedmatic.rke2lab.clusterpki.contract.SopsDecryptor;
 import io.seedmatic.rke2lab.clusterpki.contract.SopsEncryptionException;
+import io.seedmatic.rke2lab.seed.broker.port.EnclosureGate;
+import io.seedmatic.rke2lab.sops.process.SopsProcess;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
+import org.osgi.service.component.annotations.ReferenceCardinality;
+import org.osgi.service.component.annotations.ReferencePolicyOption;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,13 +40,33 @@ public final class ProcessBuilderSopsDecryptor implements SopsDecryptor {
           "/dev/stdin");
 
   private final SopsProcess ambient;
+  private final Optional<EnclosureGate> enclosure;
 
+  /** Outside a framework (a test, a standalone tool): the OPERATOR enclosure. */
   public ProcessBuilderSopsDecryptor() {
-    this(new SopsProcess());
+    this((EnclosureGate) null);
   }
 
-  ProcessBuilderSopsDecryptor(SopsProcess ambient) {
+  /**
+   * The enclosure decides whether the sops stderr opt-in may hold (never IN_CLUSTER); absent, it is
+   * the OPERATOR one.
+   */
+  @Activate
+  public ProcessBuilderSopsDecryptor(
+      @Reference(
+              cardinality = ReferenceCardinality.OPTIONAL,
+              policyOption = ReferencePolicyOption.GREEDY)
+          EnclosureGate enclosure) {
+    this(Optional.ofNullable(enclosure));
+  }
+
+  private ProcessBuilderSopsDecryptor(Optional<EnclosureGate> enclosure) {
+    this(new SopsProcess(Map.of(), enclosure), enclosure);
+  }
+
+  ProcessBuilderSopsDecryptor(SopsProcess ambient, Optional<EnclosureGate> enclosure) {
     this.ambient = ambient;
+    this.enclosure = enclosure;
   }
 
   @Override
@@ -48,7 +75,7 @@ public final class ProcessBuilderSopsDecryptor implements SopsDecryptor {
       throw new SopsEncryptionException("no age identity — cannot open the sealed bundle");
     }
     final String plaintext =
-        new SopsProcess(Map.of("SOPS_AGE_KEY", ageIdentity)).run(DECRYPT, sopsYaml);
+        new SopsProcess(Map.of("SOPS_AGE_KEY", ageIdentity), enclosure).run(DECRYPT, sopsYaml);
     LOG.debug("sops opened a {}-byte sealed bundle", plaintext.length());
     return plaintext;
   }

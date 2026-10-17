@@ -119,10 +119,12 @@ public final class RenderedSecretSeal {
       throw refuse(
           root,
           secrets.stream().filter(file -> !settled(readString(file))).toList(),
-          // Our own refusals name paths only; anything else — a parser's message — could quote a
-          // value, so only its class is kept.
+          // Our own refusals name paths and keys only, and sops' carry no stderr; anything else — a
+          // parser's or a library's message — could quote a value, so only its class is kept.
           "cannot seal the rendered Secrets: "
-              + (ex instanceof IllegalStateException ? ex.getMessage() : ex.getClass().getName()));
+              + (ex instanceof RenderRefusal || ex instanceof SopsEncryptionException
+                  ? ex.getMessage()
+                  : ex.getClass().getName()));
     }
     if (!nothingToSeal.isEmpty()) {
       LOG.info(
@@ -191,8 +193,8 @@ public final class RenderedSecretSeal {
     }
   }
 
-  private static IllegalStateException unopenable(String path, String reason) {
-    return new IllegalStateException(
+  private static RenderRefusal unopenable(String path, String reason) {
+    return new RenderRefusal(
         path
             + " arrives already sealed and cannot be opened here ("
             + reason
@@ -241,7 +243,7 @@ public final class RenderedSecretSeal {
     }
   }
 
-  private IllegalStateException refuse(Path root, List<Path> clear, String message) {
+  private RenderRefusal refuse(Path root, List<Path> clear, String message) {
     // No clean filter backs a hand `git add` in the rendered worktree any more: what was refused
     // must not stay there in the clear.
     clear.forEach(
@@ -252,7 +254,7 @@ public final class RenderedSecretSeal {
             LOG.error("cannot remove the unsealed {}", relative(root, file));
           }
         });
-    return new IllegalStateException(message);
+    return new RenderRefusal(message);
   }
 
   /** What a rendered file is, as far as the seal is concerned. */
@@ -350,7 +352,7 @@ public final class RenderedSecretSeal {
         final Optional<String> clearKey =
             secrets.stream().flatMap(RenderedSecretSeal::clearKeys).findFirst();
         if (!envelope.hasNonNull("mac") || clearKey.isPresent()) {
-          throw new IllegalStateException(
+          throw new RenderRefusal(
               path
                   + " carries a damaged or hand-edited sops envelope ("
                   + clearKey.map(key -> "the value of " + key + " is not ENC[…]").orElse("no mac")
@@ -364,7 +366,7 @@ public final class RenderedSecretSeal {
       }
     }
     if (sealed && (clear || bare)) {
-      throw new IllegalStateException(
+      throw new RenderRefusal(
           path + " mixes sops-sealed documents with bare ones; refusing to render");
     }
     return sealed ? Holding.SEALED : clear ? Holding.CLEAR : Holding.NOTHING;

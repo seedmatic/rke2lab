@@ -256,6 +256,16 @@ sops is a plaintext to seal or a blob that opens to one. So a caller may carry t
 failure reason, and only that one: any other exception from a seam is named by its class alone. The
 stderr reaches a local DEBUG line only when the operator opts in with `-Drke2lab.sops.stderr=true`.
 
+Both edges — `sops-edge` in the OSGi world and the host's `SopsAtRest` — drive ONE runner,
+`SopsProcess`, in the dual-realm `crypto/sops-process` module, so the rules above exist once:
+
+* the sops binary is resolved once: `RKE2LAB_SOPS` when set (absolute and executable), else the first
+  `sops` on `PATH`, whose real path must lie in `/nix/store` — a shadowing copy elsewhere is refused by
+  name;
+* the stderr opt-in is IGNORED in-cluster, with one warning: the render Task's logs are kept by
+  Pipelines-as-Code and readable in `rke2lab-system`. The enclosure is the `EnclosureGate` the host
+  publishes (OSGi side) or `ExecutionEnvironment` (host side); an absent gate is the OPERATOR one.
+
 The kubeconfig user name is `<cluster>-admin`, unique per cluster: `users`/`clusters`/`contexts` are
 global lists merged BY NAME, so a shared user name would collapse across clusters and both contexts
 would point at one (wrong) user cert. The cluster + context names are already the cluster name; the
