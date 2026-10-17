@@ -16,7 +16,7 @@ host build:
 
 * the current DaemonSet-trampolines-to-host + `nix flake build` is a *Debian-era workaround* for a
   non-nix-native OS; on NixOS the shim is just part of the image, built on the existing ARM64 build
-  infra (linux-builder, remote-nix-store, cachix) at *image* time.
+  infra (linux-builder, remote-nix-store, the metalspace's private cache) at *image* time.
 * it belongs to `rke2lab-node-base` — every node that runs pods needs it — not to a specialisation.
 * the containerd wiring (NRI plugin, ZFS snapshotter, SystemdCgroup, registries) is declarative in
   `nixos/containerd.nix`; the flox runtime is the derivation those settings point at.

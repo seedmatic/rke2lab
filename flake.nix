@@ -12,15 +12,13 @@
   #                          bump over nixpkgs' 2.31.3, flox/flox pkgs/nix), absent from cache.nixos.org.
   #                          Without it the aarch64-linux builder rebuilds nix from source and runs its
   #                          flaky functional test suite (build-remote-trustless, shell) → build breaks.
-  #   - nxmatic.cachix.org : our own published artifacts (the flox-runtime NRI plugin, flox-controller,
-  #                          the carriers) the node-base bakes, built against flake-commons' nixpkgs fork.
+  # Our own artefacts (the flox-runtime NRI plugin, flox-controller, the carriers) come from no public
+  # cache: nothing of ours is published (ndh private-binary-cache-spec, "No public cache of ours").
   nixConfig.extra-substituters = [
     "https://cache.flox.dev"
-    "https://nxmatic.cachix.org"
   ];
   nixConfig.extra-trusted-public-keys = [
     "flox-cache-public-1:7F4OyH7ZCnFhcze3fJdfyXYLQw/aV7GEed86nQ7IsOs="
-    "nxmatic.cachix.org-1:huMghYiwDpPa1PMXHXK4G1Dp4QOZjgsNqxcjf/AjuJ0="
   ];
 
   inputs = {
