@@ -517,7 +517,11 @@
             networkBlueprintData.segments).cidr;
       };
     in
-    (flake-utils.lib.eachDefaultSystem (system:
+    # The two systems anything here runs on: the operator seat (aarch64-darwin) and the Incus containers
+    # of the Apple-Silicon NixOS guests (aarch64-linux) — the cluster nodes and the Tekton render pods
+    # among them. Not eachDefaultSystem: its x86_64-darwin no longer evaluates (Nixpkgs 26.11 dropped
+    # it), and both x86_64 systems only cost every relock pass an evaluation that measures nothing.
+    (flake-utils.lib.eachSystem [ blueprintSystem nodeSystem ] (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
 
