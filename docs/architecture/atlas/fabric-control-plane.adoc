@@ -118,10 +118,11 @@ flowchart LR
     g2["batch keys get recorded slots, one principal each"]:::step
     g3["each account lists its own principals, root none"]:::step
     g4["hosts receive publics and certificates only"]:::step
-    g5["the keyring on bioskop and its push, private LAN only"]:::step
-    g6["9a — each machine its own host key and ONE host cert, age per access point, rdp-host splits, cluster-age alone"]:::step
+    g5["the keyring on bioskop and its push, private LAN only"]:::done
+    g6a["9a, host keys — each machine its own host key and ONE host cert, sshd never generates, the union cert cut by a KRL"]:::done
+    g6b["9a, the rest — age per access point, rdp-host splits, cluster-age alone"]:::step
     g7["9b — the offline root and the TLS intermediate, 9a re-signed, retired keys revoked"]:::step
-    g1 --> g2 --> g3 --> g4 --> g5 --> g6 --> g7
+    g1 --> g2 --> g3 --> g4 --> g5 --> g6a --> g6b --> g7
   end
   subgraph TARGET["Target — one role per key, signed on the operator seat"]
     direction TB
@@ -135,8 +136,13 @@ flowchart LR
   GESTURES ==> TARGET
 
   classDef step fill:#fef3c7,stroke:#b45309;
+  classDef done fill:#bfdbfe,stroke:#1d4ed8;
   classDef ok fill:#d9f2e0,stroke:#2d7a4b;
 ....
+
+Colour: blue a gesture whose tooling is delivered (the keyring and its push, ndh `ndh-keyring` and
+`ndh-identity-push`; the host keys, ndh `ssh-keys-renew --public`, `ssh-keys-certify`, `ndh.hostKey.own` and
+the KRL), each activated by the operator's own gestures; amber a gesture still to come; green the target.
 
 Roles × keys, the spec: ndh `docs/ssh-keys-architecture.adoc` — Figure 1 (authorities), Figure 2 (who
 holds, who accepts), Figure 3 (every key by lifecycle), the matrix that answers, for every `keys.yaml`
