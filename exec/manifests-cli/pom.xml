@@ -63,15 +63,6 @@
       <scope>runtime</scope>
     </dependency>
 
-    <!-- The ssh-to-age edge: embedded INTACT under META-INF/bundles (staged below) + installed by
-         OsgiRuntime, NOT flattened (excluded from the shade). runtime scope — the CLI never compiles
-         against the edge impl; manifests-core's @Reference SshToAgeConverter binds it from the
-         registry. Mandatory reference, so the edge MUST be embedded or the service never publishes. -->
-    <dependency>
-      <groupId>io.seedmatic.rke2lab</groupId>
-      <artifactId>ssh-to-age-edge</artifactId>
-      <scope>runtime</scope>
-    </dependency>
     <!-- The sops edge, embedded the same way: the synthesis scion seals every rendered Secret in
          memory through SopsEncryptor and reads the sealed cellar carrier back through SopsDecryptor.
          A delivery without it is refused, so an in-cluster render could not commit at all. -->

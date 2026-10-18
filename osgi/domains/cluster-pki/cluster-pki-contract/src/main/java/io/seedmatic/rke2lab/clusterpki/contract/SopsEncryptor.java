@@ -6,10 +6,9 @@ import java.util.List;
 /**
  * Seam toward the {@code sops} external tool: seal a plaintext YAML document for a set of age
  * recipients, returning the sops-encrypted YAML. A pure point of contact — it reasons over nothing,
- * it shells a tool — so, like {@code SshToAgeConverter} in manifests-contract, it is owned by the
- * consumer that needs it (the cluster-pki seal, so the seam lives in this contract) and realised by
- * the top-level {@code sops-edge}, which {@code @Component}-provides it; the seal binds it with a
- * mandatory {@code @Reference}.
+ * it shells a tool — so it is owned by the consumer that needs it (the cluster-pki seal, so the
+ * seam lives in this contract) and realised by the top-level {@code sops-edge}, which
+ * {@code @Component}-provides it; the seal binds it with a mandatory {@code @Reference}.
  *
  * <p>The node consumes the result via {@code sops-nix}, which requires the true sops envelope
  * format — hence a tool, not a Java re-implementation. The recipients are the operator's own age

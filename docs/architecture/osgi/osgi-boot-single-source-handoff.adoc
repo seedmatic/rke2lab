@@ -4,6 +4,15 @@
 
 [NOTE]
 ====
+*2026-10-18:* `ssh-to-age-edge`, the embedded bundle this change prepared for, was deleted with Roles × Keys S5; this record keeps its past
+wording. Since then the cluster's age identity no longer comes from the `rke2-cluster` SSH key: it is
+`rke2lab-cluster-age-<n>`, a standalone age identity from the operator's keyring, read in OSGi through
+`ClusterAgeIdentity` (ndh-contract). sops-edge and dbus-systemd-edge remain the examples of top-level
+external-tool edges.
+====
+
+[NOTE]
+====
 *Status:* SHIPPED on `refactor/osgi-boot-single-source`, integrable into `design/pre-integration`.
 Removes the hand-list of embedded model bundles — the "boot trap" flagged in
 link:../patterns/port-edge-domain-ownership.adoc[Port, edge, domain — told apart]. The embedded model

@@ -7,7 +7,7 @@
 *Status:* SHIPPED (`DbusSystemdProbe` lives in `dbus-systemd-edge`; `SystemdUnitId` +
 `SystemdStatusSnapshot` in `systemd-contract`). The third external edge of the
 link:../patterns/frontier-playability-model.adoc[frontier-playability model], after
-link:pulumi-edge-handoff.adoc[pulumi-edge] and link:ssh-to-age-edge-handoff.adoc[ssh-to-age-edge].
+link:pulumi-edge-handoff.adoc[pulumi-edge] and the ssh-to-age edge (deleted 2026-10-18).
 
 This is a *before / after* document. Tracing the systemd-status flow end to end uncovered a handful
 of distinct problems — a stranded edge, an overloaded word, a misplaced specialist, a relationship
@@ -379,8 +379,8 @@ role; nobody but seed-outcluster readiness imports it today.)
 
 == What stays open (a choice, not a problem)
 
-* *Packaging shape* — pulumi-edge is grouped with a testkit under `host/pulumi/`; ssh-to-age-edge is
-  flat under `osgi/`; `osgi/systemd/` already exists. Where dbus-systemd-edge lands (likely
+* *Packaging shape* — pulumi-edge is grouped with a testkit under `host/pulumi/`; sops-edge sits
+  under `osgi/domains/crypto/`; `osgi/systemd/` already exists. Where dbus-systemd-edge lands (likely
   `osgi/systemd/dbus-systemd-edge`, beside the port it implements), and whether to reconcile the
   existing edges' shapes, is held open.
 
@@ -419,4 +419,3 @@ roles project through the neutral port. The host reaps only a coarse verdict + t
 * link:../patterns/frontier-playability-model.adoc[Frontier-playability model] — the dbus row this spec corrects.
 * link:../patterns/port-edge-domain-ownership.adoc[Port/edge/domain ownership] — the three roles, no port named after the edge.
 * link:pulumi-edge-handoff.adoc[pulumi-edge handoff] — the extraction template (produce vs own).
-* link:ssh-to-age-edge-handoff.adoc[ssh-to-age-edge handoff] — the OSGi-world edge precedent (embed, no -core).

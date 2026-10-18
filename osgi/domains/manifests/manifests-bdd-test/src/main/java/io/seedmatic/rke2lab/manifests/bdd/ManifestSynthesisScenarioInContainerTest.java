@@ -14,8 +14,8 @@ import io.seedmatic.rke2lab.clusterpki.contract.SopsEncryptionException;
 import io.seedmatic.rke2lab.clusterpki.contract.SopsEncryptor;
 import io.seedmatic.rke2lab.manifests.contract.BranchSecretCarrier;
 import io.seedmatic.rke2lab.manifests.contract.ManifestsRunbookInput;
-import io.seedmatic.rke2lab.manifests.contract.SshToAgeConverter;
 import io.seedmatic.rke2lab.manifests.ingress.ServerManifestsCoordinate;
+import io.seedmatic.rke2lab.ndh.contract.ClusterAgeIdentity;
 import io.seedmatic.rke2lab.ndh.contract.NdhKeystoreReader;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.ScenarioOutcome;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.ScenarioPlayer;
@@ -53,12 +53,11 @@ import org.osgi.framework.ServiceRegistration;
  * manifests-core's DS {@code ManifestSynthesisService} activates under SCR and the scenario drives
  * it (the real cdk8s synthesis runs inside it).
  *
- * <p>The synthesis binds ONE collaborator, {@link SshToAgeConverter} — a pure external-tool seam
- * (OpenSSH→age), mandatory so the {@code @Component} activates. The passenger registers a stub for
- * it in-container (the incus edge-mocking shape, on the shared fragment loader so no seam and no
- * system-export are needed): the scenario runs with no SSH key-store, so {@code
- * SopsAgeMaterialResolver} fail-softs and the converter is never actually reached — the stub throws
- * if it ever is, surfacing that as the defect it would be.
+ * <p>The synthesis binds {@link ClusterAgeIdentity} — mandatory so the {@code @Component}
+ * activates. The passenger registers a stub for it in-container (the incus edge-mocking shape, on
+ * the shared fragment loader so no seam and no system-export are needed) that reports no identity
+ * handed over, so {@code SopsAgeMaterialResolver} fail-softs and the identity is never read — the
+ * stub throws if it ever is, surfacing that as the defect it would be.
  *
  * <p>It proves BOTH renders, as every sibling scion does. A LIVE run (no gate — {@code
  * GardeningSelection} defaults to cultivating) plays GREEN: the operator's facet is translated and
@@ -221,11 +220,11 @@ public class ManifestSynthesisScenarioInContainerTest {
   }
 
   /**
-   * Register the synthesis collaborator (the ssh-to-age edge stub) — and, when {@code gate} is
-   * non-null, an ambient {@link RunGate} selecting the mode — into THIS bundle's registry, play the
-   * scenario in-container through the shared {@link ScenarioPlayer}, and return its live {@link
-   * ScenarioOutcome}. Registrations are removed in the {@code finally} so each test plays against
-   * exactly its own services.
+   * Register the synthesis collaborators (the key-store and cluster-age stubs) — and, when {@code
+   * gate} is non-null, an ambient {@link RunGate} selecting the mode — into THIS bundle's registry,
+   * play the scenario in-container through the shared {@link ScenarioPlayer}, and return its live
+   * {@link ScenarioOutcome}. Registrations are removed in the {@code finally} so each test plays
+   * against exactly its own services.
    */
   private static ScenarioOutcome playWith(RunGate gate) throws Exception {
     final BundleContext context =
@@ -283,8 +282,7 @@ public class ManifestSynthesisScenarioInContainerTest {
       ManifestsRunbookInput facet)
       throws Exception {
     registrations.add(
-        context.registerService(
-            SshToAgeConverter.class, unreachableConverter(), new Hashtable<>()));
+        context.registerService(ClusterAgeIdentity.class, absentClusterAge(), new Hashtable<>()));
     try {
       return new ScenarioPlayer()
           .play(ManifestSynthesisScenario.class, ManifestSynthesisScenario.INPUT.into(facet));
@@ -307,10 +305,18 @@ public class ManifestSynthesisScenarioInContainerTest {
    * it, that is a defect the test must surface, so the stub throws rather than fabricating an age
    * key.
    */
-  private static SshToAgeConverter unreachableConverter() {
-    return sshPrivateKey -> {
-      throw new AssertionError(
-          "the in-container synthesis reached the ssh-to-age edge, but the test seeds no key-store");
+  private static ClusterAgeIdentity absentClusterAge() {
+    return new ClusterAgeIdentity() {
+      @Override
+      public boolean present() {
+        return false;
+      }
+
+      @Override
+      public String identity() {
+        throw new AssertionError(
+            "the in-container synthesis read the cluster's age identity, but the test hands none");
+      }
     };
   }
 

@@ -1,5 +1,10 @@
 # Prompts — nouveau layout de l'agrégateur `osgi/` (design hors-bande 2026-06-28)
 
+> *2026-10-18:* `ssh-to-age-edge`, the flat leaf these prompts place under `domains/`, was deleted with
+> Roles × Keys S5; this prompt keeps its past wording. Since then the cluster's age identity is
+> `rke2lab-cluster-age-<n>`, a standalone age identity from the operator's keyring, read in OSGi through
+> `ClusterAgeIdentity` (ndh-contract).
+
 Ce fichier contient DEUX prompts pour DEUX destinataires distincts :
 
 - **§A — Intégrer la spec + la note mémoire** : à donner à la conversation qui gère la mémoire-projet.

@@ -62,10 +62,10 @@ public final class ManifestSynthesisContext {
   private final ManifestSynthesisRequest request;
 
   /**
-   * The age key, resolved by the synthesis service's pre-synthesis step (read the SSH key, convert
-   * it via the {@code SshToAgeConverter} edge) and bound here. Unlike the request-borne profiles,
-   * this is NOT supplied by the host across the frontier — it is derived inside the OSGi world, so
-   * it is a context field of its own, {@link Optional#empty()} when no key-store was present.
+   * The age key, resolved by the synthesis service's pre-synthesis step (the cluster's age identity
+   * the operator handed over) and bound here. Unlike the request-borne profiles, this is NOT
+   * supplied by the host across the frontier — the ndh reader opens it inside the OSGi world, so it
+   * is a context field of its own, {@link Optional#empty()} when none was handed over.
    */
   private final Optional<SopsAgeMaterial> sopsAgeMaterial;
 

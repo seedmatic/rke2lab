@@ -9,7 +9,6 @@ import io.seedmatic.rke2lab.manifests.contract.ManifestExplodeService;
 import io.seedmatic.rke2lab.manifests.contract.ManifestSynthesisRequest;
 import io.seedmatic.rke2lab.manifests.contract.ManifestSynthesisResult;
 import io.seedmatic.rke2lab.manifests.contract.ManifestSynthesisService;
-import io.seedmatic.rke2lab.manifests.contract.SshToAgeConverter;
 import io.seedmatic.rke2lab.manifests.contract.node.NodeEnvContext;
 import io.seedmatic.rke2lab.manifests.contract.profiles.SigningKeyMaterial;
 import io.seedmatic.rke2lab.manifests.contract.profiles.SopsAgeMaterial;
@@ -17,6 +16,7 @@ import io.seedmatic.rke2lab.manifests.internal.synthesis.OnFailure;
 import io.seedmatic.rke2lab.manifests.internal.synthesis.Phase;
 import io.seedmatic.rke2lab.manifests.internal.synthesis.PhaseRunner;
 import io.seedmatic.rke2lab.manifests.node.DefaultNodeEnvContext;
+import io.seedmatic.rke2lab.ndh.contract.ClusterAgeIdentity;
 import io.seedmatic.rke2lab.ndh.contract.NdhKeystoreReader;
 import io.seedmatic.rke2lab.seed.broker.port.EnclosureGate;
 import java.io.IOException;
@@ -85,11 +85,13 @@ public final class DefaultManifestSynthesisService implements ManifestSynthesisS
   @Reference private ManifestExplodeService explodeService;
 
   /**
-   * The ssh-to-age edge, bound from the registry. Mandatory: without the edge the component never
-   * activates, so {@code ManifestSynthesisService} never publishes — a missing edge fails the boot
-   * fast rather than silently half-rendering the sops-age Secret. The pre-synthesis step calls it.
+   * The cluster's age identity, bound from the registry (ndh-core). Mandatory: without it the
+   * component never activates, so {@code ManifestSynthesisService} never publishes — a missing
+   * reader fails the boot fast rather than silently half-rendering the sops-age Secret. Whether the
+   * operator handed the identity over is the reader's {@code present()}, asked by the pre-synthesis
+   * step.
    */
-  @Reference private SshToAgeConverter sshToAgeConverter;
+  @Reference private ClusterAgeIdentity clusterAge;
 
   @Reference private NdhKeystoreReader ndhKeystore;
 
@@ -122,14 +124,13 @@ public final class DefaultManifestSynthesisService implements ManifestSynthesisS
         providerId(),
         request.floxDebugPolicy());
 
-    // Pre-synthesis step: resolve the age key (read the SSH key from the key-store, convert it via
-    // the ssh-to-age edge) BEFORE binding the context, so units only render — synthesis takes its
-    // prerequisites, it does not fetch them. Gated on the enclosure: IN_CLUSTER the sops-age Secret
-    // is a NODE_BOOTSTRAP bootstrap artifact already applied at the operator's grow (and the git
-    // tree's key-store is sops-encrypted at rest), so the resolver skips rather than reads.
+    // Pre-synthesis step: resolve the cluster's age identity BEFORE binding the context, so units
+    // only render — synthesis takes its prerequisites, it does not fetch them. Gated on the
+    // enclosure: IN_CLUSTER the sops-age Secret is a NODE_BOOTSTRAP bootstrap artifact already
+    // applied at the operator's grow, so the resolver skips rather than reads.
     final Optional<EnclosureGate> enclosure = enclosureGate;
     final Optional<SopsAgeMaterial> sopsAgeMaterial =
-        new SopsAgeMaterialResolver(sshToAgeConverter, ndhKeystore, enclosure).resolve();
+        new SopsAgeMaterialResolver(clusterAge, enclosure).resolve();
     // The commit-signing key, resolved the same way (OPERATOR-only, § pac-in-cluster-render-spec):
     // the operator's grow emits the manifests-render-signing Secret the in-cluster render mounts.
     final Optional<SigningKeyMaterial> signingKeyMaterial =

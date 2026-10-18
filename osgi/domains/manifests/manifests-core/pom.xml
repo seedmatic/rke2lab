@@ -142,8 +142,8 @@
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>dataplan-contract</artifactId>
     </dependency>
-    <!-- The ndh keystore reader seam: SopsAgeMaterialResolver reads the rke2-cluster SSH key through
-         it (the single reader, realised by ndh-core), no longer navigating keys.yaml itself. -->
+    <!-- The ndh seams, realised by ndh-core: the keystore reader (the signing key) and
+         ClusterAgeIdentity (SopsAgeMaterialResolver's age identity). -->
     <dependency>
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>ndh-contract</artifactId>

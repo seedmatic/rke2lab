@@ -15,17 +15,13 @@
   <name>osgi/domains/crypto</name>
   <description>The crypto seam-realisations — the cross-cutting modules that seal / convert key
     material for whoever needs it, grouped because none belongs to a single consumer domain:
-    ssh-to-age-edge (shells ssh-to-age, converts an OpenSSH key to an age key — used by manifests and
-    cluster-pki), sops-process (the ONE sops runner, dual-realm, driven by sops-edge and by the host's
-    SopsAtRest), sops-edge (shells sops through it, seals a YAML for age recipients — the node's sops-nix
-    envelope), and cellar-cipher-age (pure-Java age via jagged, seals the seed-broker cellar's SEALED
-    entries with the rke2-cluster ssh key directly). Each fills a seam owned lower (SshToAgeConverter,
-    SopsEncryptor, CellarCipher); this group only aggregates them so the layout mirrors the concern.</description>
+    sops-process (the ONE sops runner, dual-realm, driven by sops-edge and by the host's SopsAtRest) and
+    sops-edge (shells sops through it, seals a YAML for age recipients — the node's sops-nix envelope).
+    Each fills a seam owned lower (SopsEncryptor, SopsDecryptor); this group only aggregates them so the
+    layout mirrors the concern.</description>
 
   <modules>
-    <module>ssh-to-age-edge</module>
     <module>sops-process</module>
     <module>sops-edge</module>
-    <module>cellar-cipher-age</module>
   </modules>
 </project>

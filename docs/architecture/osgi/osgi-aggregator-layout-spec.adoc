@@ -4,6 +4,15 @@
 
 [NOTE]
 ====
+*2026-10-18:* `ssh-to-age-edge`, the flat orphan leaf this spec places under `domains/`, was deleted with Roles × Keys S5; this record keeps its past
+wording. Since then the cluster's age identity no longer comes from the `rke2-cluster` SSH key: it is
+`rke2lab-cluster-age-<n>`, a standalone age identity from the operator's keyring, read in OSGi through
+`ClusterAgeIdentity` (ndh-contract). sops-edge and dbus-systemd-edge remain the examples of top-level
+external-tool edges.
+====
+
+[NOTE]
+====
 Design hors-bande (2026-06-28), **IMPLEMENTED** (2026-06-30, commits a05dd52c..46c7cdf0 on
 feature/cluster-edge). Shipped layout-first before world-gateway 2C, with two deliberate
 divergences from this spec recorded below. All tests green, full reactor BUILD SUCCESS

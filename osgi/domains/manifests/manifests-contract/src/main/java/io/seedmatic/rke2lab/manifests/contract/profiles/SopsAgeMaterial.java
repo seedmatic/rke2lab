@@ -10,11 +10,11 @@ import java.util.Objects;
  * in-cluster.
  *
  * <p>The synthesis service (the host-of-synthesis, an OSGi {@code @Component}) owns the assembly:
- * in a pre-synthesis step it reads the {@code rke2-cluster} SSH key from its key-store and converts
- * it via the {@code SshToAgeConverter} edge, then binds the result here. The unit MUST NOT reach
- * across to a file or shell a tool itself; it receives this and only renders the Secret. The value
- * is RAW (the age key text) — base64 is a Kubernetes Secret encoding concern, applied by the unit
- * at render time, not baked into this port type.
+ * in a pre-synthesis step it reads the cluster's age identity the operator handed over ({@code
+ * ClusterAgeIdentity}, ndh-core), then binds it here. The unit MUST NOT reach across to a file or
+ * shell a tool itself; it receives this and only renders the Secret. The value is RAW (the age key
+ * text) — base64 is a Kubernetes Secret encoding concern, applied by the unit at render time, not
+ * baked into this port type.
  *
  * <p>Absence — no SSH key-store present (unit tests, ephemeral synth) — is carried as an empty
  * {@code Optional<SopsAgeMaterial>} on the context, never a placeholder instance: a present

@@ -6,7 +6,7 @@
 ====
 *Status:* IMPLEMENTED (2026-06-26). The fourth external edge of the
 link:../patterns/frontier-playability-model.adoc[frontier-playability model], after
-link:pulumi-edge-handoff.adoc[pulumi-edge], link:ssh-to-age-edge-handoff.adoc[ssh-to-age-edge] and
+link:pulumi-edge-handoff.adoc[pulumi-edge], the ssh-to-age edge (deleted 2026-10-18) and
 link:dbus-systemd-edge-spec.adoc[dbus-systemd-edge]. It mirrors the dbus-systemd-edge shape: a single
 class shells the external tool; everything else consumes a port.
 

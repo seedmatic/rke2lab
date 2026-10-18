@@ -856,14 +856,16 @@
           text = ''
             usage() {
               cat >&2 <<'USAGE'
-usage: nix run .#grow -- <stack> [preview|up] [pulumi args...]
+usage: nix run .#grow -- <stack> [preview|up] [pulumi args...] 3< <(pass show seedmatic/cluster-age/<n>)
 
   <stack>    Pulumi stack name (required), e.g. dev
   preview    read-only diff, no apply (default)
-  up         apply, non-interactive (pulumi up --yes)
+  up         apply, non-interactive, after a preview you read (pulumi up --yes --skip-preview)
   -h,--help  this message
 
 Anything after the verb is passed through to pulumi (e.g. --diff, --target).
+The cluster's age identity is read from fd 3 (or $RKE2LAB_CLUSTER_AGE_FD), which your own shell
+opens; the grow refuses to run without it.
 USAGE
             }
 
@@ -948,14 +950,31 @@ USAGE
             trap 'cp "$backup" Pulumi.yaml; rm -f "$backup"' EXIT INT TERM HUP
             sed -E "s#^( *binary: ).*#\1$jar#" "$backup" > Pulumi.yaml
 
+            # The cluster's age identity (rke2lab-cluster-age-<n>) arrives on a file descriptor the
+            # operator's OWN shell opens on this command line, never one this script or a session opens:
+            #   nix run …#grow -- <stack> <action> 3< <(pass show seedmatic/cluster-age/<n>)
+            # Never stdin (it does not reach a Pulumi program; an inherited descriptor does), never a file.
+            # Every grow renders the sops-age Secret from it, so a grow without it fails here, loud.
+            # The test only checks the descriptor is open: reading it would consume the pipe.
+            RKE2LAB_CLUSTER_AGE_FD="''${RKE2LAB_CLUSTER_AGE_FD:-3}"
+            [ -e "/dev/fd/$RKE2LAB_CLUSTER_AGE_FD" ] || {
+              echo "error: no cluster age identity on fd $RKE2LAB_CLUSTER_AGE_FD — append to this command: $RKE2LAB_CLUSTER_AGE_FD< <(pass show seedmatic/cluster-age/<n>)" >&2
+              exit 1
+            }
+            export RKE2LAB_CLUSTER_AGE_FD
+
             case "$action" in
               preview)
                 echo "==> pulumi preview --stack $stack (binary=$jar)" >&2
                 pulumi preview --stack "$stack" "$@"
                 ;;
               up)
-                echo "==> pulumi up --yes --stack $stack (binary=$jar)" >&2
-                pulumi up --yes --stack "$stack" "$@"
+                # --skip-preview (the operator's decision D6, 2026-10-18): the program then runs ONCE, and
+                # the descriptor is a pipe it reads once; `up` without it would run the program twice and
+                # the second run would find the pipe empty. The preview the operator reads is the separate
+                # `preview` action, before their go.
+                echo "==> pulumi up --yes --skip-preview --stack $stack (binary=$jar)" >&2
+                pulumi up --yes --skip-preview --stack "$stack" "$@"
                 ;;
             esac
           '';

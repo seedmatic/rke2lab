@@ -32,10 +32,11 @@ import org.osgi.service.log.LogLevel;
  * impl bundle — the {@code @Component}s would then be absent and the {@code @OsgiService} would
  * find nothing. Unlike the other scion proofs, this scion resolves the REAL synthesis
  * (manifests-core's DS {@code @Component}s), so {@code .withScr()} must run for them to activate.
- * Its one non-SCR collaborator is the {@link
- * io.seedmatic.rke2lab.manifests.contract.SshToAgeConverter} edge (a pure external-tool seam) — the
- * passenger registers a stub in-container, on the shared fragment loader, so nothing crosses to the
- * host JVM and only {@code seed.broker.port} (the one true host↔OSGi membrane) is system-exported.
+ * Its non-SCR collaborators are the ndh seams ({@link
+ * io.seedmatic.rke2lab.ndh.contract.NdhKeystoreReader}, {@link
+ * io.seedmatic.rke2lab.ndh.contract.ClusterAgeIdentity}) — the passenger registers stubs
+ * in-container, on the shared fragment loader, so nothing crosses to the host JVM and only {@code
+ * seed.broker.port} (the one true host↔OSGi membrane) is system-exported.
  */
 @OsgiWorld
 // Flip to LogLevel.DEBUG to troubleshoot a failed in-container resolve/activation
