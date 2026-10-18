@@ -729,6 +729,94 @@ and the pod tier's lower, which is rke2lab's decision. The cluster builder's tru
 untrusted, proven on 2026-10-18.
 |===
 
+[[capn-member-root]]
+== Accepted lab risk — the CAPN identity is root on the Incus member
+
+**Accepted by the operator on 2026-10-18 as a documented lab risk, to be treated separately later**: « on est dans
+un lab ici, donc on accepte des failles si elles sont documentées ». It is **pre-existing**: the build tier adds
+nothing to it (the grow places the cluster builder, the build controller holds no Incus identity, and the nodes stay
+CAPN-created). It is not a prerequisite of any increment. The boundary the operator draws is **Flux**: what reaches a
+cluster goes through its `manifests/<cluster>` branch, so a check belongs at the render, not live.
+
+[mermaid]
+....
+flowchart LR
+  REST["at rest<br/><i>rke2lab .secrets · the cellar · manifests/‹cluster› · etcd</i>"]:::rest
+  SEC["the CAPN client identity<br/><i>Secret ‹host›-incus-identity, the cluster's CAPI namespace</i>"]:::cl
+  ID["CAPN's Incus identity<br/><i>restricted to project rke2lab</i>"]:::cl
+  INST["a privileged instance<br/><i>with raw.lxc hooks</i>"]:::risk
+  MEM["root on the Incus member<br/><i>= the metalspace's NixOS guest</i>"]:::risk
+  FLEET["the fleet's secrets<br/><i>the guest's sops identity, the attic push token</i>"]:::fleet
+  REST -.->|"the grow"| SEC
+  SEC --> ID -->|"rke2lab cannot be a restricted project:<br/>the nodes need privilege"| INST --> MEM --> FLEET
+  classDef rest fill:#e5e7eb,stroke:#6b7280;
+  classDef cl fill:#dcfce7,stroke:#15803d;
+  classDef risk fill:#fee2e2,stroke:#b91c1c,stroke-width:2px;
+  classDef fleet fill:#fef3c7,stroke:#b45309;
+....
+
+Grey: where the key rests outside the clusters. Green: the cluster's side. Red: what the identity can reach. Amber:
+the fleet, which trust says a cluster must never reach.
+
+**What.** CAPN's Incus identity is restricted to the project `rke2lab`. That project cannot be a restricted project,
+since the cluster nodes run privileged. So the identity can create a privileged instance and set `raw.lxc`
+`lxc.hook.*` lines that run as root on the member; a privileged container is root-equivalent on its host even without
+the hooks. Whoever holds the CAPN client key (the Secret `<host>-incus-identity`, keys `client-crt` / `client-key`, in the
+cluster's CAPI namespace, named by `LXCCluster.spec.secretRef`) is therefore root-equivalent on the Incus member: the metalspace's NixOS
+guest, which holds the access point's sops identity (it opens every fleet file) and the metalspace attic's push
+token. It is the reverse of the rule that trust flows down only.
+
+**Measured on `incus-probe` on 2026-10-18** (🎛️, M1): a certificate restricted to a project that is not itself
+restricted, as `rke2lab` must be, set all six of `security.privileged`, `raw.lxc` (`lxc.hook.*`), `raw.idmap`,
+`linux.kernel_modules`, a disk device with `source=/` and a `unix-char` device; and Incus's authorization scriptlet is
+never called for such a TLS-restricted client. So a restricted certificate cannot be kept from privilege.
+
+**Where the key rests outside the clusters** (measured 2026-10-18, by revision, nothing decrypted):
+
+* rke2lab's `.secrets`, entry `incus.capn.clientKey`: sops-encrypted to `.sops.yaml`'s recipients, in a public
+  repository, so its safety is sops';
+* the cellar, after a grow: `IncusIdentitySealScenario` files it there SEALED for the manifests synthesis. The cellar
+  is Pulumi's file backend (`.pulumi-state`), and its seal (`PassphraseCellarCipher`) uses a passphrase written in
+  this public repository's source, so it protects nothing against a reader of `.pulumi-state`. Today's state holds
+  no such entry (no grow since);
+* the `manifests/<cluster>` branch, after a grow's secret-full render: the `<host>-incus-identity` Secret, sops-encrypted
+  to the cluster's recipient (cluster-age after S5; `ClusterApiManagementManifestsUnit`). Measured today on
+  `manifests/bioskop-mgmt`: no such Secret yet, and no Secret of that branch has a value in clear;
+* in-cluster, etcd: that Secret, in the cluster's CAPI namespace. Root on a management control node reads etcd.
+
+**The conditions it rests on:**
+
+[cols="1,2",options="header"]
+|===
+| Condition | Why
+
+| no untrusted workload runs in any cluster
+| a workload that reaches cluster-admin then reaches the member: today the clusters run only the operator's own
+
+| the `<host>-incus-identity` Secret is readable only by CAPN and by the controllers already cluster-admin-equivalent
+(CAPI, CAPRKE2, cluster-api-operator, Flux, seed-incluster), none of which runs untrusted code; it is never mounted into
+another pod
+| the client key is the whole of the risk in-cluster. Root on a management control node reads it from etcd, which the
+render-time no-privileged / no-`hostPath` assertion below covers
+
+| `.pulumi-state` stays on bioskop's disk and never leaves the seat: not by git, not by a copy (the operator:
+bioskop is a trusted machine, reached remotely only through the tailnet, or tcp/2222 forwarded to 22 if the tailnet
+is down). And no Claude session reads it
+| the cellar's seal is no protection, so the state's location is the protection. Measured: ignored by every repo and
+in no history (rke2lab, ndh, nnh, nch, nix-flake-commons), the directory 0700 to the operator's account, the volume
+excluded from Time Machine. The sessions run as that same account, hence a deny-hook read guard on `.pulumi-state`
+(ndh, to land)
+|===
+
+**Ways to treat it later, none decided:**
+
+* Flux `spec.verify`: the clusters apply signed commits only;
+* render-time assertions: no Role or ClusterRole outside those controllers grants read on the `<host>-incus-identity`
+  Secret, and no privileged or `hostPath` pod appears outside an allowed list;
+* bounded Tekton pipelines for what must run privileged;
+* the RKE2 admin kubeconfigs, which reach cluster-admin outside Flux, in the same review;
+* the cellar's age recipient set (cluster-age), replacing its constant passphrase.
+
 == Related documentation
 
 * ndh `docs/fabric-control-plane-spec.adoc` — the target this atlas migrates to.
