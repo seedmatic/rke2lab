@@ -36,7 +36,6 @@
       "@wheel"
     ];
     sandbox = false;
-    accept-flake-config = true;
     # flox.conf tuning: fail fast on flaky Fastly routing to cache.nixos.org; GC thresholds.
     connect-timeout = 10;
     stalled-download-timeout = 30;
