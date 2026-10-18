@@ -4,6 +4,15 @@
 
 [NOTE]
 ====
+*2026-10-18:* `ssh-to-age-edge` (a row of the 2026-06-21 edge inventory below) was deleted with Roles × Keys S5; this record keeps its past
+wording. Since then the cluster's age identity no longer comes from the `rke2-cluster` SSH key: it is
+`rke2lab-cluster-age-<n>`, a standalone age identity from the operator's keyring, read in OSGi through
+`ClusterAgeIdentity` (ndh-contract). sops-edge and dbus-systemd-edge remain the examples of top-level
+external-tool edges.
+====
+
+[NOTE]
+====
 *Status:* DESIGN (2026-06-21). A transverse model that sharpens the host/OSGi frontier. It emerged
 mid-refactor during the doctor-model extraction and is recorded here at design level so every domain
 reads against it, not just the doctor. The reserved vocabulary (`edge`, `ingress`/`egress`,

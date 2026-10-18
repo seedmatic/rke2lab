@@ -24,7 +24,7 @@ exists — `IncusReconcileScenario`, `HostTreePromoter`, `HostSlotSelector`, `Ho
 `HostLiveEntry`, `HostDriftEntry`, `NocloudSeedWriter` are NOT built), and the post-grow VERIFY beat.
 The pure-host GROW beat IS shipped, host-side, as `InstanceGrow` in `host/pulumi/incus-ingress` (§ the
 GROW enablement). The incus domain of the frontier-playability model, alongside
-link:pulumi-edge-handoff.adoc[pulumi-edge], link:ssh-to-age-edge-handoff.adoc[ssh-to-age-edge],
+link:pulumi-edge-handoff.adoc[pulumi-edge], the ssh-to-age edge (deleted 2026-10-18),
 link:dbus-systemd-edge-spec.adoc[dbus-systemd-edge], link:cluster-edge-spec.adoc[cluster-edge],
 link:bbox-edge-spec.adoc[bbox-edge] and link:auth-edge-spec.adoc[auth-edge].
 

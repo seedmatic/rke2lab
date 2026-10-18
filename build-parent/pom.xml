@@ -192,7 +192,7 @@
         <artifactId>sops-process</artifactId>
         <version>${rke2lab.version}</version>
       </dependency>
-      <!-- The sops external edge is TOP-LEVEL (a generic tool, like ssh-to-age-edge), not a
+      <!-- The sops external edge is TOP-LEVEL (a generic tool), not a
            cluster-pki module — its SopsEncryptor seam is consumer-owned in cluster-pki-contract. -->
       <dependency>
         <groupId>io.seedmatic.rke2lab</groupId>
@@ -303,11 +303,6 @@
       </dependency>
       <dependency>
         <groupId>io.seedmatic.rke2lab</groupId>
-        <artifactId>cellar-cipher-age</artifactId>
-        <version>${rke2lab.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>io.seedmatic.rke2lab</groupId>
         <artifactId>cluster-bdd</artifactId>
         <version>${rke2lab.version}</version>
       </dependency>
@@ -406,11 +401,6 @@
       <dependency>
         <groupId>io.seedmatic.rke2lab</groupId>
         <artifactId>incus-edge</artifactId>
-        <version>${rke2lab.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>io.seedmatic.rke2lab</groupId>
-        <artifactId>jagged-wrap</artifactId>
         <version>${rke2lab.version}</version>
       </dependency>
       <dependency>
@@ -573,11 +563,6 @@
       <dependency>
         <groupId>io.seedmatic.rke2lab</groupId>
         <artifactId>seed-broker-testkit</artifactId>
-        <version>${rke2lab.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>io.seedmatic.rke2lab</groupId>
-        <artifactId>ssh-to-age-edge</artifactId>
         <version>${rke2lab.version}</version>
       </dependency>
       <dependency>

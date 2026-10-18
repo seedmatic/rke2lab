@@ -31,14 +31,8 @@
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>cluster-pki-contract</artifactId>
     </dependency>
-    <!-- The ssh-to-age seam: ClusterSeal derives the cluster age IDENTITY from the rke2-cluster SSH
-         key (the same conversion SopsAgeMaterialResolver uses), realised by ssh-to-age-edge. -->
-    <dependency>
-      <groupId>io.seedmatic.rke2lab</groupId>
-      <artifactId>manifests-contract</artifactId>
-    </dependency>
-    <!-- The ndh keystore reader seam: ClusterSeal reads the mammoth-skate-tls root + rke2-cluster
-         key through it (the single reader, realised by ndh-core). -->
+    <!-- The ndh seams: ClusterSeal reads the mammoth-skate-tls root through the keystore reader and
+         the cluster's age identity through ClusterAgeIdentity (both realised by ndh-core). -->
     <dependency>
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>ndh-contract</artifactId>

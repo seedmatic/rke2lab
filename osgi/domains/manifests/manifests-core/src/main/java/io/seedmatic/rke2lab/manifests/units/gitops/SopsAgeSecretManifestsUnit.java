@@ -25,17 +25,15 @@ import software.constructs.Construct;
  * (e.g., cloud-init Secrets in Phase 2).
  *
  * <p><b>The unit only RENDERS.</b> The age key is a prerequisite, resolved upstream by the
- * synthesis service's pre-synthesis step (read the {@code rke2-cluster} SSH key, convert it via the
- * {@code ssh-to-age} edge) and handed in as {@link SopsAgeMaterial} on {@link
- * ManifestSynthesisContext} — the same channel as {@code IncusIdentityMaterial} / {@code
- * BootstrapIdentity}. This unit never reads a host file or shells a tool itself; it embeds the key
- * into the Secret, base64-encoded as Kubernetes requires.
+ * synthesis service's pre-synthesis step (the cluster's age identity the operator handed over) and
+ * handed in as {@link SopsAgeMaterial} on {@link ManifestSynthesisContext} — the same channel as
+ * {@code IncusIdentityMaterial} / {@code BootstrapIdentity}. This unit never reads a host file or
+ * shells a tool itself; it embeds the key into the Secret, base64-encoded as Kubernetes requires.
  *
- * <p><b>Key derivation:</b> the age key is derived from the {@code rke2-cluster} SSH key managed in
- * nix-darwin-home. Public age key: {@code
- * age1k0tc4gmaqrk5df3ujja34gkqxstu0cye7fl7fktjeuua3yych3aqxfjlak}. This same public key is added as
- * a recipient in both rke2lab and nix-darwin-home {@code .sops.yaml}, enabling both operator (via
- * git filter) and Flux (in-cluster) to decrypt the same content.
+ * <p><b>The key:</b> {@code rke2lab-cluster-age-<n>}, a standalone age identity in the operator's
+ * keyring ({@code ndh-keyring cluster-age <n>}). Its public is a recipient in the {@code
+ * .sops.yaml} of rke2lab and nnh, so both the operator and Flux (in-cluster) decrypt the same
+ * content.
  *
  * <p><b>Note:</b> This is Stage A bootstrap - the Secret is applied at master bootstrap time,
  * enabling Flux to decrypt SOPS-encrypted resources from gitops/ directory.

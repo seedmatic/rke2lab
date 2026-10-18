@@ -11,14 +11,15 @@ import java.util.List;
  * The age recipients the cluster CA bundle is sealed FOR — read from the repo's {@code .sops.yaml}
  * {@code creation_rules}, the single source of truth for "who decrypts the repo's secrets". Both
  * recipients live there in the clear (they are PUBLIC keys): the operator's own age key AND the
- * cluster key derived from {@code rke2-cluster}. Reading them here keeps the seal consistent with
- * the git filter — the same set that already governs {@code .secrets} / {@code keys.yaml}.
+ * cluster's, {@code rke2lab-cluster-age-<n>}. Reading them here keeps the seal consistent with the
+ * set that already governs {@code .secrets}.
  *
- * <p>The cluster recipient is, by construction, the public half of the identity ssh-to-age derives
- * from {@code rke2-cluster} (the {@code .sops.yaml} comment records exactly that), so a bundle
- * sealed for it is decryptable by the {@link
- * io.seedmatic.rke2lab.clusterpki.contract.ClusterAgeKey} the node receives — no drift between the
- * recipient and the node's identity.
+ * <p>⚠️ The cluster recipient and the node's {@link
+ * io.seedmatic.rke2lab.clusterpki.contract.ClusterAgeKey} no longer come from one key: the
+ * recipient is what {@code .sops.yaml} names, the identity is what the operator hands over from the
+ * keyring. They agree because the operator names a new identity's public in {@code .sops.yaml} and
+ * re-keys before the grow that uses it; a grow handed another identity seals a bundle its node
+ * cannot open.
  */
 public final class SopsRecipients {
 

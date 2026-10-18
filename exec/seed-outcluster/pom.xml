@@ -199,15 +199,6 @@
       <artifactId>manifests-cdk8s</artifactId>
       <scope>runtime</scope>
     </dependency>
-    <!-- The ssh-to-age edge: embedded INTACT + installed by OsgiRuntime, NOT flattened (excluded
-         from the shade). runtime scope — seed-outcluster never compiles against the edge impl;
-         manifests-core's @Reference SshToAgeConverter binds it from the registry. Mandatory
-         reference, so the edge MUST be embedded or ManifestSynthesisService never publishes. -->
-    <dependency>
-      <groupId>io.seedmatic.rke2lab</groupId>
-      <artifactId>ssh-to-age-edge</artifactId>
-      <scope>runtime</scope>
-    </dependency>
     <!-- The sops edge: embedded INTACT under META-INF/bundles and installed by OsgiRuntime. runtime
          scope — seed-outcluster never compiles against the edge impl; the cluster-pki seal scion resolves
          SopsEncryptor from the registry (mandatory @OsgiService). MUST be embedded or the seal never

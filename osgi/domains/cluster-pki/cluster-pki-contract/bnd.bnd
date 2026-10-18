@@ -8,6 +8,5 @@ Export-Package: io.seedmatic.rke2lab.clusterpki.contract
 # staged as a bundle OSGi-side AND kept flat host-side, so its exported package legitimately lives in
 # two realms and DUPLICATE_REALM_CLASS exempts it. Every exported type depends only on the JDK + the
 # seed-broker seam (provided, never embedded) — the SopsEncryptor seam is a JDK-only interface, so it
-# rides here too (consumer-owned, like SshToAgeConverter in manifests-contract; its impl is the
-# top-level sops-edge). No @Component, so it does NOT Require the SCR extender.
+# rides here too (consumer-owned; its impl is the top-level sops-edge). No @Component, so it does NOT Require the SCR extender.
 Provide-Capability: io.seedmatic.rke2lab.embed; type=dual-realm

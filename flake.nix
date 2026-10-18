@@ -856,14 +856,16 @@
           text = ''
             usage() {
               cat >&2 <<'USAGE'
-usage: nix run .#grow -- <stack> [preview|up] [pulumi args...]
+usage: nix run .#grow -- <stack> [preview|up] [pulumi args...] 3< <(pass show seedmatic/cluster-age/<n>)
 
   <stack>    Pulumi stack name (required), e.g. dev
   preview    read-only diff, no apply (default)
-  up         apply, non-interactive (pulumi up --yes)
+  up         apply, non-interactive, after a preview you read (pulumi up --yes --skip-preview)
   -h,--help  this message
 
 Anything after the verb is passed through to pulumi (e.g. --diff, --target).
+The cluster's age identity is read from fd 3 (or $RKE2LAB_CLUSTER_AGE_FD), which your own shell
+opens; the grow refuses to run without it.
 USAGE
             }
 
@@ -877,6 +879,20 @@ USAGE
               usage
               exit 1
             fi
+
+            # The cluster's age identity (rke2lab-cluster-age-<n>) arrives on a file descriptor the
+            # operator's OWN shell opens on this command line, never one this script or a session opens:
+            #   nix run …#grow -- <stack> <action> 3< <(pass show seedmatic/cluster-age/<n>)
+            # Never stdin (it does not reach a Pulumi program; an inherited descriptor does), never a file.
+            # Every grow renders the sops-age Secret from it, so a grow without it fails here, loud.
+            # Checked first, before the long build, and only for being open: reading it would consume
+            # the pipe.
+            RKE2LAB_CLUSTER_AGE_FD="''${RKE2LAB_CLUSTER_AGE_FD:-3}"
+            [ -e "/dev/fd/$RKE2LAB_CLUSTER_AGE_FD" ] || {
+              echo "error: no cluster age identity on fd $RKE2LAB_CLUSTER_AGE_FD — append to this command: $RKE2LAB_CLUSTER_AGE_FD< <(pass show seedmatic/cluster-age/<n>)" >&2
+              exit 1
+            }
+            export RKE2LAB_CLUSTER_AGE_FD
 
             stack="''${1:-}"
             if [ -z "$stack" ]; then
@@ -906,6 +922,37 @@ USAGE
               -*) action="preview" ;;  # no verb given, first arg is a pulumi flag
               *) echo "error: unknown action '$action' (preview|up)" >&2; usage; exit 2 ;;
             esac
+
+            # The pass-through args reach pulumi, and pulumi's output reaches a session when operations runs
+            # the grow: a verbose, traced or log-flowing run writes the engine's internals, the program's
+            # inputs among them, where a session reads (--otel-traces and --profiling export the same). Refused here (security, S5 review, 2026-10-18); the
+            # operator who wants -v9 calls pulumi directly, and that log stays theirs.
+            refuseLogging() {
+              echo "error: $1 — the grow keeps pulumi's output plain; run pulumi yourself for that" >&2
+              exit 2
+            }
+            passed=( "$@" )
+            for ((i = 0; i < ''${#passed[@]}; i++)); do
+              arg="''${passed[i]}"
+              case "$arg" in
+                --logflow | --logflow=* | --logtostderr | --logtostderr=* | --tracing | --tracing=* | \
+                  --otel-traces | --otel-traces=* | --profiling | --profiling=*)
+                  refuseLogging "$arg is refused"
+                  ;;
+                -v | --verbose) level="''${passed[i + 1]:-}" ;;
+                -v=* | --verbose=*) level="''${arg#*=}" ;;
+                -v[0-9]*) level="''${arg#-v}" ;;
+                *) continue ;;
+              esac
+              [[ $level =~ ^[0-3]$ ]] || refuseLogging "$arg ''${level}: a verbosity above 3 is refused"
+            done
+
+            # The debug switches pulumi and its providers read from the environment, scrubbed from the one
+            # pulumi runs in, for the same reason.
+            scrub=( -u PULUMI_DEBUG_GRPC -u PULUMI_DEBUG_COMMANDS -u TF_LOG -u TF_LOG_PATH )
+            for name in ''${!PULUMI_LOG@}; do
+              scrub+=( -u "$name" )
+            done
 
             # Pulumi project env (mirrors the flox env's [vars]); each
             # `''${VAR:-default}` so an active flox env's values win when present.
@@ -951,11 +998,15 @@ USAGE
             case "$action" in
               preview)
                 echo "==> pulumi preview --stack $stack (binary=$jar)" >&2
-                pulumi preview --stack "$stack" "$@"
+                env "''${scrub[@]}" pulumi preview --stack "$stack" "$@"
                 ;;
               up)
-                echo "==> pulumi up --yes --stack $stack (binary=$jar)" >&2
-                pulumi up --yes --stack "$stack" "$@"
+                # --skip-preview (the operator's decision D6, 2026-10-18): the program then runs ONCE, and
+                # the descriptor is a pipe it reads once; `up` without it would run the program twice and
+                # the second run would find the pipe empty. The preview the operator reads is the separate
+                # `preview` action, before their go.
+                echo "==> pulumi up --yes --skip-preview --stack $stack (binary=$jar)" >&2
+                env "''${scrub[@]}" pulumi up --yes --skip-preview --stack "$stack" "$@"
                 ;;
             esac
           '';

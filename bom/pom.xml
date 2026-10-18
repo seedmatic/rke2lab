@@ -89,7 +89,6 @@
     <ipaddress.version>5.6.2</ipaddress.version>
     <commons.compress.version>1.28.0</commons.compress.version>
     <jgiven.version>2.0.3</jgiven.version>
-    <jagged.version>1.0.0</jagged.version>
     <felix.resolver.version>2.0.4</felix.resolver.version>
     <osgi.core.version>8.0.0</osgi.core.version>
     <felix.framework.version>7.0.5</felix.framework.version>
@@ -186,44 +185,6 @@
         <groupId>com.networknt</groupId>
         <artifactId>json-schema-validator</artifactId>
         <version>${networknt.json-schema.version}</version>
-      </dependency>
-      <!-- jagged: pure-Java age encryption (JCA X25519 + ChaCha20-Poly1305, no external provider on
-           JDK 21+). jagged-wrap embeds these as one first-class OSGi bundle exporting
-           com.exceptionfactory.jagged.* (jagged ships plain jars, no Bundle-SymbolicName). It backs
-           the age CellarCipher — the multi-recipient seal of the seed-broker cellar. Pinned as the
-           four artifacts DIRECTLY, NOT via jagged-bom: importing jagged-bom would inline its parent
-           aggregator's dependencyManagement — which pins junit-bom 5.11.2 — and DOWNGRADE our JUnit
-           Platform below 1.13, erasing org.junit.platform.engine.support.store.Namespace (used by
-           junit-launcher). Direct version-pins bring the jagged modules without that transitive leak;
-           only the x25519 recipient type + its framework/api/bech32 closure are carried. -->
-      <dependency>
-        <groupId>com.exceptionfactory.jagged</groupId>
-        <artifactId>jagged-x25519</artifactId>
-        <version>${jagged.version}</version>
-      </dependency>
-      <!-- jagged-ssh: the age SSH-recipient support (ssh-ed25519 / ssh-rsa stanzas). It converts an
-           OpenSSH key internally (StandardEd25519KeyConverter, ed25519→X25519), so the cellar seals
-           to / reveals with the rke2-cluster SSH key DIRECTLY — no ssh-to-age tool, no separate age
-           key. Pulls jagged-x25519 (the internal X25519 agreement). -->
-      <dependency>
-        <groupId>com.exceptionfactory.jagged</groupId>
-        <artifactId>jagged-ssh</artifactId>
-        <version>${jagged.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>com.exceptionfactory.jagged</groupId>
-        <artifactId>jagged-framework</artifactId>
-        <version>${jagged.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>com.exceptionfactory.jagged</groupId>
-        <artifactId>jagged-api</artifactId>
-        <version>${jagged.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>com.exceptionfactory.jagged</groupId>
-        <artifactId>jagged-bech32</artifactId>
-        <version>${jagged.version}</version>
       </dependency>
       <dependency>
         <groupId>org.slf4j</groupId>

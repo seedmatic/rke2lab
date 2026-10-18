@@ -52,14 +52,14 @@ public final class ScenarioCellar implements TransactionalCellar {
   // The clean/smudge filter (§ cellar-secrets). A SEALED store is sealed HERE, so its sealed
   // payload
   // is what rides the run's write-set tag across the graft and drains to the durable backend — the
-  // harvest plaintext never crosses the seam. The cipher is the injected CellarCipher (age) the
-  // extension resolves when its bundle is provisioned; where it is absent the mono passphrase
-  // stand-in fills in (the three-arg constructor the isolated tests use).
+  // harvest plaintext never crosses the seam. The cipher is an injected CellarCipher when a bundle
+  // provides one; where none does — every world today — the mono passphrase stand-in fills in (the
+  // three-arg constructor the isolated tests use).
   private final CellarCipher cipher;
 
   /**
    * The passphrase-default construction — the mono clean/smudge filter for a run with no injected
-   * cipher (an isolated test, or a world where {@code cellar-cipher-age} is not provisioned).
+   * cipher (an isolated test, or a world where no bundle provides a {@link CellarCipher}).
    *
    * @param model the run's {@link ReportModel} (read lazily, but live already when the extension
    *     constructs this — jGiven binds it before the body)

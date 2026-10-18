@@ -67,20 +67,24 @@ end-entity *leaves*, never intermediates): the cluster CA set is produced OSGi-s
 `cluster-pki` domain — a faithful **BouncyCastle** port of rke2's `generate-custom-ca-certs.sh`
 (proven structurally identical cert-by-cert against OpenSSL 3), rooted on our root — and lives
 rke2lab-side as a **sops view onto the ndh key material** — encrypted for the operator and for the
-cluster age recipient (the published `age1k0tc4…` was retired on 2026-10-10; at step 9a, before the
-clusters' cold start, the recipient becomes `cluster-age`, a standalone age identity held in the
-operator's keyring on bioskop and given to the seed by stdin or a file descriptor, never as a file under
-a checkout, and derived from no SSH key — ndh `docs/ssh-keys-architecture.adoc`, Roles × Keys),
-`keys.yaml` itself untouched. The CA hierarchy is pure Java (no shell); the only external tool contacts are the
-`sops-edge` (sealing the bundle the node's sops-nix decrypts) and the ssh-to-age edge (the cluster
-age identity, until 9a gives it from the operator's keyring), both reused, not reinvented.
+cluster age recipient: `rke2lab-cluster-age-<n>`, a standalone age identity derived from no SSH key,
+generated into the operator's keyring by `ndh-keyring cluster-age <n>` (the published `age1k0tc4…`
+was retired on 2026-10-10, and the identity ssh-to-age derived from `rke2-cluster` went with Roles ×
+Keys' step 9a — ndh `docs/ssh-keys-architecture.adoc`). It reaches the seed on a file descriptor the
+operator's shell opens on the grow's command line (`RKE2LAB_CLUSTER_AGE_FD=3 … 3< <(pass show
+seedmatic/cluster-age/<n>)`), never as a file under a checkout and never on stdin, which does not
+reach a Pulumi program (an inherited descriptor does, measured 2026-10-18); `keys.yaml` itself
+untouched. The CA hierarchy is pure Java (no shell); the only external tool contact is the
+`sops-edge` (sealing the bundle the node's sops-nix decrypts), reused, not reinvented.
 
 The seal's orchestration is `ClusterSeal` (its one-act output a `SealedClusterPki` — the sealed
 bundle + the age identity + the operator's `AdminCredentials`, an admin client cert minted from
 `client-ca` paired with the server-ca chain); the operator key inventory is read through the ndh
-domain's
-`NdhKeystoreReader` seam (the single reader of `.ndh-ssh.d/keys.yaml`, shared with manifests so the
-keys.yaml navigation is never duplicated).
+domain's `NdhKeystoreReader` seam (the single reader of `.ndh-ssh.d/keys.yaml`, shared with manifests
+so the keys.yaml navigation is never duplicated), and the cluster's age identity through its
+`ClusterAgeIdentity` seam (`FdClusterAgeIdentity` in ndh-core reads the descriptor
+`RKE2LAB_CLUSTER_AGE_FD` names, ONCE, OPERATOR-only, never logged — the same identity
+`SopsAgeMaterialResolver` renders into Flux's `sops-age` Secret).
 
 The sops-encrypted cluster-CA bundle and the admin kubeconfig are *projections* — generated
 per-cluster state, not source — and they **never enter the node image**. The image stays a single
@@ -107,7 +111,7 @@ node's age recipient; `ClusterAgeKey` — the cluster age identity that decrypts
 `SEALED` (the `CellarCipher`) so its plaintext never rests beside the bundle; and `AdminCredentials`
 — the operator's admin client cert + key + server-ca chain, filed `SEALED` (it carries the admin
 private key). The seal scion (an OSGi `@SeedScenario` that seals the bundle through the
-`SopsEncryptor` edge, derives the identity through ssh-to-age, and mints the admin leaf from
+`SopsEncryptor` edge, takes the identity from `ClusterAgeIdentity`, and mints the admin leaf from
 `client-ca`) files all three; the GROW fetches the node cases (revealing the sealed key) and poses
 them on the instance's `user.rke2lab.cluster-ca-bundle` / `user.rke2lab.sops-age-key` devlxd keys,
 never inside the (PLAIN) `InstanceGrowPlan`.
@@ -243,8 +247,8 @@ a re-seal would rotate every cluster cert). But a NEW sealed case introduced lat
 serving leaf is the first — must still land on clusters sealed before it existed, WITHOUT touching the
 CA. The seal does this additively: on a cellar hit it mints only the cases the cellar LACKS, from the
 CA it already possesses. The CA key is not lost — the sealed `ClusterCaBundle` is encrypted for the
-cluster age recipient whose identity the seal itself re-derives (ssh-to-age on the `rke2-cluster`
-key), so the seal re-opens the bundle with `SopsDecryptor` (the twin of `SopsEncryptor`, realised by
+cluster age recipient whose identity the first seal filed (`ClusterAgeKey`, `SEALED`), so the seal
+re-opens the bundle with `SopsDecryptor` (the twin of `SopsEncryptor`, realised by
 `sops-edge`), recovers the existing `server-ca`, mints the missing leaf, and files it. No wipe, no
 re-seal — the next grow of an existing cluster simply fills `WEBHOOK_SERVING` and the webhook
 activates. This is the general mechanism for adding any future sealed case to a live cluster.

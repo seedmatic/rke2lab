@@ -6,7 +6,7 @@
 ====
 *Status:* IMPLEMENTED (2026-07-07); the credential-CLI token contact RETIRED (2026-10-11). The seventh
 external edge of the frontier-playability model, after link:pulumi-edge-handoff.adoc[pulumi-edge],
-link:ssh-to-age-edge-handoff.adoc[ssh-to-age-edge], link:dbus-systemd-edge-spec.adoc[dbus-systemd-edge],
+the ssh-to-age edge (deleted 2026-10-18), link:dbus-systemd-edge-spec.adoc[dbus-systemd-edge],
 link:cluster-edge-spec.adoc[cluster-edge], link:incus-edge-spec.adoc[incus-edge] and
 link:bbox-edge-spec.adoc[bbox-edge].
 

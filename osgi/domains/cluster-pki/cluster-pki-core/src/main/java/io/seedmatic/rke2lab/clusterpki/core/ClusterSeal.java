@@ -12,7 +12,7 @@ import io.seedmatic.rke2lab.clusterpki.contract.WorkloadAdminCredentials;
 import io.seedmatic.rke2lab.clusterpki.contract.WorkloadClusterCas;
 import io.seedmatic.rke2lab.clusterpki.core.internal.ClusterCaGenerator;
 import io.seedmatic.rke2lab.clusterpki.core.internal.SopsRecipients;
-import io.seedmatic.rke2lab.manifests.contract.SshToAgeConverter;
+import io.seedmatic.rke2lab.ndh.contract.ClusterAgeIdentity;
 import io.seedmatic.rke2lab.ndh.contract.NdhKeystoreCatalog;
 import io.seedmatic.rke2lab.ndh.contract.NdhKeystoreReader;
 import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
@@ -33,33 +33,32 @@ import java.util.stream.Collectors;
  * with:
  *
  * <ol>
- *   <li>{@link NdhKeystoreReader} → the {@code mammoth-skate-tls} root (cert + key) and the {@code
- *       rke2-cluster} SSH key;
+ *   <li>{@link NdhKeystoreReader} → the {@code mammoth-skate-tls} root (cert + key);
  *   <li>{@link ClusterCaGenerator} → the eleven-key node bundle ({@code fileName -> PEM});
  *   <li>render it to YAML (literal block scalars) and seal it via {@link SopsEncryptor} for the
  *       {@link SopsRecipients} — the node consumes the sops envelope via sops-nix;
- *   <li>{@link SshToAgeConverter} on the {@code rke2-cluster} key → the cluster age identity.
+ *   <li>{@link ClusterAgeIdentity} → the cluster's age identity, {@code rke2lab-cluster-age-<n>},
+ *       handed over by the operator on a file descriptor.
  * </ol>
  *
- * <p>The {@code mammoth-skate-tls} / {@code rke2-cluster} names are cluster-pki's semantic choice
- * of which inventory entries to read (the reader is name-generic). Nothing is written to disk: the
- * cleartext bundle is piped straight into sops, and only the sealed forms leave as a {@link
- * SealedClusterPki}. Called ONCE per cluster — the scion's idempotency gate (a cellar hit) skips it
- * on a re-grow, so the CA stays stable. See
- * docs/architecture/cluster-api/deterministic-cluster-access.adoc.
+ * <p>The {@code mammoth-skate-tls} name is cluster-pki's semantic choice of which inventory entry
+ * to read (the reader is name-generic). Nothing is written to disk: the cleartext bundle is piped
+ * straight into sops, and only the sealed forms leave as a {@link SealedClusterPki}. Called ONCE
+ * per cluster — the scion's idempotency gate (a cellar hit) skips it on a re-grow, so the CA stays
+ * stable. See docs/architecture/cluster-api/deterministic-cluster-access.adoc.
  */
 public final class ClusterSeal {
 
   private static final SeedCodec CODEC = new SeedCodec();
 
   private final NdhKeystoreReader keystore;
-  private final SshToAgeConverter sshToAge;
+  private final ClusterAgeIdentity clusterAge;
   private final SopsEncryptor encryptor;
 
   public ClusterSeal(
-      NdhKeystoreReader keystore, SshToAgeConverter sshToAge, SopsEncryptor encryptor) {
+      NdhKeystoreReader keystore, ClusterAgeIdentity clusterAge, SopsEncryptor encryptor) {
     this.keystore = keystore;
-    this.sshToAge = sshToAge;
+    this.clusterAge = clusterAge;
     this.encryptor = encryptor;
   }
 
@@ -75,8 +74,7 @@ public final class ClusterSeal {
             timestamp);
     final LinkedHashMap<String, String> bundle = caSet.nodeBundle();
     final String sealed = encryptor.encryptYaml(renderYaml(bundle), recipients);
-    final String ageIdentity =
-        sshToAge.toAgeKey(keystore.sshPrivate(NdhKeystoreCatalog.CLUSTER_SSH_KEY.entryName()));
+    final String ageIdentity = clusterAge.identity();
 
     // The operator's admin creds: an admin clientAuth leaf minted from the client-ca just
     // generated,

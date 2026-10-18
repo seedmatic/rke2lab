@@ -44,8 +44,8 @@ shipped shape is a *split by realm*, and every mention of "the host `Cellar` imp
   designed `SeedRunLedger`/`SeedRunLedgerExtension` (never built under those names).
 
 Sensitivity is honoured OSGi-side (`CodecCellar`/`ScenarioCellar` seal a `SEALED` value through the
-`CellarCipher` — `PassphraseCellarCipher` mono stand-in, or `AgeCellarCipher` in `cellar-cipher-age` when
-provisioned — BEFORE the payload crosses), so `PulumiCellar` persists only the opaque, MAC-bound coquille.
+`CellarCipher` — always the built-in `PassphraseCellarCipher` (mono); no bundle provides another —
+BEFORE the payload crosses), so `PulumiCellar` persists only the opaque, MAC-bound coquille.
 See link:../atlas/cellar-secrets.adoc[cellar-secrets] for the clean/smudge vision.
 
 The implementation plan at the end (§ <<plan>>) is the HISTORICAL record of how this shipped; the fusion

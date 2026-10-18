@@ -20,7 +20,7 @@ import io.seedmatic.rke2lab.clusterpki.contract.WorkloadAdminCredentials;
 import io.seedmatic.rke2lab.clusterpki.contract.WorkloadClusterCas;
 import io.seedmatic.rke2lab.clusterpki.core.ClusterSeal;
 import io.seedmatic.rke2lab.clusterpki.core.SealedClusterPki;
-import io.seedmatic.rke2lab.manifests.contract.SshToAgeConverter;
+import io.seedmatic.rke2lab.ndh.contract.ClusterAgeIdentity;
 import io.seedmatic.rke2lab.ndh.contract.NdhKeystoreReader;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.CellarReceiver;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.InputReceiver;
@@ -54,12 +54,14 @@ import org.junit.jupiter.api.extension.RegisterExtension;
  * so the decryption key never rests in the clear). The G/W/T rule holds: the WHEN fabricates, the
  * THEN seals to the cellar.
  *
- * <p>It takes NO host input — {@link ClusterSeal} reads {@code keys.yaml} / {@code .sops.yaml}
- * in-container. The two external seams are {@code @OsgiService}-injected from THIS bundle's
- * registry ({@link SshToAgeConverter}, realised by ssh-to-age-edge; {@link SopsEncryptor}, by
- * sops-edge) and handed to {@code ClusterSeal} (instance-passing). The seal is a pure computation
- * (crypto + local tool reads), so it runs in both preview and live; the cellar routes the store
- * (pre-reserve vs conserve). See docs/architecture/cluster-api/deterministic-cluster-access.adoc.
+ * <p>It takes NO host input through the membrane — {@link ClusterSeal} reads {@code keys.yaml} /
+ * {@code .sops.yaml} in-container, and the cluster's age identity from the descriptor the operator
+ * opened. Its seams are {@code @OsgiService}-injected from THIS bundle's registry ({@link
+ * ClusterAgeIdentity} and {@link NdhKeystoreReader}, realised by ndh-core; {@link SopsEncryptor},
+ * by sops-edge) and handed to {@code ClusterSeal} (instance-passing). The seal is a pure
+ * computation (crypto + local tool reads), so it runs in both preview and live; the cellar routes
+ * the store (pre-reserve vs conserve). See
+ * docs/architecture/cluster-api/deterministic-cluster-access.adoc.
  */
 @SeedScenario
 public class ClusterPkiSealScenario
@@ -94,7 +96,7 @@ public class ClusterPkiSealScenario
   /** The collaborators the seal drives — injected from THIS bundle's registry. */
   @OsgiService private Optional<NdhKeystoreReader> keystore = Optional.empty();
 
-  @OsgiService private Optional<SshToAgeConverter> sshToAge = Optional.empty();
+  @OsgiService private Optional<ClusterAgeIdentity> clusterAge = Optional.empty();
 
   @OsgiService private Optional<SopsEncryptor> encryptor = Optional.empty();
 
@@ -129,7 +131,7 @@ public class ClusterPkiSealScenario
             plot,
             tx,
             keystore.orElseThrow(() -> new IllegalStateException("no NdhKeystoreReader")),
-            sshToAge.orElseThrow(() -> new IllegalStateException("no SshToAgeConverter edge")),
+            clusterAge.orElseThrow(() -> new IllegalStateException("no ClusterAgeIdentity")),
             encryptor.orElseThrow(() -> new IllegalStateException("no SopsEncryptor edge")),
             decryptor.orElseThrow(() -> new IllegalStateException("no SopsDecryptor edge")),
             workloadClusters);
@@ -177,11 +179,11 @@ public class ClusterPkiSealScenario
         @Hidden Parcel parcel,
         @Hidden Cellar cellar,
         @Hidden NdhKeystoreReader keystore,
-        @Hidden SshToAgeConverter sshToAge,
+        @Hidden ClusterAgeIdentity clusterAge,
         @Hidden SopsEncryptor encryptor,
         @Hidden SopsDecryptor decryptor,
         @Hidden List<String> workloadClusters) {
-      final ClusterSeal seal = new ClusterSeal(keystore, sshToAge, encryptor);
+      final ClusterSeal seal = new ClusterSeal(keystore, clusterAge, encryptor);
       final Optional<ClusterCaBundle> existing =
           cellar.fetch(parcel, ClusterPkiCoordinate.CLUSTER_CA_BUNDLE, ClusterCaBundle.class);
       if (existing.isEmpty()) {

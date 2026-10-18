@@ -152,14 +152,6 @@
       <artifactId>netplan-contract</artifactId>
       <scope>test</scope>
     </dependency>
-    <!-- ssh-to-age-edge: DefaultManifestSynthesisService has a MANDATORY @Reference SshToAgeConverter,
-         so its @Component only activates when the provider bundle is present. The scion drives
-         synthesis, so unlike manifests-core-test (which does not) this proof needs it. -->
-    <dependency>
-      <groupId>io.seedmatic.rke2lab</groupId>
-      <artifactId>ssh-to-age-edge</artifactId>
-      <scope>test</scope>
-    </dependency>
     <!-- RenderDeliveryTest drives the render's delivery end to end OUT of the container, on real parts:
          the jgit heads (worktree-core), the real sops (sops-edge) and jgit to read the local bare. -->
     <dependency>

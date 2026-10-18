@@ -96,7 +96,7 @@ Whether the edge must publish a capability *depends on the consumer's world*:
 |===
 | Consumer world | How the door is found
 
-| *OSGi world* (e.g. ssh-to-age's consumer)
+| *OSGi world* (e.g. sops-edge's consumers)
 | The edge MUST publish a capability, else no bundle finds it without a coupling `new`. Two strengths:
   *(a) service* — `@Component` provides `osgi.service` keyed on the port type, `@Reference` binds it;
   *runtime, soft* (no edge → component just stays unsatisfied). *(b) resolution capability* —
@@ -114,9 +114,9 @@ Whether the edge must publish a capability *depends on the consumer's world*:
 
 === The world is DERIVED from the consumer, not a property of the edge
 
-A correction worth stating loudly: an edge's world *follows the world of whoever calls it*. ssh-to-age
-is the first external edge in the OSGi world for one reason — its consumer
-(`DefaultManifestSynthesisService`) is a `@Component`. pulumi/dbus are host because their callers
+A correction worth stating loudly: an edge's world *follows the world of whoever calls it*. sops-edge
+lives in the OSGi world for one reason — its consumers (cluster-pki's `ClusterSeal`, manifests-core's
+`RenderedSecretSeal`) run in OSGi bundles. pulumi/dbus are host because their callers
 (`DoctorAssembly`, the readiness gates) are host (non-playability is only the *secondary* reason their
 impl could not move even if a caller did). So "which world?" is never answered by looking at the edge
 alone; look at who requires it.
@@ -328,7 +328,7 @@ Consequences, both observed on the real reactor:
 * There is *no `pulumi-port`*. The ports `pulumi-edge` implements — `SnapshotSource`,
   `InterventionLedgerWriter` — live in `doctor-contract`, because *doctor* is the consumer that needs to read
   state and write a ledger. Nobody ever created a port named after the edge.
-* A pure point of contact with *no domain* (ssh-to-age: it reasons over nothing, it just converts by
+* A pure point of contact with *no domain* (sops: it reasons over nothing, it just seals by
   shelling a tool) gets *no `-core` and no port of its own* — only an `-edge`, plus a port owned by
   whoever calls it.
 
@@ -599,51 +599,43 @@ flowchart LR
 Three modules: `doctor-core` (reasons), `doctor-contract` (owns the two contracts, by concern), `pulumi-edge`
 (implements them, touches the backend). No `pulumi-port`. One edge, two ports, both owned by doctor.
 
-== Worked example B — ssh-to-age-edge (a point of contact, NO domain)
+== Worked example B — sops-edge (a point of contact, NO domain)
 
-ssh-to-age reasons over nothing: it converts a key by shelling an external tool. There is no residual
+sops reasons over nothing: it seals a plaintext by shelling an external tool. There is no residual
 computation if you remove the tool — so *no `-core`, and no port named after it*. The contract belongs to
-the *consumer* that needs the age key.
+the *consumer* that needs the sealing.
 
-Per the prerequisite design, the synthesis unit must not *fetch* the key mid-synthesis. The consumer is
-`DefaultManifestSynthesisService` — the `@Component` (OSGi world, our lock): it runs a *pre-synthesis
-pass* that calls the converter and *binds the age key into the profile-bearing context*, the same channel
-that already carries `IncusIdentityMaterial` / `BootstrapIdentity`. That channel is
-`ManifestSynthesisContext` (the request/ThreadLocal-scoped profile holder) — NOT `ManifestsUnitContext`,
-which is the per-unit record (`chart`, `domainId`, `resolver`) and carries no profile. `doSynthesize`
-then only reads the key from the context and builds the Secret:
+The consumer is cluster-pki: `ClusterSeal` seals the node bundle to the cluster's age recipients, and
+manifests-core's `RenderedSecretSeal` seals rendered Secrets the same way. Both call `SopsEncryptor`
+(and its sibling `SopsDecryptor`), which `cluster-pki-contract` owns. `sops-edge` implements them as
+`@Component`s (`SopsProcessEncryptor`, `SopsProcessDecryptor`) and owns only the arguments; the one sops
+runner, `sops-process`, owns the binary, the failure message and the stderr opt-in:
 
 [mermaid]
 ....
 flowchart TB
-  svc["DefaultManifestSynthesisService<br/>@Component (OSGi) — the CONSUMER<br/>pre-synthesis pass"]
-  cport["consumer-port<br/>SshToAgeConverter (ssh-key → age-key)<br/>(owned by the consumer)"]
-  sedge["ssh-to-age-edge<br/>ProcessBuilder('ssh-to-age')<br/>(implements, owns no port)"]
-  tool["ssh-to-age CLI"]
-  ctx["ManifestSynthesisContext<br/>profile holder (request/ThreadLocal)<br/>carries age key, like IncusIdentityMaterial"]
-  unit["SopsAgeSecretManifestsUnit<br/>doSynthesize — pure, reads the key, builds the Secret"]
-  svc -->|"calls"| cport
+  seal["ClusterSeal (cluster-pki-core)<br/>RenderedSecretSeal (manifests-core)<br/>the CONSUMERS"]
+  cport["consumer-port<br/>SopsEncryptor / SopsDecryptor<br/>(owned by cluster-pki-contract)"]
+  sedge["sops-edge<br/>SopsProcessEncryptor / SopsProcessDecryptor<br/>(implements, owns no port)"]
+  proc["sops-process<br/>the one sops runner"]
+  tool["sops CLI"]
+  seal -->|"calls"| cport
   sedge -.->|"implements"| cport
-  sedge -->|"contacts"| tool
-  svc -->|"binds age key (pre-synthesis)"| ctx
-  ctx -->|"prerequisite input"| unit
+  sedge -->|"runs through"| proc
+  proc -->|"contacts"| tool
   classDef d fill:#dfd,stroke:#2a2,stroke-width:2px;
   classDef p fill:#fde,stroke:#a58,stroke-width:2px;
   classDef e fill:#eef,stroke:#88a,stroke-width:2px;
   classDef w fill:#eee,stroke:#999,stroke-width:1px;
-  classDef x fill:#ffd,stroke:#aa2,stroke-width:1px;
-  class svc d;
+  class seal d;
   class cport p;
-  class sedge e;
+  class sedge,proc e;
   class tool w;
-  class ctx,unit x;
 ....
 
-Two modules for the contact (`ssh-to-age-edge` + the consumer's port), *zero* `-core`, *zero*
-`ssh-to-age-port`. And the unit goes pure: synthesis *takes* the key as a prerequisite, it does not go
-*fetch* it. (This edge is also the first one materialised in the OSGi world — ssh-to-age is playable, so
-the edge need not be pushed to host; materialising it is about making the system boundary explicit, not
-about playability.)
+The contact is `sops-edge` + `sops-process` + the consumer's port: *zero* `-core`, *zero* `sops-port`.
+(sops is playable, so the edge lives in the OSGi world beside its consumers; materialising it as a bundle
+is about making the system boundary explicit, not about playability.)
 
 == Worked example C — cluster (a domain that CONTRIBUTES a bridge to a host)
 
@@ -661,7 +653,7 @@ real-world coupling; the question is only where it lives. Peer-to-peer says: in 
 contribution, never in the executable.
 
 It carries a vocabulary *about the cluster* the consumer reads but does not own (the readiness phases),
-so unlike ssh-to-age it *does* get a port — symmetric with systemd, not with pulumi:
+so unlike sops it *does* get a port — symmetric with systemd, not with pulumi:
 
 * *cluster-contract* — `ClusterReadinessProbe` (the contact seam the edge implements), purified to a pure
   `ClusterProbeRequest` record (no host `BootstrapConfig`); `ClusterReadinessPhase` (today it *squats*
@@ -740,7 +732,7 @@ transitionally mixed; that is accepted, not a half-migration left to rot.
 | `<target>-edge`. Implements a consumer's port. Owns NO port, has NO `-core` unless it also carries real
   domain logic (it usually doesn't).
 
-| A pure point of contact with no reasoning (ssh-to-age)
+| A pure point of contact with no reasoning (sops)
 | Just the `<target>-edge` + a port owned by its consumer. No `-core`, no port of its own.
 
 | A domain whose meaning *presupposes another domain's fact* (cluster readiness presupposes systemd)

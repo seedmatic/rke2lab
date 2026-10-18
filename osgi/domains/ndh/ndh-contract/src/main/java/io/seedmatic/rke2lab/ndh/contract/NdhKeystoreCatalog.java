@@ -17,10 +17,6 @@ package io.seedmatic.rke2lab.ndh.contract;
  * staging law lets one export only records, enums, sealed ADTs and interfaces. That is the better
  * shape anyway — a caller passes a value the compiler knows, and {@link #entryName()} is the only
  * place a literal lives.
- *
- * <p>⚠️ {@code "rke2-cluster"} also spells an AS name in {@code ClusterAsn.RKE2_CLUSTER}. That is a
- * different concept sharing a spelling — it names an autonomous system, not an inventory entry — so
- * it does NOT belong here and must not be migrated to it.
  */
 public enum NdhKeystoreCatalog {
 
@@ -38,13 +34,6 @@ public enum NdhKeystoreCatalog {
    * pinning its leaf.
    */
   TLS_AUTHORITY("mammoth-skate-tls"),
-
-  /**
-   * The SSH key entry the cluster's age identity is derived from — {@code keys.rke2-cluster}. One
-   * entry, three consumers: the cellar seals to it, Flux's sops-age identity is derived from it,
-   * and cluster-pki seals the node bundle for it.
-   */
-  CLUSTER_SSH_KEY("rke2-cluster"),
 
   /**
    * The SSH key the rke2lab bots sign their commits with — {@code keys.rke2lab-bot-signing}: the

@@ -4,6 +4,15 @@
 
 [NOTE]
 ====
+*2026-10-18:* `ssh-to-age-edge` (named in the edge inventory below) was deleted with Roles × Keys S5; this record keeps its past
+wording. Since then the cluster's age identity no longer comes from the `rke2-cluster` SSH key: it is
+`rke2lab-cluster-age-<n>`, a standalone age identity from the operator's keyring, read in OSGi through
+`ClusterAgeIdentity` (ndh-contract). sops-edge and dbus-systemd-edge remain the examples of top-level
+external-tool edges.
+====
+
+[NOTE]
+====
 *Status:* SHIPPED on `feature/pulumi-edge` (2026-06-21), integrable into `design/pre-integration`.
 The first concrete realisation of an *external edge* per the
 link:../patterns/frontier-playability-model.adoc[frontier-playability model]. Build GREEN on the

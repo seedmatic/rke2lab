@@ -14,6 +14,9 @@ Pulumi-free `controlplane/` files into domain services (port + core + fake), in 
 config→policy→readiness→…". That framing was wrong and was abandoned: two increments built on it
 (config, policy) were reverted (commit `8eec94a`). The correct model — and what actually shipped — is
 below.
+
+*Updated 2026-10-18:* the ssh-to-age edge was deleted with Roles × Keys S5 (the cluster's age identity
+is now handed over from the operator's keyring through `ClusterAgeIdentity`); sops-edge takes its row.
 ====
 
 == The criterion — what migrates, learned the hard way
@@ -46,7 +49,7 @@ Every extraction is one change that ships together:
 . a boot proof asserts the embedded edge resolves and SCR publishes the contact typed across the
   seam.
 
-The pattern has two shapes: *bare `ProcessBuilder`* (incus, auth, cluster, ssh-to-age — pure JDK, no
+The pattern has two shapes: *bare `ProcessBuilder`* (incus, auth, cluster, sops — pure JDK, no
 embedded jar) and *library-backed* (bbox — a third-party client made an OSGi bundle and imported, the
 library vocabulary translated to a home vocabulary at the edge so no library type crosses the seam).
 
@@ -64,10 +67,10 @@ existing gateway suffices; the sweep added no new machinery.
 [cols="1,2,2,1",options="header"]
 |===
 | Domain | Port contact | Edge `@Component` (external contact) | Spec
-| ssh-to-age
-| the age-key conversion verb
-| `ProcessBuilderSshToAgeConverter` (`ssh-to-age`)
-| link:ssh-to-age-edge-handoff.adoc[handoff]
+| cluster-pki (sops)
+| `SopsEncryptor` / `SopsDecryptor`
+| `SopsProcessEncryptor` / `SopsProcessDecryptor` (`sops`, through `sops-process`)
+| link:../patterns/port-edge-domain-ownership.adoc[example B]
 | systemd
 | `SystemdRuntimeProbe`
 | `DbusSystemdProbe` (dbus socket)

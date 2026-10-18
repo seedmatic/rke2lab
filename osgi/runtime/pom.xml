@@ -28,7 +28,6 @@
     <module>scenario-probe-test</module>
     <module>victools-wrap</module>
     <module>fabric8-wrap</module>
-    <module>jagged-wrap</module>
     <module>junit-testkit</module>
     <module>bench</module>
   </modules>

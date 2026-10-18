@@ -14,7 +14,7 @@
   <description>The cluster-pki seal scion: the in-container @SeedScenario the host sows once per
     cluster (the crossing before provisioning). It is idempotent on a cellar hit (a prior grow's
     bundle keeps the CA stable across re-grows), drives ClusterSeal (BouncyCastle generate + sops
-    seal + ssh-to-age), and files ClusterCaBundle (PLAIN) + ClusterAgeKey (SEALED) at the
+    seal + the cluster's age identity), and files ClusterCaBundle (PLAIN) + ClusterAgeKey (SEALED) at the
     ClusterPkiCoordinate for the host GROW to pose over devlxd. ClusterPkiRunbookHandler is the
     broker's host-to-scion door; the scion takes NO input (it reads keys.yaml / .sops.yaml
     in-container), so the handler's seedFrom is a no-op.</description>
@@ -28,12 +28,7 @@
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>cluster-pki-core</artifactId>
     </dependency>
-    <!-- SshToAgeConverter — @OsgiService-injected, handed to ClusterSeal (instance-passing). -->
-    <dependency>
-      <groupId>io.seedmatic.rke2lab</groupId>
-      <artifactId>manifests-contract</artifactId>
-    </dependency>
-    <!-- NdhKeystoreReader — @OsgiService-injected, handed to ClusterSeal (instance-passing). -->
+    <!-- NdhKeystoreReader + ClusterAgeIdentity — @OsgiService-injected, handed to ClusterSeal. -->
     <dependency>
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>ndh-contract</artifactId>

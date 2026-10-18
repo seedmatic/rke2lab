@@ -195,15 +195,14 @@ public class ScenarioCellarExtension
   }
 
   /**
-   * Resolve the run's {@link CellarCipher} — the age impl where {@code cellar-cipher-age} is
-   * provisioned, else the passphrase stand-in. NON-BLOCKING and OPTIONAL, unlike {@link #resolve}:
-   * the cipher is absent in every world that does not stage the age bundle (all the isolated
-   * tests), so a blocking await + throw would stall each root run for the timeout and then fail. A
-   * missing cipher is legitimate — the built-in {@link PassphraseCellarCipher} fills in. Dual-realm
-   * by the same discriminant as {@link #resolve}: a host-flat root looks up through the world
-   * connection's context, an in-container scion through its own registry. The age
-   * {@code @Component} is {@code immediate}, so it stays active for its bundle's whole life — a
-   * bare get/unget here hands back a live instance, not a use-count-deactivated one.
+   * Resolve the run's {@link CellarCipher} — one a bundle provides, else the passphrase stand-in.
+   * NON-BLOCKING and OPTIONAL, unlike {@link #resolve}: no bundle provides a cipher today (the age
+   * one was retired with the cluster's SSH-derived key), so a blocking await + throw would stall
+   * each root run for the timeout and then fail. A missing cipher is legitimate — the built-in
+   * {@link PassphraseCellarCipher} fills in. Dual-realm by the same discriminant as {@link
+   * #resolve}: a host-flat root looks up through the world connection's context, an in-container
+   * scion through its own registry. A provider must be an {@code immediate} {@code @Component}, so
+   * that a bare get/unget here hands back a live instance, not a use-count-deactivated one.
    */
   private static CellarCipher resolveCipher(ExtensionContext context) {
     final OsgiConnection connection =
