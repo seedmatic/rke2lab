@@ -449,7 +449,7 @@ The second consumer of the fabric's Incus containers. The target is ndh
 the operator on 2026-10-15) supersedes the one common cache and the one fill job this section first
 described: **each metalspace builds from revisions and pushes into its own cache container, and every
 machine reads both**. Since 2026-10-17 (the operator, after consulting security and nix), **nothing of
-ours is public** and **a cluster builds through its metalspace's cluster builder**, which holds no
+ours is public** and **a cluster builds through its own cluster builder**, which holds no
 attic token (ndh spec, _No public cache of ours_ and _The clusters build through a cluster builder_).
 This section carries the delta from today. Everything marked
 *measured* was read on 2026-10-10 from store paths that already existed, or on 2026-10-11 in an
@@ -469,7 +469,7 @@ configuration, and each one rebuilds it.**
 Reads: the BEFORE has every host building for itself and a daemon publishing whatever entered any
 store, a worktree copy included. The AFTER has each metalspace building from revisions only, and
 pushing into its own cache container, which every machine reads; nothing of ours is public. A
-cluster's nodes and workloads delegate every build to their metalspace's cluster builder, which reads
+cluster's nodes and workloads delegate every build to their cluster's own builder, which reads
 upstream only. Each private cache keeps the active session only, and the store tiers each inherit the
 immutable EROFS base and substitute only their delta.
 
@@ -488,7 +488,7 @@ flowchart TB
     direction TB
     a1["each metalspace builds — its access point, the darwin host and the NixOS guest, revisions only"]:::ok
     a3["private caches only — one cache container per metalspace on its NixOS guest, its own key, read by every machine, the session only"]:::ok
-    a2["a cluster builder per metalspace — its own Incus container, no attic token: the nodes and workloads delegate every build"]:::ok
+    a2["a builder per cluster — its own LXC image and Incus project, no attic token, the nodes untrusted: they delegate every build"]:::ok
     a4["tiers — the NixOS guest's EROFS, then Incus containers and cluster nodes, then pods — each substitutes its delta"]:::ok
     a1 --- a3 --- a2 --- a4
   end
@@ -505,7 +505,7 @@ The cluster nodes are Incus containers in the same Incus cluster as the cache co
 metalspace). So the mechanism ndh builds for its own Incus containers is the one the
 nodes **inherit**: a `/nix/store` that is an overlay on the NixOS guest's EROFS layers, a lower DB shipped
 with the layers, and an upper that receives only the node's delta. The clusters hold **no attic
-token**: they read upstream (cache.nixos.org, flox) and delegate every build to their metalspace's
+token**: they read upstream (cache.nixos.org, flox) and delegate every build to their cluster's
 **cluster builder**, its own Incus container, never the NixOS guest. Our packages they consume are
 locked by flake ref, never by a bare store path, so the builder can build them.
 
@@ -553,12 +553,13 @@ flowchart TB
   c4["c4 · a watch-store on both machines of each access point, into its own metalspace's cache — a write token each"]
   c5["c5 · each metalspace builds from revisions, with its own fetcher cache"]
   c6["c6 · no public cache — nxmatic.cachix.org leaves the trust config, the publication code is deleted"]
-  c7["c7 · a cluster builder per metalspace — its own Incus container, no attic token (a chantier of its own)"]
+  c7["c7a · the cluster builder proven — ndh module, untrusted endpoint, tests on the probe (B4)"]:::done
+  c7b["c7b · a builder per cluster at the cold start — image beside node-base, own Incus project, nodes' builders entry"]
   c8["c8 · pod tier — decide its lower"]:::later
   c9["c9 · the cachix account emptied — the operator's gestures"]
-  c0 --> c1 --> c2 --> c3 --> c4 --> c5 --> c7
+  c0 --> c1 --> c2 --> c3 --> c4 --> c5 --> c7 --> c7b
   c2 --> c6 --> c9
-  c7 -.-> c8
+  c7b -.-> c8
 
   classDef done fill:#d9f2e0,stroke:#2d7a4b,stroke-width:2px;
   classDef later fill:#f3f4f6,stroke:#9ca3af,stroke-dasharray:4 3;
@@ -630,24 +631,46 @@ channel); `.secrets` carries a cachix token (_cellar-secrets_). These go with c6
 same with or without `nxmatic.cachix.org`**, which serves the node-base nothing today — removing it
 costs no rebuild
 
-| c7 — a cluster builder per metalspace
-| the nodes take the EROFS layers as lowers, substitute from upstream, and delegate every build to
-their metalspace's **cluster builder**: its own unprivileged Incus container (not the NixOS guest, so
-a sandbox escape from a node-supplied derivation reaches none of the access point's secrets), **no
-attic token**, its keys born inside and trusted by that cluster's nodes only, an OpenSSH account
-`cluster-build` forced to `nix-daemon --stdio`. The node-base nix configuration carries
-`builders = ssh-ng://…` (generated from the builder role; arm64 only, so `aarch64-linux` builders
-only), `max-jobs = 0`, `builders-use-substitutes = true`, `require-sigs = true`, and the NRI plugin
-mounts the same for pods. Our packages are locked by flake ref, never a bare store path
-| ⚠️ *design only*: measured 2026-10-10, nothing declares `builders`, `max-jobs` or
-`builders-use-substitutes`, neither `nixos/*.nix` nor flox-nri-plugin. That configuration is
-**rke2lab's follow-up**; the cluster builder is a chantier of its own (🖥️ + ❄️). Test 1 decides
-whether `cluster-build` stays an untrusted user (nix 2.34.9's `build-remote` copies the `.drv`
-closure and asks for `buildPaths`); test 0 measures that a node does not rebuild the world.
-*Measured 2026-10-17 on the node-base* (❄️): the 99 builds are configuration glue, our own Go
-packages and their images (flox-nri-plugin, flox-controller, the carriers), and upstream's static
-aarch64-musl security wrapper set, which cache.nixos.org does not serve: minutes for the Go builds,
-about 10–20 minutes for the musl set, once per revision, cachix or not
+| c7a — the cluster builder, proven (B4)
+| its shape, decided by the operator on 2026-10-18: an **LXC image of its own**, unprivileged, its store
+the image's rootfs, which Incus idmaps (not ndh's empty-rootfs containers, whose store the guest composes
+and an unprivileged container cannot write). ndh defines it, `nixosModules.cluster-builder` with its
+settings check; the account `cluster-build` is admitted by a user certificate at its principal only and
+forced to `nix-daemon --stdio --force-untrusted --process-ops`, with `daemon-trust-override` and
+`mounted-ssh-store` in that container's nix.conf only; `sandbox = true` and `sandbox-fallback = false`, no
+client substituter, no onward builder, `DisableForwarding`; its nix key generated inside at first start, its
+resources declared once. It never builds bringup: that is ndh's, for the fabric's bootstrap
+| *measured 2026-10-18 on `incus-probe`* (nix 2.34.9, ❄️'s verdict): **`cluster-build` is trusted
+nowhere**. Tests 4, 1, 2, 3, 5, 6, 7 pass: `Trusted: 0`, a nonce derivation built on the builder and signed
+by its key alone, unsigned inputs and imports refused, substitution through the builder's key alone,
+`sandbox false` and a client substituter without effect. T4 first found a real defect (sshd's
+`StrictModes` refused a principals file linked into `/nix/store`), fixed. **Test 0 passes with a residue**:
+`rke2-node-base` (rke2lab `bbaa3be3`) would make its builder build 129 derivations, configuration glue and our
+own packages plus 7 nixpkgs derivations cache.nixos.org does not serve for aarch64-linux (the static musl set of
+NixOS's security wrappers), rebuilt once per GC by a builder without attic.
+⚠️ **A design finding, to settle before production** (❄️, read in nix 2.34.9's `makeValidityRegistration`):
+a store booted from an image is registered by `nix-store --load-db`, whose format keeps no content address and
+no signature. So every path a node has from its image is, to an untrusted builder, an unsigned input-addressed
+path, refused even when it is a pure source; a node delegating a closure that holds one is refused (test 1's
+case). Paths fetched or built after boot keep theirs
+
+| c7b — a builder per cluster, at the cold start
+| rke2lab's **cold start** creates and destroys it with its cluster (the operator, 2026-10-18): its image
+built beside `rke2-node-base`'s from ndh's module, launched with its `instanceConfig` in **its own Incus
+project `rke2lab-<cluster>-build`** (not `rke2lab`, where CAPN's identity can `exec` into and `file pull`
+from any instance and would reach its key), on the cluster's `vmnet-<role>` at an address reserved in the
+network blueprint, its devices inline, marks `user.rke2lab.*`; its public registered in the cluster's cellar.
+The node-base nix configuration carries `builders = ssh-ng://…` (arm64 only), `max-jobs = 0`,
+`builders-use-substitutes = true`, `require-sigs = true`. A pod delegates through its **node's** nix-daemon
+socket, which the NRI plugin mounts (its builds go to the node's daemon, which forwards them): a pod never holds
+the node's builder credential (🛡️). Our
+packages are locked by flake ref, never a bare store path
+| ⚠️ *not coded*: nothing declares `builders`, `max-jobs` or `builders-use-substitutes` yet, neither
+`nixos/*.nix` nor flox-nri-plugin. Before a second image lives in the cold start: the image GC must keep the
+images the desired instances reference (it keeps node-base's only today, 🖥️). Test 0's design
+finding is settled first (the builder substitutes those paths from a signing cache, the node image keeps its
+content addresses and signatures, or a node delegates only what it fetched or built), or a node cannot hand its
+builder a closure holding a path of its own image
 
 | c9 — the cachix account
 | the operator revokes every cachix push token and purges or deletes the `nxmatic` cache, which still
@@ -683,8 +706,10 @@ fix_), and upstream of it, no plaintext on disk in a flake tree.
 
 | What stays out of reach?
 | the size of the package outputs and of the node and env closures, since none is realised in any
-store today (test 0 measures what a cluster would build); the cluster builder's trust form, which its
-test 1 decides; and the pod tier's lower, which is rke2lab's decision.
+store today; what a node would make its builder build, measured at 129 by test 0 (a small identified residue), and how a
+node hands its builder paths of its own image, which an untrusted builder refuses unsigned (the design finding);
+and the pod tier's lower, which is rke2lab's decision. The cluster builder's trust form is settled:
+untrusted, proven on 2026-10-18.
 |===
 
 == Related documentation
