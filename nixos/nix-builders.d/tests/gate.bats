@@ -3,7 +3,8 @@
 # The rke2lab-nix-builders gate, as built (the same factory the node module uses), on a throwaway
 # DIR. Every refusal is checked by the state it leaves: no builders.conf, a stale one removed too, so
 # a refused description can never leave the node delegating to a builder nobody checked. The sandbox
-# cannot chown to root, so OWNER is the test's own uid, except where the root default is the point.
+# cannot chown to root, so OWNER is the test's own uid, except where the root default is the point;
+# the ancestors may also be the sandbox's unmapped root (65534).
 
 bats_require_minimum_version 1.5.0
 
@@ -19,7 +20,7 @@ setup() {
 }
 
 line() { printf '%s aarch64-linux %s 4 1 - - %s\n' "${1:-ssh-ng://cluster-build@builder.bioskop}" "${2:-$key}" "${3:-$hostKey}"; }
-gate() { DIR="$dir" REQUIRED="${REQUIRED:-0}" OWNER="$owner" run --separate-stderr "$GATE"; }
+gate() { DIR="$dir" REQUIRED="${REQUIRED:-0}" OWNER="$owner" ANCESTOR_UIDS="0 65534 $(id -u)" run --separate-stderr "$GATE"; }
 stale() { printf 'max-jobs = 0\nbuilders = @%s/machines\n' "$dir" >"$dir/builders.conf"; }
 no_conf() { [ ! -e "$dir/builders.conf" ]; }
 
@@ -174,4 +175,13 @@ builders-use-substitutes = true" ]
   [ "$status" -eq 1 ]
   no_conf
   [[ $stderr == *"the delegation directory"*"writable by group or others"* ]]
+}
+
+@test "an ancestor of the delegation directory writable by group or others is refused" {
+  stale
+  chmod 0777 "$BATS_TEST_TMPDIR"
+  gate
+  [ "$status" -eq 1 ]
+  no_conf
+  [[ $stderr == *"above $dir, is writable by group or others"* ]]
 }

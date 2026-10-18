@@ -14,12 +14,15 @@
 # certificate must be owned by root, not writable by group or others, and not symlinks.
 #
 # Env: DIR (default /var/lib/rke2lab/nix); REQUIRED=1 makes a missing description a refusal too;
-# OWNER (default 0) is the uid they must belong to, set only by the tests, which cannot chown.
+# OWNER (default 0) is the uid they must belong to, and ANCESTOR_UIDS (default 0) the uids $dir's
+# ancestors may belong to: both set only by the tests, which can neither chown nor own the sandbox's
+# / (an unmapped root, uid 65534 there).
 
 dir="${DIR:-/var/lib/rke2lab/nix}"
 machines="$dir/machines"
 conf="$dir/builders.conf"
 owner="${OWNER:-0}"
+ancestorUids="${ANCESTOR_UIDS:-0}"
 
 refuse() {
   rm -f "$conf"
@@ -38,9 +41,21 @@ guarded() {
   [[ -z $only || " $only " == *" $mode "* ]] || refuse "$what $path has mode $mode, not one of: $only"
 }
 
-# Even with no description: a writable $dir would let anyone drop the builders.conf nix includes.
-[[ -d $dir ]] || refuse "$dir is not a directory"
+# Even with no description: a writable $dir would let anyone drop the builders.conf nix includes,
+# and a writable ancestor would let them swap $dir for their own.
+[[ $dir == /* && -d $dir ]] || refuse "$dir is not an absolute directory"
 guarded "$dir" "the delegation directory"
+up="${dir%/*}"
+while :; do
+  above="${up:-/}"
+  [[ ! -L $above ]] || refuse "$above, above $dir, is a symlink"
+  meta="$(stat -c '%u %a' -- "$above")" || refuse "cannot stat $above, above $dir"
+  read -r uid mode <<<"$meta"
+  [[ " $ancestorUids " == *" $uid "* ]] || refuse "$above, above $dir, is owned by uid $uid"
+  (((8#$mode & 8#022) == 0)) || refuse "$above, above $dir, is writable by group or others (mode $mode)"
+  [[ -n $up ]] || break
+  up="${up%/*}"
+done
 
 if [[ ! -e $machines && ! -L $machines ]]; then
   rm -f "$conf"
