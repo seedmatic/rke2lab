@@ -14,9 +14,9 @@
 # certificate must be owned by root, not writable by group or others, and not symlinks.
 #
 # Env: DIR (default /var/lib/rke2lab/nix); REQUIRED=1 makes a missing description a refusal too;
-# OWNER (default 0) is the uid they must belong to, and ANCESTOR_UIDS (default 0) the uids $dir's
-# ancestors may belong to: both set only by the tests, which can neither chown nor own the sandbox's
-# / (an unmapped root, uid 65534 there).
+# OWNER is the uid they must belong to, and ANCESTOR_UIDS the uids $dir's ancestors may belong to:
+# the node's unit sets both to 0 explicitly (an eval assertion holds it), and only the tests widen
+# them, as they can neither chown nor own the sandbox's / (an unmapped root, uid 65534 there).
 
 dir="${DIR:-/var/lib/rke2lab/nix}"
 machines="$dir/machines"

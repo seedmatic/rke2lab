@@ -19,6 +19,7 @@
 let
   dir = "/var/lib/rke2lab/nix";
   gate = import ./nix-builders.d/package.nix { inherit pkgs; };
+  unit = config.systemd.services.rke2lab-nix-builders;
 in
 {
   options.rke2lab.nodeBuilders.required = lib.mkOption {
@@ -41,6 +42,12 @@ in
         assertion = config.nix.buildMachines == [ ] && !config.nix.distributedBuilds;
         message = "rke2lab node-base: the cluster builder is delivered at boot (nix-builders.nix); do not set nix.buildMachines or nix.distributedBuilds";
       }
+      # The gate's owners are explicit here, not its defaults, so nothing inherited or merged into the
+      # unit can widen them (OWNER and ANCESTOR_UIDS exist for the tests, which cannot chown).
+      {
+        assertion = unit.environment.OWNER == "0" && unit.environment.ANCESTOR_UIDS == "0";
+        message = "rke2lab node-base: rke2lab-nix-builders must run with OWNER=0 and ANCESTOR_UIDS=0";
+      }
     ];
 
     systemd.tmpfiles.rules = [ "d ${dir} 0755 root root -" ];
@@ -60,6 +67,8 @@ in
       wantedBy = [ "multi-user.target" ];
       environment = {
         DIR = dir;
+        OWNER = "0";
+        ANCESTOR_UIDS = "0";
         REQUIRED = if config.rke2lab.nodeBuilders.required then "1" else "0";
       };
       serviceConfig = {
