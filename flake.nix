@@ -925,7 +925,7 @@ USAGE
 
             # The pass-through args reach pulumi, and pulumi's output reaches a session when operations runs
             # the grow: a verbose, traced or log-flowing run writes the engine's internals, the program's
-            # inputs among them, where a session reads. Refused here (security, S5 review, 2026-10-18); the
+            # inputs among them, where a session reads (--otel-traces and --profiling export the same). Refused here (security, S5 review, 2026-10-18); the
             # operator who wants -v9 calls pulumi directly, and that log stays theirs.
             refuseLogging() {
               echo "error: $1 — the grow keeps pulumi's output plain; run pulumi yourself for that" >&2
@@ -935,7 +935,8 @@ USAGE
             for ((i = 0; i < ''${#passed[@]}; i++)); do
               arg="''${passed[i]}"
               case "$arg" in
-                --logflow | --logflow=* | --logtostderr | --logtostderr=* | --tracing | --tracing=*)
+                --logflow | --logflow=* | --logtostderr | --logtostderr=* | --tracing | --tracing=* | \
+                  --otel-traces | --otel-traces=* | --profiling | --profiling=*)
                   refuseLogging "$arg is refused"
                   ;;
                 -v | --verbose) level="''${passed[i + 1]:-}" ;;
@@ -949,8 +950,8 @@ USAGE
             # The debug switches pulumi and its providers read from the environment, scrubbed from the one
             # pulumi runs in, for the same reason.
             scrub=( -u PULUMI_DEBUG_GRPC -u PULUMI_DEBUG_COMMANDS -u TF_LOG -u TF_LOG_PATH )
-            for name in $(compgen -e); do
-              [[ $name == PULUMI_LOG* ]] && scrub+=( -u "$name" )
+            for name in ''${!PULUMI_LOG@}; do
+              scrub+=( -u "$name" )
             done
 
             # Pulumi project env (mirrors the flox env's [vars]); each
