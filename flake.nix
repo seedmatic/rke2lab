@@ -923,6 +923,36 @@ USAGE
               *) echo "error: unknown action '$action' (preview|up)" >&2; usage; exit 2 ;;
             esac
 
+            # The pass-through args reach pulumi, and pulumi's output reaches a session when operations runs
+            # the grow: a verbose, traced or log-flowing run writes the engine's internals, the program's
+            # inputs among them, where a session reads. Refused here (security, S5 review, 2026-10-18); the
+            # operator who wants -v9 calls pulumi directly, and that log stays theirs.
+            refuseLogging() {
+              echo "error: $1 — the grow keeps pulumi's output plain; run pulumi yourself for that" >&2
+              exit 2
+            }
+            passed=( "$@" )
+            for ((i = 0; i < ''${#passed[@]}; i++)); do
+              arg="''${passed[i]}"
+              case "$arg" in
+                --logflow | --logflow=* | --logtostderr | --logtostderr=* | --tracing | --tracing=*)
+                  refuseLogging "$arg is refused"
+                  ;;
+                -v | --verbose) level="''${passed[i + 1]:-}" ;;
+                -v=* | --verbose=*) level="''${arg#*=}" ;;
+                -v[0-9]*) level="''${arg#-v}" ;;
+                *) continue ;;
+              esac
+              [[ $level =~ ^[0-3]$ ]] || refuseLogging "$arg ''${level}: a verbosity above 3 is refused"
+            done
+
+            # The debug switches pulumi and its providers read from the environment, scrubbed from the one
+            # pulumi runs in, for the same reason.
+            scrub=( -u PULUMI_DEBUG_GRPC -u PULUMI_DEBUG_COMMANDS -u TF_LOG -u TF_LOG_PATH )
+            for name in $(compgen -e); do
+              [[ $name == PULUMI_LOG* ]] && scrub+=( -u "$name" )
+            done
+
             # Pulumi project env (mirrors the flox env's [vars]); each
             # `''${VAR:-default}` so an active flox env's values win when present.
             # PULUMI_HOME defaults to the XDG location (NOT the repo) so the
@@ -967,7 +997,7 @@ USAGE
             case "$action" in
               preview)
                 echo "==> pulumi preview --stack $stack (binary=$jar)" >&2
-                pulumi preview --stack "$stack" "$@"
+                env "''${scrub[@]}" pulumi preview --stack "$stack" "$@"
                 ;;
               up)
                 # --skip-preview (the operator's decision D6, 2026-10-18): the program then runs ONCE, and
@@ -975,7 +1005,7 @@ USAGE
                 # the second run would find the pipe empty. The preview the operator reads is the separate
                 # `preview` action, before their go.
                 echo "==> pulumi up --yes --skip-preview --stack $stack (binary=$jar)" >&2
-                pulumi up --yes --skip-preview --stack "$stack" "$@"
+                env "''${scrub[@]}" pulumi up --yes --skip-preview --stack "$stack" "$@"
                 ;;
             esac
           '';
