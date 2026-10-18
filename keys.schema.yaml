@@ -248,6 +248,17 @@ $defs:
           $ref: "#/$defs/encryptedPrivate"
         certificates:
           $ref: "#/$defs/certificates"
+        nixSigning:
+          $ref: "#/$defs/nixSigningPublic"
+
+  nixSigningPublic:
+    description: >
+      The nix signing PUBLIC of this host-key generation, `<name>:<base64 of 32 bytes>`, in clear like the host
+      public: derived from the host key's seed by HKDF (ndh-nix-signing-derive), recorded by
+      `ssh-keys-renew --record-nix-signing`, and trusted by the fleet's trusted-public-keys while the slot is
+      current. A nix SECRET is 64 bytes, so it cannot match.
+    type: string
+    pattern: "^seedmatic-[a-z][a-z0-9.-]*-[0-9]+:[A-Za-z0-9+/]{43}=$"
 
   authoritySlots:
     type: object
@@ -397,6 +408,19 @@ $defs:
           required: [cert_usage]
         then:
           required: [authority, cert_usage]
+      # A nix signing public is derived from a HOST key (roles × keys B2): no other key carries one.
+      - if:
+          not:
+            properties:
+              usage:
+                contains:
+                  const: ssh-host
+        then:
+          properties:
+            slots:
+              additionalProperties:
+                not:
+                  required: [nixSigning]
     properties:
       type:
         $ref: "#/$defs/sshKeyType"
