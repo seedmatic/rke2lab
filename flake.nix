@@ -28,11 +28,6 @@
 
     # Use flake-commons as aggregator to stay synchronized with nix-darwin-home
     flake-commons.url = "flake-commons";
-    # Cut the `nix` flake flake-commons carries: nothing here consumes it, and its input tree would
-    # land in this lock and every `nix run` closure. `follows = ""` aliases it to this root (the cut
-    # idiom, like ndh.inputs.rke2lab). ndh + flox-* follow THIS flake-commons, so one cut cascades.
-    flake-commons.inputs.nix.follows = "";
-
     # Follow flake-commons versions
     nixpkgs.follows = "flake-commons/nixpkgs";
     # The unstable nixpkgs flake-commons already locks, for the tools the stable line lags on: the
