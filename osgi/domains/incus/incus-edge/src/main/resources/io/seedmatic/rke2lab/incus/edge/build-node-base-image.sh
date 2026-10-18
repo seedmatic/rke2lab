@@ -48,11 +48,11 @@ else
     # Cross-build the aarch64-linux node-base artifacts from this (possibly darwin)
     # host: `--system aarch64-linux` + `--max-jobs 0` force every derivation onto the
     # configured aarch64-linux builder (bioskop-nixos) rather than a doomed local build
-    # (a linux ELF won't run on darwin, e.g. "executing bash: Undefined error: 0");
-    # `--accept-flake-config` honours the flake's substituters/trusted config. The evaluation
-    # is PURE: a revision in, nothing read from the host (measured 2026-10-12: the same
+    # (a linux ELF won't run on darwin, e.g. "executing bash: Undefined error: 0"). No
+    # --accept-flake-config: no flake of ours declares a nixConfig; the builder's own nix.conf
+    # carries the caches (cache.flox.dev included). The evaluation is PURE: a revision in, nothing read from the host (measured 2026-10-12: the same
     # drvPaths with and without --impure).
-    nix_flags="--no-link --print-out-paths --accept-flake-config --system aarch64-linux --max-jobs 0"
+    nix_flags="--no-link --print-out-paths --system aarch64-linux --max-jobs 0"
 
     # build the two node-base artifacts.
     metadata_out="$($nix_bin build $nix_flags "$flake_ref#$attr.metadata")"
@@ -85,7 +85,7 @@ else
     # them. The scion folds it into the image identity, from which the workload
     # RKE2ControlPlane.spec.version derives. `nix eval` takes only the eval flags — the build-only
     # --no-link / --print-out-paths / --max-jobs would be rejected.
-    rke2_version="$("$nix_bin" eval --raw --accept-flake-config \
+    rke2_version="$("$nix_bin" eval --raw \
         "$flake_ref#nixosConfigurations.rke2-node-base.config.services.rke2.package.version")"
     printf '%s\n' "$rke2_version" >"$rke2_version_file"
 fi

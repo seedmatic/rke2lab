@@ -6,6 +6,7 @@
 {
   pkgs,
   flox,
+  upstreamCaches,
   ...
 }:
 {
@@ -20,17 +21,14 @@
       "flakes"
       "ca-derivations"
     ];
-    substituters = [
-      "https://aseipp-nix-cache.freetls.fastly.net"
-      "https://cache.nixos.org/"
-    ];
-    trusted-public-keys = [
-      "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
-    ];
+    # The upstream caches from nix-flake-commons, which every seedmatic flake shares. cache.nixos.org and its key
+    # are NixOS's own default, appended after these; restating them listed it twice.
+    substituters = [ upstreamCaches.aseippFastly.substituter ];
     # flox public store (mirrors the family's flox.conf).
-    extra-trusted-substituters = [ "https://cache.flox.dev" ];
+    extra-trusted-substituters = [ upstreamCaches.flox.substituter ];
     extra-trusted-public-keys = [
-      "flox-cache-public-1:7F4OyH7ZCnFhcze3fJdfyXYLQw/aV7GEed86nQ7IsOs="
+      upstreamCaches.flox.publicKey
+      # floxhub's, which only the nodes' flox runtime needs: kept here, not shared.
       "floxhub-1:0QOAlcobcEvq1mqEf4qAYCaWnTTOXpyoRv/PmqfSixM="
     ];
     trusted-users = [

@@ -1,26 +1,6 @@
 {
   description = "RKE2 lab infrastructure and network blueprints";
 
-  # The binary caches this flake's builds — chiefly the NixOS node-base image
-  # (nixosConfigurations.rke2-node-base) — resolve their closure from, beyond the cache.nixos.org
-  # default. Declared here so ANY consumer (CI, a fresh machine, an external clone) substitutes
-  # instead of rebuilding, WITHOUT relying on the fleet's system-wide cache-trust config (ndh). These
-  # are ADDITIVE (extra-*), so a consumer's own substituters are augmented, never replaced.
-  # `--accept-flake-config` (osgi/.../incus/edge/build-node-base-image.sh) honours them; both are
-  # public-read caches already under the builder's trusted-substituters, so no prompt.
-  #   - cache.flox.dev     : flox pins a CUSTOM nix (2.31.5 from the NixOS/nix GitHub tag — a security
-  #                          bump over nixpkgs' 2.31.3, flox/flox pkgs/nix), absent from cache.nixos.org.
-  #                          Without it the aarch64-linux builder rebuilds nix from source and runs its
-  #                          flaky functional test suite (build-remote-trustless, shell) → build breaks.
-  # Our own artefacts (the flox-runtime NRI plugin, flox-controller, the carriers) come from no public
-  # cache: nothing of ours is published (ndh private-binary-cache-spec, "No public cache of ours").
-  nixConfig.extra-substituters = [
-    "https://cache.flox.dev"
-  ];
-  nixConfig.extra-trusted-public-keys = [
-    "flox-cache-public-1:7F4OyH7ZCnFhcze3fJdfyXYLQw/aV7GEed86nQ7IsOs="
-  ];
-
   inputs = {
     # ndh (nix-darwin-home) IS an input of this flake — see `ndh` at the bottom of this block.
     # ndh does not pin this flake back: it pins its DELIVERY, the fabric/plan orphan, which pins
@@ -1340,6 +1320,8 @@ USAGE
         # blueprintSystem — absent elsewhere, so `nix flake check` on an aarch64-linux node
         # never realizes the darwin-pinned jar.
         checks = {
+          # No nixConfig in this flake: no machine of ours takes one (nix-flake-commons' shared check).
+          no-nix-config = inputs.flake-commons.lib.noNixConfig pkgs ./flake.nix;
           # The cluster-builder delegation gate a node runs at boot (nixos/nix-builders.nix), tested as
           # built: a delivered description passes only if every builder is ssh-ng:// with its client
           # key, certificate and host key; anything else leaves no builders.conf behind.
@@ -1434,6 +1416,8 @@ USAGE
         specialArgs = {
           inherit flox flox-runtime flox-controller;
           ndh = inputs.ndh;
+          # The upstream caches every seedmatic flake shares (nix-flake-commons), for the node's nix.conf.
+          inherit (inputs.flake-commons.lib) upstreamCaches;
           # The netplan projection, so the node's networkd config names addressing facts from the
           # SSOT instead of restating them. Today: the vmnet supernet, for the sibling-cluster route.
           netplan = networkBlueprint;
