@@ -1,0 +1,461 @@
+{
+  "_comment": "Generated from keys.yaml by modules/.common.d/keys-yaml.d/keys-json.sh: never edit it, edit keys.yaml.",
+  "keys": {
+    "nix-store": {
+      "type": "ssh-ed25519",
+      "authority": "mammoth-skate",
+      "cert_usage": [
+        "ssh-user"
+      ],
+      "comment": "nix-store@mammoth-skate",
+      "usage": [
+        "ssh-host",
+        "user-signing"
+      ],
+      "profiles": [
+        "bringup",
+        "system"
+      ],
+      "principals": {
+        "nix-store": "nix-store"
+      },
+      "annotations": {
+        "public_scope": "system"
+      },
+      "slots": {
+        "26-10-13": {
+          "public": "AAAAC3NzaC1lZDI1NTE5AAAAIM4toLpOEFkjFTRTXMA8v6WuagNmdKly3jttU/zRjkp1",
+          "certificates": {
+            "mammoth-skate": {
+              "ssh-user": "ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAILoXGIQ42mbC5dAkLEH521I6awkNjNvCExMatKac6BR4AAAAIM4toLpOEFkjFTRTXMA8v6WuagNmdKly3jttU/zRjkp1AAAAAAAAAAEAAAABAAAA1nsibWFya2VyIjoibmRoLXNzaC1rZXktbWV0YS12MSIsIm93bmVyIjoiaG9tZS1tYW5hZ2VyLnNzaC1hZGQta2V5cyIsImtleSI6Im5peC1zdG9yZSIsInVzYWdlIjpbInNzaC11c2VyIl0sIm5hbWVzIjoiZjNiOTc3NzRiYWMyMGU3YzkxOWEyM2ZmMDVhMTA3ZjkzYzU4Yjg0YTRhMzNmODhjMjExMWFiZGJkZGE5MGRiOSIsImlzc3VlZCI6IjIwMjYtMTAtMTdUMDU6NDk6NDdaIn0AAAANAAAACW5peC1zdG9yZQAAAAAAAAAA//////////8AAAAAAAAAggAAABVwZXJtaXQtWDExLWZvcndhcmRpbmcAAAAAAAAAF3Blcm1pdC1hZ2VudC1mb3J3YXJkaW5nAAAAAAAAABZwZXJtaXQtcG9ydC1mb3J3YXJkaW5nAAAAAAAAAApwZXJtaXQtcHR5AAAAAAAAAA5wZXJtaXQtdXNlci1yYwAAAAAAAAAAAAAAMwAAAAtzc2gtZWQyNTUxOQAAACD0Pop9KqWGl3j1YnQKXt7KipRXybJjeLxSEZbLbQApOwAAAFMAAAALc3NoLWVkMjU1MTkAAABAGUS8BAI3uNDUbazLLfXBgn838Yn/OMS9q9BzQzzUqPPHKXNUmbdoqKWsSvAJr5arZDMc9xGYq9hJcskboDiCDw== nix-store@mammoth-skate"
+            }
+          }
+        }
+      },
+      "renew": "on-activation"
+    },
+    "linux-builder": {
+      "type": "ssh-ed25519",
+      "authority": "mammoth-skate",
+      "cert_usage": [
+        "ssh-user"
+      ],
+      "comment": "linux-builder@mammoth-skate",
+      "usage": [
+        "ssh-host",
+        "agent-signing",
+        "user-signing"
+      ],
+      "profiles": [
+        "system",
+        "user"
+      ],
+      "principals": {
+        "linux-builder": "linux-builder",
+        "rdp-host": "rdp-host"
+      },
+      "annotations": {
+        "public_scope": "user"
+      },
+      "slots": {
+        "26-10-10": {
+          "public": "AAAAC3NzaC1lZDI1NTE5AAAAINNnAxhE8mLTH4qXz3IgJsSs0nbrSXoj8V9W9vA6I2pm",
+          "certificates": {
+            "mammoth-skate": {
+              "ssh-user": "ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAIPTM2V2fJeGxxNDVsGGVItyD9o6T/1d75lTWbZj7hMnKAAAAINNnAxhE8mLTH4qXz3IgJsSs0nbrSXoj8V9W9vA6I2pmAAAAAAAAAAIAAAABAAAA2nsibWFya2VyIjoibmRoLXNzaC1rZXktbWV0YS12MSIsIm93bmVyIjoiaG9tZS1tYW5hZ2VyLnNzaC1hZGQta2V5cyIsImtleSI6ImxpbnV4LWJ1aWxkZXIiLCJ1c2FnZSI6WyJzc2gtdXNlciJdLCJuYW1lcyI6ImQzODllODRlNDRkMDZiMzY5YTk3NDcwM2IzNTg4ZWFlYWZhODk2N2FlYzBkNWNkZjQ4NWJjMmQ1MDk3YjE4YjQiLCJpc3N1ZWQiOiIyMDI2LTEwLTE3VDA1OjQ5OjQ3WiJ9AAAAHQAAAA1saW51eC1idWlsZGVyAAAACHJkcC1ob3N0AAAAAAAAAAD//////////wAAAAAAAACCAAAAFXBlcm1pdC1YMTEtZm9yd2FyZGluZwAAAAAAAAAXcGVybWl0LWFnZW50LWZvcndhcmRpbmcAAAAAAAAAFnBlcm1pdC1wb3J0LWZvcndhcmRpbmcAAAAAAAAACnBlcm1pdC1wdHkAAAAAAAAADnBlcm1pdC11c2VyLXJjAAAAAAAAAAAAAAAzAAAAC3NzaC1lZDI1NTE5AAAAIPQ+in0qpYaXePVidApe3sqKlFfJsmN4vFIRlsttACk7AAAAUwAAAAtzc2gtZWQyNTUxOQAAAEDW7QKfmsTOlJ7zFUncSyCAc4wdFRoxpVPwXQDguqsdrEXoHYBWkytIfgac2erNFt4pnsYDlSMhHRbw0fYmDHcH linux-builder@mammoth-skate"
+            }
+          }
+        }
+      }
+    },
+    "rdp-host": {
+      "type": "ssh-ed25519",
+      "authority": "mammoth-skate",
+      "cert_usage": [
+        "ssh-host",
+        "ssh-user"
+      ],
+      "comment": "nxmatic@mammoth-skate",
+      "usage": [
+        "user-signing"
+      ],
+      "profiles": [
+        "system",
+        "user"
+      ],
+      "principals": {
+        "rdp-host": "rdp-host"
+      },
+      "authorized_keys_options": [
+        "forwarding"
+      ],
+      "annotations": {
+        "public_scope": "user"
+      },
+      "slots": {
+        "26-10-10": {
+          "public": "AAAAC3NzaC1lZDI1NTE5AAAAICurkX4C8dRgkJ4zZJFgGgfh6HaLhIp5wmELEznU8c9y",
+          "certificates": {
+            "mammoth-skate": {
+              "ssh-host": "ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAILdsuYQrZWwimHt6FHemPKhsNlLf9CphYgUV5fH30w6KAAAAICurkX4C8dRgkJ4zZJFgGgfh6HaLhIp5wmELEznU8c9yAAAAAAAAAAcAAAACAAAA1XsibWFya2VyIjoibmRoLXNzaC1rZXktbWV0YS12MSIsIm93bmVyIjoiaG9tZS1tYW5hZ2VyLnNzaC1hZGQta2V5cyIsImtleSI6InJkcC1ob3N0IiwidXNhZ2UiOlsic3NoLWhvc3QiXSwibmFtZXMiOiJiZTVmYmM5ZTA3MzYwMTc0MTJmZjM0NjMzNDAzOTI0YjMwMWY3NmUwMTcyNjhmOWUxMzkzOWVmMDQ4NjYyYzBjIiwiaXNzdWVkIjoiMjAyNi0xMC0xN1QxNzoyNjoxMFoifQAAAL8AAAAHbmlrb3BvbAAAAA1uaWtvcG9sLW5peG9zAAAAEW5pa29wb2wtbml4b3MubGFuAAAAE25pa29wb2wtbml4b3MubG9jYWwAAAAibmlrb3BvbC1uaXhvcy5tYW1tb3RoLXNrYXRlLnRzLm5ldAAAAAtuaWtvcG9sLmxhbgAAAA1uaWtvcG9sLmxvY2FsAAAAHG5pa29wb2wubWFtbW90aC1za2F0ZS50cy5uZXQAAAANbml4b3Mubmlrb3BvbAAAAAAAAAAA//////////8AAAAAAAAAAAAAAAAAAAAzAAAAC3NzaC1lZDI1NTE5AAAAIPQ+in0qpYaXePVidApe3sqKlFfJsmN4vFIRlsttACk7AAAAUwAAAAtzc2gtZWQyNTUxOQAAAEDTXjxaOCymMFWEfp7HBGFc21raPdd225Pmkvq6nXg07++4UxrdKxlrDW2Sx/ZwETCi1FnC/cujS8X0+6k9U6oO nxmatic@mammoth-skate",
+              "ssh-user": "ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAIKUtTe3Oz/Re7p/F1DRl7qapQyxAkxinG31ruuQRgG4GAAAAICurkX4C8dRgkJ4zZJFgGgfh6HaLhIp5wmELEznU8c9yAAAAAAAAAAMAAAABAAAA1XsibWFya2VyIjoibmRoLXNzaC1rZXktbWV0YS12MSIsIm93bmVyIjoiaG9tZS1tYW5hZ2VyLnNzaC1hZGQta2V5cyIsImtleSI6InJkcC1ob3N0IiwidXNhZ2UiOlsic3NoLXVzZXIiXSwibmFtZXMiOiI2YjRmM2IzYzRjZWNhNWJjZDU3NjNiY2ZjMTZlNGY1OWFkNjUwNDFmZGFlNmQwMTdlODBhMjg1MzJmYWQzN2Q0IiwiaXNzdWVkIjoiMjAyNi0xMC0xN1QwNTo0OTo0N1oifQAAAAwAAAAIcmRwLWhvc3QAAAAAAAAAAP//////////AAAAAAAAAIIAAAAVcGVybWl0LVgxMS1mb3J3YXJkaW5nAAAAAAAAABdwZXJtaXQtYWdlbnQtZm9yd2FyZGluZwAAAAAAAAAWcGVybWl0LXBvcnQtZm9yd2FyZGluZwAAAAAAAAAKcGVybWl0LXB0eQAAAAAAAAAOcGVybWl0LXVzZXItcmMAAAAAAAAAAAAAADMAAAALc3NoLWVkMjU1MTkAAAAg9D6KfSqlhpd49WJ0Cl7eyoqUV8myY3i8UhGWy20AKTsAAABTAAAAC3NzaC1lZDI1NTE5AAAAQE+co3QlNtyuOQavi1HqrEyc/zT/MOHAuWu6bri7oroL0Bjhq5n4YrFiSs5ChIkFNGdkglV7oGhHQrjcbLWmVAg= nxmatic@mammoth-skate"
+            }
+          }
+        }
+      }
+    },
+    "rke2-cluster": {
+      "type": "ssh-ed25519",
+      "comment": "rke2-cluster@github",
+      "usage": [
+        "ssh-user"
+      ],
+      "profiles": [
+        "user"
+      ],
+      "annotations": {
+        "public_scope": "user"
+      },
+      "slots": {
+        "26-10-10": {
+          "public": "AAAAC3NzaC1lZDI1NTE5AAAAINMCSA12nj6zHXaUG6/YMrHbL8uxd7lYyZwQtLCyBoT3"
+        }
+      }
+    },
+    "github-signing": {
+      "type": "ssh-ed25519",
+      "comment": "github's published signing key",
+      "usage": [
+        "github-signing"
+      ],
+      "profiles": [
+        "user"
+      ],
+      "annotations": {
+        "public_scope": "user"
+      },
+      "slots": {
+        "26-10-10": {
+          "public": "AAAAC3NzaC1lZDI1NTE5AAAAILMa3h4R1YyxMCq4KHMJKMPi+IvYm2rvOWF4K7B8R8V4"
+        }
+      }
+    },
+    "github-signing-hyland": {
+      "type": "ssh-ed25519",
+      "comment": "github's published hyland signing key",
+      "usage": [
+        "github-signing"
+      ],
+      "profiles": [
+        "user"
+      ],
+      "annotations": {
+        "public_scope": "user"
+      },
+      "slots": {
+        "26-10-10": {
+          "public": "AAAAC3NzaC1lZDI1NTE5AAAAIMitF4pB4+Xq/dNI8S1rglZ3bop5rV7QR3P+IY/R6+Z9"
+        }
+      }
+    },
+    "vz-nudge": {
+      "type": "ssh-ed25519",
+      "authority": "mammoth-skate",
+      "cert_usage": [
+        "ssh-user"
+      ],
+      "comment": "vz-nudge@mammoth-skate — corp-Mac baremetal-link guest-reconfigure nudge; module-generated rotating key",
+      "usage": [
+        "ssh-host",
+        "user-signing"
+      ],
+      "profiles": [
+        "system"
+      ],
+      "principals": {
+        "rdp-host": "rdp-host"
+      },
+      "annotations": {
+        "public_scope": "system"
+      },
+      "slots": {
+        "26-10-13": {
+          "public": "AAAAC3NzaC1lZDI1NTE5AAAAIC3rVCkEzW81snUYrRKCoZ/6CWhPb/7oZ3DeBtXcQ/Uh",
+          "certificates": {
+            "mammoth-skate": {
+              "ssh-user": "ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAIDaQzKZL6NJzHft9LL5Vc0fFENiZoPrmXbYqb8DtptrDAAAAIC3rVCkEzW81snUYrRKCoZ/6CWhPb/7oZ3DeBtXcQ/UhAAAAAAAAAAQAAAABAAAA1XsibWFya2VyIjoibmRoLXNzaC1rZXktbWV0YS12MSIsIm93bmVyIjoiaG9tZS1tYW5hZ2VyLnNzaC1hZGQta2V5cyIsImtleSI6InZ6LW51ZGdlIiwidXNhZ2UiOlsic3NoLXVzZXIiXSwibmFtZXMiOiI2YjRmM2IzYzRjZWNhNWJjZDU3NjNiY2ZjMTZlNGY1OWFkNjUwNDFmZGFlNmQwMTdlODBhMjg1MzJmYWQzN2Q0IiwiaXNzdWVkIjoiMjAyNi0xMC0xN1QwNTo0OTo0N1oifQAAAAwAAAAIcmRwLWhvc3QAAAAAAAAAAP//////////AAAAAAAAAIIAAAAVcGVybWl0LVgxMS1mb3J3YXJkaW5nAAAAAAAAABdwZXJtaXQtYWdlbnQtZm9yd2FyZGluZwAAAAAAAAAWcGVybWl0LXBvcnQtZm9yd2FyZGluZwAAAAAAAAAKcGVybWl0LXB0eQAAAAAAAAAOcGVybWl0LXVzZXItcmMAAAAAAAAAAAAAADMAAAALc3NoLWVkMjU1MTkAAAAg9D6KfSqlhpd49WJ0Cl7eyoqUV8myY3i8UhGWy20AKTsAAABTAAAAC3NzaC1lZDI1NTE5AAAAQDD0SPUB7CGmIr/L/ObD5eO/z1QYaTZGAk/KRNhGeA1UcmLzxOrgIZaEvLgZwSKLDsq4pmGmz0FW/oRxKOA3ZQo= vz-nudge@mammoth-skate — corp-Mac baremetal-link guest-reconfigure nudge; module-generated rotating key"
+            }
+          }
+        }
+      },
+      "renew": "on-activation"
+    },
+    "github-authentication": {
+      "type": "ssh-ed25519",
+      "comment": "github-authentication@nxmatic",
+      "usage": [
+        "github-authentication"
+      ],
+      "profiles": [
+        "user"
+      ],
+      "annotations": {
+        "public_scope": "user"
+      },
+      "slots": {
+        "26-10-10": {
+          "public": "AAAAC3NzaC1lZDI1NTE5AAAAIAGaDeUcF1yVS7664AvvsHgLl59GmSfB43e5VGZuTQJt"
+        }
+      }
+    },
+    "nch-relay-tls-server": {
+      "type": "ecdsa-sha2-nistp256",
+      "authority": "mammoth-skate-tls",
+      "cert_usage": [
+        "tls-server"
+      ],
+      "comment": "nch-relay-tls-server@nixos.nikopol",
+      "usage": [
+        "host-signing"
+      ],
+      "profiles": [
+        "system"
+      ],
+      "tls": {
+        "common_name": "nixos.nikopol",
+        "sans": {
+          "dns": [
+            "nixos.nikopol",
+            "nikopol-nixos"
+          ],
+          "ip": [
+            "172.16.16.1"
+          ]
+        },
+        "not_after_days": 365
+      },
+      "annotations": {
+        "public_scope": "system"
+      },
+      "slots": {
+        "26-10-10": {
+          "public": "AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBALd457+osWub+6wqynt0KZztezLJQ2HKWfdV4N1VjQ+riuhxKaxbHMceF0wL782NTTF04mU/GBeO41DSaBnTto="
+        }
+      }
+    },
+    "rke2lab-bot-signing": {
+      "type": "ssh-ed25519",
+      "comment": "rke2lab bot commits",
+      "usage": [
+        "bot-signing"
+      ],
+      "profiles": [],
+      "slots": {
+        "26-10-12": {
+          "public": "AAAAC3NzaC1lZDI1NTE5AAAAIAe0C8KJuIO/JrgUU7MuqvW1VEHMM/9Yn+XtrivPeOG+"
+        }
+      }
+    },
+    "host-bioskop": {
+      "type": "ssh-ed25519",
+      "comment": "host-bioskop",
+      "usage": [
+        "ssh-host"
+      ],
+      "profiles": [],
+      "authority": "mammoth-skate",
+      "cert_usage": [
+        "ssh-host"
+      ],
+      "slots": {
+        "26-10-17": {
+          "public": "AAAAC3NzaC1lZDI1NTE5AAAAIHILc//oKMPL8FG7hkmRDs6RUqo+uoZLKx9yln4vPRx6",
+          "certificates": {
+            "mammoth-skate": {
+              "ssh-host": "ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAICD7uTcQvc1daHJepOyLUGVZK2fz0bB7pF+3N0wsfk3wAAAAIHILc//oKMPL8FG7hkmRDs6RUqo+uoZLKx9yln4vPRx6AAAAAAAAAAUAAAACAAAA2XsibWFya2VyIjoibmRoLXNzaC1rZXktbWV0YS12MSIsIm93bmVyIjoiaG9tZS1tYW5hZ2VyLnNzaC1hZGQta2V5cyIsImtleSI6Imhvc3QtYmlvc2tvcCIsInVzYWdlIjpbInNzaC1ob3N0Il0sIm5hbWVzIjoiNmE3NDQxNzg4MTEwZTViYWQ3ZDY4Mjc5NzU0MTIxYjExOGIzYTFhYjEyZjM5ZmMzNTIzNDc5NjNlZTYxZTM2YiIsImlzc3VlZCI6IjIwMjYtMTAtMTdUMDU6NDk6NDdaIn0AAABLAAAAB2Jpb3Nrb3AAAAALYmlvc2tvcC5sYW4AAAANYmlvc2tvcC5sb2NhbAAAABxiaW9za29wLm1hbW1vdGgtc2thdGUudHMubmV0AAAAAAAAAAD//////////wAAAAAAAAAAAAAAAAAAADMAAAALc3NoLWVkMjU1MTkAAAAg9D6KfSqlhpd49WJ0Cl7eyoqUV8myY3i8UhGWy20AKTsAAABTAAAAC3NzaC1lZDI1NTE5AAAAQOWJfj474WRW8Ur0u439VsjZlpiznfykullb5lguu60guDu27IEJ8oVnwpK/3HszvX2VUEG3clkpz3+o7MAaSgs= host-bioskop"
+            }
+          },
+          "nixSigning": "seedmatic-bioskop-1:6NV2srMMItn0KLrr8gDH+5wr31/Sq6od5llCx2RRYW0="
+        }
+      }
+    },
+    "host-bioskop-nixos": {
+      "type": "ssh-ed25519",
+      "comment": "host-bioskop-nixos",
+      "usage": [
+        "ssh-host"
+      ],
+      "profiles": [],
+      "authority": "mammoth-skate",
+      "cert_usage": [
+        "ssh-host"
+      ],
+      "slots": {
+        "26-10-17": {
+          "public": "AAAAC3NzaC1lZDI1NTE5AAAAICxjKH6th3XhibVtGoqYAiFHWqZvmrACKLe30Yjxb3mz",
+          "certificates": {
+            "mammoth-skate": {
+              "ssh-host": "ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAIO96zQACObUK9cQ7GKBO5J3bp1/5ICC0dJ8shWmYzG9hAAAAICxjKH6th3XhibVtGoqYAiFHWqZvmrACKLe30Yjxb3mzAAAAAAAAAAYAAAACAAAA33sibWFya2VyIjoibmRoLXNzaC1rZXktbWV0YS12MSIsIm93bmVyIjoiaG9tZS1tYW5hZ2VyLnNzaC1hZGQta2V5cyIsImtleSI6Imhvc3QtYmlvc2tvcC1uaXhvcyIsInVzYWdlIjpbInNzaC1ob3N0Il0sIm5hbWVzIjoiM2RlY2RjNzJkMTE0ODgzNTVjMDU1NDUyMTFjOGM0MWJiZTg1MmQ3MzM1NWIwZDhkOTA5NzM5NzA1ODYxMThhZiIsImlzc3VlZCI6IjIwMjYtMTAtMTdUMDU6NDk6NDdaIn0AAAB0AAAADWJpb3Nrb3Atbml4b3MAAAARYmlvc2tvcC1uaXhvcy5sYW4AAAATYmlvc2tvcC1uaXhvcy5sb2NhbAAAACJiaW9za29wLW5peG9zLm1hbW1vdGgtc2thdGUudHMubmV0AAAADW5peG9zLmJpb3Nrb3AAAAAAAAAAAP//////////AAAAAAAAAAAAAAAAAAAAMwAAAAtzc2gtZWQyNTUxOQAAACD0Pop9KqWGl3j1YnQKXt7KipRXybJjeLxSEZbLbQApOwAAAFMAAAALc3NoLWVkMjU1MTkAAABArIMvlfKPHmgldN9T003xyVHc6c5pdI3RdZO9+hXf7hVtrjA719mIiRez82CEMzlmW3Sa/eHRsg5ApHWl8xfPCA== host-bioskop-nixos"
+            }
+          },
+          "nixSigning": "seedmatic-bioskop-nixos-1:eqGOz2GK5CojkBzHWfVBTKrAjVfxGhvA9j0OXjAqV54="
+        }
+      }
+    },
+    "vz-recover-nikopol": {
+      "type": "ssh-ed25519",
+      "comment": "vz-recover-nikopol",
+      "usage": [
+        "ssh-user"
+      ],
+      "profiles": [],
+      "slots": {
+        "26-10-17": {
+          "public": "AAAAC3NzaC1lZDI1NTE5AAAAILH60A1eTjunQtCI2XK1OyhrrHvYPMkVUir5jqwwujOz"
+        }
+      }
+    }
+  },
+  "authorities": {
+    "mammoth-skate": {
+      "type": "ssh-ed25519",
+      "comment": "cert-authority@mammoth-skate",
+      "domain": "mammoth-skate.ts.net",
+      "usage": [
+        "ssh-authority"
+      ],
+      "annotations": {
+        "public_scope": "system"
+      },
+      "slots": {
+        "26-10-10": {
+          "public": "AAAAC3NzaC1lZDI1NTE5AAAAIPQ+in0qpYaXePVidApe3sqKlFfJsmN4vFIRlsttACk7"
+        }
+      }
+    },
+    "mammoth-skate-tls": {
+      "type": "ecdsa-sha2-nistp256",
+      "comment": "cert-authority@mammoth-skate-tls",
+      "usage": [
+        "tls-authority"
+      ],
+      "annotations": {
+        "public_scope": "system"
+      },
+      "slots": {
+        "26-10-10": {
+          "public": "AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBFC5NCqq+/bCeAlePsDoTwocrc4ZVZ0uzRek3inx8iaV4Z0hkBGJWAXeESt15rpOAFICswlR0t3AQu+dIz36OwA=",
+          "ca_crt": "-----BEGIN CERTIFICATE-----\nMIIBeDCCAR6gAwIBAgIQBqEqLO/PXF598i4n60VHszAKBggqhkjOPQQDAjAcMRow\nGAYDVQQDExFtYW1tb3RoLXNrYXRlLXRsczAeFw0yNjEwMTAxOTU2MjNaFw0zNjEw\nMDcxOTU2MjNaMBwxGjAYBgNVBAMTEW1hbW1vdGgtc2thdGUtdGxzMFkwEwYHKoZI\nzj0CAQYIKoZIzj0DAQcDQgAEULk0Kqr79sJ4CV4+wOhPChytzhlVnS7NF6TeKfHy\nJpXhnSGQEYlYBd4RK3Xmuk4AUgKzCVHS3cBC750jPfo7AKNCMEAwDgYDVR0PAQH/\nBAQDAgEGMA8GA1UdEwEB/wQFMAMBAf8wHQYDVR0OBBYEFJuR1CEbMVhTBbAwXsHd\nVXu6aN/ZMAoGCCqGSM49BAMCA0gAMEUCIQCO8GtuLNOtoyt/GOa7WGHB0dHxtdm1\ngBccZ8gnvmZfjwIgMPYybVg3dA2Cs3dia3Rbsr990MT/ehCf5EkcOnYTg9M=\n-----END CERTIFICATE-----"
+        }
+      }
+    }
+  },
+  "revoked": {
+    "mammoth-skate@26-05-29": {
+      "type": "ssh-ed25519",
+      "public": "AAAAC3NzaC1lZDI1NTE5AAAAIMm2fu/uVbaaj1OljiSnZ9T1ES9yvbG+Y6JhyLrnQQAS",
+      "reason": "authority private published in the clear (rke2lab, 2026-08-27); retired by the phase 2 of e6718c5f — revoking it refuses every certificate it signed",
+      "compromised": true
+    },
+    "vz-guest-nixos@26-05-29": {
+      "type": "ssh-ed25519",
+      "public": "AAAAC3NzaC1lZDI1NTE5AAAAIG1fGVLU3BOE2R+1zuJRSOAxYsw+fd4y7YvwZFxMs8RF",
+      "reason": "private published in the clear (rke2lab, 2026-08-27); key retired in fc050807, unused since nikopol VZ host reaches its guest via screen",
+      "compromised": true
+    },
+    "linux-builder@26-05-29": {
+      "type": "ssh-ed25519",
+      "public": "AAAAC3NzaC1lZDI1NTE5AAAAIMHU43EVt2ETrAd7u65ZX+nyLtbMKVr+zvdyM/6db7MV",
+      "reason": "private published in the clear (rke2lab, 2026-08-27); superseded by 26-10-05",
+      "compromised": true
+    },
+    "github-signing@26-05-29": {
+      "type": "ssh-ed25519",
+      "public": "AAAAC3NzaC1lZDI1NTE5AAAAILvIHiqhNBsZE6gxYmDBA4tM2nGc6jV0sAkFa9f0iare",
+      "reason": "private published in the clear (rke2lab, 2026-08-27); superseded by 26-10-05, removed from GitHub in both roles",
+      "compromised": true
+    },
+    "github-signing-hyland@26-05-29": {
+      "type": "ssh-ed25519",
+      "public": "AAAAC3NzaC1lZDI1NTE5AAAAIF23Jq3UEKPHGZOGgdQdIvc4Am5EYQZNnCSA+bSs2WOP",
+      "reason": "private published in the clear (rke2lab, 2026-08-27); superseded by 26-10-05, removed from GitHub in both roles",
+      "compromised": true
+    },
+    "rdp-host@26-05-29": {
+      "type": "ssh-ed25519",
+      "public": "AAAAC3NzaC1lZDI1NTE5AAAAIGet5e+oTAP3AfpWzlaM+SrHov14dGzao1jadf0S03oE",
+      "reason": "private published in the clear (rke2lab, 2026-08-27); superseded by 26-10-05 — it was the sshd host key of all four machines, the operator key and root builder key at once",
+      "compromised": true
+    },
+    "linux-builder@26-10-05": {
+      "type": "ssh-ed25519",
+      "public": "AAAAC3NzaC1lZDI1NTE5AAAAIFb+p0nUP/k9dFfy28gMmgM63a2lVv6hsTWJCcr69/6u",
+      "reason": "private published 2026-10-10 in the store copies pushed to the public nxmatic.cachix.org",
+      "compromised": true
+    },
+    "rdp-host@26-10-05": {
+      "type": "ssh-ed25519",
+      "public": "AAAAC3NzaC1lZDI1NTE5AAAAIM2ydCX6iGWLvMCJ3CR1hujCwjs96i/PTNqQrLIA1UjG",
+      "reason": "private published 2026-10-10 in the store copies pushed to the public nxmatic.cachix.org",
+      "compromised": true
+    },
+    "rke2-cluster@26-05-29": {
+      "type": "ssh-ed25519",
+      "public": "AAAAC3NzaC1lZDI1NTE5AAAAIEk3mPT46ePtbxdZg4CLBGVW4Tt5iFTxNdLm1ohNpV0b",
+      "reason": "private published 2026-10-10 in the store copies pushed to the public nxmatic.cachix.org",
+      "compromised": true
+    },
+    "github-signing@26-10-05": {
+      "type": "ssh-ed25519",
+      "public": "AAAAC3NzaC1lZDI1NTE5AAAAID7/8Szxs9eC5fy3zMytkj8xwTyj5PMe5faHfCObw/gE",
+      "reason": "private published 2026-10-10 in the store copies pushed to the public nxmatic.cachix.org",
+      "compromised": true
+    },
+    "github-signing-hyland@26-10-05": {
+      "type": "ssh-ed25519",
+      "public": "AAAAC3NzaC1lZDI1NTE5AAAAIJmxr6Xl2g1Ren8nyT4L+g1aayeBbiqswlOGWzKaatg4",
+      "reason": "private published 2026-10-10 in the store copies pushed to the public nxmatic.cachix.org",
+      "compromised": true
+    },
+    "github-authentication@26-10-05": {
+      "type": "ssh-ed25519",
+      "public": "AAAAC3NzaC1lZDI1NTE5AAAAICQKpfav/YAyZasUYR0RTY+n3rkekmcq07xn3wEf7Avh",
+      "reason": "private published 2026-10-10 in the store copies pushed to the public nxmatic.cachix.org",
+      "compromised": true
+    },
+    "nch-relay-tls-server@26-10-05": {
+      "type": "ecdsa-sha2-nistp256",
+      "public": "AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEZ3467lozxKdMyFJR88JKpxpviNgFxkMDRtkK1aQmY2FAC6EYmD7Da3N3XgrT+5guINtsp+uhpEX3u02rjY0UQ=",
+      "reason": "private published 2026-10-10 in the store copies pushed to the public nxmatic.cachix.org",
+      "compromised": true
+    },
+    "mammoth-skate@26-10-05": {
+      "type": "ssh-ed25519",
+      "public": "AAAAC3NzaC1lZDI1NTE5AAAAIFdHpryIBqPRUPfIKsKtE69u38Vj0csTFIEpQkjXGyrw",
+      "reason": "private published 2026-10-10 in the store copies pushed to the public nxmatic.cachix.org",
+      "compromised": true
+    },
+    "mammoth-skate-tls@26-05-29": {
+      "type": "ecdsa-sha2-nistp256",
+      "public": "AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBNk85dUnU8uD1qUbP6m78fguUtf1uwicxfR0XCY5c5G+1vgxGiI6RJXj7szDlzpmSTFVLh/UL9sUtom2spAwTNg=",
+      "reason": "private published 2026-10-10 in the store copies pushed to the public nxmatic.cachix.org",
+      "compromised": true
+    },
+    "builder@26-04-10": {
+      "type": "ssh-ed25519",
+      "public": "AAAAC3NzaC1lZDI1NTE5AAAAIJqOSghhMGKjb/jTASwBH1agjL3xHmLW+Ht+0U4QkNMR",
+      "reason": "private tracked in the clear in the public ndh repository (hosts/bioskop/keys.d/builder_ed25519) since 2026-04-10",
+      "compromised": true
+    }
+  },
+  "revoked_certificates": {
+    "rdp-host@26-10-10/0": {
+      "authority": "mammoth-skate",
+      "authority_slot": "26-10-10",
+      "key_id": "{\"marker\":\"ndh-ssh-key-meta-v1\",\"owner\":\"home-manager.ssh-add-keys\",\"key\":\"rdp-host\",\"usage\":[\"ssh-host\"]}",
+      "serial": 0,
+      "revision": "8c27a29e7e95bccf0471e7926349bad8628cde46",
+      "reason": "union host certificate retired (roles x keys S3a)"
+    }
+  }
+}
