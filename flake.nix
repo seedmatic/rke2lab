@@ -1,26 +1,6 @@
 {
   description = "RKE2 lab infrastructure and network blueprints";
 
-  # The binary caches this flake's builds — chiefly the NixOS node-base image
-  # (nixosConfigurations.rke2-node-base) — resolve their closure from, beyond the cache.nixos.org
-  # default. Declared here so ANY consumer (CI, a fresh machine, an external clone) substitutes
-  # instead of rebuilding, WITHOUT relying on the fleet's system-wide cache-trust config (ndh). These
-  # are ADDITIVE (extra-*), so a consumer's own substituters are augmented, never replaced.
-  # `--accept-flake-config` (osgi/.../incus/edge/build-node-base-image.sh) honours them; both are
-  # public-read caches already under the builder's trusted-substituters, so no prompt.
-  #   - cache.flox.dev     : flox pins a CUSTOM nix (2.31.5 from the NixOS/nix GitHub tag — a security
-  #                          bump over nixpkgs' 2.31.3, flox/flox pkgs/nix), absent from cache.nixos.org.
-  #                          Without it the aarch64-linux builder rebuilds nix from source and runs its
-  #                          flaky functional test suite (build-remote-trustless, shell) → build breaks.
-  # Our own artefacts (the flox-runtime NRI plugin, flox-controller, the carriers) come from no public
-  # cache: nothing of ours is published (ndh private-binary-cache-spec, "No public cache of ours").
-  nixConfig.extra-substituters = [
-    "https://cache.flox.dev"
-  ];
-  nixConfig.extra-trusted-public-keys = [
-    "flox-cache-public-1:7F4OyH7ZCnFhcze3fJdfyXYLQw/aV7GEed86nQ7IsOs="
-  ];
-
   inputs = {
     # ndh (nix-darwin-home) IS an input of this flake — see `ndh` at the bottom of this block.
     # ndh does not pin this flake back: it pins its DELIVERY, the fabric/plan orphan, which pins
@@ -48,11 +28,6 @@
 
     # Use flake-commons as aggregator to stay synchronized with nix-darwin-home
     flake-commons.url = "flake-commons";
-    # Cut the `nix` flake flake-commons carries: nothing here consumes it, and its input tree would
-    # land in this lock and every `nix run` closure. `follows = ""` aliases it to this root (the cut
-    # idiom, like ndh.inputs.rke2lab). ndh + flox-* follow THIS flake-commons, so one cut cascades.
-    flake-commons.inputs.nix.follows = "";
-
     # Follow flake-commons versions
     nixpkgs.follows = "flake-commons/nixpkgs";
     # The unstable nixpkgs flake-commons already locks, for the tools the stable line lags on: the
@@ -120,7 +95,18 @@
     ndh.inputs.flake-commons.follows = "flake-commons";
   };
 
-  outputs = inputs@{ self, nixpkgs, flake-utils, flox-runtime, flox-controller, seed-incluster, flox, sops-nix, ... }:
+  outputs =
+    inputs@{
+      self,
+      nixpkgs,
+      flake-utils,
+      flox-runtime,
+      flox-controller,
+      seed-incluster,
+      flox,
+      sops-nix,
+      ...
+    }:
     let
       # The network blueprint is OS-independent data (cluster/node IDs, MAC
       # patterns, addressing): the netplan jar is a portable JDK/Maven build, so
@@ -156,14 +142,31 @@
       # non-zero exit as "Unable to find shfmt on path". The nix stdenv has no
       # `which`, so without it the gate fails even though shfmt is on PATH; the
       # dev loop never hit this because flox/the system provides `which`.
-      mavenToolchain = pkgs: { inherit (pkgs) jdk25 maven shfmt shellcheck which; };
+      mavenToolchain = pkgs: {
+        inherit (pkgs)
+          jdk25
+          maven
+          shfmt
+          shellcheck
+          which
+          ;
+      };
       # The operator toolchain: what the flox seat installs as `github:seedmatic/rke2lab#…` and the
       # apps (the grow) run, so the two cannot diverge. Applied to the UNSTABLE nixpkgs below — the
       # stable line has pulumi 3.192 and no pulumi-java. Not `pulumi-bin`: Hydra never builds it
       # ("Output limit exceeded"), so every host assembled 4.6 GiB of providers this repo does not
       # use. Resource providers (`command`, `incus`) are fetched by pulumi at runtime.
       operatorToolchain = pkgs: {
-        inherit (pkgs) pulumi pulumictl cdk8s-cli tektoncd-cli clusterctl k9s dasel graphviz;
+        inherit (pkgs)
+          pulumi
+          pulumictl
+          cdk8s-cli
+          tektoncd-cli
+          clusterctl
+          k9s
+          dasel
+          graphviz
+          ;
         pulumi-java = pkgs.pulumiPackages.pulumi-java;
       };
       mavenBuildInputs = pkgs: builtins.attrValues (mavenToolchain pkgs);
@@ -199,15 +202,19 @@
       # java-systemd is the one dependency no public Maven repository serves: Central stops at 2.1.0,
       # and GitHub Packages refuses an anonymous read even of a public package. So it is built from
       # its public tag, at the version the bom pins — the same jar, without a token anywhere.
-      javaSystemdVersion =
-        builtins.head (builtins.match ".*<java-systemd.version>([^<]*)</java-systemd.version>.*"
-          (builtins.readFile ./bom/pom.xml));
-      javaSystemdSrcFor = pkgs: pkgs.fetchFromGitHub {
-        owner = "seedmatic";
-        repo = "java-systemd";
-        rev = "v${javaSystemdVersion}";
-        hash = "sha256-TtlrxZ1Nqg0/tcz1BIP/1ds2vshXI6vFBcTSikFX4Jw=";
-      };
+      javaSystemdVersion = builtins.head (
+        builtins.match ".*<java-systemd.version>([^<]*)</java-systemd.version>.*" (
+          builtins.readFile ./bom/pom.xml
+        )
+      );
+      javaSystemdSrcFor =
+        pkgs:
+        pkgs.fetchFromGitHub {
+          owner = "seedmatic";
+          repo = "java-systemd";
+          rev = "v${javaSystemdVersion}";
+          hash = "sha256-TtlrxZ1Nqg0/tcz1BIP/1ds2vshXI6vFBcTSikFX4Jw=";
+        };
       javaSystemdSteps = pkgs: mvn: ''
         cp -r ${javaSystemdSrcFor pkgs} "$TMPDIR/java-systemd"
         chmod -R u+w "$TMPDIR/java-systemd"
@@ -231,28 +238,30 @@
       #
       # A dependency change fails every Maven build with a hash mismatch until outputHash is
       # updated: set it to lib.fakeHash, build `maven-deps` by revision, take the hash it reports.
-      mavenDepsFor = pkgs: pkgs.stdenv.mkDerivation {
-        name = "rke2lab-maven-deps";
-        src = mavenSource;
-        nativeBuildInputs = mavenBuildInputs pkgs;
-        buildPhase = ''
-          export HOME="$TMPDIR"
-          mvnDeps() { mvn -Dmaven.repo.local="$out" -Dmaven.build.cache.enabled=false "$@"; }
-          ${javaSystemdSteps pkgs "mvnDeps"}
-          cp -r . "$TMPDIR/bootstrap"
-          (cd "$TMPDIR/bootstrap" && rm .mvn/extensions.xml && ${stagingExtensionSteps "mvnDeps"})
-          ${planSteps pkgs "mvnDeps"}
-          mvnDeps -Dshfmt.version=${pkgs.shfmt.version} -DskipTests -Dflox.crd-staging.skip=true clean package
-          rm -rf "$out/io/seedmatic/rke2lab" "$out/com/github/thjomnx/java-systemd"
-          find "$out" -type f \( -name _remote.repositories -o -name '*.lastUpdated' \
-            -o -name resolver-status.properties -o -name 'maven-metadata-*.xml' \) -delete
-        '';
-        installPhase = "true";
-        dontFixup = true;
-        outputHashMode = "recursive";
-        outputHashAlgo = "sha256";
-        outputHash = "sha256-x2wS0FGbgYOeAJMEX/6HOQZMnqNKUczxroRTd02xHIo=";
-      };
+      mavenDepsFor =
+        pkgs:
+        pkgs.stdenv.mkDerivation {
+          name = "rke2lab-maven-deps";
+          src = mavenSource;
+          nativeBuildInputs = mavenBuildInputs pkgs;
+          buildPhase = ''
+            export HOME="$TMPDIR"
+            mvnDeps() { mvn -Dmaven.repo.local="$out" -Dmaven.build.cache.enabled=false "$@"; }
+            ${javaSystemdSteps pkgs "mvnDeps"}
+            cp -r . "$TMPDIR/bootstrap"
+            (cd "$TMPDIR/bootstrap" && rm .mvn/extensions.xml && ${stagingExtensionSteps "mvnDeps"})
+            ${planSteps pkgs "mvnDeps"}
+            mvnDeps -Dshfmt.version=${pkgs.shfmt.version} -DskipTests -Dflox.crd-staging.skip=true clean package
+            rm -rf "$out/io/seedmatic/rke2lab" "$out/com/github/thjomnx/java-systemd"
+            find "$out" -type f \( -name _remote.repositories -o -name '*.lastUpdated' \
+              -o -name resolver-status.properties -o -name 'maven-metadata-*.xml' \) -delete
+          '';
+          installPhase = "true";
+          dontFixup = true;
+          outputHashMode = "recursive";
+          outputHashAlgo = "sha256";
+          outputHash = "sha256-x2wS0FGbgYOeAJMEX/6HOQZMnqNKUczxroRTd02xHIo=";
+        };
 
       # Shared Maven-in-nix plumbing for both reactor derivations: a buildPhase prelude
       # that sets up a writable $M2_REPO over the fixed-output dependency repository, SEEDS
@@ -320,29 +329,37 @@
           lib = nixpkgs.lib;
           root = ./.;
           config = builtins.readFile ./.mvn/maven-build-cache-config.xml;
-          tagged = tag:
-            map builtins.head
-              (builtins.filter builtins.isList (builtins.split "<${tag}>([^<]*)</${tag}>" config));
+          tagged =
+            tag:
+            map builtins.head (
+              builtins.filter builtins.isList (builtins.split "<${tag}>([^<]*)</${tag}>" config)
+            );
           globs = tagged "glob";
-          patterns =
-            lib.splitString ","
-              (lib.removeSuffix "}" (lib.removePrefix "{" (lib.trim (builtins.head globs))));
+          patterns = lib.splitString "," (
+            lib.removeSuffix "}" (lib.removePrefix "{" (lib.trim (builtins.head globs)))
+          );
           includes = map lib.trim (tagged "include");
-          matchesGlob = name:
-            lib.any
-              (pattern:
-                let around = lib.splitString "*" pattern; in
-                lib.hasPrefix (builtins.elemAt around 0) name
-                && lib.hasSuffix (builtins.elemAt around 1) name
-                && builtins.stringLength name >= builtins.stringLength pattern - 1)
-              patterns;
-          isModule = dir: builtins.pathExists (if dir == "" then root + "/pom.xml" else root + "/${dir}/pom.xml");
-          moduleInput = rel:
+          matchesGlob =
+            name:
+            lib.any (
+              pattern:
+              let
+                around = lib.splitString "*" pattern;
+              in
+              lib.hasPrefix (builtins.elemAt around 0) name
+              && lib.hasSuffix (builtins.elemAt around 1) name
+              && builtins.stringLength name >= builtins.stringLength pattern - 1
+            ) patterns;
+          isModule =
+            dir: builtins.pathExists (if dir == "" then root + "/pom.xml" else root + "/${dir}/pom.xml");
+          moduleInput =
+            rel:
             let
               segments = lib.splitString "/" rel;
               name = lib.last segments;
               prefixOf = n: lib.concatStringsSep "/" (lib.take n segments);
-              underInclude = include:
+              underInclude =
+                include:
                 if lib.hasSuffix "/" include then
                   let
                     dir = lib.removeSuffix "/" include;
@@ -353,26 +370,41 @@
                   name == include && isModule (prefixOf (builtins.length segments - 1));
             in
             lib.any underInclude includes;
-          declared = rel:
-            let segments = lib.splitString "/" rel; in
-            builtins.elem (lib.last segments) [ "pom.xml" "mvnw" "mvnw.cmd" ]
+          declared =
+            rel:
+            let
+              segments = lib.splitString "/" rel;
+            in
+            builtins.elem (lib.last segments) [
+              "pom.xml"
+              "mvnw"
+              "mvnw.cmd"
+            ]
             || builtins.elem ".mvn" segments
             || rel == "osgi/bundle-parent/annotations.bnd";
         in
-        assert lib.assertMsg (builtins.length globs == 1 && patterns != [ ] && includes != [ ])
-          "mavenSource: no <glob> or <include> parsed from .mvn/maven-build-cache-config.xml";
-        assert lib.assertMsg (lib.all (pattern: builtins.length (lib.splitString "*" pattern) == 2) patterns)
-          "mavenSource: every build-cache glob pattern must hold exactly one '*'";
-        assert lib.assertMsg (builtins.pathExists (root + "/osgi/bundle-parent/annotations.bnd"))
-          "mavenSource: osgi/bundle-parent/annotations.bnd is declared but gone";
+        assert lib.assertMsg (
+          builtins.length globs == 1 && patterns != [ ] && includes != [ ]
+        ) "mavenSource: no <glob> or <include> parsed from .mvn/maven-build-cache-config.xml";
+        assert lib.assertMsg (lib.all (
+          pattern: builtins.length (lib.splitString "*" pattern) == 2
+        ) patterns) "mavenSource: every build-cache glob pattern must hold exactly one '*'";
+        assert lib.assertMsg (builtins.pathExists (
+          root + "/osgi/bundle-parent/annotations.bnd"
+        )) "mavenSource: osgi/bundle-parent/annotations.bnd is declared but gone";
         lib.fileset.toSource {
           inherit root;
-          fileset = lib.fileset.fromSource (lib.sources.cleanSourceWith {
-            src = root;
-            filter = path: type:
-              let rel = lib.removePrefix "${toString root}/" (toString path); in
-              type == "directory" || declared rel || moduleInput rel;
-          });
+          fileset = lib.fileset.fromSource (
+            lib.sources.cleanSourceWith {
+              src = root;
+              filter =
+                path: type:
+                let
+                  rel = lib.removePrefix "${toString root}/" (toString path);
+                in
+                type == "directory" || declared rel || moduleInput rel;
+            }
+          );
         };
 
       # The staging-extension build closure, built by NIX (not seeded from a host ~/.m2 nor a
@@ -384,76 +416,85 @@
       # standalone (seed-outcluster's build) and the in-cluster render replay the identical
       # bootstrap, zero per-mode duplication. Not a FOD itself: the jars built here embed their
       # build time, so two builds never hash the same.
-      stagingExtensionRepoFor = pkgs: pkgs.stdenv.mkDerivation {
-        name = "rke2lab-staging-extension-repo";
-        src = mavenSource;
-        nativeBuildInputs = mavenBuildInputs pkgs;
-        buildPhase = ''
-          export HOME="$TMPDIR"
-          repo="$TMPDIR/repository"
-          mkdir -p "$repo"
-          cp -rs --no-preserve=mode ${mavenDepsFor pkgs}/. "$repo/"
-          mvnOffline() { mvn -o -Dmaven.repo.local="$repo" "$@"; }
-          rm .mvn/extensions.xml
-          ${stagingExtensionSteps "mvnOffline"}
-        '';
-        installPhase = ''
-          mkdir -p $out/io/seedmatic
-          cp -r "$repo/io/seedmatic/rke2lab" $out/io/seedmatic/
-        '';
-        dontFixup = true;
-      };
+      stagingExtensionRepoFor =
+        pkgs:
+        pkgs.stdenv.mkDerivation {
+          name = "rke2lab-staging-extension-repo";
+          src = mavenSource;
+          nativeBuildInputs = mavenBuildInputs pkgs;
+          buildPhase = ''
+            export HOME="$TMPDIR"
+            repo="$TMPDIR/repository"
+            mkdir -p "$repo"
+            cp -rs --no-preserve=mode ${mavenDepsFor pkgs}/. "$repo/"
+            mvnOffline() { mvn -o -Dmaven.repo.local="$repo" "$@"; }
+            rm .mvn/extensions.xml
+            ${stagingExtensionSteps "mvnOffline"}
+          '';
+          installPhase = ''
+            mkdir -p $out/io/seedmatic
+            cp -r "$repo/io/seedmatic/rke2lab" $out/io/seedmatic/
+          '';
+          dontFixup = true;
+        };
 
       # java-systemd at the bom's version, built offline over mavenDepsFor; its artifacts alone go
       # to $out, seeded into every reactor build by `mavenHostPrelude`.
-      javaSystemdRepoFor = pkgs: pkgs.stdenv.mkDerivation {
-        name = "rke2lab-java-systemd-repo";
-        src = mavenSource;
-        nativeBuildInputs = mavenBuildInputs pkgs;
-        buildPhase = ''
-          export HOME="$TMPDIR"
-          repo="$TMPDIR/repository"
-          mkdir -p "$repo"
-          cp -rs --no-preserve=mode ${mavenDepsFor pkgs}/. "$repo/"
-          mvnOffline() { mvn -o -Dmaven.repo.local="$repo" "$@"; }
-          ${javaSystemdSteps pkgs "mvnOffline"}
-        '';
-        installPhase = ''
-          mkdir -p $out/com/github/thjomnx
-          cp -r "$repo/com/github/thjomnx/java-systemd" $out/com/github/thjomnx/
-          rm -f $out/com/github/thjomnx/java-systemd/maven-metadata-local.xml
-        '';
-        dontFixup = true;
-      };
+      javaSystemdRepoFor =
+        pkgs:
+        pkgs.stdenv.mkDerivation {
+          name = "rke2lab-java-systemd-repo";
+          src = mavenSource;
+          nativeBuildInputs = mavenBuildInputs pkgs;
+          buildPhase = ''
+            export HOME="$TMPDIR"
+            repo="$TMPDIR/repository"
+            mkdir -p "$repo"
+            cp -rs --no-preserve=mode ${mavenDepsFor pkgs}/. "$repo/"
+            mvnOffline() { mvn -o -Dmaven.repo.local="$repo" "$@"; }
+            ${javaSystemdSteps pkgs "mvnOffline"}
+          '';
+          installPhase = ''
+            mkdir -p $out/com/github/thjomnx
+            cp -r "$repo/com/github/thjomnx/java-systemd" $out/com/github/thjomnx/
+            rm -f $out/com/github/thjomnx/java-systemd/maven-metadata-local.xml
+          '';
+          dontFixup = true;
+        };
 
       # netplan JAR build, parameterized by pkgs so the per-system `packages`
       # output can build it locally while `lib` uses the pinned set.
-      planJarFor = pkgs: pkgs.stdenv.mkDerivation {
-        name = "rke2lab-plan";
-        src = mavenSource;
+      planJarFor =
+        pkgs:
+        pkgs.stdenv.mkDerivation {
+          name = "rke2lab-plan";
+          src = mavenSource;
 
-        nativeBuildInputs = mavenBuildInputs pkgs;
+          nativeBuildInputs = mavenBuildInputs pkgs;
 
-        buildPhase = ''
-          ${mavenHostPrelude pkgs}
+          buildPhase = ''
+            ${mavenHostPrelude pkgs}
 
-          # Install parent POM and BOM first, then build the plan CLI module. plan-cli
-          # multiplexes both plan exports (network + dataset), driving the netplan +
-          # dataplan scions; it builds through the reactor (`-pl :plan-cli -am`) so `-am`
-          # pulls the netplan-core / dataplan-contract siblings from source.
-          ${planSteps pkgs "mvnHost"}
-        '';
+            # Install parent POM and BOM first, then build the plan CLI module. plan-cli
+            # multiplexes both plan exports (network + dataset), driving the netplan +
+            # dataplan scions; it builds through the reactor (`-pl :plan-cli -am`) so `-am`
+            # pulls the netplan-core / dataplan-contract siblings from source.
+            ${planSteps pkgs "mvnHost"}
+          '';
 
-        installPhase = ''
-          mkdir -p $out/share/java
-          cp exec/plan-cli/target/plan-cli-*-exec.jar $out/share/java/rke2lab-plan.jar
-        '';
-      };
+          installPhase = ''
+            mkdir -p $out/share/java
+            cp exec/plan-cli/target/plan-cli-*-exec.jar $out/share/java/rke2lab-plan.jar
+          '';
+        };
 
       # Generate the network blueprint YAML from the Java source of truth.
-      networkBlueprintYamlFor = pkgs:
-        let planJar = planJarFor pkgs;
-        in pkgs.stdenv.mkDerivation {
+      networkBlueprintYamlFor =
+        pkgs:
+        let
+          planJar = planJarFor pkgs;
+        in
+        pkgs.stdenv.mkDerivation {
           name = "rke2lab-network-blueprint";
 
           buildInputs = [ pkgs.jdk25 ];
@@ -475,9 +516,12 @@
       # dataplan.json (already JSON), so the CLI emits it raw; no yq conversion needed. What the
       # sources produce, which dataplan-fresh compares to the pinned delivery — the storage twin
       # of networkBlueprintJson; seed-outcluster's DataplanLayout stays the source of truth.
-      dataplanJsonFor = pkgs:
-        let planJar = planJarFor pkgs;
-        in pkgs.runCommand "dataplan.json" { buildInputs = [ pkgs.jdk25 ]; } ''
+      dataplanJsonFor =
+        pkgs:
+        let
+          planJar = planJarFor pkgs;
+        in
+        pkgs.runCommand "dataplan.json" { buildInputs = [ pkgs.jdk25 ]; } ''
           # The OSGi FrameworkLauncher narrates its boot on stdout before the
           # export, so keep only the JSON document (from its top-level `{` on)
           # — otherwise a stray "HH:MM:SS.mmm INFO …" line lands at line 1 and
@@ -510,16 +554,18 @@
         # once here rather than in each consumer: the segments are a list, and the node's
         # networkd config has no business walking it.
         vmnetSupernet =
-          (nixpkgs.lib.findFirst (segment: segment.name == "vmnet")
-            (throw "fabric-plan's netplan.json carries no 'vmnet' segment")
-            networkBlueprintData.segments).cidr;
+          (nixpkgs.lib.findFirst (
+            segment: segment.name == "vmnet"
+          ) (throw "fabric-plan's netplan.json carries no 'vmnet' segment") networkBlueprintData.segments)
+          .cidr;
       };
     in
     # The two systems anything here runs on: the operator seat (aarch64-darwin) and the Incus containers
     # of the Apple-Silicon NixOS guests (aarch64-linux) — the cluster nodes and the Tekton render pods
     # among them. Not eachDefaultSystem: its x86_64-darwin no longer evaluates (Nixpkgs 26.11 dropped
     # it), and both x86_64 systems only cost every relock pass an evaluation that measures nothing.
-    (flake-utils.lib.eachSystem [ blueprintSystem nodeSystem ] (system:
+    (flake-utils.lib.eachSystem [ blueprintSystem nodeSystem ] (
+      system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
 
@@ -582,40 +628,45 @@
         # install. Every store-built exe resolves deps + stages CRDs + gates spotless
         # identically — so seed-outcluster (whole reactor) and manifests-cli (the render exe)
         # come from the SAME build logic, no drift.
-        buildReactorExe = { pname, mvnArgs ? "", jars }: pkgs.stdenv.mkDerivation {
-          name = "rke2lab-${pname}";
-          src = mavenSource;
+        buildReactorExe =
+          {
+            pname,
+            mvnArgs ? "",
+            jars,
+          }:
+          pkgs.stdenv.mkDerivation {
+            name = "rke2lab-${pname}";
+            src = mavenSource;
 
-          nativeBuildInputs = mavenBuildInputs pkgs;
+            nativeBuildInputs = mavenBuildInputs pkgs;
 
-          buildPhase = ''
-            ${mavenHostPrelude pkgs}
-            # CRDs stage into target/generated-resources/crds (crdStagingDir), which `clean` wipes —
-            # so clean FIRST, then install the store CRDs, then package. `-Dflox.crd-staging.skip`
-            # tells manifests-core's exec plugin to SKIP its own `nix run .#stage-*-crd` (a nested
-            # nix run has no daemon/network in this sandbox); a plain `./mvnw` build omits the flag,
-            # so that exec staging runs post-clean there.
-            mvnHost -Dshfmt.version=${pkgs.shfmt.version} -DskipTests ${mvnArgs} clean
-            # The store build runs the DEFAULT profile, so the module build dir is plain target/ —
-            # crdStagingDir. (A -Pnxmatic/-Pclaude build would use target~*, but this sandbox does not.)
-            dest=${crdStagingDir}
-            ${stageFloxControllerCrds}
-            ${stageSeedInclusterCrds}
-            destRbac=${rbacStagingDir}
-            ${stageSeedInclusterRbac}
-            ${stageFloxControllerRbac}
-            destRefs=${imageRefStagingDir}
-            ${stageFloxControllerImageRef}
-            ${stageFloxCarrierImageRef}
-            mvnHost -Dshfmt.version=${pkgs.shfmt.version} -DskipTests -Dflox.crd-staging.skip=true ${mvnArgs} package
-          '';
+            buildPhase = ''
+              ${mavenHostPrelude pkgs}
+              # CRDs stage into target/generated-resources/crds (crdStagingDir), which `clean` wipes —
+              # so clean FIRST, then install the store CRDs, then package. `-Dflox.crd-staging.skip`
+              # tells manifests-core's exec plugin to SKIP its own `nix run .#stage-*-crd` (a nested
+              # nix run has no daemon/network in this sandbox); a plain `./mvnw` build omits the flag,
+              # so that exec staging runs post-clean there.
+              mvnHost -Dshfmt.version=${pkgs.shfmt.version} -DskipTests ${mvnArgs} clean
+              # The store build runs the DEFAULT profile, so the module build dir is plain target/ —
+              # crdStagingDir. (A -Pnxmatic/-Pclaude build would use target~*, but this sandbox does not.)
+              dest=${crdStagingDir}
+              ${stageFloxControllerCrds}
+              ${stageSeedInclusterCrds}
+              destRbac=${rbacStagingDir}
+              ${stageSeedInclusterRbac}
+              ${stageFloxControllerRbac}
+              destRefs=${imageRefStagingDir}
+              ${stageFloxControllerImageRef}
+              ${stageFloxCarrierImageRef}
+              mvnHost -Dshfmt.version=${pkgs.shfmt.version} -DskipTests -Dflox.crd-staging.skip=true ${mvnArgs} package
+            '';
 
-          installPhase = ''
-            mkdir -p $out/share/java
-            ${nixpkgs.lib.concatMapStrings
-              (jar: "cp ${jar.glob} $out/share/java/${jar.name}\n") jars}
-          '';
-        };
+            installPhase = ''
+              mkdir -p $out/share/java
+              ${nixpkgs.lib.concatMapStrings (jar: "cp ${jar.glob} $out/share/java/${jar.name}\n") jars}
+            '';
+          };
 
         # The seed-outcluster bootstrap app + the manifests jar it embeds, as one whole-reactor
         # build (seed-outcluster pulls manifests/netplan/systemd/incus, so the reactor builds
@@ -624,8 +675,14 @@
         seedOutclusterJar = buildReactorExe {
           pname = "seed-outcluster";
           jars = [
-            { glob = "exec/seed-outcluster/target/seed-outcluster-*-exec.jar"; name = "seed-outcluster.jar"; }
-            { glob = "exec/manifests-cli/target/manifests-cli-*-exec.jar"; name = "manifests.jar"; }
+            {
+              glob = "exec/seed-outcluster/target/seed-outcluster-*-exec.jar";
+              name = "seed-outcluster.jar";
+            }
+            {
+              glob = "exec/manifests-cli/target/manifests-cli-*-exec.jar";
+              name = "manifests.jar";
+            }
           ];
         };
 
@@ -638,7 +695,10 @@
           pname = "manifests-cli";
           mvnArgs = "-pl :manifests-cli -am";
           jars = [
-            { glob = "exec/manifests-cli/target/manifests-cli-*-exec.jar"; name = "manifests.jar"; }
+            {
+              glob = "exec/manifests-cli/target/manifests-cli-*-exec.jar";
+              name = "manifests.jar";
+            }
           ];
         };
 
@@ -647,11 +707,14 @@
         # the sources alone — the generator never reads what it publishes: its drvPath does not
         # move with ndh or fabric-plan overridden by an empty input. Off the eval path.
         networkBlueprintYaml = networkBlueprintYamlFor pkgs;
-        networkBlueprintJson = pkgs.runCommand "network-blueprint.json" {
-          nativeBuildInputs = [ pkgs.yq-go ];
-        } ''
-          yq -o=json '.' ${networkBlueprintYamlFor pkgs}/network-blueprint.yaml > $out
-        '';
+        networkBlueprintJson =
+          pkgs.runCommand "network-blueprint.json"
+            {
+              nativeBuildInputs = [ pkgs.yq-go ];
+            }
+            ''
+              yq -o=json '.' ${networkBlueprintYamlFor pkgs}/network-blueprint.yaml > $out
+            '';
 
         # The dataplan as the sources produce it — the `dataset` plane emits JSON directly, so
         # this is the export as-is (no yq); dataplan-fresh compares it to the pin.
@@ -682,30 +745,30 @@
         # runtime flake lacks an output for a given system.
         floxRuntimePackages = flox-runtime.packages.${system} or { };
         floxNriPluginPackages =
-          (if floxRuntimePackages ? flox-nri-plugin
-           then { inherit (floxRuntimePackages) flox-nri-plugin; }
-           else { })
-          // (if floxRuntimePackages ? flox-nri-plugin-debug
-                then { inherit (floxRuntimePackages) flox-nri-plugin-debug; }
-                else { });
+          (
+            if floxRuntimePackages ? flox-nri-plugin then
+              { inherit (floxRuntimePackages) flox-nri-plugin; }
+            else
+              { }
+          )
+          // (
+            if floxRuntimePackages ? flox-nri-plugin-debug then
+              { inherit (floxRuntimePackages) flox-nri-plugin-debug; }
+            else
+              { }
+          );
 
         # flox-controller re-exported the same way: the node-agent binary + its OCI
         # image (the DaemonSet distribution artifact, cross-built via the
         # linux-builder). Same darwin-eval guard as the NRI plugin.
         floxControllerPackages =
-          let ctlPkgs = flox-controller.packages.${system} or { };
-          in (if ctlPkgs ? flox-controller
-              then { inherit (ctlPkgs) flox-controller; }
-              else { })
-          // (if ctlPkgs ? flox-controller-image
-                then { inherit (ctlPkgs) flox-controller-image; }
-                else { })
-          // (if ctlPkgs ? flox-controller-crds
-                then { inherit (ctlPkgs) flox-controller-crds; }
-                else { })
-          // (if ctlPkgs ? flox-controller-rbac
-                then { inherit (ctlPkgs) flox-controller-rbac; }
-                else { });
+          let
+            ctlPkgs = flox-controller.packages.${system} or { };
+          in
+          (if ctlPkgs ? flox-controller then { inherit (ctlPkgs) flox-controller; } else { })
+          // (if ctlPkgs ? flox-controller-image then { inherit (ctlPkgs) flox-controller-image; } else { })
+          // (if ctlPkgs ? flox-controller-crds then { inherit (ctlPkgs) flox-controller-crds; } else { })
+          // (if ctlPkgs ? flox-controller-rbac then { inherit (ctlPkgs) flox-controller-rbac; } else { });
 
         # The flox-controller CRD as a store path (single-sourced from the flake —
         # controller-gen output, never vendored). Staged onto the manifest-synthesis
@@ -755,14 +818,12 @@
         # Staged into target/ (generated) like the CRDs and the RBAC, so `mvn clean` wipes it and a
         # stale ref can never linger on the classpath — which for a content-derived tag would mean
         # rendering a reference to an image the node does not have.
-        imageRefStagingDir =
-          "osgi/domains/manifests/manifests-core/target/generated-resources/image-refs";
+        imageRefStagingDir = "osgi/domains/manifests/manifests-core/target/generated-resources/image-refs";
 
-        stageFloxControllerImageRef =
-          nixpkgs.lib.optionalString (floxControllerImageRef != null) ''
-            mkdir -p "$destRefs"
-            install -m 644 ${floxControllerImageRef}/* "$destRefs/"
-          '';
+        stageFloxControllerImageRef = nixpkgs.lib.optionalString (floxControllerImageRef != null) ''
+          mkdir -p "$destRefs"
+          install -m 644 ${floxControllerImageRef}/* "$destRefs/"
+        '';
 
         stageFloxCarrierImageRef = ''
           mkdir -p "$destRefs"
@@ -773,15 +834,13 @@
         # marker is buried in src to advertise a "resource" dir that is really generated output).
         # build-helper add-resource (manifests-core pom) puts it on the classpath at /crds/. Holds
         # BOTH CRD sets (flox-controller + seed-incluster).
-        crdStagingDir =
-          "osgi/domains/manifests/manifests-core/target/generated-resources/crds";
+        crdStagingDir = "osgi/domains/manifests/manifests-core/target/generated-resources/crds";
 
         # Same idea for the seed-incluster ClusterRole (single-sourced from its +kubebuilder:rbac
         # markers via the flake): staged onto the classpath at /rbac/ so SeedInclusterManifestsUnit
         # INCLUDES it instead of hand-listing the rules (which drift). build-helper add-resource
         # (manifests-core pom) puts it at /rbac/; the staged dir is gitignored.
-        rbacStagingDir =
-          "osgi/domains/manifests/manifests-core/target/generated-resources/rbac";
+        rbacStagingDir = "osgi/domains/manifests/manifests-core/target/generated-resources/rbac";
 
         # seed-incluster re-exported the same way as flox-controller: the
         # controller binary + the ClusterAdoption CRD store path. The OCI image is NO
@@ -789,27 +848,21 @@
         # cluster-api/seed-incluster flox env installs the binary from the
         # flox-catalog), so only the binary + CRD are needed here. Same darwin-eval guard.
         seedInclusterPackages =
-          let seedPkgs = seed-incluster.packages.${system} or { };
-          in (if seedPkgs ? seed-incluster
-              then { inherit (seedPkgs) seed-incluster; }
-              else { })
-          // (if seedPkgs ? seed-incluster-crds
-                then { inherit (seedPkgs) seed-incluster-crds; }
-                else { })
-          // (if seedPkgs ? seed-incluster-rbac
-                then { inherit (seedPkgs) seed-incluster-rbac; }
-                else { });
+          let
+            seedPkgs = seed-incluster.packages.${system} or { };
+          in
+          (if seedPkgs ? seed-incluster then { inherit (seedPkgs) seed-incluster; } else { })
+          // (if seedPkgs ? seed-incluster-crds then { inherit (seedPkgs) seed-incluster-crds; } else { })
+          // (if seedPkgs ? seed-incluster-rbac then { inherit (seedPkgs) seed-incluster-rbac; } else { });
 
         # The ClusterAdoption CRD as a store path (single-sourced from the flake —
         # controller-gen output, never vendored). Staged onto the same crds/ classpath
         # resource dir as the flox-controller CRD.
-        seedInclusterCrds =
-          (seed-incluster.packages.${system} or { }).seed-incluster-crds or null;
+        seedInclusterCrds = (seed-incluster.packages.${system} or { }).seed-incluster-crds or null;
 
         # The seed-incluster ClusterRole as a store path (controller-gen output from the markers,
         # never vendored). Staged onto the /rbac/ classpath resource dir.
-        seedInclusterRbac =
-          (seed-incluster.packages.${system} or { }).seed-incluster-rbac or null;
+        seedInclusterRbac = (seed-incluster.packages.${system} or { }).seed-incluster-rbac or null;
 
         # Maven-build toolchain re-exported as individual packages, so the flox
         # env pins each tool to this flake's version
@@ -854,161 +907,161 @@
           # darwin-only: ndh exposes the package only for aarch64-darwin (the operator host).
           ++ pkgs.lib.optional (system == "aarch64-darwin") inputs.ndh.packages.${system}.manage-tailnet;
           text = ''
-            usage() {
-              cat >&2 <<'USAGE'
-usage: nix run .#grow -- <stack> [preview|up] [pulumi args...] 3< <(pass show seedmatic/cluster-age/<n>)
+                        usage() {
+                          cat >&2 <<'USAGE'
+            usage: nix run .#grow -- <stack> [preview|up] [pulumi args...] 3< <(pass show seedmatic/cluster-age/<n>)
 
-  <stack>    Pulumi stack name (required), e.g. dev
-  preview    read-only diff, no apply (default)
-  up         apply, non-interactive, after a preview you read (pulumi up --yes --skip-preview)
-  -h,--help  this message
+              <stack>    Pulumi stack name (required), e.g. dev
+              preview    read-only diff, no apply (default)
+              up         apply, non-interactive, after a preview you read (pulumi up --yes --skip-preview)
+              -h,--help  this message
 
-Anything after the verb is passed through to pulumi (e.g. --diff, --target).
-The cluster's age identity is read from fd 3 (or $RKE2LAB_CLUSTER_AGE_FD), which your own shell
-opens; the grow refuses to run without it.
-USAGE
-            }
+            Anything after the verb is passed through to pulumi (e.g. --diff, --target).
+            The cluster's age identity is read from fd 3 (or $RKE2LAB_CLUSTER_AGE_FD), which your own shell
+            opens; the grow refuses to run without it.
+            USAGE
+                        }
 
-            # -h/--help works from anywhere (before the repo-root check).
-            case "''${1:-}" in
-              -h | --help) usage; exit 0 ;;
-            esac
+                        # -h/--help works from anywhere (before the repo-root check).
+                        case "''${1:-}" in
+                          -h | --help) usage; exit 0 ;;
+                        esac
 
-            if [ ! -f Pulumi.yaml ]; then
-              echo "error: run from the rke2lab repo root (no Pulumi.yaml here)" >&2
-              usage
-              exit 1
-            fi
+                        if [ ! -f Pulumi.yaml ]; then
+                          echo "error: run from the rke2lab repo root (no Pulumi.yaml here)" >&2
+                          usage
+                          exit 1
+                        fi
 
-            # The cluster's age identity (rke2lab-cluster-age-<n>) arrives on a file descriptor the
-            # operator's OWN shell opens on this command line, never one this script or a session opens:
-            #   nix run …#grow -- <stack> <action> 3< <(pass show seedmatic/cluster-age/<n>)
-            # Never stdin (it does not reach a Pulumi program; an inherited descriptor does), never a file.
-            # Every grow renders the sops-age Secret from it, so a grow without it fails here, loud.
-            # Checked first, before the long build, and only for being open: reading it would consume
-            # the pipe.
-            RKE2LAB_CLUSTER_AGE_FD="''${RKE2LAB_CLUSTER_AGE_FD:-3}"
-            [ -e "/dev/fd/$RKE2LAB_CLUSTER_AGE_FD" ] || {
-              echo "error: no cluster age identity on fd $RKE2LAB_CLUSTER_AGE_FD — append to this command: $RKE2LAB_CLUSTER_AGE_FD< <(pass show seedmatic/cluster-age/<n>)" >&2
-              exit 1
-            }
-            export RKE2LAB_CLUSTER_AGE_FD
+                        # The cluster's age identity (rke2lab-cluster-age-<n>) arrives on a file descriptor the
+                        # operator's OWN shell opens on this command line, never one this script or a session opens:
+                        #   nix run …#grow -- <stack> <action> 3< <(pass show seedmatic/cluster-age/<n>)
+                        # Never stdin (it does not reach a Pulumi program; an inherited descriptor does), never a file.
+                        # Every grow renders the sops-age Secret from it, so a grow without it fails here, loud.
+                        # Checked first, before the long build, and only for being open: reading it would consume
+                        # the pipe.
+                        RKE2LAB_CLUSTER_AGE_FD="''${RKE2LAB_CLUSTER_AGE_FD:-3}"
+                        [ -e "/dev/fd/$RKE2LAB_CLUSTER_AGE_FD" ] || {
+                          echo "error: no cluster age identity on fd $RKE2LAB_CLUSTER_AGE_FD — append to this command: $RKE2LAB_CLUSTER_AGE_FD< <(pass show seedmatic/cluster-age/<n>)" >&2
+                          exit 1
+                        }
+                        export RKE2LAB_CLUSTER_AGE_FD
 
-            stack="''${1:-}"
-            if [ -z "$stack" ]; then
-              echo "error: missing <stack> argument" >&2
-              usage
-              exit 2
-            fi
-            # Guard the common slip: an ACTION verb given where the stack is expected
-            # (`-- up` would silently make the stack "up", then preview a nonexistent
-            # stack with no error). Catch it with a corrective hint.
-            case "$stack" in
-              preview | up)
-                echo "error: '$stack' is an action, not a stack — did you mean: nix run .#grow -- <stack> $stack" >&2
-                usage
-                exit 2
-                ;;
-            esac
-            shift
+                        stack="''${1:-}"
+                        if [ -z "$stack" ]; then
+                          echo "error: missing <stack> argument" >&2
+                          usage
+                          exit 2
+                        fi
+                        # Guard the common slip: an ACTION verb given where the stack is expected
+                        # (`-- up` would silently make the stack "up", then preview a nonexistent
+                        # stack with no error). Catch it with a corrective hint.
+                        case "$stack" in
+                          preview | up)
+                            echo "error: '$stack' is an action, not a stack — did you mean: nix run .#grow -- <stack> $stack" >&2
+                            usage
+                            exit 2
+                            ;;
+                        esac
+                        shift
 
-            # Action verb (default: preview — safe, read-only). `up` applies
-            # non-interactively: preview is the inspection step, so an explicit
-            # `up` means apply and the confirm prompt is redundant. Anything
-            # after the verb is passed through to pulumi (e.g. --diff, --target).
-            action="''${1:-preview}"
-            case "$action" in
-              preview | up) shift ;;
-              -*) action="preview" ;;  # no verb given, first arg is a pulumi flag
-              *) echo "error: unknown action '$action' (preview|up)" >&2; usage; exit 2 ;;
-            esac
+                        # Action verb (default: preview — safe, read-only). `up` applies
+                        # non-interactively: preview is the inspection step, so an explicit
+                        # `up` means apply and the confirm prompt is redundant. Anything
+                        # after the verb is passed through to pulumi (e.g. --diff, --target).
+                        action="''${1:-preview}"
+                        case "$action" in
+                          preview | up) shift ;;
+                          -*) action="preview" ;;  # no verb given, first arg is a pulumi flag
+                          *) echo "error: unknown action '$action' (preview|up)" >&2; usage; exit 2 ;;
+                        esac
 
-            # The pass-through args reach pulumi, and pulumi's output reaches a session when operations runs
-            # the grow: a verbose, traced or log-flowing run writes the engine's internals, the program's
-            # inputs among them, where a session reads (--otel-traces and --profiling export the same). Refused here (security, S5 review, 2026-10-18); the
-            # operator who wants -v9 calls pulumi directly, and that log stays theirs.
-            refuseLogging() {
-              echo "error: $1 — the grow keeps pulumi's output plain; run pulumi yourself for that" >&2
-              exit 2
-            }
-            passed=( "$@" )
-            for ((i = 0; i < ''${#passed[@]}; i++)); do
-              arg="''${passed[i]}"
-              case "$arg" in
-                --logflow | --logflow=* | --logtostderr | --logtostderr=* | --tracing | --tracing=* | \
-                  --otel-traces | --otel-traces=* | --profiling | --profiling=*)
-                  refuseLogging "$arg is refused"
-                  ;;
-                -v | --verbose) level="''${passed[i + 1]:-}" ;;
-                -v=* | --verbose=*) level="''${arg#*=}" ;;
-                -v[0-9]*) level="''${arg#-v}" ;;
-                *) continue ;;
-              esac
-              [[ $level =~ ^[0-3]$ ]] || refuseLogging "$arg ''${level}: a verbosity above 3 is refused"
-            done
+                        # The pass-through args reach pulumi, and pulumi's output reaches a session when operations runs
+                        # the grow: a verbose, traced or log-flowing run writes the engine's internals, the program's
+                        # inputs among them, where a session reads (--otel-traces and --profiling export the same). Refused here (security, S5 review, 2026-10-18); the
+                        # operator who wants -v9 calls pulumi directly, and that log stays theirs.
+                        refuseLogging() {
+                          echo "error: $1 — the grow keeps pulumi's output plain; run pulumi yourself for that" >&2
+                          exit 2
+                        }
+                        passed=( "$@" )
+                        for ((i = 0; i < ''${#passed[@]}; i++)); do
+                          arg="''${passed[i]}"
+                          case "$arg" in
+                            --logflow | --logflow=* | --logtostderr | --logtostderr=* | --tracing | --tracing=* | \
+                              --otel-traces | --otel-traces=* | --profiling | --profiling=*)
+                              refuseLogging "$arg is refused"
+                              ;;
+                            -v | --verbose) level="''${passed[i + 1]:-}" ;;
+                            -v=* | --verbose=*) level="''${arg#*=}" ;;
+                            -v[0-9]*) level="''${arg#-v}" ;;
+                            *) continue ;;
+                          esac
+                          [[ $level =~ ^[0-3]$ ]] || refuseLogging "$arg ''${level}: a verbosity above 3 is refused"
+                        done
 
-            # The debug switches pulumi and its providers read from the environment, scrubbed from the one
-            # pulumi runs in, for the same reason.
-            scrub=( -u PULUMI_DEBUG_GRPC -u PULUMI_DEBUG_COMMANDS -u TF_LOG -u TF_LOG_PATH )
-            for name in ''${!PULUMI_LOG@}; do
-              scrub+=( -u "$name" )
-            done
+                        # The debug switches pulumi and its providers read from the environment, scrubbed from the one
+                        # pulumi runs in, for the same reason.
+                        scrub=( -u PULUMI_DEBUG_GRPC -u PULUMI_DEBUG_COMMANDS -u TF_LOG -u TF_LOG_PATH )
+                        for name in ''${!PULUMI_LOG@}; do
+                          scrub+=( -u "$name" )
+                        done
 
-            # Pulumi project env (mirrors the flox env's [vars]); each
-            # `''${VAR:-default}` so an active flox env's values win when present.
-            # PULUMI_HOME defaults to the XDG location (NOT the repo) so the
-            # plugin/cache dir never becomes a repo artifact, matching flox.
-            export PULUMI_HOME="''${PULUMI_HOME:-''${XDG_STATE_HOME:-$HOME/.local/state}/pulumi}"
-            export PULUMI_BACKEND_URL="''${PULUMI_BACKEND_URL:-file://$PWD/.pulumi-state}"
-            export PULUMI_CONFIG_PASSPHRASE="''${PULUMI_CONFIG_PASSPHRASE:-}"
-            mkdir -p "$PULUMI_HOME" .pulumi-state
+                        # Pulumi project env (mirrors the flox env's [vars]); each
+                        # `''${VAR:-default}` so an active flox env's values win when present.
+                        # PULUMI_HOME defaults to the XDG location (NOT the repo) so the
+                        # plugin/cache dir never becomes a repo artifact, matching flox.
+                        export PULUMI_HOME="''${PULUMI_HOME:-''${XDG_STATE_HOME:-$HOME/.local/state}/pulumi}"
+                        export PULUMI_BACKEND_URL="''${PULUMI_BACKEND_URL:-file://$PWD/.pulumi-state}"
+                        export PULUMI_CONFIG_PASSPHRASE="''${PULUMI_CONFIG_PASSPHRASE:-}"
+                        mkdir -p "$PULUMI_HOME" .pulumi-state
 
-            # Self-heal: a previous run killed before its restore trap fired can
-            # leave Pulumi.yaml's binary pointing at a store path. Restore the
-            # committed (Maven-target) file from git before swapping again.
-            if grep -qE '^ *binary: /nix/store/' Pulumi.yaml; then
-              echo "==> Pulumi.yaml left swapped by a prior run; restoring from git" >&2
-              git checkout -- Pulumi.yaml
-            fi
+                        # Self-heal: a previous run killed before its restore trap fired can
+                        # leave Pulumi.yaml's binary pointing at a store path. Restore the
+                        # committed (Maven-target) file from git before swapping again.
+                        if grep -qE '^ *binary: /nix/store/' Pulumi.yaml; then
+                          echo "==> Pulumi.yaml left swapped by a prior run; restoring from git" >&2
+                          git checkout -- Pulumi.yaml
+                        fi
 
-            # The inner seed-outcluster build is a SEPARATE child nix process — flags on the
-            # OUTER `nix run` (e.g. `nix run .#grow -L …`) go to building THIS wrapper, not it. So it
-            # always gets `-L` (surface the build log), plus whatever the shared NIX_FLAGS env adds,
-            # e.g. `NIX_FLAGS='--rebuild -Lvv' nix run .#grow -- dev up`. Same var across every app.
-            nixFlags=( -L )
-            read -r -a extraNixFlags <<< "''${NIX_FLAGS:-}"
-            nixFlags+=( "''${extraNixFlags[@]}" )
+                        # The inner seed-outcluster build is a SEPARATE child nix process — flags on the
+                        # OUTER `nix run` (e.g. `nix run .#grow -L …`) go to building THIS wrapper, not it. So it
+                        # always gets `-L` (surface the build log), plus whatever the shared NIX_FLAGS env adds,
+                        # e.g. `NIX_FLAGS='--rebuild -Lvv' nix run .#grow -- dev up`. Same var across every app.
+                        nixFlags=( -L )
+                        read -r -a extraNixFlags <<< "''${NIX_FLAGS:-}"
+                        nixFlags+=( "''${extraNixFlags[@]}" )
 
-            # The inner build names THIS flake's own store source, never `.`: the checkout it runs in
-            # may hold decrypted sops files, and evaluating the working tree would copy them into the
-            # store in clear. So it builds what the outer `nix run` was given, not the working tree.
-            echo "==> building seed-outcluster from the store" >&2
-            jar="$(nix build "${self}#seed-outcluster" "''${nixFlags[@]}" --no-link --print-out-paths)/share/java/seed-outcluster.jar"
-            [ -f "$jar" ] || { echo "error: store jar not found at $jar" >&2; exit 1; }
+                        # The inner build names THIS flake's own store source, never `.`: the checkout it runs in
+                        # may hold decrypted sops files, and evaluating the working tree would copy them into the
+                        # store in clear. So it builds what the outer `nix run` was given, not the working tree.
+                        echo "==> building seed-outcluster from the store" >&2
+                        jar="$(nix build "${self}#seed-outcluster" "''${nixFlags[@]}" --no-link --print-out-paths)/share/java/seed-outcluster.jar"
+                        [ -f "$jar" ] || { echo "error: store jar not found at $jar" >&2; exit 1; }
 
-            # Swap Pulumi.yaml's binary to the store jar for the duration; always
-            # restore the committed file on exit so the dev loop is untouched.
-            # Trap signals too (not just EXIT) so a Ctrl-C during `pulumi up`
-            # still restores; the self-heal above covers a hard kill (-9).
-            backup="$(mktemp)"
-            cp Pulumi.yaml "$backup"
-            trap 'cp "$backup" Pulumi.yaml; rm -f "$backup"' EXIT INT TERM HUP
-            sed -E "s#^( *binary: ).*#\1$jar#" "$backup" > Pulumi.yaml
+                        # Swap Pulumi.yaml's binary to the store jar for the duration; always
+                        # restore the committed file on exit so the dev loop is untouched.
+                        # Trap signals too (not just EXIT) so a Ctrl-C during `pulumi up`
+                        # still restores; the self-heal above covers a hard kill (-9).
+                        backup="$(mktemp)"
+                        cp Pulumi.yaml "$backup"
+                        trap 'cp "$backup" Pulumi.yaml; rm -f "$backup"' EXIT INT TERM HUP
+                        sed -E "s#^( *binary: ).*#\1$jar#" "$backup" > Pulumi.yaml
 
-            case "$action" in
-              preview)
-                echo "==> pulumi preview --stack $stack (binary=$jar)" >&2
-                env "''${scrub[@]}" pulumi preview --stack "$stack" "$@"
-                ;;
-              up)
-                # --skip-preview (the operator's decision D6, 2026-10-18): the program then runs ONCE, and
-                # the descriptor is a pipe it reads once; `up` without it would run the program twice and
-                # the second run would find the pipe empty. The preview the operator reads is the separate
-                # `preview` action, before their go.
-                echo "==> pulumi up --yes --skip-preview --stack $stack (binary=$jar)" >&2
-                env "''${scrub[@]}" pulumi up --yes --skip-preview --stack "$stack" "$@"
-                ;;
-            esac
+                        case "$action" in
+                          preview)
+                            echo "==> pulumi preview --stack $stack (binary=$jar)" >&2
+                            env "''${scrub[@]}" pulumi preview --stack "$stack" "$@"
+                            ;;
+                          up)
+                            # --skip-preview (the operator's decision D6, 2026-10-18): the program then runs ONCE, and
+                            # the descriptor is a pipe it reads once; `up` without it would run the program twice and
+                            # the second run would find the pipe empty. The preview the operator reads is the separate
+                            # `preview` action, before their go.
+                            echo "==> pulumi up --yes --skip-preview --stack $stack (binary=$jar)" >&2
+                            env "''${scrub[@]}" pulumi up --yes --skip-preview --stack "$stack" "$@"
+                            ;;
+                        esac
           '';
         };
 
@@ -1026,7 +1079,14 @@ USAGE
           # openssh: the publish signs the rendered commit with RKE2LAB_SIGNING_KEY via `ssh-keygen`
           # (SshCommitSigner → jgit), which openssh provides (`Cannot run program "ssh-keygen"`
           # without it). Both were implicit on dev / the deleted cicd/nix FloxEnv.
-          runtimeInputs = [ pkgs.coreutils pkgs.nix pkgs.git pkgs.jdk25 pkgs.nodejs pkgs.openssh ];
+          runtimeInputs = [
+            pkgs.coreutils
+            pkgs.nix
+            pkgs.git
+            pkgs.jdk25
+            pkgs.nodejs
+            pkgs.openssh
+          ];
           text = ''
             if [ ! -f pom.xml ] || [ ! -f flake.nix ]; then
               echo "error: run from the rke2lab repo root" >&2
@@ -1116,283 +1176,331 @@ USAGE
           };
         });
 
-      # relock — nix-flake-commons' `lib.mkRelockApp`, the one implementation every seedmatic flake
-      # shares, so every repo in the chain applies the same rule (docs/architecture/patterns/
-      # flake-lock-propagation.adoc). rke2lab supplies its name; the heads, the order and what each
-      # head pins are read from nix-flake-commons:fabric/heads.
-      relockApp = inputs.flake-commons.lib.mkRelockApp {
-        inherit pkgs;
-        name = "rke2lab";
-      };
-      in pkgs.lib.recursiveUpdate {
-        packages = {
-          inherit planJar networkBlueprintYaml networkBlueprintJson dataplanJson seedOutclusterJar;
-          seed-outcluster = seedOutclusterJar;
-          manifests-cli = manifestsCliJar;
-          # Exposed so the bootstrap closure can be BUILT and INSPECTED on its own — it is otherwise
-          # only interpolated into two other build phases, which makes it impossible to measure
-          # (determinism, size, what it actually downloaded) without building something else first.
-          staging-extension-repo = stagingExtensionRepoFor pkgs;
-          maven-deps = mavenDepsFor pkgs;
-          incus-client = incusClient;
-          grow = growApp;
-          flux9s = flux9sPkg;
-        }
-        // floxNriPluginPackages
-        // floxControllerPackages
-        // seedInclusterPackages
-        // toolchainPackages
-        // operatorToolchainPackages
-        # manage-tailnet (darwin-only): rke2lab OVER-SEEDS ndh's bare package with its own context —
-        # the OAuth client ndh user-mirrors at ~/.local/share/ndh/tailnet.tailscale.client
-        # (TailscaleOauthClientGateway.NDH_CLIENT_PATH). The wrapper pre-supplies --client-secret-file
-        # so a caller here just runs `manage-tailnet <action>` and it authenticates without a
-        # .secrets/age key — the incus GROW's local.Command, or the operator by hand. Per-invocation
-        # policy (--stale-after, --yes) stays the caller's. The flox env installs it as
-        # `github:seedmatic/rke2lab#manage-tailnet`; flake.lock is the single ndh pin.
-        // pkgs.lib.optionalAttrs (system == "aarch64-darwin") {
-          manage-tailnet = pkgs.writeShellScriptBin "manage-tailnet" ''
-            exec ${inputs.ndh.packages.${system}.manage-tailnet}/bin/manage-tailnet \
-              --client-secret-file "$HOME/.local/share/ndh/tailnet.tailscale.client" "$@"
-          '';
+        # relock — nix-flake-commons' `lib.mkRelockApp`, the one implementation every seedmatic flake
+        # shares, so every repo in the chain applies the same rule (docs/architecture/patterns/
+        # flake-lock-propagation.adoc). rke2lab supplies its name; the heads, the order and what each
+        # head pins are read from nix-flake-commons:fabric/heads.
+        relockApp = inputs.flake-commons.lib.mkRelockApp {
+          inherit pkgs;
+          name = "rke2lab";
         };
-
-        # Re-exported from ndh (which owns the incus HOSTS) so the operator finds it in the same
-        # `nix run .#…` list as the grow, rather than having to remember which repo defines it —
-        # joining a member is a step of bringing a cluster up, so this is where it is looked for.
-        # Same shape as the `incus-client` / `manage-tailnet` re-exports above; flake.lock is the
-        # single ndh pin, so there is one version of the tool, not a copy.
-        #
-        # ⚠️ It reaches each member at `nixos.<domain>`, the FABRIC name — deliberately not the
-        # tailnet one, "which is what a renew changes". Measured 2026-09-27: a factory-reset
-        # nikopol-nixos came back on a new tailnet address under a new device, and this app was
-        # unaffected while `tailscale ssh` to the same host failed on a stale host key.
-        # (the re-export itself is merged in at the end of this block, for the systems ndh serves)
-
-        apps.grow = {
-          type = "app";
-          program = "${growApp}/bin/rke2lab-grow";
-          meta.description = "Grow the cluster: build the seed-outcluster jar and run pulumi preview/up against it";
-        };
-
-        apps.render-manifests = {
-          type = "app";
-          program = "${renderApp}/bin/rke2lab-render-manifests";
-          meta.description = "Render manifests/<cluster> + signed ff-push (build manifests-cli from the store, then publish)";
-        };
-
-        # Derive the plan and DELIVER it: `nix run .#publish-plan`, from the repo root. The plan jar's
-        # `publish` verb sows and grafts ghapp → netplan → dataplan → fabric; the fabric scion commits
-        # netplan.json + dataplan.json onto fabric/plan's head in memory (jgit, no checkout), signs the
-        # commit and fast-forward pushes fabric/plan with a token minted from the App. openssh:
-        # ssh-keygen signs the commit (SshCommitSigner → jgit); no git on the PATH.
-        apps.publish-plan = {
-          type = "app";
-          program = toString (pkgs.writeShellApplication {
-            name = "publish-plan";
-            runtimeInputs = [ pkgs.coreutils pkgs.jdk25 pkgs.openssh ];
-            text = ''
-              if [ ! -f pom.xml ] || [ ! -f flake.nix ]; then
-                echo "error: run from the rke2lab repo root" >&2
-                exit 1
-              fi
-              exec java -jar ${planJar}/share/java/rke2lab-plan.jar publish
+      in
+      pkgs.lib.recursiveUpdate
+        {
+          packages = {
+            inherit
+              planJar
+              networkBlueprintYaml
+              networkBlueprintJson
+              dataplanJson
+              seedOutclusterJar
+              ;
+            seed-outcluster = seedOutclusterJar;
+            manifests-cli = manifestsCliJar;
+            # Exposed so the bootstrap closure can be BUILT and INSPECTED on its own — it is otherwise
+            # only interpolated into two other build phases, which makes it impossible to measure
+            # (determinism, size, what it actually downloaded) without building something else first.
+            staging-extension-repo = stagingExtensionRepoFor pkgs;
+            maven-deps = mavenDepsFor pkgs;
+            incus-client = incusClient;
+            grow = growApp;
+            flux9s = flux9sPkg;
+          }
+          // floxNriPluginPackages
+          // floxControllerPackages
+          // seedInclusterPackages
+          // toolchainPackages
+          // operatorToolchainPackages
+          # manage-tailnet (darwin-only): rke2lab OVER-SEEDS ndh's bare package with its own context —
+          # the OAuth client ndh user-mirrors at ~/.local/share/ndh/tailnet.tailscale.client
+          # (TailscaleOauthClientGateway.NDH_CLIENT_PATH). The wrapper pre-supplies --client-secret-file
+          # so a caller here just runs `manage-tailnet <action>` and it authenticates without a
+          # .secrets/age key — the incus GROW's local.Command, or the operator by hand. Per-invocation
+          # policy (--stale-after, --yes) stays the caller's. The flox env installs it as
+          # `github:seedmatic/rke2lab#manage-tailnet`; flake.lock is the single ndh pin.
+          // pkgs.lib.optionalAttrs (system == "aarch64-darwin") {
+            manage-tailnet = pkgs.writeShellScriptBin "manage-tailnet" ''
+              exec ${inputs.ndh.packages.${system}.manage-tailnet}/bin/manage-tailnet \
+                --client-secret-file "$HOME/.local/share/ndh/tailnet.tailscale.client" "$@"
             '';
-          } + "/bin/publish-plan");
-          meta.description = "Derive the plan and deliver it to fabric/plan (signed commit, fast-forward push)";
-        };
+          };
 
-        # The envs vendored under .flox-envs.d arrive WITHOUT their manifest.lock: fleet ignores
-        # it, and the lock is what makes an env includable — so a fresh checkout cannot activate
-        # the flox seat until this runs ("manifest and lockfile are out of sync"). The locks stay
-        # gitignored on purpose: fleet publishes manifests, each checkout realises its own lock.
-        # The include graph is WALKED, not listed — a composed env must be locked after the ones
-        # it includes, and a hardcoded list rots the next time fleet adds an include.
-        apps.lock-flox-envs = {
-          type = "app";
-          program = toString (pkgs.writeShellScript "lock-flox-envs" ''
-            set -euo pipefail
+          # Re-exported from ndh (which owns the incus HOSTS) so the operator finds it in the same
+          # `nix run .#…` list as the grow, rather than having to remember which repo defines it —
+          # joining a member is a step of bringing a cluster up, so this is where it is looked for.
+          # Same shape as the `incus-client` / `manage-tailnet` re-exports above; flake.lock is the
+          # single ndh pin, so there is one version of the tool, not a copy.
+          #
+          # ⚠️ It reaches each member at `nixos.<domain>`, the FABRIC name — deliberately not the
+          # tailnet one, "which is what a renew changes". Measured 2026-09-27: a factory-reset
+          # nikopol-nixos came back on a new tailnet address under a new device, and this app was
+          # unaffected while `tailscale ssh` to the same host failed on a stale host key.
+          # (the re-export itself is merged in at the end of this block, for the systems ndh serves)
 
-            cd "$(git rev-parse --show-toplevel)"
+          apps.grow = {
+            type = "app";
+            program = "${growApp}/bin/rke2lab-grow";
+            meta.description = "Grow the cluster: build the seed-outcluster jar and run pulumi preview/up against it";
+          };
 
-            declare -A walked=()
+          apps.render-manifests = {
+            type = "app";
+            program = "${renderApp}/bin/rke2lab-render-manifests";
+            meta.description = "Render manifests/<cluster> + signed ff-push (build manifests-cli from the store, then publish)";
+          };
 
-            lock_env() {
-              local env="$1"
-              local dir=".flox-envs.d/$env"
-              [ -n "''${walked[$env]:-}" ] && return 0
-              walked[$env]=1
-              if [ ! -f "$dir/.flox/env/manifest.toml" ]; then
-                echo "lock-flox-envs: no vendored env '$env' — is the subtree imported?" >&2
+          # Derive the plan and DELIVER it: `nix run .#publish-plan`, from the repo root. The plan jar's
+          # `publish` verb sows and grafts ghapp → netplan → dataplan → fabric; the fabric scion commits
+          # netplan.json + dataplan.json onto fabric/plan's head in memory (jgit, no checkout), signs the
+          # commit and fast-forward pushes fabric/plan with a token minted from the App. openssh:
+          # ssh-keygen signs the commit (SshCommitSigner → jgit); no git on the PATH.
+          apps.publish-plan = {
+            type = "app";
+            program = toString (
+              pkgs.writeShellApplication {
+                name = "publish-plan";
+                runtimeInputs = [
+                  pkgs.coreutils
+                  pkgs.jdk25
+                  pkgs.openssh
+                ];
+                text = ''
+                  if [ ! -f pom.xml ] || [ ! -f flake.nix ]; then
+                    echo "error: run from the rke2lab repo root" >&2
+                    exit 1
+                  fi
+                  exec java -jar ${planJar}/share/java/rke2lab-plan.jar publish
+                '';
+              }
+              + "/bin/publish-plan"
+            );
+            meta.description = "Derive the plan and deliver it to fabric/plan (signed commit, fast-forward push)";
+          };
+
+          # The envs vendored under .flox-envs.d arrive WITHOUT their manifest.lock: fleet ignores
+          # it, and the lock is what makes an env includable — so a fresh checkout cannot activate
+          # the flox seat until this runs ("manifest and lockfile are out of sync"). The locks stay
+          # gitignored on purpose: fleet publishes manifests, each checkout realises its own lock.
+          # The include graph is WALKED, not listed — a composed env must be locked after the ones
+          # it includes, and a hardcoded list rots the next time fleet adds an include.
+          apps.lock-flox-envs = {
+            type = "app";
+            program = toString (
+              pkgs.writeShellScript "lock-flox-envs" ''
+                set -euo pipefail
+
+                cd "$(git rev-parse --show-toplevel)"
+
+                declare -A walked=()
+
+                lock_env() {
+                  local env="$1"
+                  local dir=".flox-envs.d/$env"
+                  [ -n "''${walked[$env]:-}" ] && return 0
+                  walked[$env]=1
+                  if [ ! -f "$dir/.flox/env/manifest.toml" ]; then
+                    echo "lock-flox-envs: no vendored env '$env' — is the subtree imported?" >&2
+                    exit 1
+                  fi
+                  while read -r dep; do
+                    [ -n "$dep" ] && lock_env "$dep"
+                  done < <(sed -n "s|^[[:space:]]*dir = '\.\./\([^']*\)'.*|\1|p" "$dir/.flox/env/manifest.toml")
+                  if [ -f "$dir/.flox/env/manifest.lock" ]; then
+                    echo "  $env already locked"
+                  else
+                    echo "  locking $env"
+                    flox upgrade --dir "$dir" >/dev/null
+                  fi
+                }
+
+                while read -r env; do
+                  lock_env "$env"
+                done < <(sed -n 's|^[[:space:]]*{ dir = "\./\.flox-envs\.d/\([^"]*\)".*|\1|p' .flox/env/manifest.toml)
+
+                echo "vendored flox envs locked — 'flox activate' is ready"
+              ''
+            );
+            meta.description = "Lock the flox envs vendored under .flox-envs.d so the flox seat can activate (fresh-checkout bootstrap)";
+          };
+
+          # Stage the flox-controller CRD (single-sourced from the flox-controller flake)
+          # onto the manifest-synthesis classpath for the DEV loop (`./mvnw -pl :manifests`).
+          # Release builds stage it inside seedOutclusterJar. The staged crds/ dir is
+          # gitignored — controller-gen stays the single source, never a committed copy.
+          apps.stage-flox-controller-crd = {
+            type = "app";
+            program = toString (
+              pkgs.writeShellScript "stage-flox-controller-crd" ''
+                set -euo pipefail
+                # $1 = the Maven build dir to stage into (the exec-plugin passes the profile-specific
+                # ${"$"}{project.build.directory}/generated-resources/crds); defaults to crdStagingDir
+                # for a bare `nix run` in the dev loop.
+                dest="''${1:-${crdStagingDir}}"
+                ${stageFloxControllerCrds}
+                echo "staged flox-controller CRD into $dest/ from ${floxControllerCrds}"
+              ''
+            );
+            meta.description = "Stage the flox-controller CRD (from the flake) onto the manifest-synthesis classpath";
+          };
+
+          # Stage the ClusterAdoption CRD (single-sourced from the seed-incluster
+          # flake) onto the manifest-synthesis classpath for the DEV loop. Release builds stage
+          # it inside seedOutclusterJar. The staged crds/ dir is gitignored — controller-gen stays
+          # the single source, never a committed copy.
+          apps.stage-seed-incluster-crd = {
+            type = "app";
+            program = toString (
+              pkgs.writeShellScript "stage-seed-incluster-crd" ''
+                set -euo pipefail
+                # $1 = the Maven build dir to stage into (see stage-flox-controller-crd); defaults to
+                # crdStagingDir for a bare `nix run` in the dev loop.
+                dest="''${1:-${crdStagingDir}}"
+                ${stageSeedInclusterCrds}
+                echo "staged ClusterAdoption CRD into $dest/ from ${seedInclusterCrds}"
+              ''
+            );
+            meta.description = "Stage the ClusterAdoption CRD (from the flake) onto the manifest-synthesis classpath";
+          };
+
+          # Stage the two baked images' RepoTags onto the manifest-synthesis classpath at
+          # /image-refs/ for the DEV loop (release builds stage them inside seedOutclusterJar). Both tags
+          # are derived from image content, so the synthesis READS them here — there is no literal
+          # anywhere that could still be right after a rebuild.
+          apps.stage-image-refs = {
+            type = "app";
+            program = toString (
+              pkgs.writeShellScript "stage-image-refs" ''
+                set -euo pipefail
+                # $1 = the Maven build dir to stage into; defaults to imageRefStagingDir for a bare
+                # `nix run` in the dev loop.
+                destRefs="''${1:-${imageRefStagingDir}}"
+                ${stageFloxControllerImageRef}
+                ${stageFloxCarrierImageRef}
+                echo "staged image refs into $destRefs/:"
+                for ref in "$destRefs"/*; do printf '  %s = %s\n' "$(basename "$ref")" "$(cat "$ref")"; done
+              ''
+            );
+            meta.description = "Stage the flox-controller + flox-carrier RepoTags (content-derived) onto the manifest-synthesis classpath";
+          };
+
+          # Stage the seed-incluster ClusterRole (single-sourced from the flake's +kubebuilder:rbac
+          # markers) onto the manifest-synthesis classpath at /rbac/ for the DEV loop. Release builds
+          # stage it inside seedOutclusterJar. The staged rbac/ dir is gitignored — controller-gen stays
+          # the single source, never a committed copy.
+          apps.stage-seed-incluster-rbac = {
+            type = "app";
+            program = toString (
+              pkgs.writeShellScript "stage-seed-incluster-rbac" ''
+                set -euo pipefail
+                # $1 = the Maven build dir to stage into; defaults to rbacStagingDir for a bare `nix run`.
+                destRbac="''${1:-${rbacStagingDir}}"
+                ${stageSeedInclusterRbac}
+                echo "staged seed-incluster ClusterRole into $destRbac/seed-incluster/ from ${toString seedInclusterRbac}"
+              ''
+            );
+            meta.description = "Stage the seed-incluster ClusterRole (from the flake) onto the manifest-synthesis classpath";
+          };
+
+          # Stage the flox-controller ClusterRole (single-sourced from the flake's +kubebuilder:rbac
+          # markers) at /rbac/flox-controller/ for the DEV loop; release builds stage it in seedOutclusterJar.
+          apps.stage-flox-controller-rbac = {
+            type = "app";
+            program = toString (
+              pkgs.writeShellScript "stage-flox-controller-rbac" ''
+                set -euo pipefail
+                destRbac="''${1:-${rbacStagingDir}}"
+                ${stageFloxControllerRbac}
+                echo "staged flox-controller ClusterRole into $destRbac/flox-controller/ from ${toString floxControllerRbac}"
+              ''
+            );
+            meta.description = "Stage the flox-controller ClusterRole (from the flake) onto the manifest-synthesis classpath";
+          };
+
+          apps.relock = {
+            type = "app";
+            program = "${relockApp}/bin/relock";
+            meta.description = "Relock rke2lab through nix-flake-commons' shared relock: the heads, their order and what each pins come from fabric/heads";
+          };
+
+          # Anti-drift gate: fail if the pinned delivery diverges from the jar output
+          # (compared with keys sorted by yq, so formatting never trips it). Defined ONLY on
+          # blueprintSystem — absent elsewhere, so `nix flake check` on an aarch64-linux node
+          # never realizes the darwin-pinned jar.
+          checks = {
+            # No nixConfig in this flake: no machine of ours takes one (nix-flake-commons' shared check).
+            no-nix-config = inputs.flake-commons.lib.noNixConfig pkgs ./flake.nix;
+            # A node takes no flake's nixConfig: accept-flake-config would let any flake it evaluates add substituters
+            # and keys silently (the operator, 2026-10-18; ndh's nix-conf-no-accept-flake-config for the fleet). The
+            # node's built nix.conf, and a mutant.
+            node-nix-conf-no-accept-flake-config =
+              let
+                conf = c: c.config.environment.etc."nix/nix.conf".source;
+                node = conf self.nixosConfigurations.rke2-node-base;
+                mutant = conf (
+                  self.nixosConfigurations.rke2-node-base.extendModules {
+                    modules = [ { nix.settings.accept-flake-config = true; } ];
+                  }
+                );
+              in
+              pkgs.runCommand "node-nix-conf-no-accept-flake-config" { } ''
+                accepts() { grep -Eq '^[[:space:]]*(extra-)?accept-flake-config[[:space:]]*=' "$1"; }
+                if accepts ${node}; then echo "the node's nix.conf accepts flake configs: ${node}" >&2; exit 1; fi
+                accepts ${mutant} || { echo "an accept-flake-config mutant passed: ${mutant}" >&2; exit 1; }
+                touch $out
+              '';
+            # The cluster-builder delegation gate a node runs at boot (nixos/nix-builders.nix), tested as
+            # built: a delivered description passes only if every builder is ssh-ng:// with its client
+            # key, certificate and host key; anything else leaves no builders.conf behind.
+            nix-builders-gate = import ./nixos/nix-builders.d/tests/package.nix { inherit pkgs; };
+            # Anti-drift gate for the cross-world node label (Java ↔ nix, which can't import each
+            # other): extract NODE_FLOX_RUNTIME_LABEL from ManifestAnnotations.java (the single
+            # source, used by the flox DaemonSet nodeSelectors) and fail unless the nixos oneshot
+            # rke2lab-node-labels carries the same "<label>=true". Keeps the boot-time node label the
+            # DaemonSets select on in lock-step with the Java constant.
+            node-label-concord = pkgs.runCommand "node-label-concord" { } ''
+              src=${./osgi/domains/manifests/manifests-contract/src/main/java/io/seedmatic/rke2lab/manifests/contract/ManifestAnnotations.java}
+              label="$(sed -n 's/.*NODE_FLOX_RUNTIME_LABEL = "\([^"]*\)".*/\1/p' "$src")"
+              if [ -z "$label" ]; then
+                echo "could not extract NODE_FLOX_RUNTIME_LABEL from ManifestAnnotations.java" >&2
                 exit 1
               fi
-              while read -r dep; do
-                [ -n "$dep" ] && lock_env "$dep"
-              done < <(sed -n "s|^[[:space:]]*dir = '\.\./\([^']*\)'.*|\1|p" "$dir/.flox/env/manifest.toml")
-              if [ -f "$dir/.flox/env/manifest.lock" ]; then
-                echo "  $env already locked"
-              else
-                echo "  locking $env"
-                flox upgrade --dir "$dir" >/dev/null
-              fi
-            }
-
-            while read -r env; do
-              lock_env "$env"
-            done < <(sed -n 's|^[[:space:]]*{ dir = "\./\.flox-envs\.d/\([^"]*\)".*|\1|p' .flox/env/manifest.toml)
-
-            echo "vendored flox envs locked — 'flox activate' is ready"
-          '');
-          meta.description = "Lock the flox envs vendored under .flox-envs.d so the flox seat can activate (fresh-checkout bootstrap)";
-        };
-
-        # Stage the flox-controller CRD (single-sourced from the flox-controller flake)
-        # onto the manifest-synthesis classpath for the DEV loop (`./mvnw -pl :manifests`).
-        # Release builds stage it inside seedOutclusterJar. The staged crds/ dir is
-        # gitignored — controller-gen stays the single source, never a committed copy.
-        apps.stage-flox-controller-crd = {
-          type = "app";
-          program = toString (pkgs.writeShellScript "stage-flox-controller-crd" ''
-            set -euo pipefail
-            # $1 = the Maven build dir to stage into (the exec-plugin passes the profile-specific
-            # ${"$"}{project.build.directory}/generated-resources/crds); defaults to crdStagingDir
-            # for a bare `nix run` in the dev loop.
-            dest="''${1:-${crdStagingDir}}"
-            ${stageFloxControllerCrds}
-            echo "staged flox-controller CRD into $dest/ from ${floxControllerCrds}"
-          '');
-          meta.description = "Stage the flox-controller CRD (from the flake) onto the manifest-synthesis classpath";
-        };
-
-        # Stage the ClusterAdoption CRD (single-sourced from the seed-incluster
-        # flake) onto the manifest-synthesis classpath for the DEV loop. Release builds stage
-        # it inside seedOutclusterJar. The staged crds/ dir is gitignored — controller-gen stays
-        # the single source, never a committed copy.
-        apps.stage-seed-incluster-crd = {
-          type = "app";
-          program = toString (pkgs.writeShellScript "stage-seed-incluster-crd" ''
-            set -euo pipefail
-            # $1 = the Maven build dir to stage into (see stage-flox-controller-crd); defaults to
-            # crdStagingDir for a bare `nix run` in the dev loop.
-            dest="''${1:-${crdStagingDir}}"
-            ${stageSeedInclusterCrds}
-            echo "staged ClusterAdoption CRD into $dest/ from ${seedInclusterCrds}"
-          '');
-          meta.description = "Stage the ClusterAdoption CRD (from the flake) onto the manifest-synthesis classpath";
-        };
-
-        # Stage the two baked images' RepoTags onto the manifest-synthesis classpath at
-        # /image-refs/ for the DEV loop (release builds stage them inside seedOutclusterJar). Both tags
-        # are derived from image content, so the synthesis READS them here — there is no literal
-        # anywhere that could still be right after a rebuild.
-        apps.stage-image-refs = {
-          type = "app";
-          program = toString (pkgs.writeShellScript "stage-image-refs" ''
-            set -euo pipefail
-            # $1 = the Maven build dir to stage into; defaults to imageRefStagingDir for a bare
-            # `nix run` in the dev loop.
-            destRefs="''${1:-${imageRefStagingDir}}"
-            ${stageFloxControllerImageRef}
-            ${stageFloxCarrierImageRef}
-            echo "staged image refs into $destRefs/:"
-            for ref in "$destRefs"/*; do printf '  %s = %s\n' "$(basename "$ref")" "$(cat "$ref")"; done
-          '');
-          meta.description = "Stage the flox-controller + flox-carrier RepoTags (content-derived) onto the manifest-synthesis classpath";
-        };
-
-        # Stage the seed-incluster ClusterRole (single-sourced from the flake's +kubebuilder:rbac
-        # markers) onto the manifest-synthesis classpath at /rbac/ for the DEV loop. Release builds
-        # stage it inside seedOutclusterJar. The staged rbac/ dir is gitignored — controller-gen stays
-        # the single source, never a committed copy.
-        apps.stage-seed-incluster-rbac = {
-          type = "app";
-          program = toString (pkgs.writeShellScript "stage-seed-incluster-rbac" ''
-            set -euo pipefail
-            # $1 = the Maven build dir to stage into; defaults to rbacStagingDir for a bare `nix run`.
-            destRbac="''${1:-${rbacStagingDir}}"
-            ${stageSeedInclusterRbac}
-            echo "staged seed-incluster ClusterRole into $destRbac/seed-incluster/ from ${toString seedInclusterRbac}"
-          '');
-          meta.description = "Stage the seed-incluster ClusterRole (from the flake) onto the manifest-synthesis classpath";
-        };
-
-        # Stage the flox-controller ClusterRole (single-sourced from the flake's +kubebuilder:rbac
-        # markers) at /rbac/flox-controller/ for the DEV loop; release builds stage it in seedOutclusterJar.
-        apps.stage-flox-controller-rbac = {
-          type = "app";
-          program = toString (pkgs.writeShellScript "stage-flox-controller-rbac" ''
-            set -euo pipefail
-            destRbac="''${1:-${rbacStagingDir}}"
-            ${stageFloxControllerRbac}
-            echo "staged flox-controller ClusterRole into $destRbac/flox-controller/ from ${toString floxControllerRbac}"
-          '');
-          meta.description = "Stage the flox-controller ClusterRole (from the flake) onto the manifest-synthesis classpath";
-        };
-
-        apps.relock = {
-          type = "app";
-          program = "${relockApp}/bin/relock";
-          meta.description = "Relock rke2lab through nix-flake-commons' shared relock: the heads, their order and what each pins come from fabric/heads";
-        };
-
-        # Anti-drift gate: fail if the pinned delivery diverges from the jar output
-        # (compared with keys sorted by yq, so formatting never trips it). Defined ONLY on
-        # blueprintSystem — absent elsewhere, so `nix flake check` on an aarch64-linux node
-        # never realizes the darwin-pinned jar.
-        checks = {
-          # The cluster-builder delegation gate a node runs at boot (nixos/nix-builders.nix), tested as
-          # built: a delivered description passes only if every builder is ssh-ng:// with its client
-          # key, certificate and host key; anything else leaves no builders.conf behind.
-          nix-builders-gate = import ./nixos/nix-builders.d/tests/package.nix { inherit pkgs; };
-          # Anti-drift gate for the cross-world node label (Java ↔ nix, which can't import each
-          # other): extract NODE_FLOX_RUNTIME_LABEL from ManifestAnnotations.java (the single
-          # source, used by the flox DaemonSet nodeSelectors) and fail unless the nixos oneshot
-          # rke2lab-node-labels carries the same "<label>=true". Keeps the boot-time node label the
-          # DaemonSets select on in lock-step with the Java constant.
-          node-label-concord = pkgs.runCommand "node-label-concord" { } ''
-            src=${./osgi/domains/manifests/manifests-contract/src/main/java/io/seedmatic/rke2lab/manifests/contract/ManifestAnnotations.java}
-            label="$(sed -n 's/.*NODE_FLOX_RUNTIME_LABEL = "\([^"]*\)".*/\1/p' "$src")"
-            if [ -z "$label" ]; then
-              echo "could not extract NODE_FLOX_RUNTIME_LABEL from ManifestAnnotations.java" >&2
-              exit 1
-            fi
-            if ! grep -qF "$label=true" ${./nixos/rke2.nix}; then
-              echo "nixos/rke2.nix (rke2lab-node-labels oneshot) must carry '$label=true' —" >&2
-              echo "it drifted from ManifestAnnotations.NODE_FLOX_RUNTIME_LABEL (DaemonSet nodeSelectors)." >&2
-              exit 1
-            fi
-            touch $out
-          '';
-          # Every Jackson mapper is a codec profile (seed-broker-codec): none is constructed
-          # anywhere else. A check, not a test: a test in one module is keyed on that module, so a
-          # mapper added in another gets a cache hit on the checker and is never seen. This one is
-          # built from mavenSource, every file it scans, so any such edit re-runs it. A bare
-          # JsonFactory stays allowed — a streaming tokenizer, not a mapper (FlakeLock). The one
-          # pattern serves the scan and its self-test over the codec's shape fixtures: every
-          # refused shape caught, no allowed one.
-          codec-only =
-            let
-              refused = ''new ([a-z0-9_]+\.)*(ObjectMapper|YAMLMapper|JsonMapper|XmlMapper|CsvMapper|YAMLFactory)\(|(JsonMapper|YAMLMapper|JsonFactory|YAMLFactory)\.builder\(|extends ([a-z0-9_]+\.)*(ObjectMapper|YAMLMapper|JsonMapper)\b|(MAPPER|[Mm]apper)\w*\.copy\(\)'';
-              shapes = ./osgi/foundation/seed-broker-codec/codec-only-shapes;
-            in
-            pkgs.runCommand "codec-only" { nativeBuildInputs = [ pkgs.gnugrep ]; } ''
-              missed=$(grep -cvE '${refused}' ${shapes}/refused.txt || true)
-              wrongly=$(grep -cE '${refused}' ${shapes}/allowed.txt || true)
-              if [ "$missed" != 0 ] || [ "$wrongly" != 0 ]; then
-                echo "codec-only pattern: $missed refused shape(s) not caught, $wrongly allowed one(s) caught" >&2
-                exit 1
-              fi
-              if grep -rnE '${refused}' --include='*.java' ${mavenSource} | grep -v '/seed-broker-codec/'; then
-                echo "a Jackson mapper is constructed outside seed-broker-codec. Use a profile of" >&2
-                echo "new SeedCodec(): canonical() for a file we write and read back, reading() for" >&2
-                echo "what we only parse, wire() for an external API's bodies." >&2
+              if ! grep -qF "$label=true" ${./nixos/rke2.nix}; then
+                echo "nixos/rke2.nix (rke2lab-node-labels oneshot) must carry '$label=true' —" >&2
+                echo "it drifted from ManifestAnnotations.NODE_FLOX_RUNTIME_LABEL (DaemonSet nodeSelectors)." >&2
                 exit 1
               fi
               touch $out
             '';
-        } // pkgs.lib.optionalAttrs (system == blueprintSystem) {
-          blueprint-fresh =
-            pkgs.runCommand "blueprint-fresh" { nativeBuildInputs = [ pkgs.yq-go ]; } ''
+            # Every Jackson mapper is a codec profile (seed-broker-codec): none is constructed
+            # anywhere else. A check, not a test: a test in one module is keyed on that module, so a
+            # mapper added in another gets a cache hit on the checker and is never seen. This one is
+            # built from mavenSource, every file it scans, so any such edit re-runs it. A bare
+            # JsonFactory stays allowed — a streaming tokenizer, not a mapper (FlakeLock). The one
+            # pattern serves the scan and its self-test over the codec's shape fixtures: every
+            # refused shape caught, no allowed one.
+            codec-only =
+              let
+                refused = ''new ([a-z0-9_]+\.)*(ObjectMapper|YAMLMapper|JsonMapper|XmlMapper|CsvMapper|YAMLFactory)\(|(JsonMapper|YAMLMapper|JsonFactory|YAMLFactory)\.builder\(|extends ([a-z0-9_]+\.)*(ObjectMapper|YAMLMapper|JsonMapper)\b|(MAPPER|[Mm]apper)\w*\.copy\(\)'';
+                shapes = ./osgi/foundation/seed-broker-codec/codec-only-shapes;
+              in
+              pkgs.runCommand "codec-only" { nativeBuildInputs = [ pkgs.gnugrep ]; } ''
+                missed=$(grep -cvE '${refused}' ${shapes}/refused.txt || true)
+                wrongly=$(grep -cE '${refused}' ${shapes}/allowed.txt || true)
+                if [ "$missed" != 0 ] || [ "$wrongly" != 0 ]; then
+                  echo "codec-only pattern: $missed refused shape(s) not caught, $wrongly allowed one(s) caught" >&2
+                  exit 1
+                fi
+                if grep -rnE '${refused}' --include='*.java' ${mavenSource} | grep -v '/seed-broker-codec/'; then
+                  echo "a Jackson mapper is constructed outside seed-broker-codec. Use a profile of" >&2
+                  echo "new SeedCodec(): canonical() for a file we write and read back, reading() for" >&2
+                  echo "what we only parse, wire() for an external API's bodies." >&2
+                  exit 1
+                fi
+                touch $out
+              '';
+          }
+          // pkgs.lib.optionalAttrs (system == blueprintSystem) {
+            blueprint-fresh = pkgs.runCommand "blueprint-fresh" { nativeBuildInputs = [ pkgs.yq-go ]; } ''
               yq -p=json -o=json 'sort_keys(..)' ${inputs.fabric-plan}/netplan.json > pinned.json
               yq -p=json -o=json 'sort_keys(..)' ${networkBlueprintJson} > fresh.json
               if ! diff -u pinned.json fresh.json; then
@@ -1402,9 +1510,8 @@ USAGE
               fi
               touch $out
             '';
-          # The dataplan twin: fail if the pinned dataplan.json diverges from the plan jar output.
-          dataplan-fresh =
-            pkgs.runCommand "dataplan-fresh" { nativeBuildInputs = [ pkgs.yq-go ]; } ''
+            # The dataplan twin: fail if the pinned dataplan.json diverges from the plan jar output.
+            dataplan-fresh = pkgs.runCommand "dataplan-fresh" { nativeBuildInputs = [ pkgs.yq-go ]; } ''
               yq -p=json -o=json 'sort_keys(..)' ${inputs.fabric-plan}/dataplan.json > pinned.json
               yq -p=json -o=json 'sort_keys(..)' ${dataplanJson} > fresh.json
               if ! diff -u pinned.json fresh.json; then
@@ -1414,15 +1521,18 @@ USAGE
               fi
               touch $out
             '';
-        };
-      }
-      # Re-exported ONLY where ndh provides it: ndh declares its apps for aarch64-darwin alone
-      # (its defaultSystems), and an unconditional `inputs.ndh.apps.${system}` broke every
-      # evaluation of another system — `nix flake show` first among them.
-      (pkgs.lib.optionalAttrs (inputs.ndh.apps ? ${system}) {
-        apps.nikopol-incus-cluster-join = inputs.ndh.apps.${system}.nikopol-incus-cluster-join;
-      })
-    )) // {
+          };
+        }
+        # Re-exported ONLY where ndh provides it: ndh declares its apps for aarch64-darwin alone
+        # (its defaultSystems), and an unconditional `inputs.ndh.apps.${system}` broke every
+        # evaluation of another system — `nix flake show` first among them.
+        (
+          pkgs.lib.optionalAttrs (inputs.ndh.apps ? ${system}) {
+            apps.nikopol-incus-cluster-join = inputs.ndh.apps.${system}.nikopol-incus-cluster-join;
+          }
+        )
+    ))
+    // {
       # The NixOS node substrate — the immutable Incus container image every RKE2 node
       # boots from (docs/architecture/nixos-substrate/substrate-model.adoc). System-pinned to
       # aarch64-linux (Incus containers on the Apple-Silicon hypervisor); build via bioskop-nixos.
@@ -1434,6 +1544,8 @@ USAGE
         specialArgs = {
           inherit flox flox-runtime flox-controller;
           ndh = inputs.ndh;
+          # The upstream caches every seedmatic flake shares (nix-flake-commons), for the node's nix.conf.
+          inherit (inputs.flake-commons.lib) upstreamCaches;
           # The netplan projection, so the node's networkd config names addressing facts from the
           # SSOT instead of restating them. Today: the vmnet supernet, for the sibling-cluster route.
           netplan = networkBlueprint;
@@ -1458,6 +1570,8 @@ USAGE
 
       # TEMP federation probe (Phase 1): proves rke2lab sees ndh's home-LAN facts
       # across the follows="" cut. Removed once real consumption is wired.
-      _federationProbe = { ndhLan = inputs.ndh.catalog.netplan.lan; };
+      _federationProbe = {
+        ndhLan = inputs.ndh.catalog.netplan.lan;
+      };
     };
 }
