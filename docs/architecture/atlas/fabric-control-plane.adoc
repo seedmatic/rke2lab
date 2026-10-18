@@ -660,17 +660,34 @@ built beside `rke2-node-base`'s from ndh's module, launched with its `instanceCo
 project `rke2lab-<cluster>-build`** (not `rke2lab`, where CAPN's identity can `exec` into and `file pull`
 from any instance and would reach its key), on the cluster's `vmnet-<role>` at an address reserved in the
 network blueprint, its devices inline, marks `user.rke2lab.*`; its public registered in the cluster's cellar.
-The node-base nix configuration carries `builders = ssh-ng://…` (arm64 only), `max-jobs = 0`,
-`builders-use-substitutes = true`, `require-sigs = true`. A pod delegates through its **node's** nix-daemon
-socket, which the NRI plugin mounts (its builds go to the node's daemon, which forwards them): a pod never holds
-the node's builder credential (🛡️). Our
-packages are locked by flake ref, never a bare store path
-| ⚠️ *not coded*: nothing declares `builders`, `max-jobs` or `builders-use-substitutes` yet, neither
-`nixos/*.nix` nor flox-nri-plugin. Before a second image lives in the cold start: the image GC must keep the
-images the desired instances reference (it keeps node-base's only today, 🖥️). Test 0's design
-finding is settled first (the builder substitutes those paths from a signing cache, the node image keeps its
-content addresses and signatures, or a node delegates only what it fetched or built), or a node cannot hand its
-builder a closure holding a path of its own image
+The node-base delegates through a boot gate (`nixos/nix-builders.nix`): `nix.conf` `!include`s a
+`builders.conf` (`max-jobs = 0`, `builders = @…/machines`, `builders-use-substitutes = true`) that the gate
+writes only from a delivered description it checked (ssh-ng only, arm64, a client key with its certificate, the
+builder's host key pinned, every file and ancestor root-owned and not writable by others); a refused
+description stops the rke2 config fetch, it never falls back to local builds (🛡️). `require-sigs` keeps nix's
+default, true. A pod delegates through its **node's** nix-daemon socket, which the NRI plugin mounts, as an
+untrusted client; the node forwards with its own credential, which never enters a pod (the operator,
+2026-10-18: separation of viewpoints and responsibilities). A pod may bring **its own** credentials for its
+own build: eval-time fetches run in the pod with its `access-tokens`, and the sources land content-addressed.
+Those tokens are evaluation-side only, never passed to the node's daemon as a setting. They stay in the pod,
+but what they fetch lands in the **node's** store, which is world-readable, and is copied to the builder: a
+pod's private sources become readable by every pod on that node that mounts the store, and by the builder. So
+**a pod that needs confidential sources must not build them through the shared node store**: the pod tier's
+decision, rke2lab's (🛡️).
+A token goes into the eval, **never into a derivation**: in a fixed-output derivation's header or env it lands
+in the `.drv`, world-readable in the node's store and copied to the builder. What a pod sees is
+**provenance, kept by design** (the operator): the builder's URI in the build log and its key's name and
+public in the signatures on the outputs tell who built what, and let anyone verify it; a pod never sees the
+builders list or any secret (❄️, nix 2.34.9 `remote-store.cc:124-139`, `daemon.cc:273-303`,
+`derivation-building-goal.cc:627-633`). Our packages are locked by flake ref, never a bare store path
+| The builder itself is coded (ndh `nixosModules.cluster-builder`, untrusted proven) and so is the node side
+(the boot gate above, 🛡️-approved). ⚠️ *not coded*: the per-cluster creation and the delivery, i.e. the cold
+start chantier (its image built in rke2lab beside node-base, its own Incus project `rke2lab-<cluster>-build`,
+the description, key and certificate written to the node as root). Before a second image lives in the cold
+start: the image GC must keep the images the desired instances reference (it keeps node-base's only today,
+🖥️). Test 0's design finding is settled first (the builder substitutes those
+paths from a signing cache, the node image keeps its content addresses and signatures, or a node delegates
+only what it fetched or built), or a node cannot hand its builder a closure holding a path of its own image
 
 | c9 — the cachix account
 | the operator revokes every cachix push token and purges or deletes the `nxmatic` cache, which still
