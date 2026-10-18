@@ -1289,6 +1289,10 @@ USAGE
         # blueprintSystem — absent elsewhere, so `nix flake check` on an aarch64-linux node
         # never realizes the darwin-pinned jar.
         checks = {
+          # The cluster-builder delegation gate a node runs at boot (nixos/nix-builders.nix), tested as
+          # built: a delivered description passes only if every builder is ssh-ng:// with its client
+          # key, certificate and host key; anything else leaves no builders.conf behind.
+          nix-builders-gate = import ./nixos/nix-builders.d/tests/package.nix { inherit pkgs; };
           # Anti-drift gate for the cross-world node label (Java ↔ nix, which can't import each
           # other): extract NODE_FLOX_RUNTIME_LABEL from ManifestAnnotations.java (the single
           # source, used by the flox DaemonSet nodeSelectors) and fail unless the nixos oneshot

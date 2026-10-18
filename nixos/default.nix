@@ -26,6 +26,7 @@
     ./ndh-bringup-runtime.nix # ndh bringup-runtime profile symlink (manage-tailnet's trampoline command contract, visible in flox pods)
     ./host-access.nix # dbus-over-TCP + mDNS, so the operator reaches the node
     ./nix-env.nix # nix.settings + the node toolbox on PATH
+    ./nix-builders.nix # every build to the cluster builder, once cloud-init delivers its description
   ];
 
   system.stateVersion = "24.11";
