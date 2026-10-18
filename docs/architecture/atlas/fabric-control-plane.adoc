@@ -669,6 +669,11 @@ default, true. A pod delegates through its **node's** nix-daemon socket, which t
 untrusted client; the node forwards with its own credential, which never enters a pod (the operator,
 2026-10-18: separation of viewpoints and responsibilities). A pod may bring **its own** credentials for its
 own build: eval-time fetches run in the pod with its `access-tokens`, and the sources land content-addressed.
+Those tokens are evaluation-side only, never passed to the node's daemon as a setting. They stay in the pod,
+but what they fetch lands in the **node's** store, which is world-readable, and is copied to the builder: a
+pod's private sources become readable by every pod on that node that mounts the store, and by the builder. So
+**a pod that needs confidential sources must not build them through the shared node store**: the pod tier's
+decision, rke2lab's (🛡️).
 A token goes into the eval, **never into a derivation**: in a fixed-output derivation's header or env it lands
 in the `.drv`, world-readable in the node's store and copied to the builder. What a pod sees is
 **provenance, kept by design** (the operator): the builder's URI in the build log and its key's name and
