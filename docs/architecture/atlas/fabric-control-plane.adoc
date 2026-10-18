@@ -661,7 +661,9 @@ project `rke2lab-<cluster>-build`** (not `rke2lab`, where CAPN's identity can `e
 from any instance and would reach its key), on the cluster's `vmnet-<role>` at an address reserved in the
 network blueprint, its devices inline, marks `user.rke2lab.*`; its public registered in the cluster's cellar.
 The node-base nix configuration carries `builders = ssh-ng://…` (arm64 only), `max-jobs = 0`,
-`builders-use-substitutes = true`, `require-sigs = true`, and the NRI plugin mounts the same for pods. Our
+`builders-use-substitutes = true`, `require-sigs = true`. A pod delegates through its **node's** nix-daemon
+socket, which the NRI plugin mounts (its builds go to the node's daemon, which forwards them): a pod never holds
+the node's builder credential (🛡️). Our
 packages are locked by flake ref, never a bare store path
 | ⚠️ *not coded*: nothing declares `builders`, `max-jobs` or `builders-use-substitutes` yet, neither
 `nixos/*.nix` nor flox-nri-plugin. Before a second image lives in the cold start: the image GC must keep the
