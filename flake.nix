@@ -880,6 +880,20 @@ USAGE
               exit 1
             fi
 
+            # The cluster's age identity (rke2lab-cluster-age-<n>) arrives on a file descriptor the
+            # operator's OWN shell opens on this command line, never one this script or a session opens:
+            #   nix run …#grow -- <stack> <action> 3< <(pass show seedmatic/cluster-age/<n>)
+            # Never stdin (it does not reach a Pulumi program; an inherited descriptor does), never a file.
+            # Every grow renders the sops-age Secret from it, so a grow without it fails here, loud.
+            # Checked first, before the long build, and only for being open: reading it would consume
+            # the pipe.
+            RKE2LAB_CLUSTER_AGE_FD="''${RKE2LAB_CLUSTER_AGE_FD:-3}"
+            [ -e "/dev/fd/$RKE2LAB_CLUSTER_AGE_FD" ] || {
+              echo "error: no cluster age identity on fd $RKE2LAB_CLUSTER_AGE_FD — append to this command: $RKE2LAB_CLUSTER_AGE_FD< <(pass show seedmatic/cluster-age/<n>)" >&2
+              exit 1
+            }
+            export RKE2LAB_CLUSTER_AGE_FD
+
             stack="''${1:-}"
             if [ -z "$stack" ]; then
               echo "error: missing <stack> argument" >&2
@@ -949,19 +963,6 @@ USAGE
             cp Pulumi.yaml "$backup"
             trap 'cp "$backup" Pulumi.yaml; rm -f "$backup"' EXIT INT TERM HUP
             sed -E "s#^( *binary: ).*#\1$jar#" "$backup" > Pulumi.yaml
-
-            # The cluster's age identity (rke2lab-cluster-age-<n>) arrives on a file descriptor the
-            # operator's OWN shell opens on this command line, never one this script or a session opens:
-            #   nix run …#grow -- <stack> <action> 3< <(pass show seedmatic/cluster-age/<n>)
-            # Never stdin (it does not reach a Pulumi program; an inherited descriptor does), never a file.
-            # Every grow renders the sops-age Secret from it, so a grow without it fails here, loud.
-            # The test only checks the descriptor is open: reading it would consume the pipe.
-            RKE2LAB_CLUSTER_AGE_FD="''${RKE2LAB_CLUSTER_AGE_FD:-3}"
-            [ -e "/dev/fd/$RKE2LAB_CLUSTER_AGE_FD" ] || {
-              echo "error: no cluster age identity on fd $RKE2LAB_CLUSTER_AGE_FD — append to this command: $RKE2LAB_CLUSTER_AGE_FD< <(pass show seedmatic/cluster-age/<n>)" >&2
-              exit 1
-            }
-            export RKE2LAB_CLUSTER_AGE_FD
 
             case "$action" in
               preview)
