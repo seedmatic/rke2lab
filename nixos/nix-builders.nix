@@ -6,6 +6,10 @@
 # built yet) the include is absent and the node builds locally, as before; set
 # rke2lab.nodeBuilders.required once every grow delivers one, and a node without it refuses to start
 # rke2.
+#
+# The daemon imports what the builder returns without a signature, so whoever writes the description
+# chooses what the node runs. The delivery writes ${dir}'s files as root only (the gate refuses any
+# other owner, a writable mode or a symlink), and no pod or hostPath ever mounts it writable.
 {
   config,
   lib,

@@ -2,7 +2,8 @@
 #
 # The rke2lab-nix-builders gate, as built (the same factory the node module uses), on a throwaway
 # DIR. Every refusal is checked by the state it leaves: no builders.conf, a stale one removed too, so
-# a refused description can never leave the node delegating to a builder nobody checked.
+# a refused description can never leave the node delegating to a builder nobody checked. The sandbox
+# cannot chown to root, so OWNER is the test's own uid, except where the root default is the point.
 
 bats_require_minimum_version 1.5.0
 
@@ -11,12 +12,14 @@ setup() {
   mkdir -p "$dir"
   key="$dir/cluster-build"
   : >"$key"
+  chmod 0600 "$key"
   : >"$key-cert.pub"
+  owner="$(id -u)"
   hostKey="$(printf 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBuilderHostKeyForTests builder' | base64 | tr -d '\n')"
 }
 
 line() { printf '%s aarch64-linux %s 4 1 - - %s\n' "${1:-ssh-ng://cluster-build@builder.bioskop}" "${2:-$key}" "${3:-$hostKey}"; }
-gate() { DIR="$dir" REQUIRED="${REQUIRED:-0}" run --separate-stderr "$GATE"; }
+gate() { DIR="$dir" REQUIRED="${REQUIRED:-0}" OWNER="$owner" run --separate-stderr "$GATE"; }
 stale() { printf 'max-jobs = 0\nbuilders = @%s/machines\n' "$dir" >"$dir/builders.conf"; }
 no_conf() { [ ! -e "$dir/builders.conf" ]; }
 
@@ -118,4 +121,57 @@ builders-use-substitutes = true" ]
   gate
   [ "$status" -eq 1 ]
   no_conf
+}
+
+@test "a description writable by group or others is refused" {
+  stale
+  line >"$dir/machines"
+  chmod 0666 "$dir/machines"
+  gate
+  [ "$status" -eq 1 ]
+  no_conf
+  [[ $stderr == *"the builder description"*"writable by group or others"* ]]
+}
+
+@test "files not owned by root are refused by default, and by any other owner" {
+  line >"$dir/machines"
+  # Built as root, the test's files would satisfy the default: give the directory to nobody.
+  [ "$(id -u)" != 0 ] || chown 65534 "$dir"
+  DIR="$dir" REQUIRED=0 run --separate-stderr env -u OWNER "$GATE"
+  [ "$status" -eq 1 ]
+  no_conf
+  [[ $stderr == *"not 0"* ]]
+  owner=$((owner + 1))
+  gate
+  [ "$status" -eq 1 ]
+  no_conf
+  [[ $stderr == *"not $owner"* ]]
+}
+
+@test "a description that is a symlink, here to a file its user can write, is refused" {
+  stale
+  line >"$BATS_TEST_TMPDIR/elsewhere"
+  ln -s "$BATS_TEST_TMPDIR/elsewhere" "$dir/machines"
+  gate
+  [ "$status" -eq 1 ]
+  no_conf
+  [[ $stderr == *"is a symlink"* ]]
+}
+
+@test "a client key readable by others is refused" {
+  line >"$dir/machines"
+  chmod 0644 "$key"
+  gate
+  [ "$status" -eq 1 ]
+  no_conf
+  [[ $stderr == *"the client key"*"not one of: 400 600"* ]]
+}
+
+@test "a writable delegation directory is refused even with no description" {
+  stale
+  chmod 0777 "$dir"
+  gate
+  [ "$status" -eq 1 ]
+  no_conf
+  [[ $stderr == *"the delegation directory"*"writable by group or others"* ]]
 }
