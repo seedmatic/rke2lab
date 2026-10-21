@@ -14,8 +14,10 @@ It was born as a bare-`ProcessBuilder` edge mirroring incus-edge: `CliAuthTokenC
 `gh auth token` / `flox auth token` for the launch-secrets writer, which upserted the result into
 `.secrets`. GitHub left it first, for the one org-owned App (link:ghapp-domain-spec.adoc[ghapp]); the
 FloxHub token then lost its last consumer — nothing in-cluster pulls from FloxHub with auth — and was
-removed with its writer, its `.secrets` blocks and its replicated `floxhub-token` Secret. The edge
-shells nothing any more: what remains are the two mint verbs, delegated to ghapp.
+removed with its writer, its `.secrets` blocks and its replicated `floxhub-token` Secret. The operator
+seats followed: ndh's `flox-config` removes their hand-set `floxhub_token_storage` and sets
+`auth_notifications = false` in `~/.config/flox/flox.toml`, key by key. The edge shells nothing any
+more: what remains are the two mint verbs, delegated to ghapp.
 ====
 
 == The contract — two mint verbs
