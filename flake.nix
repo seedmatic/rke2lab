@@ -1427,6 +1427,13 @@
           # blueprintSystem — absent elsewhere, so `nix flake check` on an aarch64-linux node
           # never realizes the darwin-pinned jar.
           checks = {
+            # .sops.yaml names the operator's and the cluster's standalone identities only, no host of ndh's keys.yaml
+            # (read at the locked ndh revision).
+            sops-recipients = import ./nix/sops-recipients.nix {
+              inherit pkgs;
+              sopsYaml = ./.sops.yaml;
+              keysJson = "${inputs.ndh}/modules/home-manager/ssh.d/keys.json";
+            };
             # No nixConfig in this flake: no machine of ours takes one (nix-flake-commons' shared check).
             no-nix-config = inputs.flake-commons.lib.noNixConfig pkgs ./flake.nix;
             # A node takes no flake's nixConfig: accept-flake-config would let any flake it evaluates add substituters
