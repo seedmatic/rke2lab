@@ -904,13 +904,7 @@
             pulumiJavaPkg
             pkgs.jdk25
             incusClient
-          ]
-          # ndh's manage-tailnet on PATH: InstanceGrow runs it as a local.Command to prune the old
-          # node's stale tailscale devices when the instance is replaced (they orphan their MagicDNS
-          # names → the new pac-webhook drifts to -1/-2 and the render webhook dies). The flox env
-          # carries it too, so a plain `pulumi up` prunes; here it covers `nix run .#grow`.
-          # darwin-only: ndh exposes the package only for aarch64-darwin (the operator host).
-          ++ pkgs.lib.optional (system == "aarch64-darwin") inputs.ndh.packages.${system}.manage-tailnet;
+          ];
           text = ''
                         usage() {
                           cat >&2 <<'USAGE'
