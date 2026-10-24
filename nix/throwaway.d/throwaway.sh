@@ -39,10 +39,15 @@ action=$1 stack=$2
 export RKE2LAB_GROW_PROFILE=throwaway
 [[ $("$growProfile" "$stack") == throwaway ]] || die "$stack is not a throwaway stack"
 
-# What reset deletes is DERIVED from the stack's name, never read from the stack: a wrong output (a bug, an edited
-# state) can then never name the fleet's project or node. The stack's outputs are only compared with these.
+# What reset deletes is DERIVED, never read from the stack: a wrong output (a bug, an edited state) can then never name
+# the fleet's project. The project is what bounds every deletion, so it is the stack's own and can be no other; the
+# node keeps the blueprint's name (its hostname and its reserved address follow it), from the committed host. The
+# stack's outputs are only compared with these.
 project="throwaway-$stack"
-node="throwaway-$stack-node"
+host=$(git show "HEAD:Pulumi.$stack.yaml" | yq '.config."rke2lab:cluster".host // ""') ||
+  die "the committed Pulumi.$stack.yaml cannot be read"
+[[ $host =~ ^[a-z][a-z0-9-]*$ ]] || die "the committed Pulumi.$stack.yaml names no rke2lab:cluster host"
+node="$host-mgmt-master"
 kubeconfig="$kubeDir/$stack.yaml"
 # Marks a reset begun and not finished, so up refuses until it is. It holds nothing: the names are derived.
 resetMark="$kubeDir/.$stack.reset"

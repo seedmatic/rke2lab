@@ -15,6 +15,7 @@ pkgs.writeShellApplication {
   name = "rke2lab-throwaway";
   runtimeInputs = [
     pkgs.coreutils
+    pkgs.git
     pkgs.gnused
     pkgs.yq-go
   ];
