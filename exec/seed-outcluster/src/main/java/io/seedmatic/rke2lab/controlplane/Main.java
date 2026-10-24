@@ -11,6 +11,7 @@ import io.seedmatic.rke2lab.controlplane.config.BootstrapConfig;
 import io.seedmatic.rke2lab.controlplane.config.ConfigLoader;
 import io.seedmatic.rke2lab.controlplane.config.GithubAppCli;
 import io.seedmatic.rke2lab.controlplane.config.Rke2labConfig;
+import io.seedmatic.rke2lab.host.runtime.GrowProfile;
 import io.seedmatic.rke2lab.host.runtime.SopsAtRest;
 import io.seedmatic.rke2lab.incus.ingress.BootstrapPaths;
 import io.seedmatic.rke2lab.osgi.runtime.junit.launcher.JUnitLauncherCore;
@@ -31,6 +32,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.engine.JupiterTestEngine;
@@ -78,15 +80,23 @@ public final class Main {
     Pulumi.run(
         context -> {
           final RunMode runMode = RunMode.detect(true);
-          // Two-document view: the Pulumi stack config joined with the worktree's .secrets, opened
-          // in memory by sops, so a coordinate's `secret:` meta pulls its provider subtree in.
-          // `.secrets` sits at the worktree root, which IS the CWD `pulumi up` runs from — the
-          // worktree root is harvested OSGi-side, never derived here (see below).
+          // The grow profile FIRST, from the stack config alone: a throwaway grow opens no secret
+          // file, so whether .secrets may be opened is decided before it is.
+          final GrowProfile profile =
+              GrowProfile.resolve(
+                  Rke2labConfig.from(ConfigLoader.of(context.config())).cluster().profile(),
+                  Optional.ofNullable(System.getenv(GrowProfile.MARKER_ENV)));
+          // Two-document view for the fleet: the Pulumi stack config joined with the worktree's
+          // .secrets, opened in memory by sops, so a coordinate's `secret:` meta pulls its provider
+          // subtree in. `.secrets` sits at the worktree root, which IS the CWD `pulumi up` runs
+          // from — the worktree root is harvested OSGi-side, never derived here (see below).
           final ConfigLoader loader =
-              ConfigLoader.of(
-                  context.config(),
-                  Path.of(".secrets").toAbsolutePath().normalize(),
-                  new SopsAtRest());
+              profile.isFleet()
+                  ? ConfigLoader.of(
+                      context.config(),
+                      Path.of(".secrets").toAbsolutePath().normalize(),
+                      new SopsAtRest())
+                  : ConfigLoader.of(context.config());
           final Rke2labConfig config = Rke2labConfig.from(loader);
           // worktree.dir is NOT config and NOT derived here: the worktree soil (OSGi-side, played
           // as
@@ -95,10 +105,16 @@ public final class Main {
           // and the host fetches it back where it needs it (the GROW mounts). Storing it in config
           // would only collide across worktrees; deriving it here would duplicate the component.
           final BootstrapConfig bootstrap = BootstrapConfig.from(config);
+          // A throwaway stack names what the installed command fetches and resets; each output is
+          // derived and checked against the config this grow runs with, so a mismatch stops here.
+          if (!profile.isFleet()) {
+            new ThrowawayOutputs(context.stackName(), bootstrap).values().forEach(context::export);
+          }
           final Parcel parcel = new Parcel(context.projectName(), context.stackName());
           final SeedRun run =
               SeedRun.builder()
                   .runMode(runMode)
+                  .profile(profile)
                   .parcel(parcel)
                   .config(bootstrap)
                   .cleanWorktreeRequired(config.entryGate().cleanWorktreeRequired().orElse(false))

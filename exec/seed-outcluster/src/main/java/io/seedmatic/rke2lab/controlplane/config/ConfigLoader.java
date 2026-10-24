@@ -73,6 +73,15 @@ public final class ConfigLoader {
     return new ConfigLoader(new PulumiSections(config), NestedDocument.ofYaml(secretsFile, sops));
   }
 
+  /**
+   * The Pulumi stack config ALONE, with no {@code .secrets} side: what a throwaway grow reads,
+   * which opens no secret file at all. Also what the run reads its {@code rke2lab:cluster:profile}
+   * from BEFORE it knows whether {@code .secrets} may be opened.
+   */
+  public static ConfigLoader of(Config config) {
+    return new ConfigLoader(new PulumiSections(config), NestedDocument.empty());
+  }
+
   /** Offline/test: a root map keyed by top-level section; dotted names walk into sub-maps. */
   public static ConfigLoader ofNestedRoot(Map<String, Object> root) {
     return new ConfigLoader(NestedDocument.ofRoot(root), NestedDocument.empty());

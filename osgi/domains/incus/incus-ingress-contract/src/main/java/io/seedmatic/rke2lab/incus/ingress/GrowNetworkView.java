@@ -42,6 +42,11 @@ import java.util.TreeMap;
  * NetplanSynthesisService} (a published {@code @Component}), assembles the bridge configs OSGi-side
  * (pure netplan logic — no host state, no com.pulumi), and projects the flat values here. The host
  * receives the result and only poses it; it computes nothing of the network.
+ *
+ * <p>{@link #node} is the grown node's own addressing, from that same blueprint: what a node that
+ * gets no rendered rke2 config (a throwaway cluster) needs in its one drop-in, so that its
+ * dual-stack CIDRs match its dual-stack node-ip and its serving cert names its fabric address and
+ * name, the reservation's own.
  */
 public record GrowNetworkView(
     String fabricHwaddr,
@@ -49,12 +54,20 @@ public record GrowNetworkView(
     String nodeBridgeName,
     String grownCluster,
     Map<String, ClusterBridge> clusterBridges,
-    Map<String, String> profiledClusters) {
+    Map<String, String> profiledClusters,
+    NodeAddressing node) {
 
   public GrowNetworkView {
     clusterBridges = new TreeMap<>(clusterBridges);
     profiledClusters = new TreeMap<>(profiledClusters);
   }
+
+  /**
+   * The grown node's addressing: the cluster's dual-stack pod and service CIDRs, and the node's
+   * fabric address and name (the dnsmasq reservation's).
+   */
+  public record NodeAddressing(
+      String podCidr, String serviceCidr, String fabricAddress, String fabricFqdn) {}
 
   /** One co-located cluster's vmnet bridge: its name and the resolved incus network config. */
   public record ClusterBridge(String bridgeName, Map<String, String> config) {

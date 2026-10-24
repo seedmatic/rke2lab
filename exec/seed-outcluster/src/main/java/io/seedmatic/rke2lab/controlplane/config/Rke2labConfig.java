@@ -93,7 +93,8 @@ public record Rke2labConfig(
             new ClusterConfig(
                 loader.optional("cluster", "host"),
                 loader.optional("cluster", "role"),
-                loader.optional("cluster", "remoteIncus")),
+                loader.optional("cluster", "remoteIncus"),
+                loader.optional("cluster", "profile")),
             new NodeConfig(loader.optional("node", "name")),
             new ApiConfig(loader.optionalUri("api", "endpoint")),
             new KubeconfigConfig(loader.optionalPath("kubeconfig", "ref")),
@@ -157,9 +158,14 @@ public record Rke2labConfig(
    * cluster's nodes grow on (bioskop/nikopol); {@code role} is mgmt/wrkld. {@code remoteIncus} is
    * the explicit incus remote LABEL (the {@code <host>-nixos} daemon host) — the one place that
    * name is written, not decomposed from the cluster name; absent, the derivation defaults it once.
+   * {@code profile} is the grow profile ({@code throwaway}, or absent for the fleet); it selects
+   * the profile only together with the run's marker (see {@code GrowProfile}).
    */
   public record ClusterConfig(
-      Optional<String> host, Optional<String> role, Optional<String> remoteIncus) {}
+      Optional<String> host,
+      Optional<String> role,
+      Optional<String> remoteIncus,
+      Optional<String> profile) {}
 
   public record NodeConfig(Optional<String> name) {}
 

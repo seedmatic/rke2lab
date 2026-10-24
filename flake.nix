@@ -889,23 +889,22 @@
         # a JRE to run the seed-outcluster jar, and the incus client the provider
         # shells out to. The PULUMI_* vars are set here too, mirroring the flox
         # env's [vars]: local file:// backend under the repo, empty passphrase.
+        # The grow's profile, decided from the COMMITTED stack file (nix/grow-profile.d/profile.sh); the same
+        # factory its bats suite tests.
+        growProfile = import ./nix/grow-profile.d/package.nix { inherit pkgs; };
+
         growApp = pkgs.writeShellApplication {
           name = "rke2lab-grow";
           runtimeInputs = [
             pkgs.coreutils
             pkgs.nix
             pkgs.git
+            growProfile
             pulumiPkg
             pulumiJavaPkg
             pkgs.jdk25
             incusClient
-          ]
-          # ndh's manage-tailnet on PATH: InstanceGrow runs it as a local.Command to prune the old
-          # node's stale tailscale devices when the instance is replaced (they orphan their MagicDNS
-          # names → the new pac-webhook drifts to -1/-2 and the render webhook dies). The flox env
-          # carries it too, so a plain `pulumi up` prunes; here it covers `nix run .#grow`.
-          # darwin-only: ndh exposes the package only for aarch64-darwin (the operator host).
-          ++ pkgs.lib.optional (system == "aarch64-darwin") inputs.ndh.packages.${system}.manage-tailnet;
+          ];
           text = ''
                         usage() {
                           cat >&2 <<'USAGE'
@@ -918,7 +917,8 @@
 
             Anything after the verb is passed through to pulumi (e.g. --diff, --target).
             The cluster's age identity is read from fd 3 (or $RKE2LAB_CLUSTER_AGE_FD), which your own shell
-            opens; the grow refuses to run without it.
+            opens; the grow refuses to run without it — except for a stack whose COMMITTED Pulumi.<stack>.yaml
+            sets rke2lab:cluster:profile: throwaway, which is grown by the installed rke2lab-throwaway command.
             USAGE
                         }
 
@@ -932,20 +932,6 @@
                           usage
                           exit 1
                         fi
-
-                        # The cluster's age identity (rke2lab-cluster-age-<n>) arrives on a file descriptor the
-                        # operator's OWN shell opens on this command line, never one this script or a session opens:
-                        #   nix run …#grow -- <stack> <action> 3< <(pass show seedmatic/cluster-age/<n>)
-                        # Never stdin (it does not reach a Pulumi program; an inherited descriptor does), never a file.
-                        # Every grow renders the sops-age Secret from it, so a grow without it fails here, loud.
-                        # Checked first, before the long build, and only for being open: reading it would consume
-                        # the pipe.
-                        RKE2LAB_CLUSTER_AGE_FD="''${RKE2LAB_CLUSTER_AGE_FD:-3}"
-                        [ -e "/dev/fd/$RKE2LAB_CLUSTER_AGE_FD" ] || {
-                          echo "error: no cluster age identity on fd $RKE2LAB_CLUSTER_AGE_FD — append to this command: $RKE2LAB_CLUSTER_AGE_FD< <(pass show seedmatic/cluster-age/<n>)" >&2
-                          exit 1
-                        }
-                        export RKE2LAB_CLUSTER_AGE_FD
 
                         stack="''${1:-}"
                         if [ -z "$stack" ]; then
@@ -964,6 +950,27 @@
                             ;;
                         esac
                         shift
+
+                        # The profile first: a throwaway stack takes no age identity (rke2lab-grow-profile says why and
+                        # refuses a stack and a marker that disagree), so the identity check below is the fleet's only.
+                        profile="$(rke2lab-grow-profile "$stack")"
+                        if [ "$profile" = throwaway ]; then
+                          export RKE2LAB_GROW_PROFILE=throwaway
+                        else
+                          # The cluster's age identity (rke2lab-cluster-age-<n>) arrives on a file descriptor the
+                          # operator's OWN shell opens on this command line, never one this script or a session opens:
+                          #   nix run …#grow -- <stack> <action> 3< <(pass show seedmatic/cluster-age/<n>)
+                          # Never stdin (it does not reach a Pulumi program; an inherited descriptor does), never a file.
+                          # Every fleet grow renders the sops-age Secret from it, so a grow without it fails here, loud.
+                          # Checked before the long build, and only for being open: reading it would consume
+                          # the pipe.
+                          RKE2LAB_CLUSTER_AGE_FD="''${RKE2LAB_CLUSTER_AGE_FD:-3}"
+                          [ -e "/dev/fd/$RKE2LAB_CLUSTER_AGE_FD" ] || {
+                            echo "error: no cluster age identity on fd $RKE2LAB_CLUSTER_AGE_FD — append to this command: $RKE2LAB_CLUSTER_AGE_FD< <(pass show seedmatic/cluster-age/<n>)" >&2
+                            exit 1
+                          }
+                          export RKE2LAB_CLUSTER_AGE_FD
+                        fi
 
                         # Action verb (default: preview — safe, read-only). `up` applies
                         # non-interactively: preview is the inspection step, so an explicit
@@ -1063,6 +1070,20 @@
                             ;;
                         esac
           '';
+        };
+
+        # The operator's two gestures on a throwaway cluster (nix/throwaway.d/throwaway.sh): `up` through #grow
+        # itself, so its guards exist once; `reset` in its own order. The same factory its bats suite tests.
+        throwawayApp = import ./nix/throwaway.d/package.nix {
+          inherit pkgs;
+          grow = "${growApp}/bin/rke2lab-grow";
+          growProfile = "${growProfile}/bin/rke2lab-grow-profile";
+          pulumi = "${pulumiPkg}/bin/pulumi";
+          incus = "${incusClient}/bin/incus";
+          kubectl = "${pkgs.kubectl}/bin/kubectl";
+          # busybox 1.37's multi-arch index, as Docker Hub served it (🎛️, 2026-10-24: the body's sha256 recomputed); the
+          # node pulls docker.io directly, no mirror.
+          probeImage = "docker.io/library/busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e";
         };
 
         # In-cluster / standalone render: `nix run .#render-manifests`. The ONE
@@ -1204,6 +1225,7 @@
             maven-deps = mavenDepsFor pkgs;
             incus-client = incusClient;
             grow = growApp;
+            throwaway = throwawayApp;
             flux9s = flux9sPkg;
           }
           // floxNriPluginPackages
@@ -1241,6 +1263,12 @@
             type = "app";
             program = "${growApp}/bin/rke2lab-grow";
             meta.description = "Grow the cluster: build the seed-outcluster jar and run pulumi preview/up against it";
+          };
+
+          apps.throwaway = {
+            type = "app";
+            program = "${throwawayApp}/bin/rke2lab-throwaway";
+            meta.description = "Grow or reset a throwaway cluster stack: each its own go, each checked by itself";
           };
 
           apps.render-manifests = {
@@ -1459,6 +1487,15 @@
             # built: a delivered description passes only if every builder is ssh-ng:// with its client
             # key, certificate and host key; anything else leaves no builders.conf behind.
             nix-builders-gate = import ./nixos/nix-builders.d/tests/package.nix { inherit pkgs; };
+            # The grow's profile gate, as built: the profile from the COMMITTED stack file only, and only when the
+            # installed command's marker agrees; every disagreement refused.
+            grow-profile = import ./nix/grow-profile.d/tests/package.nix { inherit pkgs; };
+            # The throwaway gestures, as built against mocked tools: the typed name, the reset's order, a failed step
+            # never skipped, the kubeconfig's modes, no client key printed.
+            throwaway = import ./nix/throwaway.d/tests/package.nix {
+              inherit pkgs growProfile;
+              realGrow = growApp;
+            };
             # Anti-drift gate for the cross-world node label (Java ↔ nix, which can't import each
             # other): extract NODE_FLOX_RUNTIME_LABEL from ManifestAnnotations.java (the single
             # source, used by the flox DaemonSet nodeSelectors) and fail unless the nixos oneshot

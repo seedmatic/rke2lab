@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.tngtech.jgiven.CurrentStep;
 import com.tngtech.jgiven.Stage;
 import com.tngtech.jgiven.annotation.As;
 import com.tngtech.jgiven.annotation.Hidden;
@@ -22,10 +23,13 @@ import io.seedmatic.rke2lab.clusterpki.contract.ClusterCaBundle;
 import io.seedmatic.rke2lab.clusterpki.contract.ClusterPkiCoordinate;
 import io.seedmatic.rke2lab.clusterpki.contract.OperatorKubeconfig;
 import io.seedmatic.rke2lab.clusterpki.contract.WorkloadAdminCredentials;
+import io.seedmatic.rke2lab.controlplane.ThrowawayCloudConfig;
 import io.seedmatic.rke2lab.controlplane.config.BootstrapConfig;
 import io.seedmatic.rke2lab.controlplane.incus.InstanceGrow;
 import io.seedmatic.rke2lab.controlplane.incus.NodeBootstrapMaterial;
+import io.seedmatic.rke2lab.controlplane.incus.NodeCloudConfig;
 import io.seedmatic.rke2lab.host.runtime.ExecutionEnvironment;
+import io.seedmatic.rke2lab.host.runtime.GrowProfile;
 import io.seedmatic.rke2lab.incus.ingress.GrowOutcome;
 import io.seedmatic.rke2lab.incus.ingress.Growth;
 import io.seedmatic.rke2lab.incus.ingress.IncusGrowCoordinate;
@@ -76,6 +80,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -186,8 +191,16 @@ public class ClusterSeedScenario
         Objects.requireNonNull(
             cellar, "the ScenarioCellar was not injected before the scenario ran");
     given().i_have_access_to_the_open_gardening(seedRun, world, tx);
-    when()
-        .the_worktree_is_surveyed(hostScenario, hostTree)
+    grows(when(), hostScenario, hostTree);
+    then().the_harvest_is_stored().the_run_fails_if_any_crossing_failed(hostScenario, hostTree);
+  }
+
+  /**
+   * The WHENs, in the order the seed plays them: the one list a throwaway run's step list is
+   * checked against, so a crossing added here is a crossing that test must answer for.
+   */
+  static When grows(When when, ScenarioModel hostScenario, ReportModel hostTree) {
+    return when.the_worktree_is_surveyed(hostScenario, hostTree)
         .and()
         .the_netplan_is_projected(hostScenario, hostTree)
         .and()
@@ -214,7 +227,6 @@ public class ClusterSeedScenario
         .the_systemd_adapter_is_launched(hostScenario, hostTree)
         .and()
         .the_cluster_becomes_ready(hostScenario, hostTree);
-    then().the_harvest_is_stored().the_run_fails_if_any_crossing_failed(hostScenario, hostTree);
   }
 
   /**
@@ -288,6 +300,13 @@ public class ClusterSeedScenario
 
   public static class Given extends Stage<Given> {
 
+    // A throwaway grow opens no secret: any read is a crossing that should have been skipped.
+    static final SecretsGateway NO_SECRETS =
+        path -> {
+          throw new IllegalStateException(
+              "a throwaway grow reads no secret, but a crossing asked for '" + path + "'");
+        };
+
     @ProvidedScenarioState Gardening gardening;
     // The durable backend realisation (the Pulumi store the working cellar drains to at the
     // boundary). Named for its role, distinct from the working `cellar` below — the When already
@@ -316,6 +335,8 @@ public class ClusterSeedScenario
     // The run's provisioning config — the host GROW derives the instance mounts from it (via the
     // dual-realm BootstrapPaths) and builds the provider context from it.
     @ProvidedScenarioState BootstrapConfig config;
+    // What the grow is for: a throwaway one skips every crossing that takes a fleet identity.
+    @ProvidedScenarioState GrowProfile profile;
     // The run's working cellar — the root's own ScenarioCellar (the seam type Cellar here),
     // injected
     // onto the scenario instance and published for SowAndGraftStage; every sow carries it, so a
@@ -342,6 +363,7 @@ public class ClusterSeedScenario
       this.imageScalars = imageScalars;
       // The host GROW derives the instance mounts + provider context from the run's config.
       this.config = run.config();
+      this.profile = run.profile();
       // Publish the ambient RunGate the scions resolve — projected from the run mode.
       // registerService,
       // not a handler: the run-condition is a service the whole run shares (§ RunGate).
@@ -383,7 +405,9 @@ public class ClusterSeedScenario
           .connection()
           .context()
           .registerService(
-              SecretsGateway.class, executionEnvironment.secretsGateway(), new Hashtable<>());
+              SecretsGateway.class,
+              run.profile().isFleet() ? executionEnvironment.secretsGateway() : NO_SECRETS,
+              new Hashtable<>());
       // The ambient enclosure gate the render's scion resolves to fork keystore-vs-mounted signing
       // (this grow runs OPERATOR — the ndh key-store is at hand). Published like the RunGate.
       gardening
@@ -428,6 +452,7 @@ public class ClusterSeedScenario
       incusFacet.put("clusterName", run.config().clusterName());
       incusFacet.put("nodeName", run.config().nodeName());
       incusFacet.put("incusProject", run.config().incusProject());
+      incusFacet.put("throwaway", !run.profile().isFleet());
       gardening
           .connection()
           .context()
@@ -595,6 +620,8 @@ public class ClusterSeedScenario
     JsonNode incusIdentityHostCreds;
 
     @ScenarioState BootstrapConfig config;
+    @ScenarioState GrowProfile profile;
+    @ScenarioState CurrentStep currentStep;
 
     // The WARM fail-fast budget — a live master should answer at once, so a re-run against one that
     // does not is a fault to surface NOW, not a boot to wait out. Short, global (both checkpoints),
@@ -641,10 +668,32 @@ public class ClusterSeedScenario
       return self();
     }
 
+    private static final String NO_FLEET_IDENTITY = "a throwaway cluster takes no fleet identity";
+
+    // The installed rke2lab-throwaway up checks a throwaway cluster's readiness through its own
+    // kubeconfig, and fails on the first check that does not hold: the verdict moved, not lost.
+    private static final String READY_CHECKED_BY_UP =
+        "a throwaway cluster's readiness is checked by rke2lab-throwaway up";
+
+    /**
+     * Whether this crossing is skipped for a throwaway grow. The step keeps its place in the
+     * runbook, renamed to say it was skipped and why, so a fleet run that skips it reads as a bug.
+     */
+    private boolean skippedForAThrowaway(String why) {
+      if (profile.isFleet()) {
+        return false;
+      }
+      currentStep.setName("skipped by the throwaway profile: " + why);
+      return true;
+    }
+
     @NestedSteps
     @As("the cluster CA is sealed")
     public When the_cluster_ca_is_sealed(
         @Hidden ScenarioModel hostScenario, @Hidden ReportModel hostTree) {
+      if (skippedForAThrowaway(NO_FLEET_IDENTITY)) {
+        return self();
+      }
       // The cluster-pki seal scion mints the deterministic mgmt CA ONCE per cluster (idempotent on
       // a cellar hit, so the CA is stable across re-grows) and files it for the GROW to pose over
       // cloud-init. Sown BEFORE provisioning so the PKI exists when the instance grows. ONE
@@ -667,6 +716,9 @@ public class ClusterSeedScenario
     @As("the incus identity is sealed")
     public When the_incus_identity_is_sealed(
         @Hidden ScenarioModel hostScenario, @Hidden ReportModel hostTree) {
+      if (skippedForAThrowaway(NO_FLEET_IDENTITY)) {
+        return self();
+      }
       // The incus-identity seal scion assembles the CAPN provider identity (the host-world creds
       // via
       // this amendment + the client key it reads from .secrets in-container) and files it SEALED,
@@ -691,6 +743,9 @@ public class ClusterSeedScenario
     @As("the github app is registered")
     public When the_github_app_is_registered(
         @Hidden ScenarioModel hostScenario, @Hidden ReportModel hostTree) {
+      if (skippedForAThrowaway(NO_FLEET_IDENTITY)) {
+        return self();
+      }
       // The ghapp registration scion ensures the one org-owned GitHub App exists and seals its
       // credentials (idempotent on a cellar hit; rehydrated from .secrets via the host
       // SecretsGateway
@@ -710,6 +765,9 @@ public class ClusterSeedScenario
     @As("the replicator secrets are sealed")
     public When the_replicator_secrets_are_sealed(
         @Hidden ScenarioModel hostScenario, @Hidden ReportModel hostTree) {
+      if (skippedForAThrowaway(NO_FLEET_IDENTITY)) {
+        return self();
+      }
       // The replicator-secrets seal scion rehydrates the mittwald SOURCE secrets from .secrets
       // (tekton git/docker, tailscale oauth) via the host SecretsGateway seam and files them SEALED
       // for the manifests synthesis to reveal + ReplicatorManifestsUnit to render onto the
@@ -726,6 +784,9 @@ public class ClusterSeedScenario
     @As("the github app webhook is reconciled")
     public When the_github_app_webhook_is_reconciled(
         @Hidden ScenarioModel hostScenario, @Hidden ReportModel hostTree) {
+      if (skippedForAThrowaway(NO_FLEET_IDENTITY)) {
+        return self();
+      }
       // The ghapp webhook scion re-points the org App's webhook at the current Tailscale funnel and
       // sets its shared HMAC secret — the App-level settings the operator would otherwise change by
       // hand in the GitHub UI on every funnel rename. ONE amendment hands the neutral FUNNEL role
@@ -819,33 +880,14 @@ public class ClusterSeedScenario
       //     the CNI and Flux come up node-side.
       // Each is absent only on a run where its producer did not file — the guest units are tolerant
       // (rke2 self-signs its CA; a node with no bootstrap set simply seeds nothing).
-      final NodeBootstrapMaterial material =
-          new NodeBootstrapMaterial(
-              workingCellar
-                  .fetch(parcel, ClusterPkiCoordinate.CLUSTER_AGE_KEY, ClusterAgeKey.class)
-                  .map(ClusterAgeKey::identity),
-              workingCellar
-                  .fetch(parcel, ClusterPkiCoordinate.CLUSTER_CA_BUNDLE, ClusterCaBundle.class)
-                  .map(ClusterCaBundle::sops),
-              workingCellar
-                  .fetch(
-                      parcel,
-                      ServerManifestsCoordinate.SERVER_MANIFESTS,
-                      ServerManifestsBundle.class)
-                  .map(ServerManifestsBundle::manifests),
-              // The manifests branch the node fetches its rke2 config from at boot (nix run
-              // <branch>#install-rke2-config); seed-outcluster rendered+pushed it just before this
-              // grow.
-              Optional.of("manifests/" + config.clusterName()),
-              // The node's FRESH contents:read github token, minted at the render by the synthesis
-              // scion (from the durable App creds) and filed SEALED + TRANSIENT — revealed HERE
-              // this
-              // run, evicted at the drain, so it never persists durably (never stale). Empty on an
-              // offline/survey run (the reader-mint edge was filtered out) — the node then gets no
-              // token and the fetch fails loud, which is the intended fail-fast for a real grow.
-              workingCellar
-                  .fetch(parcel, NodeGithubTokenCoordinate.NODE_GITHUB_TOKEN, NodeGithubToken.class)
-                  .map(NodeGithubToken::token));
+      // A throwaway node gets none of it: its cloud-config is checked against what alone it may
+      // hold before the grow poses anything.
+      final Function<InstanceGrowPlan, NodeCloudConfig> cloudConfig =
+          profile.isFleet()
+              ? plan -> NodeCloudConfig.fleet(plan.identity(), fleetBootstrapMaterial())
+              : plan ->
+                  ThrowawayCloudConfig.checked(
+                      NodeCloudConfig.throwaway(plan.identity(), plan.network().node()));
       // The cold/warm condition, READ NOW from the prior stack state — before the grow starts the
       // instance and the observation is lost. Frozen on the run's TRANSIENT bus as the GrowOutcome
       // fact (evicted at the drain, never conserved): the readiness-budget tuning reads it a few
@@ -858,10 +900,42 @@ public class ClusterSeedScenario
               .orElse(Growth.COLD);
       workingCellar
           .fetch(parcel, IncusGrowCoordinate.INSTANCE_GROW_PLAN, InstanceGrowPlan.class)
-          .ifPresent(plan -> new InstanceGrow(ingress, line -> {}).grow(plan, material));
+          .ifPresent(plan -> new InstanceGrow(ingress, line -> {}).grow(plan, cloudConfig));
       workingCellar.storeTransient(
           parcel, IncusGrowCoordinate.GROW_OUTCOME, new GrowOutcome(growth));
       return self();
+    }
+
+    /**
+     * The fleet's per-node bootstrap material: the cluster PKI the seal filed, the node-side
+     * manifests the synthesis carved, the manifests branch and the node's github token. A throwaway
+     * node gets none of it: rke2 makes its own CA and nothing is fetched from the fleet's repo.
+     */
+    private NodeBootstrapMaterial fleetBootstrapMaterial() {
+      return new NodeBootstrapMaterial(
+          workingCellar
+              .fetch(parcel, ClusterPkiCoordinate.CLUSTER_AGE_KEY, ClusterAgeKey.class)
+              .map(ClusterAgeKey::identity),
+          workingCellar
+              .fetch(parcel, ClusterPkiCoordinate.CLUSTER_CA_BUNDLE, ClusterCaBundle.class)
+              .map(ClusterCaBundle::sops),
+          workingCellar
+              .fetch(
+                  parcel, ServerManifestsCoordinate.SERVER_MANIFESTS, ServerManifestsBundle.class)
+              .map(ServerManifestsBundle::manifests),
+          // The manifests branch the node fetches its rke2 config from at boot (nix run
+          // <branch>#install-rke2-config); seed-outcluster rendered+pushed it just before this
+          // grow.
+          Optional.of("manifests/" + config.clusterName()),
+          // The node's FRESH contents:read github token, minted at the render by the synthesis
+          // scion (from the durable App creds) and filed SEALED + TRANSIENT — revealed HERE
+          // this
+          // run, evicted at the drain, so it never persists durably (never stale). Empty on an
+          // offline/survey run (the reader-mint edge was filtered out) — the node then gets no
+          // token and the fetch fails loud, which is the intended fail-fast for a real grow.
+          workingCellar
+              .fetch(parcel, NodeGithubTokenCoordinate.NODE_GITHUB_TOKEN, NodeGithubToken.class)
+              .map(NodeGithubToken::token));
     }
 
     @As("the operator kubeconfig is published")
@@ -875,7 +949,9 @@ public class ClusterSeedScenario
       // server-ca chain rooted at mammoth-skate-tls. Written to kubeconfigRef
       // (.local.d/kubeconfig.yaml) — the stable path the operator and the readiness probe read.
       // Live-only: absent a deployment there is nothing to access yet.
-      if (!PulumiDeploymentSeed.isDeploymentPresent()) {
+      // A throwaway cluster's admin kubeconfig is rke2's own, fetched by the installed command: the
+      // seal minted no admin credential for it.
+      if (!PulumiDeploymentSeed.isDeploymentPresent() || !profile.isFleet()) {
         return self();
       }
       workingCellar
@@ -1060,6 +1136,9 @@ public class ClusterSeedScenario
 
     @As("the readiness budget is tuned to the growth")
     public When the_readiness_budget_is_tuned_to_the_growth() {
+      if (skippedForAThrowaway(READY_CHECKED_BY_UP)) {
+        return self();
+      }
       // Resolve the ambient ReadinessOverrides from the grow's cold/warm fact and publish it for
       // the
       // readiness scions (the RunGate route — a whole-run service they resolve from the registry,
@@ -1084,6 +1163,9 @@ public class ClusterSeedScenario
     @As("the systemd adapter is launched")
     public When the_systemd_adapter_is_launched(
         @Hidden ScenarioModel hostScenario, @Hidden ReportModel hostTree) {
+      if (skippedForAThrowaway(READY_CHECKED_BY_UP)) {
+        return self();
+      }
       // Tolerating: systemd and cluster are the TERMINAL independent crossings — a systemd failure
       // must NOT fail-fast, so cluster still runs and both failures aggregate in one runbook. The
       // closing gate (the THEN) fails the run overall if either ended FAILED.
@@ -1097,6 +1179,9 @@ public class ClusterSeedScenario
     @As("the cluster becomes ready")
     public When the_cluster_becomes_ready(
         @Hidden ScenarioModel hostScenario, @Hidden ReportModel hostTree) {
+      if (skippedForAThrowaway(READY_CHECKED_BY_UP)) {
+        return self();
+      }
       // Tolerating (see the systemd crossing): the last crossing, aggregated with systemd; the
       // closing gate in the THEN enforces the overall verdict.
       sowAndGraft
