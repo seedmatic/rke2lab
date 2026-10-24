@@ -39,9 +39,13 @@ action=$1 stack=$2
 export RKE2LAB_GROW_PROFILE=throwaway
 [[ $("$growProfile" "$stack") == throwaway ]] || die "$stack is not a throwaway stack"
 
+# What reset deletes is DERIVED from the stack's name, never read from the stack: a wrong output (a bug, an edited
+# state) can then never name the fleet's project or node. The stack's outputs are only compared with these.
+project="throwaway-$stack"
+node="throwaway-$stack-node"
 kubeconfig="$kubeDir/$stack.yaml"
-# What reset needs once destroy has emptied the stack's outputs: noted before step 1, so a rerun resumes. Not secret.
-resetState="$kubeDir/.$stack.reset"
+# Marks a reset begun and not finished, so up refuses until it is. It holds nothing: the names are derived.
+resetMark="$kubeDir/.$stack.reset"
 
 : "the same local backend #grow uses (its env mirrors the flox env's [vars]), for the outputs, destroy and stack rm"
 export PULUMI_HOME="${PULUMI_HOME:-${XDG_STATE_HOME:-$HOME/.local/state}/pulumi}"
@@ -57,16 +61,15 @@ ask() { # <prompt> <expected>: the answer read on the tty, never stdin
   [[ $answer == "$2" ]]
 }
 
-outputs() { # the stack's three exports, none secret; any one missing refuses
-  local json
+outputs() { # the stack's three exports, none secret: the node and project must be the derived ones; the server is used
+  local json got
   json=$("$pulumi" stack output --stack "$stack" --json) || die "the stack's outputs cannot be read"
-  node=$(yq -p json -r '.throwawayNode // ""' <<<"$json")
-  project=$(yq -p json -r '.throwawayIncusProject // ""' <<<"$json")
+  got=$(yq -p json -r '.throwawayIncusProject // ""' <<<"$json")
+  [[ $got == "$project" ]] || die "the stack exports Incus project '$got', not $project: refused"
+  got=$(yq -p json -r '.throwawayNode // ""' <<<"$json")
+  [[ $got == "$node" ]] || die "the stack exports node '$got', not $node: refused"
   server=$(yq -p json -r '.throwawayApiServer // ""' <<<"$json")
-  [[ -n $node && -n $project && -n $server ]] ||
-    die "the stack exports no throwawayNode, throwawayIncusProject or throwawayApiServer"
-  [[ $node =~ ^[a-z][a-z0-9-]*$ && $project =~ ^[a-z][a-z0-9-]*$ ]] || die "the stack's node or project is not a name"
-  [[ $server =~ ^https://[a-z0-9.-]+:[0-9]+$ ]] || die "throwawayApiServer is not an https://host:port"
+  [[ $server =~ ^https://[a-z0-9.-]+:[0-9]+$ ]] || die "the stack exports no throwawayApiServer as an https://host:port"
 }
 
 stack_exists() {
@@ -96,7 +99,7 @@ chmod 0700 "$kubeDir"
 
 case $action in
   up)
-    [[ ! -e $resetState ]] || die "a reset of $stack was interrupted: finish it (rke2lab-throwaway reset $stack) first"
+    [[ ! -e $resetMark ]] || die "a reset of $stack was interrupted: finish it (rke2lab-throwaway reset $stack) first"
     step "preview of throwaway stack $stack"
     "$grow" "$stack" preview
     ask "grow throwaway stack $stack as previewed above? [oui/non]" oui ||
@@ -111,22 +114,18 @@ case $action in
     echo "ready: KUBECONFIG=$kubeconfig"
     ;;
   reset)
-    if [[ -e $resetState ]]; then
-      node=$(sed -n 's/^node=//p' "$resetState")
-      project=$(sed -n 's/^project=//p' "$resetState")
-      [[ $node =~ ^[a-z][a-z0-9-]*$ && $project =~ ^[a-z][a-z0-9-]*$ ]] ||
-        die "$resetState is malformed: remove it only once you know the stack is gone"
-      echo "resuming an interrupted reset of $stack"
-    else
+    : "a stack still there must export the derived names; once destroy has emptied its outputs, they carry the rerun"
+    if stack_exists && [[ ! -e $resetMark ]]; then
       outputs
     fi
+    [[ ! -e $resetMark ]] || echo "resuming an interrupted reset of $stack"
     printf 'reset throwaway stack %s, in order:\n' "$stack"
     printf '  1. pulumi destroy (instance %s, in Incus project %s)\n' "$node" "$project"
     printf '  2. the images left in project %s, then the project\n' "$project"
     printf '  3. pulumi stack rm %s\n' "$stack"
     printf '  4. %s\n' "$kubeconfig"
     ask "type the stack name to reset it:" "$stack" || { echo "nothing done: the name typed is not $stack"; exit 5; }
-    printf 'node=%s\nproject=%s\n' "$node" "$project" >"$resetState"
+    : >"$resetMark"
 
     step "1/4 destroy"
     if stack_exists; then
@@ -137,7 +136,8 @@ case $action in
 
     step "2/4 images and project"
     if "$incus" project show "$project" >/dev/null 2>&1; then
-      for image in $("$incus" image list --project "$project" --format csv --columns f); do
+      mapfile -t images < <("$incus" image list --project "$project" --format csv --columns f)
+      for image in "${images[@]}"; do
         "$incus" image delete --project "$project" "$image" || die "step 2/4 failed on image $image; rerun reset"
       done
       "$incus" project delete "$project" || die "step 2/4 failed on project $project; rerun reset"
@@ -153,7 +153,7 @@ case $action in
     step "4/4 kubeconfig"
     rm -f "$kubeconfig"
     [[ ! -e $kubeconfig ]] || die "step 4/4: $kubeconfig is still there"
-    rm -f "$resetState"
+    rm -f "$resetMark"
     echo "reset: throwaway stack $stack is gone"
     ;;
 esac

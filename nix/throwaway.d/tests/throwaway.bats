@@ -30,7 +30,7 @@ setup() {
   printf 'config:\n  rke2lab:cluster:\n    host: bioskop\n' >Pulumi.dev.yaml
   printf 'config:\n  rke2lab:cluster:\n    host: nikopol\n    profile: throwaway\n' >Pulumi.nikopol.yaml
   git add Pulumi.yaml Pulumi.dev.yaml Pulumi.nikopol.yaml && git commit -q -m stacks
-  printf '{"throwawayNode":"nikopol-mgmt-master","throwawayIncusProject":"rke2lab-test","throwawayApiServer":"https://nikopol-mgmt-master.nikopol:6443"}\n' >"$m/outputs.json"
+  printf '{"throwawayNode":"throwaway-nikopol-node","throwawayIncusProject":"throwaway-nikopol","throwawayApiServer":"https://throwaway-nikopol-node.nikopol:6443"}\n' >"$m/outputs.json"
   printf 'apiVersion: v1\nclusters:\n- cluster:\n    server: https://127.0.0.1:6443\n  name: default\nusers:\n- name: default\n  user:\n    %s\n' "$secret" >"$m/rke2.yaml"
 }
 
@@ -49,8 +49,8 @@ grown() { touch "$m/stack" "$m/instance" "$m/project"; printf 'aaa\nbbb\n' >"$m/
   grep -qx "grow nikopol up profile=throwaway" "$m/calls"
   [ "$(stat -c %a "$m/kube")" = 700 ]
   [ "$(stat -c %a "$m/kube/nikopol.yaml")" = 600 ]
-  [ "$(yq -r '.clusters[0].cluster.server' "$m/kube/nikopol.yaml")" = https://nikopol-mgmt-master.nikopol:6443 ]
-  grep -q "incus file pull --project rke2lab-test nikopol-mgmt-master/etc/rancher/rke2/rke2.yaml -" "$m/calls"
+  [ "$(yq -r '.clusters[0].cluster.server' "$m/kube/nikopol.yaml")" = https://throwaway-nikopol-node.nikopol:6443 ]
+  grep -q "incus file pull --project throwaway-nikopol throwaway-nikopol-node/etc/rancher/rke2/rke2.yaml -" "$m/calls"
   [[ $output == *"ready: KUBECONFIG=$m/kube/nikopol.yaml"* ]]
   [ ! -e "$m/kube/.nikopol.yaml.new" ]
 }
@@ -87,10 +87,10 @@ grown() { touch "$m/stack" "$m/instance" "$m/project"; printf 'aaa\nbbb\n' >"$m/
 }
 
 @test "up: a stack exporting no node is refused before any fetch" {
-  echo '{"throwawayIncusProject":"rke2lab-test","throwawayApiServer":"https://x:6443"}' >"$m/outputs.json"
+  echo '{"throwawayIncusProject":"throwaway-nikopol","throwawayApiServer":"https://x:6443"}' >"$m/outputs.json"
   tw oui up nikopol
   [ "$status" -eq 3 ]
-  [[ $stderr == *"exports no throwawayNode"* ]]
+  [[ $stderr == *"exports node '', not throwaway-nikopol-node"* ]]
   ! grep -q "incus file pull" "$m/calls"
 }
 
@@ -150,7 +150,44 @@ grown() { touch "$m/stack" "$m/instance" "$m/project"; printf 'aaa\nbbb\n' >"$m/
   [ -e "$m/instance" ]
 }
 
-@test "reset: a failed destroy stops there, says so, and a rerun resumes from the noted node" {
+@test "reset: outputs naming the fleet's project are refused, and nothing is deleted" {
+  grown
+  echo '{"throwawayNode":"throwaway-nikopol-node","throwawayIncusProject":"rke2lab","throwawayApiServer":"https://x.nikopol:6443"}' >"$m/outputs.json"
+  tw nikopol reset nikopol
+  [ "$status" -eq 3 ]
+  [[ $stderr == *"exports Incus project 'rke2lab', not throwaway-nikopol: refused"* ]]
+  ! grep -q -E "pulumi destroy|incus image delete|incus project delete|pulumi stack rm" "$m/calls"
+  [ -s "$m/images" ] && [ -e "$m/project" ] && [ -e "$m/instance" ]
+}
+
+@test "reset: outputs naming another node are refused, and nothing is deleted" {
+  grown
+  echo '{"throwawayNode":"nikopol-mgmt-master","throwawayIncusProject":"throwaway-nikopol","throwawayApiServer":"https://x.nikopol:6443"}' >"$m/outputs.json"
+  tw nikopol reset nikopol
+  [ "$status" -eq 3 ]
+  [[ $stderr == *"exports node 'nikopol-mgmt-master', not throwaway-nikopol-node: refused"* ]]
+  ! grep -q -E "pulumi destroy|incus image delete|incus project delete|pulumi stack rm" "$m/calls"
+}
+
+@test "up: outputs naming the fleet's project are refused before any fetch" {
+  echo '{"throwawayNode":"throwaway-nikopol-node","throwawayIncusProject":"rke2lab","throwawayApiServer":"https://x.nikopol:6443"}' >"$m/outputs.json"
+  tw oui up nikopol
+  [ "$status" -eq 3 ]
+  [[ $stderr == *"exports Incus project 'rke2lab'"* ]]
+  ! grep -q "incus file pull" "$m/calls"
+}
+
+@test "mutant: a reset that trusts the stack's project would delete the fleet's images" {
+  sed -i 's/^  \[\[ \$got == "\$project" \]\] || die .*$/  project=$got/' "$THROWAWAY"
+  grep -q '^  project=\$got$' "$THROWAWAY"
+  grown
+  echo '{"throwawayNode":"throwaway-nikopol-node","throwawayIncusProject":"rke2lab","throwawayApiServer":"https://x.nikopol:6443"}' >"$m/outputs.json"
+  tw nikopol reset nikopol
+  : "the case above refuses it; under the mutant, the deletion reaches project rke2lab: that is what the case guards"
+  grep -q "incus project delete rke2lab" "$m/calls"
+}
+
+@test "reset: a failed destroy stops there, says so, and a rerun resumes from the derived names" {
   grown
   mkdir -p "$m/kube" && touch "$m/kube/nikopol.yaml"
   touch "$m/fail-destroy"
@@ -161,7 +198,7 @@ grown() { touch "$m/stack" "$m/instance" "$m/project"; printf 'aaa\nbbb\n' >"$m/
   ! grep -q "pulumi stack rm" "$m/calls"
   [ -e "$m/kube/nikopol.yaml" ]
   rm "$m/fail-destroy" "$m/calls"
-  : "the outputs are gone with a half-done destroy; the noted node and project carry the rerun"
+  : "the outputs are gone with a half-done destroy; the names derived from the stack carry the rerun"
   echo '{}' >"$m/outputs.json"
   tw nikopol reset nikopol
   [ "$status" -eq 0 ]
@@ -174,7 +211,7 @@ grown() { touch "$m/stack" "$m/instance" "$m/project"; printf 'aaa\nbbb\n' >"$m/
   touch "$m/fail-project-delete"
   tw nikopol reset nikopol
   [ "$status" -eq 3 ]
-  [[ $stderr == *"step 2/4 failed on project rke2lab-test"* ]]
+  [[ $stderr == *"step 2/4 failed on project throwaway-nikopol"* ]]
   ! grep -q "pulumi stack rm" "$m/calls"
   tw oui up nikopol
   [ "$status" -eq 3 ]
@@ -199,7 +236,7 @@ grown() { touch "$m/stack" "$m/instance" "$m/project"; printf 'aaa\nbbb\n' >"$m/
   tw nikopol reset nikopol
   : "the mutant would destroy nothing and still delete the project: the instance check after step 1 stops it"
   [ "$status" -eq 3 ]
-  [[ $stderr == *"step 1/4: instance nikopol-mgmt-master is still there"* ]]
+  [[ $stderr == *"step 1/4: instance throwaway-nikopol-node is still there"* ]]
   ! grep -q "incus project delete" "$m/calls"
 }
 

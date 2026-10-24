@@ -2,4 +2,4 @@
 m=${MOCK:?}
 echo "kubectl $* KUBECONFIG=${KUBECONFIG:-}" >>"$m/calls"
 [[ -e $m/fail-ready ]] && exit 1
-grep -q 'server: https://nikopol-mgmt-master.nikopol:6443' "$KUBECONFIG" && echo ok
+grep -q 'server: https://throwaway-nikopol-node.nikopol:6443' "$KUBECONFIG" && echo ok
