@@ -7,12 +7,16 @@
   pulumi,
   incus,
   kubectl,
+  # The probe pod's image, by digest: a test pod on a work project's cluster never pulls a moving tag.
+  probeImage,
   ttyIn ? "/dev/tty",
   ttyOut ? "/dev/tty",
   kubeDir ? null,
   waitSeconds ? 600,
   pollSeconds ? 10,
 }:
+assert pkgs.lib.assertMsg (builtins.match ".+@sha256:[0-9a-f]{64}" probeImage != null)
+  "rke2lab-throwaway: probeImage must be pinned by digest (<image>@sha256:<64 hex>), not '${probeImage}'";
 pkgs.writeShellApplication {
   name = "rke2lab-throwaway";
   runtimeInputs = [
@@ -33,6 +37,7 @@ pkgs.writeShellApplication {
     ttyOut=${pkgs.lib.escapeShellArg ttyOut}
     waitSeconds=${toString waitSeconds}
     pollSeconds=${toString pollSeconds}
+    probeImage=${pkgs.lib.escapeShellArg probeImage}
     kubeDir=${if kubeDir == null then ''"$HOME/.kube/rke2lab-throwaway"'' else pkgs.lib.escapeShellArg kubeDir}
   ''
   + builtins.readFile ./throwaway.sh;

@@ -1081,6 +1081,9 @@
           pulumi = "${pulumiPkg}/bin/pulumi";
           incus = "${incusClient}/bin/incus";
           kubectl = "${pkgs.kubectl}/bin/kubectl";
+          # busybox 1.37's multi-arch index, as Docker Hub served it (🎛️, 2026-10-24: the body's sha256 recomputed); the
+          # node pulls docker.io directly, no mirror.
+          probeImage = "docker.io/library/busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e";
         };
 
         # In-cluster / standalone render: `nix run .#render-manifests`. The ONE

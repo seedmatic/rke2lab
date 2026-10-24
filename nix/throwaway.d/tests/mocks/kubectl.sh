@@ -15,6 +15,7 @@ case $1 in
   wait)
     [[ $3 == node/* && -e $m/kube-node-notready ]] && exit 1
     [[ $3 == pod/* && -e $m/kube-pod-fails ]] && exit 1
+    [[ ${*} == *"deployment/rke2-metrics-server"* && -e $m/kube-metrics-down ]] && exit 1
     exit 0
     ;;
   run) touch "$m/probe-pod" ;;

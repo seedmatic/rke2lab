@@ -21,6 +21,7 @@ case $1 in
       "systemctl is-active")
         [[ ${*: -1} == rke2-server.service ]] && { [[ ! -e $m/node-rke2-down ]]; exit; }
         [[ -e $m/node-socket-active && ${*: -1} == sshd.socket ]] && exit 0
+        [[ -e $m/node-tailscaled && ${*: -1} == tailscaled.service ]] && exit 0
         exit 3
         ;;
       "systemctl list-units")
@@ -28,11 +29,14 @@ case $1 in
         exit 0
         ;;
       "systemctl is-enabled")
-        [[ -e $m/node-ssh-enabled && $3 == sshd.service ]] && { echo enabled; exit 0; }
+        [[ -e $m/node-ssh-enabled && $3 == sshd.socket ]] && { echo enabled; exit 0; }
         echo masked-runtime
         ;;
       "test -e") [[ -e $m/node-has-${3//\//_} ]] ;;
-      "ss -Htln")
+      "find /run/secrets") [[ -e $m/node-run-secrets ]] && echo /run/secrets/x; exit 0 ;;
+      "find /run/secrets.d") exit 0 ;;
+      "find /home") [[ -e $m/node-home-keys ]] && echo /home/u/.ssh/authorized_keys; exit 0 ;;
+      "ss -Hltn")
         [[ -e $m/node-listens-22 ]] && echo "LISTEN 0 128 0.0.0.0:22 0.0.0.0:*"
         exit 0
         ;;

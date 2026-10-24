@@ -11,6 +11,8 @@ let
     pulumi = mock "pulumi";
     incus = mock "incus";
     kubectl = mock "kubectl";
+    # A made-up digest: the suite checks that the pinned image is the one run, not which image it is.
+    probeImage = "busybox@sha256:${pkgs.lib.fixedWidthString 64 "0" "1"}";
     ttyIn = "@M@/tty";
     ttyOut = "@M@/prompt";
     kubeDir = "@M@/kube";

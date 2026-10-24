@@ -101,14 +101,38 @@ grown() { touch "$m/stack" "$m/instance" "$m/project"; printf 'aaa\nbbb\n' >"$m/
 }
 
 @test "Ready check 6: any fleet material on the node fails up, named" {
-  for path in /var/lib/rke2lab/sops-age.key /var/lib/rke2lab/cluster-ca-bundle.yaml /etc/nix/nix-github.conf \
-    /var/lib/rke2lab/rke2-config.env /var/lib/rke2lab/nix/builders.conf /root/.ssh/authorized_keys; do
+  for path in /var/lib/rke2lab/sops-age.key /var/lib/rke2lab/cluster-ca-bundle.yaml /run/rke2lab/nix-github.conf \
+    /run/rke2lab/rke2-config.env /var/lib/rke2lab/nix/machines /var/lib/rke2lab/nix/builders.conf \
+    /var/lib/rancher/rke2/server/manifests/rke2lab-bootstrap.yaml /root/.ssh/authorized_keys; do
     touch "$m/node-has-${path//\//_}"
     tw oui up nikopol
     [ "$status" -eq 3 ]
     [[ $stderr == *"not Ready, check 6: $path is on nikopol-mgmt-master"* ]]
     rm "$m/node-has-${path//\//_}"
   done
+}
+
+@test "Ready check 6: sops-nix secrets, a tailscale state or tailscaled, an authorized_keys under /home fail up" {
+  for f in node-run-secrets node-has-_var_lib_tailscale_tailscaled.state node-tailscaled node-home-keys; do
+    touch "$m/$f"
+    tw oui up nikopol
+    [ "$status" -eq 3 ]
+    [[ $stderr == *"not Ready, check 6: "* ]]
+    rm "$m/$f"
+  done
+}
+
+@test "Ready check 4: metrics-server is found by its deployment, whatever its label" {
+  touch "$m/kube-metrics-down"
+  tw oui up nikopol
+  [ "$status" -eq 3 ]
+  [[ $stderr == *"not Ready, check 4: kube-system deployment rke2-metrics-server is not Available"* ]]
+}
+
+@test "the probe pod runs the image pinned by digest, never a tag" {
+  tw oui up nikopol
+  [ "$status" -eq 0 ]
+  grep -E -q "kubectl run rke2lab-throwaway-probe --image=busybox@sha256:[0-9a-f]{64} " "$m/calls"
 }
 
 @test "mutant: an up that skips the fleet-material check is caught" {
@@ -124,7 +148,7 @@ grown() { touch "$m/stack" "$m/instance" "$m/project"; printf 'aaa\nbbb\n' >"$m/
   touch "$m/node-ssh-enabled"
   tw oui up nikopol
   [ "$status" -eq 3 ]
-  [[ $stderr == *"not Ready, check 6: sshd.service is 'enabled' on nikopol-mgmt-master, not masked-runtime"* ]]
+  [[ $stderr == *"not Ready, check 6: sshd.socket is 'enabled' on nikopol-mgmt-master, not masked-runtime"* ]]
   rm "$m/node-ssh-enabled"
   touch "$m/node-socket-active"
   tw oui up nikopol

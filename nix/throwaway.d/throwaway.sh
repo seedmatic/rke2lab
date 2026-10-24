@@ -10,7 +10,7 @@
 # never printed, never merged into ~/.kube/config; the whole script runs untraced.
 #
 # Tools come from the variables the package sets (grow, growProfile, pulumi, incus, kubectl, ttyIn, ttyOut, kubeDir,
-# waitSeconds, pollSeconds)
+# waitSeconds, pollSeconds, probeImage)
 # so the tests run this same text against mocks.
 set -euo pipefail
 set +x
@@ -97,7 +97,19 @@ fetch_kubeconfig() { # rke2's own admin kubeconfig, piped from the node into its
 # « Ready » is this command's (☸️): the JVM skips its readiness crossings for a throwaway, so a green up must mean a
 # cluster that works and holds nothing of the fleet. The checks run in order; the first that fails stops up, named.
 member="$host"
-sshUnits=(sshd.service sshd-keygen.service sshd-vsock.service ssh-agent.service)
+# node-base's sshd is socket-activated with a vsock listener: these four are what the profile masks (☸️, 🌱's bootcmd).
+sshUnits=(sshd.socket sshd-vsock.socket sshd@.service sshd-keygen.service)
+# What the fleet's grow writes on a node (InstanceGrow's write_files, nixos/): none may be on a throwaway one.
+fleetPaths=(
+  /var/lib/rke2lab/sops-age.key
+  /var/lib/rke2lab/cluster-ca-bundle.yaml
+  /run/rke2lab/nix-github.conf
+  /run/rke2lab/rke2-config.env
+  /var/lib/rke2lab/nix/machines
+  /var/lib/rke2lab/nix/builders.conf
+  /var/lib/rancher/rke2/server/manifests/rke2lab-bootstrap.yaml
+  /root/.ssh/authorized_keys
+)
 
 kube() { KUBECONFIG="$kubeconfig" "$kubectl" "$@"; }
 on_node() { "$incus" exec --project "$project" "$node" -- "$@"; }
@@ -119,6 +131,7 @@ running_on_member() {
 }
 
 server_san() { # the names the API's serving certificate covers: it is public, the kubeconfig never goes near it
+  # A DIAGNOSTIC only: s_client verifies nothing here, so this certificate is read, never trusted; trust is check 3's.
   local hostport=${server#https://}
   openssl s_client -connect "$hostport" -servername "${hostport%:*}" </dev/null 2>/dev/null |
     openssl x509 -noout -ext subjectAltName 2>/dev/null | tail -n +2 | tr -d ' '
@@ -132,8 +145,11 @@ all_running() { # <label selector>: at least one kube-system pod, every one Runn
   [[ ${phases// /} =~ ^(Running)+$ ]]
 }
 
+# rke2's metrics-server chart has carried more than one label over its versions: its deployment's name is stable.
+deployment_available() { kube wait -n kube-system --for=condition=Available "deployment/$1" --timeout=10s; }
+
 pod_runs() {
-  kube run rke2lab-throwaway-probe --image=busybox --restart=Never --command -- true >/dev/null &&
+  kube run rke2lab-throwaway-probe --image="$probeImage" --restart=Never --command -- true >/dev/null &&
     kube wait --for=jsonpath='{.status.phase}'=Succeeded pod/rke2lab-throwaway-probe --timeout="${waitSeconds}s" >/dev/null
   local ok=$?
   kube delete pod rke2lab-throwaway-probe --ignore-not-found --wait=false >/dev/null 2>&1 || true
@@ -159,18 +175,26 @@ ready() {
   step "check 4/6: the node Ready; cilium, CoreDNS, metrics-server Running"
   eventually "the node to be Ready" kube wait --for=condition=Ready "node/$node" --timeout=10s ||
     failed 4 "node $node is not Ready"
-  for app in k8s-app=cilium k8s-app=kube-dns app.kubernetes.io/name=rke2-metrics-server; do
+  for app in k8s-app=cilium k8s-app=kube-dns; do
     eventually "$app" all_running "$app" || failed 4 "kube-system pods $app are not Running"
   done
+  eventually "rke2-metrics-server" deployment_available rke2-metrics-server ||
+    failed 4 "kube-system deployment rke2-metrics-server is not Available"
 
   step "check 5/6: a busybox pod scheduled and run, then deleted"
   pod_runs || failed 5 "a busybox pod did not run to completion"
 
   step "check 6/6: nothing of the fleet on $node"
-  for path in /var/lib/rke2lab/sops-age.key /var/lib/rke2lab/cluster-ca-bundle.yaml /etc/nix/nix-github.conf \
-    /var/lib/rke2lab/rke2-config.env /var/lib/rke2lab/nix/builders.conf /root/.ssh/authorized_keys; do
+  for path in "${fleetPaths[@]}"; do
     ! on_node test -e "$path" || failed 6 "$path is on $node"
   done
+  [[ -z $(on_node find /home -mindepth 3 -maxdepth 3 -path '*/.ssh/authorized_keys' 2>/dev/null) ]] ||
+    failed 6 "an authorized_keys is under /home on $node"
+  for path in /run/secrets /run/secrets.d; do
+    [[ -z $(on_node find "$path" -mindepth 1 -maxdepth 1 2>/dev/null) ]] || failed 6 "$path is not empty on $node"
+  done
+  ! on_node test -e /var/lib/tailscale/tailscaled.state || failed 6 "a tailscale state is on $node"
+  ! on_node systemctl is-active --quiet tailscaled.service || failed 6 "tailscaled is active on $node"
   for unit in "${sshUnits[@]}"; do
     state=$(on_node systemctl is-enabled "$unit" 2>/dev/null || true)
     [[ $state == masked-runtime ]] || failed 6 "$unit is '$state' on $node, not masked-runtime"
@@ -178,7 +202,7 @@ ready() {
   for unit in sshd.socket sshd-vsock.socket; do
     ! on_node systemctl is-active --quiet "$unit" || failed 6 "$unit is active on $node"
   done
-  [[ -z $(on_node ss -Htln 'sport = :22') ]] || failed 6 "something listens on :22 on $node"
+  [[ -z $(on_node ss -Hltn 'sport = :22') ]] || failed 6 "something listens on :22 on $node"
 }
 
 (umask 077 && mkdir -p "$kubeDir")
