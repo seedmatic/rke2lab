@@ -135,6 +135,22 @@ grown() { touch "$m/stack" "$m/instance" "$m/project"; printf 'aaa\nbbb\n' >"$m/
   grep -E -q "kubectl run rke2lab-throwaway-probe --image=busybox@sha256:[0-9a-f]{64} " "$m/calls"
 }
 
+@test "Ready check 6: an exec that fails is not read as « absent »" {
+  touch "$m/node-exec-dead"
+  tw oui up nikopol
+  [ "$status" -eq 3 ]
+  [[ $stderr == *"not Ready, check 6: exec on nikopol-mgmt-master failed"* ]]
+}
+
+@test "mutant: without the exec probe, a dead exec reads as « nothing of the fleet »" {
+  sed -i 's/^  on_node true || failed 6 .*$/  :/' "$THROWAWAY"
+  ! grep -q 'exec on $node failed' "$THROWAWAY"
+  touch "$m/node-exec-dead"
+  tw oui up nikopol
+  : "under the mutant the dead exec slips through the « is empty » probes and stops only at a later one, not named"
+  [[ $stderr != *"exec on nikopol-mgmt-master failed"* ]]
+}
+
 @test "mutant: an up that skips the fleet-material check is caught" {
   sed -i 's/^    ! on_node test -e "\$path" || failed 6 .*$/    :/' "$THROWAWAY"
   ! grep -q 'failed 6 "$path is on' "$THROWAWAY"

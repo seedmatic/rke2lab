@@ -17,7 +17,12 @@ case $1 in
   exec)
     shift 4
     [[ $1 == -- ]] && shift
+    : "node-exec-dead: exec fails for everything after check 2 (rke2-server and the failed-unit list still answer)"
+    if [[ -e $m/node-exec-dead && "$1 $2 ${*: -1}" != "systemctl is-active rke2-server.service" && "$1 $2" != "systemctl list-units" ]]; then
+      exit 255
+    fi
     case "$1 $2" in
+      "true ") exit 0 ;;
       "systemctl is-active")
         [[ ${*: -1} == rke2-server.service ]] && { [[ ! -e $m/node-rke2-down ]]; exit; }
         [[ -e $m/node-socket-active && ${*: -1} == sshd.socket ]] && exit 0

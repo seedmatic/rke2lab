@@ -185,6 +185,8 @@ ready() {
   pod_runs || failed 5 "a busybox pod did not run to completion"
 
   step "check 6/6: nothing of the fleet on $node"
+  : "every probe below reads a failure as « absent »: exec itself is proven first, so check 6 fails closed on its own"
+  on_node true || failed 6 "exec on $node failed"
   for path in "${fleetPaths[@]}"; do
     ! on_node test -e "$path" || failed 6 "$path is on $node"
   done
