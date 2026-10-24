@@ -31,11 +31,4 @@ public record NodeBootstrapMaterial(
     Optional<String> clusterCaBundle,
     Optional<String> serverManifests,
     Optional<String> manifestsBranchRef,
-    Optional<String> githubAccessToken) {
-
-  /** No revealed material — a standalone/offline grow, or a producer that did not file. */
-  public static NodeBootstrapMaterial none() {
-    return new NodeBootstrapMaterial(
-        Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
-  }
-}
+    Optional<String> githubAccessToken) {}

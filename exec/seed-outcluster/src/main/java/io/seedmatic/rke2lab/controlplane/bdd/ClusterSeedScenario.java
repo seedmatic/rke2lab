@@ -23,9 +23,11 @@ import io.seedmatic.rke2lab.clusterpki.contract.ClusterCaBundle;
 import io.seedmatic.rke2lab.clusterpki.contract.ClusterPkiCoordinate;
 import io.seedmatic.rke2lab.clusterpki.contract.OperatorKubeconfig;
 import io.seedmatic.rke2lab.clusterpki.contract.WorkloadAdminCredentials;
+import io.seedmatic.rke2lab.controlplane.ThrowawayCloudConfig;
 import io.seedmatic.rke2lab.controlplane.config.BootstrapConfig;
 import io.seedmatic.rke2lab.controlplane.incus.InstanceGrow;
 import io.seedmatic.rke2lab.controlplane.incus.NodeBootstrapMaterial;
+import io.seedmatic.rke2lab.controlplane.incus.NodeCloudConfig;
 import io.seedmatic.rke2lab.host.runtime.ExecutionEnvironment;
 import io.seedmatic.rke2lab.host.runtime.GrowProfile;
 import io.seedmatic.rke2lab.incus.ingress.GrowOutcome;
@@ -78,6 +80,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -877,8 +880,14 @@ public class ClusterSeedScenario
       //     the CNI and Flux come up node-side.
       // Each is absent only on a run where its producer did not file — the guest units are tolerant
       // (rke2 self-signs its CA; a node with no bootstrap set simply seeds nothing).
-      final NodeBootstrapMaterial material =
-          profile.isFleet() ? fleetBootstrapMaterial() : NodeBootstrapMaterial.none();
+      // A throwaway node gets none of it: its cloud-config is checked against what alone it may
+      // hold before the grow poses anything.
+      final Function<InstanceGrowPlan, NodeCloudConfig> cloudConfig =
+          profile.isFleet()
+              ? plan -> NodeCloudConfig.fleet(plan.identity(), fleetBootstrapMaterial())
+              : plan ->
+                  ThrowawayCloudConfig.checked(
+                      NodeCloudConfig.throwaway(plan.identity(), plan.network().node()));
       // The cold/warm condition, READ NOW from the prior stack state — before the grow starts the
       // instance and the observation is lost. Frozen on the run's TRANSIENT bus as the GrowOutcome
       // fact (evicted at the drain, never conserved): the readiness-budget tuning reads it a few
@@ -891,7 +900,7 @@ public class ClusterSeedScenario
               .orElse(Growth.COLD);
       workingCellar
           .fetch(parcel, IncusGrowCoordinate.INSTANCE_GROW_PLAN, InstanceGrowPlan.class)
-          .ifPresent(plan -> new InstanceGrow(ingress, line -> {}).grow(plan, material));
+          .ifPresent(plan -> new InstanceGrow(ingress, line -> {}).grow(plan, cloudConfig));
       workingCellar.storeTransient(
           parcel, IncusGrowCoordinate.GROW_OUTCOME, new GrowOutcome(growth));
       return self();

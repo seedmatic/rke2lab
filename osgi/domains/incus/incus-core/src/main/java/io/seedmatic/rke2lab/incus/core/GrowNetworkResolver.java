@@ -73,7 +73,12 @@ public final class GrowNetworkResolver {
         grown.vmnetBridgeName(),
         cluster,
         clusterBridges,
-        profiledClusters);
+        profiledClusters,
+        new GrowNetworkView.NodeAddressing(
+            grown.podCidrDualStack(),
+            grown.serviceCidrDualStack(),
+            grown.fabric().hostInetaddr().getHostAddress(),
+            grown.names().nodeFabricFqdn()));
   }
 
   private ClusterNetworkBlueprint synthesize(String cluster, String node) {

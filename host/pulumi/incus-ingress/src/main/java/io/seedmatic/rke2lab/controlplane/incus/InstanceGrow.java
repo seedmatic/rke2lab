@@ -17,7 +17,6 @@ import com.pulumi.incus.inputs.ImageSourceFileArgs;
 import com.pulumi.incus.inputs.InstanceDeviceArgs;
 import com.pulumi.resources.CustomResourceOptions;
 import com.pulumi.resources.Resource;
-import io.seedmatic.rke2lab.incus.ingress.GrowIdentityView;
 import io.seedmatic.rke2lab.incus.ingress.GrowImageView;
 import io.seedmatic.rke2lab.incus.ingress.GrowNetworkView;
 import io.seedmatic.rke2lab.incus.ingress.IngressConfig;
@@ -34,12 +33,12 @@ import java.security.MessageDigest;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 /**
  * The pure-host GROW beat — the {@code com.pulumi} graph that actualises the {@link
@@ -73,22 +72,15 @@ public final class InstanceGrow {
     this.log = log;
   }
 
-  /** Declare the whole instance graph from the plan; the Pulumi engine schedules it. */
-  public void grow(InstanceGrowPlan plan) {
-    grow(plan, NodeBootstrapMaterial.none());
-  }
-
   /**
-   * Grow, laying the per-node bootstrap material into the guest through the UNIFORM cloud-init
-   * channel: the GROW renders the per-node identity ({@code plan.identity()}) + the revealed {@link
-   * NodeBootstrapMaterial} (the sops-sealed CA bundle + age identity the PKI seal scion filed, and
-   * the node-side bootstrap manifests the synthesis scion carved) into ONE {@code
-   * cloud-init.user-data} cloud-config posed on the Instance — a {@code write_files} set the NixOS
-   * node-base consumes at boot (see {@link #mgmtCloudConfig}). The values are opaque here — the
-   * scenario fetched + revealed them. This is the SAME channel CAPN/CAPRKE2 use for a workload
-   * node, so there is one delivery mechanism across standalone and in-cluster grows.
+   * Grow, laying the node's {@link NodeCloudConfig} into the guest through the UNIFORM cloud-init
+   * channel: ONE {@code cloud-init.user-data} cloud-config posed on the Instance, which the NixOS
+   * node-base consumes at boot. The caller builds it from the plan — the per-node identity, plus
+   * what its profile gives the node — so it can check it before anything is posed. This is the SAME
+   * channel CAPN/CAPRKE2 use for a workload node, so there is one delivery mechanism across
+   * standalone and in-cluster grows.
    */
-  public void grow(InstanceGrowPlan plan, NodeBootstrapMaterial material) {
+  public void grow(InstanceGrowPlan plan, Function<InstanceGrowPlan, NodeCloudConfig> cloudConfig) {
     final Project project = ensureProject();
     ensureCapnTrust();
     ensureNetworks(project, plan.network());
@@ -99,7 +91,8 @@ public final class InstanceGrow {
     // reason
     // about: both paths now assert the contract at instance level.
     final Output<String> imageFingerprint = ensureImage(plan.image(), project);
-    final Instance instance = createInstance(plan, project, imageFingerprint, material);
+    final Instance instance =
+        createInstance(plan, project, imageFingerprint, cloudConfig.apply(plan));
     poseNodeBaseAliasAndGcImages(imageFingerprint, instance);
   }
 
@@ -418,7 +411,7 @@ public final class InstanceGrow {
       InstanceGrowPlan plan,
       Resource projectDependency,
       Output<String> imageFingerprint,
-      NodeBootstrapMaterial material) {
+      NodeCloudConfig cloudConfig) {
     // The privileged-container config (raw.lxc, security.*, kernel_modules) is posed HERE, at
     // instance level, from the one definition both paths read — the same NodeRuntimeContract the
     // render publishes so CAPN poses it on LXCMachine.spec.config. It used to ride the `node-base`
@@ -434,7 +427,7 @@ public final class InstanceGrow {
     // sops-install-secrets;
     // server-manifests → rke2 server/manifests). The same channel CAPN/CAPRKE2 use for a workload
     // node — no devlxd user.rke2lab.* identity keys anymore.
-    instanceConfig.put("cloud-init.user-data", mgmtCloudConfig(plan.identity(), material));
+    instanceConfig.put("cloud-init.user-data", cloudConfig.render());
 
     // The image FINGERPRINT is the artifact's content hash (sha of metadata ++ rootfs). Fold it
     // into config so replaceOnChanges("config.*") recreates the instance EXACTLY when the built
@@ -499,95 +492,6 @@ public final class InstanceGrow {
             // so ignoring post-create drift is correct.
             .ignoreChanges(List.of("image", "devices"))
             .build());
-  }
-
-  /**
-   * Render the mgmt node's {@code cloud-init.user-data}: a {@code write_files} cloud-config the
-   * NixOS node-base consumes at boot. {@code node.env} carries the four per-node identity scalars
-   * (the hostname + per-node rke2 drop-in oneshots — node-labels, provider-id — read it); the
-   * revealed {@link NodeBootstrapMaterial} rides as the sops age key, the cluster-CA bundle, and
-   * the rke2 server-manifests — each only when present (a producer that did not file leaves it out;
-   * the guest units are tolerant). The per-cluster rke2 config (CIDRs, tls-san, node-ip, …) is NOT
-   * here: it comes from the rendered {@code manifests/<cluster>} branch via {@code nix run
-   * <branch>#install-rke2-config} at boot. Every file's content is base64 ({@code encoding: b64})
-   * so arbitrary YAML/PEM never trips cloud-init's YAML indentation. This is the standalone twin of
-   * a CAPRKE2 workload node's cloud-config — one channel.
-   */
-  private String mgmtCloudConfig(GrowIdentityView identity, NodeBootstrapMaterial material) {
-    final String nodeEnv =
-        String.join(
-                "\n",
-                // RKE2LAB_NODE_NAME keeps its node.env name (a nixos contract; the broader
-                // nodeName→nodeRef terminology pass renames the env + its nixos consumers) —
-                // sourced
-                // from nodeRef (the short ordinal). The FULL name is RKE2LAB_NODE_HOSTNAME below.
-                "RKE2LAB_NODE_NAME=" + identity.nodeRef(),
-                "RKE2LAB_NODE_HOSTNAME=" + identity.nodeHostname(),
-                "RKE2LAB_NODE_KIND=" + identity.nodeKind(),
-                "RKE2LAB_NODE_ID=" + identity.nodeId())
-            + "\n";
-    final StringBuilder cloudConfig = new StringBuilder("#cloud-config\nwrite_files:\n");
-    // DURABLE set → /var/lib/rke2lab (persists across reboots): node.env (identity/hostname read
-    // EVERY boot), the sops age key + cluster-CA bundle (sops-nix reads them every boot). /run is
-    // tmpfs and cloud-init does not re-run write_files on reboot, so these MUST NOT live there or a
-    // reboot loses the hostname + breaks sops.
-    appendWriteFile(cloudConfig, "/var/lib/rke2lab/node.env", "0644", nodeEnv);
-    material
-        .sopsAgeKey()
-        .ifPresent(v -> appendWriteFile(cloudConfig, "/var/lib/rke2lab/sops-age.key", "0400", v));
-    material
-        .clusterCaBundle()
-        .ifPresent(
-            v ->
-                appendWriteFile(cloudConfig, "/var/lib/rke2lab/cluster-ca-bundle.yaml", "0400", v));
-    material
-        .serverManifests()
-        .ifPresent(
-            v ->
-                appendWriteFile(
-                    cloudConfig,
-                    "/var/lib/rancher/rke2/server/manifests/rke2lab-bootstrap.yaml",
-                    "0600",
-                    v));
-    // The two inputs the rke2lab-rke2-config oneshot reads (nixos/rke2.nix): the manifests branch
-    // to
-    // fetch (non-secret; also GATES the oneshot via ConditionPathExists), and a nix.conf snippet
-    // carrying the fresh github token as an `access-tokens` line (root-only). nix reads the latter
-    // via
-    // NIX_CONFIG="!include", so the token VALUE stays in the file, never in an env.
-    material
-        .manifestsBranchRef()
-        .ifPresent(
-            ref ->
-                appendWriteFile(
-                    cloudConfig,
-                    "/run/rke2lab/rke2-config.env",
-                    "0644",
-                    "RKE2LAB_MANIFESTS_REF=" + ref + "\n"));
-    material
-        .githubAccessToken()
-        .ifPresent(
-            token ->
-                appendWriteFile(
-                    cloudConfig,
-                    "/run/rke2lab/nix-github.conf",
-                    "0400",
-                    "access-tokens = github.com=" + token + "\n"));
-    return cloudConfig.toString();
-  }
-
-  /** Append one base64-encoded {@code write_files} entry — single-line content, no indent traps. */
-  private void appendWriteFile(
-      StringBuilder cloudConfig, String path, String perms, String content) {
-    final String b64 = Base64.getEncoder().encodeToString(content.getBytes(StandardCharsets.UTF_8));
-    cloudConfig
-        .append("- path: ")
-        .append(path)
-        .append("\n  encoding: b64\n  permissions: '")
-        .append(perms)
-        .append("'\n  content: ")
-        .append(b64)
-        .append("\n");
   }
 
   /**
