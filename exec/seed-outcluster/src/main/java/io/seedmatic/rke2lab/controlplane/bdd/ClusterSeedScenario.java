@@ -188,8 +188,16 @@ public class ClusterSeedScenario
         Objects.requireNonNull(
             cellar, "the ScenarioCellar was not injected before the scenario ran");
     given().i_have_access_to_the_open_gardening(seedRun, world, tx);
-    when()
-        .the_worktree_is_surveyed(hostScenario, hostTree)
+    grows(when(), hostScenario, hostTree);
+    then().the_harvest_is_stored().the_run_fails_if_any_crossing_failed(hostScenario, hostTree);
+  }
+
+  /**
+   * The WHENs, in the order the seed plays them: the one list a throwaway run's step list is
+   * checked against, so a crossing added here is a crossing that test must answer for.
+   */
+  static When grows(When when, ScenarioModel hostScenario, ReportModel hostTree) {
+    return when.the_worktree_is_surveyed(hostScenario, hostTree)
         .and()
         .the_netplan_is_projected(hostScenario, hostTree)
         .and()
@@ -216,7 +224,6 @@ public class ClusterSeedScenario
         .the_systemd_adapter_is_launched(hostScenario, hostTree)
         .and()
         .the_cluster_becomes_ready(hostScenario, hostTree);
-    then().the_harvest_is_stored().the_run_fails_if_any_crossing_failed(hostScenario, hostTree);
   }
 
   /**
@@ -1120,6 +1127,9 @@ public class ClusterSeedScenario
 
     @As("the readiness budget is tuned to the growth")
     public When the_readiness_budget_is_tuned_to_the_growth() {
+      if (skippedForAThrowaway(READY_CHECKED_BY_UP)) {
+        return self();
+      }
       // Resolve the ambient ReadinessOverrides from the grow's cold/warm fact and publish it for
       // the
       // readiness scions (the RunGate route — a whole-run service they resolve from the registry,
