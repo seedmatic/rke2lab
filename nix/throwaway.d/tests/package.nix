@@ -14,6 +14,8 @@ let
     ttyIn = "@M@/tty";
     ttyOut = "@M@/prompt";
     kubeDir = "@M@/kube";
+    waitSeconds = 2;
+    pollSeconds = 1;
   };
 in
 pkgs.runCommand "throwaway-bats"

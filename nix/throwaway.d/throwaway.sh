@@ -9,7 +9,8 @@
 # age identity. The kubeconfig carries a cluster-admin client key: it is piped from the node into its own 0600 file,
 # never printed, never merged into ~/.kube/config; the whole script runs untraced.
 #
-# Tools come from the variables the package sets (grow, growProfile, pulumi, incus, kubectl, ttyIn, ttyOut, kubeDir)
+# Tools come from the variables the package sets (grow, growProfile, pulumi, incus, kubectl, ttyIn, ttyOut, kubeDir,
+# waitSeconds, pollSeconds)
 # so the tests run this same text against mocks.
 set -euo pipefail
 set +x
@@ -93,10 +94,91 @@ fetch_kubeconfig() { # rke2's own admin kubeconfig, piped from the node into its
   [[ $(stat -c %a "$kubeconfig") == 600 ]] || die "$kubeconfig is not 0600"
 }
 
-ready() { # /readyz through the kubeconfig, its certificate verified; only the status is printed
-  local status
-  status=$(KUBECONFIG="$kubeconfig" "$kubectl" get --raw /readyz 2>/dev/null) || return 1
-  [[ $status == ok ]]
+# « Ready » is this command's (☸️): the JVM skips its readiness crossings for a throwaway, so a green up must mean a
+# cluster that works and holds nothing of the fleet. The checks run in order; the first that fails stops up, named.
+member="$host"
+sshUnits=(sshd.service sshd-keygen.service sshd-vsock.service ssh-agent.service)
+
+kube() { KUBECONFIG="$kubeconfig" "$kubectl" "$@"; }
+on_node() { "$incus" exec --project "$project" "$node" -- "$@"; }
+failed() { die "not Ready, check $1: $2"; }
+
+eventually() { # <what> <command>...: retried every pollSeconds for waitSeconds
+  local deadline=$((SECONDS + waitSeconds))
+  until "${@:2}" >/dev/null 2>&1; do
+    ((SECONDS < deadline)) || return 1
+    step "waiting for $1"
+    sleep "$pollSeconds"
+  done
+}
+
+running_on_member() {
+  local row
+  row=$("$incus" list --project "$project" --format csv --columns n,s,L "^$node\$") || return 1
+  [[ $row == "$node,RUNNING,$member" ]]
+}
+
+server_san() { # the names the API's serving certificate covers: it is public, the kubeconfig never goes near it
+  local hostport=${server#https://}
+  openssl s_client -connect "$hostport" -servername "${hostport%:*}" </dev/null 2>/dev/null |
+    openssl x509 -noout -ext subjectAltName 2>/dev/null | tail -n +2 | tr -d ' '
+}
+
+api_ready() { [[ $(kube get --raw /readyz) == ok ]]; }
+
+all_running() { # <label selector>: at least one kube-system pod, every one Running
+  local phases
+  phases=$(kube get pods -n kube-system -l "$1" -o jsonpath='{.items[*].status.phase}') || return 1
+  [[ ${phases// /} =~ ^(Running)+$ ]]
+}
+
+pod_runs() {
+  kube run rke2lab-throwaway-probe --image=busybox --restart=Never --command -- true >/dev/null &&
+    kube wait --for=jsonpath='{.status.phase}'=Succeeded pod/rke2lab-throwaway-probe --timeout="${waitSeconds}s" >/dev/null
+  local ok=$?
+  kube delete pod rke2lab-throwaway-probe --ignore-not-found --wait=false >/dev/null 2>&1 || true
+  return "$ok"
+}
+
+ready() {
+  local unit path state
+  step "check 1/6: $node Running on member $member, in project $project"
+  eventually "$node to run" running_on_member || failed 1 "$node is not Running on member $member in project $project"
+
+  step "check 2/6: rke2-server active, no failed rke2lab-* unit"
+  eventually "rke2-server" on_node systemctl is-active --quiet rke2-server.service ||
+    failed 2 "rke2-server is not active on $node"
+  [[ -z $(on_node systemctl list-units --failed --plain --no-legend 'rke2lab-*') ]] ||
+    failed 2 "a rke2lab-* unit failed on $node: $(on_node systemctl list-units --failed --plain --no-legend 'rke2lab-*' | cut -d' ' -f1 | paste -sd' ')"
+
+  step "check 3/6: /readyz at $server, its certificate verified"
+  if ! eventually "the kube API" api_ready; then
+    failed 3 "the kube API at $server does not answer ready with its certificate verified (it covers: $(server_san || echo unknown))"
+  fi
+
+  step "check 4/6: the node Ready; cilium, CoreDNS, metrics-server Running"
+  eventually "the node to be Ready" kube wait --for=condition=Ready "node/$node" --timeout=10s ||
+    failed 4 "node $node is not Ready"
+  for app in k8s-app=cilium k8s-app=kube-dns app.kubernetes.io/name=rke2-metrics-server; do
+    eventually "$app" all_running "$app" || failed 4 "kube-system pods $app are not Running"
+  done
+
+  step "check 5/6: a busybox pod scheduled and run, then deleted"
+  pod_runs || failed 5 "a busybox pod did not run to completion"
+
+  step "check 6/6: nothing of the fleet on $node"
+  for path in /var/lib/rke2lab/sops-age.key /var/lib/rke2lab/cluster-ca-bundle.yaml /etc/nix/nix-github.conf \
+    /var/lib/rke2lab/rke2-config.env /var/lib/rke2lab/nix/builders.conf /root/.ssh/authorized_keys; do
+    ! on_node test -e "$path" || failed 6 "$path is on $node"
+  done
+  for unit in "${sshUnits[@]}"; do
+    state=$(on_node systemctl is-enabled "$unit" 2>/dev/null || true)
+    [[ $state == masked-runtime ]] || failed 6 "$unit is '$state' on $node, not masked-runtime"
+  done
+  for unit in sshd.socket sshd-vsock.socket; do
+    ! on_node systemctl is-active --quiet "$unit" || failed 6 "$unit is active on $node"
+  done
+  [[ -z $(on_node ss -Htln 'sport = :22') ]] || failed 6 "something listens on :22 on $node"
 }
 
 (umask 077 && mkdir -p "$kubeDir")
@@ -120,8 +202,8 @@ case $action in
     "$incus" info --project "$project" "$node" >/dev/null || die "$node is not reachable in Incus project $project"
     step "kubeconfig from $node into $kubeconfig"
     fetch_kubeconfig
-    ready || die "the kube API at $server does not answer ready with its certificate verified"
-    echo "ready: KUBECONFIG=$kubeconfig"
+    ready
+    echo "Ready: KUBECONFIG=$kubeconfig"
     ;;
   reset)
     : "a stack still there must export the derived names; once destroy has emptied its outputs, they carry the rerun"

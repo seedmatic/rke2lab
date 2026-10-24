@@ -1,13 +1,43 @@
 # incus, mocked over files: `instance`, `project`, `images` (one fingerprint per line), `instances.csv` (name,project
-# lines for `list --all-projects`); `file pull` prints rke2.yaml.
+# lines for `list --all-projects`); `file pull` prints rke2.yaml. `exec` stands for a healthy throwaway node; each
+# `node-*` file breaks one thing on it.
 m=${MOCK:?}
 echo "incus $*" >>"$m/calls"
 case $1 in
   info) [[ -e $m/instance ]] ;;
   list)
     [[ -e $m/fail-list ]] && exit 1
-    [[ -e $m/instances.csv ]] && cat "$m/instances.csv"
+    if [[ $2 == --all-projects ]]; then
+      [[ -e $m/instances.csv ]] && cat "$m/instances.csv"
+    elif [[ -e $m/instance ]]; then
+      [[ -e $m/node-stopped ]] && echo "nikopol-mgmt-master,STOPPED,nikopol" || echo "nikopol-mgmt-master,RUNNING,nikopol"
+    fi
     exit 0
+    ;;
+  exec)
+    shift 4
+    [[ $1 == -- ]] && shift
+    case "$1 $2" in
+      "systemctl is-active")
+        [[ ${*: -1} == rke2-server.service ]] && { [[ ! -e $m/node-rke2-down ]]; exit; }
+        [[ -e $m/node-socket-active && ${*: -1} == sshd.socket ]] && exit 0
+        exit 3
+        ;;
+      "systemctl list-units")
+        [[ -e $m/node-failed-unit ]] && echo "rke2lab-identity.service loaded failed failed x"
+        exit 0
+        ;;
+      "systemctl is-enabled")
+        [[ -e $m/node-ssh-enabled && $3 == sshd.service ]] && { echo enabled; exit 0; }
+        echo masked-runtime
+        ;;
+      "test -e") [[ -e $m/node-has-${3//\//_} ]] ;;
+      "ss -Htln")
+        [[ -e $m/node-listens-22 ]] && echo "LISTEN 0 128 0.0.0.0:22 0.0.0.0:*"
+        exit 0
+        ;;
+      *) exit 1 ;;
+    esac
     ;;
   file)
     [[ -e $m/fail-pull ]] && exit 1

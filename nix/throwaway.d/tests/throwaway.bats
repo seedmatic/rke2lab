@@ -52,8 +52,89 @@ grown() { touch "$m/stack" "$m/instance" "$m/project"; printf 'aaa\nbbb\n' >"$m/
   [ "$(stat -c %a "$m/kube/nikopol.yaml")" = 600 ]
   [ "$(yq -r '.clusters[0].cluster.server' "$m/kube/nikopol.yaml")" = https://nikopol-mgmt-master.nikopol:6443 ]
   grep -q "incus file pull --project throwaway-nikopol nikopol-mgmt-master/etc/rancher/rke2/rke2.yaml -" "$m/calls"
-  [[ $output == *"ready: KUBECONFIG=$m/kube/nikopol.yaml"* ]]
+  [[ $output == *"Ready: KUBECONFIG=$m/kube/nikopol.yaml"* ]]
   [ ! -e "$m/kube/.nikopol.yaml.new" ]
+  : "a green up ran the six checks, in order, after the kubeconfig"
+  order=$(grep -E -o 'check [1-6]/6' <<<"$stderr" | paste -sd,)
+  [ "$order" = "check 1/6,check 2/6,check 3/6,check 4/6,check 5/6,check 6/6" ]
+  [ ! -e "$m/probe-pod" ]
+}
+
+@test "Ready check 1: the node not Running on its member fails up, named" {
+  touch "$m/node-stopped"
+  tw oui up nikopol
+  [ "$status" -eq 3 ]
+  [[ $stderr == *"not Ready, check 1: nikopol-mgmt-master is not Running on member nikopol in project throwaway-nikopol"* ]]
+  [[ $stderr != *"check 2/6"* ]]
+}
+
+@test "Ready check 2: rke2-server down, or a failed rke2lab-* unit, fails up, named" {
+  touch "$m/node-rke2-down"
+  tw oui up nikopol
+  [ "$status" -eq 3 ]
+  [[ $stderr == *"not Ready, check 2: rke2-server is not active"* ]]
+  rm "$m/node-rke2-down"
+  touch "$m/node-failed-unit"
+  tw oui up nikopol
+  [ "$status" -eq 3 ]
+  [[ $stderr == *"not Ready, check 2: a rke2lab-* unit failed on nikopol-mgmt-master: rke2lab-identity.service"* ]]
+}
+
+@test "Ready check 4: a node not Ready, or CoreDNS not all Running, fails up, named" {
+  touch "$m/kube-node-notready"
+  tw oui up nikopol
+  [ "$status" -eq 3 ]
+  [[ $stderr == *"not Ready, check 4: node nikopol-mgmt-master is not Ready"* ]]
+  rm "$m/kube-node-notready"
+  touch "$m/kube-dns-pending"
+  tw oui up nikopol
+  [ "$status" -eq 3 ]
+  [[ $stderr == *"not Ready, check 4: kube-system pods k8s-app=kube-dns are not Running"* ]]
+}
+
+@test "Ready check 5: a busybox pod that does not run fails up, and the pod is deleted anyway" {
+  touch "$m/kube-pod-fails"
+  tw oui up nikopol
+  [ "$status" -eq 3 ]
+  [[ $stderr == *"not Ready, check 5: a busybox pod did not run to completion"* ]]
+  [ ! -e "$m/probe-pod" ]
+}
+
+@test "Ready check 6: any fleet material on the node fails up, named" {
+  for path in /var/lib/rke2lab/sops-age.key /var/lib/rke2lab/cluster-ca-bundle.yaml /etc/nix/nix-github.conf \
+    /var/lib/rke2lab/rke2-config.env /var/lib/rke2lab/nix/builders.conf /root/.ssh/authorized_keys; do
+    touch "$m/node-has-${path//\//_}"
+    tw oui up nikopol
+    [ "$status" -eq 3 ]
+    [[ $stderr == *"not Ready, check 6: $path is on nikopol-mgmt-master"* ]]
+    rm "$m/node-has-${path//\//_}"
+  done
+}
+
+@test "mutant: an up that skips the fleet-material check is caught" {
+  sed -i 's/^    ! on_node test -e "\$path" || failed 6 .*$/    :/' "$THROWAWAY"
+  ! grep -q 'failed 6 "$path is on' "$THROWAWAY"
+  touch "$m/node-has-_var_lib_rke2lab_sops-age.key"
+  tw oui up nikopol
+  : "under the mutant a node holding the fleet's age key passes as Ready: that is what the case above guards"
+  [ "$status" -eq 0 ]
+}
+
+@test "Ready check 6: an ssh unit not masked, a socket active, or :22 listening fails up, named" {
+  touch "$m/node-ssh-enabled"
+  tw oui up nikopol
+  [ "$status" -eq 3 ]
+  [[ $stderr == *"not Ready, check 6: sshd.service is 'enabled' on nikopol-mgmt-master, not masked-runtime"* ]]
+  rm "$m/node-ssh-enabled"
+  touch "$m/node-socket-active"
+  tw oui up nikopol
+  [ "$status" -eq 3 ]
+  [[ $stderr == *"not Ready, check 6: sshd.socket is active"* ]]
+  rm "$m/node-socket-active"
+  touch "$m/node-listens-22"
+  tw oui up nikopol
+  [ "$status" -eq 3 ]
+  [[ $stderr == *"not Ready, check 6: something listens on :22"* ]]
 }
 
 @test "up: without « oui » after the preview, nothing is grown" {
@@ -71,11 +152,12 @@ grown() { touch "$m/stack" "$m/instance" "$m/project"; printf 'aaa\nbbb\n' >"$m/
   [[ $(cat "$m/prompt") != *"S0VZLU5FVkVSLVBSSU5URUQ="* ]]
 }
 
-@test "up: a kube API that does not answer ready is a failure, loud" {
+@test "Ready check 3: a kube API that does not answer ready fails up, naming what its certificate covers" {
   touch "$m/fail-ready"
   tw oui up nikopol
   [ "$status" -eq 3 ]
-  [[ $stderr == *"does not answer ready with its certificate verified"* ]]
+  [[ $stderr == *"not Ready, check 3: the kube API at https://nikopol-mgmt-master.nikopol:6443 does not answer ready with its certificate verified (it covers: "* ]]
+  [[ $stderr != *"check 4/6"* ]]
 }
 
 @test "up: a failed fetch leaves no kubeconfig, not even a partial one" {

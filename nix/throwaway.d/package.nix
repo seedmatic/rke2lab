@@ -10,6 +10,8 @@
   ttyIn ? "/dev/tty",
   ttyOut ? "/dev/tty",
   kubeDir ? null,
+  waitSeconds ? 600,
+  pollSeconds ? 10,
 }:
 pkgs.writeShellApplication {
   name = "rke2lab-throwaway";
@@ -18,6 +20,7 @@ pkgs.writeShellApplication {
     pkgs.gawk
     pkgs.git
     pkgs.gnused
+    pkgs.openssl
     pkgs.yq-go
   ];
   text = ''
@@ -28,6 +31,8 @@ pkgs.writeShellApplication {
     kubectl=${pkgs.lib.escapeShellArg kubectl}
     ttyIn=${pkgs.lib.escapeShellArg ttyIn}
     ttyOut=${pkgs.lib.escapeShellArg ttyOut}
+    waitSeconds=${toString waitSeconds}
+    pollSeconds=${toString pollSeconds}
     kubeDir=${if kubeDir == null then ''"$HOME/.kube/rke2lab-throwaway"'' else pkgs.lib.escapeShellArg kubeDir}
   ''
   + builtins.readFile ./throwaway.sh;
