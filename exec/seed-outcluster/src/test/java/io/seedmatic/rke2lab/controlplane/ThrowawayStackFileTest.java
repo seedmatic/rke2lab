@@ -5,12 +5,12 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import io.seedmatic.rke2lab.controlplane.config.BootstrapConfig;
 import io.seedmatic.rke2lab.controlplane.config.ConfigLoader;
 import io.seedmatic.rke2lab.controlplane.config.Rke2labConfig;
 import io.seedmatic.rke2lab.host.runtime.GrowProfile;
+import io.seedmatic.rke2lab.seed.broker.codec.ReadingCodec;
+import io.seedmatic.rke2lab.seed.broker.codec.SeedCodec;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -26,14 +26,14 @@ import org.junit.jupiter.api.Test;
 class ThrowawayStackFileTest {
 
   private static final String STACK = "nikopol";
-  private static final ObjectMapper YAML = new ObjectMapper(new YAMLFactory());
+  private static final ReadingCodec YAML = new SeedCodec().reading();
 
   private static JsonNode stackConfig() throws IOException {
     Path dir = Path.of("").toAbsolutePath();
     while (!Files.exists(dir.resolve("Pulumi.yaml"))) {
       dir = dir.getParent();
     }
-    return YAML.readTree(dir.resolve("Pulumi." + STACK + ".yaml").toFile()).path("config");
+    return YAML.readYaml(Files.readString(dir.resolve("Pulumi." + STACK + ".yaml"))).path("config");
   }
 
   /** {@code rke2lab:<section>} keys to the nested root the config loader reads. */
@@ -45,7 +45,7 @@ class ThrowawayStackFileTest {
             entry ->
                 root.put(
                     entry.getKey().substring("rke2lab:".length()),
-                    YAML.convertValue(entry.getValue(), Map.class)));
+                    YAML.convert(entry.getValue(), Map.class)));
     return BootstrapConfig.from(Rke2labConfig.from(ConfigLoader.ofNestedRoot(root)));
   }
 
