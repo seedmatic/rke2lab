@@ -38,6 +38,16 @@ case "$profile:${RKE2LAB_GROW_PROFILE:-}" in
       echo "error: $file differs from HEAD — a throwaway stack is grown from its committed config only" >&2
       exit 2
     fi
+    # Its passphrase is empty, so a Pulumi secret in it would be as readable as the file: a throwaway stack
+    # holds none.
+    secure="$(printf '%s\n' "$committed" | yq '[.. | select(tag == "!!map" and has("secure"))] | length')" || {
+      echo "error: the committed $file cannot be read" >&2
+      exit 2
+    }
+    if [ "$secure" != 0 ]; then
+      echo "error: $file holds a secure: value — a throwaway stack holds no secret" >&2
+      exit 2
+    fi
     echo throwaway
     ;;
   throwaway:*)

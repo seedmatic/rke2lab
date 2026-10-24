@@ -85,6 +85,27 @@ gate() { run --separate-stderr "$GATE" "$@"; }
   [[ $stderr == *"cannot be read"* ]]
 }
 
+@test "a committed throwaway stack holding a secure: value is refused, at any depth" {
+  printf 'config:\n  rke2lab:cluster:\n    host: nikopol\n    profile: throwaway\n  rke2lab:x:\n    token:\n      secure: v1:abc\n' >Pulumi.nikopol.yaml
+  git commit -q -am secure
+  RKE2LAB_GROW_PROFILE=throwaway gate nikopol
+  [ "$status" -eq 2 ]
+  [[ $stderr == *"holds a secure: value"* ]]
+  printf 'config:\n  rke2lab:cluster:\n    host: nikopol\n    profile: throwaway\n    nodes:\n    - name: master\n      key:\n        secure: v1:abc\n' >Pulumi.nikopol.yaml
+  git commit -q -am nested
+  RKE2LAB_GROW_PROFILE=throwaway gate nikopol
+  [ "$status" -eq 2 ]
+  [[ $stderr == *"holds a secure: value"* ]]
+}
+
+@test "a value that merely says secure is not a secret" {
+  printf 'config:\n  rke2lab:cluster:\n    host: nikopol\n    profile: throwaway\n    note: secure\n' >Pulumi.nikopol.yaml
+  git commit -q -am note
+  RKE2LAB_GROW_PROFILE=throwaway gate nikopol
+  [ "$status" -eq 0 ]
+  [ "$output" = throwaway ]
+}
+
 @test "a stack name outside [a-z][a-z0-9-]* is refused before any git read" {
   for name in ../dev -dev Dev 'dev;x' 'a b' 9dev; do
     gate "$name"
