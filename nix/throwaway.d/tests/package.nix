@@ -1,7 +1,12 @@
 # The rke2lab-throwaway bats suite, as a flake check: the command as built against mocked grow, pulumi, incus and
 # kubectl (./mocks), the real rke2lab-grow-profile gate, and files standing for the tty. The sandbox's only writable
 # place is known at run time, so the paths built in are a placeholder the suite points at its own directory.
-{ pkgs, growProfile }:
+# realGrow: the #grow app as built, whose PATH the stubs must come before for every tool they stand for.
+{
+  pkgs,
+  growProfile,
+  realGrow,
+}:
 let
   mock = name: "@M@/bin/${name}";
   throwaway = import ../package.nix {
@@ -30,6 +35,7 @@ pkgs.runCommand "throwaway-bats"
       pkgs.yq-go
     ];
     THROWAWAY_BUILT = "${throwaway}/bin/rke2lab-throwaway";
+    GROW_BUILT = "${realGrow}/bin/rke2lab-grow";
   }
   ''
     cp -r ${./.} tests && chmod -R u+w tests

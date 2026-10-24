@@ -210,6 +210,35 @@ ready() {
 (umask 077 && mkdir -p "$kubeDir")
 chmod 0700 "$kubeDir"
 
+: "a throwaway grow reads no secret: the secret tools are stubs first on #grow's PATH, each logging its call and"
+: "exiting 99, and up fails if one was called. They catch what goes through PATH, not a store path named in full:"
+: "the JVM's runbook test (🌱) is the other half"
+stubs=$(mktemp -d)
+trap 'rm -rf "$stubs"' EXIT
+for tool in sops age age-keygen pass gpg ssh-keygen; do
+  printf '#!/bin/sh\necho %s >>"%s/called"\nexit 99\n' "$tool" "$stubs" >"$stubs/$tool"
+  chmod +x "$stubs/$tool"
+done
+
+grow_stubbed() { # <grow args>...: #grow with the stubs first; any stub called fails up, named
+  PATH="$stubs:$PATH" "$grow" "$@"
+  [[ ! -s $stubs/called ]] || die "the grow called $(sort -u "$stubs/called" | paste -sd' '): a throwaway grow reads no secret"
+}
+
+first_up() { # the stack born inside this gesture, then stop: its salt line is committed before anything is grown
+  local file="Pulumi.$stack.yaml" added removed
+  step "stack $stack does not exist: pulumi stack init"
+  "$pulumi" stack init "$stack" >/dev/null || die "pulumi stack init $stack failed"
+  added=$(git diff --no-color -U0 HEAD -- "$file" | grep -E '^\+[^+]' || true)
+  removed=$(git diff --no-color -U0 HEAD -- "$file" | grep -E '^-[^-]' || true)
+  [[ -z $removed && $added =~ ^\+encryptionsalt:\ v1:[A-Za-z0-9+/=:]+$ ]] ||
+    die "pulumi stack init changed $file beyond one added encryptionsalt line: refused, look at git diff $file"
+  git diff --no-color HEAD -- "$file"
+  echo "stack $stack is created; its file gained only its encryptionsalt (it salts an empty passphrase, not a secret)."
+  echo "commit it, then rerun: rke2lab-throwaway up $stack"
+  exit 4
+}
+
 case $action in
   up)
     [[ ! -e $resetMark ]] || die "a reset of $stack was interrupted: finish it (rke2lab-throwaway reset $stack) first"
@@ -218,12 +247,13 @@ case $action in
     instances=$("$incus" list --all-projects --format csv --columns n,P) || die "the Incus instances cannot be listed"
     others=$(N="$node" P="$project" awk -F, '$1 == ENVIRON["N"] && $2 != ENVIRON["P"] { print $2 }' <<<"$instances")
     [[ -z $others ]] || die "an instance $node already runs in Incus project ${others//$'\n'/, }: reset that one first"
+    stack_exists || first_up
     step "preview of throwaway stack $stack"
-    "$grow" "$stack" preview
+    grow_stubbed "$stack" preview
     ask "grow throwaway stack $stack as previewed above? [oui/non]" oui ||
       { echo "nothing done: the answer is not « oui »"; exit 5; }
     step "up"
-    "$grow" "$stack" up
+    grow_stubbed "$stack" up
     outputs
     "$incus" info --project "$project" "$node" >/dev/null || die "$node is not reachable in Incus project $project"
     step "kubeconfig from $node into $kubeconfig"

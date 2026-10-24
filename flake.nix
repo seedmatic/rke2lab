@@ -1492,7 +1492,10 @@
             grow-profile = import ./nix/grow-profile.d/tests/package.nix { inherit pkgs; };
             # The throwaway gestures, as built against mocked tools: the typed name, the reset's order, a failed step
             # never skipped, the kubeconfig's modes, no client key printed.
-            throwaway = import ./nix/throwaway.d/tests/package.nix { inherit pkgs growProfile; };
+            throwaway = import ./nix/throwaway.d/tests/package.nix {
+              inherit pkgs growProfile;
+              realGrow = growApp;
+            };
             # Anti-drift gate for the cross-world node label (Java ↔ nix, which can't import each
             # other): extract NODE_FLOX_RUNTIME_LABEL from ManifestAnnotations.java (the single
             # source, used by the flox DaemonSet nodeSelectors) and fail unless the nixos oneshot

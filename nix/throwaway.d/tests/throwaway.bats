@@ -31,6 +31,8 @@ setup() {
   printf 'config:\n  rke2lab:cluster:\n    host: nikopol\n    profile: throwaway\n' >Pulumi.nikopol.yaml
   git add Pulumi.yaml Pulumi.dev.yaml Pulumi.nikopol.yaml && git commit -q -m stacks
   printf '{"throwawayNode":"nikopol-mgmt-master","throwawayIncusProject":"throwaway-nikopol","throwawayApiServer":"https://nikopol-mgmt-master.nikopol:6443"}\n' >"$m/outputs.json"
+  : "the stack exists, its salt committed: a first up is its own cases"
+  touch "$m/stack"
   printf 'apiVersion: v1\nclusters:\n- cluster:\n    server: https://127.0.0.1:6443\n  name: default\nusers:\n- name: default\n  user:\n    %s\n' "$secret" >"$m/rke2.yaml"
 }
 
@@ -45,8 +47,8 @@ grown() { touch "$m/stack" "$m/instance" "$m/project"; printf 'aaa\nbbb\n' >"$m/
 @test "up: preview, « oui », up, then the kubeconfig in its own 0600 file, its server rewritten, ready" {
   tw oui up nikopol
   [ "$status" -eq 0 ]
-  [ "$(sed -n 1p "$m/calls")" = "incus list --all-projects --format csv --columns n,P" ]
-  [ "$(sed -n 2p "$m/calls")" = "grow nikopol preview profile=throwaway" ]
+  first=$(grep -E -o '^(incus list --all-projects|pulumi stack ls|grow nikopol preview)' "$m/calls" | head -3 | paste -sd,)
+  [ "$first" = "incus list --all-projects,pulumi stack ls,grow nikopol preview" ]
   grep -qx "grow nikopol up profile=throwaway" "$m/calls"
   [ "$(stat -c %a "$m/kube")" = 700 ]
   [ "$(stat -c %a "$m/kube/nikopol.yaml")" = 600 ]
@@ -175,6 +177,74 @@ grown() { touch "$m/stack" "$m/instance" "$m/project"; printf 'aaa\nbbb\n' >"$m/
   tw oui up nikopol
   [ "$status" -eq 3 ]
   [[ $stderr == *"not Ready, check 6: something listens on :22"* ]]
+}
+
+@test "first up: the stack created inside the gesture, then a stop showing the one salt line to commit" {
+  rm "$m/stack"
+  tw oui up nikopol
+  [ "$status" -eq 4 ]
+  grep -qx "pulumi stack init nikopol" "$m/calls"
+  ! grep -q "^grow" "$m/calls"
+  [[ $output == *"+encryptionsalt: v1:"* ]]
+  [[ $output == *"commit it, then rerun: rke2lab-throwaway up nikopol"* ]]
+  : "committed, the rerun grows"
+  git add Pulumi.nikopol.yaml && git commit -q -m salt
+  rm "$m/calls"
+  tw oui up nikopol
+  [ "$status" -eq 0 ]
+  ! grep -q "stack init" "$m/calls"
+  grep -qx "grow nikopol up profile=throwaway" "$m/calls"
+}
+
+@test "first up: a stack init that changes more than the salt line is refused, nothing grown" {
+  rm "$m/stack"
+  printf '  rke2lab:extra: x\n' >"$m/init-writes"
+  tw oui up nikopol
+  [ "$status" -eq 3 ]
+  [[ $stderr == *"changed Pulumi.nikopol.yaml beyond one added encryptionsalt line: refused"* ]]
+  ! grep -q "^grow" "$m/calls"
+}
+
+@test "first up: a salt that is not pulumi's v1 form is refused" {
+  rm "$m/stack"
+  printf 'encryptionsalt: plain\n' >"$m/init-writes"
+  tw oui up nikopol
+  [ "$status" -eq 3 ]
+  [[ $stderr == *"beyond one added encryptionsalt line"* ]]
+}
+
+@test "a grow that calls a secret tool fails up, the tool named, before the « oui »" {
+  for tool in sops age age-keygen pass gpg ssh-keygen; do
+    rm -f "$m"/grow-calls-* "$m/calls"
+    touch "$m/grow-calls-$tool"
+    tw oui up nikopol
+    [ "$status" -eq 3 ]
+    [[ $stderr == *"the grow called $tool: a throwaway grow reads no secret"* ]]
+    ! grep -q "grow nikopol up" "$m/calls"
+  done
+}
+
+@test "mutant: a grow run without the stubs on its PATH lets a secret tool through" {
+  sed -i 's/^  PATH="\$stubs:\$PATH" "\$grow" "\$@"$/  "$grow" "$@"/' "$THROWAWAY"
+  ! grep -q 'PATH="$stubs:$PATH"' "$THROWAWAY"
+  printf '#!/bin/sh\nexit 0\n' >"$m/bin/sops" && chmod +x "$m/bin/sops"
+  touch "$m/grow-calls-sops"
+  PATH="$m/bin:$PATH" tw oui up nikopol
+  : "under the mutant the grow's sops call goes unseen and up turns green: the case above guards it"
+  [ "$status" -eq 0 ]
+}
+
+@test "the stubs come before every tool #grow's own PATH provides" {
+  path_line=$(grep -m1 '^export PATH=' "$GROW_BUILT")
+  dirs=${path_line#export PATH=\"}
+  dirs=${dirs%%\$PATH*}
+  IFS=: read -ra grow_dirs <<<"$dirs"
+  for dir in "${grow_dirs[@]}"; do
+    for tool in sops age age-keygen pass gpg ssh-keygen; do
+      [ ! -e "$dir/$tool" ] || { echo "#grow's PATH provides $dir/$tool, before the stubs" >&2; false; }
+    done
+  done
+  [ "${#grow_dirs[@]}" -gt 3 ]
 }
 
 @test "up: without « oui » after the preview, nothing is grown" {
