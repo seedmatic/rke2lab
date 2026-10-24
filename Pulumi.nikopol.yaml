@@ -1,0 +1,30 @@
+config:
+  rke2lab:cluster:
+    # A THROWAWAY cluster: a kube API on nikopol for another project's tests. It takes no fleet
+    # identity (no CA from the fleet's authority, no GitHub App, no tailnet, nothing pushed, no
+    # secret read) and is grown and reset only by the installed rke2lab-throwaway command. The
+    # cluster is nikopol-mgmt, its one node nikopol-mgmt-master; the Incus remote is derived from
+    # host (nikopol-nixos).
+    host: nikopol
+    role: mgmt
+    profile: throwaway
+  rke2lab:node:
+    name: master
+  rke2lab:incus:
+    # Its own project, derived: throwaway-<stack>. Every deletion of the reset runs inside it, and
+    # the grow refuses any other value.
+    project: throwaway-nikopol
+    configDir: ~/.config/incus
+  rke2lab:image:
+    alias: control-node
+    sharedFolder: .local.d/images
+  rke2lab:network:
+    fabricBridgeParent: fabric-br
+    vmnetNetworkName: vmnet-br
+  rke2lab:manifests:
+    # Nothing is rendered for a throwaway cluster; kept false so no reading of this file arms a push.
+    delivery:
+      push: "false"
+  rke2lab:entryGate:
+    cleanWorktree:
+      required: "false"
