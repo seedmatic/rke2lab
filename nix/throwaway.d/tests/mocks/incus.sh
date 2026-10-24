@@ -1,8 +1,14 @@
-# incus, mocked over files: `instance`, `project`, `images` (one fingerprint per line); `file pull` prints rke2.yaml.
+# incus, mocked over files: `instance`, `project`, `images` (one fingerprint per line), `instances.csv` (name,project
+# lines for `list --all-projects`); `file pull` prints rke2.yaml.
 m=${MOCK:?}
 echo "incus $*" >>"$m/calls"
 case $1 in
   info) [[ -e $m/instance ]] ;;
+  list)
+    [[ -e $m/fail-list ]] && exit 1
+    [[ -e $m/instances.csv ]] && cat "$m/instances.csv"
+    exit 0
+    ;;
   file)
     [[ -e $m/fail-pull ]] && exit 1
     cat "$m/rke2.yaml"

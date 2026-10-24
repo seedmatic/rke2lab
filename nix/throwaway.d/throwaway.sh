@@ -105,6 +105,11 @@ chmod 0700 "$kubeDir"
 case $action in
   up)
     [[ ! -e $resetMark ]] || die "a reset of $stack was interrupted: finish it (rke2lab-throwaway reset $stack) first"
+    : "the node takes the blueprint's hostname and reserved address: an instance of that name in another project (the"
+    : "fleet's own cluster) would put two of them on the fabric, so up refuses; an unreadable list refuses too"
+    instances=$("$incus" list --all-projects --format csv --columns n,P) || die "the Incus instances cannot be listed"
+    others=$(N="$node" P="$project" awk -F, '$1 == ENVIRON["N"] && $2 != ENVIRON["P"] { print $2 }' <<<"$instances")
+    [[ -z $others ]] || die "an instance $node already runs in Incus project ${others//$'\n'/, }: reset that one first"
     step "preview of throwaway stack $stack"
     "$grow" "$stack" preview
     ask "grow throwaway stack $stack as previewed above? [oui/non]" oui ||

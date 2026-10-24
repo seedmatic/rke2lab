@@ -45,7 +45,8 @@ grown() { touch "$m/stack" "$m/instance" "$m/project"; printf 'aaa\nbbb\n' >"$m/
 @test "up: preview, « oui », up, then the kubeconfig in its own 0600 file, its server rewritten, ready" {
   tw oui up nikopol
   [ "$status" -eq 0 ]
-  [ "$(sed -n 1p "$m/calls")" = "grow nikopol preview profile=throwaway" ]
+  [ "$(sed -n 1p "$m/calls")" = "incus list --all-projects --format csv --columns n,P" ]
+  [ "$(sed -n 2p "$m/calls")" = "grow nikopol preview profile=throwaway" ]
   grep -qx "grow nikopol up profile=throwaway" "$m/calls"
   [ "$(stat -c %a "$m/kube")" = 700 ]
   [ "$(stat -c %a "$m/kube/nikopol.yaml")" = 600 ]
@@ -84,6 +85,28 @@ grown() { touch "$m/stack" "$m/instance" "$m/project"; printf 'aaa\nbbb\n' >"$m/
   [[ $stderr == *"could not be fetched"* ]]
   [ ! -e "$m/kube/nikopol.yaml" ]
   [ ! -e "$m/kube/.nikopol.yaml.new" ]
+}
+
+@test "up: an instance of the node's name in another project (the fleet's) refuses before any preview" {
+  printf 'nikopol-mgmt-master,rke2lab\nbioskop-mgmt-master,rke2lab\n' >"$m/instances.csv"
+  tw oui up nikopol
+  [ "$status" -eq 3 ]
+  [[ $stderr == *"an instance nikopol-mgmt-master already runs in Incus project rke2lab"* ]]
+  ! grep -q "^grow" "$m/calls"
+}
+
+@test "up: the node already in its own throwaway project (a second up) is not refused" {
+  printf 'nikopol-mgmt-master,throwaway-nikopol\nbioskop-mgmt-master,rke2lab\n' >"$m/instances.csv"
+  tw oui up nikopol
+  [ "$status" -eq 0 ]
+}
+
+@test "up: an instance list that cannot be read refuses, closed" {
+  touch "$m/fail-list"
+  tw oui up nikopol
+  [ "$status" -eq 3 ]
+  [[ $stderr == *"cannot be listed"* ]]
+  ! grep -q "^grow" "$m/calls"
 }
 
 @test "up: a stack exporting no node is refused before any fetch" {
