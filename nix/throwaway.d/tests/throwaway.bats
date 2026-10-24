@@ -213,13 +213,13 @@ grown() { touch "$m/stack" "$m/instance" "$m/project"; printf 'aaa\nbbb\n' >"$m/
   [[ $stderr == *"beyond one added encryptionsalt line"* ]]
 }
 
-@test "a grow that calls a secret tool fails up, the tool named, before the « oui »" {
-  for tool in sops age age-keygen pass gpg ssh-keygen; do
+@test "a grow that calls a secret or tailnet tool fails up, the tool named, before the « oui »" {
+  for tool in sops age age-keygen pass gpg ssh-keygen manage-tailnet tailscale; do
     rm -f "$m"/grow-calls-* "$m/calls"
     touch "$m/grow-calls-$tool"
     tw oui up nikopol
     [ "$status" -eq 3 ]
-    [[ $stderr == *"the grow called $tool: a throwaway grow reads no secret"* ]]
+    [[ $stderr == *"the grow called $tool: a throwaway grow reads no secret and joins no tailnet"* ]]
     ! grep -q "grow nikopol up" "$m/calls"
   done
 }
@@ -240,7 +240,7 @@ grown() { touch "$m/stack" "$m/instance" "$m/project"; printf 'aaa\nbbb\n' >"$m/
   dirs=${dirs%%\$PATH*}
   IFS=: read -ra grow_dirs <<<"$dirs"
   for dir in "${grow_dirs[@]}"; do
-    for tool in sops age age-keygen pass gpg ssh-keygen; do
+    for tool in sops age age-keygen pass gpg ssh-keygen manage-tailnet tailscale; do
       [ ! -e "$dir/$tool" ] || { echo "#grow's PATH provides $dir/$tool, before the stubs" >&2; false; }
     done
   done

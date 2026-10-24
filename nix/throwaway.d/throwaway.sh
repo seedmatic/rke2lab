@@ -210,19 +210,20 @@ ready() {
 (umask 077 && mkdir -p "$kubeDir")
 chmod 0700 "$kubeDir"
 
-: "a throwaway grow reads no secret: the secret tools are stubs first on #grow's PATH, each logging its call and"
+: "a throwaway grow reads no secret and joins no tailnet: the secret tools and the tailnet's (manage-tailnet carries"
+: "the fleet's OAuth client) are stubs first on #grow's PATH, each logging its call and"
 : "exiting 99, and up fails if one was called. They catch what goes through PATH, not a store path named in full:"
 : "the JVM's runbook test (🌱) is the other half"
 stubs=$(mktemp -d)
 trap 'rm -rf "$stubs"' EXIT
-for tool in sops age age-keygen pass gpg ssh-keygen; do
+for tool in sops age age-keygen pass gpg ssh-keygen manage-tailnet tailscale; do
   printf '#!/bin/sh\necho %s >>"%s/called"\nexit 99\n' "$tool" "$stubs" >"$stubs/$tool"
   chmod +x "$stubs/$tool"
 done
 
 grow_stubbed() { # <grow args>...: #grow with the stubs first; any stub called fails up, named
   PATH="$stubs:$PATH" "$grow" "$@"
-  [[ ! -s $stubs/called ]] || die "the grow called $(sort -u "$stubs/called" | paste -sd' '): a throwaway grow reads no secret"
+  [[ ! -s $stubs/called ]] || die "the grow called $(sort -u "$stubs/called" | paste -sd' '): a throwaway grow reads no secret and joins no tailnet"
 }
 
 first_up() { # the stack born inside this gesture, then stop: its salt line is committed before anything is grown
