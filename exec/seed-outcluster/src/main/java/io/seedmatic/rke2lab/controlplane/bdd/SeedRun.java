@@ -1,6 +1,7 @@
 package io.seedmatic.rke2lab.controlplane.bdd;
 
 import io.seedmatic.rke2lab.controlplane.config.BootstrapConfig;
+import io.seedmatic.rke2lab.host.runtime.GrowProfile;
 import io.seedmatic.rke2lab.pulumi.edge.RunMode;
 import io.seedmatic.rke2lab.seed.broker.port.Parcel;
 import java.util.LinkedHashMap;
@@ -24,6 +25,10 @@ import org.jspecify.annotations.Nullable;
  * cellar-transactional). It is not the drain discriminant (the {@code RunRole} is); it is the
  * observability thread that ties a scion's work back to the run that sowed it.
  *
+ * <p>{@code profile} is what the grow is for ({@link GrowProfile}): the fleet's, or a throwaway
+ * cluster's that holds no fleet identity. The GIVEN sows the fleet's identity crossings (the PKI
+ * seal, the App, the replicator, the webhook) only for the former.
+ *
  * <p>{@code facets} maps a coordinate slug ({@code "manifests"}) to that domain's raw config
  * subtree, serialized verbatim as a JSON {@code String} — Pulumi-config facts only the envelope can
  * read, carried so the GIVEN can publish each as its domain's {@code FACET} amendment (the host
@@ -36,6 +41,7 @@ import org.jspecify.annotations.Nullable;
  */
 public record SeedRun(
     RunMode runMode,
+    GrowProfile profile,
     Parcel parcel,
     BootstrapConfig config,
     boolean cleanWorktreeRequired,
@@ -70,6 +76,7 @@ public record SeedRun(
    */
   public static final class Builder {
     @Nullable private RunMode runMode;
+    private GrowProfile profile = GrowProfile.FLEET;
     @Nullable private Parcel parcel;
     @Nullable private BootstrapConfig config;
     private boolean cleanWorktreeRequired;
@@ -82,6 +89,11 @@ public record SeedRun(
 
     public Builder runMode(RunMode runMode) {
       this.runMode = runMode;
+      return this;
+    }
+
+    public Builder profile(GrowProfile profile) {
+      this.profile = profile;
       return this;
     }
 
@@ -124,6 +136,7 @@ public record SeedRun(
     public SeedRun build() {
       return new SeedRun(
           Objects.requireNonNull(runMode, "runMode"),
+          profile,
           Objects.requireNonNull(parcel, "parcel"),
           Objects.requireNonNull(config, "config"),
           cleanWorktreeRequired,
