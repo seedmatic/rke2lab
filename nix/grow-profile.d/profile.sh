@@ -12,6 +12,12 @@
 # identity by a stray variable, nor the reverse. The JVM checks the same two again.
 
 stack="${1:?usage: rke2lab-grow-profile <stack>}"
+# The stack name goes into a git path and a file name: anything but a plain name is refused first, so no
+# `../` or option-looking argument can reach `git show` (#grow can be called directly).
+if [[ ! $stack =~ ^[a-z][a-z0-9-]*$ ]]; then
+  echo "error: '$stack' is not a stack name (lowercase letters, digits and dashes, a letter first)" >&2
+  exit 2
+fi
 file="Pulumi.$stack.yaml"
 
 profile=""

@@ -84,3 +84,18 @@ gate() { run --separate-stderr "$GATE" "$@"; }
   [ "$status" -eq 2 ]
   [[ $stderr == *"cannot be read"* ]]
 }
+
+@test "a stack name outside [a-z][a-z0-9-]* is refused before any git read" {
+  for name in ../dev -dev Dev 'dev;x' 'a b' 9dev; do
+    gate "$name"
+    [ "$status" -eq 2 ]
+  done
+  gate ../dev
+  [[ $stderr == *"is not a stack name"* ]]
+}
+
+@test "no stack at all is refused with the usage" {
+  gate
+  [ "$status" -ne 0 ]
+  [[ $stderr == *"usage: rke2lab-grow-profile <stack>"* ]]
+}
