@@ -46,8 +46,13 @@ public record IncusRunbookInput(
    * from (part of the stable provisioning identity, not a build-recipe scalar — so it rides the
    * FACET, not the IMAGE). A sub-record filled blind by role, mirroring the {@code DebugFacet}
    * facet-sub-record pattern — the host names no path vocabulary.
+   *
+   * <p>{@code throwaway} is a cluster grown for another project's tests: it takes no fleet
+   * identity, so nothing is rendered for it and nothing is pushed — absent on the wire is the
+   * fleet.
    */
-  public record Facet(String clusterName, String nodeName, String incusProject) {}
+  public record Facet(
+      String clusterName, String nodeName, String incusProject, boolean throwaway) {}
 
   /**
    * The flat seed-image build scalars the host fills from its {@code BootstrapConfig} — the image

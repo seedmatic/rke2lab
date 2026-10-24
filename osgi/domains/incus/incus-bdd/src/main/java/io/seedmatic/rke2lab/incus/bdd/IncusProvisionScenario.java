@@ -3,11 +3,13 @@ package io.seedmatic.rke2lab.incus.bdd;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.tngtech.jgiven.CurrentStep;
 import com.tngtech.jgiven.Stage;
 import com.tngtech.jgiven.annotation.ExpectedScenarioState;
 import com.tngtech.jgiven.annotation.Hidden;
 import com.tngtech.jgiven.annotation.ProvidedScenarioState;
 import com.tngtech.jgiven.annotation.Quoted;
+import com.tngtech.jgiven.annotation.ScenarioState;
 import com.tngtech.jgiven.base.ScenarioTestBase;
 import com.tngtech.jgiven.impl.Scenario;
 import com.tngtech.jgiven.report.model.ReportModel;
@@ -394,6 +396,8 @@ public class IncusProvisionScenario
    */
   static class When extends Stage<When> {
 
+    @ScenarioState CurrentStep currentStep;
+
     @ExpectedScenarioState List<ObservationWire> observations;
     @ExpectedScenarioState Optional<String> soil;
     @ExpectedScenarioState Cellar cellar;
@@ -447,6 +451,9 @@ public class IncusProvisionScenario
      * input. NOT gated: the synthesis writes {@code host.N.staging.d}, a pure FS materialisation
      * the host-tree model wants at preview too (only the rsync into {@code host.live.d} is gated).
      * The manifests scion picks a temp dir itself when the SOIL is blank (a bare survey).
+     *
+     * <p>Not consulted for a throwaway cluster: its render would carry the fleet's sealed Secrets,
+     * its tailnet resources and the push to the fleet's repo, and the node needs none of it.
      */
     public When the_manifests_are_cultivated(
         @Hidden ScenarioModel hostScenario,
@@ -455,6 +462,10 @@ public class IncusProvisionScenario
         @Hidden Optional<Image> image,
         @Hidden Optional<Path> worktreeRoot,
         @Hidden Optional<NodeBaseSource> source) {
+      if (facet.filter(Facet::throwaway).isPresent()) {
+        currentStep.setName("the manifests are not rendered: a throwaway cluster takes none");
+        return self();
+      }
       // AMEND: hand the broker {soil → path} by neutral role; the manifests amend reflector binds
       // it
       // onto ManifestsRunbookInput and returns the reconciled input, still under the runbook
