@@ -1072,6 +1072,17 @@
           '';
         };
 
+        # The operator's two gestures on a throwaway cluster (nix/throwaway.d/throwaway.sh): `up` through #grow
+        # itself, so its guards exist once; `reset` in its own order. The same factory its bats suite tests.
+        throwawayApp = import ./nix/throwaway.d/package.nix {
+          inherit pkgs;
+          grow = "${growApp}/bin/rke2lab-grow";
+          growProfile = "${growProfile}/bin/rke2lab-grow-profile";
+          pulumi = "${pulumiPkg}/bin/pulumi";
+          incus = "${incusClient}/bin/incus";
+          kubectl = "${pkgs.kubectl}/bin/kubectl";
+        };
+
         # In-cluster / standalone render: `nix run .#render-manifests`. The ONE
         # definition of the render (build manifests-cli + `publish`), so the Tekton step
         # no longer hand-scripts an mvn+java block that drifts from the dev/release build
@@ -1211,6 +1222,7 @@
             maven-deps = mavenDepsFor pkgs;
             incus-client = incusClient;
             grow = growApp;
+            throwaway = throwawayApp;
             flux9s = flux9sPkg;
           }
           // floxNriPluginPackages
@@ -1248,6 +1260,12 @@
             type = "app";
             program = "${growApp}/bin/rke2lab-grow";
             meta.description = "Grow the cluster: build the seed-outcluster jar and run pulumi preview/up against it";
+          };
+
+          apps.throwaway = {
+            type = "app";
+            program = "${throwawayApp}/bin/rke2lab-throwaway";
+            meta.description = "Grow or reset a throwaway cluster stack: each its own go, each checked by itself";
           };
 
           apps.render-manifests = {
@@ -1469,6 +1487,9 @@
             # The grow's profile gate, as built: the profile from the COMMITTED stack file only, and only when the
             # installed command's marker agrees; every disagreement refused.
             grow-profile = import ./nix/grow-profile.d/tests/package.nix { inherit pkgs; };
+            # The throwaway gestures, as built against mocked tools: the typed name, the reset's order, a failed step
+            # never skipped, the kubeconfig's modes, no client key printed.
+            throwaway = import ./nix/throwaway.d/tests/package.nix { inherit pkgs growProfile; };
             # Anti-drift gate for the cross-world node label (Java ↔ nix, which can't import each
             # other): extract NODE_FLOX_RUNTIME_LABEL from ManifestAnnotations.java (the single
             # source, used by the flox DaemonSet nodeSelectors) and fail unless the nixos oneshot
