@@ -889,12 +889,17 @@
         # a JRE to run the seed-outcluster jar, and the incus client the provider
         # shells out to. The PULUMI_* vars are set here too, mirroring the flox
         # env's [vars]: local file:// backend under the repo, empty passphrase.
+        # The grow's profile, decided from the COMMITTED stack file (nix/grow-profile.d/profile.sh); the same
+        # factory its bats suite tests.
+        growProfile = import ./nix/grow-profile.d/package.nix { inherit pkgs; };
+
         growApp = pkgs.writeShellApplication {
           name = "rke2lab-grow";
           runtimeInputs = [
             pkgs.coreutils
             pkgs.nix
             pkgs.git
+            growProfile
             pulumiPkg
             pulumiJavaPkg
             pkgs.jdk25
@@ -918,7 +923,8 @@
 
             Anything after the verb is passed through to pulumi (e.g. --diff, --target).
             The cluster's age identity is read from fd 3 (or $RKE2LAB_CLUSTER_AGE_FD), which your own shell
-            opens; the grow refuses to run without it.
+            opens; the grow refuses to run without it — except for a stack whose COMMITTED Pulumi.<stack>.yaml
+            sets rke2lab:cluster:profile: throwaway, which is grown by the installed rke2lab-throwaway command.
             USAGE
                         }
 
@@ -932,20 +938,6 @@
                           usage
                           exit 1
                         fi
-
-                        # The cluster's age identity (rke2lab-cluster-age-<n>) arrives on a file descriptor the
-                        # operator's OWN shell opens on this command line, never one this script or a session opens:
-                        #   nix run …#grow -- <stack> <action> 3< <(pass show seedmatic/cluster-age/<n>)
-                        # Never stdin (it does not reach a Pulumi program; an inherited descriptor does), never a file.
-                        # Every grow renders the sops-age Secret from it, so a grow without it fails here, loud.
-                        # Checked first, before the long build, and only for being open: reading it would consume
-                        # the pipe.
-                        RKE2LAB_CLUSTER_AGE_FD="''${RKE2LAB_CLUSTER_AGE_FD:-3}"
-                        [ -e "/dev/fd/$RKE2LAB_CLUSTER_AGE_FD" ] || {
-                          echo "error: no cluster age identity on fd $RKE2LAB_CLUSTER_AGE_FD — append to this command: $RKE2LAB_CLUSTER_AGE_FD< <(pass show seedmatic/cluster-age/<n>)" >&2
-                          exit 1
-                        }
-                        export RKE2LAB_CLUSTER_AGE_FD
 
                         stack="''${1:-}"
                         if [ -z "$stack" ]; then
@@ -964,6 +956,27 @@
                             ;;
                         esac
                         shift
+
+                        # The profile first: a throwaway stack takes no age identity (rke2lab-grow-profile says why and
+                        # refuses a stack and a marker that disagree), so the identity check below is the fleet's only.
+                        profile="$(rke2lab-grow-profile "$stack")"
+                        if [ "$profile" = throwaway ]; then
+                          export RKE2LAB_GROW_PROFILE=throwaway
+                        else
+                          # The cluster's age identity (rke2lab-cluster-age-<n>) arrives on a file descriptor the
+                          # operator's OWN shell opens on this command line, never one this script or a session opens:
+                          #   nix run …#grow -- <stack> <action> 3< <(pass show seedmatic/cluster-age/<n>)
+                          # Never stdin (it does not reach a Pulumi program; an inherited descriptor does), never a file.
+                          # Every fleet grow renders the sops-age Secret from it, so a grow without it fails here, loud.
+                          # Checked before the long build, and only for being open: reading it would consume
+                          # the pipe.
+                          RKE2LAB_CLUSTER_AGE_FD="''${RKE2LAB_CLUSTER_AGE_FD:-3}"
+                          [ -e "/dev/fd/$RKE2LAB_CLUSTER_AGE_FD" ] || {
+                            echo "error: no cluster age identity on fd $RKE2LAB_CLUSTER_AGE_FD — append to this command: $RKE2LAB_CLUSTER_AGE_FD< <(pass show seedmatic/cluster-age/<n>)" >&2
+                            exit 1
+                          }
+                          export RKE2LAB_CLUSTER_AGE_FD
+                        fi
 
                         # Action verb (default: preview — safe, read-only). `up` applies
                         # non-interactively: preview is the inspection step, so an explicit
@@ -1459,6 +1472,9 @@
             # built: a delivered description passes only if every builder is ssh-ng:// with its client
             # key, certificate and host key; anything else leaves no builders.conf behind.
             nix-builders-gate = import ./nixos/nix-builders.d/tests/package.nix { inherit pkgs; };
+            # The grow's profile gate, as built: the profile from the COMMITTED stack file only, and only when the
+            # installed command's marker agrees; every disagreement refused.
+            grow-profile = import ./nix/grow-profile.d/tests/package.nix { inherit pkgs; };
             # Anti-drift gate for the cross-world node label (Java ↔ nix, which can't import each
             # other): extract NODE_FLOX_RUNTIME_LABEL from ManifestAnnotations.java (the single
             # source, used by the flox DaemonSet nodeSelectors) and fail unless the nixos oneshot
