@@ -5,7 +5,7 @@
 # validateSopsFiles=false lets defaultSopsFile be that runtime path; sops-install-secrets decrypts on
 # the node and lays the CA set down before rke2-server, which then issues every leaf from it.
 # See docs/architecture/cluster-api/deterministic-cluster-access.adoc.
-{ ... }:
+{ lib, ... }:
 let
   tls = "/var/lib/rancher/rke2/server/tls";
   # bundle YAML key -> path under the rke2 server tls dir. The bundle is flat (etcd leaf CAs carry an
@@ -67,10 +67,20 @@ in
   # node — joiners fetch the CA from the init server via the token) cleanly no-ops, and rke2
   # self-generates its CA on a bare mgmt survey — the pre-deterministic-PKI fallback, surfaced as a
   # skipped unit the rke2lab.target probe reports.
+  #
+  # OUT of sysinit, forced. sops-nix puts the unit before sysinit.target, but ours waits for cloud-init, which
+  # waits for the network, which comes after sysinit: an ordering cycle, which systemd breaks by DELETING a job
+  # (measured on T4, 2026-10-26, `systemd-analyze verify default.target`). It dropped this unit, and rke2
+  # self-signed a CA the sealed kubeconfig does not trust; on the first boot it most likely dropped the cloud-init
+  # seed. The node is grown, never switched, so the sysinit-reactivation tie goes too.
   systemd.services.sops-install-secrets = {
     unitConfig.ConditionPathExists = "/var/lib/rke2lab/cluster-ca-bundle.yaml";
     after = [ "cloud-init.service" ];
-    before = [ "rke2-server.service" ];
-    wantedBy = [ "rke2-server.service" ];
+    before = lib.mkForce [
+      "rke2-server.service"
+      "shutdown.target"
+    ];
+    wantedBy = lib.mkForce [ "rke2-server.service" ];
+    requiredBy = lib.mkForce [ ];
   };
 }
