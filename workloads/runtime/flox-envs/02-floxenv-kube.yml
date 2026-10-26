@@ -1,4 +1,3 @@
----
 apiVersion: flox.seedmatic.io/v1alpha1
 kind: FloxEnv
 metadata:
@@ -26,5 +25,5 @@ spec:
         pkg-path: yq-go
     options:
       systems:
-      - aarch64-linux
+        - aarch64-linux
     schema-version: 1.10.0

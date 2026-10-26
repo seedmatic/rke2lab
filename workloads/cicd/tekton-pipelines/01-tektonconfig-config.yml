@@ -1,4 +1,3 @@
----
 apiVersion: operator.tekton.dev/v1alpha1
 kind: TektonConfig
 metadata:
@@ -13,15 +12,13 @@ spec:
     kubernetes:
       pipelinesAsCode:
         enable: true
-        settings:
-          secret-github-app-scope-extra-repos: seedmatic/claude-hub
   profile: all
   pruner:
     disabled: false
     keep: 100
     resources:
-    - taskrun
-    - pipelinerun
+      - taskrun
+      - pipelinerun
     schedule: 0 8 * * *
   result:
     disabled: true

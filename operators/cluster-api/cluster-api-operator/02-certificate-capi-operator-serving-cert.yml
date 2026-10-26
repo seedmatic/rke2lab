@@ -1,4 +1,3 @@
----
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -12,8 +11,8 @@ metadata:
   namespace: capi-operator-system
 spec:
   dnsNames:
-  - capi-operator-webhook-service.capi-operator-system.svc
-  - capi-operator-webhook-service.capi-operator-system.svc.cluster.local
+    - capi-operator-webhook-service.capi-operator-system.svc
+    - capi-operator-webhook-service.capi-operator-system.svc.cluster.local
   issuerRef:
     kind: ClusterIssuer
     name: rke2lab-ca

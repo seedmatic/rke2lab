@@ -1,4 +1,3 @@
----
 apiVersion: flox.seedmatic.io/v1alpha1
 kind: FloxEnv
 metadata:
@@ -19,11 +18,11 @@ spec:
         outputs: all
         pkg-path: coreutils
       manage-tailnet:
-        flake: floxcatalog:catalogue#manage-tailnet
+        flake: floxcatalog:catalog#manage-tailnet
       yq-go:
         outputs: all
         pkg-path: yq-go
     options:
       systems:
-      - aarch64-linux
+        - aarch64-linux
     schema-version: 1.10.0
