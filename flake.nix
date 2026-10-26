@@ -1480,6 +1480,30 @@
                 accepts ${mutant} || { echo "an accept-flake-config mutant passed: ${mutant}" >&2; exit 1; }
                 touch $out
               '';
+            # The node's first boot cannot lose its user-data (T4, 2026-10-26: the seed's own unit was skipped, cloud-init
+            # found no datasource, and rke2-server cluster-inited with defaults, so no tls-san and no CIDRs). The seed
+            # runs INSIDE cloud-init-local, no unit of its own, and rke2-server requires cloud-init.
+            node-cloud-init-seed-bound =
+              let
+                services = self.nixosConfigurations.rke2-node-base.config.systemd.services;
+                pre = services.cloud-init-local.serviceConfig.ExecStartPre or [ ];
+                seeded = builtins.any (cmd: pkgs.lib.hasInfix "rke2lab-cloud-init-seed" "${cmd}") (pkgs.lib.toList pre);
+                faults =
+                  pkgs.lib.optional (!seeded) "cloud-init-local does not run the seed as its ExecStartPre"
+                  ++ pkgs.lib.optional (services ? rke2lab-cloud-init-seed) "the seed still has a unit of its own"
+                  ++ pkgs.lib.optional (
+                    !(builtins.elem "cloud-init.service" services.rke2-server.requires)
+                  ) "rke2-server does not require cloud-init.service";
+              in
+              pkgs.runCommand "node-cloud-init-seed-bound" { } (
+                if faults == [ ] then
+                  "touch $out"
+                else
+                  ''
+                    printf '%s\n' ${pkgs.lib.escapeShellArgs faults} >&2
+                    exit 1
+                  ''
+              );
             # The cluster-builder delegation gate a node runs at boot (nixos/nix-builders.nix), tested as
             # built: a delivered description passes only if every builder is ssh-ng:// with its client
             # key, certificate and host key; anything else leaves no builders.conf behind.
