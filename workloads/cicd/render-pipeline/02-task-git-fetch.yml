@@ -1,4 +1,3 @@
----
 apiVersion: tekton.dev/v1
 kind: Task
 metadata:
@@ -9,27 +8,27 @@ metadata:
   namespace: rke2lab-system
 spec:
   params:
-  - name: repo-url
-    type: string
-  - name: revision
-    type: string
+    - name: repo-url
+      type: string
+    - name: revision
+      type: string
   steps:
-  - image: rke2lab/flox-carrier:lh4jz7nkzwya42rgil5g232vz9rayqvf
-    name: clone
-    script: |
-      #!/bin/sh
-      set -eux
-      : "PaC's git_auth_secret ships .gitconfig + .git-credentials; adopt them so the clone authenticates as the App without embedding a token in the URL"
-      if [ -f "$(workspaces.basic-auth.path)/.git-credentials" ]; then
-        cp "$(workspaces.basic-auth.path)/.git-credentials" "$HOME/.git-credentials"
-        cp "$(workspaces.basic-auth.path)/.gitconfig" "$HOME/.gitconfig"
-      fi
-      cd "$(workspaces.output.path)"
-      git init -q .
-      git remote add origin "$(params.repo-url)"
-      git fetch -q --depth 1 origin "$(params.revision)"
-      git checkout -q FETCH_HEAD
+    - image: rke2lab/flox-carrier:i0rlc6217y1q0mcqa0576fz8llg4jiij
+      name: clone
+      script: |
+        #!/bin/sh
+        set -eux
+        : "PaC's git_auth_secret ships .gitconfig + .git-credentials; adopt them so the clone authenticates as the App without embedding a token in the URL"
+        if [ -f "$(workspaces.basic-auth.path)/.git-credentials" ]; then
+          cp "$(workspaces.basic-auth.path)/.git-credentials" "$HOME/.git-credentials"
+          cp "$(workspaces.basic-auth.path)/.gitconfig" "$HOME/.gitconfig"
+        fi
+        cd "$(workspaces.output.path)"
+        git init -q .
+        git remote add origin "$(params.repo-url)"
+        git fetch -q --depth 1 origin "$(params.revision)"
+        git checkout -q FETCH_HEAD
   workspaces:
-  - name: output
-  - name: basic-auth
-    optional: true
+    - name: output
+    - name: basic-auth
+      optional: true

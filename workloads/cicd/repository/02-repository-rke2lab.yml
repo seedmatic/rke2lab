@@ -1,4 +1,3 @@
----
 apiVersion: pipelinesascode.tekton.dev/v1alpha1
 kind: Repository
 metadata:
@@ -10,10 +9,10 @@ metadata:
 spec:
   concurrency_limit: 1
   params:
-  - name: cluster
-    value: bioskop-wrkld
-  - name: node
-    value: master
+    - name: cluster
+      value: bioskop-wrkld
+    - name: node
+      value: master
   settings:
     pipelinerun_provenance: source
   url: https://github.com/seedmatic/rke2lab

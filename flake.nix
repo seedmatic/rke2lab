@@ -3,7 +3,7 @@
 
   # Pinned to the node-base's own nixpkgs rev (injected at render from the source
   # flake.lock) so the installer's yq-go is a store cache-hit on the node — no cold fetch.
-  inputs.nixpkgs.url = "github:NixOS/nixpkgs/b69de56fac8c2b6f8fd27f2eca01dcda8e0a4221";
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs/eb62e6aa39ea67e0b8018ba8ea077efe65807dc8";
 
   outputs = { self, nixpkgs }:
     let
@@ -38,7 +38,7 @@
                 name="$(yq eval -r '.metadata.name' "$manifest")"
                 # Extract the config payload (ConfigMap .data), parsing each value from its
                 # embedded YAML. The fragments are non-secret ConfigMaps committed plaintext
-                # (the sops gitattributes binds only *-secret-* files), so no decryption.
+                # (the render seals only Secrets), so no decryption.
                 yq eval -o=yaml                   '(.data // {}) | with_entries(.value |= from_yaml)'                   "$manifest" > "$dest/$name"
                 count=$((count + 1))
               done < <(find "${self}" -type f \( -name '*.yaml' -o -name '*.yml' \) -print0)

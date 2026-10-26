@@ -1,4 +1,3 @@
----
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
 metadata:
@@ -9,34 +8,34 @@ metadata:
     io.seedmatic.rke2lab/package: flox-webhook
   name: flox-controller
 webhooks:
-- admissionReviewVersions:
-  - v1
-  clientConfig:
-    service:
-      name: flox-controller-webhook
-      namespace: rke2lab-system
-      path: /mutate--v1-pod
-      port: 443
-  failurePolicy: Ignore
-  name: flox-inject.flox.seedmatic.io
-  namespaceSelector:
-    matchExpressions:
-    - key: kubernetes.io/metadata.name
-      operator: NotIn
-      values:
-      - kube-system
-      - kube-public
-      - kube-node-lease
-      - flux-system
-  rules:
-  - apiGroups:
-    - ""
-    apiVersions:
-    - v1
-    operations:
-    - CREATE
-    resources:
-    - pods
-    scope: Namespaced
-  sideEffects: None
-  timeoutSeconds: 5
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: flox-controller-webhook
+        namespace: rke2lab-system
+        path: /mutate--v1-pod
+        port: 443
+    failurePolicy: Ignore
+    name: flox-inject.flox.seedmatic.io
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - kube-system
+            - kube-public
+            - kube-node-lease
+            - flux-system
+    rules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - v1
+        operations:
+          - CREATE
+        resources:
+          - pods
+        scope: Namespaced
+    sideEffects: None
+    timeoutSeconds: 5

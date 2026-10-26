@@ -1,5 +1,4 @@
----
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-- high-availability-kube-vip.yml
+  - high-availability-kube-vip.yml
