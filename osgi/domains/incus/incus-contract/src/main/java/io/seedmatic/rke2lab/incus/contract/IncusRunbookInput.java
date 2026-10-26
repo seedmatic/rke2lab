@@ -55,13 +55,14 @@ public record IncusRunbookInput(
       String clusterName, String nodeName, String incusProject, boolean throwaway) {}
 
   /**
-   * The flat seed-image build scalars the host fills from its {@code BootstrapConfig} — the image
-   * {@code alias} (the reuse-lookup key and the {@code new Image} alias) and the {@code
-   * builderBinary} the edge {@code ImageBuilder} runs. The scion folds them with the edge's {@code
-   * recipeDigest} into the {@code buildChecksum} and resolves the readable {@code
-   * metadataPath}/{@code dataPath} from the flat state root ({@code BootstrapPaths.STATE_DIR}) it
-   * derives from the worktree — no {@code sharedFolder} scalar duplicates the layout constant. A
-   * sub-record filled blind by role — the host names no incus field.
+   * The flat seed-image build scalars the host fills from its {@code BootstrapConfig} — the server
+   * image's {@code alias} (the reuse-lookup key and the {@code new Image} alias), the agent image's
+   * {@code agentAlias} (the worker pools'), and the {@code builderBinary} the edge {@code
+   * ImageBuilder} runs. The scion folds them with the edge's {@code recipeDigest} into the {@code
+   * buildChecksum} and resolves the readable {@code metadataPath}/{@code dataPath} from the flat
+   * state root ({@code BootstrapPaths.STATE_DIR}) it derives from the worktree — no {@code
+   * sharedFolder} scalar duplicates the layout constant. A sub-record filled blind by role — the
+   * host names no incus field.
    */
-  public record Image(String alias, String builderBinary) {}
+  public record Image(String alias, String agentAlias, String builderBinary) {}
 }

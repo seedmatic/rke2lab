@@ -37,12 +37,18 @@
       <groupId>com.pulumi</groupId>
       <artifactId>pulumi</artifactId>
     </dependency>
-    <!-- local.Command: the post-instance beat poses the `node-base` image alias and GCs the leaked
-         node-base images via the incus CLI (a runtimeInput the provider already shells out to),
+    <!-- local.Command: the post-instance beat poses the images' aliases (node-base, node-agent) and GCs
+         the leaked old images via the incus CLI (a runtimeInput the provider already shells out to),
          authenticating through the same configDir the provider uses. -->
     <dependency>
       <groupId>com.pulumi</groupId>
       <artifactId>command</artifactId>
+    </dependency>
+    <!-- The image GC script, run against a stub incus: no kept image is deleted. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>junit-testkit</artifactId>
+      <scope>test</scope>
     </dependency>
   </dependencies>
 </project>

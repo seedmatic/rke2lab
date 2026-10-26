@@ -31,6 +31,7 @@ class BootstrapConfigFromTest {
     assertEquals("bioskop-nixos", boot.incusDefaultRemote());
     assertEquals(URI.create("https://nixos.bioskop:8443"), boot.incusRemoteAddress());
     assertEquals("node-base", boot.imageAlias());
+    assertEquals("node-agent", boot.agentImageAlias());
     // ★ And it now agrees with the in-cluster form by construction rather than by coincidence: one
     // daemon, one name, every audience.
     assertEquals(boot.incusRemoteAddress(), boot.incusClusterAddress());

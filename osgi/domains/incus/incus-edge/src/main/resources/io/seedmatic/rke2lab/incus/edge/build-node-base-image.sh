@@ -1,8 +1,8 @@
 #!/usr/bin/env sh
 set -eu
 
-if [ "$#" -ne 4 ]; then
-    echo "usage: $0 <flake-ref> <artifact-dir> <nix-binary> <source-digest>" >&2
+if [ "$#" -ne 5 ]; then
+    echo "usage: $0 <flake-ref> <artifact-dir> <nix-binary> <source-digest> <nixos-configuration>" >&2
     exit 2
 fi
 
@@ -10,6 +10,16 @@ flake_ref="$1"
 artifact_dir="$2"
 nix_bin="$3"
 source_digest="$4"
+# The node image to build, one per call: rke2-node-server (the root and every control plane) or rke2-node-base
+# (the agent, for the worker pools). Each has its own artifact dir.
+configuration="$5"
+case "$configuration" in
+rke2-node-server | rke2-node-base) ;;
+*)
+    echo "not a node image: $configuration" >&2
+    exit 2
+    ;;
+esac
 
 export PATH="/run/wrappers/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 
@@ -38,12 +48,12 @@ checksum_file="$artifact_dir/.image.checksum.sha256"
 if [ -f "$checksum_file" ] && [ "$(cat "$checksum_file")" = "$source_digest" ] &&
     [ -f "$artifact_dir/$metadata_name" ] && [ -f "$artifact_dir/$rootfs_name" ] &&
     [ -f "$rke2_version_file" ]; then
-    echo "node-base sources unchanged ($source_digest) — reusing on-disk artifacts, skipping nix build"
+    echo "$configuration sources unchanged ($source_digest) — reusing on-disk artifacts, skipping nix build"
 else
     # The homogeneous NixOS substrate every RKE2 node boots from. Build its two Incus artifacts: nix
     # realises them into /nix/store (local, content-addressed) — no tmpfs scratch and no root, unlike
     # distrobuilder. Only the two finished files are published below.
-    attr="nixosConfigurations.rke2-node-server.config.system.build"
+    attr="nixosConfigurations.$configuration.config.system.build"
 
     # Cross-build the aarch64-linux node-base artifacts from this (possibly darwin)
     # host: `--system aarch64-linux` + `--max-jobs 0` force every derivation onto the
@@ -86,7 +96,7 @@ else
     # RKE2ControlPlane.spec.version derives. `nix eval` takes only the eval flags — the build-only
     # --no-link / --print-out-paths / --max-jobs would be rejected.
     rke2_version="$("$nix_bin" eval --raw \
-        "$flake_ref#nixosConfigurations.rke2-node-server.config.services.rke2.package.version")"
+        "$flake_ref#nixosConfigurations.$configuration.config.services.rke2.package.version")"
     printf '%s\n' "$rke2_version" >"$rke2_version_file"
 fi
 

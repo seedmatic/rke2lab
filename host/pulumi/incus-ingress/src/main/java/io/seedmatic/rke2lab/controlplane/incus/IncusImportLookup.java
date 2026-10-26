@@ -30,13 +30,6 @@ public final class IncusImportLookup {
   private static final long PREVIEW_INVOKE_TIMEOUT_SECONDS = 10;
   private static final long APPLY_INVOKE_TIMEOUT_SECONDS = 20;
 
-  /**
-   * The stable image alias the GROW poses on the current node-base image after every instance (see
-   * {@code InstanceGrow.poseNodeBaseAliasAndGcImages}) — the reliable key for {@link #imageExists}:
-   * an alias lookup does NOT trip the provider's fingerprint-query SIGSEGV.
-   */
-  public static final String NODE_BASE_ALIAS = "node-base";
-
   private enum LookupState {
     FOUND,
     NOT_FOUND,
@@ -92,8 +85,9 @@ public final class IncusImportLookup {
    * identical bytes and be rejected as a duplicate. Content-addressed: an unchanged build resolves
    * to the same fingerprint (present → adopt), a changed build to a new one (absent → upload).
    *
-   * <p>Resolved through the stable {@link #NODE_BASE_ALIAS} the GROW poses after every instance —
-   * NOT by a {@code fingerprint} query, which SIGSEGVs terraform-provider-incus v1.1.1 (nil deref,
+   * <p>Resolved through the image's stable alias (the plan's view carries it; the GROW poses it
+   * after every instance, see {@code InstanceGrow.poseAliasesAndGcImages}) — NOT by a {@code
+   * fingerprint} query, which SIGSEGVs terraform-provider-incus v1.1.1 (nil deref,
    * datasource_image.go:207 — the panic kills the plugin and poisons every later RPC as
    * "ValidateResourceConfig ... connection refused"). An alias lookup does not trip it, so the
    * daemon holds THIS exact content iff the alias resolves to our fingerprint. A rebuild leaves the
@@ -101,26 +95,25 @@ public final class IncusImportLookup {
    * post-instance beat moves the alias); a virgin/not-yet-aliased daemon also returns absent → the
    * create path, both correct. A miss throws, caught as absent.
    */
-  public boolean imageExists(String fingerprint, String incusProject) {
-    return nodeBaseFingerprint(incusProject).filter(fingerprint::equals).isPresent();
+  public boolean imageExists(String alias, String fingerprint, String incusProject) {
+    return aliasFingerprint(alias, incusProject).filter(fingerprint::equals).isPresent();
   }
 
   /**
-   * The content fingerprint the stable {@link #NODE_BASE_ALIAS} currently resolves to, or empty
-   * when the daemon holds no such alias (a virgin daemon, or one where no grow ever completed).
+   * The content fingerprint a stable image alias currently resolves to, or empty when the daemon
+   * holds no such alias (a virgin daemon, or one where no grow ever completed).
    *
    * <p>It is the DAEMON as a source of image identity, which matters when the local artifacts are
    * gone: a fresh worktree has an empty Pulumi stack but the daemon still holds the image a
    * previous grow posed this alias on, so the identity is recoverable without rebuilding. {@link
    * #imageExists} is this same lookup plus a comparison — one lookup implementation, two questions.
    */
-  public Optional<String> nodeBaseFingerprint(String incusProject) {
-    log.accept(
-        "incus lookup getImage: start alias=" + NODE_BASE_ALIAS + " project=" + incusProject);
+  public Optional<String> aliasFingerprint(String alias, String incusProject) {
+    log.accept("incus lookup getImage: start alias=" + alias + " project=" + incusProject);
     try {
       final var image =
           IncusFunctions.getImagePlain(
-                  GetImagePlainArgs.builder().name(NODE_BASE_ALIAS).project(incusProject).build(),
+                  GetImagePlainArgs.builder().name(alias).project(incusProject).build(),
                   context.invokeOptions())
               .orTimeout(invokeTimeoutSeconds(), TimeUnit.SECONDS)
               .join();

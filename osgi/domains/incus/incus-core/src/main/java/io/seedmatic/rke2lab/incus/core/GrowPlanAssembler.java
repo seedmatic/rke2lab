@@ -46,9 +46,23 @@ public final class GrowPlanAssembler {
     this.sharedFolder = sharedFolder;
   }
 
-  /** Seal the network view, the image and the identity into the immutable plan. */
-  public InstanceGrowPlan assemble(GrowNetworkView network, GrowIdentityView identity) {
-    return new InstanceGrowPlan(network, imageView(), identity);
+  /**
+   * Seal the network view, this image (the server's, the one the instance clones), the agent's
+   * image and the identity into the immutable plan. The agent's view comes from its own assembler,
+   * keyed by its alias.
+   */
+  public InstanceGrowPlan assemble(
+      GrowNetworkView network, GrowImageView agentImage, GrowIdentityView identity) {
+    return new InstanceGrowPlan(network, imageView(), agentImage, identity);
+  }
+
+  /**
+   * Where an image's artifacts live: one dir per alias under the shared folder, with the same file
+   * names, so the server's and the agent's never overwrite each other. The build request writes
+   * here, the plan reads here.
+   */
+  public static Path artifactDir(Path sharedFolder, String imageAlias) {
+    return sharedFolder.resolve(imageAlias).toAbsolutePath().normalize();
   }
 
   /**
@@ -59,7 +73,7 @@ public final class GrowPlanAssembler {
    * image the plan does — the one computation, two consumers.
    */
   public GrowImageView imageView() {
-    final Path artifactDir = sharedFolder.toAbsolutePath().normalize();
+    final Path artifactDir = artifactDir(sharedFolder, imageAlias);
     return new GrowImageView(
         imageAlias,
         artifactDir.resolve(METADATA_FILENAME).toString(),
