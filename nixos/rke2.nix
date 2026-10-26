@@ -11,12 +11,32 @@
 # (the node reaches Ready WITHOUT waiting on Flux); the bootstrap lane (bootstrap-manifests.nix) seeds
 # the HelmChartConfig rke2-cilium that customises that addon (BGP, clustermesh, gatewayAPI, …), and
 # the seeded Flux operator then reconciles the rest from the rendered branch.
-{ config, pkgs, ... }:
 {
-  services.rke2 = {
+  config,
+  lib,
+  pkgs,
+  ...
+}:
+let
+  server = config.services.rke2.role == "server";
+  unit = config.rke2lab.rke2Unit;
+in
+{
+  # The one name of the node's rke2 unit. nixpkgs names it after the role (`rke2-server` or `rke2-agent`, the name
+  # CAPRKE2's bootstrap enables), so every unit that orders against rke2 names it through this, never literally.
+  options.rke2lab.rke2Unit = lib.mkOption {
+    type = lib.types.str;
+    readOnly = true;
+    default = "rke2-${config.services.rke2.role}.service";
+    description = "The node's rke2 systemd unit, named after services.rke2.role.";
+  };
+
+  config.services.rke2 = {
     enable = true;
-    role = "server";
-    cni = "cilium";
+    # The node-base image is a server; the agent image (./agent.nix) sets the role, and the units follow it.
+    role = lib.mkDefault "server";
+    # The CNI is deployed by the servers; nixpkgs warns when an agent sets one.
+    cni = lib.mkIf server "cilium";
     # Disable rke2's embedded cloud-controller: we are NOT on the "rke2" cloud — every node is an
     # incus instance under Cluster API (CAPN). Left on, the CCM stamps the node providerID
     # `rke2://<node>` (immutable once set), which never matches the `lxc:///<node>` CAPN/CAPRKE2
@@ -24,7 +44,8 @@
     # rke2 cloud (fail → risk of tainting/deleting the node). The node's providerID is set instead by
     # the kubelet `provider-id` arg (rke2lab-provider-id, mgmt nodes) or CAPN's CloudProviderNodePatch
     # (workload nodes). kube-vip + cilium cover what the CCM would otherwise do (LB + node readiness).
-    extraFlags = [
+    # `rke2 agent` has no --disable flags: the cloud controller and the addons run on the servers only.
+    extraFlags = lib.optionals server [
       "--disable-cloud-controller"
       # STATIC disables (same for every cluster) — reconciled here from the retired RKE2_CONFIG
       # `disable.yaml` ConfigMap (RuntimeRke2ConfigManifestsUnit), whose glob installer
@@ -36,6 +57,8 @@
       "--disable=rke2-ingress-nginx"
       "--disable=rke2-snapshot-controller"
       "--disable=rke2-snapshot-validation-webhook"
+    ]
+    ++ [
       # Hand kubelet resolved's UPLINK resolv.conf, so a pod resolves what the NODE resolves: the
       # bare-metal's dnsmasq, hence the `<host>` zone that names our Incus endpoint. Left to the
       # default kubelet reads /etc/resolv.conf, which under resolved is the STUB (127.0.0.53) — a
@@ -58,8 +81,10 @@
   # `requires`, not only `after`: ordering waits for cloud-init to END, not to SUCCEED. On T4's first boot
   # (2026-10-26) cloud-init found no datasource, failed, and rke2-server cluster-inited with defaults (no
   # tls-san, the default CIDRs), which no later config can undo. A failed cloud-init now stops rke2.
-  systemd.services.rke2-server.after = [ "cloud-init.service" ];
-  systemd.services.rke2-server.requires = [ "cloud-init.service" ];
+  config.systemd.services.${lib.removeSuffix ".service" unit} = {
+    after = [ "cloud-init.service" ];
+    requires = [ "cloud-init.service" ];
+  };
 
   # The rke2 config installer for the self/root control-plane node. The per-cluster config (dual-stack
   # CIDRs, tls-san incl. the VIP) is rendered per (cluster × pool) onto the management branch by
@@ -73,7 +98,7 @@
   #                       root-only). SINGLE-USE: the script sets NIX_CONFIG="!include <file>" for
   #                       this run only (not a permanent unit env — that would outlive the value) and
   #                       DELETES the file on exit (trap), so no live/stale token lingers on the node.
-  systemd.services.rke2lab-rke2-config = {
+  config.systemd.services.rke2lab-rke2-config = {
     description = "rke2lab rke2 config install (nix run <branch>#install-rke2-config)";
     # Gated on the ref file the grower delivers (not node.env).
     unitConfig.ConditionPathExists = "/run/rke2lab/rke2-config.env";
@@ -87,8 +112,8 @@
       "rke2lab-identity.service"
     ];
     wants = [ "network-online.target" ];
-    before = [ "rke2-server.service" ];
-    requiredBy = [ "rke2-server.service" ];
+    before = [ unit ];
+    requiredBy = [ unit ];
     serviceConfig = {
       Type = "oneshot";
       RemainAfterExit = true;
@@ -141,17 +166,17 @@
   # rke2-server started. `wants` (weak) so the target still activates for the probe to read even if a
   # unit degraded — the adapter's snapshot reports failedUnits separately; `after` so the target only
   # goes active once the boot has actually reached this stage. Pulled into the boot by multi-user.
-  systemd.targets.rke2lab = {
+  config.systemd.targets.rke2lab = {
     description = "rke2lab node substrate ready";
     wants = [
       "rke2lab-identity.service"
       "rke2lab-zfs-containerd.service"
-      "rke2-server.service"
+      unit
     ];
     after = [
       "rke2lab-identity.service"
       "rke2lab-zfs-containerd.service"
-      "rke2-server.service"
+      unit
     ];
     wantedBy = [ "multi-user.target" ];
   };
@@ -162,7 +187,7 @@
   # so it stays a boot-time oneshot here rather than a rendered branch fragment. It must run AFTER
   # rke2lab-rke2-config (which wipes+reinstalls config.yaml.d from the branch) so this drop-in
   # survives — that ordering is declared on rke2lab-rke2-config below.
-  systemd.services.rke2lab-node-labels = {
+  config.systemd.services.rke2lab-node-labels = {
     description = "rke2lab kubelet node-labels drop-in (per-node identity + flox-runtime)";
     # Skip on a node whose channel carries no node.env (a CAPRKE2 workload node owns its rke2 config).
     unitConfig.ConditionPathExists = "/var/lib/rke2lab/node.env";
@@ -173,8 +198,8 @@
       "rke2lab-rke2-config.service"
     ];
     requires = [ "rke2lab-identity.service" ];
-    before = [ "rke2-server.service" ];
-    requiredBy = [ "rke2-server.service" ];
+    before = [ unit ];
+    requiredBy = [ unit ];
     serviceConfig = {
       Type = "oneshot";
       RemainAfterExit = true;
@@ -227,15 +252,15 @@
   # rke2lab-identity is dropped with the gate — identity is legitimately node.env-gated, so requiring
   # it would re-import the condition through the back door. The ordering stays: when identity does
   # run, it sets the transient hostname, so it must run first.
-  systemd.services.rke2lab-provider-id = {
+  config.systemd.services.rke2lab-provider-id = {
     description = "rke2lab kubelet provider-id drop-in (lxc:///<node> for CAPI adoption)";
     # After rke2lab-rke2-config's config.yaml.d wipe+reinstall, so this drop-in survives.
     after = [
       "rke2lab-identity.service"
       "rke2lab-rke2-config.service"
     ];
-    before = [ "rke2-server.service" ];
-    requiredBy = [ "rke2-server.service" ];
+    before = [ unit ];
+    requiredBy = [ unit ];
     path = [ pkgs.coreutils ];
     serviceConfig = {
       Type = "oneshot";
@@ -292,7 +317,7 @@
   # `requires` on rke2lab-identity is dropped with the gate for the same reason — identity IS
   # node.env-gated, legitimately, so requiring it would re-import the condition through the back
   # door. The ordering stays: when identity does run, this must follow it.
-  systemd.services.rke2lab-node-ip = {
+  config.systemd.services.rke2lab-node-ip = {
     description = "rke2lab kubelet node-ip drop-in (the node's own dual-stack vmnet0 address)";
     after = [
       "rke2lab-identity.service"
@@ -300,8 +325,8 @@
       "network-online.target"
     ];
     wants = [ "network-online.target" ];
-    before = [ "rke2-server.service" ];
-    requiredBy = [ "rke2-server.service" ];
+    before = [ unit ];
+    requiredBy = [ unit ];
     path = [ pkgs.iproute2 pkgs.gawk pkgs.coreutils ];
     serviceConfig = {
       Type = "oneshot";

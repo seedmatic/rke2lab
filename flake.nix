@@ -1504,6 +1504,51 @@
                     exit 1
                   ''
               );
+            # The agent image runs rke2 as an agent: its unit is rke2-agent, no rke2-server is left for CAPRKE2 to enable
+            # by mistake, every unit node-base orders before rke2 is ordered before rke2-agent, and no server-only flag
+            # (--disable, --cni) reaches `rke2 agent`. Its mutant is node-base itself, which must fail every fault.
+            node-agent-units =
+              let
+                faultsOf =
+                  c:
+                  let
+                    services = c.config.systemd.services;
+                    agent = services.rke2-agent or { };
+                    exec = agent.serviceConfig.ExecStart or "";
+                    beforeRke2 = pkgs.lib.filterAttrs (
+                      _: s: builtins.elem "rke2-server.service" (s.requiredBy or [ ])
+                    ) self.nixosConfigurations.rke2-node-base.config.systemd.services;
+                    lost = builtins.filter (
+                      n: !(builtins.elem "rke2-agent.service" (services.${n}.requiredBy or [ ]))
+                    ) (builtins.attrNames beforeRke2);
+                  in
+                  pkgs.lib.optional (!(services ? rke2-agent)) "no rke2-agent unit"
+                  ++ pkgs.lib.optional (services ? rke2-server) "an rke2-server unit is left"
+                  ++ pkgs.lib.optional (lost != [ ]) "not required by rke2-agent: ${toString lost}"
+                  ++ pkgs.lib.optional (pkgs.lib.hasInfix "--disable" exec) "a server-only --disable flag"
+                  ++ pkgs.lib.optional (
+                    !(builtins.elem "cloud-init.service" (agent.requires or [ ]))
+                  ) "rke2-agent does not require cloud-init.service"
+                  ++ pkgs.lib.optional (c.config.warnings != [ ]) "warnings: ${toString c.config.warnings}";
+                faults = faultsOf self.nixosConfigurations.rke2-node-agent;
+                mutant = faultsOf self.nixosConfigurations.rke2-node-base;
+                flagged = faultsOf (
+                  self.nixosConfigurations.rke2-node-agent.extendModules {
+                    modules = [ { services.rke2.extraFlags = [ "--disable=rke2-ingress-nginx" ]; } ];
+                  }
+                );
+              in
+              pkgs.runCommand "node-agent-units" { } (
+                if faults == [ ] && builtins.length mutant >= 4 && flagged == [ "a server-only --disable flag" ] then
+                  "touch $out"
+                else
+                  ''
+                    printf 'agent: %s\n' ${pkgs.lib.escapeShellArgs faults} >&2
+                    printf 'mutant (node-base) caught only: %s\n' ${pkgs.lib.escapeShellArgs mutant} >&2
+                    printf 'mutant (a --disable flag) caught: %s\n' ${pkgs.lib.escapeShellArgs flagged} >&2
+                    exit 1
+                  ''
+              );
             # The cluster-builder delegation gate a node runs at boot (nixos/nix-builders.nix), tested as
             # built: a delivered description passes only if every builder is ssh-ng:// with its client
             # key, certificate and host key; anything else leaves no builders.conf behind.
@@ -1620,6 +1665,13 @@
           sops-nix.nixosModules.sops
           ./nixos
         ];
+      };
+
+      # The workload node: node-base as an rke2 AGENT, for the worker pools CAPRKE2 births from an RKE2ConfigTemplate
+      # (its bootstrap enables `rke2-agent`, the unit this role names). Same substrate, same units, ordered against
+      # rke2-agent instead of rke2-server.
+      nixosConfigurations.rke2-node-agent = self.nixosConfigurations.rke2-node-base.extendModules {
+        modules = [ ./nixos/agent.nix ];
       };
 
       # Flat, system-independent export (no `lib.${system}` selector): the data is the same

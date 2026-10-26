@@ -5,7 +5,7 @@
 # validateSopsFiles=false lets defaultSopsFile be that runtime path; sops-install-secrets decrypts on
 # the node and lays the CA set down before rke2-server, which then issues every leaf from it.
 # See docs/architecture/cluster-api/deterministic-cluster-access.adoc.
-{ lib, ... }:
+{ config, lib, ... }:
 let
   tls = "/var/lib/rancher/rke2/server/tls";
   # bundle YAML key -> path under the rke2 server tls dir. The bundle is flat (etcd leaf CAs carry an
@@ -77,10 +77,10 @@ in
     unitConfig.ConditionPathExists = "/var/lib/rke2lab/cluster-ca-bundle.yaml";
     after = [ "cloud-init.service" ];
     before = lib.mkForce [
-      "rke2-server.service"
+      config.rke2lab.rke2Unit
       "shutdown.target"
     ];
-    wantedBy = lib.mkForce [ "rke2-server.service" ];
+    wantedBy = lib.mkForce [ config.rke2lab.rke2Unit ];
     requiredBy = lib.mkForce [ ];
   };
 }
