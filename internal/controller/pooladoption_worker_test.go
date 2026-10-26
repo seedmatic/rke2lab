@@ -239,3 +239,28 @@ func TestAWorkerPoolWaitsForItsNodeImage(t *testing.T) {
 		t.Errorf("ensured %d objects before the NodeImage existed", len(store.created))
 	}
 }
+
+// A worker node joins the cluster as an AGENT and runs none of the server-side bootstrap: the bundle
+// (Flux, the App key, the cluster age identity) is a control plane's, posed by bootstrapFiles on the
+// RKE2ControlPlane only. A worker's RKE2ConfigTemplate carries the config fragments and nothing else, so
+// no worker node ever gets <cluster>-server-manifests on its disk.
+func TestAWorkerPoolCarriesNoBootstrapBundle(t *testing.T) {
+	r := &PoolAdoptionReconciler{SelfCluster: "nikopol-mgmt"}
+	fragment := map[string]any{"path": "/etc/rancher/rke2/config.yaml.d/cidrs.yaml", "content": "x"}
+	objs := r.workerPoolObjs(workerSpec(), workerImage(), []any{fragment})
+
+	tpl := findKind(t, objs, gvkRKE2ConfigTemplate.Kind)
+	files, _, _ := unstructured.NestedSlice(tpl.Object, "spec", "template", "spec", "files")
+	for _, raw := range files {
+		file, _ := raw.(map[string]any)
+		if file["path"] == serverManifestsPath {
+			t.Fatalf("a worker's RKE2ConfigTemplate carries the bootstrap bundle %s", serverManifestsPath)
+		}
+		if from, ok := file["contentFrom"].(map[string]any); ok {
+			t.Fatalf("a worker's file comes from a Secret: %v", from)
+		}
+	}
+	if len(files) != 1 {
+		t.Errorf("files = %v, want the one config fragment", files)
+	}
+}
