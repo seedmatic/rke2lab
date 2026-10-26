@@ -412,12 +412,14 @@ public class ManifestSynthesisScenario
           withDebug(
               seeded,
               headManifest.flatMap(this::recordedFacets).orElseThrow(),
-              headManifest.flatMap(this::recordedImage));
+              headManifest.flatMap(this::recordedImage),
+              headManifest.flatMap(this::recordedAgentImage));
       case EDIT ->
           withDebug(
               seeded,
               overlay(headManifest.flatMap(this::recordedFacets).orElseThrow(), mode.overrides()),
-              headManifest.flatMap(this::recordedImage));
+              headManifest.flatMap(this::recordedImage),
+              headManifest.flatMap(this::recordedAgentImage));
     };
   }
 
@@ -434,7 +436,8 @@ public class ManifestSynthesisScenario
   private ManifestsRunbookInput withDebug(
       ManifestsRunbookInput seeded,
       ManifestsRunbookInput.Facets facets,
-      Optional<ImageState> recordedImage) {
+      Optional<ImageState> recordedImage,
+      Optional<ImageState> recordedAgentImage) {
     // ★ Assembled through the BUILDER, by NAME. The positional constructor swapped
     // rootIncusHost with workloadControlPlane here — both are Optional<String>, so it compiled
     // silently and the in-cluster render died on `unknown control-plane shape 'bioskop'` (measured
@@ -473,7 +476,9 @@ public class ManifestSynthesisScenario
         seeded.renderMode(),
         // A live seeded image (a grow) wins; else replay the ImageState the grow recorded at HEAD,
         // so a steady-state render pins the same node-base image instead of emptying the CR set.
-        seeded.image().or(() -> recordedImage));
+        seeded.image().or(() -> recordedImage),
+        // The agent image follows the same rule: the grow's live one, else the recorded one.
+        seeded.agentImage().or(() -> recordedAgentImage));
   }
 
   /**
@@ -567,9 +572,18 @@ public class ManifestSynthesisScenario
    * no image).
    */
   private Optional<ImageState> recordedImage(String manifestYaml) {
+    return recordedImageAt(manifestYaml, "image");
+  }
+
+  /** The AGENT image the grow recorded at HEAD, read under the same three-valued rule. */
+  private Optional<ImageState> recordedAgentImage(String manifestYaml) {
+    return recordedImageAt(manifestYaml, "agentImage");
+  }
+
+  private Optional<ImageState> recordedImageAt(String manifestYaml, String field) {
     final JsonNode image;
     try {
-      image = CODEC.reading().readYaml(manifestYaml).path("image");
+      image = CODEC.reading().readYaml(manifestYaml).path(field);
     } catch (UncheckedIOException unreadableContext) {
       throw new IllegalStateException(
           "the render context recorded at HEAD is unreadable, so the image it records cannot be"
@@ -764,6 +778,8 @@ public class ManifestSynthesisScenario
       BootstrapIdentity identity,
       Path root,
       Optional<ImageState> image,
+      // The AGENT image beside it, which the worker pools boot; empty when the grow built none.
+      Optional<ImageState> agentImage,
       // The bridge every node's fabric NIC attaches to — the operator's rke2lab:network:
       // declaration,
       // carried because the render poses the devices and cannot derive this one (the vmnet bridge
@@ -1222,6 +1238,7 @@ public class ManifestSynthesisScenario
                     .build(),
                 root,
                 facet.image(),
+                facet.agentImage(),
                 fabricBridgeParent(facet),
                 // The SAME fleet as the managing pass — NOT empty. Every plane carries the same
                 // federation view and derives its ROLE from its POSITION in it, so a child's branch
@@ -1270,7 +1287,7 @@ public class ManifestSynthesisScenario
         // host to declare the fabric parent either. Dropping it here would leave exactly the hole
         // that broke the manager's render, one branch further down.
         facet.network().ifPresent(childFacets::network);
-        recordRenderFacet(root, childFacets.build(), facet.image());
+        recordRenderFacet(root, childFacets.build(), facet.image(), facet.agentImage());
         recordSopsPolicy(root);
         recordInstallConfigFlake(root);
         pass.delivery().seal(pass.soil());
@@ -1359,6 +1376,7 @@ public class ManifestSynthesisScenario
                   identity(),
                   root,
                   facet.image(),
+                  facet.agentImage(),
                   fabricBridgeParent(facet),
                   facet.facets().clusterFleet(),
                   workloadBundles),
@@ -1373,7 +1391,7 @@ public class ManifestSynthesisScenario
       // is the raw facet (incl. delivery) in hand, and the exploder has no root path.
       rendered.ifPresent(
           plot -> {
-            recordRenderFacet(plot.root(), facet.facets(), facet.image());
+            recordRenderFacet(plot.root(), facet.facets(), facet.image(), facet.agentImage());
             recordSopsPolicy(plot.root());
             recordInstallConfigFlake(plot.root());
           });
@@ -1427,6 +1445,7 @@ public class ManifestSynthesisScenario
               // ConfigMap and the workload CR units pin the image fingerprint + RKE2 version from
               // it.
               .imageState(pass.image())
+              .agentImageState(pass.agentImage())
               .fabricBridgeParent(pass.fabricBridgeParent())
               .clusterFleet(pass.fleet())
               .workloadBootstrapBundles(pass.bundles())
@@ -1460,7 +1479,10 @@ public class ManifestSynthesisScenario
     private static final String RENDER_FACET_FILE = "manifest.yaml";
 
     private void recordRenderFacet(
-        Path root, ManifestsRunbookInput.Facets facets, Optional<ImageState> image) {
+        Path root,
+        ManifestsRunbookInput.Facets facets,
+        Optional<ImageState> image,
+        Optional<ImageState> agentImage) {
       // source: the rke2lab rev that synthesised this tree (worktree jgit provenance — sha +
       // dirty); facet: the effective policy the read side decodes verbatim; image: the node-base
       // ImageState the grow recorded so a steady-state UPDATE render replays it (the incus scion
@@ -1469,7 +1491,10 @@ public class ManifestSynthesisScenario
       // so
       // no empty-commit churn.
       record RenderContext(
-          Provenance source, ManifestsRunbookInput.Facets facet, Optional<ImageState> image) {}
+          Provenance source,
+          ManifestsRunbookInput.Facets facet,
+          Optional<ImageState> image,
+          Optional<ImageState> agentImage) {}
       try {
         final Provenance source =
             sourceWorktree.map(DurableWorktree::provenance).orElse(new Provenance("", false));
@@ -1477,7 +1502,7 @@ public class ManifestSynthesisScenario
             root.resolve(RENDER_FACET_FILE),
             // A human-readable YAML doc at the branch root, outside every Flux path, so nothing
             // applies it; canonical, so the same source + facet give the same bytes and no commit.
-            CODEC.canonical().writeYaml(new RenderContext(source, facets, image)));
+            CODEC.canonical().writeYaml(new RenderContext(source, facets, image, agentImage)));
       } catch (IOException ex) {
         throw new UncheckedIOException("cannot record the render facet at the branch root", ex);
       }
