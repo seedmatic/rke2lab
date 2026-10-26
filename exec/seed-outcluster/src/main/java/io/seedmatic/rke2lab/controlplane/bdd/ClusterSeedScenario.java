@@ -22,6 +22,8 @@ import io.seedmatic.rke2lab.clusterpki.contract.ClusterAgeKey;
 import io.seedmatic.rke2lab.clusterpki.contract.ClusterCaBundle;
 import io.seedmatic.rke2lab.clusterpki.contract.ClusterPkiCoordinate;
 import io.seedmatic.rke2lab.clusterpki.contract.OperatorKubeconfig;
+import io.seedmatic.rke2lab.clusterpki.contract.VclusterDeclaration;
+import io.seedmatic.rke2lab.clusterpki.contract.VclusterPki;
 import io.seedmatic.rke2lab.clusterpki.contract.WorkloadAdminCredentials;
 import io.seedmatic.rke2lab.controlplane.ThrowawayCloudConfig;
 import io.seedmatic.rke2lab.controlplane.config.BootstrapConfig;
@@ -987,6 +989,7 @@ public class ClusterSeedScenario
                     new OperatorKubeconfig.Access(
                         workload.clusterName() + "-vip", clusterVip(workload.clusterName())))));
       }
+      clusters.addAll(vclusterAccesses());
       final String kubeconfig = new OperatorKubeconfig(clusters).render();
       final Path ref = config.kubeconfigRef();
       try {
@@ -996,6 +999,43 @@ public class ClusterSeedScenario
       } catch (IOException ex) {
         throw new UncheckedIOException("failed to publish the operator kubeconfig to " + ref, ex);
       }
+    }
+
+    /**
+     * One context per sealed vcluster, on its own admin credential, at the API URL the netplan
+     * projection gives its HOST cluster ({@code vclusterApiServer}, cluster-scoped like {@code
+     * vipHost}). No URL projected yet → no context: never a placeholder.
+     */
+    List<OperatorKubeconfig.ClusterAccess> vclusterAccesses() {
+      final List<OperatorKubeconfig.ClusterAccess> accesses = new ArrayList<>();
+      final Optional<VclusterPki> pki =
+          workingCellar.fetch(parcel, ClusterPkiCoordinate.VCLUSTER_PKI, VclusterPki.class);
+      if (pki.isEmpty()) {
+        return accesses;
+      }
+      for (final VclusterPki.Entry entry : pki.orElseThrow().entries()) {
+        VclusterDeclaration.fleet()
+            .named(entry.name())
+            .flatMap(vcluster -> vclusterApiServer(vcluster.hostCluster()))
+            .ifPresent(
+                server ->
+                    accesses.add(
+                        new OperatorKubeconfig.ClusterAccess(
+                            entry.name(),
+                            entry.admin(),
+                            List.of(new OperatorKubeconfig.Access(entry.name(), server)))));
+      }
+      return accesses;
+    }
+
+    private Optional<String> vclusterApiServer(final String hostCluster) {
+      for (final JsonNode node : addressing().path(hostCluster)) {
+        final String server = node.path("ips").path("vclusterApiServer").asText("");
+        if (!server.isBlank()) {
+          return Optional.of(server);
+        }
+      }
+      return Optional.empty();
     }
 
     /** Empty on a management-only grow — the seal then files nothing at that coordinate. */

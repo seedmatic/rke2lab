@@ -8,6 +8,7 @@ import io.seedmatic.rke2lab.clusterpki.contract.ClusterIssuerCa;
 import io.seedmatic.rke2lab.clusterpki.contract.ManagementClusterCa;
 import io.seedmatic.rke2lab.clusterpki.contract.SopsDecryptor;
 import io.seedmatic.rke2lab.clusterpki.contract.SopsEncryptor;
+import io.seedmatic.rke2lab.clusterpki.contract.VclusterPki;
 import io.seedmatic.rke2lab.clusterpki.contract.WorkloadAdminCredentials;
 import io.seedmatic.rke2lab.clusterpki.contract.WorkloadClusterCas;
 import io.seedmatic.rke2lab.clusterpki.core.internal.AgeRecipient;
@@ -161,6 +162,48 @@ public final class ClusterSeal {
               + recipients
               + ": the bundle could not be opened on the node. Fix .sops.yaml or the identity in RKE2LAB_CLUSTER_AGE");
     }
+  }
+
+  /**
+   * Mint each declared vcluster's AUTONOMOUS PKI: five self-signed roots, a service-account pair,
+   * and the operator's admin leaf off its own client-ca, paired with its server-ca. No read of the
+   * ndh key-store (its tenant enters no fleet trust). ADDITIVE: a vcluster already in {@code
+   * existing} is kept as it is, so its roots and the operator's context never churn; one no longer
+   * declared is not carried.
+   */
+  public VclusterPki sealVclusterPki(List<String> names, Optional<VclusterPki> existing) {
+    final ClusterCaGenerator generator = new ClusterCaGenerator();
+    final List<VclusterPki.Entry> entries = new ArrayList<>();
+    for (final String name : names) {
+      final Optional<VclusterPki.Entry> kept = existing.flatMap(pki -> pki.forVcluster(name));
+      if (kept.isPresent()) {
+        entries.add(kept.orElseThrow());
+        continue;
+      }
+      final long now = Instant.now().getEpochSecond();
+      final VclusterPki.Pair serverCa = root(generator, name + "-server-ca", now);
+      final VclusterPki.Pair clientCa = root(generator, name + "-client-ca", now);
+      final ClusterCaGenerator.ServiceAccountPair sa = generator.serviceAccountPair();
+      final ClusterCaGenerator.AdminLeaf admin =
+          generator.mintAdminClient(clientCa.certPem(), clientCa.keyPem());
+      entries.add(
+          new VclusterPki.Entry(
+              name,
+              root(generator, name + "-ca", now),
+              serverCa,
+              clientCa,
+              root(generator, name + "-front-proxy-ca", now),
+              root(generator, name + "-etcd-ca", now),
+              sa.privatePem(),
+              sa.publicPem(),
+              new AdminCredentials(admin.certPem(), admin.keyPem(), serverCa.certPem())));
+    }
+    return new VclusterPki(entries);
+  }
+
+  private static VclusterPki.Pair root(ClusterCaGenerator generator, String cn, long now) {
+    final ClusterCaGenerator.RootCa root = generator.selfSignedRoot(cn, now);
+    return new VclusterPki.Pair(root.certPem(), root.keyPem());
   }
 
   public WorkloadClusterCas sealWorkloadCas(

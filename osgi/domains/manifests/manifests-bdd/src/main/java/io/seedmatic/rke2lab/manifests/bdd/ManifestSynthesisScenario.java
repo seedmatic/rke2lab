@@ -19,6 +19,7 @@ import io.seedmatic.rke2lab.clusterpki.contract.ClusterPkiCoordinate;
 import io.seedmatic.rke2lab.clusterpki.contract.ManagementClusterCa;
 import io.seedmatic.rke2lab.clusterpki.contract.SopsDecryptor;
 import io.seedmatic.rke2lab.clusterpki.contract.SopsEncryptor;
+import io.seedmatic.rke2lab.clusterpki.contract.VclusterPki;
 import io.seedmatic.rke2lab.clusterpki.contract.WorkloadClusterCas;
 import io.seedmatic.rke2lab.ghapp.contract.GhAppCoordinate;
 import io.seedmatic.rke2lab.ghapp.contract.GithubAppCredentials;
@@ -257,6 +258,10 @@ public class ManifestSynthesisScenario
 
   private Optional<ManagementClusterCa> revealManagementCas() {
     return reveal(ClusterPkiCoordinate.MANAGEMENT_CLUSTER_CAS, ManagementClusterCa.class);
+  }
+
+  private Optional<VclusterPki> revealVclusterPki() {
+    return reveal(ClusterPkiCoordinate.VCLUSTER_PKI, VclusterPki.class);
   }
 
   private <T> Optional<T> reveal(SeedCoordinate coordinate, Class<T> type) {
@@ -745,6 +750,7 @@ public class ManifestSynthesisScenario
       Optional<TlsAuthorityCaMaterial> tlsAuthorityCa,
       Optional<WorkloadClusterCas> workloadCas,
       Optional<ManagementClusterCa> managementCas,
+      Optional<VclusterPki> vclusterPki,
       Optional<IncusIdentityMaterial> incusIdentity) {}
 
   /**
@@ -837,6 +843,7 @@ public class ManifestSynthesisScenario
             issuerCa.map(m -> TlsAuthorityCaMaterial.rootOf(m.caCertChainPem())),
             revealWorkloadCas(),
             revealManagementCas(),
+            revealVclusterPki(),
             revealIncusIdentity());
     when()
         .the_policy_is_derived_from_the_facet()
@@ -1434,6 +1441,7 @@ public class ManifestSynthesisScenario
               .tlsAuthorityCa(materials.tlsAuthorityCa())
               .workloadCas(materials.workloadCas())
               .managementCas(materials.managementCas())
+              .vclusterPki(materials.vclusterPki())
               .incusIdentity(materials.incusIdentity())
               .build();
       try {

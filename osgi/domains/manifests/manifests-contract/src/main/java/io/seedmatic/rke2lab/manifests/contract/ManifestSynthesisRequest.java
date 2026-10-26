@@ -3,6 +3,7 @@ package io.seedmatic.rke2lab.manifests.contract;
 import io.seedmatic.rke2lab.clusterpki.contract.AdminCredentials;
 import io.seedmatic.rke2lab.clusterpki.contract.ClusterIssuerCa;
 import io.seedmatic.rke2lab.clusterpki.contract.ManagementClusterCa;
+import io.seedmatic.rke2lab.clusterpki.contract.VclusterPki;
 import io.seedmatic.rke2lab.clusterpki.contract.WorkloadClusterCas;
 import io.seedmatic.rke2lab.ghapp.contract.GithubAppCredentials;
 import io.seedmatic.rke2lab.manifests.contract.profiles.BootstrapIdentity;
@@ -48,6 +49,7 @@ public record ManifestSynthesisRequest(
     Optional<TlsAuthorityCaMaterial> tlsAuthorityCa,
     Optional<WorkloadClusterCas> workloadCas,
     Optional<ManagementClusterCa> managementCas,
+    Optional<VclusterPki> vclusterPki,
     Optional<WorkloadBootstrapBundlesMaterial> workloadBootstrapBundles,
     Optional<ClusterFleet> clusterFleet)
     implements ManifestDomainPolicyAware {
@@ -84,6 +86,7 @@ public record ManifestSynthesisRequest(
     tlsAuthorityCa = tlsAuthorityCa == null ? Optional.empty() : tlsAuthorityCa;
     workloadCas = workloadCas == null ? Optional.empty() : workloadCas;
     managementCas = managementCas == null ? Optional.empty() : managementCas;
+    vclusterPki = vclusterPki == null ? Optional.empty() : vclusterPki;
     workloadBootstrapBundles =
         workloadBootstrapBundles == null ? Optional.empty() : workloadBootstrapBundles;
     // The declared fleet this render derives its CHILDREN from — empty on a bare survey, the
@@ -114,6 +117,7 @@ public record ManifestSynthesisRequest(
         .tlsAuthorityCa(tlsAuthorityCa)
         .workloadCas(workloadCas)
         .managementCas(managementCas)
+        .vclusterPki(vclusterPki)
         .workloadBootstrapBundles(workloadBootstrapBundles)
         .clusterFleet(clusterFleet);
   }
@@ -247,6 +251,7 @@ public record ManifestSynthesisRequest(
     private Optional<TlsAuthorityCaMaterial> tlsAuthorityCa = Optional.empty();
     private Optional<WorkloadClusterCas> workloadCas = Optional.empty();
     private Optional<ManagementClusterCa> managementCas = Optional.empty();
+    private Optional<VclusterPki> vclusterPki = Optional.empty();
     private Optional<WorkloadBootstrapBundlesMaterial> workloadBootstrapBundles = Optional.empty();
     private Optional<ClusterFleet> clusterFleet = Optional.empty();
 
@@ -325,6 +330,11 @@ public record ManifestSynthesisRequest(
       return this;
     }
 
+    public Builder vclusterPki(final Optional<VclusterPki> v) {
+      this.vclusterPki = v;
+      return this;
+    }
+
     public Builder workloadBootstrapBundles(final Optional<WorkloadBootstrapBundlesMaterial> v) {
       this.workloadBootstrapBundles = v;
       return this;
@@ -353,6 +363,7 @@ public record ManifestSynthesisRequest(
           tlsAuthorityCa,
           workloadCas,
           managementCas,
+          vclusterPki,
           workloadBootstrapBundles,
           clusterFleet);
     }

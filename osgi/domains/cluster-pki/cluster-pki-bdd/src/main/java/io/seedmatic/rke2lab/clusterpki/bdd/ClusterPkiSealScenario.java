@@ -16,6 +16,8 @@ import io.seedmatic.rke2lab.clusterpki.contract.ClusterPkiSealInput;
 import io.seedmatic.rke2lab.clusterpki.contract.ManagementClusterCa;
 import io.seedmatic.rke2lab.clusterpki.contract.SopsDecryptor;
 import io.seedmatic.rke2lab.clusterpki.contract.SopsEncryptor;
+import io.seedmatic.rke2lab.clusterpki.contract.VclusterDeclaration;
+import io.seedmatic.rke2lab.clusterpki.contract.VclusterPki;
 import io.seedmatic.rke2lab.clusterpki.contract.WorkloadAdminCredentials;
 import io.seedmatic.rke2lab.clusterpki.contract.WorkloadClusterCas;
 import io.seedmatic.rke2lab.clusterpki.core.ClusterSeal;
@@ -174,6 +176,10 @@ public class ClusterPkiSealScenario
     @ProvidedScenarioState(resolution = Resolution.NAME)
     WorkloadAdminCredentials workloadAdmins = new WorkloadAdminCredentials(List.of());
 
+    /** The vclusters' autonomous PKIs, for the vclusters the sealed workload clusters host. */
+    @ProvidedScenarioState(resolution = Resolution.NAME)
+    VclusterPki vclusterPki = new VclusterPki(List.of());
+
     @As("the cluster CA is sealed")
     public When the_cluster_ca_is_sealed(
         @Hidden Parcel parcel,
@@ -240,6 +246,12 @@ public class ClusterPkiSealScenario
                   parcel,
                   ClusterPkiCoordinate.WORKLOAD_ADMIN_CREDENTIALS,
                   WorkloadAdminCredentials.class));
+      // The vclusters' PKIs: autonomous roots (no fleet authority), minted ADDITIVELY for each
+      // vcluster a sealed workload cluster hosts, so the same grow that seals its host seals it.
+      this.vclusterPki =
+          seal.sealVclusterPki(
+              VclusterDeclaration.fleet().hostedBy(workloadClusters),
+              cellar.fetch(parcel, ClusterPkiCoordinate.VCLUSTER_PKI, VclusterPki.class));
       return self();
     }
   }
@@ -264,6 +276,9 @@ public class ClusterPkiSealScenario
 
     @ExpectedScenarioState(resolution = Resolution.NAME)
     WorkloadAdminCredentials workloadAdmins;
+
+    @ExpectedScenarioState(resolution = Resolution.NAME)
+    VclusterPki vclusterPki;
 
     @As("the cluster PKI is filed")
     public Then the_cluster_pki_is_filed(@Hidden Parcel parcel, @Hidden Cellar cellar) {
@@ -348,6 +363,18 @@ public class ClusterPkiSealScenario
             ClusterPkiCoordinate.WORKLOAD_ADMIN_CREDENTIALS,
             workloadAdmins,
             Sensitivity.SEALED);
+      }
+      // The vclusters' PKIs — SEALED (CA and service-account private keys), IN_CLUSTER: the
+      // <name>-certs Secret rides the host cluster's branch, sops-encrypted, so the in-cluster
+      // render must resolve it like the workload BYO-CA Secrets. The host also reads its admin
+      // credential for the operator's context.
+      if (!vclusterPki.entries().isEmpty()) {
+        cellar.store(
+            parcel,
+            ClusterPkiCoordinate.VCLUSTER_PKI,
+            vclusterPki,
+            Sensitivity.SEALED,
+            Reach.IN_CLUSTER);
       }
       return self();
     }
