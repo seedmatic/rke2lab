@@ -1,4 +1,3 @@
----
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -26,91 +25,83 @@ spec:
         app.kubernetes.io/name: flox-controller
     spec:
       containers:
-      - args:
-        - --gcroot-base=/nix/var/nix/gcroots/flox-runtime/env
-        - --env-root=/var/lib/flox-controller/envs
-        - --enable-webhook
-        - --token-secret-name=floxhub-token
-        - --token-secret-key=token
-        env:
-        - name: NODE_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: spec.nodeName
-        - name: POD_NAMESPACE
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.namespace
-        - name: PATH
-          value: /run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/usr/bin:/bin
-        - name: CONTAINERD_ADDRESS
-          value: /run/k3s/containerd/containerd.sock
-        - name: GITHUB_ACCESS_TOKEN_FILE
-          value: /var/run/flox/github-token/token
-        - name: FLOX_FLOXHUB_TOKEN
-          valueFrom:
-            secretKeyRef:
-              key: token
-              name: floxhub-token
-              optional: true
-        image: io.seedmatic.flox-controller:9r99n0zs38dyq8v22bfym42bgpp4x5hb
-        imagePullPolicy: IfNotPresent
-        name: controller
-        ports:
-        - containerPort: 9443
-          name: webhook
-          protocol: TCP
-        resources:
-          limits:
-            cpu: "1"
-            memory: 512Mi
-          requests:
-            cpu: 20m
-            memory: 128Mi
-        securityContext:
-          privileged: true
-          runAsGroup: 0
-          runAsUser: 0
-        volumeMounts:
-        - mountPath: /nix
-          name: host-nix
-        - mountPath: /run/k3s/containerd/containerd.sock
-          name: containerd-sock
-        - mountPath: /var/lib/flox-controller/envs
-          name: env-root
-        - mountPath: /tmp/k8s-webhook-server/serving-certs
-          name: webhook-certs
-          readOnly: true
-        - mountPath: /var/run/flox/github-token
-          name: github-token
-          readOnly: true
+        - args:
+            - --gcroot-base=/nix/var/nix/gcroots/flox-runtime/env
+            - --env-root=/var/lib/flox-controller/envs
+            - --enable-webhook
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: PATH
+              value: /run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/usr/bin:/bin
+            - name: CONTAINERD_ADDRESS
+              value: /run/k3s/containerd/containerd.sock
+            - name: GITHUB_ACCESS_TOKEN_FILE
+              value: /var/run/flox/github-token/token
+          image: io.seedmatic.flox-controller:99lkgksdfy27ssypvfpd3hf7x1siw294
+          imagePullPolicy: IfNotPresent
+          name: controller
+          ports:
+            - containerPort: 9443
+              name: webhook
+              protocol: TCP
+          resources:
+            limits:
+              cpu: "1"
+              memory: 512Mi
+            requests:
+              cpu: 20m
+              memory: 128Mi
+          securityContext:
+            privileged: true
+            runAsGroup: 0
+            runAsUser: 0
+          volumeMounts:
+            - mountPath: /nix
+              name: host-nix
+            - mountPath: /run/k3s/containerd/containerd.sock
+              name: containerd-sock
+            - mountPath: /var/lib/flox-controller/envs
+              name: env-root
+            - mountPath: /tmp/k8s-webhook-server/serving-certs
+              name: webhook-certs
+              readOnly: true
+            - mountPath: /var/run/flox/github-token
+              name: github-token
+              readOnly: true
       hostPID: true
       nodeSelector:
         flox.seedmatic.io/enabled: "true"
       restartPolicy: Always
       serviceAccountName: flox-controller
       tolerations:
-      - operator: Exists
+        - operator: Exists
       volumes:
-      - hostPath:
-          path: /nix
-          type: Directory
-        name: host-nix
-      - hostPath:
-          path: /run/k3s/containerd/containerd.sock
-          type: Socket
-        name: containerd-sock
-      - hostPath:
-          path: /var/lib/flox-controller/envs
-          type: DirectoryOrCreate
-        name: env-root
-      - name: webhook-certs
-        secret:
-          secretName: flox-controller-webhook-tls
-      - name: github-token
-        secret:
-          optional: true
-          secretName: github-token
+        - hostPath:
+            path: /nix
+            type: Directory
+          name: host-nix
+        - hostPath:
+            path: /run/k3s/containerd/containerd.sock
+            type: Socket
+          name: containerd-sock
+        - hostPath:
+            path: /var/lib/flox-controller/envs
+            type: DirectoryOrCreate
+          name: env-root
+        - name: webhook-certs
+          secret:
+            secretName: flox-controller-webhook-tls
+        - name: github-token
+          secret:
+            optional: true
+            secretName: github-token
   updateStrategy:
     rollingUpdate:
       maxUnavailable: 1

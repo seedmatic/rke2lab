@@ -1,4 +1,3 @@
----
 apiVersion: github.as-code.io/v1
 kind: ClusterToken
 metadata:

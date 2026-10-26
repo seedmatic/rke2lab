@@ -1,4 +1,3 @@
----
 apiVersion: v1
 data:
   debug: '"false"'
@@ -6,7 +5,6 @@ data:
 kind: ConfigMap
 metadata:
   annotations:
-    description.kpt.dev: Enable RKE2 debug logging for manifest watcher
     io.seedmatic.rke2lab/domain: runtime
     io.seedmatic.rke2lab/package: rke2-config/nikopol-wrkld/control-node
     io.seedmatic.rke2lab/rke2-config: "true"

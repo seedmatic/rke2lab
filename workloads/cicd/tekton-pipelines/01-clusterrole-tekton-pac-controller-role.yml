@@ -1,4 +1,3 @@
----
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -7,17 +6,17 @@ metadata:
     io.seedmatic.rke2lab/package: tekton-pipelines
   name: tekton-pac-controller-role
 rules:
-- apiGroups:
-  - pipelinesascode.tekton.dev
-  resources:
-  - repositories
-  - webhooks
-  verbs:
-  - get
-  - list
-  - watch
-  - create
-  - update
-  - patch
-  - delete
-  - deletecollection
+  - apiGroups:
+      - pipelinesascode.tekton.dev
+    resources:
+      - repositories
+      - webhooks
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+      - deletecollection

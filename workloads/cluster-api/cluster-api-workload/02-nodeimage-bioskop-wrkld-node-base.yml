@@ -1,4 +1,3 @@
----
 apiVersion: cluster.seedmatic.io/v1alpha1
 kind: NodeImage
 metadata:
@@ -9,27 +8,27 @@ metadata:
   namespace: rke2lab-bioskop-wrkld
 spec:
   alias: node-base
-  buildChecksum: c229eb3e257859c631b4c96de8f62e07ad56e7fa270c4127fbc9c383c74910f7
-  fingerprint: 077320b4ba5454ddd9196705d0582555b1bc7600ccb8df3dc2aae3bca301883a
-  rke2Version: v1.34.10+rke2r1
+  buildChecksum: b0f6e7981b13535f34633518b21b68b2e512b63a9727147ec3c1600ce1689851
+  fingerprint: 05c6bc4970d7643be6b24d7839e5915b2af7736e0057157c5e6f8fdb1ed38206
+  rke2Version: v1.34.11+rke2r1
   runtime:
     kernelModules:
-    - ip_vs
-    - ip_vs_rr
-    - ip_vs_wrr
-    - ip_vs_sh
-    - netlink_diag
-    - nf_nat
-    - overlay
-    - br_netfilter
-    - xt_socket
-    - xfrm_user
-    - nft_compat
-    - xt_mark
-    - xt_CT
-    - xt_TPROXY
-    - xt_comment
-    - xt_conntrack
+      - ip_vs
+      - ip_vs_rr
+      - ip_vs_wrr
+      - ip_vs_sh
+      - netlink_diag
+      - nf_nat
+      - overlay
+      - br_netfilter
+      - xt_socket
+      - xfrm_user
+      - nft_compat
+      - xt_mark
+      - xt_CT
+      - xt_TPROXY
+      - xt_comment
+      - xt_conntrack
     rawLXC: |-
       lxc.mount.auto = proc:rw sys:rw cgroup:rw
       lxc.apparmor.profile = unconfined
