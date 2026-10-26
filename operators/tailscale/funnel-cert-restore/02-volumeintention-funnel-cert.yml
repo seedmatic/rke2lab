@@ -1,4 +1,3 @@
----
 apiVersion: cluster.seedmatic.io/v1alpha1
 kind: VolumeIntention
 metadata:

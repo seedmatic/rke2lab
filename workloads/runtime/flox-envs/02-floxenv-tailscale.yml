@@ -1,4 +1,3 @@
----
 apiVersion: flox.seedmatic.io/v1alpha1
 kind: FloxEnv
 metadata:
@@ -19,8 +18,8 @@ spec:
         outputs: all
         pkg-path: coreutils
       tailscale:
-        flake: floxcatalog:catalogue#tailscale
+        flake: floxcatalog:catalog#tailscale
     options:
       systems:
-      - aarch64-linux
+        - aarch64-linux
     schema-version: 1.10.0

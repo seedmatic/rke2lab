@@ -1,4 +1,3 @@
----
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
@@ -12,6 +11,6 @@ roleRef:
   kind: ClusterRole
   name: flox-controller
 subjects:
-- kind: ServiceAccount
-  name: flox-controller
-  namespace: rke2lab-system
+  - kind: ServiceAccount
+    name: flox-controller
+    namespace: rke2lab-system

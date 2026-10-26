@@ -1,4 +1,3 @@
----
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
@@ -13,6 +12,6 @@ roleRef:
   kind: Role
   name: funnel-cert-restore
 subjects:
-- kind: ServiceAccount
-  name: funnel-cert-restore
-  namespace: tailscale-system
+  - kind: ServiceAccount
+    name: funnel-cert-restore
+    namespace: tailscale-system

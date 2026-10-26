@@ -1,4 +1,3 @@
----
 apiVersion: cilium.io/v2
 kind: CiliumBGPAdvertisement
 metadata:
@@ -8,12 +7,12 @@ metadata:
   name: control-plane-advertisement
 spec:
   advertisements:
-  - advertisementType: Service
-    selector:
-      matchLabels:
-        io.cilium/lb-ipam-pool: cluster
-    service:
-      addresses:
-      - ExternalIP
-      - LoadBalancerIP
-  - advertisementType: PodCIDR
+    - advertisementType: Service
+      selector:
+        matchLabels:
+          io.cilium/lb-ipam-pool: cluster
+      service:
+        addresses:
+          - ExternalIP
+          - LoadBalancerIP
+    - advertisementType: PodCIDR

@@ -1,4 +1,3 @@
----
 apiVersion: tailscale.com/v1alpha1
 kind: ProxyClass
 metadata:
@@ -12,5 +11,5 @@ spec:
     pod:
       tailscaleContainer:
         env:
-        - name: TS_KUBE_SECRET
-          value: ts-nikopol-wrkld-flux-webhook-state
+          - name: TS_KUBE_SECRET
+            value: ts-nikopol-wrkld-flux-webhook-state
