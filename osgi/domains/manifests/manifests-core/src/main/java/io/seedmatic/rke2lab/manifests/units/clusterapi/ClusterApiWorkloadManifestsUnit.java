@@ -1,5 +1,6 @@
 package io.seedmatic.rke2lab.manifests.units.clusterapi;
 
+import io.seedmatic.rke2lab.clusterpki.contract.VclusterDeclaration;
 import io.seedmatic.rke2lab.clusterpki.contract.WorkloadClusterCas;
 import io.seedmatic.rke2lab.incus.ingress.NodeDeviceSet;
 import io.seedmatic.rke2lab.manifests.AbstractManifestsUnit;
@@ -265,6 +266,32 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
         adoptedBy,
         packageProfile,
         clusterIntention);
+    // Each vcluster this cluster hosts runs on a worker pool of its own, booted on the AGENT image:
+    // without one, no pool, never one on the server's image and its secrets.
+    ManifestSynthesisContext.current()
+        .agentImageState()
+        .ifPresent(
+            agent ->
+                VclusterDeclaration.fleet()
+                    .hostedBy(List.of(cluster))
+                    .forEach(
+                        vcluster ->
+                            renderer.workerPoolIntention(
+                                scope,
+                                cluster,
+                                namespace,
+                                vcluster,
+                                agent.rke2Version(),
+                                ClusterApiCrRenderer.nodeImageName(cluster, agent),
+                                NodeDeviceSet.forCluster(
+                                        ManifestSynthesisContext.current().fabricBridgeParent(),
+                                        blueprint.vmnetBridgeName())
+                                    .toCapnSpecs(),
+                                List.of("project=" + vcluster),
+                                blueprint.names().incusMember(),
+                                adoptedBy,
+                                packageProfile,
+                                clusterIntention)));
 
     // The CREDENTIALS seed-incluster expands the CR-set with, rendered ON THE BRANCH
     // sops-encrypted,

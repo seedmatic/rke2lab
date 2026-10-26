@@ -6,6 +6,7 @@ import io.seedmatic.rke2lab.manifests.contract.profiles.ImageState;
 import io.seedmatic.rke2lab.manifests.contract.profiles.IncusIdentityMaterial;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -268,6 +269,9 @@ public final class ClusterApiCrRenderer {
    */
   private static final String CONTROL_NODE_POOL = "control-node";
 
+  /** A worker pool starts at one node: a node is an Incus container, grown when a tenant asks. */
+  private static final int WORKER_POOL_REPLICAS = 1;
+
   /**
    * The cluster-level {@code ClusterIntention} — the Flux-owned intent seed-incluster reconciles
    * adopt-first into the Cluster + LXCCluster. Cluster-scoped facts only (VIP, CIDRs, remote +
@@ -429,7 +433,7 @@ public final class ClusterApiCrRenderer {
    * Its pets are the deterministic control-plane names ({@code <cluster>-master[, -peer1,
    * -peer2]}). No ownerRef to the {@code ClusterIntention}: both ride the branch and are
    * Flux-pruned; the CAPI CR-set under the PoolAdoption is the ownerRef-GC chain. Worker pools are
-   * a follow-up (not emitted yet — the coding scope is control-node only).
+   * {@link #workerPoolIntention}'s.
    */
   public ApiObject controlNodePoolIntention(
       final Construct scope,
@@ -522,6 +526,64 @@ public final class ClusterApiCrRenderer {
     // be born on a bare-metal whose dnsmasq holds no reservation for it and whose subnet does not
     // address this cluster. Harmless while exactly one member is eligible — which is what ndh
     // arranges today, and exactly what stops being true for a cluster on the second bare-metal.
+    spec.put("target", incusMember);
+    poolIntention.addJsonPatch(JsonPatch.add("/spec", spec));
+    return poolIntention;
+  }
+
+  /**
+   * A worker {@code PoolIntention} — seed-incluster reconciles it into a MachineDeployment over an
+   * RKE2ConfigTemplate and an LXCMachineTemplate named {@code <cluster>-<pool>}. It boots the AGENT
+   * image, so its nodes carry no server layer, and their RKE2ConfigTemplate no bootstrap bundle:
+   * none of the fleet's secrets reach their disks.
+   *
+   * <p>CATTLE by construction, whoever adopts the cluster: the MachineDeployment names its
+   * machines, so the pool states its size and no roster, and a worker registers on no control-plane
+   * endpoint. Born on the same member, with the same devices, as its cluster's control plane.
+   */
+  public ApiObject workerPoolIntention(
+      final Construct scope,
+      final String cluster,
+      final String namespace,
+      final String pool,
+      final String rke2Version,
+      final String imageName,
+      final List<String> devices,
+      final List<String> extraNodeLabels,
+      final String incusMember,
+      final String adoptedBy,
+      final PackageMetadataProfile profile,
+      final ApiObject clusterIntention) {
+    final String poolName = cluster + "-" + pool;
+    final ApiObject poolIntention =
+        new ApiObject(
+            scope,
+            "poolintention-" + poolName,
+            ApiObjectProps.builder()
+                .apiVersion("cluster.seedmatic.io/v1alpha1")
+                .kind("PoolIntention")
+                .metadata(
+                    ApiObjectMetadata.builder()
+                        .name(poolName)
+                        .namespace(namespace)
+                        .annotations(profile.packageAnnotations())
+                        .build())
+                .build());
+    poolIntention.addDependency(clusterIntention);
+    final List<Object> nodeLabels = new ArrayList<>(poolNodeLabels());
+    nodeLabels.addAll(extraNodeLabels);
+    final Map<String, Object> spec = new LinkedHashMap<>();
+    spec.put("clusterRef", cluster);
+    spec.put("namespace", namespace);
+    spec.put("pool", pool);
+    spec.put("role", "worker");
+    spec.put("image", Map.of("name", imageName));
+    spec.put("rke2Version", rke2Version);
+    spec.put("nature", "cattle");
+    spec.put("adoptedBy", adoptedBy);
+    spec.put("replicas", WORKER_POOL_REPLICAS);
+    spec.put("nodeLabels", List.copyOf(nodeLabels));
+    spec.put("devices", List.copyOf(devices));
     spec.put("target", incusMember);
     poolIntention.addJsonPatch(JsonPatch.add("/spec", spec));
     return poolIntention;
