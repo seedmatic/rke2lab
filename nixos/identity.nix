@@ -8,14 +8,14 @@
 #
 # ConditionPathExists: a node whose channel carries no node.env (a CAPRKE2-driven workload node, which
 # owns its own hostname/config via its own cloud-config) cleanly no-ops this unit.
-{ ... }:
+{ config, ... }:
 {
   systemd.services.rke2lab-identity = {
     description = "rke2lab node hostname (cloud-init node.env → transient hostname)";
     wantedBy = [ "multi-user.target" ];
     after = [ "cloud-init.service" ];
     before = [
-      "rke2-server.service"
+      config.rke2lab.rke2Unit
       "rke2lab-zfs-containerd.service"
     ];
     unitConfig.ConditionPathExists = "/var/lib/rke2lab/node.env";

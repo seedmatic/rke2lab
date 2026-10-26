@@ -2,6 +2,7 @@
 # the snapshotter's backing dataset. The declarative form of the former rke2lab-server-pre-start.sh
 # (NRI) + config-v3.toml (zfs snapshotter) + rke2lab-configure-containerd-zfs-mount.sh host scripts.
 {
+  config,
   pkgs,
   flox-runtime,
   ...
@@ -57,8 +58,8 @@ in
   # restarts and retries until the socket (/var/run/nri/nri.sock) is up.
   systemd.services.rke2lab-flox-nri-plugin = {
     description = "rke2lab flox NRI plugin (injects flox envs into workload containers)";
-    after = [ "rke2-server.service" ];
-    wants = [ "rke2-server.service" ];
+    after = [ config.rke2lab.rke2Unit ];
+    wants = [ config.rke2lab.rke2Unit ];
     wantedBy = [ "multi-user.target" ];
     serviceConfig = {
       ExecStart = "${floxNriPlugin}/bin/flox-nri-plugin";
@@ -84,8 +85,8 @@ in
     description = "rke2lab containerd zfs snapshotter dataset mount";
     after = [ "rke2lab-identity.service" ];
     requires = [ "rke2lab-identity.service" ];
-    before = [ "rke2-server.service" ];
-    requiredBy = [ "rke2-server.service" ];
+    before = [ config.rke2lab.rke2Unit ];
+    requiredBy = [ config.rke2lab.rke2Unit ];
     serviceConfig = {
       Type = "oneshot";
       RemainAfterExit = true;
