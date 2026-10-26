@@ -102,7 +102,10 @@ class ClusterSealRecipientTest {
         "past the check, the seal goes on to read the authority");
   }
 
-  /** A second throwaway key, so a kept CA can be filed under a key that is not the one on fd 3. */
+  /**
+   * A second throwaway key, so a kept CA can be filed under a key that is not the one in
+   * RKE2LAB_CLUSTER_AGE.
+   */
   private static final String OTHER_IDENTITY =
       PREFIX + "GHTYPU7V2LY957" + "8PNJ8VLVA3LYW7" + "3WZTJHP3JSUH59" + "H7KF6Q36LQ6ZJFAT";
 

@@ -189,7 +189,8 @@ public class ClusterPkiSealScenario
       if (existing.isEmpty()) {
         this.sealed = Optional.of(seal.seal());
       } else {
-        // The identity on fd 3 must be the one the kept bundle was filed under, and a recipient.
+        // The identity in RKE2LAB_CLUSTER_AGE must be the one the kept bundle was filed under, and
+        // a recipient.
         cellar
             .fetch(parcel, ClusterPkiCoordinate.CLUSTER_AGE_KEY, ClusterAgeKey.class)
             .ifPresent(seal::checkKept);
