@@ -27,7 +27,7 @@ class NetplanProjectionTest {
   private static final Parcel PARCEL = new Parcel("rke2lab", "bioskop-mgmt");
 
   // A backend that keeps what it is given, keyed like the real one by domain and coordinate slug.
-  private static final class KeptCellar implements OpaqueCellar {
+  static final class KeptCellar implements OpaqueCellar {
     private final Map<String, SeedEnvelope> kept = new LinkedHashMap<>();
 
     private static String key(String domain, String coordinate) {

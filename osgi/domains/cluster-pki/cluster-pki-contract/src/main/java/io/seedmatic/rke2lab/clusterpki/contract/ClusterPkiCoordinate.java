@@ -60,7 +60,12 @@ public enum ClusterPkiCoordinate implements SeedCoordinate {
   // control-plane with its LIVE CA (never rotating it). Nameless — the render stamps the mgmt
   // cluster
   // name (bootstrapIdentity) the seal does not hold. See management-workload-topology.adoc.
-  MANAGEMENT_CLUSTER_CAS("management-cluster-cas");
+  MANAGEMENT_CLUSTER_CAS("management-cluster-cas"),
+  // The vclusters' AUTONOMOUS PKIs — one self-signed root set per vcluster (no fleet authority: its
+  // tenant enters no fleet trust), its service-account pair and the operator's admin credential.
+  // SEALED (CA private keys). The manifests scion renders each as the <name>-certs Secret vcluster
+  // reads at start, on its host cluster's branch; the host adds each admin credential as a context.
+  VCLUSTER_PKI("vcluster-pki");
 
   private static final String DOMAIN = "cluster-pki";
 

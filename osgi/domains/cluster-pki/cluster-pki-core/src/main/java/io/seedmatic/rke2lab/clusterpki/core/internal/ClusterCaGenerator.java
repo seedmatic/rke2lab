@@ -194,6 +194,74 @@ public final class ClusterCaGenerator {
   public record AdminLeaf(String certPem, String keyPem) {}
 
   /**
+   * A self-signed root CA (EC prime256v1, the {@link #sign} {@code v3_ca} profile, issuer =
+   * subject), rooted at nothing: a vcluster's PKI is autonomous, so no ndh authority signs it.
+   */
+  public RootCa selfSignedRoot(String commonName, long timestampSeconds) {
+    try {
+      final KeyPair key = ec();
+      final X500Name subject = new X500Name("CN=" + commonName + "@" + timestampSeconds);
+      final X509Certificate self = signSelf(subject, key, Instant.ofEpochSecond(timestampSeconds));
+      return new RootCa(chainPem(self), keyPem(key.getPrivate()));
+    } catch (RuntimeException ex) {
+      throw ex;
+    } catch (Exception ex) {
+      throw new IllegalStateException("root CA generation failed", ex);
+    }
+  }
+
+  /** A self-signed root: its certificate PEM and its private-key PEM. */
+  public record RootCa(String certPem, String keyPem) {}
+
+  /** A service-account signing pair (RSA 2048): PKCS#1 private, SubjectPublicKeyInfo public. */
+  public ServiceAccountPair serviceAccountPair() {
+    try {
+      final KeyPair pair = rsa(2048);
+      final StringWriter sw = new StringWriter();
+      try (JcaPEMWriter w = new JcaPEMWriter(sw)) {
+        w.writeObject(new PemObject("PUBLIC KEY", pair.getPublic().getEncoded()));
+      }
+      return new ServiceAccountPair(keyPem(pair.getPrivate()), sw.toString());
+    } catch (RuntimeException ex) {
+      throw ex;
+    } catch (Exception ex) {
+      throw new IllegalStateException("service-account key generation failed", ex);
+    }
+  }
+
+  /** The service-account pair: private PEM and public PEM. */
+  public record ServiceAccountPair(String privatePem, String publicPem) {}
+
+  private static X509Certificate signSelf(X500Name subject, KeyPair key, Instant notBefore)
+      throws Exception {
+    final BigInteger serial = new BigInteger(64, RANDOM).abs().add(BigInteger.ONE);
+    final JcaX509v3CertificateBuilder b =
+        new JcaX509v3CertificateBuilder(
+            subject,
+            serial,
+            Date.from(notBefore),
+            Date.from(notBefore.plus(VALIDITY_DAYS, ChronoUnit.DAYS)),
+            subject,
+            key.getPublic());
+    final JcaX509ExtensionUtils ext = new JcaX509ExtensionUtils();
+    b.addExtension(
+        Extension.subjectKeyIdentifier, false, ext.createSubjectKeyIdentifier(key.getPublic()));
+    b.addExtension(
+        Extension.authorityKeyIdentifier, false, ext.createAuthorityKeyIdentifier(key.getPublic()));
+    b.addExtension(Extension.basicConstraints, true, new BasicConstraints(true));
+    b.addExtension(
+        Extension.keyUsage,
+        true,
+        new KeyUsage(KeyUsage.digitalSignature | KeyUsage.keyEncipherment | KeyUsage.keyCertSign));
+    final X509CertificateHolder holder =
+        b.build(
+            new org.bouncycastle.operator.jcajce.JcaContentSignerBuilder("SHA256withECDSA")
+                .setProvider("BC")
+                .build(key.getPrivate()));
+    return new JcaX509CertificateConverter().setProvider("BC").getCertificate(holder);
+  }
+
+  /**
    * The end-entity leaf profile: NOT a CA (BasicConstraints CA:false), KeyUsage critical {@code
    * digitalSignature|keyEncipherment}, the supplied EKU ({@code clientAuth} for the admin leaf,
    * {@code serverAuth} for a serving leaf), an optional {@code subjectAlternativeName} (DNS names,

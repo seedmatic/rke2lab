@@ -4,6 +4,7 @@ package io.seedmatic.rke2lab.manifests;
 import io.seedmatic.rke2lab.clusterpki.contract.AdminCredentials;
 import io.seedmatic.rke2lab.clusterpki.contract.ClusterIssuerCa;
 import io.seedmatic.rke2lab.clusterpki.contract.ManagementClusterCa;
+import io.seedmatic.rke2lab.clusterpki.contract.VclusterPki;
 import io.seedmatic.rke2lab.clusterpki.contract.WorkloadClusterCas;
 import io.seedmatic.rke2lab.ghapp.contract.GithubAppCredentials;
 import io.seedmatic.rke2lab.manifests.contract.ClusterCoordinate;
@@ -274,6 +275,11 @@ public final class ManifestSynthesisContext {
 
   public Optional<ManagementClusterCa> managementCas() {
     return request.managementCas();
+  }
+
+  /** The vclusters' autonomous PKIs, revealed in a secret-full render; empty otherwise. */
+  public Optional<VclusterPki> vclusterPki() {
+    return request.vclusterPki();
   }
 
   /**
