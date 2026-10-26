@@ -46,6 +46,8 @@ type PoolAdoptionReconciler struct {
 // +kubebuilder:rbac:groups=cluster.seedmatic.io,resources=nodeimages,verbs=get;list;watch
 // +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=machines,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=rke2controlplanes,verbs=get;list;watch;create;update;patch
+// +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=machinedeployments,verbs=get;list;watch;create;update;patch
+// +kubebuilder:rbac:groups=bootstrap.cluster.x-k8s.io,resources=rke2configtemplates,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=lxcmachines,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=lxcmachinetemplates,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;delete
@@ -86,14 +88,6 @@ func (r *PoolAdoptionReconciler) reconcileSteps(
 	ctx context.Context, a *adoptionv1alpha1.PoolAdoption,
 ) (ctrl.Result, error) {
 	spec := a.Spec
-
-	// Worker pools are graved in the design but out of the current coding scope (control-node only).
-	// Refuse honestly rather than half-build a MachineDeployment/RKE2ConfigTemplate path.
-	if spec.Role != adoptionv1alpha1.PoolRoleControlPlane {
-		r.mark(a, adoptionv1alpha1.PoolConditionCRSetCreated, false, "WorkerPoolNotImplemented",
-			"worker pool "+spec.Pool+" is out of the current coding scope (control-node only)")
-		return ctrl.Result{RequeueAfter: time.Hour}, nil
-	}
 
 	// Guard: the material a provisioned node cannot do without. The BYO-CA Secrets come from
 	// seed-master (branch, sops); the bootstrap bundle from the render. CAPRKE2 adopts the LIVE
@@ -148,6 +142,10 @@ func (r *PoolAdoptionReconciler) reconcileSteps(
 
 	r.mark(a, adoptionv1alpha1.PoolConditionMaterialReady, true, "MaterialReady",
 		"BYO-CA Secrets + bootstrap bundle + RKE2 config + NodeImage present")
+
+	if spec.Role == adoptionv1alpha1.PoolRoleWorker {
+		return r.reconcileWorkerPool(ctx, a, image, configFiles)
+	}
 
 	// Resolve the roster + mode from the reflection (the reflector's git-only record) — the
 	// adopt-vs-greenfield switch, read DIRECTLY from git (immune to any Flux timing):
@@ -358,6 +356,39 @@ func (r *PoolAdoptionReconciler) reconcileSteps(
 	if greenfield || !allPresent {
 		return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
 	}
+	return ctrl.Result{}, nil
+}
+
+// reconcileWorkerPool ensures a worker pool's CR-set. A worker pool has no adopt-first state machine:
+// it is cattle by nature, CAPI names its Machines and CAPRKE2 joins them as agents to the cluster's
+// control plane, so there is no roster to resolve, no RCP UID to wait for and nothing to un-pause.
+// Its size is the DECLARED replicas, as for a control plane.
+func (r *PoolAdoptionReconciler) reconcileWorkerPool(
+	ctx context.Context, a *adoptionv1alpha1.PoolAdoption, image adoptionv1alpha1.NodeImage, configFiles []any,
+) (ctrl.Result, error) {
+	spec := a.Spec
+	if spec.Replicas < 1 {
+		r.mark(a, adoptionv1alpha1.PoolConditionCRSetCreated, false, "Error",
+			"spec.replicas is unset — re-render from the HOST once to seed it")
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, fmt.Errorf(
+			"worker PoolIntention %s/%s declares no replicas", spec.Namespace, spec.Pool)
+	}
+	for _, obj := range r.workerPoolObjs(spec, image, configFiles) {
+		if err := controllerutil.SetControllerReference(a, obj, r.Scheme); err != nil {
+			r.mark(a, adoptionv1alpha1.PoolConditionCRSetCreated, false, "Error",
+				obj.GetKind()+" "+obj.GetName()+" ownerRef: "+err.Error())
+			return ctrl.Result{}, err
+		}
+		if err := ensure(ctx, r.Client, obj); err != nil {
+			r.mark(a, adoptionv1alpha1.PoolConditionCRSetCreated, false, "Error",
+				obj.GetKind()+" "+obj.GetName()+": "+err.Error())
+			return ctrl.Result{}, err
+		}
+	}
+	r.mark(a, adoptionv1alpha1.PoolConditionCRSetCreated, true, "Created",
+		"LXCMachineTemplate/RKE2ConfigTemplate/MachineDeployment ensured")
+	log.FromContext(ctx).Info("worker pool reconciled", "cluster", spec.ClusterName, "pool", spec.Pool,
+		"replicas", spec.Replicas)
 	return ctrl.Result{}, nil
 }
 
@@ -926,6 +957,62 @@ func (r *PoolAdoptionReconciler) rke2ControlPlaneObj(spec adoptionv1alpha1.PoolA
 		},
 	}
 	return obj
+}
+
+// workerPoolName names a worker pool's MachineDeployment and its two templates. Per POOL, never the
+// cluster's: a cluster has ONE control plane but any number of worker pools, and reusing the
+// control-plane name would make a worker pool overwrite the template its control plane boots from.
+func workerPoolName(spec adoptionv1alpha1.PoolAdoptionSpec) string {
+	return spec.ClusterName + "-" + spec.Pool
+}
+
+// workerPoolObjs is a worker pool's CR-set: an LXCMachineTemplate pinned to the pool's NodeImage and
+// member, an RKE2ConfigTemplate carrying its config files and kubelet labels, and a MachineDeployment
+// of the DECLARED replicas over both. CAPI names the Machines; a worker pool is cattle by nature, so
+// nothing here is pre-created per pet.
+func (r *PoolAdoptionReconciler) workerPoolObjs(
+	spec adoptionv1alpha1.PoolAdoptionSpec, image adoptionv1alpha1.NodeImage, configFiles []any,
+) []*unstructured.Unstructured {
+	name := workerPoolName(spec)
+
+	lxc := newObj(gvkLXCMachineTemplate, name, spec.Namespace)
+	lxc.Object["spec"] = map[string]any{
+		"template": map[string]any{"spec": lxcMachineSpec(image, spec.Devices, spec.Target)},
+	}
+
+	agentConfig := map[string]any{"airGapped": true}
+	if len(spec.NodeLabels) > 0 {
+		agentConfig["nodeLabels"] = toAnySlice(spec.NodeLabels)
+	}
+	bootstrap := newObj(gvkRKE2ConfigTemplate, name, spec.Namespace)
+	bootstrap.Object["spec"] = map[string]any{
+		"template": map[string]any{"spec": map[string]any{
+			"agentConfig": agentConfig,
+			"files":       configFiles,
+		}},
+	}
+
+	md := newObj(gvkMachineDeployment, name, spec.Namespace)
+	md.SetLabels(map[string]string{clusterNameLabel: spec.ClusterName})
+	md.Object["spec"] = map[string]any{
+		"clusterName": spec.ClusterName,
+		"replicas":    int64(spec.Replicas),
+		"template": map[string]any{"spec": map[string]any{
+			"clusterName": spec.ClusterName,
+			"version":     spec.RKE2Version,
+			"bootstrap": map[string]any{"configRef": map[string]any{
+				"apiGroup": gvkRKE2ConfigTemplate.Group,
+				"kind":     gvkRKE2ConfigTemplate.Kind,
+				"name":     name,
+			}},
+			"infrastructureRef": map[string]any{
+				"apiGroup": gvkLXCMachineTemplate.Group,
+				"kind":     gvkLXCMachineTemplate.Kind,
+				"name":     name,
+			},
+		}},
+	}
+	return []*unstructured.Unstructured{lxc, bootstrap, md}
 }
 
 // lxcMachineSpec is the privileged-container LXCMachine/template body, pinned to our nix-built
