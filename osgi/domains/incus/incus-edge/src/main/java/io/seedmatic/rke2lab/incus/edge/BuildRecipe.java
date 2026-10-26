@@ -15,9 +15,9 @@ import java.util.HexFormat;
  * resource plumbing alone.
  *
  * <p>The digest captures the build METHOD (how nix is invoked), not the image CONTENT: what {@code
- * nixosConfigurations.rke2-node-base} evaluates to is determined by {@code flake.lock} + the {@code
- * nixos/} modules, which the scion folds into the {@code buildChecksum} separately (it holds the
- * worktree; the edge only holds bundle resources).
+ * nixosConfigurations.rke2-node-server} evaluates to is determined by {@code flake.lock} + the
+ * {@code nixos/} modules, which the scion folds into the {@code buildChecksum} separately (it holds
+ * the worktree; the edge only holds bundle resources).
  */
 final class BuildRecipe {
 

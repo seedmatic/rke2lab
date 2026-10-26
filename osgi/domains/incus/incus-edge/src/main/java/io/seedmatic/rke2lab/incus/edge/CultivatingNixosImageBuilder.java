@@ -14,7 +14,7 @@ import org.osgi.service.component.annotations.Component;
 /**
  * The CULTIVATING incus image-build edge — the single live door. Builds the NixOS node substrate's
  * Incus artifacts ({@code incus.tar.xz} + {@code rootfs.squashfs}) by running the bundled nix build
- * script: {@code nix build …#nixosConfigurations.rke2-node-base.config.system.build.{metadata,
+ * script: {@code nix build …#nixosConfigurations.rke2-node-server.config.system.build.{metadata,
  * squashfs}}. It is BUILD-ONLY — it does NOT import the image; the incus PROVIDER does that (the
  * host GROW declares an {@code Image} resource sourcing these artifacts, so the engine orders
  * Project → Image → Instance and the import rides the provider's channel). It runs the script

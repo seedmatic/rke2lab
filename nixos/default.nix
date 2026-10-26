@@ -9,12 +9,11 @@
 { lib, ... }:
 {
   imports = [
-    ./rke2.nix # rke2-server + dual-stack + rke2lab.target
+    ./rke2.nix # rke2 (an agent; ./server.nix makes it a server) + dual-stack + rke2lab.target
     ./cloud-init.nix # cloud-init datasource shim (incus devlxd → NoCloud seed) — the uniform bootstrap channel
     ./network.nix # systemd-networkd (fabric0/vmnet0) + resolved mDNS — honest network-online.target
     ./capn-airgapped.nix # inert /opt/install.sh so CAPRKE2 airGapped no-ops onto the baked rke2 (workload nodes)
     ./identity.nix # per-node hostname from the cloud-init-delivered node.env
-    ./sops.nix # sops-nix: PKI secret declaration + cloud-init runtime delivery
     ./containerd.nix # flox NRI runtime + zfs snapshotter + dataset mount
     ./zfs.nix # node zfs userland + FHS-compat symlinks (openebs-zfs CSI chroot wrapper)
     ./flox-runtime.nix # flox NRI plugin OCI hooks + /etc/flox.toml (workload envs = runtime FloxEnv CRs, not baked)

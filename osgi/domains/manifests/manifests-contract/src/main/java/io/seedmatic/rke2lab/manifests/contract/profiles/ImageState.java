@@ -27,7 +27,7 @@ import java.util.Objects;
  *       fingerprint, which hashes the output) — the basis for drift detection. Carried as part of
  *       the artifact's identity; no consumer compares it yet.
  *   <li>{@code rke2Version} is the RKE2 release BAKED INTO the image, read from the {@code
- *       rke2.version} artifact the nix build emits ({@code nixosConfigurations.rke2-node-base …
+ *       rke2.version} artifact the nix build emits ({@code nixosConfigurations.rke2-node-server …
  *       rke2.package.version}) — never a hand-pinned literal, and the source for {@code
  *       RKE2ControlPlane.spec.version}. NORMALISED to a leading {@code v} by the compact
  *       constructor, so no consumer re-normalises (two render sites used to do it each).

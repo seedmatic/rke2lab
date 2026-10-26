@@ -52,7 +52,7 @@ class BuildNodeBaseImageScriptTest {
                     l.startsWith("build ")
                         && l.endsWith(
                             REF
-                                + "#nixosConfigurations.rke2-node-base.config.system.build.metadata")),
+                                + "#nixosConfigurations.rke2-node-server.config.system.build.metadata")),
         String.join("\n", first));
     assertTrue(first.stream().anyMatch(l -> l.startsWith("eval ") && l.contains(REF + "#")));
     assertTrue(Files.isRegularFile(artifacts.resolve("incus.tar.xz")));
