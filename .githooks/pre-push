@@ -58,7 +58,10 @@ while read -r local_ref local_sha remote_ref _remote_sha; do
   while IFS= read -r path; do excludes+=(":(exclude)$path"); done < <(
     git ls-tree -r --name-only "$local_sha" | git check-attr --stdin filter | awk -F': ' '$3 ~ /sops/ { print $1 }')
   git archive "$local_sha" -- . "${excludes[@]}" | tar -x -C "$tree"
-  if ! (cd "$tree" && run ./mvnw -q -pl :plan-cli -am package -DskipTests -Dflox.crd-staging.skip=true) \
+  # A judge builds the pushed tree and never trusts a cache keyed on another tree: the build cache
+  # "restores" a matching module into this cold archive without its classes, and the jar then fails.
+  if ! (cd "$tree" && run ./mvnw -q -pl :plan-cli -am package -DskipTests -Dflox.crd-staging.skip=true \
+      -Dmaven.build.cache.enabled=false) \
       >"$tree.build.log" 2>&1; then
     echo "  ⛔ $local_ref: the plan does not build from the pushed tree, so its pin cannot be judged." >&2
     echo "     See the build: rerun ./mvnw -pl :plan-cli -am package on ${local_sha:0:12}." >&2
