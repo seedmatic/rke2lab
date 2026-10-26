@@ -8,8 +8,8 @@ metadata:
   namespace: rke2lab-nikopol-mgmt
 spec:
   alias: node-base
-  buildChecksum: 179e26c4c7724d3be29022e236a199a942a6bb82b05d80631b41881421698939
-  fingerprint: a80099d2fc4ac97fabf41950d7e03b65bef2426e38e005edab9d34e237beaefc
+  buildChecksum: 2d45811c75d89887e1d88359b8b1c62d595cb5245c52d0cf62956ddfe511857a
+  fingerprint: 0c76ed24d7c0e6870f931c2a1c48e1663d0bdc997b682de0a55bbb4697503969
   rke2Version: v1.34.11+rke2r1
   runtime:
     kernelModules:

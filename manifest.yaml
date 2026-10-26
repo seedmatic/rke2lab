@@ -1,5 +1,5 @@
 source:
-  sha: 259a1255dc2e55f91d15fdb71d49d749d945a4af
+  sha: 955dd15724c953b9a066cf10098bb0a6d0b631ac
   dirty: false
 facet:
   debug:
@@ -21,8 +21,8 @@ facet:
     fabricBridgeParent: fabric-br
 image:
   imageAlias: node-base
-  imageFingerprint: a80099d2fc4ac97fabf41950d7e03b65bef2426e38e005edab9d34e237beaefc
-  imageBuildChecksum: 179e26c4c7724d3be29022e236a199a942a6bb82b05d80631b41881421698939
+  imageFingerprint: 0c76ed24d7c0e6870f931c2a1c48e1663d0bdc997b682de0a55bbb4697503969
+  imageBuildChecksum: 2d45811c75d89887e1d88359b8b1c62d595cb5245c52d0cf62956ddfe511857a
   incusProject: rke2lab
   incusRemoteAddress: https://nixos.bioskop:8443
   rke2Version: v1.34.11+rke2r1
