@@ -1461,6 +1461,10 @@
             };
             # No nixConfig in this flake: no machine of ours takes one (nix-flake-commons' shared check).
             no-nix-config = inputs.flake-commons.lib.noNixConfig pkgs ./flake.nix;
+            # No node image carries the installer channel, which copies all of nixpkgs at every evaluation of the system.
+            no-installer-channel = inputs.flake-commons.lib.noInstallerChannel pkgs {
+              inherit (self.nixosConfigurations) rke2-node-base rke2-node-server;
+            };
             # A node takes no flake's nixConfig: accept-flake-config would let any flake it evaluates add substituters
             # and keys silently (the operator, 2026-10-18; ndh's nix-conf-no-accept-flake-config for the fleet). The
             # node's built nix.conf, and a mutant.
@@ -1506,7 +1510,8 @@
               );
             # The node image tree: node-base is an agent and carries nothing of the server (no rke2-server, no
             # server-only flag, no CA set, no root config installer); the server is node-base plus that layer, and every
-            # unit node-base requires before rke2 is required by the role's unit on both. Each image is the other's
+            # unit node-base requires before rke2 is required by the role's unit on both (the installer channel is
+            # no-installer-channel's). Each image is the other's
             # mutant. It reads options only: no warnings (the systemd module reads every unit, which instantiates the
             # whole system) and no configuration of its own.
             node-image-tree =
@@ -1517,9 +1522,6 @@
                   "sops-install-secrets"
                   "rke2lab-rke2-config"
                 ];
-                # The installer channel copies all of nixpkgs at every evaluation of the system (./nixos/nix-env.nix).
-                channel =
-                  c: pkgs.lib.optional c.config.system.installer.channel.enable "the installer channel is on";
                 beforeRke2 =
                   c:
                   builtins.attrNames (
@@ -1539,8 +1541,7 @@
                   ++ pkgs.lib.optional (c.config.services.rke2.cni != null) "a CNI on an agent"
                   ++ pkgs.lib.optional (c.config ? sops) "a sops CA set"
                   ++ builtins.map (n: "server-only unit ${n}") (builtins.filter (n: services ? ${n}) serverOnly)
-                  ++ pkgs.lib.optional (!(builtins.elem "cloud-init.service" (agent.requires or [ ]))) "rke2-agent does not require cloud-init.service"
-                  ++ channel c;
+                  ++ pkgs.lib.optional (!(builtins.elem "cloud-init.service" (agent.requires or [ ]))) "rke2-agent does not require cloud-init.service";
                 serverFaults =
                   c:
                   let
@@ -1551,8 +1552,7 @@
                   pkgs.lib.optional (!(services ? rke2-server)) "no rke2-server unit"
                   ++ pkgs.lib.optional (lost != [ ]) "not required by rke2-server: ${toString lost}"
                   ++ pkgs.lib.optional (missing != [ ]) "server layer units missing: ${toString missing}"
-                  ++ pkgs.lib.optional (c.config.services.rke2.cni != "cilium") "the server deploys no cilium"
-                  ++ channel c;
+                  ++ pkgs.lib.optional (c.config.services.rke2.cni != "cilium") "the server deploys no cilium";
                 faults = agentFaults base ++ serverFaults server;
                 # Each image is the other's mutant: the server must fail every agent fault, the base every server one.
                 flagged = agentFaults server;
@@ -1687,7 +1687,8 @@
           netplan = networkBlueprint;
         };
         modules = [
-          "${nixpkgs}/nixos/modules/virtualisation/lxc-container.nix"
+          # nixpkgs' lxc-container.nix without the installer channel and clone-config (nix-flake-commons).
+          inputs.flake-commons.nixosModules.lxc-container
           ./nixos
         ];
       };
