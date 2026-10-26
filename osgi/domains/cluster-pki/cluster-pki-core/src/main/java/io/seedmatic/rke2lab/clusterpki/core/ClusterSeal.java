@@ -10,6 +10,7 @@ import io.seedmatic.rke2lab.clusterpki.contract.SopsDecryptor;
 import io.seedmatic.rke2lab.clusterpki.contract.SopsEncryptor;
 import io.seedmatic.rke2lab.clusterpki.contract.WorkloadAdminCredentials;
 import io.seedmatic.rke2lab.clusterpki.contract.WorkloadClusterCas;
+import io.seedmatic.rke2lab.clusterpki.core.internal.AgeRecipient;
 import io.seedmatic.rke2lab.clusterpki.core.internal.ClusterCaGenerator;
 import io.seedmatic.rke2lab.clusterpki.core.internal.SopsRecipients;
 import io.seedmatic.rke2lab.ndh.contract.ClusterAgeIdentity;
@@ -54,16 +55,33 @@ public final class ClusterSeal {
   private final NdhKeystoreReader keystore;
   private final ClusterAgeIdentity clusterAge;
   private final SopsEncryptor encryptor;
+  private final List<String> recipients;
 
-  public ClusterSeal(
+  /**
+   * The seal over the {@code .sops.yaml} recipients of the working directory, as a grow runs it.
+   */
+  public static ClusterSeal of(
       NdhKeystoreReader keystore, ClusterAgeIdentity clusterAge, SopsEncryptor encryptor) {
+    return new ClusterSeal(keystore, clusterAge, encryptor, SopsRecipients.fromDefault());
+  }
+
+  /** {@code recipients} are the {@code .sops.yaml} recipients the bundle is sealed to. */
+  public ClusterSeal(
+      NdhKeystoreReader keystore,
+      ClusterAgeIdentity clusterAge,
+      SopsEncryptor encryptor,
+      List<String> recipients) {
     this.keystore = keystore;
     this.clusterAge = clusterAge;
     this.encryptor = encryptor;
+    this.recipients = List.copyOf(recipients);
   }
 
   public SealedClusterPki seal() {
-    final List<String> recipients = SopsRecipients.fromDefault();
+    // First, before the authority's private is read or anything is sealed: a bundle sealed to
+    // recipients the identity is not one of cannot be opened on the node.
+    final String ageIdentity = clusterAge.identity();
+    requireRecipient(AgeRecipient.of(ageIdentity));
     final long timestamp = Instant.now().getEpochSecond();
 
     final ClusterCaGenerator generator = new ClusterCaGenerator();
@@ -74,7 +92,6 @@ public final class ClusterSeal {
             timestamp);
     final LinkedHashMap<String, String> bundle = caSet.nodeBundle();
     final String sealed = encryptor.encryptYaml(renderYaml(bundle), recipients);
-    final String ageIdentity = clusterAge.identity();
 
     // The operator's admin creds: an admin clientAuth leaf minted from the client-ca just
     // generated,
@@ -115,6 +132,37 @@ public final class ClusterSeal {
    * {@code server/tls} files. Unlike the node bundle, no sops/age here: these are rendered as
    * in-cluster Secrets, not decrypted node-side.
    */
+  /**
+   * The guard on a KEPT CA, where {@link #seal()} does not run: the identity on fd 3 must still be
+   * a {@code .sops.yaml} recipient, and it must be the one the kept bundle was filed under. A node
+   * keeps the key it was born with, so a different identity would hand the render's Flux a key the
+   * node's bundle was never sealed to; {@code reseal} is the way to change it.
+   */
+  public void checkKept(ClusterAgeKey filed) {
+    final AgeRecipient current = AgeRecipient.of(clusterAge.identity());
+    requireRecipient(current);
+    final AgeRecipient kept = AgeRecipient.of(filed.identity());
+    if (!kept.equals(current)) {
+      throw new IllegalStateException(
+          "the kept CA was filed under the cluster-age identity of "
+              + kept.recipient()
+              + ", but fd 3 holds the one of "
+              + current.recipient()
+              + ": a grow does not re-wrap a kept bundle. Use reseal to move it to the new identity");
+    }
+  }
+
+  private void requireRecipient(AgeRecipient recipient) {
+    if (!recipient.isIn(recipients)) {
+      throw new IllegalStateException(
+          "the cluster-age identity's recipient "
+              + recipient.recipient()
+              + " is not among the .sops.yaml recipients "
+              + recipients
+              + ": the bundle could not be opened on the node. Fix .sops.yaml or the identity on fd 3");
+    }
+  }
+
   public WorkloadClusterCas sealWorkloadCas(
       List<String> clusterNames, Optional<WorkloadClusterCas> existing) {
     if (clusterNames.isEmpty()) {
