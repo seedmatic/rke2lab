@@ -7,11 +7,11 @@ import java.util.Optional;
  * What a grow is FOR — a runtime fact of the run, a sibling of {@link ExecutionEnclosure}.
  *
  * <p>{@link #FLEET} is every cluster of the fleet: its CA minted from the fleet's TLS authority,
- * its age identity on fd 3, the GitHub App, the tailnet, the rendered branch pushed. {@link
- * #THROWAWAY} is a cluster for another project's tests, a kube API only: none of those. It holds no
- * fleet identity and decrypts nothing — no CA is minted (rke2 makes its own), no Secret is sealed,
- * no {@code .secrets} or key-store is opened — so what that project's code can read, it cannot
- * carry back to the fleet.
+ * its age identity in RKE2LAB_CLUSTER_AGE, the GitHub App, the tailnet, the rendered branch pushed.
+ * {@link #THROWAWAY} is a cluster for another project's tests, a kube API only: none of those. It
+ * holds no fleet identity and decrypts nothing — no CA is minted (rke2 makes its own), no Secret is
+ * sealed, no {@code .secrets} or key-store is opened — so what that project's code can read, it
+ * cannot carry back to the fleet.
  *
  * <p>The profile is THROWAWAY only when the stack's committed config ({@code
  * rke2lab:cluster:profile}) and the installed command's {@value #MARKER_ENV} BOTH say so; neither

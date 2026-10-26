@@ -133,10 +133,10 @@ public final class ClusterSeal {
    * in-cluster Secrets, not decrypted node-side.
    */
   /**
-   * The guard on a KEPT CA, where {@link #seal()} does not run: the identity on fd 3 must still be
-   * a {@code .sops.yaml} recipient, and it must be the one the kept bundle was filed under. A node
-   * keeps the key it was born with, so a different identity would hand the render's Flux a key the
-   * node's bundle was never sealed to; {@code reseal} is the way to change it.
+   * The guard on a KEPT CA, where {@link #seal()} does not run: the identity in RKE2LAB_CLUSTER_AGE
+   * must still be a {@code .sops.yaml} recipient, and it must be the one the kept bundle was filed
+   * under. A node keeps the key it was born with, so a different identity would hand the render's
+   * Flux a key the node's bundle was never sealed to; {@code reseal} is the way to change it.
    */
   public void checkKept(ClusterAgeKey filed) {
     final AgeRecipient current = AgeRecipient.of(clusterAge.identity());
@@ -146,7 +146,7 @@ public final class ClusterSeal {
       throw new IllegalStateException(
           "the kept CA was filed under the cluster-age identity of "
               + kept.recipient()
-              + ", but fd 3 holds the one of "
+              + ", but RKE2LAB_CLUSTER_AGE holds the one of "
               + current.recipient()
               + ": a grow does not re-wrap a kept bundle. Use reseal to move it to the new identity");
     }
@@ -159,7 +159,7 @@ public final class ClusterSeal {
               + recipient.recipient()
               + " is not among the .sops.yaml recipients "
               + recipients
-              + ": the bundle could not be opened on the node. Fix .sops.yaml or the identity on fd 3");
+              + ": the bundle could not be opened on the node. Fix .sops.yaml or the identity in RKE2LAB_CLUSTER_AGE");
     }
   }
 

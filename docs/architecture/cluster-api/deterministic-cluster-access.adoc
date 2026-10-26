@@ -70,10 +70,11 @@ rke2lab-side as a **sops view onto the ndh key material** — encrypted for the 
 cluster age recipient: `rke2lab-cluster-age-<n>`, a standalone age identity derived from no SSH key,
 generated into the operator's keyring by `ndh-keyring cluster-age <n>` (the published `age1k0tc4…`
 was retired on 2026-10-10, and the identity ssh-to-age derived from `rke2-cluster` went with Roles ×
-Keys' step 9a — ndh `docs/ssh-keys-architecture.adoc`). It reaches the seed on a file descriptor the
-operator's shell opens on the grow's command line (`RKE2LAB_CLUSTER_AGE_FD=3 … 3< <(pass show
-seedmatic/cluster-age/<n>)`), never as a file under a checkout and never on stdin, which does not
-reach a Pulumi program (an inherited descriptor does, measured 2026-10-18); `keys.yaml` itself
+Keys' step 9a — ndh `docs/ssh-keys-architecture.adoc`). It reaches the seed in a variable the
+operator's shell sets on the grow's command line (`RKE2LAB_CLUSTER_AGE="$(pass show
+seedmatic/cluster-age/<n>)" …`), never as a file under a checkout, never on stdin (which does not
+reach a Pulumi program) and no longer on a descriptor (a pipe is drained by the first process of
+Pulumi's tree that reads it, measured on T4's preview 2026-10-26); `keys.yaml` itself
 untouched. The CA hierarchy is pure Java (no shell); the only external tool contact is the
 `sops-edge` (sealing the bundle the node's sops-nix decrypts), reused, not reinvented.
 
@@ -82,8 +83,8 @@ bundle + the age identity + the operator's `AdminCredentials`, an admin client c
 `client-ca` paired with the server-ca chain); the operator key inventory is read through the ndh
 domain's `NdhKeystoreReader` seam (the single reader of `.ndh-ssh.d/keys.yaml`, shared with manifests
 so the keys.yaml navigation is never duplicated), and the cluster's age identity through its
-`ClusterAgeIdentity` seam (`FdClusterAgeIdentity` in ndh-core reads the descriptor
-`RKE2LAB_CLUSTER_AGE_FD` names, ONCE, OPERATOR-only, never logged — the same identity
+`ClusterAgeIdentity` seam (`EnvClusterAgeIdentity` in ndh-core reads the variable
+`RKE2LAB_CLUSTER_AGE`, OPERATOR-only, never logged — the same identity
 `SopsAgeMaterialResolver` renders into Flux's `sops-age` Secret).
 
 The sops-encrypted cluster-CA bundle and the admin kubeconfig are *projections* — generated
