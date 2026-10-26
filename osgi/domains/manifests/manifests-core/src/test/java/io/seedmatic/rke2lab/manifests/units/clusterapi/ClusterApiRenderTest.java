@@ -103,6 +103,25 @@ class ClusterApiRenderTest {
             true));
   }
 
+  /** The AGENT image the grow builds beside the server's: the base, that worker pools boot. */
+  static ImageState agentImageState() {
+    return new ImageState(
+        "node-agent",
+        // Visibly fake, and distinct from the server fixture's, so a mis-pinned NodeImage shows.
+        "a".repeat(64),
+        "sha256-agent-buildinputs",
+        "rke2lab",
+        "https://nixos.bioskop:8443",
+        "1.34.1+rke2r1",
+        new NodeRuntime(
+            List.of("ip_vs", "xfrm_user", "nft_compat"),
+            "lxc.mount.auto = proc:rw sys:rw cgroup:rw",
+            true,
+            true,
+            true,
+            true));
+  }
+
   static BootstrapIdentity identity() {
     return new BootstrapIdentity(
         MANAGEMENT_CLUSTER,
@@ -143,12 +162,23 @@ class ClusterApiRenderTest {
       final List<ManifestsUnit> units,
       final Optional<TlsAuthorityCaMaterial> tlsAuthorityCa,
       final Optional<IncusIdentityMaterial> incusIdentity) {
+    return renderWith(outdir, fleet, units, tlsAuthorityCa, incusIdentity, Optional.empty());
+  }
+
+  private static List<Map<String, Object>> renderWith(
+      final Path outdir,
+      final ClusterFleet fleet,
+      final List<ManifestsUnit> units,
+      final Optional<TlsAuthorityCaMaterial> tlsAuthorityCa,
+      final Optional<IncusIdentityMaterial> incusIdentity,
+      final Optional<ImageState> agentImage) {
     final App app = new App(AppProps.builder().outdir(outdir.toString()).build());
     final Chart chart = new Chart(app, "manifests");
     final ManifestSynthesisRequest request =
         ManifestSynthesisRequest.builder(outdir, outdir.resolve("manifests.yaml"))
             .bootstrapIdentity(identity())
             .imageState(Optional.of(imageState()))
+            .agentImageState(agentImage)
             .clusterFleet(Optional.of(fleet))
             .manifestDomainPolicy(Optional.of(POLICY))
             .fabricBridgeParent(Optional.of(FABRIC_BRIDGE))
@@ -450,6 +480,67 @@ class ClusterApiRenderTest {
       // leaving bioskop-wrkld with none and its pool at ImageMissing.
       assertEquals(String.valueOf(spec.get("clusterRef")) + "-node-base", image.get("name"));
     }
+  }
+
+  @Test
+  void requireEveryClusterGetsItsAgentNodeImageBesideTheServers(@TempDir Path outdir) {
+    // ★ The grow builds TWO images: the server, which control planes boot, and the agent (the
+    // base), which worker pools boot. Each cluster gets a NodeImage for each, so a worker pool has
+    // an agent image to name and never boots the server's, with its sops and BYO-CA.
+    final List<Map<String, Object>> documents =
+        renderWith(
+            outdir,
+            FLEET,
+            clusterApiUnits(),
+            Optional.empty(),
+            Optional.empty(),
+            Optional.of(agentImageState()));
+
+    final List<String> names =
+        documents.stream()
+            .filter(d -> "NodeImage".equals(kindOf(d)))
+            .map(d -> (Map<String, Object>) d.get("metadata"))
+            .map(m -> String.valueOf(m.get("name")))
+            .sorted()
+            .toList();
+    assertEquals(
+        List.of(
+            "bioskop-mgmt-node-agent",
+            "bioskop-mgmt-node-base",
+            "bioskop-wrkld-node-agent",
+            "bioskop-wrkld-node-base",
+            "nikopol-mgmt-node-agent",
+            "nikopol-mgmt-node-base",
+            "nikopol-wrkld-node-agent",
+            "nikopol-wrkld-node-base"),
+        names);
+
+    // The agent NodeImage pins the AGENT's fingerprint, never the server's.
+    for (final Map<String, Object> doc : documents) {
+      if (!"NodeImage".equals(kindOf(doc))) {
+        continue;
+      }
+      final Map<String, Object> metadata = (Map<String, Object>) doc.get("metadata");
+      final Map<String, Object> spec = (Map<String, Object>) doc.get("spec");
+      final String fingerprint = String.valueOf(spec.get("fingerprint"));
+      final boolean agent = String.valueOf(metadata.get("name")).endsWith("-node-agent");
+      assertEquals(
+          agent ? agentImageState().imageFingerprint() : imageState().imageFingerprint(),
+          fingerprint,
+          "NodeImage " + metadata.get("name") + " pins the wrong image");
+    }
+  }
+
+  @Test
+  void requireNoAgentNodeImageWhenTheGrowBuiltNone(@TempDir Path outdir) {
+    // A run that built no agent image (a server-only grow, a survey) renders the server NodeImages
+    // only: no placeholder, no agent NodeImage describing nothing.
+    final List<Map<String, Object>> documents = render(outdir, clusterApiUnits());
+    assertFalse(
+        documents.stream()
+            .filter(d -> "NodeImage".equals(kindOf(d)))
+            .map(d -> (Map<String, Object>) d.get("metadata"))
+            .anyMatch(m -> String.valueOf(m.get("name")).endsWith("-node-agent")));
   }
 
   @Test

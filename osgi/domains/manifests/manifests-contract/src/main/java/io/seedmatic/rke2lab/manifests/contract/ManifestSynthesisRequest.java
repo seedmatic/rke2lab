@@ -33,6 +33,12 @@ public record ManifestSynthesisRequest(
     ComponentVersions componentVersions,
     Optional<ImageState> imageState,
     /*
+     * The AGENT node image the grow builds beside the server's: the base, which worker pools boot.
+     * EMPTY when the grow built none (a server-only grow, a survey), and then no worker pool has an
+     * image to name, rather than one that names the server's with its sops and BYO-CA.
+     */
+    Optional<ImageState> agentImageState,
+    /*
      * The bridge every node's fabric NIC attaches to — an OPERATOR declaration from the host's
      * rke2lab:network: concern, which the render cannot derive (unlike the vmnet bridge, which follows
      * the cluster's role and comes from the blueprint). EMPTY when unamended, never a blank string:
@@ -77,6 +83,7 @@ public record ManifestSynthesisRequest(
         Objects.requireNonNull(
             componentVersions, "componentVersions is required (no blank-version default)");
     imageState = imageState == null ? Optional.empty() : imageState;
+    agentImageState = agentImageState == null ? Optional.empty() : agentImageState;
     fabricBridgeParent = fabricBridgeParent == null ? Optional.empty() : fabricBridgeParent;
     incusIdentity = incusIdentity == null ? Optional.empty() : incusIdentity;
     operatorPki = operatorPki == null ? Optional.empty() : operatorPki;
@@ -108,6 +115,7 @@ public record ManifestSynthesisRequest(
         .bootstrapIdentity(bootstrapIdentity)
         .componentVersions(componentVersions)
         .imageState(imageState)
+        .agentImageState(agentImageState)
         .fabricBridgeParent(fabricBridgeParent)
         .incusIdentity(incusIdentity)
         .operatorPki(operatorPki)
@@ -242,6 +250,7 @@ public record ManifestSynthesisRequest(
     private BootstrapIdentity bootstrapIdentity = BootstrapIdentity.unknown();
     private ComponentVersions componentVersions = ComponentVersions.defaults();
     private Optional<ImageState> imageState = Optional.empty();
+    private Optional<ImageState> agentImageState = Optional.empty();
     private Optional<String> fabricBridgeParent = Optional.empty();
     private Optional<IncusIdentityMaterial> incusIdentity = Optional.empty();
     private Optional<AdminCredentials> operatorPki = Optional.empty();
@@ -287,6 +296,11 @@ public record ManifestSynthesisRequest(
 
     public Builder imageState(final Optional<ImageState> v) {
       this.imageState = v;
+      return this;
+    }
+
+    public Builder agentImageState(final Optional<ImageState> v) {
+      this.agentImageState = v;
       return this;
     }
 
@@ -354,6 +368,7 @@ public record ManifestSynthesisRequest(
           bootstrapIdentity,
           componentVersions,
           imageState,
+          agentImageState,
           fabricBridgeParent,
           incusIdentity,
           operatorPki,

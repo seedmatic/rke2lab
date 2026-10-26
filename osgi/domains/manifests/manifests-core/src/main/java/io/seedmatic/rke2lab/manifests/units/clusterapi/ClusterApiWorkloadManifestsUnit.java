@@ -214,6 +214,14 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
     // The realised image, described to the cluster that boots on it — the pool references it by
     // name.
     renderer.nodeImage(scope, cluster, namespace, image, packageProfile, namespaceObject);
+    // The AGENT image beside it, which this cluster's worker pools name; absent when the grow built
+    // none, and then no agent NodeImage describes nothing.
+    ManifestSynthesisContext.current()
+        .agentImageState()
+        .ifPresent(
+            agent ->
+                renderer.nodeImage(
+                    scope, cluster, namespace, agent, packageProfile, namespaceObject));
     // The 2×2 intent: ONE cluster-level ClusterIntention + N pool-level PoolIntention (here just
     // the
     // control-node pool; worker pools are a follow-up). Both are Flux-owned and Flux-pruned;

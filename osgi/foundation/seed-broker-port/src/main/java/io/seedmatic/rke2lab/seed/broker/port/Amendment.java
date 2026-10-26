@@ -70,6 +70,12 @@ public @interface Amendment {
   String IMAGE_STATE = "image-state";
 
   /**
+   * The AGENT node image's identity, the same shape as {@link #IMAGE_STATE}: the base image the
+   * grow builds beside the server's, which worker pools boot. Unsown when the grow built none.
+   */
+  String AGENT_IMAGE_STATE = "agent-image-state";
+
+  /**
    * The public funnel endpoint URL — the Tailscale funnel FQDN ({@code
    * https://<leaf>.<tailnet>.ts.net}) a domain must point an external callback at. Only the host
    * holds it: the MagicDNS leaf is a shared manifest constant, but the tailnet suffix is

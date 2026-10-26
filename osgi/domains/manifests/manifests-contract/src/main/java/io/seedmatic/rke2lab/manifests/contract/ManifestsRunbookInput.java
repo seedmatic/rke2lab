@@ -46,6 +46,8 @@ import java.util.Optional;
  *       {@code LXCMachineTemplate} image and the {@code RKE2ControlPlane} version from it. {@link
  *       Optional#empty()} when unsown (a bare survey / a render with no image built) — the image
  *       units then no-op.
+ *   <li>{@link Amendment#AGENT_IMAGE_STATE} — {@link #agentImage} is the AGENT image's identity,
+ *       the same shape, which worker pools boot; empty when the grow built none.
  * </ul>
  *
  * <p>Because the host only fills amendments by role, ALL the domain knowledge lives in the scion
@@ -62,7 +64,8 @@ public record ManifestsRunbookInput(
     @Amendment(Amendment.SOIL) Optional<String> materializationRoot,
     @Amendment(Amendment.IDENTITY) Optional<Identity> identity,
     @Amendment(Amendment.RENDER_MODE) Optional<RenderMode> renderMode,
-    @Amendment(Amendment.IMAGE_STATE) Optional<ImageState> image) {
+    @Amendment(Amendment.IMAGE_STATE) Optional<ImageState> image,
+    @Amendment(Amendment.AGENT_IMAGE_STATE) Optional<ImageState> agentImage) {
 
   public static Builder builder() {
     return new Builder();
@@ -99,6 +102,7 @@ public record ManifestsRunbookInput(
     private Optional<Identity> identity = Optional.empty();
     private Optional<RenderMode> renderMode = Optional.empty();
     private Optional<ImageState> image = Optional.empty();
+    private Optional<ImageState> agentImage = Optional.empty();
 
     private Builder() {}
 
@@ -127,8 +131,14 @@ public record ManifestsRunbookInput(
       return this;
     }
 
+    public Builder agentImage(ImageState agentImage) {
+      this.agentImage = Optional.of(agentImage);
+      return this;
+    }
+
     public ManifestsRunbookInput build() {
-      return new ManifestsRunbookInput(facets, materializationRoot, identity, renderMode, image);
+      return new ManifestsRunbookInput(
+          facets, materializationRoot, identity, renderMode, image, agentImage);
     }
   }
 

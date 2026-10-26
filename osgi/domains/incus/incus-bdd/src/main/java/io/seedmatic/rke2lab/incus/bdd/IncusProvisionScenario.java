@@ -496,8 +496,12 @@ public class IncusProvisionScenario
       // plan with) + the nix-emitted rke2.version — so the workload CRs pin the exact image the
       // master
       // booted and its RKE2 version. Absent for a survey / a run that built no artifacts.
-      imageStateAmendment(facet, image, worktreeRoot, source)
+      imageStateAmendment(facet, image.map(Image::alias), image, worktreeRoot, source)
           .ifPresent(node -> roleValues.set(Amendment.IMAGE_STATE, node));
+      // The AGENT image beside it, which the worker pools boot, built by the same grow under its
+      // own alias and read from its own artifact dir; unsown when its artifacts are not there.
+      imageStateAmendment(facet, image.map(Image::agentAlias), image, worktreeRoot, source)
+          .ifPresent(node -> roleValues.set(Amendment.AGENT_IMAGE_STATE, node));
       final SeedEnvelope amended =
           broker
               .orElseThrow()
@@ -538,10 +542,12 @@ public class IncusProvisionScenario
      */
     private Optional<ObjectNode> imageStateAmendment(
         Optional<Facet> maybeFacet,
+        Optional<String> maybeAlias,
         Optional<Image> maybeImage,
         Optional<Path> maybeWorktreeRoot,
         Optional<NodeBaseSource> maybeSource) {
       if (maybeFacet.isEmpty()
+          || maybeAlias.filter(alias -> !alias.isBlank()).isEmpty()
           || maybeImage.isEmpty()
           || maybeWorktreeRoot.isEmpty()
           || maybeSource.isEmpty()) {
@@ -552,7 +558,7 @@ public class IncusProvisionScenario
       final Path worktreeRoot = maybeWorktreeRoot.orElseThrow();
       final GrowImageView view =
           new GrowPlanAssembler(
-                  image.alias(),
+                  maybeAlias.orElseThrow(),
                   image.builderBinary(),
                   imageBuilder.orElseThrow().recipeDigest(),
                   maybeSource.orElseThrow().digest(),
