@@ -10,6 +10,12 @@
   ...
 }:
 {
+  # No installer channel: lxc-container.nix imports the installer's channel.nix, which copies all of nixpkgs
+  # (324 MiB, 52 923 files) into a channel tarball, points the node's `nixpkgs` registry entry at it and adds
+  # nix-channel-init. A node evaluates flakes only (`nix run github:…`), and every evaluation of the system paid
+  # that copy (measured 2026-10-26, nix eval -vv of config.warnings).
+  system.installer.channel.enable = false;
+
   # NOT translated here (handled elsewhere on purpose):
   #   - access-tokens (github.com=<secret>): a secret → injected per-node via sops-nix, never baked.
   #   - extra-platforms=aarch64-darwin + the hardcoded qemu-x86_64-binfmt sandbox path: a Mac /

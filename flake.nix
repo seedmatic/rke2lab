@@ -1485,7 +1485,7 @@
             # runs INSIDE cloud-init-local, no unit of its own, and rke2-server requires cloud-init.
             node-cloud-init-seed-bound =
               let
-                services = self.nixosConfigurations.rke2-node-base.config.systemd.services;
+                services = self.nixosConfigurations.rke2-node-server.config.systemd.services;
                 pre = services.cloud-init-local.serviceConfig.ExecStartPre or [ ];
                 seeded = builtins.any (cmd: pkgs.lib.hasInfix "rke2lab-cloud-init-seed" "${cmd}") (pkgs.lib.toList pre);
                 faults =
@@ -1504,48 +1504,74 @@
                     exit 1
                   ''
               );
-            # The agent image runs rke2 as an agent: its unit is rke2-agent, no rke2-server is left for CAPRKE2 to enable
-            # by mistake, every unit node-base orders before rke2 is ordered before rke2-agent, and no server-only flag
-            # (--disable, --cni) reaches `rke2 agent`. Its mutant is node-base itself, which must fail every fault.
-            node-agent-units =
+            # The node image tree: node-base is an agent and carries nothing of the server (no rke2-server, no
+            # server-only flag, no CA set, no root config installer); the server is node-base plus that layer, and every
+            # unit node-base requires before rke2 is required by the role's unit on both. Each image is the other's
+            # mutant. It reads options only: no warnings (the systemd module reads every unit, which instantiates the
+            # whole system) and no configuration of its own.
+            node-image-tree =
               let
-                faultsOf =
+                base = self.nixosConfigurations.rke2-node-base;
+                server = self.nixosConfigurations.rke2-node-server;
+                serverOnly = [
+                  "sops-install-secrets"
+                  "rke2lab-rke2-config"
+                ];
+                # The installer channel copies all of nixpkgs at every evaluation of the system (./nixos/nix-env.nix).
+                channel =
+                  c: pkgs.lib.optional c.config.system.installer.channel.enable "the installer channel is on";
+                beforeRke2 =
+                  c:
+                  builtins.attrNames (
+                    pkgs.lib.filterAttrs (
+                      _: s: builtins.elem c.config.rke2lab.rke2Unit (s.requiredBy or [ ])
+                    ) c.config.systemd.services
+                  );
+                agentFaults =
                   c:
                   let
                     services = c.config.systemd.services;
                     agent = services.rke2-agent or { };
-                    exec = agent.serviceConfig.ExecStart or "";
-                    beforeRke2 = pkgs.lib.filterAttrs (
-                      _: s: builtins.elem "rke2-server.service" (s.requiredBy or [ ])
-                    ) self.nixosConfigurations.rke2-node-base.config.systemd.services;
-                    lost = builtins.filter (
-                      n: !(builtins.elem "rke2-agent.service" (services.${n}.requiredBy or [ ]))
-                    ) (builtins.attrNames beforeRke2);
                   in
                   pkgs.lib.optional (!(services ? rke2-agent)) "no rke2-agent unit"
-                  ++ pkgs.lib.optional (services ? rke2-server) "an rke2-server unit is left"
-                  ++ pkgs.lib.optional (lost != [ ]) "not required by rke2-agent: ${toString lost}"
-                  ++ pkgs.lib.optional (pkgs.lib.hasInfix "--disable" exec) "a server-only --disable flag"
-                  ++ pkgs.lib.optional (
-                    !(builtins.elem "cloud-init.service" (agent.requires or [ ]))
-                  ) "rke2-agent does not require cloud-init.service"
-                  ++ pkgs.lib.optional (c.config.warnings != [ ]) "warnings: ${toString c.config.warnings}";
-                faults = faultsOf self.nixosConfigurations.rke2-node-agent;
-                mutant = faultsOf self.nixosConfigurations.rke2-node-base;
-                flagged = faultsOf (
-                  self.nixosConfigurations.rke2-node-agent.extendModules {
-                    modules = [ { services.rke2.extraFlags = [ "--disable=rke2-ingress-nginx" ]; } ];
-                  }
-                );
+                  ++ pkgs.lib.optional (services ? rke2-server) "an rke2-server unit"
+                  ++ pkgs.lib.optional (builtins.any (pkgs.lib.hasPrefix "--disable") c.config.services.rke2.extraFlags) "a server-only --disable flag"
+                  ++ pkgs.lib.optional (c.config.services.rke2.cni != null) "a CNI on an agent"
+                  ++ pkgs.lib.optional (c.config ? sops) "a sops CA set"
+                  ++ builtins.map (n: "server-only unit ${n}") (builtins.filter (n: services ? ${n}) serverOnly)
+                  ++ pkgs.lib.optional (!(builtins.elem "cloud-init.service" (agent.requires or [ ]))) "rke2-agent does not require cloud-init.service"
+                  ++ channel c;
+                serverFaults =
+                  c:
+                  let
+                    services = c.config.systemd.services;
+                    lost = builtins.filter (n: !(builtins.elem n (beforeRke2 c))) (beforeRke2 base);
+                    missing = builtins.filter (n: !(services ? ${n})) serverOnly;
+                  in
+                  pkgs.lib.optional (!(services ? rke2-server)) "no rke2-server unit"
+                  ++ pkgs.lib.optional (lost != [ ]) "not required by rke2-server: ${toString lost}"
+                  ++ pkgs.lib.optional (missing != [ ]) "server layer units missing: ${toString missing}"
+                  ++ pkgs.lib.optional (c.config.services.rke2.cni != "cilium") "the server deploys no cilium"
+                  ++ channel c;
+                faults = agentFaults base ++ serverFaults server;
+                # Each image is the other's mutant: the server must fail every agent fault, the base every server one.
+                flagged = agentFaults server;
+                swapped = serverFaults base;
+                wanted = [
+                  "an rke2-server unit"
+                  "a server-only --disable flag"
+                  "a CNI on an agent"
+                  "a sops CA set"
+                ];
               in
-              pkgs.runCommand "node-agent-units" { } (
-                if faults == [ ] && builtins.length mutant >= 4 && flagged == [ "a server-only --disable flag" ] then
+              pkgs.runCommand "node-image-tree" { } (
+                if faults == [ ] && builtins.all (f: builtins.elem f flagged) wanted && builtins.length swapped >= 3 then
                   "touch $out"
                 else
                   ''
-                    printf 'agent: %s\n' ${pkgs.lib.escapeShellArgs faults} >&2
-                    printf 'mutant (node-base) caught only: %s\n' ${pkgs.lib.escapeShellArgs mutant} >&2
-                    printf 'mutant (a --disable flag) caught: %s\n' ${pkgs.lib.escapeShellArgs flagged} >&2
+                    printf 'fault: %s\n' ${pkgs.lib.escapeShellArgs faults} >&2
+                    printf 'mutant (the server as the base) caught: %s\n' ${pkgs.lib.escapeShellArgs flagged} >&2
+                    printf 'mutant (the base as the server) caught: %s\n' ${pkgs.lib.escapeShellArgs swapped} >&2
                     exit 1
                   ''
               );
@@ -1662,16 +1688,19 @@
         };
         modules = [
           "${nixpkgs}/nixos/modules/virtualisation/lxc-container.nix"
-          sops-nix.nixosModules.sops
           ./nixos
         ];
       };
 
-      # The workload node: node-base as an rke2 AGENT, for the worker pools CAPRKE2 births from an RKE2ConfigTemplate
-      # (its bootstrap enables `rke2-agent`, the unit this role names). Same substrate, same units, ordered against
-      # rke2-agent instead of rke2-server.
-      nixosConfigurations.rke2-node-agent = self.nixosConfigurations.rke2-node-base.extendModules {
-        modules = [ ./nixos/agent.nix ];
+      # The node image tree: node-base is the AGENT every node starts from (the worker pools CAPRKE2 births from an
+      # RKE2ConfigTemplate enable its `rke2-agent`); each role or project only ADDS to it. The server is node-base plus
+      # the server layer, and it is the image the grow imports under the `node-base` alias, for the root and every
+      # control plane.
+      nixosConfigurations.rke2-node-server = self.nixosConfigurations.rke2-node-base.extendModules {
+        modules = [
+          sops-nix.nixosModules.sops
+          ./nixos/server.nix
+        ];
       };
 
       # Flat, system-independent export (no `lib.${system}` selector): the data is the same

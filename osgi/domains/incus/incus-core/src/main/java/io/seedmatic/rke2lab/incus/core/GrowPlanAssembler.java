@@ -71,7 +71,7 @@ public final class GrowPlanAssembler {
    * The image-cache key the host poses on {@code user.rke2lab.imageBuildChecksum}: SHA-256 of the
    * edge {@code recipeDigest} (the build METHOD — how nix is invoked) folded with the two image
    * scalars AND the {@code imageSourceDigest} (the build CONTENT — the committed tree of what
-   * {@code nixosConfigurations.rke2-node-base} evaluates, the SAME digest the build script's
+   * {@code nixosConfigurations.rke2-node-server} evaluates, the SAME digest the build script's
    * freshness gate reads). Committing an edit to {@code node-base.nix} or a {@code flake.lock} bump
    * moves the checksum and {@code replaceOnChanges} recreates the instance onto the new image.
    */

@@ -43,7 +43,7 @@ else
     # The homogeneous NixOS substrate every RKE2 node boots from. Build its two Incus artifacts: nix
     # realises them into /nix/store (local, content-addressed) — no tmpfs scratch and no root, unlike
     # distrobuilder. Only the two finished files are published below.
-    attr="nixosConfigurations.rke2-node-base.config.system.build"
+    attr="nixosConfigurations.rke2-node-server.config.system.build"
 
     # Cross-build the aarch64-linux node-base artifacts from this (possibly darwin)
     # host: `--system aarch64-linux` + `--max-jobs 0` force every derivation onto the
@@ -86,7 +86,7 @@ else
     # RKE2ControlPlane.spec.version derives. `nix eval` takes only the eval flags — the build-only
     # --no-link / --print-out-paths / --max-jobs would be rejected.
     rke2_version="$("$nix_bin" eval --raw \
-        "$flake_ref#nixosConfigurations.rke2-node-base.config.services.rke2.package.version")"
+        "$flake_ref#nixosConfigurations.rke2-node-server.config.services.rke2.package.version")"
     printf '%s\n' "$rke2_version" >"$rke2_version_file"
 fi
 

@@ -19,7 +19,7 @@ import java.util.regex.Pattern;
  */
 record NodeBaseSource(BuildRevision revision, String flakeRef, String digest) {
 
-  /** The paths {@code nixosConfigurations.rke2-node-base} evaluates from. */
+  /** The paths {@code nixosConfigurations.rke2-node-server} evaluates from. */
   static final List<String> BUILD_INPUTS = List.of("flake.lock", "flake.nix", "nixos");
 
   private static final Pattern BY_REVISION =
