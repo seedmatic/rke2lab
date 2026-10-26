@@ -25,6 +25,14 @@
       <groupId>io.seedmatic.rke2lab</groupId>
       <artifactId>seed-broker-codec</artifactId>
     </dependency>
+    <!-- The codec needs the port's types at run time (Breadcrumb); the contract brings them as
+         provided, which does not reach this module's tests. Test scope: the bundle's wiring is
+         unchanged. -->
+    <dependency>
+      <groupId>io.seedmatic.rke2lab</groupId>
+      <artifactId>seed-broker-port</artifactId>
+      <scope>test</scope>
+    </dependency>
     <!-- The domain contract: the seal's output records (ClusterCaBundle, ClusterAgeKey) + the
          SopsEncryptor seam it drives. -->
     <dependency>

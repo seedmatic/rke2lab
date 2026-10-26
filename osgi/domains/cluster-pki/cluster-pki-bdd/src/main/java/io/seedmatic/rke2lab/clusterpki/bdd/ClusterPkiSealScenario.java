@@ -183,12 +183,16 @@ public class ClusterPkiSealScenario
         @Hidden SopsEncryptor encryptor,
         @Hidden SopsDecryptor decryptor,
         @Hidden List<String> workloadClusters) {
-      final ClusterSeal seal = new ClusterSeal(keystore, clusterAge, encryptor);
+      final ClusterSeal seal = ClusterSeal.of(keystore, clusterAge, encryptor);
       final Optional<ClusterCaBundle> existing =
           cellar.fetch(parcel, ClusterPkiCoordinate.CLUSTER_CA_BUNDLE, ClusterCaBundle.class);
       if (existing.isEmpty()) {
         this.sealed = Optional.of(seal.seal());
       } else {
+        // The identity on fd 3 must be the one the kept bundle was filed under, and a recipient.
+        cellar
+            .fetch(parcel, ClusterPkiCoordinate.CLUSTER_AGE_KEY, ClusterAgeKey.class)
+            .ifPresent(seal::checkKept);
         // CA KEPT (never re-minted — stability). Re-file the admin credentials so their reach
         // CONVERGES to the current declaration (IN_CLUSTER): a prior grow sealed them
         // OPERATOR_ONLY,
