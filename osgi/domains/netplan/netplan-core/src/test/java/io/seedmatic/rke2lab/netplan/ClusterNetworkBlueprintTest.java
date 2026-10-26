@@ -28,12 +28,12 @@ class ClusterNetworkBlueprintTest {
             .deriveRecipeModel()
             .build();
 
-    // nikopol-mgmt packs clusterId (host<<1)|role = (1<<1)|0 = 2 (see the cluster addressing plan).
-    assertEquals(2, blueprint.cluster().id());
-    assertEquals("10.80.16.0/21", blueprint.host().clusterCidr().toString());
-    assertEquals("10.80.16.1", blueprint.host().clusterGatewayInetaddr().getHostAddress());
-    assertEquals("10.80.16.10", blueprint.nodeNetwork().nodeHostInetaddr().getHostAddress());
-    assertEquals("52:54:00:02:00:00", blueprint.wan().hostMacaddr().value());
+    // nikopol-mgmt packs clusterId (host<<2)|role = (1<<2)|0 = 4 (see the netplan atlas).
+    assertEquals(4, blueprint.cluster().id());
+    assertEquals("10.80.32.0/21", blueprint.host().clusterCidr().toString());
+    assertEquals("10.80.32.1", blueprint.host().clusterGatewayInetaddr().getHostAddress());
+    assertEquals("10.80.32.10", blueprint.nodeNetwork().nodeHostInetaddr().getHostAddress());
+    assertEquals("52:54:00:04:00:00", blueprint.wan().hostMacaddr().value());
   }
 
   @Test
@@ -45,26 +45,26 @@ class ClusterNetworkBlueprintTest {
             .deriveRecipeModel()
             .build();
 
-    // /48 super ⊃ /56 cluster (CC=02) ⊃ /64 per role — byte-boundary mirror of the IPv4 hierarchy.
+    // /48 super ⊃ /56 cluster (CC=04) ⊃ /64 per role — byte-boundary mirror of the IPv4 hierarchy.
     assertEquals(48, blueprint.host().superNetworkCidr6().prefixLength());
     assertEquals(
         InetAddress.getByName("fd96:6924:3693::"),
         blueprint.host().superNetworkCidr6().networkAddress());
     assertEquals(56, blueprint.host().clusterCidr6().prefixLength());
     assertEquals(
-        InetAddress.getByName("fd96:6924:3693:200::"),
+        InetAddress.getByName("fd96:6924:3693:400::"),
         blueprint.host().clusterCidr6().networkAddress());
     assertEquals(64, blueprint.nodeNetwork().nodeCidr6().prefixLength());
     assertEquals(
-        InetAddress.getByName("fd96:6924:3693:220::"),
+        InetAddress.getByName("fd96:6924:3693:420::"),
         blueprint.nodeNetwork().nodeCidr6().networkAddress());
 
     // Each host embeds its IPv4 verbatim in the low 32 bits, so v4↔v6 is inferable by inspection.
     assertEquals(
-        InetAddress.getByName("fd96:6924:3693:220::10.80.16.10"),
+        InetAddress.getByName("fd96:6924:3693:420::10.80.32.10"),
         blueprint.nodeNetwork().nodeHostInetaddr6());
     assertEquals(
-        InetAddress.getByName("fd96:6924:3693:250::172.16.16.1"),
+        InetAddress.getByName("fd96:6924:3693:450::172.16.16.1"),
         blueprint.fabric().gatewayInetaddr6());
   }
 
@@ -93,7 +93,7 @@ class ClusterNetworkBlueprintTest {
   void deriveRecipeModel_forTheReservedTestCluster_carvesSlot33() {
     // The blank/unknown cluster identity falls back to the reserved "test-mgmt" cluster
     // (DefaultNodeEnvContext), which must derive a valid, distinct slice — NOT overflow the octet.
-    // test hostId 2, mgmt roleId 0 -> slot 2*16 + 1 = 33; clusterId (2<<1)|0 = 4.
+    // test hostId 2, mgmt roleId 0 -> slot 2*16 + 1 = 33; clusterId (2<<2)|0 = 8.
     ClusterNetworkBlueprint blueprint =
         ClusterNetworkBlueprint.builder()
             .cluster("test-mgmt")
@@ -101,7 +101,7 @@ class ClusterNetworkBlueprintTest {
             .deriveRecipeModel()
             .build();
 
-    assertEquals(4, blueprint.cluster().id());
+    assertEquals(8, blueprint.cluster().id());
     assertEquals("172.16.33.0/26", blueprint.fabric().nodeCidr().toString());
     assertEquals("172.16.33.64/26", blueprint.fabric().lbCidr().toString());
     assertEquals("172.16.32.1", blueprint.fabric().gatewayInetaddr().getHostAddress());

@@ -100,26 +100,31 @@ public record ClusterNetworkBlueprint(
    * Pod / Service CIDRs — PER-CLUSTER, a pure function of {@code clusterId} (see the cluster
    * addressing plan). Under one cluster these were global constants (10.42/10.43); with four
    * clusters sharing each host's L2 fabric they MUST be globally disjoint or pod routes collide on
-   * the bridge, so every span is {@code f(clusterId)}: pod {@code 10.<44+id>.0.0/16}, service
-   * {@code 10.<48+id>.0.0/16}. The v6 halves mirror the v4 index (digits match: pod {@code 10.44} ↔
-   * {@code fd00:44}). Cilium {@code routingMode: native} REQUIRES the v6 native-routing CIDR
+   * the bridge, so every span is {@code f(clusterId)}: pod {@code 10.<32+id>.0.0/16}, service
+   * {@code 10.<40+id>.0.0/16}. The v6 halves mirror the v4 index (digits match: pod {@code 10.32} ↔
+   * {@code fd00:32}). Cilium {@code routingMode: native} REQUIRES the v6 native-routing CIDR
    * whenever v6 is enabled, and the node bakes the dual-stack {@code cluster-cidr} from {@link
    * #podCidrDualStack()} — so these track the nix {@code cluster-cidr}, both derived here.
+   *
+   * <p>The bands themselves, and why they are disjoint, are {@link ClusterBands}'s.
    */
+  /** The pod and service bands the fleet's clusters draw from. */
+  public static final ClusterBands BANDS = ClusterBands.defaults();
+
   public String podCidr() {
-    return "10." + (44 + cluster().id()) + ".0.0/16";
+    return BANDS.podCidr(cluster().id());
   }
 
   public String serviceCidr() {
-    return "10." + (48 + cluster().id()) + ".0.0/16";
+    return BANDS.serviceCidr(cluster().id());
   }
 
   public String podCidrV6() {
-    return "fd00:" + (44 + cluster().id()) + "::/56";
+    return BANDS.podCidrV6(cluster().id());
   }
 
   public String serviceCidrV6() {
-    return "fd00:" + (48 + cluster().id()) + "::/112";
+    return BANDS.serviceCidrV6(cluster().id());
   }
 
   /** The dual-stack {@code cluster-cidr} the node bakes (nix drop-in + rke2 config fragment). */
@@ -179,6 +184,15 @@ public record ClusterNetworkBlueprint(
 
   private static final int FABRIC_SLOTS_PER_HOST = 16;
 
+  /** The role's share of {@code clusterId}: two bits, four roles. */
+  private static final int ROLE_BITS = 2;
+
+  /**
+   * Every cluster's vmnet {@code /21}, at {@code 10.80.<clusterId*8>}: 32 clusters × 8 fill it
+   * exactly. Each node routes it via its vmnet gateway to reach its sibling clusters.
+   */
+  private static final String VMNET_SUPERNET = "10.80.0.0/16";
+
   private static final int ROLE_NODE = 0x20;
   private static final int ROLE_VIP = 0x30;
   private static final int ROLE_LB = 0x40;
@@ -210,7 +224,9 @@ public record ClusterNetworkBlueprint(
 
     final int hostId = hostId(hostOf(clusterName));
     final int roleId = ClusterRole.of(clusterName).ordinal();
-    final int clusterId = (hostId << 1) | roleId;
+    // A full byte, the width the ULA plane already formats (%02x): six bits of host, two of role,
+    // so 8 hosts × 4 roles. Two bits leave room for a role beyond mgmt and wrkld.
+    final int clusterId = (hostId << ROLE_BITS) | roleId;
 
     final int nodeId = nodeId(nodeName);
     final NodeType nodeType = nodeType(nodeName);
@@ -326,7 +342,7 @@ public record ClusterNetworkBlueprint(
         new ClusterRef(clusterName, clusterId),
         new NodeRef(nodeName, nodeId, nodeType),
         new HostPlan(
-            Cidr.parse("10.80.0.0/18"),
+            Cidr.parse(VMNET_SUPERNET),
             clusterCidr,
             clusterGatewayInetaddr,
             superNetworkCidr6,
