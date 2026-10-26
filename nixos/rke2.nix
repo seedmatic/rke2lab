@@ -54,7 +54,12 @@
   # config.yaml.d drop-ins (below) + sops CA (./sops.nix), and a CAPRKE2 workload node's own
   # /etc/rancher/rke2/config.yaml (token + server URL, write_files in cloud-init.service). Without this
   # gate the wantedBy=multi-user rke2-server could start config-less and mis-cluster-init.
+  #
+  # `requires`, not only `after`: ordering waits for cloud-init to END, not to SUCCEED. On T4's first boot
+  # (2026-10-26) cloud-init found no datasource, failed, and rke2-server cluster-inited with defaults (no
+  # tls-san, the default CIDRs), which no later config can undo. A failed cloud-init now stops rke2.
   systemd.services.rke2-server.after = [ "cloud-init.service" ];
+  systemd.services.rke2-server.requires = [ "cloud-init.service" ];
 
   # The rke2 config installer for the self/root control-plane node. The per-cluster config (dual-stack
   # CIDRs, tls-san incl. the VIP) is rendered per (cluster × pool) onto the management branch by
