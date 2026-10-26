@@ -384,7 +384,9 @@ public final class ClusterApiCrRenderer {
     final ApiObject nodeImage =
         new ApiObject(
             scope,
-            "nodeimage-" + cluster,
+            // Keyed by the NAME (cluster + alias): a cluster has one NodeImage per image, the
+            // server's and the agent's, and two keyed on the cluster alone collide.
+            "nodeimage-" + name,
             ApiObjectProps.builder()
                 .apiVersion("cluster.seedmatic.io/v1alpha1")
                 .kind("NodeImage")

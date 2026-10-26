@@ -116,6 +116,14 @@ public final class ClusterApiManagementManifestsUnit extends AbstractManifestsUn
     // The realised image, described to the cluster that boots on it — the pool references it by
     // name.
     renderer.nodeImage(scope, cluster, namespace, image, packageProfile, namespaceObject);
+    // The AGENT image beside it, which this cluster's worker pools name; absent when the grow built
+    // none, and then no agent NodeImage describes nothing.
+    ManifestSynthesisContext.current()
+        .agentImageState()
+        .ifPresent(
+            agent ->
+                renderer.nodeImage(
+                    scope, cluster, namespace, agent, packageProfile, namespaceObject));
     // The 2×2 intent for the mgmt cluster's SELF-adoption: a cluster-level ClusterIntention + a
     // single-pet control-node PoolIntention (a management cluster is ONE control node). kind =
     // management records the federated role (birthed/adopted identically to a workload).

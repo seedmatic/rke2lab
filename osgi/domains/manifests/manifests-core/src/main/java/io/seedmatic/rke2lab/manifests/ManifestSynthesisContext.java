@@ -253,6 +253,11 @@ public final class ManifestSynthesisContext {
     return request.imageState();
   }
 
+  /** The AGENT node image, which worker pools boot; empty when the grow built none. */
+  public Optional<ImageState> agentImageState() {
+    return request.agentImageState();
+  }
+
   public Optional<IncusIdentityMaterial> incusIdentity() {
     return request.incusIdentity();
   }
