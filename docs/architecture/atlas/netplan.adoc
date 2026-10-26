@@ -139,8 +139,8 @@ flowchart TB
 
 | `10.0.0.0/8`
 | 24
-| *Cluster internals.* Pods `10.44-10.47`, services `10.48-10.51`, the vmnet supernet `10.80.0.0/18`.
-  Untouched by this migration — it is the plane that was never the problem.
+| *Cluster internals.* Pods `10.128-10.159`, services `10.160-10.191`, the vmnet supernet `10.80.0.0/16`
+  (re-based by <<fleet-ceiling>>, 2026-10-26). Untouched by this migration.
 
 | `100.64.0.0/10`
 | 22
@@ -156,7 +156,7 @@ so `hostId` has to be a term *inside* the address (`128 + hostId*48 + roleId*16`
 `ClusterNetworkBlueprint.java:186`), and a single-node management cluster is squeezed into a `/29`. The
 AFTER stops carving and starts *deriving*: the fabric slice is a pure function of the cluster name,
 through the composition the blueprint already uses for everything else —
-`clusterId = (hostId << 1) | roleId` (`ClusterNetworkBlueprint.java:163`), the same source that
+`clusterId = (hostId << ROLE_BITS) | roleId` (`ClusterNetworkBlueprint.derive`), the same source that
 generates the vmnet plane (`10.80.<clusterId*8>.0/21`), the ULA mirror
 (`fd96:6924:3693:<clusterId><role>::/64`) and the MACs (`10:66:6a:4c:<clusterId>:<nodeId>`). The
 `172.16` plane is the last one still outside that rule.
@@ -314,6 +314,15 @@ merely stretch them.
 ====
 
 === The fix: make `clusterId` an explicit bit-field, then size every plane from it
+
+[NOTE]
+====
+*Shipped (2026-10-26, the operator's choice for the T4 cold start).* `ROLE_BITS = 2`, the vmnet supernet
+`10.80.0.0/16`, and the pod and service bands in `ClusterBands` (`ClusterBands.defaults()`: pod
+`10.<128+id>`, service `10.<160+id>`, 32 ids each). `ClusterSpansDoNotOverlapTest` checks every declared
+cluster and every id a byte-wide `clusterId` names, and that each vmnet lies in the supernet. bioskop's
+clusters keep 0 and 1; nikopol's move to 4 and 5. The sections below are the argument, kept as written.
+====
 
 The disagreement exists because `clusterId = (hostId << 1) | roleId` packs the two coordinates as
 tightly as today's counts allow — one bit for the role, because there are exactly two roles. That is the

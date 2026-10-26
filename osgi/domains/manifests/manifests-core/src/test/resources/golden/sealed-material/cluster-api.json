@@ -62,10 +62,10 @@
       "clusterName": "bioskop-mgmt",
       "clusterNetwork": {
         "podCIDRs": [
-          "10.44.0.0/16"
+          "10.128.0.0/16"
         ],
         "serviceCIDRs": [
-          "10.48.0.0/16"
+          "10.160.0.0/16"
         ],
         "serviceDomain": "cluster.local"
       },
@@ -285,10 +285,10 @@
       "clusterName": "bioskop-wrkld",
       "clusterNetwork": {
         "podCIDRs": [
-          "10.45.0.0/16"
+          "10.129.0.0/16"
         ],
         "serviceCIDRs": [
-          "10.49.0.0/16"
+          "10.161.0.0/16"
         ],
         "serviceDomain": "cluster.local"
       },
@@ -498,15 +498,15 @@
       "clusterName": "nikopol-mgmt",
       "clusterNetwork": {
         "podCIDRs": [
-          "10.46.0.0/16"
+          "10.132.0.0/16"
         ],
         "serviceCIDRs": [
-          "10.50.0.0/16"
+          "10.164.0.0/16"
         ],
         "serviceDomain": "cluster.local"
       },
       "controlPlaneEndpoint": {
-        "host": "10.80.23.10",
+        "host": "10.80.39.10",
         "port": 6443
       },
       "kind": "management",
@@ -532,7 +532,7 @@
       "adoptedBy": "bioskop-mgmt",
       "clusterRef": "nikopol-mgmt",
       "controlPlaneEndpoint": {
-        "host": "10.80.23.10",
+        "host": "10.80.39.10",
         "port": 6443
       },
       "devices": [
@@ -705,15 +705,15 @@
       "clusterName": "nikopol-wrkld",
       "clusterNetwork": {
         "podCIDRs": [
-          "10.47.0.0/16"
+          "10.133.0.0/16"
         ],
         "serviceCIDRs": [
-          "10.51.0.0/16"
+          "10.165.0.0/16"
         ],
         "serviceDomain": "cluster.local"
       },
       "controlPlaneEndpoint": {
-        "host": "10.80.31.10",
+        "host": "10.80.47.10",
         "port": 6443
       },
       "kind": "workload",
@@ -739,7 +739,7 @@
       "adoptedBy": "nikopol-mgmt",
       "clusterRef": "nikopol-wrkld",
       "controlPlaneEndpoint": {
-        "host": "10.80.31.10",
+        "host": "10.80.47.10",
         "port": 6443
       },
       "devices": [
