@@ -13,7 +13,7 @@ spec:
   clusterRef: nikopol-wrkld
   namespace: rke2lab-nikopol-wrkld
   nodes:
-  - name: nikopol-wrkld-control-plane-s8rbf
+  - name: nikopol-wrkld-control-plane-jr98c
   pool: control-node
 status:
   lastReflectTime: null
