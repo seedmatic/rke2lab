@@ -361,6 +361,7 @@ public class ClusterSeedScenario
       // below.)
       final ObjectNode imageScalars = JsonNodeFactory.instance.objectNode();
       imageScalars.put("alias", run.config().imageAlias());
+      imageScalars.put("agentAlias", run.config().agentImageAlias());
       imageScalars.put("builderBinary", run.config().imageBuilderBinary());
       this.imageScalars = imageScalars;
       // The host GROW derives the instance mounts + provider context from the run's config.

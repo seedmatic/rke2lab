@@ -24,6 +24,7 @@ public record BootstrapConfig(
     URI incusClusterAddress,
     Path incusConfigFolder,
     String imageAlias,
+    String agentImageAlias,
     String fabricBridgeParent,
     String tailnet,
     URI apiEndpoint,
@@ -40,9 +41,13 @@ public record BootstrapConfig(
   private static final String DEFAULT_ROLE = "mgmt";
   private static final String DEFAULT_NODE_NAME = "master";
   private static final String DEFAULT_INCUS_PROJECT = "rke2lab";
-  // The one seed image's incus alias — the host adopts the built image by it. Single source here;
-  // the build script (build-node-base-image.sh) hardcodes the SAME literal on the import side.
+  // The node images' incus aliases, single source here: the server's (the root and every control
+  // plane), which
+  // the host adopts the built image by, and the agent's (the worker pools). Renaming node-base
+  // waits for the
+  // regrow defect: an alias the daemon holds is how a grow finds its image.
   private static final String IMAGE_ALIAS = "node-base";
+  private static final String AGENT_IMAGE_ALIAS = "node-agent";
   private static final String DEFAULT_FABRIC_BRIDGE_PARENT = "fabric-br";
   // The tailscale tailnet DNS suffix. Resolvable host addresses use the MagicDNS FQDN
   // <host>.<tailnet> so they route over the tailscale overlay (stable across the physical LAN),
@@ -128,6 +133,7 @@ public record BootstrapConfig(
         URI.create("https://" + nixosFabricHost + ":8443"),
         config.incus().configDir(),
         IMAGE_ALIAS,
+        AGENT_IMAGE_ALIAS,
         config.network().fabricBridgeParent().orElse(DEFAULT_FABRIC_BRIDGE_PARENT),
         config.network().tailnet().orElse(DEFAULT_TAILNET),
         config.api().endpoint().orElse(DEFAULT_API_ENDPOINT),

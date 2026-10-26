@@ -70,6 +70,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Stream;
 import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -240,7 +241,7 @@ public class IncusProvisionScenario
         .and()
         .consulting_manifests_through(resolved.map(Resolved::soil), cellar);
     when()
-        .the_image_is_built(imageRequest(worktreeRoot, source, input.image()), source)
+        .the_images_are_built(imageRequests(worktreeRoot, source, input.image()), source)
         .and()
         .the_manifests_are_cultivated(
             hostScenario, hostTree, input.facet(), input.image(), worktreeRoot, source)
@@ -252,7 +253,7 @@ public class IncusProvisionScenario
         .the_prep_is_stored(resolved.map(Resolved::soil).orElse(""), cellar, parcel)
         .and()
         .the_instance_grow_plan_is_published(
-            resolved, input.image().orElse(new Image("", "")), source, cellar, parcel);
+            resolved, input.image().orElse(new Image("", "", "")), source, cellar, parcel);
     // Pose the live root the host renders the runbook into — a within-run fact whose layout
     // convention lives only here (§ seed-broker-spec, two cellars: the ephemeral cellar). The graft
     // merges this tag into the host tree; the host reads it via ScenarioGraft.graftedValue. Posed
@@ -292,25 +293,35 @@ public class IncusProvisionScenario
   }
 
   /**
-   * The image-build request the scion drives. When the run is amended it builds the worktree's
-   * committed HEAD ({@link NodeBaseSource}) into the flat state root {@code .local.d} ({@code
-   * BootstrapPaths.STATE_DIR}) under the worktree root, the same dir the plan reads the artifacts
-   * back from. Unamended (a bare survey or the offline scenario) it falls to a blank marker the
-   * surveying/mock builder ignores.
+   * The image-build requests the scion drives, the server's then the agent's. When the run is
+   * amended each builds the worktree's committed HEAD ({@link NodeBaseSource}) into its alias's dir
+   * under the flat state root {@code .local.d} ({@code BootstrapPaths.STATE_DIR}), the same dir the
+   * plan reads the artifacts back from ({@link GrowPlanAssembler#artifactDir}). Unamended (a bare
+   * survey or the offline scenario) it is one blank marker the surveying/mock builder ignores.
    */
-  private ImageBuildRequest imageRequest(
+  private List<ImageBuildRequest> imageRequests(
       Optional<Path> worktreeRoot,
       Optional<NodeBaseSource> maybeSource,
       Optional<Image> maybeImage) {
     if (maybeSource.isEmpty() || maybeImage.isEmpty()) {
-      return new ImageBuildRequest("nix", "", "", "/srv/host/incus-build/artifacts");
+      return List.of(new ImageBuildRequest("nix", "", "", "/srv/host/incus-build/artifacts", ""));
     }
     final NodeBaseSource source = maybeSource.orElseThrow();
-    return new ImageBuildRequest(
-        maybeImage.orElseThrow().builderBinary(),
-        source.flakeRef(),
-        source.digest(),
-        BootstrapPaths.fromLocalWorktree(worktreeRoot.orElseThrow()).stateRoot().toString());
+    final Image image = maybeImage.orElseThrow();
+    final Path stateRoot = BootstrapPaths.fromLocalWorktree(worktreeRoot.orElseThrow()).stateRoot();
+    record Built(String alias, String configuration) {}
+    return Stream.of(
+            new Built(image.alias(), ImageBuildRequest.SERVER_CONFIGURATION),
+            new Built(image.agentAlias(), ImageBuildRequest.AGENT_CONFIGURATION))
+        .map(
+            built ->
+                new ImageBuildRequest(
+                    image.builderBinary(),
+                    source.flakeRef(),
+                    source.digest(),
+                    GrowPlanAssembler.artifactDir(stateRoot, built.alias()).toString(),
+                    built.configuration()))
+        .toList();
   }
 
   /**
@@ -421,19 +432,21 @@ public class IncusProvisionScenario
     private final SeedCodec codec = new SeedCodec();
     private final ScenarioGraft graft = new ScenarioGraft();
 
-    public When the_image_is_built(
-        @Hidden ImageBuildRequest request, @Hidden Optional<NodeBaseSource> source) {
+    public When the_images_are_built(
+        @Hidden List<ImageBuildRequest> requests, @Hidden Optional<NodeBaseSource> source) {
       // Mode-blind: the frontier already chose the builder — CultivatingNixosImageBuilder
       // (shells nix/ssh) or SurveyingImageBuilder (plans, shells nothing). The scion just
       // drives it; a surveying run touches nothing and the step renders PENDING.
       final ImageBuilder builder = imageBuilder.orElseThrow();
-      try {
-        builder.build(request);
-      } catch (RuntimeException failed) {
-        // The edge throws with its message AND (where it wraps one) its cause; chain it so the
-        // runbook shows the reason and the stack, not a bare summary string.
-        record("incus image", false, SymptomKind.IMAGE_BUILD_FAILED, failed.getMessage());
-        throw new IncusImageBuildError(request, failed);
+      for (final ImageBuildRequest request : requests) {
+        try {
+          builder.build(request);
+        } catch (RuntimeException failed) {
+          // The edge throws with its message AND (where it wraps one) its cause; chain it so the
+          // runbook shows the reason and the stack, not a bare summary string.
+          record("incus image", false, SymptomKind.IMAGE_BUILD_FAILED, failed.getMessage());
+          throw new IncusImageBuildError(request, failed);
+        }
       }
       record("incus image", true, SymptomKind.IMAGE_BUILD_FAILED, null);
       // Built: a fabricated revision has served its purpose. On a failure its ref stays for the
@@ -701,14 +714,22 @@ public class IncusProvisionScenario
       // The NixOS node-base substrate bakes the node's config, so the instance takes no host disk
       // mounts and no cloud-init seed — the plan carries the network + image + identity views, the
       // last posed as user.rke2lab.node-* keys the guest reads over devlxd.
+      final Path stateRoot = BootstrapPaths.fromLocalWorktree(resolved.worktreeRoot()).stateRoot();
+      final String recipeDigest = imageBuilder.orElseThrow().recipeDigest();
+      final String sourceDigest = source.orElseThrow().digest();
       final InstanceGrowPlan plan =
           new GrowPlanAssembler(
-                  image.alias(),
-                  image.builderBinary(),
-                  imageBuilder.orElseThrow().recipeDigest(),
-                  source.orElseThrow().digest(),
-                  BootstrapPaths.fromLocalWorktree(resolved.worktreeRoot()).stateRoot())
-              .assemble(networkView, identityView);
+                  image.alias(), image.builderBinary(), recipeDigest, sourceDigest, stateRoot)
+              .assemble(
+                  networkView,
+                  new GrowPlanAssembler(
+                          image.agentAlias(),
+                          image.builderBinary(),
+                          recipeDigest,
+                          sourceDigest,
+                          stateRoot)
+                      .imageView(),
+                  identityView);
       cellar.store(parcel, IncusGrowCoordinate.INSTANCE_GROW_PLAN, plan);
       return self();
     }

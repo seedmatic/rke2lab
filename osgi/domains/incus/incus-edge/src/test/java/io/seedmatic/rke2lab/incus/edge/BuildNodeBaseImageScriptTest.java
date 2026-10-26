@@ -43,7 +43,7 @@ class BuildNodeBaseImageScriptTest {
     final Path log = dir.resolve("nix.log");
     final Path nix = stubNix(log);
 
-    assertEquals(0, run(artifacts, nix, "digest-1"));
+    assertEquals(0, run(artifacts, nix, "digest-1", "rke2-node-server"));
     final List<String> first = Files.readAllLines(log);
     assertTrue(
         first.stream()
@@ -63,25 +63,69 @@ class BuildNodeBaseImageScriptTest {
         first.stream().noneMatch(l -> l.contains("--impure")),
         "the evaluation is pure: " + String.join("\n", first));
 
-    assertEquals(0, run(artifacts, nix, "digest-1"));
+    assertEquals(0, run(artifacts, nix, "digest-1", "rke2-node-server"));
     assertEquals(first, Files.readAllLines(log), "an unchanged digest does not call nix");
 
-    assertEquals(0, run(artifacts, nix, "digest-2"));
+    assertEquals(0, run(artifacts, nix, "digest-2", "rke2-node-server"));
     assertTrue(Files.readAllLines(log).size() > first.size(), "a new digest rebuilds");
   }
 
   @Test
-  void a_relative_artifact_dir_is_refused() throws Exception {
-    assertEquals(2, run(Path.of("relative/artifacts"), stubNix(dir.resolve("nix.log")), "d"));
+  void the_agent_is_built_from_its_own_configuration() throws Exception {
+    final Path log = dir.resolve("nix.log");
+    assertEquals(0, run(dir.resolve("agent"), stubNix(log), "d", "rke2-node-base"));
+    final List<String> calls = Files.readAllLines(log);
+    assertTrue(
+        calls.stream()
+            .anyMatch(
+                l ->
+                    l.endsWith(
+                        REF + "#nixosConfigurations.rke2-node-base.config.system.build.squashfs")),
+        String.join("\n", calls));
+    assertTrue(
+        calls.stream()
+            .anyMatch(
+                l ->
+                    l.startsWith("eval ")
+                        && l.endsWith(
+                            REF
+                                + "#nixosConfigurations.rke2-node-base.config.services.rke2.package.version")),
+        String.join("\n", calls));
+    assertTrue(
+        calls.stream().noneMatch(l -> l.contains("rke2-node-server")), String.join("\n", calls));
   }
 
-  private int run(Path artifacts, Path nix, String digest)
+  @Test
+  void a_configuration_that_is_not_a_node_image_is_refused() throws Exception {
+    final Path log = dir.resolve("nix.log");
+    assertEquals(2, run(dir.resolve("other"), stubNix(log), "d", "bioskop-nixos"));
+    assertTrue(Files.notExists(log), "nix is never called for a refused configuration");
+  }
+
+  @Test
+  void a_relative_artifact_dir_is_refused() throws Exception {
+    assertEquals(
+        2,
+        run(
+            Path.of("relative/artifacts"),
+            stubNix(dir.resolve("nix.log")),
+            "d",
+            "rke2-node-server"));
+  }
+
+  private int run(Path artifacts, Path nix, String digest, String configuration)
       throws IOException, InterruptedException {
     final Path script = dir.resolve("build.sh");
     Files.write(script, new BuildRecipe().load(BuildRecipe.NIX_BUILD_SCRIPT_RESOURCE));
     final Process process =
         new ProcessBuilder(
-                "sh", script.toString(), REF, artifacts.toString(), nix.toString(), digest)
+                "sh",
+                script.toString(),
+                REF,
+                artifacts.toString(),
+                nix.toString(),
+                digest,
+                configuration)
             .directory(dir.toFile())
             .redirectErrorStream(true)
             .start();

@@ -14,13 +14,13 @@ import org.osgi.service.component.annotations.Component;
 /**
  * The CULTIVATING incus image-build edge — the single live door. Builds the NixOS node substrate's
  * Incus artifacts ({@code incus.tar.xz} + {@code rootfs.squashfs}) by running the bundled nix build
- * script: {@code nix build …#nixosConfigurations.rke2-node-server.config.system.build.{metadata,
- * squashfs}}. It is BUILD-ONLY — it does NOT import the image; the incus PROVIDER does that (the
- * host GROW declares an {@code Image} resource sourcing these artifacts, so the engine orders
- * Project → Image → Instance and the import rides the provider's channel). It runs the script
- * LOCALLY — nix offloads the aarch64-linux build to its configured remote builder, the operator's
- * OWN channel — on a REVISION ({@code git+file://<repository>?rev=<sha>}), never a working tree,
- * and the script runs no git.
+ * script: {@code nix build …#nixosConfigurations.<configuration>.config.system.build.{metadata,
+ * squashfs}}, the request's node image. It is BUILD-ONLY — it does NOT import the image; the incus
+ * PROVIDER does that (the host GROW declares an {@code Image} resource sourcing these artifacts, so
+ * the engine orders Project → Image → Instance and the import rides the provider's channel). It
+ * runs the script LOCALLY — nix offloads the aarch64-linux build to its configured remote builder,
+ * the operator's OWN channel — on a REVISION ({@code git+file://<repository>?rev=<sha>}), never a
+ * working tree, and the script runs no git.
  *
  * <p>One of the ImageBuilder PAIR: registered with {@code rke2lab.gardening=cultivating} so the
  * frontier picks it when the ambient RunGate is cultivating. Its twin, {@link
@@ -63,7 +63,8 @@ public final class CultivatingNixosImageBuilder implements ImageBuilder {
               request.flakeRef(),
               request.artifactDir(),
               nix,
-              request.sourceDigest()),
+              request.sourceDigest(),
+              request.configuration()),
           "Failed to build the NixOS node image with nix");
     } catch (IOException ex) {
       throw new ImageBuildException(
