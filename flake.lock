@@ -106,11 +106,11 @@
     "fabric-plan": {
       "flake": false,
       "locked": {
-        "lastModified": 1791915973,
-        "narHash": "sha256-JTZnLZ79VdrplFblF2oGqpuHk0AkbNBntpQBLzSCCEs=",
+        "lastModified": 1793000064,
+        "narHash": "sha256-vbZispe3bz4aj3heycCXCzmDPbn+2cfdOyG0LLwQ8q8=",
         "owner": "seedmatic",
         "repo": "rke2lab",
-        "rev": "eda63e430a51c3c9be35cd9c061054879a7e482d",
+        "rev": "c17f5958615dd6592258c7bf6953165b753ccf0b",
         "type": "github"
       },
       "original": {
@@ -121,11 +121,11 @@
     "fabric-plan_2": {
       "flake": false,
       "locked": {
-        "lastModified": 1791915973,
-        "narHash": "sha256-JTZnLZ79VdrplFblF2oGqpuHk0AkbNBntpQBLzSCCEs=",
+        "lastModified": 1793000064,
+        "narHash": "sha256-vbZispe3bz4aj3heycCXCzmDPbn+2cfdOyG0LLwQ8q8=",
         "owner": "seedmatic",
         "repo": "rke2lab",
-        "rev": "eda63e430a51c3c9be35cd9c061054879a7e482d",
+        "rev": "c17f5958615dd6592258c7bf6953165b753ccf0b",
         "type": "github"
       },
       "original": {
