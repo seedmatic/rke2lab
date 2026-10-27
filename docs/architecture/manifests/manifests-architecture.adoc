@@ -696,6 +696,11 @@ Immutable configuration objects the runtime units build their pod specs from.
 | Builds the runtime pod spec — network sharing, shared process namespace, tolerations, service
   account.
 
+| `FleetTolerationsProfile`
+| The named taints a fleet pod that runs on every fleet node tolerates (the control plane's, and the
+  ones a node carries while it boots). Never a bare `operator: Exists`, which would also tolerate a
+  tenant's `project=<tenant>:NoSchedule` and land the pod on the tenant's node.
+
 | `LayerDependencyIntentProfile`
 | Resolves dependency-intent lists into deterministic ordered layer-ID sets.
 
