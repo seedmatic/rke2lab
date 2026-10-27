@@ -86,6 +86,75 @@ class TenantNodesTest {
     assertEquals(List.of(), tolerating, "fleet pods that would land on a tenant's node");
   }
 
+  /**
+   * The session viewer reads ConfigMaps and pod specs (🛡️, 2026-10-27), on the rule that the
+   * render keeps every secret in a Secret. This holds the render to it: no ConfigMap value, no
+   * HelmChart or HelmChartConfig valuesContent and no container env value carries a secret's shape.
+   * An image digest ({@code @sha256:<hex>}) is not one.
+   */
+  @Test
+  void requireNoConfigMapNorPodEnvCarriesASecretsShape(@TempDir Path outdir) {
+    final java.util.regex.Pattern shape =
+        java.util.regex.Pattern.compile(
+            "-----BEGIN [A-Z ]*PRIVATE KEY-----"
+                + "|AGE-SECRET-KEY-1[0-9A-Z]{20,}"
+                + "|\\bgh[pousr]_[A-Za-z0-9]{30,}"
+                + "|\\beyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\."
+                + "|(?<!sha256:)\\b[0-9a-f]{64}\\b"
+                + "|(?i)(password|passwd|secret|token)\\s*[:=]\\s*[^\\s${}<>]{8,}");
+    final List<String> found = new ArrayList<>();
+    for (final Object doc : renderEveryUnit(outdir)) {
+      final Map<?, ?> document = (Map<?, ?>) doc;
+      final String name =
+          document.get("kind") + "/" + ((Map<?, ?>) document.get("metadata")).get("name");
+      if ("ConfigMap".equals(document.get("kind"))
+          && document.get("data") instanceof Map<?, ?> data) {
+        data.forEach(
+            (key, value) -> {
+              if (shape.matcher(String.valueOf(value)).find()) {
+                found.add(name + " data." + key);
+              }
+            });
+      }
+      if (("HelmChart".equals(document.get("kind"))
+              || "HelmChartConfig".equals(document.get("kind")))
+          && document.get("spec") instanceof Map<?, ?> helm
+          && helm.get("valuesContent") != null
+          && shape.matcher(String.valueOf(helm.get("valuesContent"))).find()) {
+        found.add(name + " spec.valuesContent");
+      }
+      if (!POD_KINDS.contains(document.get("kind"))) {
+        continue;
+      }
+      final Map<?, ?> spec = (Map<?, ?>) document.get("spec");
+      final Map<?, ?> podSpec =
+          "Pod".equals(document.get("kind"))
+              ? spec
+              : (Map<?, ?>) ((Map<?, ?>) spec.get("template")).get("spec");
+      for (final String field : List.of("containers", "initContainers")) {
+        final Object containers = podSpec.get(field);
+        if (containers == null) {
+          continue;
+        }
+        for (final Object raw :
+            containers instanceof Object[] array ? List.of(array) : (Iterable<?>) containers) {
+          final Object env = ((Map<?, ?>) raw).get("env");
+          if (env == null) {
+            continue;
+          }
+          for (final Object var :
+              env instanceof Object[] array ? List.of(array) : (Iterable<?>) env) {
+            final Object value = ((Map<?, ?>) var).get("value");
+            if (value != null && shape.matcher(String.valueOf(value)).find()) {
+              found.add(name + " env." + ((Map<?, ?>) var).get("name"));
+            }
+          }
+        }
+      }
+    }
+    assertEquals(List.of(), found, "secret-shaped values outside a Secret");
+  }
+
   /** Kubernetes' ToleratesTaint, for one taint. */
   private static boolean tolerates(final Object tolerations) {
     final Iterable<?> list =
