@@ -76,7 +76,10 @@ public final class VclusterCertsManifestsUnit extends AbstractManifestsUnit {
                     ApiObjectMetadata.builder()
                         .name(entry.secretName())
                         .namespace(vcluster.namespace())
-                        .annotations(packageProfile.packageAnnotations(Map.of()))
+                        // Created once, then vcluster's: it renews its leaves in this Secret.
+                        .annotations(
+                            packageProfile.packageAnnotations(
+                                Map.of("kustomize.toolkit.fluxcd.io/ssa", "IfNotPresent")))
                         .build())
                 .build());
     secret.addJsonPatch(JsonPatch.add("/type", "Opaque"));

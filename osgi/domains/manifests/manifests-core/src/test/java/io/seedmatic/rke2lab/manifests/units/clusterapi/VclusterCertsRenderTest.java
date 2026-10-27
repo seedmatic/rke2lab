@@ -129,6 +129,11 @@ class VclusterCertsRenderTest {
     final Map<String, Object> metadata = (Map<String, Object>) found.get(0).get("metadata");
     assertEquals("ccr-certs", metadata.get("name"));
     assertEquals("vcluster-ccr", metadata.get("namespace"));
+    // Flux creates it once and leaves it: vcluster renews its leaf certs in this very Secret
+    // (pkg/certs/ensure.go), and an owning Flux would put the old ones back on every reconcile.
+    assertEquals(
+        "IfNotPresent",
+        ((Map<String, Object>) metadata.get("annotations")).get("kustomize.toolkit.fluxcd.io/ssa"));
     final Map<String, String> data = (Map<String, String>) found.get(0).get("data");
     assertEquals(
         Set.of(
