@@ -111,7 +111,8 @@ on-activate = """
   # No GH_TOKEN export here, on purpose: a copy taken at activation goes stale at the next
   # `gh auth refresh`, and every process launched from this shell (VS Code, agent sessions)
   # inherits it and shadows the fresh keyring token. gh reads the keyring itself when unset.
-  export KUBECONFIG="${FLOX_ENV_PROJECT}/.local.d/kubeconfig.yaml"
+  # No KUBECONFIG export either: it would point every agent session at the operator's admin kubeconfig
+  # (.local.d), where a bare kubectl acts as cluster admin. The operator's terminal sets it itself.
 """
 
 
