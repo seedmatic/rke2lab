@@ -8,8 +8,8 @@ metadata:
   namespace: rke2lab-bioskop-wrkld
 spec:
   alias: node-agent
-  buildChecksum: 966f08cace669709a97efe8dc2797d0c7fbf5f4d44886331f52e96ee33f3a3ca
-  fingerprint: 221c7ed94ecd5bd57016276aaa96e05e5d4765244fad51dc869159f9b7b62f56
+  buildChecksum: 20cfbeb5cb3391da584b9046060b62828258d2ef26174007c47338e41a172f1a
+  fingerprint: ed04e02d84b56c8303016a0d86907a25f67a64a7d76c52feb654e5a7a0dc867d
   rke2Version: v1.36.4+rke2r1
   runtime:
     kernelModules:

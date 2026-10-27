@@ -1,5 +1,5 @@
 source:
-  sha: 78c10b132b29d6f77673b18abd08cf2bcaf388a4
+  sha: 6fcd03aef6f48b48b8a2b12cb3d5cf8d0e64cf0f
   dirty: false
 facet:
   debug:
@@ -21,8 +21,8 @@ facet:
     fabricBridgeParent: fabric-br
 image:
   imageAlias: node-base
-  imageFingerprint: 6e5d3e0c8d7954a1f9656775ed9be445ed01f0c55be455b144539a5780525ae9
-  imageBuildChecksum: 2f7f7572f1de61d464978fadbeb0789c5bb0fe7c7ba88e2d25e72429593b900b
+  imageFingerprint: 9d5799dc0fe8c31ac20d6cfe18d825816e8455e638c5d705b3bed4459d0b376d
+  imageBuildChecksum: e6db499d47ac2ae77dc8b9bfe02fdd35f8553cbd906b287a49787d227e5173bd
   incusProject: rke2lab
   incusRemoteAddress: https://nixos.bioskop:8443
   rke2Version: v1.36.4+rke2r1
@@ -54,8 +54,8 @@ image:
     interceptBpfDevices: true
 agentImage:
   imageAlias: node-agent
-  imageFingerprint: 221c7ed94ecd5bd57016276aaa96e05e5d4765244fad51dc869159f9b7b62f56
-  imageBuildChecksum: 966f08cace669709a97efe8dc2797d0c7fbf5f4d44886331f52e96ee33f3a3ca
+  imageFingerprint: ed04e02d84b56c8303016a0d86907a25f67a64a7d76c52feb654e5a7a0dc867d
+  imageBuildChecksum: 20cfbeb5cb3391da584b9046060b62828258d2ef26174007c47338e41a172f1a
   incusProject: rke2lab
   incusRemoteAddress: https://nixos.bioskop:8443
   rke2Version: v1.36.4+rke2r1
