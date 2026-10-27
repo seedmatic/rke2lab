@@ -1565,6 +1565,35 @@
                     exit 1
                   ''
               );
+            # The kubelet's cAdvisor execs `zfs get` to size the rootfs on a node with /dev/zfs (./nixos/rke2.nix): both
+            # images' rke2 unit has zfs on its PATH. Options only. Its mutant: the base with the unit's path emptied.
+            node-rke2-unit-zfs-path =
+              let
+                missing =
+                  c:
+                  let
+                    unit = pkgs.lib.removeSuffix ".service" c.config.rke2lab.rke2Unit;
+                  in
+                  !builtins.elem c.pkgs.zfs.drvPath (map (p: p.drvPath or "") c.config.systemd.services.${unit}.path);
+                faults = builtins.filter (n: missing self.nixosConfigurations.${n}) [
+                  "rke2-node-base"
+                  "rke2-node-server"
+                ];
+                mutant = missing (
+                  self.nixosConfigurations.rke2-node-base.extendModules {
+                    modules = [ { systemd.services.rke2-agent.path = pkgs.lib.mkForce [ ]; } ];
+                  }
+                );
+              in
+              pkgs.runCommand "node-rke2-unit-zfs-path" { } (
+                if faults == [ ] && mutant then
+                  "touch $out"
+                else
+                  ''
+                    echo "no zfs on the rke2 unit's PATH: ${toString faults}; the emptied-path mutant caught: ${pkgs.lib.boolToString mutant}" >&2
+                    exit 1
+                  ''
+              );
             node-image-tree =
               let
                 base = self.nixosConfigurations.rke2-node-base;
