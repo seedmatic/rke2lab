@@ -6,11 +6,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.seedmatic.rke2lab.manifests.Cdk8sApiObjectResolver;
 import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
+import io.seedmatic.rke2lab.manifests.ManifestsUnit;
 import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
 import io.seedmatic.rke2lab.manifests.YamlMapper;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainPolicy;
 import io.seedmatic.rke2lab.manifests.contract.ManifestSynthesisRequest;
 import io.seedmatic.rke2lab.manifests.contract.profiles.BootstrapIdentity;
+import io.seedmatic.rke2lab.manifests.contract.profiles.ImageState;
+import io.seedmatic.rke2lab.manifests.contract.profiles.NodeRuntime;
 import io.seedmatic.rke2lab.manifests.node.DefaultNodeEnvContext;
 import java.nio.file.Path;
 import java.util.List;
@@ -31,7 +34,23 @@ import org.yaml.snakeyaml.Yaml;
 @Tag("osgi")
 class VclusterManifestsUnitTest {
 
+  private static ImageState image(final String rke2Version) {
+    return new ImageState(
+        "node-base",
+        "f".repeat(64),
+        "sha256-buildinputs",
+        "rke2lab",
+        "https://nixos.nikopol:8443",
+        rke2Version,
+        new NodeRuntime(List.of("ip_vs"), "lxc.mount.auto = proc:rw", true, true, true, true));
+  }
+
   private static List<Map<String, Object>> render(final Path outdir, final String cluster) {
+    return render(outdir, cluster, Optional.of(image("1.36.4+rke2r1")));
+  }
+
+  private static List<Map<String, Object>> render(
+      final Path outdir, final String cluster, final Optional<ImageState> image) {
     final BootstrapIdentity identity =
         new BootstrapIdentity(
             cluster,
@@ -50,19 +69,22 @@ class VclusterManifestsUnitTest {
     final ManifestSynthesisRequest request =
         ManifestSynthesisRequest.builder(outdir, outdir.resolve("manifests.yaml"))
             .bootstrapIdentity(identity)
+            .imageState(image)
             .manifestDomainPolicy(Optional.of(policy))
             .build();
-    final VclusterManifestsUnit unit = new VclusterManifestsUnit();
     try (var bound = ManifestSynthesisContext.of(request).bind()) {
-      unit.apply(
-          new ManifestsUnitContext(
-              chart,
-              "cluster-api",
-              unit.manifestUnitId(),
-              new Cdk8sApiObjectResolver(chart),
-              policy,
-              new DefaultNodeEnvContext(identity),
-              new YamlMapper()));
+      for (final ManifestsUnit unit :
+          List.<ManifestsUnit>of(new VclusterPinManifestsUnit(), new VclusterManifestsUnit())) {
+        unit.apply(
+            new ManifestsUnitContext(
+                chart,
+                "cluster-api",
+                unit.manifestUnitId(),
+                new Cdk8sApiObjectResolver(chart),
+                policy,
+                new DefaultNodeEnvContext(identity),
+                new YamlMapper()));
+      }
     }
     // Every unit emits its group marker (a local-config ConfigMap, never applied); the rest is what
     // it renders.
@@ -106,6 +128,26 @@ class VclusterManifestsUnitTest {
     assertEquals(List.of(), render(outdir, "bioskop-wrkld"));
     assertEquals(List.of(), render(outdir, "nikopol-mgmt"));
     assertFalse(render(outdir, "nikopol-wrkld").isEmpty());
+  }
+
+  @Test
+  void requireNothingWhereThePinIsNotServed(@TempDir Path outdir) {
+    // MutatingAdmissionPolicy v1 is served from 1.36: below it, or with no image to read the
+    // version from, the synced pods would carry the toleration with no nodeSelector, free to land
+    // on fleet nodes. So neither the pin nor the vcluster.
+    assertEquals(List.of(), render(outdir, "nikopol-wrkld", Optional.of(image("1.34.11+rke2r1"))));
+    assertEquals(List.of(), render(outdir, "nikopol-wrkld", Optional.of(image("1.35.8+rke2r1"))));
+    assertEquals(List.of(), render(outdir, "nikopol-wrkld", Optional.empty()));
+    assertFalse(render(outdir, "nikopol-wrkld", Optional.of(image("1.37.0+rke2r1"))).isEmpty());
+  }
+
+  @Test
+  void requireTheVclusterWaitsOnItsPin() {
+    // Its own unit, so Flux applies the vcluster's cell only after the policy's.
+    assertTrue(
+        new VclusterManifestsUnit()
+            .dependsOnManifestsUnitIds()
+            .contains(VclusterPinManifestsUnit.MANIFEST_UNIT_ID));
   }
 
   @Test

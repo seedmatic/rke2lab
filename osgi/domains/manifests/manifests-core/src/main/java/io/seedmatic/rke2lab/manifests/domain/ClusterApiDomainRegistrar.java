@@ -10,6 +10,7 @@ import io.seedmatic.rke2lab.manifests.units.clusterapi.ClusterApiWorkloadManifes
 import io.seedmatic.rke2lab.manifests.units.clusterapi.ClusterKubeconfigManifestsUnit;
 import io.seedmatic.rke2lab.manifests.units.clusterapi.VclusterCertsManifestsUnit;
 import io.seedmatic.rke2lab.manifests.units.clusterapi.VclusterManifestsUnit;
+import io.seedmatic.rke2lab.manifests.units.clusterapi.VclusterPinManifestsUnit;
 import java.util.List;
 import org.osgi.service.component.annotations.Component;
 
@@ -31,6 +32,7 @@ public final class ClusterApiDomainRegistrar implements ManifestsDomainRegistrar
             new ClusterApiManagementManifestsUnit(renderer),
             new ClusterApiWorkloadManifestsUnit(renderer),
             new VclusterCertsManifestsUnit(),
+            new VclusterPinManifestsUnit(),
             new VclusterManifestsUnit()));
   }
 }

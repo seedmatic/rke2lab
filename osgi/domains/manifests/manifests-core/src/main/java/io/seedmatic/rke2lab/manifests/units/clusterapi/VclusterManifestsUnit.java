@@ -24,8 +24,8 @@ import software.constructs.Construct;
  *
  * <p>Placement rests on the pool's taint and label ({@code project=<name>}). The control plane is
  * pinned by the chart's own scheduling; the synced pods carry the toleration ({@code
- * enforceTolerations}) but the chart cannot select their nodes, so a MutatingAdmissionPolicy adds
- * the nodeSelector to every pod created in the namespace, whoever creates it.
+ * enforceTolerations}) but the chart cannot select their nodes: {@link VclusterPinManifestsUnit}
+ * adds the nodeSelector, and this unit renders only where that pin is served, after it.
  *
  * <p>ONE LoadBalancer, the render's, on the fabric pool at the cluster's {@code host(3)}: the
  * chart's own Service stays ClusterIP. {@code Local}, so the API pod sees the caller's address.
@@ -40,13 +40,22 @@ public final class VclusterManifestsUnit extends AbstractManifestsUnit {
       new PackageMetadataProfile(ManifestDomainCatalog.CLUSTER_API, "vcluster");
 
   public VclusterManifestsUnit() {
-    super(MANIFEST_UNIT_ID, List.of(VclusterCertsManifestsUnit.MANIFEST_UNIT_ID));
+    // After the pin: its Kustomization dependsOn the policy's, so no synced pod is ever admitted
+    // before the nodeSelector is added to it.
+    super(
+        MANIFEST_UNIT_ID,
+        List.of(
+            VclusterCertsManifestsUnit.MANIFEST_UNIT_ID,
+            VclusterPinManifestsUnit.MANIFEST_UNIT_ID));
   }
 
   @Override
   protected void doSynthesize(final Construct scope, final ManifestsUnitContext context) {
     final ManifestSynthesisContext synth = ManifestSynthesisContext.current();
     final String self = synth.bootstrapIdentity().clusterName();
+    if (!VclusterPinManifestsUnit.servesThePin(synth)) {
+      return;
+    }
     final String chartVersion = synth.componentVersions().of(Component.VCLUSTER_CHART);
     for (final VclusterDeclaration.Vcluster vcluster : VclusterDeclaration.fleet().vclusters()) {
       if (vcluster.hostCluster().equals(self)) {
@@ -142,69 +151,6 @@ public final class VclusterManifestsUnit extends AbstractManifestsUnit {
                 List.of(
                     Map.of("name", "https", "port", 443, "targetPort", 8443, "protocol", "TCP")))));
     service.addDependency(ns);
-
-    final String policyName = "vcluster-" + name + "-pin-to-pool";
-    final ApiObject policy =
-        new ApiObject(
-            scope,
-            "mutatingadmissionpolicy-" + policyName,
-            ApiObjectProps.builder()
-                .apiVersion("admissionregistration.k8s.io/v1")
-                .kind("MutatingAdmissionPolicy")
-                .metadata(clusterScoped(policyName).build())
-                .build());
-    policy.addJsonPatch(
-        JsonPatch.add(
-            "/spec",
-            Map.of(
-                "failurePolicy",
-                "Fail",
-                "reinvocationPolicy",
-                "IfNeeded",
-                "matchConstraints",
-                Map.of(
-                    "resourceRules",
-                    List.of(
-                        Map.of(
-                            "apiGroups", List.of(""),
-                            "apiVersions", List.of("v1"),
-                            "operations", List.of("CREATE"),
-                            "resources", List.of("pods")))),
-                "mutations",
-                List.of(
-                    Map.of(
-                        "patchType",
-                        "ApplyConfiguration",
-                        "applyConfiguration",
-                        Map.of(
-                            "expression",
-                            "Object{spec: Object.spec{nodeSelector: {\""
-                                + LABEL
-                                + "\": \""
-                                + name
-                                + "\"}}}"))))));
-
-    final ApiObject binding =
-        new ApiObject(
-            scope,
-            "mutatingadmissionpolicybinding-" + policyName,
-            ApiObjectProps.builder()
-                .apiVersion("admissionregistration.k8s.io/v1")
-                .kind("MutatingAdmissionPolicyBinding")
-                .metadata(clusterScoped(policyName).build())
-                .build());
-    binding.addJsonPatch(
-        JsonPatch.add(
-            "/spec",
-            Map.of(
-                "policyName",
-                policyName,
-                "matchResources",
-                Map.of(
-                    "namespaceSelector",
-                    Map.of("matchLabels", Map.of("kubernetes.io/metadata.name", namespace))))));
-    binding.addDependency(policy);
-    binding.addDependency(ns);
   }
 
   private static String values(final String name, final String selector, final String apiAddress) {
