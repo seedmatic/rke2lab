@@ -88,7 +88,7 @@ class ClusterApiRenderTest {
    */
   static ImageState imageState() {
     return new ImageState(
-        "node-base",
+        "node-server",
         "0f7a1c9d2b3e4f5a6b7c8d9e0f1a2b3c4d5e6f708192a3b4c5d6e7f809a1b2c3",
         "sha256-buildinputs",
         "rke2lab",
@@ -242,10 +242,10 @@ class ClusterApiRenderTest {
     // decides what to ACT on from `adoptedBy` rather than from what it was handed.
     assertEquals(
         List.of(
-            "bioskop-mgmt-node-base",
-            "bioskop-wrkld-node-base",
-            "nikopol-mgmt-node-base",
-            "nikopol-wrkld-node-base"),
+            "bioskop-mgmt-node-server",
+            "bioskop-wrkld-node-server",
+            "nikopol-mgmt-node-server",
+            "nikopol-wrkld-node-server"),
         names);
 
     final List<String> namespaces =
@@ -478,7 +478,7 @@ class ClusterApiRenderTest {
       // name, so a fleet-wide `node-base` would collapse two NodeImages onto one file — which it
       // did,
       // leaving bioskop-wrkld with none and its pool at ImageMissing.
-      assertEquals(String.valueOf(spec.get("clusterRef")) + "-node-base", image.get("name"));
+      assertEquals(String.valueOf(spec.get("clusterRef")) + "-node-server", image.get("name"));
     }
   }
 
@@ -506,13 +506,13 @@ class ClusterApiRenderTest {
     assertEquals(
         List.of(
             "bioskop-mgmt-node-agent",
-            "bioskop-mgmt-node-base",
+            "bioskop-mgmt-node-server",
             "bioskop-wrkld-node-agent",
-            "bioskop-wrkld-node-base",
+            "bioskop-wrkld-node-server",
             "nikopol-mgmt-node-agent",
-            "nikopol-mgmt-node-base",
+            "nikopol-mgmt-node-server",
             "nikopol-wrkld-node-agent",
-            "nikopol-wrkld-node-base"),
+            "nikopol-wrkld-node-server"),
         names);
 
     // The agent NodeImage pins the AGENT's fingerprint, never the server's.

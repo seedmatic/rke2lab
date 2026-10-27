@@ -37,7 +37,7 @@ class VclusterManifestsUnitTest {
 
   private static ImageState image(final String rke2Version) {
     return new ImageState(
-        "node-base",
+        "node-server",
         "f".repeat(64),
         "sha256-buildinputs",
         "rke2lab",

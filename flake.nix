@@ -1753,7 +1753,7 @@
       # boots from (docs/architecture/nixos-substrate/substrate-model.adoc). System-pinned to
       # aarch64-linux (Incus containers on the Apple-Silicon hypervisor); build via bioskop-nixos.
       # Build the artifacts: `.config.system.build.{squashfs,metadata}`, then
-      # `incus image import <metadata>/tarball/*.tar.xz <squashfs> --alias rke2lab/node-base`.
+      # `incus image import <metadata>/tarball/*.tar.xz <squashfs> --alias rke2lab/node-server`.
       # Per-node identity (node-ip, hostname, token) is injected at instance creation, not baked.
       nixosConfigurations.rke2-node-base = nixpkgs.lib.nixosSystem {
         system = nodeSystem;
@@ -1777,7 +1777,7 @@
 
       # The node image tree: node-base is the AGENT every node starts from (the worker pools CAPRKE2 births from an
       # RKE2ConfigTemplate enable its `rke2-agent`); each role or project only ADDS to it. The server is node-base plus
-      # the server layer, and it is the image the grow imports under the `node-base` alias, for the root and every
+      # the server layer, and it is the image the grow imports under the `node-server` alias, for the root and every
       # control plane.
       nixosConfigurations.rke2-node-server = self.nixosConfigurations.rke2-node-base.extendModules {
         modules = [

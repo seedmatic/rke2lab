@@ -339,7 +339,7 @@ public final class InstanceGrow {
     final Path rootfs = Path.of(view.dataPath());
     // ★ NO ARTEFACTS IS NOT NO IMAGE. A surveying run is handed the SurveyingImageBuilder, which
     // plans the build and shells nothing, so the two files never appear — but the image itself is
-    // still identifiable, because the DAEMON holds the one a previous grow posed the node-base
+    // still identifiable, because the DAEMON holds the one a previous grow posed the image's
     // alias
     // on. A fresh worktree empties the Pulumi stack, not the daemon.
     //
@@ -511,7 +511,7 @@ public final class InstanceGrow {
 
   /**
    * The post-instance beat: pose each image's stable alias on its current fingerprint ({@code
-   * node-base} for the server, {@code node-agent} for the agent) and GC the leaked old images. It
+   * node-server} for the server, {@code node-agent} for the agent) and GC the leaked old images. It
    * runs a {@code local.Command} (the incus CLI is a runtimeInput the provider already shells out
    * to, authenticating through the same {@code configDir}) that {@code dependsOn} the instance, so
    * the engine schedules it AFTER the (re)created instance — meaning the {@code
@@ -562,11 +562,11 @@ public final class InstanceGrow {
   }
 
   /**
-   * The sh script the {@code node-base} beat runs against the incus CLI: prune every project image
-   * but {@code KEEP}, then upsert the {@code node-base} alias onto it. Fingerprints come from
-   * {@code incus query} (the CLI's raw REST passthrough) so no jq/yq is needed — {@code tr}/{@code
-   * sed} (coreutils) carve the 64-hex fingerprints out of the {@code /1.0/images/<fp>} array. The
-   * config-derived {@code remote}/{@code project} are single-quoted (never user input).
+   * The sh script the alias beat runs against the incus CLI: prune every project image but {@code
+   * KEEP}, then upsert each kept image's alias onto it. Fingerprints come from {@code incus query}
+   * (the CLI's raw REST passthrough) so no jq/yq is needed — {@code tr}/{@code sed} (coreutils)
+   * carve the 64-hex fingerprints out of the {@code /1.0/images/<fp>} array. The config-derived
+   * {@code remote}/{@code project} are single-quoted (never user input).
    */
   /**
    * The GC and alias script for the kept images, alias → fingerprint. Package-visible so a test
