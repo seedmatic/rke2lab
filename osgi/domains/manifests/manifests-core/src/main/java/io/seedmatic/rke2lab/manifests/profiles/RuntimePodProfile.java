@@ -7,6 +7,8 @@ import java.util.Map;
 
 public final class RuntimePodProfile {
 
+  private final FleetTolerationsProfile fleetTolerations = new FleetTolerationsProfile();
+
   public RuntimePodProfile() {}
 
   public Map<String, Object> apply(
@@ -21,7 +23,7 @@ public final class RuntimePodProfile {
     podSpec.put("securityContext", Map.of());
     podSpec.put("serviceAccountName", serviceAccountName);
     podSpec.put("shareProcessNamespace", true);
-    podSpec.put("tolerations", List.of(Map.of("operator", "Exists")));
+    podSpec.put("tolerations", fleetTolerations.tolerations());
     podSpec.put("volumes", volumes);
     podSpec.putAll(extraPodSpec);
     return Map.copyOf(podSpec);

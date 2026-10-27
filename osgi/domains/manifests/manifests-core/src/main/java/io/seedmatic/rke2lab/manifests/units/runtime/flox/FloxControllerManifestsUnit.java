@@ -7,6 +7,7 @@ import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
 import io.seedmatic.rke2lab.manifests.contract.ManifestAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.ManifestLayer;
+import io.seedmatic.rke2lab.manifests.profiles.FleetTolerationsProfile;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import io.seedmatic.rke2lab.manifests.units.cluster.ClusterRefs;
 import io.seedmatic.rke2lab.manifests.units.cluster.ClusterRuntimeNamespaceManifestsUnit;
@@ -69,6 +70,8 @@ public final class FloxControllerManifestsUnit extends AbstractManifestsUnit {
    * is picked up with no restart; an env var, resolved once at pod start, could do neither.
    */
   private static final String GITHUB_TOKEN_MOUNT_DIR = "/var/run/flox/github-token";
+
+  private final FleetTolerationsProfile fleetTolerations = new FleetTolerationsProfile();
 
   private final PackageMetadataProfile packageProfile =
       new PackageMetadataProfile(
@@ -352,7 +355,7 @@ public final class FloxControllerManifestsUnit extends AbstractManifestsUnit {
                         Map.entry(
                             "nodeSelector",
                             Map.of(ManifestAnnotation.NODE_FLOX_RUNTIME_LABEL.key(), "true")),
-                        Map.entry("tolerations", new Object[] {Map.of("operator", "Exists")}),
+                        Map.entry("tolerations", fleetTolerations.tolerations()),
                         Map.entry(
                             "containers",
                             new Object[] {
