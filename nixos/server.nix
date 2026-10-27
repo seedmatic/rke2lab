@@ -29,6 +29,10 @@
         # reconciling the same VolumeSnapshot CRs. The snapshot-controller-CRD stays ENABLED (not
         # listed) — openebs-zfs hard-fails at startup without the VolumeSnapshot{,Content,Class} CRDs.
         "--disable=rke2-ingress-nginx"
+        # rke2 1.36 deploys traefik when a NEW cluster names no ingress controller (bootstrap.go: no HelmChart
+        # present → IngressItems[0] = traefik; 1.34 defaulted to ingress-nginx), with its CRDs as a second chart.
+        "--disable=rke2-traefik"
+        "--disable=rke2-traefik-crd"
         "--disable=rke2-snapshot-controller"
         "--disable=rke2-snapshot-validation-webhook"
       ];
