@@ -11,7 +11,6 @@ import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
 import io.seedmatic.rke2lab.manifests.YamlMapper;
 import io.seedmatic.rke2lab.manifests.contract.ClusterFleet;
 import io.seedmatic.rke2lab.manifests.contract.ControlPlaneShape;
-import io.seedmatic.rke2lab.manifests.contract.ManifestAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainPolicy;
 import io.seedmatic.rke2lab.manifests.contract.ManifestSynthesisRequest;
 import io.seedmatic.rke2lab.manifests.contract.profiles.BootstrapIdentity;
@@ -580,9 +579,9 @@ class ClusterApiRenderTest {
     assertFalse(spec.containsKey("nodes"), "a worker pool declares no roster");
     assertFalse(spec.containsKey("controlPlaneEndpoint"), "a worker pool has no API endpoint");
     assertEquals("nikopol-mgmt", spec.get("adoptedBy"));
-    assertEquals(
-        List.of(ManifestAnnotation.NODE_FLOX_RUNTIME_LABEL.key() + "=true", "project=ccr"),
-        spec.get("nodeLabels"));
+    // Not the flox-runtime label: the flox DaemonSet selects it, and the tenant's pods carry no
+    // flox environment.
+    assertEquals(List.of("project=ccr"), spec.get("nodeLabels"));
     // Tainted, so nothing of the fleet (Flux included) lands there: only what tolerates it.
     assertEquals(List.of("project=ccr:NoSchedule"), spec.get("nodeTaints"));
     // Born where its cluster's control plane is: the same member and the same devices.

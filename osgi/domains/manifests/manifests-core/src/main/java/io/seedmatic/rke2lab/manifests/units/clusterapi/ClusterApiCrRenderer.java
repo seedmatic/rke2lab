@@ -6,7 +6,6 @@ import io.seedmatic.rke2lab.manifests.contract.profiles.ImageState;
 import io.seedmatic.rke2lab.manifests.contract.profiles.IncusIdentityMaterial;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -537,6 +536,9 @@ public final class ClusterApiCrRenderer {
    * image, so its nodes carry no server layer, and their RKE2ConfigTemplate no bootstrap bundle:
    * none of the fleet's secrets reach their disks.
    *
+   * <p>Its labels are its own, never the fleet's flox-runtime label, which the flox DaemonSet
+   * selects: the tenant's pods carry no flox environment.
+   *
    * <p>Tainted, so that only what tolerates the taint (a tenant's vcluster) is scheduled there.
    *
    * <p>CATTLE by construction, whoever adopts the cluster: the MachineDeployment names its
@@ -551,7 +553,7 @@ public final class ClusterApiCrRenderer {
       final String rke2Version,
       final String imageName,
       final List<String> devices,
-      final List<String> extraNodeLabels,
+      final List<String> nodeLabels,
       final List<String> nodeTaints,
       final String incusMember,
       final String adoptedBy,
@@ -573,8 +575,6 @@ public final class ClusterApiCrRenderer {
                         .build())
                 .build());
     poolIntention.addDependency(clusterIntention);
-    final List<Object> nodeLabels = new ArrayList<>(poolNodeLabels());
-    nodeLabels.addAll(extraNodeLabels);
     final Map<String, Object> spec = new LinkedHashMap<>();
     spec.put("clusterRef", cluster);
     spec.put("namespace", namespace);
