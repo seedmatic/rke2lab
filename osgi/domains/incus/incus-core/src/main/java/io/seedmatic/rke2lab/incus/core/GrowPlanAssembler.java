@@ -61,7 +61,7 @@ public final class GrowPlanAssembler {
    * names, so the server's and the agent's never overwrite each other. The build request writes
    * here, the plan reads here.
    */
-  public static Path artifactDir(Path sharedFolder, String imageAlias) {
+  public Path artifactDir() {
     return sharedFolder.resolve(imageAlias).toAbsolutePath().normalize();
   }
 
@@ -73,7 +73,7 @@ public final class GrowPlanAssembler {
    * image the plan does — the one computation, two consumers.
    */
   public GrowImageView imageView() {
-    final Path artifactDir = artifactDir(sharedFolder, imageAlias);
+    final Path artifactDir = artifactDir();
     return new GrowImageView(
         imageAlias,
         artifactDir.resolve(METADATA_FILENAME).toString(),

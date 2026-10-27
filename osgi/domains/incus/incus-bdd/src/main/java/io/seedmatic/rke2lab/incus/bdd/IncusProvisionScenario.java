@@ -319,7 +319,12 @@ public class IncusProvisionScenario
                     image.builderBinary(),
                     source.flakeRef(),
                     source.digest(),
-                    GrowPlanAssembler.artifactDir(stateRoot, built.alias()).toString(),
+                    // Only the path is read: the recipe digest (the ImageBuilder's, a When-stage
+                    // service out of reach here) folds into the build checksum, not the dir.
+                    new GrowPlanAssembler(
+                            built.alias(), image.builderBinary(), "", source.digest(), stateRoot)
+                        .artifactDir()
+                        .toString(),
                     built.configuration()))
         .toList();
   }
