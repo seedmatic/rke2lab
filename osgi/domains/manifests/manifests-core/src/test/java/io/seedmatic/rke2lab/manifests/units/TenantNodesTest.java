@@ -11,10 +11,13 @@ import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
 import io.seedmatic.rke2lab.manifests.YamlMapper;
 import io.seedmatic.rke2lab.manifests.contract.ClusterFleet;
 import io.seedmatic.rke2lab.manifests.contract.ControlPlaneShape;
+import io.seedmatic.rke2lab.manifests.contract.ManifestAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainPolicy;
 import io.seedmatic.rke2lab.manifests.contract.ManifestSynthesisRequest;
 import io.seedmatic.rke2lab.manifests.contract.profiles.BootstrapIdentity;
+import io.seedmatic.rke2lab.manifests.contract.profiles.ImageState;
+import io.seedmatic.rke2lab.manifests.contract.profiles.NodeRuntime;
 import io.seedmatic.rke2lab.manifests.domain.CicdDomainRegistrar;
 import io.seedmatic.rke2lab.manifests.domain.ClusterApiDomainRegistrar;
 import io.seedmatic.rke2lab.manifests.domain.ClusterDomainRegistrar;
@@ -155,6 +158,103 @@ class TenantNodesTest {
     assertEquals(List.of(), found, "secret-shaped values outside a Secret");
   }
 
+  /**
+   * Every LoadBalancer is announced by exactly ONE L2 policy: a fleet one by the « host » policy, a
+   * vcluster's API by its own, from the tenant's pool. Two policies on one Service would race for
+   * its lease; none would leave it unreachable.
+   *
+   * <p>The fleet's own LoadBalancers are born at RUNTIME, from their charts' values (cilium's
+   * clustermesh apiserver and ingress, Envoy Gateway's proxies), so the render cannot list them; a
+   * representative unlabelled one stands in for them, and the live read after the cold start checks
+   * the real set.
+   */
+  @Test
+  @SuppressWarnings("unchecked")
+  void requireEveryLoadBalancerIsAnnouncedByExactlyOnePolicy(@TempDir Path outdir) {
+    final List<Map<?, ?>> documents =
+        renderEveryUnit(outdir).stream().<Map<?, ?>>map(d -> (Map<?, ?>) d).toList();
+    final List<Map<?, ?>> policies =
+        documents.stream().filter(d -> "CiliumL2AnnouncementPolicy".equals(d.get("kind"))).toList();
+    final List<Map<?, ?>> loadBalancers = new ArrayList<>();
+    documents.stream()
+        .filter(d -> "Service".equals(d.get("kind")))
+        .filter(d -> "LoadBalancer".equals(((Map<?, ?>) d.get("spec")).get("type")))
+        .forEach(loadBalancers::add);
+    assertEquals(1, loadBalancers.size(), "the vcluster's API, the render's one LoadBalancer");
+    loadBalancers.add(
+        Map.of(
+            "metadata",
+            Map.of(
+                "name",
+                "cilium-ingress",
+                "namespace",
+                "kube-system",
+                "labels",
+                Map.of("io.cilium/lb-ipam-pool", "fabric"))));
+    final List<String> wrong = new ArrayList<>();
+    for (final Map<?, ?> service : loadBalancers) {
+      final Map<?, ?> metadata = (Map<?, ?>) service.get("metadata");
+      final Map<?, ?> labels = metadata.get("labels") instanceof Map<?, ?> m ? m : Map.of();
+      final List<String> selecting =
+          policies.stream()
+              .filter(
+                  policy ->
+                      selects(
+                          (Map<?, ?>) ((Map<?, ?>) policy.get("spec")).get("serviceSelector"),
+                          labels))
+              .map(policy -> String.valueOf(((Map<?, ?>) policy.get("metadata")).get("name")))
+              .toList();
+      final String expected =
+          labels.containsKey(ManifestAnnotation.VCLUSTER_API_LABEL.key())
+              ? "vcluster-" + labels.get(ManifestAnnotation.VCLUSTER_API_LABEL.key()) + "-api"
+              : "host";
+      if (!selecting.equals(List.of(expected))) {
+        wrong.add(
+            metadata.get("namespace") + "/" + metadata.get("name") + " selected by " + selecting);
+      }
+    }
+    assertEquals(List.of(), wrong);
+  }
+
+  /** A label selector's match, for matchLabels and the In / NotIn / Exists / DoesNotExist set. */
+  private static boolean selects(final Map<?, ?> selector, final Map<?, ?> labels) {
+    if (selector == null) {
+      return true;
+    }
+    if (selector.get("matchLabels") instanceof Map<?, ?> match) {
+      for (final Map.Entry<?, ?> e : match.entrySet()) {
+        if (!e.getValue().equals(labels.get(e.getKey()))) {
+          return false;
+        }
+      }
+    }
+    final Object expressions = selector.get("matchExpressions");
+    if (expressions != null) {
+      for (final Object raw :
+          expressions instanceof Object[] array ? List.of(array) : (Iterable<?>) expressions) {
+        final Map<?, ?> expression = (Map<?, ?>) raw;
+        final Object key = expression.get("key");
+        final Object values = expression.get("values");
+        final List<?> set =
+            values == null
+                ? List.of()
+                : values instanceof Object[] array ? List.of(array) : List.copyOf((List<?>) values);
+        final boolean ok =
+            switch (String.valueOf(expression.get("operator"))) {
+              case "In" -> set.contains(labels.get(key));
+              case "NotIn" -> !labels.containsKey(key) || !set.contains(labels.get(key));
+              case "Exists" -> labels.containsKey(key);
+              case "DoesNotExist" -> !labels.containsKey(key);
+              default -> false;
+            };
+        if (!ok) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
   /** Kubernetes' ToleratesTaint, for one taint. */
   private static boolean tolerates(final Object tolerations) {
     final Iterable<?> list =
@@ -216,6 +316,18 @@ class TenantNodesTest {
     final ManifestSynthesisRequest request =
         ManifestSynthesisRequest.builder(outdir, outdir.resolve("manifests.yaml"))
             .bootstrapIdentity(identity)
+            // A 1.36 server image, so the vcluster (rendered only where its pin is served) is in.
+            .imageState(
+                Optional.of(
+                    new ImageState(
+                        "node-base",
+                        "f".repeat(64),
+                        "sha256-buildinputs",
+                        "rke2lab",
+                        "https://nixos.nikopol:8443",
+                        "1.36.4+rke2r1",
+                        new NodeRuntime(
+                            List.of("ip_vs"), "lxc.mount.auto = proc:rw", true, true, true, true))))
             .clusterFleet(
                 Optional.of(
                     new ClusterFleet(

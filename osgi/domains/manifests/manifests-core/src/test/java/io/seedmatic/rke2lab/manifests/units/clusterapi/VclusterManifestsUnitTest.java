@@ -9,6 +9,7 @@ import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
 import io.seedmatic.rke2lab.manifests.ManifestsUnit;
 import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
 import io.seedmatic.rke2lab.manifests.YamlMapper;
+import io.seedmatic.rke2lab.manifests.contract.ManifestAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainPolicy;
 import io.seedmatic.rke2lab.manifests.contract.ManifestSynthesisRequest;
 import io.seedmatic.rke2lab.manifests.contract.profiles.BootstrapIdentity;
@@ -221,5 +222,112 @@ class VclusterManifestsUnitTest {
     assertEquals(
         Map.of("matchLabels", Map.of("kubernetes.io/metadata.name", "vcluster-ccr")),
         match.get("namespaceSelector"));
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void requireTheApiIsAnnouncedFromCcrsPoolOnly(@TempDir Path outdir) {
+    final List<Map<String, Object>> policies =
+        of(render(outdir, "nikopol-wrkld"), "CiliumL2AnnouncementPolicy");
+    assertEquals(1, policies.size());
+    final Map<String, Object> spec = at(policies.get(0), "spec");
+    // Local traffic: the announcing node must host the API pod, and the pod is on ccr's pool.
+    assertEquals(
+        Map.of(
+            "matchExpressions",
+            List.of(Map.of("key", "project", "operator", "In", "values", List.of("ccr")))),
+        spec.get("nodeSelector"));
+    assertEquals(
+        Map.of("matchLabels", Map.of(ManifestAnnotation.VCLUSTER_API_LABEL.key(), "ccr")),
+        spec.get("serviceSelector"));
+    assertEquals(List.of("fabric0"), spec.get("interfaces"));
+    assertEquals(true, spec.get("loadBalancerIPs"));
+    final Map<String, Object> service =
+        of(render(outdir, "nikopol-wrkld"), "Service").stream()
+            .filter(s -> "LoadBalancer".equals(at(s, "spec").get("type")))
+            .findFirst()
+            .orElseThrow();
+    assertEquals(
+        "ccr", at(service, "metadata", "labels").get(ManifestAnnotation.VCLUSTER_API_LABEL.key()));
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void requireTheQuotaRefusesAnyOtherLoadBalancerAndEveryNodePort(@TempDir Path outdir) {
+    final Map<String, Object> resourceQuota =
+        at(values(render(outdir, "nikopol-wrkld")), "policies", "resourceQuota");
+    assertEquals(true, resourceQuota.get("enabled"));
+    final Map<String, Object> quota = (Map<String, Object>) resourceQuota.get("quota");
+    // The ONE LoadBalancer is the render's API: a synced Service can take no other, nor a port.
+    assertEquals(0, quota.get("services.nodeports"));
+    assertEquals(1, quota.get("services.loadbalancers"));
+    assertEquals(
+        true, at(values(render(outdir, "nikopol-wrkld")), "policies", "limitRange").get("enabled"));
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void requireTheNamespaceEnforcesRestrictedPodSecurity(@TempDir Path outdir) {
+    final Map<String, Object> labels =
+        at(of(render(outdir, "nikopol-wrkld"), "Namespace").get(0), "metadata", "labels");
+    assertEquals("restricted", labels.get("pod-security.kubernetes.io/enforce"));
+    assertEquals("restricted", labels.get("pod-security.kubernetes.io/warn"));
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void requireTheControlPlaneRunsRootlessUnderRestricted(@TempDir Path outdir) {
+    // The chart's default runs as root and fails `restricted` on 8 points (measured offline:
+    // helm template 0.37.4 + a PSS check). Its rootless mode, set at FIRST deployment (no
+    // migration from root), passes, with the init container's own context beside it.
+    final Map<String, Object> values = values(render(outdir, "nikopol-wrkld"));
+    final Map<String, Object> restricted =
+        Map.of(
+            "allowPrivilegeEscalation",
+            false,
+            "runAsNonRoot",
+            true,
+            "runAsUser",
+            12345,
+            "runAsGroup",
+            12345,
+            "capabilities",
+            Map.of("drop", List.of("ALL")),
+            "seccompProfile",
+            Map.of("type", "RuntimeDefault"));
+    final Map<String, Object> security = at(values, "controlPlane", "statefulSet", "security");
+    assertEquals(restricted, security.get("containerSecurityContext"));
+    assertEquals(
+        Map.of(
+            "runAsNonRoot", true,
+            "runAsUser", 12345,
+            "runAsGroup", 12345,
+            "fsGroup", 12345,
+            "seccompProfile", Map.of("type", "RuntimeDefault")),
+        security.get("podSecurityContext"));
+    assertEquals(restricted, at(values, "controlPlane", "distro", "k8s").get("securityContext"));
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void requireTheApiAdmitsNoSourceOutsideTheTenantUntilTheSeatsIsMeasured(@TempDir Path outdir) {
+    final List<Map<String, Object>> policies =
+        of(render(outdir, "nikopol-wrkld"), "CiliumNetworkPolicy");
+    assertEquals(1, policies.size());
+    final Map<String, Object> spec = at(policies.get(0), "spec");
+    assertEquals(
+        Map.of("matchLabels", Map.of("app", "vcluster", "release", "ccr")),
+        spec.get("endpointSelector"));
+    final List<Map<String, Object>> ingress = (List<Map<String, Object>>) spec.get("ingress");
+    assertEquals(1, ingress.size());
+    // Fail closed: only the tenant's own pods reach the API. No fromCIDR, no fromEntities, until
+    // the address the seat's flows carry is measured (behind the tailnet's SNAT).
+    final Map<String, Object> rule = ingress.get(0);
+    assertFalse(rule.containsKey("fromCIDR"));
+    assertFalse(rule.containsKey("fromCIDRSet"));
+    assertFalse(rule.containsKey("fromEntities"));
+    assertEquals(
+        List.of(Map.of("matchLabels", Map.of("k8s:io.kubernetes.pod.namespace", "vcluster-ccr"))),
+        rule.get("fromEndpoints"));
   }
 }
