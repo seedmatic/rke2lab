@@ -146,6 +146,15 @@ func (r *PoolAdoptionReconciler) reconcileSteps(
 	if spec.Role == adoptionv1alpha1.PoolRoleWorker {
 		return r.reconcileWorkerPool(ctx, a, image, configFiles)
 	}
+	// The CRD's rule refuses a control-plane pool without them; an object admitted before that rule
+	// existed is refused here, never dereferenced.
+	if spec.ControlPlaneEndpoint == nil || len(spec.Nodes) == 0 {
+		r.mark(a, adoptionv1alpha1.PoolConditionCRSetCreated, false, "Error",
+			"a control-plane pool declares no roster or no controlPlaneEndpoint")
+		return ctrl.Result{}, fmt.Errorf(
+			"control-plane PoolAdoption %s/%s declares no roster or no controlPlaneEndpoint",
+			spec.Namespace, spec.Pool)
+	}
 
 	// Resolve the roster + mode from the reflection (the reflector's git-only record) — the
 	// adopt-vs-greenfield switch, read DIRECTLY from git (immune to any Flux timing):
@@ -983,6 +992,9 @@ func (r *PoolAdoptionReconciler) workerPoolObjs(
 	agentConfig := map[string]any{"airGapped": true}
 	if len(spec.NodeLabels) > 0 {
 		agentConfig["nodeLabels"] = toAnySlice(spec.NodeLabels)
+	}
+	if len(spec.NodeTaints) > 0 {
+		agentConfig["nodeTaints"] = toAnySlice(spec.NodeTaints)
 	}
 	bootstrap := newObj(gvkRKE2ConfigTemplate, name, spec.Namespace)
 	bootstrap.Object["spec"] = map[string]any{
