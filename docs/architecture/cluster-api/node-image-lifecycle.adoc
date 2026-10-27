@@ -338,8 +338,8 @@ honest:
 . *mint* — the live grow builds it;
 . *the cellar* — the previous run's harvest, read by address. The DESIGNED path, unwired
   from the host grow today;
-. *the daemon* — the `node-base` alias a completed grow posed, which is why
-  `poseNodeBaseAliasAndGcImages` exists. Wired (`IncusImportLookup.nodeBaseFingerprint`),
+. *the daemon* — the image's alias a completed grow posed (`node-server` for the server image, `node-agent`
+  for the agent's), which is why `poseAliasesAndGcImages` exists. Wired (`IncusImportLookup.aliasFingerprint`),
   and what makes a preview work on a fresh worktree: a new worktree empties the Pulumi
   stack, not the daemon.
 
@@ -510,9 +510,10 @@ anyway.
 
 == Troubleshooting
 
-The grow fails with "no node-base image can be identified"::
+The grow fails with "no node-server image can be identified"::
 Neither source answered: no built artefacts (a surveying run builds none) and the daemon
-holds no `node-base` alias in the project. Mint one with a live grow. This is deliberate —
+holds no `node-server` alias in the project. An alias renamed in the code is renamed on the daemon first
+(`incus image alias rename <old> <new>`, per project), or the first artefact-less run fails exactly so. Mint one with a live grow. This is deliberate —
 it used to compute a fingerprint from whatever files happened to be on disk, which is why
 it appeared to work until the first run from a fresh worktree.
 

@@ -320,7 +320,7 @@ class TenantNodesTest {
             .imageState(
                 Optional.of(
                     new ImageState(
-                        "node-base",
+                        "node-server",
                         "f".repeat(64),
                         "sha256-buildinputs",
                         "rke2lab",

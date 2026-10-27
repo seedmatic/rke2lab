@@ -42,11 +42,10 @@ public record BootstrapConfig(
   private static final String DEFAULT_NODE_NAME = "master";
   private static final String DEFAULT_INCUS_PROJECT = "rke2lab";
   // The node images' incus aliases, single source here: the server's (the root and every control
-  // plane), which
-  // the host adopts the built image by, and the agent's (the worker pools). Renaming node-base
-  // waits for the
-  // regrow defect: an alias the daemon holds is how a grow finds its image.
-  private static final String IMAGE_ALIAS = "node-base";
+  // plane), which the host adopts the built image by, and the agent's (the worker pools). An alias
+  // the
+  // daemon holds is how a grow finds its image: renaming one is renaming it on the daemon first.
+  private static final String IMAGE_ALIAS = "node-server";
   private static final String AGENT_IMAGE_ALIAS = "node-agent";
   private static final String DEFAULT_FABRIC_BRIDGE_PARENT = "fabric-br";
   // The tailscale tailnet DNS suffix. Resolvable host addresses use the MagicDNS FQDN

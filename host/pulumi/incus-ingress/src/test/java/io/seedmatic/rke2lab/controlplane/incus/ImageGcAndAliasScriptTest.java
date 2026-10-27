@@ -35,14 +35,14 @@ class ImageGcAndAliasScriptTest {
     final Run run =
         run(List.of(SERVER_OLD, SERVER_NEW, AGENT_OLD, STRAY), kept(SERVER_NEW, AGENT_OLD));
     assertEquals(Set.of(SERVER_OLD, STRAY), run.deleted());
-    assertEquals(Map.of("node-base", SERVER_NEW, "node-agent", AGENT_OLD), run.aliases());
+    assertEquals(Map.of("node-server", SERVER_NEW, "node-agent", AGENT_OLD), run.aliases());
   }
 
   @Test
   void the_agent_changed_and_the_server_did_not() throws Exception {
     final Run run = run(List.of(SERVER_OLD, AGENT_OLD, AGENT_NEW), kept(SERVER_OLD, AGENT_NEW));
     assertEquals(Set.of(AGENT_OLD), run.deleted());
-    assertEquals(Map.of("node-base", SERVER_OLD, "node-agent", AGENT_NEW), run.aliases());
+    assertEquals(Map.of("node-server", SERVER_OLD, "node-agent", AGENT_NEW), run.aliases());
   }
 
   @Test
@@ -50,28 +50,28 @@ class ImageGcAndAliasScriptTest {
     final Run run =
         run(List.of(SERVER_OLD, SERVER_NEW, AGENT_OLD, AGENT_NEW), kept(SERVER_NEW, AGENT_NEW));
     assertEquals(Set.of(SERVER_OLD, AGENT_OLD), run.deleted());
-    assertEquals(Map.of("node-base", SERVER_NEW, "node-agent", AGENT_NEW), run.aliases());
+    assertEquals(Map.of("node-server", SERVER_NEW, "node-agent", AGENT_NEW), run.aliases());
   }
 
   @Test
   void neither_changed_and_a_rerun_deletes_nothing() throws Exception {
     final Run run = run(List.of(SERVER_OLD, AGENT_OLD), kept(SERVER_OLD, AGENT_OLD));
     assertEquals(Set.of(), run.deleted());
-    assertEquals(Map.of("node-base", SERVER_OLD, "node-agent", AGENT_OLD), run.aliases());
+    assertEquals(Map.of("node-server", SERVER_OLD, "node-agent", AGENT_OLD), run.aliases());
   }
 
   @Test
   void a_grow_with_no_agent_image_keeps_the_server_only() throws Exception {
     final Map<String, String> serverOnly = new LinkedHashMap<>();
-    serverOnly.put("node-base", SERVER_NEW);
+    serverOnly.put("node-server", SERVER_NEW);
     final Run run = run(List.of(SERVER_OLD, SERVER_NEW), serverOnly);
     assertEquals(Set.of(SERVER_OLD), run.deleted());
-    assertEquals(Map.of("node-base", SERVER_NEW), run.aliases());
+    assertEquals(Map.of("node-server", SERVER_NEW), run.aliases());
   }
 
   private static Map<String, String> kept(String server, String agent) {
     final Map<String, String> kept = new LinkedHashMap<>();
-    kept.put("node-base", server);
+    kept.put("node-server", server);
     kept.put("node-agent", agent);
     return kept;
   }
