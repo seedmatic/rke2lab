@@ -7,3 +7,6 @@ resources:
   - cluster-api-cluster-api-operator-workloads.yml
   - cluster-api-cluster-api-workload.yml
   - cluster-api-kubeconfig.yml
+  - cluster-api-vcluster-certs.yml
+  - cluster-api-vcluster-pin.yml
+  - cluster-api-vcluster.yml

@@ -1,5 +1,5 @@
 source:
-  sha: 955dd15724c953b9a066cf10098bb0a6d0b631ac
+  sha: 78c10b132b29d6f77673b18abd08cf2bcaf388a4
   dirty: false
 facet:
   debug:
@@ -21,11 +21,44 @@ facet:
     fabricBridgeParent: fabric-br
 image:
   imageAlias: node-base
-  imageFingerprint: 0c76ed24d7c0e6870f931c2a1c48e1663d0bdc997b682de0a55bbb4697503969
-  imageBuildChecksum: 2d45811c75d89887e1d88359b8b1c62d595cb5245c52d0cf62956ddfe511857a
+  imageFingerprint: 6e5d3e0c8d7954a1f9656775ed9be445ed01f0c55be455b144539a5780525ae9
+  imageBuildChecksum: 2f7f7572f1de61d464978fadbeb0789c5bb0fe7c7ba88e2d25e72429593b900b
   incusProject: rke2lab
   incusRemoteAddress: https://nixos.bioskop:8443
-  rke2Version: v1.34.11+rke2r1
+  rke2Version: v1.36.4+rke2r1
+  runtime:
+    kernelModules:
+      - ip_vs
+      - ip_vs_rr
+      - ip_vs_wrr
+      - ip_vs_sh
+      - netlink_diag
+      - nf_nat
+      - overlay
+      - br_netfilter
+      - xt_socket
+      - xfrm_user
+      - nft_compat
+      - xt_mark
+      - xt_CT
+      - xt_TPROXY
+      - xt_comment
+      - xt_conntrack
+    rawLxc: |-
+      lxc.mount.auto = proc:rw sys:rw cgroup:rw
+      lxc.apparmor.profile = unconfined
+      lxc.cap.drop =
+    privileged: true
+    nesting: true
+    interceptBpf: true
+    interceptBpfDevices: true
+agentImage:
+  imageAlias: node-agent
+  imageFingerprint: 221c7ed94ecd5bd57016276aaa96e05e5d4765244fad51dc869159f9b7b62f56
+  imageBuildChecksum: 966f08cace669709a97efe8dc2797d0c7fbf5f4d44886331f52e96ee33f3a3ca
+  incusProject: rke2lab
+  incusRemoteAddress: https://nixos.bioskop:8443
+  rke2Version: v1.36.4+rke2r1
   runtime:
     kernelModules:
       - ip_vs

@@ -15,4 +15,6 @@ spec:
       - key: node-role.kubernetes.io/control-plane
         operator: Exists
   serviceSelector:
-    matchLabels: {}
+    matchExpressions:
+      - key: io.seedmatic.rke2lab/vcluster-api
+        operator: DoesNotExist

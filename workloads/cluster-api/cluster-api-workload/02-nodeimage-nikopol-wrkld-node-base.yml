@@ -8,9 +8,9 @@ metadata:
   namespace: rke2lab-nikopol-wrkld
 spec:
   alias: node-base
-  buildChecksum: 2d45811c75d89887e1d88359b8b1c62d595cb5245c52d0cf62956ddfe511857a
-  fingerprint: 0c76ed24d7c0e6870f931c2a1c48e1663d0bdc997b682de0a55bbb4697503969
-  rke2Version: v1.34.11+rke2r1
+  buildChecksum: 2f7f7572f1de61d464978fadbeb0789c5bb0fe7c7ba88e2d25e72429593b900b
+  fingerprint: 6e5d3e0c8d7954a1f9656775ed9be445ed01f0c55be455b144539a5780525ae9
+  rke2Version: v1.36.4+rke2r1
   runtime:
     kernelModules:
       - ip_vs
