@@ -276,11 +276,22 @@ class VclusterManifestsUnitTest {
     // The chart's own policy, measured offline (helm template 0.37.4): once on, its vc-work-<name>
     // lets the synced pods reach their control plane (DNS, API) and 0.0.0.0/0 MINUS the private
     // ranges, which hold every fleet address: pods and Services (10/8), the vmnet (10.80/16), the
-    // fabric (172.16/12). So no fleet Service, no host API, no other node's kubelet. Its defaults
-    // ARE that shape: the values only switch it on, and overriding them is how a range gets lost.
+    // fabric (172.16/12). So no fleet Service, no host API, no other node's kubelet. The ranges are
+    // STATED rather than left to the chart's defaults: the helm-controller renders the chart in the
+    // cluster, where no test of ours reads it, so a chart bump changing them would go unseen.
     final Map<String, Object> networkPolicy =
         at(values(render(outdir, "nikopol-wrkld")), "policies", "networkPolicy");
-    assertEquals(Map.of("enabled", true), networkPolicy);
+    assertEquals(true, networkPolicy.get("enabled"));
+    assertEquals(
+        Map.of(
+            "enabled",
+            true,
+            "cidr",
+            "0.0.0.0/0",
+            "except",
+            List.of(
+                "100.64.0.0/10", "127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")),
+        at(networkPolicy, "workload", "publicEgress"));
   }
 
   @Test
