@@ -1514,6 +1514,57 @@
             # no-installer-channel's). Each image is the other's
             # mutant. It reads options only: no warnings (the systemd module reads every unit, which instantiates the
             # whole system) and no configuration of its own.
+            # Both node images run rke2 1.36, built by the stable nixpkgs from unstable's versions (./nixos/rke2-1-36.nix),
+            # and keep the stable nixpkgs input's own glibc and systemd: no second base in the image (unstable's rke2_1_36
+            # would bring one). It fails the day the stable nixpkgs carries rke2_1_36, which is when the module goes.
+            # Options and attributes only. Its mutant: unstable's rke2_1_36, built by unstable's stdenv, must be caught.
+            node-rke2-1-36 =
+              let
+                stable = inputs.nixpkgs.legacyPackages.${nodeSystem};
+                faultsOf =
+                  name: c:
+                  pkgs.lib.optional (
+                    c.config.services.rke2.package.version != "1.36.4+rke2r1"
+                  ) "${name} runs rke2 ${c.config.services.rke2.package.version}"
+                  ++ pkgs.lib.optional (
+                    c.config.systemd.package.drvPath != stable.systemd.drvPath
+                  ) "${name}'s systemd is not the stable nixpkgs'"
+                  ++ pkgs.lib.optional (
+                    c.pkgs.glibc.drvPath != stable.glibc.drvPath
+                  ) "${name}'s glibc is not the stable nixpkgs'";
+                # rke2 1.36 deploys traefik on a new cluster that names no ingress; ours is Envoy Gateway.
+                traefikFaults =
+                  let
+                    flags = self.nixosConfigurations.rke2-node-server.config.services.rke2.extraFlags;
+                  in
+                  map (d: "the server does not ${d}") (
+                    builtins.filter (d: !builtins.elem d flags) [
+                      "--disable=rke2-traefik"
+                      "--disable=rke2-traefik-crd"
+                    ]
+                  );
+                faults =
+                  faultsOf "rke2-node-base" self.nixosConfigurations.rke2-node-base
+                  ++ faultsOf "rke2-node-server" self.nixosConfigurations.rke2-node-server
+                  ++ traefikFaults
+                  ++ pkgs.lib.optional (stable ? rke2_1_36) "the stable nixpkgs carries rke2_1_36: remove nixos/rke2-1-36.nix";
+                # What drags a second base in is the package's stdenv: unstable's rke2_1_36 is built by unstable's, hence
+                # its glibc and the rest. Ours must be the stable nixpkgs' own; the mutant, unstable's package, must not.
+                foreignStdenv = p: p.stdenv.drvPath != stable.stdenv.drvPath;
+                ours = foreignStdenv self.nixosConfigurations.rke2-node-base.config.services.rke2.package;
+                mutant = foreignStdenv inputs.nixpkgs-unstable.legacyPackages.${nodeSystem}.rke2_1_36;
+              in
+              pkgs.runCommand "node-rke2-1-36" { } (
+                if faults == [ ] && !ours && mutant then
+                  "touch $out"
+                else
+                  ''
+                    printf '%s\n' ${pkgs.lib.escapeShellArgs faults} >&2
+                    echo "rke2 built by another stdenv than the stable nixpkgs': ${pkgs.lib.boolToString ours}" >&2
+                    echo "the mutant (unstable's rke2_1_36) caught: ${pkgs.lib.boolToString mutant}" >&2
+                    exit 1
+                  ''
+              );
             node-image-tree =
               let
                 base = self.nixosConfigurations.rke2-node-base;
@@ -1679,6 +1730,8 @@
         system = nodeSystem;
         specialArgs = {
           inherit flox flox-runtime flox-controller;
+          # Only for the rke2 1.36 versions until a stable nixpkgs carries them (./nixos/rke2-1-36.nix).
+          inherit (inputs) nixpkgs-unstable;
           ndh = inputs.ndh;
           # The upstream caches every seedmatic flake shares (nix-flake-commons), for the node's nix.conf.
           inherit (inputs.flake-commons.lib) upstreamCaches;

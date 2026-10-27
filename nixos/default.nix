@@ -10,6 +10,7 @@
 {
   imports = [
     ./rke2.nix # rke2 (an agent; ./server.nix makes it a server) + dual-stack + rke2lab.target
+    ./rke2-1-36.nix # rke2 1.36, built by stable's builder until a stable nixpkgs carries it
     ./cloud-init.nix # cloud-init datasource shim (incus devlxd → NoCloud seed) — the uniform bootstrap channel
     ./network.nix # systemd-networkd (fabric0/vmnet0) + resolved mDNS — honest network-online.target
     ./capn-airgapped.nix # inert /opt/install.sh so CAPRKE2 airGapped no-ops onto the baked rke2 (workload nodes)
