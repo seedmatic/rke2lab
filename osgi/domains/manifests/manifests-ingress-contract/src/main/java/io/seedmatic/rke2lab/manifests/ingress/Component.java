@@ -50,7 +50,10 @@ public enum Component implements WireEnum {
   // app tag; NO GitHub bump source (the chart is versioned separately from the app release tags, so
   // the bumper cannot diff it against `v*` tags — it stays a manual chart pin, like
   // OPENEBS_ZFS_CHART).
-  GITHUB_TOKEN_MANAGER("githubTokenManager", "1.6.1");
+  GITHUB_TOKEN_MANAGER("githubTokenManager", "1.6.1"),
+  // loft-sh/vcluster — the CHART version on charts.loft.sh, which drops the tag's `v`; no bump
+  // source for the same reason as the charts above.
+  VCLUSTER_CHART("vclusterChart", "0.37.4");
 
   private final String slug;
   private final String defaultVersion;
