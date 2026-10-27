@@ -4,6 +4,7 @@ import io.seedmatic.rke2lab.clusterpki.contract.VclusterDeclaration;
 import io.seedmatic.rke2lab.manifests.AbstractManifestsUnit;
 import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
 import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
+import io.seedmatic.rke2lab.manifests.contract.ManifestAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.ingress.Component;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
@@ -35,6 +36,8 @@ public final class VclusterManifestsUnit extends AbstractManifestsUnit {
   public static final String MANIFEST_UNIT_ID = ManifestDomainCatalog.CLUSTER_API + "/vcluster";
 
   private static final String LABEL = "project";
+
+  private static final String API_LABEL = ManifestAnnotation.VCLUSTER_API_LABEL.key();
 
   private final PackageMetadataProfile packageProfile =
       new PackageMetadataProfile(ManifestDomainCatalog.CLUSTER_API, "vcluster");
@@ -92,7 +95,13 @@ public final class VclusterManifestsUnit extends AbstractManifestsUnit {
             ApiObjectProps.builder()
                 .apiVersion("v1")
                 .kind("Namespace")
-                .metadata(clusterScoped(namespace).build())
+                .metadata(
+                    clusterScoped(namespace)
+                        .labels(
+                            Map.of(
+                                "pod-security.kubernetes.io/enforce", "restricted",
+                                "pod-security.kubernetes.io/warn", "restricted"))
+                        .build())
                 .build());
 
     final ApiObject chart =
@@ -131,7 +140,7 @@ public final class VclusterManifestsUnit extends AbstractManifestsUnit {
                     ApiObjectMetadata.builder()
                         .name(name + "-api")
                         .namespace(namespace)
-                        .labels(Map.of("io.cilium/lb-ipam-pool", "fabric", "app", "vcluster-api"))
+                        .labels(Map.of("io.cilium/lb-ipam-pool", "fabric", API_LABEL, name))
                         .annotations(
                             packageProfile.packageAnnotations(
                                 Map.of("lbipam.cilium.io/ips", apiAddress)))
@@ -151,6 +160,56 @@ public final class VclusterManifestsUnit extends AbstractManifestsUnit {
                 List.of(
                     Map.of("name", "https", "port", 443, "targetPort", 8443, "protocol", "TCP")))));
     service.addDependency(ns);
+
+    // Announced from the pod's own pool: Local traffic needs the answering node to host it.
+    final ApiObject announcement =
+        new ApiObject(
+            scope,
+            "ciliuml2announcementpolicy-vcluster-" + name + "-api",
+            ApiObjectProps.builder()
+                .apiVersion("cilium.io/v2alpha1")
+                .kind("CiliumL2AnnouncementPolicy")
+                .metadata(clusterScoped("vcluster-" + name + "-api").build())
+                .build());
+    announcement.addJsonPatch(
+        JsonPatch.add(
+            "/spec",
+            Map.of(
+                "interfaces", List.of("fabric0"),
+                "loadBalancerIPs", true,
+                "nodeSelector",
+                    Map.of(
+                        "matchExpressions",
+                        List.of(Map.of("key", LABEL, "operator", "In", "values", List.of(name)))),
+                "serviceSelector", Map.of("matchLabels", Map.of(API_LABEL, name)))));
+
+    // Fail closed: only the tenant's own pods reach the API. The operator's seat is added once the
+    // address its flows carry is measured (behind the tailnet's SNAT); its refused flows, seen by
+    // hubble, are that measure.
+    final ApiObject apiPolicy =
+        new ApiObject(
+            scope,
+            "ciliumnetworkpolicy-vcluster-" + name + "-api",
+            ApiObjectProps.builder()
+                .apiVersion("cilium.io/v2")
+                .kind("CiliumNetworkPolicy")
+                .metadata(clusterScoped(name + "-api").namespace(namespace).build())
+                .build());
+    apiPolicy.addJsonPatch(
+        JsonPatch.add(
+            "/spec",
+            Map.of(
+                "endpointSelector",
+                    Map.of("matchLabels", Map.of("app", "vcluster", "release", name)),
+                "ingress",
+                    List.of(
+                        Map.of(
+                            "fromEndpoints",
+                            List.of(
+                                Map.of(
+                                    "matchLabels",
+                                    Map.of("k8s:io.kubernetes.pod.namespace", namespace))))))));
+    apiPolicy.addDependency(ns);
   }
 
   private static String values(final String name, final String selector, final String apiAddress) {
@@ -175,6 +234,20 @@ public final class VclusterManifestsUnit extends AbstractManifestsUnit {
                 - %3$s:NoSchedule
         exportKubeConfig:
           server: https://%4$s:443
+        policies:
+          resourceQuota:
+            enabled: true
+            quota:
+              requests.cpu: 4
+              requests.memory: 8Gi
+              limits.cpu: 8
+              limits.memory: 16Gi
+              requests.storage: 50Gi
+              services.nodeports: 0
+              services.loadbalancers: 1
+              count/pods: 40
+          limitRange:
+            enabled: true
         """
         .formatted(LABEL, name, selector, apiAddress);
   }

@@ -4,6 +4,7 @@ package io.seedmatic.rke2lab.manifests.units.networking;
 import io.seedmatic.rke2lab.manifests.AbstractManifestsUnit;
 import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
 import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
+import io.seedmatic.rke2lab.manifests.contract.ManifestAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.node.DefaultNodeEnvContext;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
@@ -187,8 +188,18 @@ public final class CiliumAdvancedManifestsUnit extends AbstractManifestsUnit {
                     List.of(
                         Map.of(
                             "key", "node-role.kubernetes.io/control-plane", "operator", "Exists"))),
+                // Every LoadBalancer but a vcluster's API, which its own policy announces from the
+                // tenant's pool (VclusterManifestsUnit, in cluster-api): two policies on one
+                // Service race for it.
                 "serviceSelector",
-                Map.of("matchLabels", Map.of()))));
+                Map.of(
+                    "matchExpressions",
+                    List.of(
+                        Map.of(
+                            "key",
+                            ManifestAnnotation.VCLUSTER_API_LABEL.key(),
+                            "operator",
+                            "DoesNotExist"))))));
   }
 
   private void createBgpClusterConfig(final Construct scope) {

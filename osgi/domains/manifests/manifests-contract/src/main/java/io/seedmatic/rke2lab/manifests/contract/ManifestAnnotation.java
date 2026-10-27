@@ -63,7 +63,14 @@ public enum ManifestAnnotation {
    * (kubelet applies {@code --node-labels} only at first registration), guarded against Java↔nix
    * drift by the {@code node-label-concord} flake check.
    */
-  NODE_FLOX_RUNTIME_LABEL("flox.seedmatic.io/enabled");
+  NODE_FLOX_RUNTIME_LABEL("flox.seedmatic.io/enabled"),
+
+  /**
+   * Label of a vcluster's API LoadBalancer, valued by the vcluster's name: its own L2 policy
+   * announces it from the tenant's pool, and the fleet's « host » policy excludes it, so exactly
+   * one policy holds each LoadBalancer.
+   */
+  VCLUSTER_API_LABEL("io.seedmatic.rke2lab/vcluster-api");
 
   private final String key;
 
