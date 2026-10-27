@@ -468,7 +468,11 @@ func (in *PoolAdoptionList) DeepCopyObject() runtime.Object {
 func (in *PoolAdoptionSpec) DeepCopyInto(out *PoolAdoptionSpec) {
 	*out = *in
 	out.Image = in.Image
-	out.ControlPlaneEndpoint = in.ControlPlaneEndpoint
+	if in.ControlPlaneEndpoint != nil {
+		in, out := &in.ControlPlaneEndpoint, &out.ControlPlaneEndpoint
+		*out = new(APIEndpoint)
+		**out = **in
+	}
 	if in.Nodes != nil {
 		in, out := &in.Nodes, &out.Nodes
 		*out = make([]PetSpec, len(*in))
@@ -476,6 +480,11 @@ func (in *PoolAdoptionSpec) DeepCopyInto(out *PoolAdoptionSpec) {
 	}
 	if in.NodeLabels != nil {
 		in, out := &in.NodeLabels, &out.NodeLabels
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
+	if in.NodeTaints != nil {
+		in, out := &in.NodeTaints, &out.NodeTaints
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
@@ -587,7 +596,11 @@ func (in *PoolIntentionList) DeepCopyObject() runtime.Object {
 func (in *PoolIntentionSpec) DeepCopyInto(out *PoolIntentionSpec) {
 	*out = *in
 	out.Image = in.Image
-	out.ControlPlaneEndpoint = in.ControlPlaneEndpoint
+	if in.ControlPlaneEndpoint != nil {
+		in, out := &in.ControlPlaneEndpoint, &out.ControlPlaneEndpoint
+		*out = new(APIEndpoint)
+		**out = **in
+	}
 	if in.Nodes != nil {
 		in, out := &in.Nodes, &out.Nodes
 		*out = make([]PetSpec, len(*in))
@@ -595,6 +608,11 @@ func (in *PoolIntentionSpec) DeepCopyInto(out *PoolIntentionSpec) {
 	}
 	if in.NodeLabels != nil {
 		in, out := &in.NodeLabels, &out.NodeLabels
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
+	if in.NodeTaints != nil {
+		in, out := &in.NodeTaints, &out.NodeTaints
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}

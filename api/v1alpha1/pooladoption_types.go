@@ -12,6 +12,7 @@ import (
 // state machine and reports presence; cluster reachability is aggregated at the ClusterAdoption grain, not
 // here. The BYO-CA Secrets (<cluster>-{ca,cca,etcd,peer-etcd}) — needed by a control-plane pool —
 // are delivered by seed-master into Namespace; this controller only references them.
+// +kubebuilder:validation:XValidation:rule="self.role != 'control-plane' || (has(self.nodes) && size(self.nodes) > 0 && has(self.controlPlaneEndpoint))",message="a control-plane pool declares its roster (nodes) and its controlPlaneEndpoint"
 type PoolAdoptionSpec struct {
 	// ClusterName is the CAPI Cluster this pool belongs to (the RCP/Machines reference it).
 	// +kubebuilder:validation:MinLength=1
@@ -37,11 +38,15 @@ type PoolAdoptionSpec struct {
 	RKE2Version string `json:"rke2Version"`
 
 	// ControlPlaneEndpoint is the kube-vip VIP a control-plane pool registers its replicas on.
-	ControlPlaneEndpoint APIEndpoint `json:"controlPlaneEndpoint"`
+	// Unset for a worker pool, which registers on none.
+	// +optional
+	ControlPlaneEndpoint *APIEndpoint `json:"controlPlaneEndpoint,omitempty"`
 
 	// Nodes is the pool's explicit pet roster, adopted/provisioned by providerID (lxc:///<name>).
-	// +kubebuilder:validation:MinItems=1
-	Nodes []PetSpec `json:"nodes"`
+	// Required of a control-plane pool only (the rule on the spec): a worker pool is cattle, its
+	// MachineDeployment names the machines.
+	// +optional
+	Nodes []PetSpec `json:"nodes,omitempty"`
 
 	// AdoptedBy names the management cluster that adopts this pool's CLUSTER — mirrored from its
 	// ClusterIntention so the gate exists at BOTH levels.
@@ -73,6 +78,12 @@ type PoolAdoptionSpec struct {
 	// agentConfig.nodeLabels, CAPRKE2's own field for this.
 	// +optional
 	NodeLabels []string `json:"nodeLabels,omitempty"`
+
+	// NodeTaints are the kubelet --register-with-taints values every node of this pool registers
+	// with, as "key=value:Effect", posed on CAPRKE2's agentConfig.nodeTaints. A tenant's pool is
+	// tainted so that only what tolerates it (the tenant's vcluster) lands there, never the fleet.
+	// +optional
+	NodeTaints []string `json:"nodeTaints,omitempty"`
 
 	// Devices are the Incus device definitions every node of this pool gets, posed INLINE on the
 	// LXCMachine/template — each entry in CAPN's `<device>,<key>=<value>` form, e.g.

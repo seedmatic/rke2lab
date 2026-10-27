@@ -89,8 +89,9 @@ spec:
                 minLength: 1
                 type: string
               controlPlaneEndpoint:
-                description: ControlPlaneEndpoint is the kube-vip VIP a control-plane
-                  pool registers its replicas on.
+                description: |-
+                  ControlPlaneEndpoint is the kube-vip VIP a control-plane pool registers its replicas on.
+                  Unset for a worker pool, which registers on none.
                 properties:
                   host:
                     minLength: 1
@@ -151,9 +152,19 @@ spec:
                 items:
                   type: string
                 type: array
+              nodeTaints:
+                description: |-
+                  NodeTaints are the kubelet --register-with-taints values every node of this pool registers
+                  with, as "key=value:Effect", posed on CAPRKE2's agentConfig.nodeTaints. A tenant's pool is
+                  tainted so that only what tolerates it (the tenant's vcluster) lands there, never the fleet.
+                items:
+                  type: string
+                type: array
               nodes:
-                description: Nodes is the pool's explicit pet roster, adopted/provisioned
-                  by providerID (lxc:///<name>).
+                description: |-
+                  Nodes is the pool's explicit pet roster, adopted/provisioned by providerID (lxc:///<name>).
+                  Required of a control-plane pool only (the rule on the spec): a worker pool is cattle, its
+                  MachineDeployment names the machines.
                 items:
                   description: |-
                     PetSpec is one named pet of a pool — the deterministic instance name (CANONICAL_NODE_NAMES), the
@@ -167,7 +178,6 @@ spec:
                   required:
                   - name
                   type: object
-                minItems: 1
                 type: array
               pool:
                 description: Pool is the pool identity (names the LXCMachineTemplate
@@ -200,14 +210,16 @@ spec:
                 type: string
             required:
             - clusterName
-            - controlPlaneEndpoint
             - image
             - namespace
-            - nodes
             - pool
             - rke2Version
             - role
             type: object
+            x-kubernetes-validations:
+            - message: a control-plane pool declares its roster (nodes) and its controlPlaneEndpoint
+              rule: self.role != 'control-plane' || (has(self.nodes) && size(self.nodes)
+                > 0 && has(self.controlPlaneEndpoint))
           status:
             description: PoolAdoptionStatus records what the controller observed at
               the pool grain.

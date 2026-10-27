@@ -128,6 +128,7 @@ func specFromPoolIntention(pi *adoptionv1alpha1.PoolIntention) adoptionv1alpha1.
 		Nature:               pi.Spec.Nature,
 		AdoptedBy:            pi.Spec.AdoptedBy,
 		NodeLabels:           pi.Spec.NodeLabels,
+		NodeTaints:           pi.Spec.NodeTaints,
 		Devices:              pi.Spec.Devices,
 		Target:               pi.Spec.Target,
 	}

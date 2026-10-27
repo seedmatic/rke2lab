@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -256,11 +257,60 @@ func TestAWorkerPoolCarriesNoBootstrapBundle(t *testing.T) {
 		if file["path"] == serverManifestsPath {
 			t.Fatalf("a worker's RKE2ConfigTemplate carries the bootstrap bundle %s", serverManifestsPath)
 		}
+		// Nor the cluster's age identity, the other fleet secret a node's disk can receive.
+		if path, _ := file["path"].(string); strings.HasSuffix(path, "sops-age.key") {
+			t.Fatalf("a worker's RKE2ConfigTemplate carries the cluster age identity %s", path)
+		}
 		if from, ok := file["contentFrom"].(map[string]any); ok {
 			t.Fatalf("a worker's file comes from a Secret: %v", from)
 		}
 	}
 	if len(files) != 1 {
 		t.Errorf("files = %v, want the one config fragment", files)
+	}
+}
+
+// A tenant's pool keeps the fleet off its nodes: its taints reach the kubelet through CAPRKE2's own
+// agentConfig.nodeTaints, so only what tolerates them (the tenant's vcluster) lands there.
+func TestAWorkerPoolCarriesItsTaints(t *testing.T) {
+	r := &PoolAdoptionReconciler{SelfCluster: "nikopol-mgmt"}
+	spec := workerSpec()
+	spec.NodeTaints = []string{"project=ccr:NoSchedule"}
+
+	tpl := findKind(t, r.workerPoolObjs(spec, workerImage(), nil), gvkRKE2ConfigTemplate.Kind)
+	taints, _, _ := unstructured.NestedStringSlice(tpl.Object, "spec", "template", "spec", "agentConfig", "nodeTaints")
+	if len(taints) != 1 || taints[0] != "project=ccr:NoSchedule" {
+		t.Errorf("agentConfig.nodeTaints = %v, want [project=ccr:NoSchedule]", taints)
+	}
+}
+
+// The intent carries the taints down to the pool mirror, like the labels beside them.
+func TestThePoolIntentionProjectsItsTaints(t *testing.T) {
+	pi := &adoptionv1alpha1.PoolIntention{}
+	pi.Spec.Role = adoptionv1alpha1.PoolRoleWorker
+	pi.Spec.NodeTaints = []string{"project=ccr:NoSchedule"}
+
+	got := specFromPoolIntention(pi).NodeTaints
+	if len(got) != 1 || got[0] != "project=ccr:NoSchedule" {
+		t.Errorf("PoolAdoption nodeTaints = %v, want the intention's", got)
+	}
+}
+
+// A control-plane pool without its endpoint or roster (admitted before the CRD's rule) is refused,
+// never dereferenced.
+func TestAControlPlanePoolWithoutEndpointIsRefused(t *testing.T) {
+	spec := workerSpec()
+	spec.Role = adoptionv1alpha1.PoolRoleControlPlane
+	spec.Nature = adoptionv1alpha1.PoolNatureCattle
+	store := readyWorkerStore(spec)
+	r := &PoolAdoptionReconciler{Client: store, Scheme: adoptionScheme(t), SelfCluster: "nikopol-mgmt"}
+	a := &adoptionv1alpha1.PoolAdoption{Spec: spec}
+
+	_, err := r.reconcileSteps(context.Background(), a)
+	if err == nil || !strings.Contains(err.Error(), "no controlPlaneEndpoint") {
+		t.Fatalf("reconcileSteps = %v, want the refusal of a pool without endpoint nor roster", err)
+	}
+	if len(store.created) != 0 {
+		t.Errorf("ensured %d objects for a control-plane pool without endpoint", len(store.created))
 	}
 }
