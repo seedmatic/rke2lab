@@ -276,6 +276,40 @@ class VclusterManifestsUnitTest {
 
   @Test
   @SuppressWarnings("unchecked")
+  void requireTheControlPlaneRunsRootlessUnderRestricted(@TempDir Path outdir) {
+    // The chart's default runs as root and fails `restricted` on 8 points (measured offline:
+    // helm template 0.37.4 + a PSS check). Its rootless mode, set at FIRST deployment (no
+    // migration from root), passes, with the init container's own context beside it.
+    final Map<String, Object> values = values(render(outdir, "nikopol-wrkld"));
+    final Map<String, Object> restricted =
+        Map.of(
+            "allowPrivilegeEscalation",
+            false,
+            "runAsNonRoot",
+            true,
+            "runAsUser",
+            12345,
+            "runAsGroup",
+            12345,
+            "capabilities",
+            Map.of("drop", List.of("ALL")),
+            "seccompProfile",
+            Map.of("type", "RuntimeDefault"));
+    final Map<String, Object> security = at(values, "controlPlane", "statefulSet", "security");
+    assertEquals(restricted, security.get("containerSecurityContext"));
+    assertEquals(
+        Map.of(
+            "runAsNonRoot", true,
+            "runAsUser", 12345,
+            "runAsGroup", 12345,
+            "fsGroup", 12345,
+            "seccompProfile", Map.of("type", "RuntimeDefault")),
+        security.get("podSecurityContext"));
+    assertEquals(restricted, at(values, "controlPlane", "distro", "k8s").get("securityContext"));
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
   void requireTheApiAdmitsNoSourceOutsideTheTenantUntilTheSeatsIsMeasured(@TempDir Path outdir) {
     final List<Map<String, Object>> policies =
         of(render(outdir, "nikopol-wrkld"), "CiliumNetworkPolicy");

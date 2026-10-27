@@ -215,7 +215,37 @@ public final class VclusterManifestsUnit extends AbstractManifestsUnit {
   private static String values(final String name, final String selector, final String apiAddress) {
     return """
         controlPlane:
+          distro:
+            k8s:
+              securityContext:
+                allowPrivilegeEscalation: false
+                runAsNonRoot: true
+                runAsUser: 12345
+                runAsGroup: 12345
+                capabilities:
+                  drop: [ALL]
+                seccompProfile:
+                  type: RuntimeDefault
           statefulSet:
+            # Rootless, for the namespace's PSA `restricted`: only at FIRST deployment, vcluster has
+            # no migration from root.
+            security:
+              podSecurityContext:
+                runAsNonRoot: true
+                runAsUser: 12345
+                runAsGroup: 12345
+                fsGroup: 12345
+                seccompProfile:
+                  type: RuntimeDefault
+              containerSecurityContext:
+                allowPrivilegeEscalation: false
+                runAsNonRoot: true
+                runAsUser: 12345
+                runAsGroup: 12345
+                capabilities:
+                  drop: [ALL]
+                seccompProfile:
+                  type: RuntimeDefault
             scheduling:
               nodeSelector:
                 %1$s: %2$s
