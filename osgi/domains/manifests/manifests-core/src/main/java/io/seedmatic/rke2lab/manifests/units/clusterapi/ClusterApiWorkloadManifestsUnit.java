@@ -288,6 +288,7 @@ public final class ClusterApiWorkloadManifestsUnit extends AbstractManifestsUnit
                                         blueprint.vmnetBridgeName())
                                     .toCapnSpecs(),
                                 List.of("project=" + vcluster),
+                                List.of("project=" + vcluster + ":NoSchedule"),
                                 blueprint.names().incusMember(),
                                 adoptedBy,
                                 packageProfile,

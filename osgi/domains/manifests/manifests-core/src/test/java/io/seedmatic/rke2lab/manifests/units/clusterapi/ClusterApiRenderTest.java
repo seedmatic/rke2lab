@@ -583,6 +583,8 @@ class ClusterApiRenderTest {
     assertEquals(
         List.of(ManifestAnnotation.NODE_FLOX_RUNTIME_LABEL.key() + "=true", "project=ccr"),
         spec.get("nodeLabels"));
+    // Tainted, so nothing of the fleet (Flux included) lands there: only what tolerates it.
+    assertEquals(List.of("project=ccr:NoSchedule"), spec.get("nodeTaints"));
     // Born where its cluster's control plane is: the same member and the same devices.
     final Map<String, Object> controlNode =
         (Map<String, Object>)

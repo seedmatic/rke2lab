@@ -537,6 +537,8 @@ public final class ClusterApiCrRenderer {
    * image, so its nodes carry no server layer, and their RKE2ConfigTemplate no bootstrap bundle:
    * none of the fleet's secrets reach their disks.
    *
+   * <p>Tainted, so that only what tolerates the taint (a tenant's vcluster) is scheduled there.
+   *
    * <p>CATTLE by construction, whoever adopts the cluster: the MachineDeployment names its
    * machines, so the pool states its size and no roster, and a worker registers on no control-plane
    * endpoint. Born on the same member, with the same devices, as its cluster's control plane.
@@ -550,6 +552,7 @@ public final class ClusterApiCrRenderer {
       final String imageName,
       final List<String> devices,
       final List<String> extraNodeLabels,
+      final List<String> nodeTaints,
       final String incusMember,
       final String adoptedBy,
       final PackageMetadataProfile profile,
@@ -583,6 +586,7 @@ public final class ClusterApiCrRenderer {
     spec.put("adoptedBy", adoptedBy);
     spec.put("replicas", WORKER_POOL_REPLICAS);
     spec.put("nodeLabels", List.copyOf(nodeLabels));
+    spec.put("nodeTaints", List.copyOf(nodeTaints));
     spec.put("devices", List.copyOf(devices));
     spec.put("target", incusMember);
     poolIntention.addJsonPatch(JsonPatch.add("/spec", spec));
