@@ -3,3 +3,4 @@ kind: Kustomization
 resources:
   - cluster-runtime-system-namespace-foundation.yml
   - cluster-runtime-system-namespace-workloads.yml
+  - cluster-session-viewer.yml

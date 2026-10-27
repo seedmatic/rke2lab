@@ -1,0 +1,15 @@
+apiVersion: v1
+data:
+  members: |-
+    v1|ServiceAccount|kube-system|rke2lab-session-viewer
+    rbac.authorization.k8s.io/v1|ClusterRole||rke2lab-session-viewer
+    rbac.authorization.k8s.io/v1|ClusterRoleBinding||rke2lab-session-viewer
+    v1|Secret|kube-system|rke2lab-session-viewer-token
+kind: ConfigMap
+metadata:
+  annotations:
+    config.kubernetes.io/local-config: "true"
+    io.seedmatic.rke2lab/domain: cluster
+    io.seedmatic.rke2lab/manifest-group: "true"
+    io.seedmatic.rke2lab/package: session-viewer
+  name: session-viewer.group
