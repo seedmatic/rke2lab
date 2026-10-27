@@ -88,9 +88,9 @@ class TenantNodesTest {
 
   /**
    * The session viewer reads ConfigMaps and pod specs (🛡️, 2026-10-27), on the rule that the
-   * render keeps every secret in a Secret. This holds the render to it: no ConfigMap value and no
-   * container env value carries a secret's shape. An image digest ({@code @sha256:<hex>}) is not
-   * one.
+   * render keeps every secret in a Secret. This holds the render to it: no ConfigMap value, no
+   * HelmChart or HelmChartConfig valuesContent and no container env value carries a secret's shape.
+   * An image digest ({@code @sha256:<hex>}) is not one.
    */
   @Test
   void requireNoConfigMapNorPodEnvCarriesASecretsShape(@TempDir Path outdir) {
@@ -115,6 +115,13 @@ class TenantNodesTest {
                 found.add(name + " data." + key);
               }
             });
+      }
+      if (("HelmChart".equals(document.get("kind"))
+              || "HelmChartConfig".equals(document.get("kind")))
+          && document.get("spec") instanceof Map<?, ?> helm
+          && helm.get("valuesContent") != null
+          && shape.matcher(String.valueOf(helm.get("valuesContent"))).find()) {
+        found.add(name + " spec.valuesContent");
       }
       if (!POD_KINDS.contains(document.get("kind"))) {
         continue;
