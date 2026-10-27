@@ -18,11 +18,11 @@
         "io.seedmatic.rke2lab/domain": "cluster-api",
         "io.seedmatic.rke2lab/package": "cluster-api-management"
       },
-      "name": "bioskop-mgmt-node-base",
+      "name": "bioskop-mgmt-node-server",
       "namespace": "rke2lab-bioskop-mgmt"
     },
     "spec": {
-      "alias": "node-base",
+      "alias": "node-server",
       "buildChecksum": "sha256-buildinputs",
       "fingerprint": "0f7a1c9d2b3e4f5a6b7c8d9e0f1a2b3c4d5e6f708192a3b4c5d6e7f809a1b2c3",
       "rke2Version": "v1.34.1+rke2r1",
@@ -107,7 +107,7 @@
         "vmnet0,type=nic,name=vmnet0,nictype=bridged,parent=vmnet-mgmt"
       ],
       "image": {
-        "name": "bioskop-mgmt-node-base"
+        "name": "bioskop-mgmt-node-server"
       },
       "namespace": "rke2lab-bioskop-mgmt",
       "nature": "pet",
@@ -209,7 +209,7 @@
   {
     "apiVersion": "v1",
     "data": {
-      "members": "v1|Namespace||rke2lab-bioskop-mgmt\ncluster.seedmatic.io/v1alpha1|NodeImage|rke2lab-bioskop-mgmt|bioskop-mgmt-node-base\ncluster.seedmatic.io/v1alpha1|ClusterIntention|rke2lab-bioskop-mgmt|bioskop-mgmt\ncluster.seedmatic.io/v1alpha1|PoolIntention|rke2lab-bioskop-mgmt|bioskop-mgmt-control-node\nv1|Secret|rke2lab-bioskop-mgmt|bioskop-mgmt-ca\nv1|Secret|rke2lab-bioskop-mgmt|bioskop-mgmt-cca\nv1|Secret|rke2lab-bioskop-mgmt|bioskop-mgmt-etcd\nv1|Secret|rke2lab-bioskop-mgmt|bioskop-mgmt-peer-etcd"
+      "members": "v1|Namespace||rke2lab-bioskop-mgmt\ncluster.seedmatic.io/v1alpha1|NodeImage|rke2lab-bioskop-mgmt|bioskop-mgmt-node-server\ncluster.seedmatic.io/v1alpha1|ClusterIntention|rke2lab-bioskop-mgmt|bioskop-mgmt\ncluster.seedmatic.io/v1alpha1|PoolIntention|rke2lab-bioskop-mgmt|bioskop-mgmt-control-node\nv1|Secret|rke2lab-bioskop-mgmt|bioskop-mgmt-ca\nv1|Secret|rke2lab-bioskop-mgmt|bioskop-mgmt-cca\nv1|Secret|rke2lab-bioskop-mgmt|bioskop-mgmt-etcd\nv1|Secret|rke2lab-bioskop-mgmt|bioskop-mgmt-peer-etcd"
     },
     "kind": "ConfigMap",
     "metadata": {
@@ -241,11 +241,11 @@
         "io.seedmatic.rke2lab/domain": "cluster-api",
         "io.seedmatic.rke2lab/package": "cluster-api-workload"
       },
-      "name": "bioskop-wrkld-node-base",
+      "name": "bioskop-wrkld-node-server",
       "namespace": "rke2lab-bioskop-wrkld"
     },
     "spec": {
-      "alias": "node-base",
+      "alias": "node-server",
       "buildChecksum": "sha256-buildinputs",
       "fingerprint": "0f7a1c9d2b3e4f5a6b7c8d9e0f1a2b3c4d5e6f708192a3b4c5d6e7f809a1b2c3",
       "rke2Version": "v1.34.1+rke2r1",
@@ -330,7 +330,7 @@
         "vmnet0,type=nic,name=vmnet0,nictype=bridged,parent=vmnet-wrkld"
       ],
       "image": {
-        "name": "bioskop-wrkld-node-base"
+        "name": "bioskop-wrkld-node-server"
       },
       "namespace": "rke2lab-bioskop-wrkld",
       "nature": "cattle",
@@ -454,11 +454,11 @@
         "io.seedmatic.rke2lab/domain": "cluster-api",
         "io.seedmatic.rke2lab/package": "cluster-api-workload"
       },
-      "name": "nikopol-mgmt-node-base",
+      "name": "nikopol-mgmt-node-server",
       "namespace": "rke2lab-nikopol-mgmt"
     },
     "spec": {
-      "alias": "node-base",
+      "alias": "node-server",
       "buildChecksum": "sha256-buildinputs",
       "fingerprint": "0f7a1c9d2b3e4f5a6b7c8d9e0f1a2b3c4d5e6f708192a3b4c5d6e7f809a1b2c3",
       "rke2Version": "v1.34.1+rke2r1",
@@ -543,7 +543,7 @@
         "vmnet0,type=nic,name=vmnet0,nictype=bridged,parent=vmnet-mgmt"
       ],
       "image": {
-        "name": "nikopol-mgmt-node-base"
+        "name": "nikopol-mgmt-node-server"
       },
       "namespace": "rke2lab-nikopol-mgmt",
       "nature": "cattle",
@@ -661,11 +661,11 @@
         "io.seedmatic.rke2lab/domain": "cluster-api",
         "io.seedmatic.rke2lab/package": "cluster-api-workload"
       },
-      "name": "nikopol-wrkld-node-base",
+      "name": "nikopol-wrkld-node-server",
       "namespace": "rke2lab-nikopol-wrkld"
     },
     "spec": {
-      "alias": "node-base",
+      "alias": "node-server",
       "buildChecksum": "sha256-buildinputs",
       "fingerprint": "0f7a1c9d2b3e4f5a6b7c8d9e0f1a2b3c4d5e6f708192a3b4c5d6e7f809a1b2c3",
       "rke2Version": "v1.34.1+rke2r1",
@@ -750,7 +750,7 @@
         "vmnet0,type=nic,name=vmnet0,nictype=bridged,parent=vmnet-wrkld"
       ],
       "image": {
-        "name": "nikopol-wrkld-node-base"
+        "name": "nikopol-wrkld-node-server"
       },
       "namespace": "rke2lab-nikopol-wrkld",
       "nature": "cattle",
@@ -778,7 +778,7 @@
   {
     "apiVersion": "v1",
     "data": {
-      "members": "v1|Namespace||rke2lab-bioskop-wrkld\ncluster.seedmatic.io/v1alpha1|NodeImage|rke2lab-bioskop-wrkld|bioskop-wrkld-node-base\ncluster.seedmatic.io/v1alpha1|ClusterIntention|rke2lab-bioskop-wrkld|bioskop-wrkld\ncluster.seedmatic.io/v1alpha1|PoolIntention|rke2lab-bioskop-wrkld|bioskop-wrkld-control-node\nv1|Secret|rke2lab-bioskop-wrkld|bioskop-wrkld-ca\nv1|Secret|rke2lab-bioskop-wrkld|bioskop-wrkld-cca\nv1|Secret|rke2lab-bioskop-wrkld|bioskop-wrkld-etcd\nv1|Secret|rke2lab-bioskop-wrkld|bioskop-wrkld-peer-etcd\nv1|Namespace||rke2lab-nikopol-mgmt\ncluster.seedmatic.io/v1alpha1|NodeImage|rke2lab-nikopol-mgmt|nikopol-mgmt-node-base\ncluster.seedmatic.io/v1alpha1|ClusterIntention|rke2lab-nikopol-mgmt|nikopol-mgmt\ncluster.seedmatic.io/v1alpha1|PoolIntention|rke2lab-nikopol-mgmt|nikopol-mgmt-control-node\nv1|Secret|rke2lab-nikopol-mgmt|nikopol-mgmt-ca\nv1|Secret|rke2lab-nikopol-mgmt|nikopol-mgmt-cca\nv1|Secret|rke2lab-nikopol-mgmt|nikopol-mgmt-etcd\nv1|Secret|rke2lab-nikopol-mgmt|nikopol-mgmt-peer-etcd\nv1|Namespace||rke2lab-nikopol-wrkld\ncluster.seedmatic.io/v1alpha1|NodeImage|rke2lab-nikopol-wrkld|nikopol-wrkld-node-base\ncluster.seedmatic.io/v1alpha1|ClusterIntention|rke2lab-nikopol-wrkld|nikopol-wrkld\ncluster.seedmatic.io/v1alpha1|PoolIntention|rke2lab-nikopol-wrkld|nikopol-wrkld-control-node"
+      "members": "v1|Namespace||rke2lab-bioskop-wrkld\ncluster.seedmatic.io/v1alpha1|NodeImage|rke2lab-bioskop-wrkld|bioskop-wrkld-node-server\ncluster.seedmatic.io/v1alpha1|ClusterIntention|rke2lab-bioskop-wrkld|bioskop-wrkld\ncluster.seedmatic.io/v1alpha1|PoolIntention|rke2lab-bioskop-wrkld|bioskop-wrkld-control-node\nv1|Secret|rke2lab-bioskop-wrkld|bioskop-wrkld-ca\nv1|Secret|rke2lab-bioskop-wrkld|bioskop-wrkld-cca\nv1|Secret|rke2lab-bioskop-wrkld|bioskop-wrkld-etcd\nv1|Secret|rke2lab-bioskop-wrkld|bioskop-wrkld-peer-etcd\nv1|Namespace||rke2lab-nikopol-mgmt\ncluster.seedmatic.io/v1alpha1|NodeImage|rke2lab-nikopol-mgmt|nikopol-mgmt-node-server\ncluster.seedmatic.io/v1alpha1|ClusterIntention|rke2lab-nikopol-mgmt|nikopol-mgmt\ncluster.seedmatic.io/v1alpha1|PoolIntention|rke2lab-nikopol-mgmt|nikopol-mgmt-control-node\nv1|Secret|rke2lab-nikopol-mgmt|nikopol-mgmt-ca\nv1|Secret|rke2lab-nikopol-mgmt|nikopol-mgmt-cca\nv1|Secret|rke2lab-nikopol-mgmt|nikopol-mgmt-etcd\nv1|Secret|rke2lab-nikopol-mgmt|nikopol-mgmt-peer-etcd\nv1|Namespace||rke2lab-nikopol-wrkld\ncluster.seedmatic.io/v1alpha1|NodeImage|rke2lab-nikopol-wrkld|nikopol-wrkld-node-server\ncluster.seedmatic.io/v1alpha1|ClusterIntention|rke2lab-nikopol-wrkld|nikopol-wrkld\ncluster.seedmatic.io/v1alpha1|PoolIntention|rke2lab-nikopol-wrkld|nikopol-wrkld-control-node"
     },
     "kind": "ConfigMap",
     "metadata": {
