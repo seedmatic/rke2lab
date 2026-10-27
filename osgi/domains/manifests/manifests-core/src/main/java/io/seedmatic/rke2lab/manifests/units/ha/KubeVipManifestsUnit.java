@@ -6,6 +6,7 @@ import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
 import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.ingress.Component;
+import io.seedmatic.rke2lab.manifests.profiles.FleetTolerationsProfile;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import java.util.List;
 import java.util.Map;
@@ -21,6 +22,8 @@ public final class KubeVipManifestsUnit extends AbstractManifestsUnit {
       ManifestDomainCatalog.HIGH_AVAILABILITY + "/kube-vip";
 
   public static final String PATH_PREFIX = "high-availability/kube-vip/";
+
+  private final FleetTolerationsProfile fleetTolerations = new FleetTolerationsProfile();
 
   private final PackageMetadataProfile packageProfile =
       new PackageMetadataProfile("high-availability", "kube-vip");
@@ -275,9 +278,7 @@ public final class KubeVipManifestsUnit extends AbstractManifestsUnit {
                         "serviceAccountName",
                         "kube-vip",
                         "tolerations",
-                        List.of(
-                            Map.of("effect", "NoSchedule", "operator", "Exists"),
-                            Map.of("effect", "NoExecute", "operator", "Exists")))))));
+                        fleetTolerations.tolerations())))));
   }
 
   private void createService(final Construct scope) {
