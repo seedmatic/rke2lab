@@ -263,6 +263,35 @@ class VclusterManifestsUnitTest {
     assertEquals(1, quota.get("services.loadbalancers"));
     assertEquals(
         true, at(values(render(outdir, "nikopol-wrkld")), "policies", "limitRange").get("enabled"));
+    // Rendered by the chart in its release namespace, the HOST's (measured offline: vc-ccr in
+    // vcluster-ccr), never inside the vcluster, where the tenant could delete it.
+    assertEquals(
+        "vcluster-ccr",
+        at(of(render(outdir, "nikopol-wrkld"), "HelmChart").get(0), "spec").get("targetNamespace"));
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void requireTheTenantsPodsReachOnlyTheirControlPlaneAndTheInternet(@TempDir Path outdir) {
+    // The chart's own policy, measured offline (helm template 0.37.4): once on, its vc-work-<name>
+    // lets the synced pods reach their control plane (DNS, API) and 0.0.0.0/0 MINUS the private
+    // ranges, which hold every fleet address: pods and Services (10/8), the vmnet (10.80/16), the
+    // fabric (172.16/12). So no fleet Service, no host API, no other node's kubelet. The ranges are
+    // STATED rather than left to the chart's defaults: the helm-controller renders the chart in the
+    // cluster, where no test of ours reads it, so a chart bump changing them would go unseen.
+    final Map<String, Object> networkPolicy =
+        at(values(render(outdir, "nikopol-wrkld")), "policies", "networkPolicy");
+    assertEquals(true, networkPolicy.get("enabled"));
+    assertEquals(
+        Map.of(
+            "enabled",
+            true,
+            "cidr",
+            "0.0.0.0/0",
+            "except",
+            List.of(
+                "100.64.0.0/10", "127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")),
+        at(networkPolicy, "workload", "publicEgress"));
   }
 
   @Test

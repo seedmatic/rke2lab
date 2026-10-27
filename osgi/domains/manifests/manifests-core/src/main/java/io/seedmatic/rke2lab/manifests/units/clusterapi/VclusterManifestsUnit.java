@@ -278,6 +278,22 @@ public final class VclusterManifestsUnit extends AbstractManifestsUnit {
               count/pods: 40
           limitRange:
             enabled: true
+          # The chart's own egress fence: the tenant's pods reach their control plane and the
+          # internet minus every private range (all of the fleet's addresses); no fleet Service, no
+          # host API, no other node's kubelet. The ranges are STATED, equal to the chart's 0.37.4
+          # defaults: a chart bump changing those defaults cannot widen the fence.
+          networkPolicy:
+            enabled: true
+            workload:
+              publicEgress:
+                enabled: true
+                cidr: 0.0.0.0/0
+                except:
+                  - 100.64.0.0/10
+                  - 127.0.0.0/8
+                  - 10.0.0.0/8
+                  - 172.16.0.0/12
+                  - 192.168.0.0/16
         """
         .formatted(LABEL, name, selector, apiAddress);
   }
