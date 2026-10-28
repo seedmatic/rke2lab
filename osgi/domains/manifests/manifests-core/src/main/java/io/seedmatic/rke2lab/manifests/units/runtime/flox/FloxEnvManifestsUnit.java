@@ -223,12 +223,12 @@ public final class FloxEnvManifestsUnit extends AbstractManifestsUnit {
     if (debug) {
       // Interactive debug shell alongside the delve-wrapped binary: attach a debugger / poke
       // around.
-      install.put("go", Map.of("pkg-path", "go", "version", "^1.25"));
-      install.put("delve", catalog("delve"));
-      install.put("bash", catalogAll("bash"));
-      install.put("coreutils", catalogAll("coreutils"));
-      install.put("strace", catalog("strace"));
-      install.put("curl", catalog("curl"));
+      install.put("go", tool("go"));
+      install.put("delve", tool("delve"));
+      install.put("bash", tool("bash"));
+      install.put("coreutils", tool("coreutils"));
+      install.put("strace", tool("strace"));
+      install.put("curl", tool("curl"));
     }
     return manifest(install);
   }
@@ -237,12 +237,12 @@ public final class FloxEnvManifestsUnit extends AbstractManifestsUnit {
   private Map<String, Object> tailscaleManifest(final boolean debug) {
     final String flavor = debug ? "tailscale-debug" : "tailscale";
     final Map<String, Object> install = new LinkedHashMap<>();
-    install.put("bash", catalogAll("bash"));
-    install.put("coreutils", catalogAll("coreutils"));
+    install.put("bash", tool("bash"));
+    install.put("coreutils", tool("coreutils"));
     if (debug) {
-      install.put("delve", catalog("delve"));
-      install.put("strace", catalog("strace"));
-      install.put("curl", catalog("curl"));
+      install.put("delve", tool("delve"));
+      install.put("strace", tool("strace"));
+      install.put("curl", tool("curl"));
     }
     install.put(flavor, flakeRef(flavor));
     return manifest(install);
@@ -256,9 +256,9 @@ public final class FloxEnvManifestsUnit extends AbstractManifestsUnit {
    */
   private Map<String, Object> tailnetManifest() {
     final Map<String, Object> install = new LinkedHashMap<>();
-    install.put("bash", catalogAll("bash"));
-    install.put("coreutils", catalogAll("coreutils"));
-    install.put("yq-go", catalogAll("yq-go"));
+    install.put("bash", tool("bash"));
+    install.put("coreutils", tool("coreutils"));
+    install.put("yq-go", tool("yq-go"));
     install.put("manage-tailnet", flakeRef("manage-tailnet"));
     return manifest(install);
   }
@@ -278,11 +278,11 @@ public final class FloxEnvManifestsUnit extends AbstractManifestsUnit {
    */
   private Map<String, Object> gitSopsManifest() {
     final Map<String, Object> install = new LinkedHashMap<>();
-    install.put("git", catalog("git"));
-    install.put("sops", catalog("sops"));
-    install.put("yq-go", catalog("yq-go"));
-    install.put("bash", catalogAll("bash"));
-    install.put("coreutils", catalogAll("coreutils"));
+    install.put("git", tool("git"));
+    install.put("sops", tool("sops"));
+    install.put("yq-go", tool("yq-go"));
+    install.put("bash", tool("bash"));
+    install.put("coreutils", tool("coreutils"));
     return manifest(install);
   }
 
@@ -293,10 +293,10 @@ public final class FloxEnvManifestsUnit extends AbstractManifestsUnit {
    * it rather than re-listing the same packages.
    */
   private void kubeApiScriptingInstall(final Map<String, Object> install) {
-    install.put("bash", catalogAll("bash"));
-    install.put("coreutils", catalogAll("coreutils"));
-    install.put("kubectl", catalogAll("kubectl"));
-    install.put("yq-go", catalogAll("yq-go"));
+    install.put("bash", tool("bash"));
+    install.put("coreutils", tool("coreutils"));
+    install.put("kubectl", tool("kubectl"));
+    install.put("yq-go", tool("yq-go"));
   }
 
   /** A flake install resolved against the FloxCatalog artifact ({@code floxcatalog:catalog#…}). */
@@ -304,14 +304,13 @@ public final class FloxEnvManifestsUnit extends AbstractManifestsUnit {
     return Map.of("flake", "floxcatalog:catalog#" + output);
   }
 
-  /** A catalog install pulling a package's default output. */
-  private Map<String, Object> catalog(final String pkg) {
-    return Map.of("pkg-path", pkg);
-  }
-
-  /** A catalog install pulling all of a package's outputs (bin split across {@code out}/…). */
-  private Map<String, Object> catalogAll(final String pkg) {
-    return Map.of("pkg-path", pkg, "outputs", "all");
+  /**
+   * A tool from OUR catalog, never a FloxHub catalog package ({@code pkg-path}): resolving one of
+   * those needs a FloxHub login, which no node has. The catalog exports each tool with its binary
+   * where a flake install takes it (its `env-tool-*` checks), so no `outputs` selector is needed.
+   */
+  private Map<String, Object> tool(final String name) {
+    return flakeRef(name);
   }
 
   private Map<String, Object> manifest(final Map<String, Object> install) {
