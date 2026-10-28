@@ -81,8 +81,9 @@ Both point at the same root: the *global layer barrier* is a coarse proxy for re
 * *Gap 1* — the planner scans each rendered doc and, for the operator groups it knows
   (`tekton.dev` / `pipelinesascode.tekton.dev` / `triggers.tekton.dev`), adds a `dependsOn` edge
   from each CR cell to the *operator cell* (the one rendering `TektonConfig config`), which carries
-  `spec.healthChecks: [TektonConfig config]` with `wait: false`. The CR cells reconcile only after
-  the operator has finished installing the CRDs. See <<operator-crds>>.
+  `spec.healthChecks: [TektonConfig config]` with `wait: false`, and a `spec.healthCheckExprs` CEL
+  that calls it current only on a `Ready=True` condition. The CR cells reconcile only after the
+  operator has finished installing the CRDs. See <<operator-crds>>.
 * *Gap 2* is fixed at the SOURCE: the ZFS `StorageClass`es bind `Immediate` (not
   `WaitForFirstConsumer`), so a PVC provisions its PV and Binds the moment it is applied — nothing
   stays `Pending`, so `wait: true` no longer wedges. Topology-awareness (the only reason to defer to
@@ -209,6 +210,13 @@ tekton.dev | pipelinesascode.tekton.dev | triggers.tekton.dev
 The operator cell (`cicd-tekton-pipelines`) gets `spec.healthChecks: [TektonConfig config]` → it is
 `Ready` only once the operator has FINISHED installing the CRDs; the CR cells `dependsOn` the operator
 cell → they reconcile only after. This closes gap (1): no more `no matches for kind` at cold-start.
+
+The health check alone was not enough. kstatus calls a resource with NO conditions current, and a
+TektonConfig has none right after it is created, so the operator cell went `Ready` at its first
+apply and the CR cells failed `no matches for kind "Task"` (nikopol-wrkld, 2026-10-28). The cell
+therefore also carries `spec.healthCheckExprs` for TektonConfig:
+`current: has(status.conditions) && status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')`.
+It uses `exists`, not `filter(…).all(…)`: `all` over no Ready condition is true.
 
 [#wfc-pvc]
 === `WaitForFirstConsumer` PVCs — no health-gate (gap 2) (implemented, increment B)

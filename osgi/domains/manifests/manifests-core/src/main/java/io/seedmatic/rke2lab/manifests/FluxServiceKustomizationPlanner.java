@@ -70,9 +70,10 @@ import org.slf4j.LoggerFactory;
  *
  * <ul>
  *   <li>a runtime installer that owns a readiness resource (Tekton's {@code TektonConfig config})
- *       carries it as {@code spec.healthChecks} on the cell rendering it, with {@code wait: false},
- *       so Flux gates on THAT resource — only once the operator has finished installing its CRDs —
- *       not on every applied object; the consumer cells depend on the installer cell.
+ *       carries it as {@code spec.healthChecks} (with a {@code healthCheckExprs} CEL saying when it
+ *       is current) on the cell rendering it, with {@code wait: false}, so Flux gates on THAT
+ *       resource — only once the operator has finished installing its CRDs — not on every applied
+ *       object; the consumer cells depend on the installer cell.
  *   <li>a cell rendering a {@code WaitForFirstConsumer} PVC gets {@code wait: false} — the PVC
  *       stays {@code Pending} until a pod mounts it, so {@code wait: true} would wedge it forever.
  *       The binding mode is DERIVED (each {@code StorageClass}'s {@code volumeBindingMode} + the
@@ -169,7 +170,13 @@ final class FluxServiceKustomizationPlanner {
   private record RuntimeInstaller(String coord, Optional<HealthCheck> healthCheck) {}
 
   private static final HealthCheck TEKTON_CONFIG =
-      new HealthCheck("operator.tekton.dev/v1alpha1", "TektonConfig", "config");
+      new HealthCheck(
+          "operator.tekton.dev/v1alpha1",
+          "TektonConfig",
+          "config",
+          // exists, not filter().all(): all() of no Ready condition is true.
+          "has(status.conditions) && status.conditions.exists(c, c.type == 'Ready' && c.status =="
+              + " 'True')");
 
   private static final Map<String, RuntimeInstaller> RUNTIME_INSTALLERS = buildRuntimeInstallers();
 
@@ -260,14 +267,24 @@ final class FluxServiceKustomizationPlanner {
     }
   }
 
-  /** A Flux {@code NamespacedObjectKindReference} for {@code spec.healthChecks}. */
-  private record HealthCheck(String apiVersion, String kind, String name) {
+  /**
+   * A Flux {@code NamespacedObjectKindReference} for {@code spec.healthChecks}, with the CEL that
+   * says when its kind is current ({@code spec.healthCheckExprs}). kstatus alone calls a resource
+   * with no conditions current, and a TektonConfig has none right after it is created: its cell
+   * went Ready before the operator had installed a CRD, and the Task/Repository cells failed "no
+   * matches for kind" (nikopol-wrkld, 2026-10-28).
+   */
+  private record HealthCheck(String apiVersion, String kind, String name, String currentWhen) {
     GroupKind groupKind() {
       return GroupKind.of(apiVersion, kind);
     }
 
     Map<String, Object> toMap() {
       return Map.of("apiVersion", apiVersion, "kind", kind, "name", name);
+    }
+
+    Map<String, Object> toExprMap() {
+      return Map.of("apiVersion", apiVersion, "kind", kind, "current", currentWhen);
     }
   }
 
@@ -729,7 +746,11 @@ final class FluxServiceKustomizationPlanner {
     // An explicit healthCheck (with wait:false) gates the installer cell on its readiness resource
     // only — Flux ignores healthChecks when wait is true, and wait:true would instead health-gate
     // every applied object (Namespace/Secret/…), missing the CRD-install signal.
-    healthCheck.ifPresent(hc -> spec.put("healthChecks", List.of(hc.toMap())));
+    healthCheck.ifPresent(
+        hc -> {
+          spec.put("healthChecks", List.of(hc.toMap()));
+          spec.put("healthCheckExprs", List.of(hc.toExprMap()));
+        });
     final Map<String, Object> ks = new LinkedHashMap<>();
     ks.put("apiVersion", "kustomize.toolkit.fluxcd.io/v1");
     ks.put("kind", "Kustomization");
