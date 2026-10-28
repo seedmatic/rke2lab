@@ -1,5 +1,6 @@
 package io.seedmatic.rke2lab.manifests.bdd.versions;
 
+import com.tngtech.jgiven.CurrentStep;
 import com.tngtech.jgiven.Stage;
 import com.tngtech.jgiven.annotation.As;
 import com.tngtech.jgiven.annotation.ExpectedScenarioState;
@@ -8,6 +9,9 @@ import com.tngtech.jgiven.annotation.NestedSteps;
 import com.tngtech.jgiven.annotation.ProvidedScenarioState;
 import com.tngtech.jgiven.annotation.Quoted;
 import com.tngtech.jgiven.annotation.ScenarioStage;
+import com.tngtech.jgiven.annotation.ScenarioState;
+import com.tngtech.jgiven.attachment.Attachment;
+import com.tngtech.jgiven.attachment.MediaType;
 import com.tngtech.jgiven.base.ScenarioTestBase;
 import com.tngtech.jgiven.impl.Scenario;
 import io.seedmatic.rke2lab.auth.contract.GithubAppTokens;
@@ -15,6 +19,7 @@ import io.seedmatic.rke2lab.auth.contract.GithubWriterTokenMint;
 import io.seedmatic.rke2lab.manifests.contract.ManifestVersionsBumpInput;
 import io.seedmatic.rke2lab.manifests.ingress.BumpLevel;
 import io.seedmatic.rke2lab.manifests.ingress.Component;
+import io.seedmatic.rke2lab.manifests.ingress.VersionLine;
 import io.seedmatic.rke2lab.ndh.contract.NdhKeystoreCatalog;
 import io.seedmatic.rke2lab.ndh.contract.NdhKeystoreReader;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.CellarReceiver;
@@ -174,7 +179,8 @@ public class VersionBumpScenario
         if (component.isPresent() && component.get() != row.component()) {
           continue;
         }
-        narration.the_pin_$_reports_$(row.component().slug(), verdict(row, bumper.level()));
+        narration.the_pin_$_reports_$(
+            row.component().slug(), verdict(row, bumper.level()), row.jsonLine());
       }
     }
 
@@ -278,8 +284,20 @@ public class VersionBumpScenario
   /** The per-component narration — each call renders a nested step under the processing step. */
   public static class Narration extends Stage<Narration> {
 
+    @ScenarioState CurrentStep currentStep;
+
+    /**
+     * One row: the human verdict, and its version-contract line attached to the step (the
+     * attachment titled {@link VersionLine#ATTACHMENT_TITLE}), which {@code manifests versions
+     * format=jsonl} prints alone. An attachment, not an argument: jGiven drops a hidden argument
+     * from the report.
+     */
     @As("$ $")
-    public Narration the_pin_$_reports_$(@Quoted String component, @Quoted String verdict) {
+    public Narration the_pin_$_reports_$(
+        @Quoted String component, @Quoted String verdict, @Hidden String jsonLine) {
+      currentStep.addAttachment(
+          Attachment.fromText(jsonLine, MediaType.JSON_UTF_8)
+              .withTitle(VersionLine.ATTACHMENT_TITLE));
       return self();
     }
 

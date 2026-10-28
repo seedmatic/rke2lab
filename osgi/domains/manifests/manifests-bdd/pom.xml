@@ -161,6 +161,12 @@
       <artifactId>checker-qual</artifactId>
       <scope>provided</scope>
     </dependency>
+    <!-- The version contract's JSON lines are validated against nix-flake-commons' schema in a test. -->
+    <dependency>
+      <groupId>com.networknt</groupId>
+      <artifactId>json-schema-validator</artifactId>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>

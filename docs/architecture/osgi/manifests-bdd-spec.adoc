@@ -442,15 +442,27 @@ A component's whole identity lives in ONE place: the `Component` enum (`manifest
 `defaultVersion()` pin, and its `Optional<ComponentSource>` provenance. It is a `WireEnum`, so the
 codec maps it ↔ slug and the bump facet carries a typed `Optional<Component>` filter that crosses the
 host↔OSGi membrane by slug — typed in BOTH realms because ingress is dual-realm. `ComponentSource`
-(the GitHub `owner/repo` + optional release-asset + optional vendored-dir) is the provenance the
-bumper reads to query GitHub and refresh the vendored asset; a component with an empty source (an
-openebs chart, a container tag) is reported `manual`. `ComponentVersions` is now a thin resolved
+is the provenance the bumper reads: its `Upstream` (a sealed `GitHub` `owner/repo`, `HelmIndex`
+repository + chart, or `Oci` registry + repository, each queried anonymously) plus, for a GitHub
+upstream only, the release asset and vendored dir it refreshes. Every component has one, the three
+charts included (openebs-zfs and vcluster from their Helm index, github-token-manager from its ghcr
+tags). `ComponentVersions` is now a thin resolved
 holder over the enum (`of(Component)`), its baseline `defaults()` built from each
 `Component.defaultVersion()` — the literal the bumper rewrites. `BumpLevel` (a `WireEnum`:
 major/minor/micro) is the bump CEILING the operator authorises; the highest release the level admits
 is taken, so `major` degrades to a minor/micro when that is all that is newer. The enum is passive —
 it holds identity, provenance and the default pin and does NO network I/O; discovery is computed
 OSGi-side by the bumper (a `VersionReport` keyed by `Component`).
+
+Each `VersionReport` also renders as one line of the *common version contract* shared with the nix
+world (nix-flake-commons `nix/versions/schema.json`, agreed 2026-10-28): eight fields in order,
+`world` (`clusters`), `name` (the slug), `source` (where WE pin it: `rke2lab:<Component.java path>`),
+`pinned`, `latest` (highest stable upstream, verbatim, or null), `level` (the semver distance, or
+null), `status` (`current` · `behind` · `ahead` · `unknown`) and `upstream` (the `Upstream`'s
+`<kind>:<locator>`, or `none`). The bumper attaches each line to its report step under
+`VersionLine.ATTACHMENT_TITLE` (ingress, so both realms read the same title), and
+`manifests versions format=jsonl` prints those attachments alone on stdout, so a merger reads them
+as they are; without the option the runbook renders as before.
 
 === The crossing and the scion trio
 
