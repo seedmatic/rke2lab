@@ -30,7 +30,7 @@ public enum Component implements WireEnum {
       "tektoncd/operator",
       "release.yaml",
       "upstream/cicd/tekton-operator"),
-  KUBE_VIP("kubeVip", "v0.9.2", "kube-vip/kube-vip"),
+  KUBE_VIP("kubeVip", "v1.3.1", "kube-vip/kube-vip"),
   OPENEBS_ZFS_CHART(
       "openebsZfsChart",
       "2.8.0",
