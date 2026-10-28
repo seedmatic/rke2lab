@@ -26,7 +26,7 @@ import java.util.Optional;
 public enum Component implements WireEnum {
   TEKTON_OPERATOR(
       "tektonOperator",
-      "v0.81.1",
+      "v0.81.2",
       "tektoncd/operator",
       "release.yaml",
       "upstream/cicd/tekton-operator"),
