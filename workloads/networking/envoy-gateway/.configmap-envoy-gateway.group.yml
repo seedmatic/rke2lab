@@ -5,7 +5,7 @@ data:
     v1|ServiceAccount|envoy-gateway-system|envoy-gateway-installer
     rbac.authorization.k8s.io/v1|ClusterRoleBinding||envoy-gateway-installer
     v1|ConfigMap|envoy-gateway-system|envoy-gateway-installer-script
-    batch/v1|Job|envoy-gateway-system|envoy-gateway-installer-v1-9-0
+    batch/v1|Job|envoy-gateway-system|envoy-gateway-installer-v1-9-3
     gateway.networking.k8s.io/v1|GatewayClass||envoy
 kind: ConfigMap
 metadata:

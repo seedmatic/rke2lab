@@ -38,13 +38,19 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: FLOX_FLOXHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  key: token
+                  name: floxhub-token
+                  optional: true
             - name: PATH
               value: /run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/usr/bin:/bin
             - name: CONTAINERD_ADDRESS
               value: /run/k3s/containerd/containerd.sock
             - name: GITHUB_ACCESS_TOKEN_FILE
               value: /var/run/flox/github-token/token
-          image: io.seedmatic.flox-controller:31if96cpa1ga3l2q6a5nx0a51m296ja0
+          image: io.seedmatic.flox-controller:3kvfyafqx3dpy0ilni9nfmc6xskjrb18
           imagePullPolicy: IfNotPresent
           name: controller
           ports:

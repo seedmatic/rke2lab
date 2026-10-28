@@ -12,6 +12,8 @@ spec:
   repo: https://openebs.github.io/zfs-localpv
   targetNamespace: openebs
   valuesContent: |
+    analytics:
+      enabled: false
     crds:
       csi:
         volumeSnapshots:
@@ -20,4 +22,4 @@ spec:
       bin: /usr/sbin/zfs
     zfsNode:
       kubeletDir: /var/lib/kubelet
-  version: 2.8.0
+  version: 2.11.2
