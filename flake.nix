@@ -45,6 +45,17 @@
         version = pkgs.lib.fileContents ./VERSION;
       in
       {
+        # The controllers' own tests: the package build only tests its subPackage (cmd/), so
+        # nothing under internal/ ran in a check.
+        checks.controller-tests = pkgs.buildGoModule {
+          pname = "io.seedmatic.seed-incluster-tests";
+          inherit version;
+          src = ./.;
+          inherit (self.packages.${system}.seed-incluster) vendorHash;
+          subPackages = [ "internal/..." ];
+          env.CGO_ENABLED = 0;
+          installPhase = "mkdir -p $out";
+        };
         packages = rec {
           # The controller binary. Static (CGO off) so it runs in a minimal image.
           seed-incluster = pkgs.buildGoModule {

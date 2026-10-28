@@ -396,6 +396,21 @@ func (r *PoolAdoptionReconciler) reconcileWorkerPool(
 	}
 	r.mark(a, adoptionv1alpha1.PoolConditionCRSetCreated, true, "Created",
 		"LXCMachineTemplate/RKE2ConfigTemplate/MachineDeployment ensured")
+
+	// The pool is adopted once its MachineDeployment reports the DECLARED replicas ready. Nothing
+	// watches the MachineDeployment, so the wait is a requeue, not an event.
+	md := newObj(gvkMachineDeployment, workerPoolName(spec), spec.Namespace)
+	if err := r.Get(ctx, client.ObjectKeyFromObject(md), md); err != nil {
+		r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, false, "Error", "MachineDeployment: "+err.Error())
+		return ctrl.Result{}, err
+	}
+	ready, _, _ := unstructured.NestedInt64(md.Object, "status", "readyReplicas")
+	progress := fmt.Sprintf("%d/%d replicas ready", ready, spec.Replicas)
+	if ready < int64(spec.Replicas) {
+		r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, false, "NodesAbsent", progress)
+		return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
+	}
+	r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, true, "Present", progress)
 	log.FromContext(ctx).Info("worker pool reconciled", "cluster", spec.ClusterName, "pool", spec.Pool,
 		"replicas", spec.Replicas)
 	return ctrl.Result{}, nil
@@ -535,6 +550,20 @@ func (r *PoolAdoptionReconciler) observedSelfRoster(
 	return roster, true, nil
 }
 
+func (r *PoolAdoptionReconciler) deriveWorkerPhase(a *adoptionv1alpha1.PoolAdoption) adoptionv1alpha1.PoolAdoptionPhase {
+	if !conditionTrue(a.Status.Conditions, adoptionv1alpha1.PoolConditionCRSetCreated) {
+		r.mark(a, adoptionv1alpha1.PoolConditionReady, false, "Adopting", "aligning the CR-set")
+		return adoptionv1alpha1.PoolPhaseAdopting
+	}
+	if !conditionTrue(a.Status.Conditions, adoptionv1alpha1.PoolConditionPetsPresent) {
+		r.mark(a, adoptionv1alpha1.PoolConditionReady, false, "Provisioning",
+			"worker replicas not all ready — CAPI provisioning the MachineDeployment")
+		return adoptionv1alpha1.PoolPhaseProvisioning
+	}
+	r.mark(a, adoptionv1alpha1.PoolConditionReady, true, "Adopted", "all worker replicas ready")
+	return adoptionv1alpha1.PoolPhaseAdopted
+}
+
 // derivePhase rolls the per-step conditions (+ the reconcile error) into the per-pool state machine phase.
 // Adopting is the hub every reconcile enters; it rests at Adopted / Provisioning once the state machine
 // resolves. present-sick (Degraded) is a CLUSTER-grain verdict (reachability) — the pool cannot
@@ -549,6 +578,11 @@ func (r *PoolAdoptionReconciler) derivePhase(
 	if !conditionTrue(a.Status.Conditions, adoptionv1alpha1.PoolConditionMaterialReady) {
 		r.mark(a, adoptionv1alpha1.PoolConditionReady, false, "Pending", "waiting for material")
 		return adoptionv1alpha1.PoolPhasePending
+	}
+	// A worker pool has no control plane to observe nor un-pause: its own steps are the CR-set and
+	// its MachineDeployment's ready replicas.
+	if a.Spec.Role == adoptionv1alpha1.PoolRoleWorker {
+		return r.deriveWorkerPhase(a)
 	}
 	for _, step := range []string{
 		adoptionv1alpha1.PoolConditionCRSetCreated,
@@ -1102,7 +1136,6 @@ func incusConfig(runtime adoptionv1alpha1.NodeRuntime) map[string]any {
 	}
 	return config
 }
-
 
 // SetupWithManager wires the reconciler to PoolAdoption events + the owned pool CR-set's.
 func (r *PoolAdoptionReconciler) SetupWithManager(mgr ctrl.Manager) error {
