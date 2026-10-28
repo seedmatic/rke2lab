@@ -212,6 +212,7 @@ spotless_check() {
   # Run the check only in the modules that own the staged files (the nearest pom.xml): the root aggregator carries no
   # spotless configuration, so a reactor-wide run fails there on any commit. A file owned by the root is not governed.
   local d modules=() owned=()
+  { was=$-; set +x; } 2>/dev/null
   for f in "${files[@]}"; do
     d="$(dirname "$f")"
     while [[ "$d" != . && ! -f "$d/pom.xml" ]]; do d="$(dirname "$d")"; done
@@ -226,6 +227,7 @@ spotless_check() {
     owned+=("$f")
     [[ " ${modules[*]} " == *" $d "* ]] || modules+=("$d")
   done
+  [[ $was == *x* ]] && set -x
   ((${#modules[@]})) || return 0
 
   # spotlessFiles takes comma-separated regexes matched against absolute paths.
