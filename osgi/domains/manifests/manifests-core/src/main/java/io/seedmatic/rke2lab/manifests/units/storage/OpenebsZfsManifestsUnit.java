@@ -164,7 +164,7 @@ public final class OpenebsZfsManifestsUnit extends AbstractManifestsUnit {
                 "targetNamespace",
                 "openebs",
                 "valuesContent",
-                "crds:\n  csi:\n    volumeSnapshots:\n      enabled: false\nzfs:\n  bin: /usr/sbin/zfs\nzfsNode:\n  kubeletDir: /var/lib/kubelet\n",
+                "analytics:\n  enabled: false\ncrds:\n  csi:\n    volumeSnapshots:\n      enabled: false\nzfs:\n  bin: /usr/sbin/zfs\nzfsNode:\n  kubeletDir: /var/lib/kubelet\n",
                 "version",
                 chartVersion)));
   }

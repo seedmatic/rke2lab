@@ -138,7 +138,7 @@ Operator app (blocked on Headscale 0.30.0)"*. We are not alone at this wall.
 to the resources it manages. The historical blocker — *"the operator does not pass a custom login
 server to the proxy containers"* — **no longer exists**
 | The chart exposes it
-| a top-level `loginServer`, from chart **1.98.4**. We pin `Component.TAILSCALE = "1.102.3"`, so **we
+| a top-level `loginServer`, from chart **1.98.4**. We pin `Component.TAILSCALE = "1.104.2"`, so **we
 already have it**
 | We already feed the operator an OAuth client
 | `TailscaleManifestsUnit` deploys the chart, and the `operator-oauth` Secret is served by
@@ -161,7 +161,7 @@ offered "keep the funnel path on the SaaS" as one of three uncomfortable options
 `OPERATOR_LOGIN_SERVER` moves **everything**, Funnel included, and keeping two tailnets side by side
 is not a split hack — **the operator supports it natively**.
 
-*Measured on the exact chart version we pin (`1.102.3`; present since `1.98.10`):*
+*Measured on the chart version we pinned then (`1.102.3`; present since `1.98.10`):*
 
 [cols="1,2",options="header"]
 |===

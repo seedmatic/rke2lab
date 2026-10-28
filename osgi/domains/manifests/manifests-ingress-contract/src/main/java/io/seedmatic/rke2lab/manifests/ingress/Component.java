@@ -26,30 +26,36 @@ import java.util.Optional;
 public enum Component implements WireEnum {
   TEKTON_OPERATOR(
       "tektonOperator",
-      "v0.81.1",
+      "v0.81.2",
       "tektoncd/operator",
       "release.yaml",
       "upstream/cicd/tekton-operator"),
-  KUBE_VIP("kubeVip", "v0.9.2", "kube-vip/kube-vip"),
+  KUBE_VIP("kubeVip", "v1.3.1", "kube-vip/kube-vip"),
   OPENEBS_ZFS_CHART(
       "openebsZfsChart",
-      "2.8.0",
+      "2.11.2",
       new ComponentSource.Upstream.HelmIndex(
           "https://openebs.github.io/zfs-localpv", "zfs-localpv")),
   KUBERNETES_REPLICATOR("kubernetesReplicator", "v2.12.4", "mittwald/kubernetes-replicator"),
-  FLUX_OPERATOR("fluxOperator", "v0.58.1", "controlplaneio-fluxcd/flux-operator"),
-  ENVOY_GATEWAY("envoyGateway", "v1.9.0", "envoyproxy/gateway"),
-  TAILSCALE("tailscale", "1.102.3", "tailscale/tailscale"),
+  FLUX_OPERATOR("fluxOperator", "v0.62.1", "controlplaneio-fluxcd/flux-operator"),
+  ENVOY_GATEWAY("envoyGateway", "v1.9.3", "envoyproxy/gateway"),
+  // tailscale/tailscale — the operator CHART version, which can trail the release tags (v1.104.4
+  // released, chart 1.104.2 the latest on 2026-10-28), so its source is the chart's own index.
+  TAILSCALE(
+      "tailscale",
+      "1.104.2",
+      new ComponentSource.Upstream.HelmIndex(
+          "https://pkgs.tailscale.com/helmcharts", "tailscale-operator")),
   CLUSTER_API_OPERATOR(
       "clusterApiOperator",
-      "v0.29.0",
+      "v0.30.0",
       "kubernetes-sigs/cluster-api-operator",
       "operator-components.yaml",
       "upstream/clusterapi/operator"),
-  CAPI_CORE("capiCore", "v1.14.0", "kubernetes-sigs/cluster-api"),
-  CAPI_INCUS_PROVIDER("capiIncusProvider", "v0.9.0", "lxc/cluster-api-provider-incus"),
-  CAPI_RKE2_PROVIDER("capiRke2Provider", "v0.25.2", "rancher/cluster-api-provider-rke2"),
-  CERT_MANAGER("certManager", "v1.21.1", "cert-manager/cert-manager"),
+  CAPI_CORE("capiCore", "v1.14.3", "kubernetes-sigs/cluster-api"),
+  CAPI_INCUS_PROVIDER("capiIncusProvider", "v0.9.1", "lxc/cluster-api-provider-incus"),
+  CAPI_RKE2_PROVIDER("capiRke2Provider", "v0.27.1", "rancher/cluster-api-provider-rke2"),
+  CERT_MANAGER("certManager", "v1.21.3", "cert-manager/cert-manager"),
   // isometry/github-token-manager — the OCI CHART version, versioned apart from the app's `v*`
   // release tags, so its source is the chart's own registry tags.
   GITHUB_TOKEN_MANAGER(

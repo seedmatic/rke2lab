@@ -115,19 +115,59 @@ class GithubTokenTest {
     assertTrue(logged.stream().noneMatch(line -> line.contains(SENTINEL)), logged.toString());
   }
 
-  /** Records every request and answers each with a bodiless 403. */
+  @Test
+  void a_release_asset_is_downloaded_without_the_token() throws Exception {
+    final String asset = "https://github.com/o/r/releases/download/v1.0.0/release.yaml";
+    final RecordingClient http =
+        new RecordingClient(
+            Map.of(
+                "https://api.github.com/repos/o/r/releases/tags/v1.0.0",
+                "{\"assets\":[{\"name\":\"release.yaml\",\"browser_download_url\":\""
+                    + asset
+                    + "\"}]}",
+                asset,
+                "kind: List"));
+    final byte[] bytes =
+        new VersionBumper(BumpLevel.MAJOR, Optional.of(SENTINEL), http)
+            .fetchReleaseAsset("o/r", "v1.0.0", "release.yaml");
+    assertEquals("kind: List", new String(bytes, StandardCharsets.UTF_8));
+    final HttpRequest download =
+        http.requests.stream()
+            .filter(r -> r.uri().toString().equals(asset))
+            .findFirst()
+            .orElseThrow();
+    assertEquals(Optional.empty(), download.headers().firstValue("Authorization"));
+  }
+
+  /**
+   * Records every request; answers a known URL 200 with its body (bytes when the request accepts
+   * octet-stream), any other with a bodiless 403.
+   */
   private static final class RecordingClient extends HttpClient {
 
     final List<HttpRequest> requests = new ArrayList<>();
+    private final Map<String, String> answers;
+
+    RecordingClient() {
+      this(Map.of());
+    }
+
+    RecordingClient(final Map<String, String> answers) {
+      this.answers = answers;
+    }
 
     @Override
+    @SuppressWarnings("unchecked")
     public <T> HttpResponse<T> send(
         final HttpRequest request, final HttpResponse.BodyHandler<T> handler) {
       requests.add(request);
+      final String answer = answers.get(request.uri().toString());
+      final boolean bytes =
+          request.headers().firstValue("Accept").orElse("").equals("application/octet-stream");
       return new HttpResponse<>() {
         @Override
         public int statusCode() {
-          return 403;
+          return answer == null ? 403 : 200;
         }
 
         @Override
@@ -147,7 +187,10 @@ class GithubTokenTest {
 
         @Override
         public T body() {
-          return null;
+          if (answer == null) {
+            return null;
+          }
+          return (T) (bytes ? answer.getBytes(StandardCharsets.UTF_8) : answer);
         }
 
         @Override

@@ -389,7 +389,7 @@ public final class VersionBumper {
   }
 
   /** The bytes of {@code assetName} on the {@code tag} release of {@code repo}. */
-  private byte[] fetchReleaseAsset(final String repo, final String tag, final String assetName)
+  byte[] fetchReleaseAsset(final String repo, final String tag, final String assetName)
       throws IOException, InterruptedException {
     final JsonNode release =
         getJson("https://api.github.com/repos/" + repo + "/releases/tags/" + tag);
@@ -415,9 +415,18 @@ public final class VersionBumper {
     return wire.readJson(response.body());
   }
 
+  // A release asset is public, and its download redirects off GitHub's API host (to
+  // objects.githubusercontent.com), where a forwarded Authorization would follow: so none is sent.
   private byte[] getBytes(final String url) throws IOException, InterruptedException {
+    final HttpRequest request =
+        HttpRequest.newBuilder()
+            .uri(URI.create(url))
+            .header("Accept", "application/octet-stream")
+            .timeout(Duration.ofSeconds(30))
+            .GET()
+            .build();
     final HttpResponse<byte[]> response =
-        send(url, "application/octet-stream", HttpResponse.BodyHandlers.ofByteArray());
+        http.send(request, HttpResponse.BodyHandlers.ofByteArray());
     if (response.statusCode() != 200) {
       throw new IOException("HTTP " + response.statusCode() + " from " + url);
     }

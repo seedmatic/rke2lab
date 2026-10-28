@@ -114,16 +114,38 @@ public final class KubeVipManifestsUnit extends AbstractManifestsUnit {
                     "apiGroups",
                     List.of(""),
                     "resources",
-                    List.of("services", "services/status", "nodes", "endpoints"),
+                    List.of("services", "services/status", "endpoints"),
                     "verbs",
                     List.of("list", "get", "watch", "update")),
+                Map.of(
+                    "apiGroups",
+                    List.of(""),
+                    "resources",
+                    List.of("nodes"),
+                    "verbs",
+                    List.of("list", "get", "watch", "update", "patch")),
                 Map.of(
                     "apiGroups",
                     List.of("coordination.k8s.io"),
                     "resources",
                     List.of("leases"),
                     "verbs",
-                    List.of("list", "get", "watch", "update", "create")))));
+                    List.of("list", "get", "watch", "update", "create")),
+                // kube-vip 1.0 watches EndpointSlices by default (upstream's rbac.yaml).
+                Map.of(
+                    "apiGroups",
+                    List.of("discovery.k8s.io"),
+                    "resources",
+                    List.of("endpointslices"),
+                    "verbs",
+                    List.of("list", "get", "watch", "update")),
+                Map.of(
+                    "apiGroups",
+                    List.of(""),
+                    "resources",
+                    List.of("pods"),
+                    "verbs",
+                    List.of("list")))));
 
     return clusterRole;
   }
@@ -253,7 +275,9 @@ public final class KubeVipManifestsUnit extends AbstractManifestsUnit {
                                     // cluster-vip-cidr routed across that bridge — so vmnet0 is the
                                     // only correct binding target.
                                     Map.of("name", "vip_interface", "value", "vmnet0"),
-                                    Map.of("name", "vip_cidr", "value", "32"),
+                                    // `vip_subnet`, kube-vip's name since before 0.9: the
+                                    // `vip_cidr` this replaced was never read.
+                                    Map.of("name", "vip_subnet", "value", "32"),
                                     Map.of("name", "dns_mode", "value", "first"),
                                     Map.of("name", "cp_enable", "value", "true"),
                                     Map.of("name", "cp_namespace", "value", "kube-system"),

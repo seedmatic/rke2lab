@@ -14,20 +14,20 @@ import java.util.regex.Pattern;
  *
  * <p>A Helm index is read as TEXT, line by line, not parsed: loft's is 2.99 MB (measured
  * 2026-10-28), at SnakeYAML's 3 MB code-point limit, and only one chart's {@code version} keys are
- * needed. Its shape is fixed (measured on loft's and openebs' indexes): {@code entries:} at column
- * 0, each chart key at two spaces, each entry's {@code - } at two and its keys at four, nested
- * blocks (dependencies, maintainers) deeper, with {@code version:} keys of their own.
+ * needed. Its INDENTS are not fixed: loft's and openebs' put each chart key at two spaces and an
+ * entry's keys at four, tailscale's at four and ten (measured 2026-10-28). So they are read off the
+ * index: a chart key sits at the first indent under {@code entries:}, an entry's keys two past its
+ * {@code - }, and only a {@code version:} at exactly that indent is the chart's; nested blocks
+ * (dependencies, maintainers) are deeper, with {@code version:} keys of their own.
  */
 final class UpstreamVersions {
 
   // A version with any suffix (-rc.1, -alpha.7, -develop, -prerelease, +build) is not stable.
   private static final Pattern STABLE = Pattern.compile("^v?\\d+\\.\\d+(\\.\\d+)?$");
 
-  private static final Pattern ENTRY_KEY = Pattern.compile("^  ([^\\s:#][^:]*):\\s*$");
+  private static final Pattern CHART_KEY = Pattern.compile("([^\\s:#-][^:]*):\\s*");
 
-  // An entry's own `version:` key: exactly four spaces deep, the list marker at two. Deeper ones
-  // belong to an entry's dependencies (a dependency's version), not the chart's.
-  private static final Pattern VERSION = Pattern.compile("^ {4}version:\\s*\"?([^\"\\s]+)\"?\\s*$");
+  private static final Pattern VERSION = Pattern.compile("version:\\s*\"?([^\"\\s]+)\"?\\s*");
 
   private final SeedCodec codec = new SeedCodec();
 
@@ -40,25 +40,42 @@ final class UpstreamVersions {
     final List<String> versions = new ArrayList<>();
     boolean inEntries = false;
     boolean inChart = false;
+    int chartIndent = -1;
+    int entryKeyIndent = -1;
     for (final String line : indexYaml.split("\n", -1)) {
-      if (!line.startsWith(" ") && !line.isBlank()) {
-        inEntries = line.startsWith("entries:");
+      if (line.isBlank()) {
+        continue;
+      }
+      final int indent = line.length() - line.stripLeading().length();
+      final String content = line.substring(indent);
+      if (indent == 0) {
+        inEntries = content.startsWith("entries:");
         inChart = false;
         continue;
       }
       if (!inEntries) {
         continue;
       }
-      final Matcher key = ENTRY_KEY.matcher(line);
-      if (key.matches()) {
+      if (chartIndent < 0) {
+        chartIndent = indent;
+      }
+      final Matcher key = CHART_KEY.matcher(content);
+      if (indent == chartIndent && key.matches()) {
         inChart = key.group(1).equals(chart);
+        entryKeyIndent = -1;
         continue;
       }
-      if (inChart) {
-        final Matcher version = VERSION.matcher(line);
-        if (version.matches() && isStable(version.group(1))) {
-          versions.add(version.group(1));
-        }
+      if (!inChart) {
+        continue;
+      }
+      final boolean listed = content.startsWith("- ");
+      final int keyIndent = listed ? indent + 2 : indent;
+      if (entryKeyIndent < 0 && listed) {
+        entryKeyIndent = keyIndent;
+      }
+      final Matcher version = VERSION.matcher(listed ? content.substring(2) : content);
+      if (keyIndent == entryKeyIndent && version.matches() && isStable(version.group(1))) {
+        versions.add(version.group(1));
       }
     }
     return List.copyOf(versions);
