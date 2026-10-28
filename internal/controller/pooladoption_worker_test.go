@@ -314,3 +314,53 @@ func TestAControlPlanePoolWithoutEndpointIsRefused(t *testing.T) {
 		t.Errorf("ensured %d objects for a control-plane pool without endpoint", len(store.created))
 	}
 }
+
+// A worker pool has no control plane to observe: it is Provisioning, and requeued, until its
+// MachineDeployment reports the declared replicas ready, then Adopted. It used to wait for a
+// ControlPlaneObserved only the control-plane path sets, and stayed "aligning the CR-set" for ever
+// (nikopol-wrkld-ccr, 2026-10-28).
+func TestAWorkerPoolIsAdoptedOnceItsReplicasAreReady(t *testing.T) {
+	spec := workerSpec()
+	store := readyWorkerStore(spec)
+	r := &PoolAdoptionReconciler{Client: store, Scheme: adoptionScheme(t), SelfCluster: "nikopol-mgmt"}
+	a := &adoptionv1alpha1.PoolAdoption{Spec: spec}
+
+	result, err := r.reconcileSteps(context.Background(), a)
+	if err != nil {
+		t.Fatalf("reconcileSteps: %v", err)
+	}
+	if result.RequeueAfter <= 0 {
+		t.Errorf("a worker pool with no ready replica is not requeued: %+v", result)
+	}
+	if phase := r.derivePhase(a, nil); phase != adoptionv1alpha1.PoolPhaseProvisioning {
+		t.Errorf("phase with 0/1 ready = %q, want Provisioning", phase)
+	}
+
+	md := store.objects[storeKey(gvkMachineDeployment.Kind, "nikopol-wrkld-ccr")].(*unstructured.Unstructured)
+	if err := unstructured.SetNestedField(md.Object, int64(1), "status", "readyReplicas"); err != nil {
+		t.Fatalf("set readyReplicas: %v", err)
+	}
+	result, err = r.reconcileSteps(context.Background(), a)
+	if err != nil {
+		t.Fatalf("reconcileSteps: %v", err)
+	}
+	if result.RequeueAfter != 0 {
+		t.Errorf("an adopted worker pool is still requeued: %+v", result)
+	}
+	if phase := r.derivePhase(a, nil); phase != adoptionv1alpha1.PoolPhaseAdopted {
+		t.Errorf("phase with 1/1 ready = %q, want Adopted (conditions: %v)", phase, a.Status.Conditions)
+	}
+}
+
+// A control-plane pool keeps its own steps: its CR-set alone is not enough, the RKE2ControlPlane's
+// UID must have been observed.
+func TestAControlPlanePoolStillWaitsForItsControlPlane(t *testing.T) {
+	r := &PoolAdoptionReconciler{}
+	a := &adoptionv1alpha1.PoolAdoption{Spec: adoptionv1alpha1.PoolAdoptionSpec{Role: adoptionv1alpha1.PoolRoleControlPlane}}
+	r.mark(a, adoptionv1alpha1.PoolConditionMaterialReady, true, "MaterialReady", "")
+	r.mark(a, adoptionv1alpha1.PoolConditionCRSetCreated, true, "Created", "")
+	r.mark(a, adoptionv1alpha1.PoolConditionPetsPresent, true, "Present", "")
+	if phase := r.derivePhase(a, nil); phase != adoptionv1alpha1.PoolPhaseAdopting {
+		t.Errorf("a control-plane pool without ControlPlaneObserved is %q, want Adopting", phase)
+	}
+}
