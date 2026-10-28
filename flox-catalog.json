@@ -1,14 +1,14 @@
 {
   "schema": "seedmatic.relock/v1",
   "head": "flox-catalog",
-  "rev": "dd7c0b59a5a48ef5769549064d3f921275364406",
+  "rev": "0cf209a1a7cf7028eb79e85e5cab7e9da3669a27",
   "status": {
-    "wave": "flake-commons@2026-10-15T05:02:01Z",
-    "tool": "5dc283dbf05b6381aaeade7c72444f80b48a2b2c13bed1febcfdefcd243f0d64",
+    "wave": "flake-commons@2026-10-28T13:49:40Z",
+    "tool": "6625dd9228c531ccc31a2ab8112a9240110b3866f611bd80cff77e3894e02b59",
     "bumped": {
       "rke2lab": [
-        "787e77170a5be70ad2ea263ffe67e35c01f819da",
-        "2a5ddc41a718faa999a031f561b3e4d9f438e22f"
+        "7e88eee539458891522af24a4235fb899c855039",
+        "5cc8d2f62aa6ebeb4f1f2ec3a172e5beed28cfe2"
       ]
     },
     "pruned": {},
@@ -16,7 +16,9 @@
     "after": [
       "lock-envs"
     ],
-    "unmeasured": [],
-    "seconds": 51
+    "unmeasured": [
+      "packages of aarch64-darwin: one of them does not evaluate before any bump, so none of aarch64-darwin is measured — error: Refusing to evaluate package 'strace-7.2' in /nix/store/z40fynbhnw0d06q05mw2mznn49h1y9pk-source/pkgs/by-name/st/strace/package.nix:55 because it is not available on the requested hostPlatform:"
+    ],
+    "seconds": 90
   }
 }
