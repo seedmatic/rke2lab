@@ -27,9 +27,11 @@ trap 'rm -rf "$work"' EXIT
 run() {
   flox activate -d "$root" -- "$@"
 }
+# shellcheck source=plan-closure.sh
+. "$root/.githooks/plan-closure.sh"
 
 refused=0
-while read -r local_ref local_sha remote_ref _remote_sha; do
+while read -r local_ref local_sha remote_ref remote_sha; do
   # A fabricated grow revision (refs/rke2lab/grow/<sha>) is the seat's dirty build inputs: it
   # never leaves the repository, whatever the refspec — a broad one (--mirror, refs/*) included.
   if [[ "$local_ref" == refs/rke2lab/* || "$remote_ref" == refs/rke2lab/* ]]; then
@@ -51,6 +53,8 @@ while read -r local_ref local_sha remote_ref _remote_sha; do
     refused=1
     continue
   fi
+  # The pin is fetchable; whether it is stale is only in question when the push changes what the plan reads.
+  plan_build_skippable "$local_sha" "$remote_sha" && continue
 
   tree="$work/${local_sha:0:12}"
   mkdir -p "$tree"
@@ -60,7 +64,7 @@ while read -r local_ref local_sha remote_ref _remote_sha; do
   git archive "$local_sha" -- . "${excludes[@]}" | tar -x -C "$tree"
   # A judge builds the pushed tree and never trusts a cache keyed on another tree: the build cache
   # "restores" a matching module into this cold archive without its classes, and the jar then fails.
-  if ! (cd "$tree" && run ./mvnw -q -pl :plan-cli -am package -DskipTests -Dflox.crd-staging.skip=true \
+  if ! (cd "$tree" && run ./mvnw -pl :plan-cli -am package -DskipTests -Dflox.crd-staging.skip=true \
       -Dmaven.build.cache.enabled=false) \
       >"$tree.build.log" 2>&1; then
     echo "  ⛔ $local_ref: the plan does not build from the pushed tree, so its pin cannot be judged." >&2
