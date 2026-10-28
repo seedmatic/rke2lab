@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-set -euo pipefail
+# Every step traced with its time, so the operator sees what runs and what waits (the operator, 2026-10-28).
+export PS4='+ $(date +%T) ${BASH_SOURCE##*/}:${LINENO}: '
+set -euxo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
@@ -173,7 +175,7 @@ spotless_check() {
   # spotlessFiles takes comma-separated regexes matched against absolute paths.
   regex="$(for f in "${owned[@]}"; do printf '%s\n' "$PWD/$f"; done |
     sed 's/[][\.*^$()+?{}|]/\\&/g' | paste -sd, -)"
-  if ! flox activate -- ./mvnw -q -pl "$(
+  if ! flox activate -- ./mvnw -pl "$(
     IFS=,
     echo "${modules[*]}"
   )" spotless:check -DspotlessFiles="$regex"; then
