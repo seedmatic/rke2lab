@@ -53,7 +53,7 @@ public enum Component implements WireEnum {
       "operator-components.yaml",
       "upstream/clusterapi/operator"),
   CAPI_CORE("capiCore", "v1.14.3", "kubernetes-sigs/cluster-api"),
-  CAPI_INCUS_PROVIDER("capiIncusProvider", "v0.9.0", "lxc/cluster-api-provider-incus"),
+  CAPI_INCUS_PROVIDER("capiIncusProvider", "v0.9.1", "lxc/cluster-api-provider-incus"),
   CAPI_RKE2_PROVIDER("capiRke2Provider", "v0.27.1", "rancher/cluster-api-provider-rke2"),
   CERT_MANAGER("certManager", "v1.21.1", "cert-manager/cert-manager"),
   // isometry/github-token-manager — the OCI CHART version, versioned apart from the app's `v*`
