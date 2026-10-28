@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Every step traced with its time, so the operator sees what runs and what waits (the operator, 2026-10-28).
-export PS4='+ $(date +%T) ${BASH_SOURCE##*/}:${LINENO}: '
+# Every step traced with its time, so the operator sees what runs and what waits (the operator, 2026-10-28): bash's
+# own clock, since a fork per traced line costs minutes on a big commit, and each guard's per-file loop untraced
+# (`untraced`), so a step shows once, not once per staged file.
+export PS4='+ ${EPOCHREALTIME%.*} ${BASH_SOURCE##*/}:${LINENO}: '
 set -euxo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
@@ -23,6 +25,15 @@ cd "$(git rev-parse --show-toplevel)"
 # an eval-time assertion could see it: one saw an envelope, the other asked whether
 # the file "looks decrypted". The question has to be whether secret material is
 # still readable.
+# Runs "$@" with the trace off, and restores it: for the guards' per-file loops.
+untraced() {
+  { local was=$-; set +x; } 2>/dev/null
+  local rc=0
+  "$@" || rc=$?
+  [[ $was == *x* ]] && set -x
+  return "$rc"
+}
+
 secret_material_guard() {
   local found=0 f blob
   while IFS= read -r -d '' f; do
@@ -132,6 +143,7 @@ EOF
 # because the copy it would judge is not the one being committed.
 spotless_check() {
   local f files=() partial=() regex
+  { local was=$-; set +x; } 2>/dev/null
   while IFS= read -r -d '' f; do
     case "$f" in
       *.java | */src/main/resources/*.sh | */src/test/resources/*.sh | README.adoc | docs/*.adoc | docs/*.md | pom.xml | */pom.xml) ;;
@@ -140,6 +152,7 @@ spotless_check() {
     files+=("$f")
     git diff --quiet -- "$f" || partial+=("$f")
   done < <(git diff --cached --name-only --diff-filter=ACMR -z)
+  [[ $was == *x* ]] && set -x
 
   ((${#files[@]})) || return 0
 
@@ -215,8 +228,8 @@ EOF
 }
 
 status=0
-secret_material_guard || status=1
-token_shape_guard || status=1
+untraced secret_material_guard || status=1
+untraced token_shape_guard || status=1
 sops_filter_attribute_guard || status=1
 spotless_check || status=1
 exit "$status"
