@@ -20,12 +20,12 @@ setup() {
 	export BUMP_HEADS="$BATS_TEST_TMPDIR/heads"
 	printf '%s\n' flake-commons ndh flox-controller >"$BUMP_HEADS"
 	cat >"$BUMP_REPORT" <<'EOF'
-{"world":"nix","name":"kubectl","source":"rke2lab:flake.lock#nixpkgs","pinned":"1.36.3","latest":"1.37.1","level":"minor","status":"behind","upstream":"nixpkgs:nixpkgs-unstable#kubectl"}
-{"world":"nix","name":"kubernetes-helm","source":"rke2lab:flake.lock#nixpkgs","pinned":"3.20.2","latest":"4.3.0","level":"major","status":"behind","upstream":"nixpkgs:nixpkgs-unstable#kubernetes-helm"}
+{"world":"nix","name":"kubectl","source":"rke2lab:flake.lock#nixpkgs-unstable","pinned":"1.36.3","latest":"1.37.1","level":"minor","status":"behind","upstream":"nixpkgs:nixpkgs-unstable#kubectl"}
+{"world":"nix","name":"kubernetes-helm","source":"rke2lab:flake.lock#nixpkgs-unstable","pinned":"3.20.2","latest":"4.3.0","level":"major","status":"behind","upstream":"nixpkgs:nixpkgs-unstable#kubernetes-helm"}
 {"world":"nix","name":"nixpkgs","source":"nix-flake-commons:flake.lock#nixpkgs","pinned":"26f4107e","latest":"718f670e","level":null,"status":"unknown","upstream":"github:NixOS/nixpkgs#nixos-26.05"}
 {"world":"nix","name":"ndh","source":"rke2lab:flake.lock#ndh","pinned":"7a3f6593","latest":"8abc22ea","level":null,"status":"unknown","upstream":"github:seedmatic/ndh#develop"}
 {"world":"nix","name":"seed-tool","source":"rke2lab:flake.lock#seed-tool","pinned":"aaaa1111","latest":"bbbb2222","level":null,"status":"unknown","upstream":"github:x/seed-tool#develop"}
-{"world":"nix","name":"rke2","source":"rke2lab:nixos/rke2-1-36.nix","pinned":"1.36.4+rke2r1","latest":"v1.37.1+rke2r1","level":"minor","status":"behind","upstream":"github:rancher/rke2"}
+{"world":"nix","name":"rke2","source":"rke2lab:nixos/rke2-version.d/versions.nix","pinned":"1.36.4+rke2r1","latest":"v1.37.1+rke2r1","level":"minor","status":"behind","upstream":"github:rancher/rke2"}
 {"world":"clusters","name":"kubeVip","source":"rke2lab:osgi/x/Component.java","pinned":"v0.9.2","latest":"v1.3.1","level":"major","status":"behind","upstream":"github:kube-vip/kube-vip"}
 {"world":"clusters","name":"certManager","source":"rke2lab:osgi/x/Component.java","pinned":"v1.21.1","latest":"v1.21.3","level":"micro","status":"behind","upstream":"github:cert-manager/cert-manager"}
 EOF

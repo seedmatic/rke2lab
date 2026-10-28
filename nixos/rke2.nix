@@ -61,7 +61,7 @@ in
   # (2026-10-26) cloud-init found no datasource, failed, and rke2-server cluster-inited with defaults (no
   # tls-san, the default CIDRs), which no later config can undo. A failed cloud-init now stops rke2.
   #
-  # zfs on the unit's PATH: the kubelet's cAdvisor (rke2 1.36, cAdvisor v0.56.2) takes its ZFS branch when /dev/zfs
+  # zfs on the unit's PATH: the kubelet's cAdvisor (measured on rke2 1.36, cAdvisor v0.56.2) takes its ZFS branch when /dev/zfs
   # exists, which it does on our nodes, and execs `zfs get` to size the rootfs; with no zfs on PATH it gets no
   # filesystem for `/` and the kubelet fails « failed to get rootfs info ». nixpkgs adds zfs only when
   # boot.zfs.enabled, which our nodes leave off on purpose (./zfs.nix): the userland alone, the host owns the module.
