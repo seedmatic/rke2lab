@@ -38,7 +38,7 @@ public enum Component implements WireEnum {
           "https://openebs.github.io/zfs-localpv", "zfs-localpv")),
   KUBERNETES_REPLICATOR("kubernetesReplicator", "v2.12.4", "mittwald/kubernetes-replicator"),
   FLUX_OPERATOR("fluxOperator", "v0.62.1", "controlplaneio-fluxcd/flux-operator"),
-  ENVOY_GATEWAY("envoyGateway", "v1.9.0", "envoyproxy/gateway"),
+  ENVOY_GATEWAY("envoyGateway", "v1.9.3", "envoyproxy/gateway"),
   // tailscale/tailscale — the operator CHART version, which can trail the release tags (v1.104.4
   // released, chart 1.104.2 the latest on 2026-10-28), so its source is the chart's own index.
   TAILSCALE(
