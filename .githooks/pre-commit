@@ -106,7 +106,7 @@ token_shape_guard() {
     fi
     lines="$(git cat-file blob "$blob" 2>/dev/null |
       sed 's/ENC\[[^]]*\]//g' |
-      grep -nE 'eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+|(tskey-|gh[opsu]_|github_pat_|dckr_pat_|glpat-)[A-Za-z0-9_-]{16,}' |
+      grep -nE 'eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+|(tskey-|gh[opsu]_|github_pat_|dckr_pat_|glpat-|flox_pat_)[A-Za-z0-9_-]{16,}' |
       cut -d: -f1 | paste -sd, - || true)"
     if [[ -n "$lines" ]]; then
       echo "  ⛔ $f — staged blob holds a token in the clear outside ENC[…], line(s) $lines" >&2
@@ -118,13 +118,56 @@ token_shape_guard() {
     cat >&2 <<'EOF'
 
 Refusing the commit. A staged file carries a bearer token (a JWT or a
-tskey-/gh*_/github_pat_/dckr_pat_/glpat- token) in the clear. In a repository
+tskey-/gh*_/github_pat_/dckr_pat_/glpat-/flox_pat_ token) in the clear. In a repository
 without .sops.yaml no file may hold one: move it out of the repository.
 
 In a sops-managed file: with encrypted_comment_regex, sops encrypts only the
 leaves whose comment says so, so a leaf without its `# sops:encrypted` marker
 stays plaintext inside a valid envelope. Add the marker and re-encrypt — or, if
 the token is no longer used, remove the leaf with `sops unset`.
+
+EOF
+    return 1
+  fi
+  return 0
+}
+
+# Refuse a sops file that carries a secret-NAMED leaf in the clear, whatever its value looks like.
+#
+# The shape guard above knows token prefixes; a token of a provider it does not list passes it. The FloxHub token of
+# 2026-10-28 did: `sops set` wrote it without the `# sops:encrypted` marker the opt-in rule needed. So this asks the
+# other question, about the KEY: in a staged blob with a top-level `sops:` envelope, a scalar outside that envelope
+# that is not ENC[…], under a key whose words say secret (token, password, key…), refuses. A key ending in a word that
+# says it is a reference (…Name, …Id, …File, …Path, …Dir) is not one. The key PATHS are printed, never a value.
+clear_secret_leaf_guard() {
+  local found=0 f blob hits
+  while IFS= read -r -d '' f; do
+    blob="$(git ls-files -s -- "$f" | awk '{print $2}')"
+    [[ -n "$blob" ]] || continue
+    grep -q '^sops:' < <(git cat-file blob "$blob") || continue
+    hits="$(git cat-file blob "$blob" | yq -p yaml -o tsv '
+      del(.sops) | .. | select(tag != "!!map" and tag != "!!seq")
+        | select((tag == "!!str" and test("^ENC\\[") | not) and tag != "!!null" and tag != "!!bool")
+        | path | map(tostring) | join(".")' 2>/dev/null |
+      awk -F. '{
+        k = $NF; if (k ~ /^[0-9]+$/ && NF > 1) k = $(NF - 1)
+        n = k; gsub(/[A-Z]/, " &", n); n = tolower(n); gsub(/[^a-z0-9]+/, " ", n)
+        if (n ~ /(^| )(name|id|file|path|dir)$/) next
+        if (n ~ /(^| )(token|tokens|secret|secrets|password|passwd|pw|pat|key|apikey|auth|jwt|cookie|credential|credentials|private|priv|bearer|otp|sk)( |$)/) print $0
+      }' | paste -sd, - || true)"
+    if [[ -n "$hits" ]]; then
+      echo "  ⛔ $f — a secret-named leaf is in the clear: $hits" >&2
+      found=1
+    fi
+  done < <(git diff --cached --name-only --diff-filter=ACMRT -z)
+
+  if ((found)); then
+    cat >&2 <<'EOF'
+
+Refusing the commit. A sops-managed file has a leaf whose NAME says it is a secret,
+in the clear. Encrypt it: in .secrets every value is encrypted unless .sops.yaml's
+unencrypted_regex names it, so re-run `sops -e -i --input-type yaml --output-type yaml
+.secrets` from your own terminal; elsewhere add its `# sops:encrypted` marker first.
 
 EOF
     return 1
@@ -230,6 +273,7 @@ EOF
 status=0
 untraced secret_material_guard || status=1
 untraced token_shape_guard || status=1
+untraced clear_secret_leaf_guard || status=1
 sops_filter_attribute_guard || status=1
 spotless_check || status=1
 exit "$status"
