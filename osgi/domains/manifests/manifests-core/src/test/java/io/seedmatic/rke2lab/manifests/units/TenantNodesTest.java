@@ -1,6 +1,7 @@
 package io.seedmatic.rke2lab.manifests.units;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.seedmatic.rke2lab.manifests.Cdk8sApiObjectResolver;
@@ -317,6 +318,54 @@ class TenantNodesTest {
       }
     }
     assertEquals(List.of(), fromFloxHub.stream().distinct().sorted().toList());
+  }
+
+  /**
+   * flox-controller reads the FloxHub token from its Secret by NAME, optional (a cluster without it
+   * still realises its catalog-only envs), and never carries a value; the Secret reaches
+   * rke2lab-system as a replica of the source the operator's grow seals.
+   */
+  @Test
+  void requireFloxControllerReadsTheFloxhubTokenFromItsSecretOnly(@TempDir Path outdir) {
+    final List<Map<?, ?>> documents =
+        render(outdir, "nikopol-wrkld", ClusterRole.WRKLD).stream()
+            .<Map<?, ?>>map(d -> (Map<?, ?>) d)
+            .toList();
+    final Map<?, ?> daemonSet =
+        documents.stream()
+            .filter(d -> "DaemonSet".equals(d.get("kind")))
+            .filter(d -> "flox-controller".equals(((Map<?, ?>) d.get("metadata")).get("name")))
+            .findFirst()
+            .orElseThrow();
+    final Map<?, ?> podSpec =
+        (Map<?, ?>) ((Map<?, ?>) ((Map<?, ?>) daemonSet.get("spec")).get("template")).get("spec");
+    final Object containers = podSpec.get("containers");
+    final List<?> list =
+        containers instanceof Object[] array ? List.of(array) : (List<?>) containers;
+    final Object env = ((Map<?, ?>) list.get(0)).get("env");
+    final List<?> vars = env instanceof Object[] array ? List.of(array) : (List<?>) env;
+    final Map<?, ?> token =
+        vars.stream()
+            .map(v -> (Map<?, ?>) v)
+            .filter(v -> "FLOX_FLOXHUB_TOKEN".equals(v.get("name")))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("no FLOX_FLOXHUB_TOKEN in " + vars));
+    assertFalse(token.containsKey("value"), "an inline token value");
+    assertEquals(
+        Map.of("secretKeyRef", Map.of("name", "floxhub-token", "key", "token", "optional", true)),
+        token.get("valueFrom"));
+    assertTrue(
+        documents.stream()
+            .filter(d -> "Secret".equals(d.get("kind")))
+            .map(d -> (Map<?, ?>) d.get("metadata"))
+            .anyMatch(
+                m ->
+                    "floxhub-token".equals(m.get("name"))
+                        && "rke2lab-system".equals(m.get("namespace"))
+                        && m.get("annotations") instanceof Map<?, ?> a
+                        && "rke2lab-secrets/floxhub-token"
+                            .equals(a.get("replicator.v1.mittwald.de/replicate-from"))),
+        "no floxhub-token replica stub in rke2lab-system");
   }
 
   /** Kubernetes' ToleratesTaint, for one taint. */

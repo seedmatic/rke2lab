@@ -7,6 +7,7 @@ import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
 import io.seedmatic.rke2lab.manifests.contract.ManifestAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.ManifestLayer;
+import io.seedmatic.rke2lab.manifests.contract.profiles.ReplicatorSourceSecretsMaterial;
 import io.seedmatic.rke2lab.manifests.profiles.FleetTolerationsProfile;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import io.seedmatic.rke2lab.manifests.units.cluster.ClusterRefs;
@@ -118,6 +119,14 @@ public final class FloxControllerManifestsUnit extends AbstractManifestsUnit {
         namespace,
         GithubTokenManagerManifestsUnit.TOKEN_SECRET_NAME,
         "secret-github-token");
+    // The FloxHub token (the operator's, sealed by the grow from .secrets floxhub.token): flox
+    // resolves FloxHub-catalog packages and relocks with it on the nodes.
+    createTokenReplicaStub(
+        scope,
+        context.resolver(),
+        namespace,
+        ReplicatorSourceSecretsMaterial.FLOXHUB_TOKEN_SECRET,
+        "secret-floxhub-token");
   }
 
   private void createTokenReplicaStub(
@@ -251,6 +260,18 @@ public final class FloxControllerManifestsUnit extends AbstractManifestsUnit {
                     "POD_NAMESPACE",
                     "valueFrom",
                     Map.of("fieldRef", Map.of("fieldPath", "metadata.namespace"))),
+                // flox's CI auth (go.flox.dev/auth). Optional: a cluster without the token still
+                // realises the envs our own catalog serves.
+                Map.of(
+                    "name",
+                    "FLOX_FLOXHUB_TOKEN",
+                    "valueFrom",
+                    Map.of(
+                        "secretKeyRef",
+                        Map.of(
+                            "name", ReplicatorSourceSecretsMaterial.FLOXHUB_TOKEN_SECRET,
+                            "key", ReplicatorSourceSecretsMaterial.FLOXHUB_TOKEN_KEY,
+                            "optional", true))),
                 // flox lives on the NixOS SYSTEM profile (/run/current-system/sw/bin/flox), NOT the
                 // default nix profile — so that MUST lead the PATH nsenter resolves against, else
                 // `nsenter … flox` fails 127.

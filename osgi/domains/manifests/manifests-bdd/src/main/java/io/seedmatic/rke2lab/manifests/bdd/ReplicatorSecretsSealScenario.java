@@ -131,6 +131,9 @@ public class ReplicatorSecretsSealScenario
           ts ->
               oauthSecret(secretsMap.path("tailscale"), sourceNamespace, ts.path("oauth"))
                   .ifPresent(sources::add));
+      read(gateway, "floxhub")
+          .flatMap(floxhub -> floxhubTokenSecret(sourceNamespace, floxhub))
+          .ifPresent(sources::add);
       return new ReplicatorSourceSecretsMaterial(List.copyOf(sources));
     }
 
@@ -172,6 +175,27 @@ public class ReplicatorSecretsSealScenario
     }
 
     /** {@code replicateTo} as a list — a JSON array of namespaces, or a comma-separated string. */
+    /**
+     * The FloxHub token ({@code floxhub.token}): flox-controller resolves FloxHub-catalog packages
+     * and relocks with it on the nodes. Replicated to {@code rke2lab-system}, where the controller
+     * reads it as {@code FLOX_FLOXHUB_TOKEN}. Named here, not in {@code kubernetes.secrets}: it has
+     * one consumer and one place.
+     */
+    private Optional<SourceSecret> floxhubTokenSecret(
+        final String namespace, final JsonNode floxhub) {
+      final JsonNode token = floxhub.path("token");
+      if (token.isMissingNode() || token.asText().isBlank()) {
+        return Optional.empty();
+      }
+      return Optional.of(
+          new SourceSecret(
+              ReplicatorSourceSecretsMaterial.FLOXHUB_TOKEN_SECRET,
+              namespace,
+              "Opaque",
+              Map.of(ReplicatorSourceSecretsMaterial.FLOXHUB_TOKEN_KEY, token.asText()),
+              List.of(ReplicatorSourceSecretsMaterial.FLOXHUB_TOKEN_TARGET_NAMESPACE)));
+    }
+
     private static List<String> namespaces(final JsonNode replicateTo) {
       if (replicateTo.isArray()) {
         final List<String> out = new ArrayList<>();
