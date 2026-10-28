@@ -39,7 +39,7 @@ public final class VclusterCertsManifestsUnit extends AbstractManifestsUnit {
       new PackageMetadataProfile(ManifestDomainCatalog.VCLUSTER, "vcluster-certs");
 
   public VclusterCertsManifestsUnit() {
-    super(MANIFEST_UNIT_ID, List.of());
+    super(MANIFEST_UNIT_ID, List.of(VclusterNamespaceManifestsUnit.MANIFEST_UNIT_ID));
   }
 
   @Override

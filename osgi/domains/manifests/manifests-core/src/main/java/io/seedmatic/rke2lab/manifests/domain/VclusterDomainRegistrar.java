@@ -5,6 +5,7 @@ import io.seedmatic.rke2lab.manifests.ManifestsDomainRegistrar;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.units.clusterapi.VclusterCertsManifestsUnit;
 import io.seedmatic.rke2lab.manifests.units.clusterapi.VclusterManifestsUnit;
+import io.seedmatic.rke2lab.manifests.units.clusterapi.VclusterNamespaceManifestsUnit;
 import io.seedmatic.rke2lab.manifests.units.clusterapi.VclusterPinManifestsUnit;
 import java.util.List;
 import org.osgi.service.component.annotations.Component;
@@ -24,6 +25,7 @@ public final class VclusterDomainRegistrar implements ManifestsDomainRegistrar {
         ManifestDomainCatalog.VCLUSTER,
         List.of(ManifestDomainCatalog.PLATFORM),
         List.of(
+            new VclusterNamespaceManifestsUnit(),
             new VclusterCertsManifestsUnit(),
             new VclusterPinManifestsUnit(),
             new VclusterManifestsUnit()));

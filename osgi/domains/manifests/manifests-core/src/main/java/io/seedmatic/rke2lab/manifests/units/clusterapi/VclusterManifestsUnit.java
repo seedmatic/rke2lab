@@ -48,6 +48,7 @@ public final class VclusterManifestsUnit extends AbstractManifestsUnit {
     super(
         MANIFEST_UNIT_ID,
         List.of(
+            VclusterNamespaceManifestsUnit.MANIFEST_UNIT_ID,
             VclusterCertsManifestsUnit.MANIFEST_UNIT_ID,
             VclusterPinManifestsUnit.MANIFEST_UNIT_ID));
   }
@@ -88,22 +89,6 @@ public final class VclusterManifestsUnit extends AbstractManifestsUnit {
     final String namespace = vcluster.namespace();
     final String selector = LABEL + "=" + name;
 
-    final ApiObject ns =
-        new ApiObject(
-            scope,
-            "namespace-" + namespace,
-            ApiObjectProps.builder()
-                .apiVersion("v1")
-                .kind("Namespace")
-                .metadata(
-                    clusterScoped(namespace)
-                        .labels(
-                            Map.of(
-                                "pod-security.kubernetes.io/enforce", "restricted",
-                                "pod-security.kubernetes.io/warn", "restricted"))
-                        .build())
-                .build());
-
     final ApiObject chart =
         new ApiObject(
             scope,
@@ -127,7 +112,6 @@ public final class VclusterManifestsUnit extends AbstractManifestsUnit {
                 namespace,
                 "valuesContent",
                 values(name, selector, apiAddress))));
-    chart.addDependency(ns);
 
     final ApiObject service =
         new ApiObject(
@@ -159,7 +143,6 @@ public final class VclusterManifestsUnit extends AbstractManifestsUnit {
                 "ports",
                 List.of(
                     Map.of("name", "https", "port", 443, "targetPort", 8443, "protocol", "TCP")))));
-    service.addDependency(ns);
 
     // Announced from the pod's own pool: Local traffic needs the answering node to host it.
     final ApiObject announcement =
@@ -209,7 +192,6 @@ public final class VclusterManifestsUnit extends AbstractManifestsUnit {
                                 Map.of(
                                     "matchLabels",
                                     Map.of("k8s:io.kubernetes.pod.namespace", namespace))))))));
-    apiPolicy.addDependency(ns);
   }
 
   private static String values(final String name, final String selector, final String apiAddress) {
