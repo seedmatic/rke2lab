@@ -31,7 +31,11 @@ public enum Component implements WireEnum {
       "release.yaml",
       "upstream/cicd/tekton-operator"),
   KUBE_VIP("kubeVip", "v0.9.2", "kube-vip/kube-vip"),
-  OPENEBS_ZFS_CHART("openebsZfsChart", "2.8.0"),
+  OPENEBS_ZFS_CHART(
+      "openebsZfsChart",
+      "2.8.0",
+      new ComponentSource.Upstream.HelmIndex(
+          "https://openebs.github.io/zfs-localpv", "zfs-localpv")),
   KUBERNETES_REPLICATOR("kubernetesReplicator", "v2.12.4", "mittwald/kubernetes-replicator"),
   FLUX_OPERATOR("fluxOperator", "v0.58.1", "controlplaneio-fluxcd/flux-operator"),
   ENVOY_GATEWAY("envoyGateway", "v1.9.0", "envoyproxy/gateway"),
@@ -46,30 +50,34 @@ public enum Component implements WireEnum {
   CAPI_INCUS_PROVIDER("capiIncusProvider", "v0.9.0", "lxc/cluster-api-provider-incus"),
   CAPI_RKE2_PROVIDER("capiRke2Provider", "v0.25.2", "rancher/cluster-api-provider-rke2"),
   CERT_MANAGER("certManager", "v1.21.1", "cert-manager/cert-manager"),
-  // isometry/github-token-manager — the OCI CHART version (1.6.1), which the publish aligns to the
-  // app tag; NO GitHub bump source (the chart is versioned separately from the app release tags, so
-  // the bumper cannot diff it against `v*` tags — it stays a manual chart pin, like
-  // OPENEBS_ZFS_CHART).
-  GITHUB_TOKEN_MANAGER("githubTokenManager", "1.6.1"),
-  // loft-sh/vcluster — the CHART version on charts.loft.sh, which drops the tag's `v`; no bump
-  // source for the same reason as the charts above.
-  VCLUSTER_CHART("vclusterChart", "0.37.4");
+  // isometry/github-token-manager — the OCI CHART version, versioned apart from the app's `v*`
+  // release tags, so its source is the chart's own registry tags.
+  GITHUB_TOKEN_MANAGER(
+      "githubTokenManager",
+      "1.6.1",
+      new ComponentSource.Upstream.Oci("ghcr.io", "isometry/charts/github-token-manager")),
+  // loft-sh/vcluster — the CHART version on charts.loft.sh, which drops the tag's `v`.
+  VCLUSTER_CHART(
+      "vclusterChart",
+      "0.37.4",
+      new ComponentSource.Upstream.HelmIndex("https://charts.loft.sh", "vcluster"));
 
   private final String slug;
   private final String defaultVersion;
   private final Optional<ComponentSource> source;
 
-  /** A component with NO GitHub release source (a chart or container tag — the bumper skips it). */
-  Component(final String slug, final String defaultVersion) {
-    this(slug, defaultVersion, Optional.empty());
-  }
-
   /** A component pinned by a GitHub release, vendoring no upstream manifest. */
   Component(final String slug, final String defaultVersion, final String githubRepo) {
+    this(slug, defaultVersion, new ComponentSource.Upstream.GitHub(githubRepo));
+  }
+
+  /** A component whose newer versions come from {@code upstream}, vendoring no manifest. */
+  Component(
+      final String slug, final String defaultVersion, final ComponentSource.Upstream upstream) {
     this(
         slug,
         defaultVersion,
-        Optional.of(new ComponentSource(githubRepo, Optional.empty(), Optional.empty())));
+        Optional.of(new ComponentSource(upstream, Optional.empty(), Optional.empty())));
   }
 
   /** A component pinned by a GitHub release whose asset is vendored as {@code release-<v>.yaml}. */
@@ -84,7 +92,9 @@ public enum Component implements WireEnum {
         defaultVersion,
         Optional.of(
             new ComponentSource(
-                githubRepo, Optional.of(releaseAssetName), Optional.of(vendoredResourceDir))));
+                new ComponentSource.Upstream.GitHub(githubRepo),
+                Optional.of(releaseAssetName),
+                Optional.of(vendoredResourceDir))));
   }
 
   Component(

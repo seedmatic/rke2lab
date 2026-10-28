@@ -4,8 +4,12 @@ package io.seedmatic.rke2lab.manifests.cli;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.tngtech.jgiven.report.model.AttachmentModel;
 import com.tngtech.jgiven.report.model.ExecutionStatus;
 import com.tngtech.jgiven.report.model.ReportModel;
+import com.tngtech.jgiven.report.model.ScenarioCaseModel;
+import com.tngtech.jgiven.report.model.ScenarioModel;
+import com.tngtech.jgiven.report.model.StepModel;
 import com.tngtech.jgiven.report.text.PlainTextScenarioWriter;
 import io.seedmatic.rke2lab.manifests.cli.bdd.ManifestsCliRun;
 import io.seedmatic.rke2lab.manifests.cli.bdd.ManifestsCliScenario;
@@ -14,6 +18,7 @@ import io.seedmatic.rke2lab.manifests.cli.bdd.VersionsCliRun;
 import io.seedmatic.rke2lab.manifests.cli.bdd.VersionsCliScenario;
 import io.seedmatic.rke2lab.manifests.ingress.BumpLevel;
 import io.seedmatic.rke2lab.manifests.ingress.Component;
+import io.seedmatic.rke2lab.manifests.ingress.VersionLine;
 import io.seedmatic.rke2lab.osgi.runtime.junit.launcher.JUnitLauncherCore;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.LogFileSeed;
 import io.seedmatic.rke2lab.osgi.runtime.scenario.engine.container.RunRole;
@@ -110,7 +115,8 @@ public final class Main {
             new VersionsCommand.Builder(this)
                 .level(option(options, "level").orElse("minor"))
                 .apply(option(options, "apply").map(Boolean::parseBoolean).orElse(false))
-                .component(option(options, "component")));
+                .component(option(options, "component"))
+                .jsonl(option(options, "format").map("jsonl"::equals).orElse(false)));
       }
       default ->
           throw new IllegalArgumentException(
@@ -588,12 +594,14 @@ public final class Main {
     final String level;
     final boolean apply;
     final Optional<String> component;
+    final boolean jsonl;
 
     @SuppressWarnings("unused")
     VersionsCommand(Builder builder) {
       this.level = builder.level;
       this.apply = builder.apply;
       this.component = builder.component;
+      this.jsonl = builder.jsonl;
     }
 
     @Override
@@ -609,7 +617,7 @@ public final class Main {
 
     @Override
     public String usage() {
-      return "versions [level=major|minor|micro] [apply=true] [component=<id>]";
+      return "versions [level=major|minor|micro] [apply=true] [component=<id>] [format=jsonl]";
     }
 
     /**
@@ -670,7 +678,11 @@ public final class Main {
                         .andThen(RunRoleSeed.into(RunRole.ROOT))
                         .andThen(TxIdSeed.into(txId))
                         .andThen(LogFileSeed.into(".local.d/manifests-versions.log")));
-        renderRunbook(runbook);
+        if (jsonl) {
+          renderVersionLines(runbook);
+        } else {
+          renderRunbook(runbook);
+        }
         final List<?> broken =
             runbook.getScenariosWithStatus(ExecutionStatus.FAILED, ExecutionStatus.ABORTED);
         if (!broken.isEmpty()) {
@@ -696,12 +708,45 @@ public final class Main {
       out.flush();
     }
 
+    /**
+     * The common version contract's JSON Lines (nix-flake-commons {@code
+     * nix/versions/schema.json}), one per component, ALONE on stdout: each report step's {@code
+     * version-line} attachment, in report order. The runbook is not rendered, so the output pipes
+     * into a merger as is.
+     */
+    private void renderVersionLines(ReportModel runbook) {
+      final PrintWriter out = new PrintWriter(System.out, true, StandardCharsets.UTF_8);
+      for (final ScenarioModel scenario : runbook.getScenarios()) {
+        for (final ScenarioCaseModel scenarioCase : scenario.getScenarioCases()) {
+          printVersionLines(scenarioCase.getSteps(), out);
+        }
+      }
+      out.flush();
+    }
+
+    private void printVersionLines(List<StepModel> steps, PrintWriter out) {
+      for (final StepModel step : steps) {
+        for (final AttachmentModel attachment : step.getAttachments()) {
+          if (VersionLine.ATTACHMENT_TITLE.equals(attachment.getTitle())) {
+            out.println(attachment.getValue());
+          }
+        }
+        printVersionLines(step.getNestedSteps(), out);
+      }
+    }
+
     static final class Builder implements CommandBuilder<VersionsCommand> {
       private final Main main;
 
       private String level = "minor";
       private boolean apply = false;
       private Optional<String> component = Optional.empty();
+      private boolean jsonl = false;
+
+      Builder jsonl(boolean jsonl) {
+        this.jsonl = jsonl;
+        return this;
+      }
 
       Builder(Main main) {
         this.main = main;

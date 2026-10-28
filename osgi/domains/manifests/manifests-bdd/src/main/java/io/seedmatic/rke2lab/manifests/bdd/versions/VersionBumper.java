@@ -84,6 +84,7 @@ public final class VersionBumper {
   private final Optional<String> githubToken;
   private final HttpClient http;
   private final WireCodec wire;
+  private final UpstreamVersions upstreamVersions = new UpstreamVersions();
 
   public VersionBumper(final BumpLevel level, final Optional<String> githubToken) {
     this.level = level;
@@ -138,7 +139,7 @@ public final class VersionBumper {
       final String oldPin = component.defaultVersion();
       final Optional<ComponentSource> source = component.source();
       if (source.isEmpty()) {
-        bumps.add(unchanged(component, oldPin, "non-GitHub source — bump manually"));
+        bumps.add(unchanged(component, oldPin, "no upstream source"));
         continue;
       }
       final Optional<SemanticVersion> current = SemanticVersion.parse(oldPin);
@@ -148,7 +149,7 @@ public final class VersionBumper {
       }
       final Optional<Release> target;
       try {
-        target = highestAllowed(fetchStableReleases(source.get().githubRepo()), current);
+        target = highestAllowed(fetchStable(source.get().upstream()), current);
       } catch (final InterruptedException interrupted) {
         Thread.currentThread().interrupt();
         bumps.add(unchanged(component, oldPin, "interrupted"));
@@ -233,24 +234,25 @@ public final class VersionBumper {
     final String pin = component.defaultVersion();
     final Optional<ComponentSource> source = component.source();
     if (source.isEmpty()) {
-      return VersionReport.manual(
-          component, pin, "non-GitHub source (chart / container tag) — bump manually");
+      return VersionReport.manual(component, pin, "no upstream source");
     }
     try {
-      final List<Release> releases = fetchStableReleases(source.get().githubRepo());
-      final Optional<SemanticVersion> latest =
-          releases.stream().map(Release::version).max(Comparator.naturalOrder());
+      final List<Release> releases = fetchStable(source.get().upstream());
+      final Optional<Release> newest =
+          releases.stream().max(Comparator.comparing(Release::version));
+      final Optional<SemanticVersion> latest = newest.map(Release::version);
+      final Optional<String> latestRaw = newest.map(Release::tag);
       final Optional<SemanticVersion> current = SemanticVersion.parse(pin);
       if (latest.isEmpty()) {
         return VersionReport.manual(component, pin, "no stable release found upstream");
       }
       if (current.isEmpty()) {
         return new VersionReport(
-            component, pin, latest, Optional.empty(), "current pin not semver");
+            component, pin, latest, Optional.empty(), "current pin not semver", latestRaw);
       }
       final Optional<SemanticVersion> allowed =
           highestAllowed(releases, current).map(Release::version);
-      return new VersionReport(component, pin, latest, allowed, "");
+      return new VersionReport(component, pin, latest, allowed, "", latestRaw);
     } catch (final InterruptedException interrupted) {
       Thread.currentThread().interrupt();
       return VersionReport.manual(component, pin, "interrupted");
@@ -268,6 +270,68 @@ public final class VersionBumper {
     return releases.stream()
         .filter(release -> current.get().allows(release.version(), level))
         .max(Comparator.comparing(Release::version));
+  }
+
+  /** The stable releases an upstream publishes, whatever its kind. */
+  private List<Release> fetchStable(final ComponentSource.Upstream upstream)
+      throws IOException, InterruptedException {
+    return switch (upstream) {
+      case ComponentSource.Upstream.GitHub github -> fetchStableReleases(github.repo());
+      case ComponentSource.Upstream.HelmIndex helm ->
+          releases(
+              upstreamVersions.helmIndex(
+                  getText(stripSlash(helm.repoUrl()) + "/index.yaml"), helm.chart()));
+      case ComponentSource.Upstream.Oci oci ->
+          releases(upstreamVersions.ociTags(getOciTags(oci.registry(), oci.repository())));
+    };
+  }
+
+  private static List<Release> releases(final List<String> tags) {
+    final List<Release> releases = new ArrayList<>();
+    for (final String tag : tags) {
+      SemanticVersion.parse(tag).ifPresent(version -> releases.add(new Release(version, tag)));
+    }
+    return releases;
+  }
+
+  private static String stripSlash(final String url) {
+    return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
+  }
+
+  /**
+   * An OCI registry's tags list, with the anonymous pull token the registry hands out (ghcr's
+   * {@code /token?scope=repository:<repo>:pull}): no account involved.
+   */
+  private String getOciTags(final String registry, final String repository)
+      throws IOException, InterruptedException {
+    final String token =
+        wire.readJson(
+                getText("https://" + registry + "/token?scope=repository:" + repository + ":pull"))
+            .path("token")
+            .asText();
+    final HttpRequest request =
+        HttpRequest.newBuilder()
+            .uri(URI.create("https://" + registry + "/v2/" + repository + "/tags/list"))
+            .header("Authorization", "Bearer " + token)
+            .timeout(Duration.ofSeconds(30))
+            .GET()
+            .build();
+    final HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+    if (response.statusCode() != 200) {
+      throw new IOException("HTTP " + response.statusCode() + " from " + request.uri());
+    }
+    return response.body();
+  }
+
+  /** A plain GET, no GitHub headers nor token: the Helm and OCI hosts are not GitHub's API. */
+  private String getText(final String url) throws IOException, InterruptedException {
+    final HttpRequest request =
+        HttpRequest.newBuilder().uri(URI.create(url)).timeout(Duration.ofSeconds(30)).GET().build();
+    final HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+    if (response.statusCode() != 200) {
+      throw new IOException("HTTP " + response.statusCode() + " from " + url);
+    }
+    return response.body();
   }
 
   private List<Release> fetchStableReleases(final String repo)
@@ -300,8 +364,12 @@ public final class VersionBumper {
       final Map<String, byte[]> files,
       final Set<String> removed)
       throws IOException, InterruptedException {
+    // A vendored asset is a GitHub release asset: no other upstream kind carries one.
+    if (!(source.upstream() instanceof ComponentSource.Upstream.GitHub github)) {
+      throw new IOException("a vendored asset needs a GitHub upstream, not " + source.upstream());
+    }
     final byte[] asset =
-        fetchReleaseAsset(source.githubRepo(), tag, source.releaseAssetName().orElseThrow());
+        fetchReleaseAsset(github.repo(), tag, source.releaseAssetName().orElseThrow());
     final Path newFile = dir.resolve("release-" + newPin + ".yaml");
     files.put(relative(worktreeRoot, newFile), asset);
     final Path oldFile = dir.resolve("release-" + oldPin + ".yaml");

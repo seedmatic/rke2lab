@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/seedmatic/nix-flake-commons/nix/versions/schema.json",
+  "title": "A version line",
+  "description": "One carrier's version, the same eight fields in every world (nix, clusters). One JSON object per line (JSON Lines). Agreed by ❄️ (nix) and ☸️ (clusters), 2026-10-28.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["world", "name", "source", "pinned", "latest", "level", "status", "upstream"],
+  "properties": {
+    "world": { "enum": ["nix", "clusters"], "description": "Which tool produced the line." },
+    "name": { "type": "string", "minLength": 1, "description": "A stable id of the carrier: a Component slug, or a nix carrier's name." },
+    "source": { "type": "string", "pattern": "^[a-z0-9-]+:.+$", "description": "Where WE pin it, `<repo>:<path>`: the file a bump edits." },
+    "pinned": { "type": "string", "minLength": 1, "description": "The pinned version, verbatim (a leading `v` kept, or a revision)." },
+    "latest": { "type": ["string", "null"], "description": "The highest STABLE upstream version, verbatim; null when unreachable." },
+    "level": { "enum": ["micro", "minor", "major", null], "description": "The largest semver part that differs, pinned to latest; null when current or unknown. Informative: the bump gate is a separate input." },
+    "status": { "enum": ["current", "behind", "ahead", "unknown"], "description": "current: pinned is latest. behind: an upstream is newer. ahead: pinned is newer than any stable. unknown: unreachable, or not comparable." },
+    "upstream": { "type": "string", "pattern": "^(none|(github|helm|oci|nixpkgs|flake):.+)$", "description": "Where `latest` comes from: github:<owner/repo>, helm:<index>#<chart>, oci:<registry/repo>, nixpkgs:<input>#<attr>, flake:<input>, or none." }
+  }
+}
