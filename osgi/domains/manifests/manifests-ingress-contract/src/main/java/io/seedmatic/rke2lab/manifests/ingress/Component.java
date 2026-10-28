@@ -33,7 +33,7 @@ public enum Component implements WireEnum {
   KUBE_VIP("kubeVip", "v1.3.1", "kube-vip/kube-vip"),
   OPENEBS_ZFS_CHART(
       "openebsZfsChart",
-      "2.8.0",
+      "2.11.2",
       new ComponentSource.Upstream.HelmIndex(
           "https://openebs.github.io/zfs-localpv", "zfs-localpv")),
   KUBERNETES_REPLICATOR("kubernetesReplicator", "v2.12.4", "mittwald/kubernetes-replicator"),
