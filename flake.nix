@@ -1461,6 +1461,19 @@
             };
             # No nixConfig in this flake: no machine of ours takes one (nix-flake-commons' shared check).
             no-nix-config = inputs.flake-commons.lib.noNixConfig pkgs ./flake.nix;
+            # rke2lab's version lines satisfy nix-flake-commons' contract (its schema), one per carrier.
+            versions-lines =
+              pkgs.runCommand "versions-lines" { nativeBuildInputs = [ pkgs.check-jsonschema ]; } ''
+                n=0
+                while IFS= read -r line; do
+                  printf '%s' "$line" >line.json
+                  check-jsonschema --schemafile ${inputs.flake-commons.lib.versionSchema} line.json >/dev/null \
+                    || { echo "a version line breaks the contract: $line" >&2; exit 1; }
+                  n=$((n + 1))
+                done <${pkgs.writeText "versions.jsonl" self.versions.jsonl}
+                [ "$n" = ${toString (builtins.length self.versions.carriers)} ] || { echo "$n lines for ${toString (builtins.length self.versions.carriers)} carriers" >&2; exit 1; }
+                touch $out
+              '';
             # No node image carries the installer channel, which copies all of nixpkgs at every evaluation of the system.
             no-installer-channel = inputs.flake-commons.lib.noInstallerChannel pkgs {
               inherit (self.nixosConfigurations) rke2-node-base rke2-node-server;
@@ -1796,6 +1809,57 @@
         # Raw YAML store path for inspection (the pinned, canonical build).
         networkBlueprintYamlPath = "${networkBlueprintYaml}/network-blueprint.yaml";
       };
+
+      # rke2lab's version carriers, in nix-flake-commons' contract (its lib.versionSchema): the packages the node
+      # images run that rke2lab watches (what a carrier BUNDLES is the carrier's choice, so not listed: rke2's
+      # containerd, runc, its charts), and our own flake inputs. `latest` is the locked nixpkgs-unstable's attribute,
+      # or, for rke2 and the flakes, the GitHub head or release the report reads at run time. Run with
+      # `nix eval --raw .#versions.jsonl | versions-report -` (nix-flake-commons' app), beside
+      # `manifests versions format=jsonl` for the clusters world.
+      versions =
+        let
+          node = self.nixosConfigurations.rke2-node-server;
+          unstable = inputs.nixpkgs-unstable.legacyPackages.${nodeSystem};
+          tool = name: attr: {
+            inherit name;
+            source = "rke2lab:flake.lock#nixpkgs";
+            pinned = node.pkgs.${attr}.version;
+            latest = unstable.${attr}.version;
+            upstream = "nixpkgs:nixpkgs-unstable#${attr}";
+          };
+          # Our flakes: latest is the head of the branch the registry resolves (flake-registry.json).
+          ours = name: repo: branch: {
+            inherit name;
+            source = "rke2lab:flake.lock#${name}";
+            pinned = inputs.${name}.rev;
+            upstream = "github:seedmatic/${repo}#${branch}";
+          };
+          carriers = [
+            {
+              name = "rke2";
+              source = "rke2lab:nixos/rke2-1-36.nix";
+              pinned = node.config.services.rke2.package.version;
+              upstream = "github:rancher/rke2";
+            }
+            (tool "kubectl" "kubectl")
+            (tool "kubernetes-helm" "kubernetes-helm")
+            (tool "fluxcd" "fluxcd")
+            (tool "cilium-cli" "cilium-cli")
+            (tool "pulumi" "pulumi")
+            (ours "flake-commons" "nix-flake-commons" "develop")
+            (ours "flox-controller" "flox-controller" "develop")
+            (ours "flox-runtime" "flox-nri-plugin" "develop")
+            (ours "seed-incluster" "rke2lab" "seed-incluster/develop")
+            (ours "ndh" "ndh" "develop")
+          ];
+        in
+        {
+          inherit carriers;
+          lines = inputs.flake-commons.lib.versionLines carriers;
+          jsonl = nixpkgs.lib.concatMapStrings (l: builtins.toJSON l + "\n") (
+            inputs.flake-commons.lib.versionLines carriers
+          );
+        };
 
       # TEMP federation probe (Phase 1): proves rke2lab sees ndh's home-LAN facts
       # across the follows="" cut. Removed once real consumption is wired.
