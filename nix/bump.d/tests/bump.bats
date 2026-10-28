@@ -17,11 +17,14 @@ setup() {
 	chmod +x "$bin"/*
 	export BUMP_NFC_RELOCK="$bin/nfc" BUMP_RELOCK="$bin/relock" BUMP_OVERLAY="$bin/overlay" BUMP_MANIFESTS="$bin/manifests"
 	export BUMP_REPORT="$BATS_TEST_TMPDIR/report.jsonl"
+	export BUMP_HEADS="$BATS_TEST_TMPDIR/heads"
+	printf '%s\n' flake-commons ndh flox-controller >"$BUMP_HEADS"
 	cat >"$BUMP_REPORT" <<'EOF'
 {"world":"nix","name":"kubectl","source":"rke2lab:flake.lock#nixpkgs","pinned":"1.36.3","latest":"1.37.1","level":"minor","status":"behind","upstream":"nixpkgs:nixpkgs-unstable#kubectl"}
 {"world":"nix","name":"kubernetes-helm","source":"rke2lab:flake.lock#nixpkgs","pinned":"3.20.2","latest":"4.3.0","level":"major","status":"behind","upstream":"nixpkgs:nixpkgs-unstable#kubernetes-helm"}
 {"world":"nix","name":"nixpkgs","source":"nix-flake-commons:flake.lock#nixpkgs","pinned":"26f4107e","latest":"718f670e","level":null,"status":"unknown","upstream":"github:NixOS/nixpkgs#nixos-26.05"}
 {"world":"nix","name":"ndh","source":"rke2lab:flake.lock#ndh","pinned":"7a3f6593","latest":"8abc22ea","level":null,"status":"unknown","upstream":"github:seedmatic/ndh#develop"}
+{"world":"nix","name":"seed-tool","source":"rke2lab:flake.lock#seed-tool","pinned":"aaaa1111","latest":"bbbb2222","level":null,"status":"unknown","upstream":"github:x/seed-tool#develop"}
 {"world":"nix","name":"rke2","source":"rke2lab:nixos/rke2-1-36.nix","pinned":"1.36.4+rke2r1","latest":"v1.37.1+rke2r1","level":"minor","status":"behind","upstream":"github:rancher/rke2"}
 {"world":"clusters","name":"kubeVip","source":"rke2lab:osgi/x/Component.java","pinned":"v0.9.2","latest":"v1.3.1","level":"major","status":"behind","upstream":"github:kube-vip/kube-vip"}
 {"world":"clusters","name":"certManager","source":"rke2lab:osgi/x/Component.java","pinned":"v1.21.1","latest":"v1.21.3","level":"micro","status":"behind","upstream":"github:cert-manager/cert-manager"}
@@ -45,9 +48,10 @@ bump() { "$BATS_TEST_DIRNAME/../bump.sh" "$@"; }
 @test "the plan maps each source to its mechanism, A before B, and changes nothing" {
 	run bump --plan kubeVip kubectl ndh nixpkgs rke2
 	[ "$status" -eq 0 ]
-	[[ $output == *"1 · A  kubectl"*"relock nixpkgs-unstable"* ]]
-	[[ $output == *"A  ndh"*"relock ndh"* ]]
-	[[ $output == *"A  nixpkgs"*"relock nixpkgs (in nix-flake-commons"* ]]
+	first=$(grep '1 · A' <<<"$output")
+	[[ $first == *kubectl* && $first == *nixpkgs* && $first == *"in nix-flake-commons, then one pass"* ]]
+	[[ $first == *"relock "*nixpkgs-unstable* ]]
+	[[ $output == *"A  ndh"*"moves with that pass"* ]]
 	[[ $output == *"B  rke2"*"the overlay to v1.37.1+rke2r1"* ]]
 	[[ $output == *"B  kubeVip"*"manifests versions apply=true component=kubeVip"* ]]
 	# A before B
@@ -66,13 +70,13 @@ bump() { "$BATS_TEST_DIRNAME/../bump.sh" "$@"; }
 @test "two tools of one nixpkgs are one relock" {
 	run bump --plan kubectl kubernetes-helm
 	[ "$status" -eq 0 ]
-	[ "$(grep -c 'relock nixpkgs-unstable' <<<"$output")" -eq 1 ]
+	[ "$(grep -c 'then one pass' <<<"$output")" -eq 1 ]
 }
 
 @test "the lines are played in the plan's order, one commit per component line" {
-	run bump ndh kubeVip certManager
+	run bump seed-tool kubeVip certManager
 	[ "$status" -eq 0 ]
-	[ "$(cat "$BATS_TEST_TMPDIR/calls")" = "$(printf 'relock ndh\nmanifests kubeVip\nmanifests certManager')" ]
+	[ "$(cat "$BATS_TEST_TMPDIR/calls")" = "$(printf 'relock seed-tool\nmanifests kubeVip\nmanifests certManager')" ]
 	[ "$(git log --format=%s -2 | tr '\n' ' ')" = "bump certManager bump kubeVip " ]
 }
 
@@ -86,14 +90,49 @@ bump() { "$BATS_TEST_DIRNAME/../bump.sh" "$@"; }
 	[ ! -f pin-kubeVip ]
 }
 
-@test "an unknown name, a dirty tree and develop are refused" {
+@test "an unknown name is refused; playing on a dirty tree is refused, planning there is not" {
 	run bump --plan nosuch
 	[ "$status" -eq 2 ]
 	touch dirty
 	run bump --plan kubeVip
+	[ "$status" -eq 0 ]
+	run bump kubeVip
 	[ "$status" -eq 2 ]
-	rm dirty
+	[ ! -s "$BATS_TEST_TMPDIR/calls" ]
+}
+
+@test "the nfc lines are ONE relock and ONE pass, and a head rides it" {
+	run bump nixpkgs kubectl ndh
+	[ "$status" -eq 0 ]
+	[ "$(cat "$BATS_TEST_TMPDIR/calls")" = "nfc nixpkgs nixpkgs-unstable" ]
+	[[ $output == *"✓ A ndh: moved with the pass"* ]]
+}
+
+@test "a head chosen alone makes one pass, with no relock in nfc" {
+	run bump ndh
+	[ "$status" -eq 0 ]
+	[ "$(cat "$BATS_TEST_TMPDIR/calls")" = "nfc " ]
+}
+
+@test "propose, from develop: what is behind, one command per step, the nix edges as one, majors flagged" {
+	git checkout -q -b develop
+	run bump
+	[ "$status" -eq 0 ]
+	[[ $output == *"⚠ nix run .#bump -- kubeVip"* ]]
+	[[ $output == *"nix run .#bump -- certManager"* ]]
+	[[ $output == *"nix run .#bump -- rke2"* ]]
+	[ "$(grep -c 'one relock, one pass' <<<"$output")" -eq 1 ]
+	nix=$(grep 'one relock, one pass' <<<"$output")
+	[[ $nix == "  ⚠"* ]]
+	for n in kubectl kubernetes-helm nixpkgs ndh seed-tool; do [[ $nix == *" $n"* ]]; done
+	[ ! -s "$BATS_TEST_TMPDIR/calls" ]
+}
+
+@test "the plan runs from develop and changes nothing; playing there is refused" {
 	git checkout -q -b develop
 	run bump --plan kubeVip
+	[ "$status" -eq 0 ]
+	run bump kubeVip
 	[ "$status" -eq 2 ]
+	[ ! -s "$BATS_TEST_TMPDIR/calls" ]
 }

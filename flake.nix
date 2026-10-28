@@ -1366,6 +1366,7 @@
                 runtimeInputs = [
                   pkgs.coreutils
                   pkgs.gawk
+                  pkgs.gh
                   pkgs.git
                   pkgs.gnugrep
                   pkgs.jq
