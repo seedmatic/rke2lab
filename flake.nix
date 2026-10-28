@@ -6,6 +6,8 @@
     # THROUGH this flake, so they must see rke2lab's flake-commons.
     flake-commons.follows = "rke2lab/flake-commons";
     nixpkgs.follows = "flake-commons/nixpkgs";
+    # kubectl only: it follows the clusters' rke2 minor, which nixpkgs-unstable carries (as on rke2lab's nodes).
+    nixpkgs-unstable.follows = "flake-commons/nixpkgs-unstable";
     flake-utils.follows = "flake-commons/flake-utils";
 
     # flox CLI — bundled into the `lock-envs` app (nix run .#lock-envs) via
@@ -67,6 +69,7 @@
   outputs = {
     self,
     nixpkgs,
+    nixpkgs-unstable,
     flake-utils,
     kdns-src,
     ndh,
@@ -258,7 +261,9 @@
       # The tools the rke2lab FloxEnvs install, from nixpkgs through THIS catalog: a FloxHub catalog
       # package (`pkg-path`) now needs a FloxHub login to resolve, which no node has, while a
       # `floxcatalog:` flake ref resolves against this in-cluster artifact. Each maps to the binary
-      # its consumers run. curl's lives in its `bin` output, not `out`.
+      # its consumers run. curl's lives in its `bin` output, not `out`. kubectl is nixpkgs-unstable's, so the FloxEnvs'
+      # client is at the clusters' minor (rke2lab's nodes take theirs from there too); it is static, so it brings no
+      # second glibc.
       envToolBinaries = {
         bash = "bash";
         coreutils = "ls";
@@ -274,6 +279,7 @@
       envTools =
         lib.mapAttrs (name: _: pkgs.${name}) envToolBinaries
         // {
+          inherit (nixpkgs-unstable.legacyPackages.${system}) kubectl;
           curl = pkgs.symlinkJoin {
             name = "curl";
             paths = [pkgs.curl.bin];

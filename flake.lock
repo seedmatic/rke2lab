@@ -1077,6 +1077,10 @@
           "flake-commons",
           "nixpkgs"
         ],
+        "nixpkgs-unstable": [
+          "flake-commons",
+          "nixpkgs-unstable"
+        ],
         "rke2lab": "rke2lab",
         "seed-incluster": [
           "rke2lab",
