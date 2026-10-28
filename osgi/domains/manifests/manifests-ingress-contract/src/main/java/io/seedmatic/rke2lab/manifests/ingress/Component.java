@@ -48,7 +48,7 @@ public enum Component implements WireEnum {
           "https://pkgs.tailscale.com/helmcharts", "tailscale-operator")),
   CLUSTER_API_OPERATOR(
       "clusterApiOperator",
-      "v0.29.0",
+      "v0.30.0",
       "kubernetes-sigs/cluster-api-operator",
       "operator-components.yaml",
       "upstream/clusterapi/operator"),
