@@ -25,7 +25,7 @@ final class ContentGuards {
   static final String AGE_SECRET_ERE = "AGE-SECRET[-]KEY-1[A-Z0-9]{50,}";
   static final String ENC_VALUE_ERE = "ENC\\[[^]]*\\]";
   static final String TOKEN_SHAPE_ERE =
-      "eyJ[A-Za-z0-9_-]{8,}\\.eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]+|(tskey-|gh[opsu]_|github_pat_|dckr_pat_|glpat-)[A-Za-z0-9_-]{16,}";
+      "eyJ[A-Za-z0-9_-]{8,}\\.eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]+|(tskey-|gh[opsu]_|github_pat_|dckr_pat_|glpat-|flox_pat_)[A-Za-z0-9_-]{16,}";
 
   private final Pattern privateKeyHeader = compile(PRIVATE_KEY_HEADER_ERE);
   private final Pattern keyBody = compile(KEY_BODY_ERE);

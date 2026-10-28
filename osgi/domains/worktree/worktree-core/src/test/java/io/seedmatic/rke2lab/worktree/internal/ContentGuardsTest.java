@@ -41,7 +41,7 @@ class ContentGuardsTest {
         List.of(
             new String[] {"{40,}$/", "{41,}$/"},
             new String[] {"NR <= hdr + 2", "NR <= hdr + 3"},
-            new String[] {"glpat-)", "glpat-|xoxb-)"},
+            new String[] {"flox_pat_)", "flox_pat_|xoxb-)"},
             new String[] {"AGE-SECRET[-]KEY-1[A-Z0-9]{50,}", "AGE-SECRET[-]KEY-1[A-Z0-9]{40,}"})) {
       final String mutated = text.replace(mutation[0], mutation[1]);
       assertFalse(mutated.equals(text), "the mutation " + mutation[0] + " applies to the hook");
