@@ -162,6 +162,8 @@ public class VersionBumpScenario
 
     @ScenarioStage Narration narration;
 
+    private final EnvironmentToken environment = new EnvironmentToken(System::getenv);
+
     @NestedSteps
     @As("the component versions are processed")
     public When the_component_versions_are_processed(@Hidden Cellar cellar) {
@@ -221,9 +223,11 @@ public class VersionBumpScenario
      * bump), or the {@code cultivating}-gated mint edge is filtered out — never against a personal
      * {@code gh auth token}.
      */
+    // A minted App token when the cultivating frontier has one; else the run's own GITHUB_TOKEN.
     private Optional<String> resolveGithubToken(Cellar cellar) {
       return new GithubAppTokens(writerTokenMint, Optional.empty(), Map.of())
-          .writer(cellar, parcel);
+          .writer(cellar, parcel)
+          .or(environment::githubToken);
     }
 
     private String commitMessage(VersionBumper.BumpApplication application) {
