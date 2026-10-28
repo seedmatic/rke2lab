@@ -255,6 +255,30 @@
           exit "$rc"
         '';
       };
+      # The tools the rke2lab FloxEnvs install, from nixpkgs through THIS catalog: a FloxHub catalog
+      # package (`pkg-path`) now needs a FloxHub login to resolve, which no node has, while a
+      # `floxcatalog:` flake ref resolves against this in-cluster artifact. Each maps to the binary
+      # its consumers run. curl's lives in its `bin` output, not `out`.
+      envToolBinaries = {
+        bash = "bash";
+        coreutils = "ls";
+        kubectl = "kubectl";
+        yq-go = "yq";
+        git = "git";
+        sops = "sops";
+        curl = "curl";
+        delve = "dlv";
+        strace = "strace";
+        go = "go";
+      };
+      envTools =
+        lib.mapAttrs (name: _: pkgs.${name}) envToolBinaries
+        // {
+          curl = pkgs.symlinkJoin {
+            name = "curl";
+            paths = [pkgs.curl.bin];
+          };
+        };
     in {
       apps.lock-envs = {
         type = "app";
@@ -317,7 +341,21 @@
           seed-incluster.packages.${system}.seed-incluster;
 
         default = kdns;
-      };
+      }
+      // envTools;
+
+      # Each env tool must carry its binary in the output a flake install takes: a nixpkgs bump that
+      # moves one elsewhere (as curl's lives in `bin`, not `out`) turns this red.
+      checks =
+        lib.mapAttrs (name: tool:
+          pkgs.runCommand "env-tool-${name}" {} ''
+            test -x ${tool}/bin/${envToolBinaries.${name}} || {
+              echo "${name}: no bin/${envToolBinaries.${name}} in ${tool}" >&2
+              exit 1
+            }
+            touch $out
+          '')
+        envTools;
 
       defaultPackage = kdns;
     });
