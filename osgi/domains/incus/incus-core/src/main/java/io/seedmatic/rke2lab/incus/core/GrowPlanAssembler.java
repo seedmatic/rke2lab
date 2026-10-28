@@ -86,8 +86,8 @@ public final class GrowPlanAssembler {
    * edge {@code recipeDigest} (the build METHOD — how nix is invoked) folded with the two image
    * scalars AND the {@code imageSourceDigest} (the build CONTENT — the committed tree of what
    * {@code nixosConfigurations.rke2-node-server} evaluates, the SAME digest the build script's
-   * freshness gate reads). Committing an edit to {@code node-base.nix} or a {@code flake.lock} bump
-   * moves the checksum and {@code replaceOnChanges} recreates the instance onto the new image.
+   * freshness gate reads). A record of what the image was built from; the instance's replace rides
+   * the image fingerprint (InstanceGrow's replacementTrigger), not this checksum.
    */
   private String buildChecksum() {
     final MessageDigest digest = sha256();
