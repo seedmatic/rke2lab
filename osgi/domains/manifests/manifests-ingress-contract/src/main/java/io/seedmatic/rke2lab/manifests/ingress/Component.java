@@ -43,7 +43,7 @@ public enum Component implements WireEnum {
   // released, chart 1.104.2 the latest on 2026-10-28), so its source is the chart's own index.
   TAILSCALE(
       "tailscale",
-      "1.102.3",
+      "1.104.2",
       new ComponentSource.Upstream.HelmIndex(
           "https://pkgs.tailscale.com/helmcharts", "tailscale-operator")),
   CLUSTER_API_OPERATOR(
