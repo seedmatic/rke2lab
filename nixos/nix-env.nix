@@ -6,9 +6,22 @@
 {
   pkgs,
   flox,
+  nixpkgs-unstable,
   upstreamCaches,
   ...
 }:
+let
+  # The cluster tools follow rke2's minor, so they come from nixpkgs-unstable, which carries upstream's latest. kubectl
+  # is unstable's own: it is static (no glibc in its closure, measured). helm and cilium-cli link glibc, and
+  # unstable's would bring a second one into the image (2.44 beside stable's 2.42, measured): they are unstable's
+  # recipes built by the STABLE nixpkgs, as ./rke2-version.nix builds rke2, so only the tool moves.
+  unstable = nixpkgs-unstable.legacyPackages.${pkgs.stdenv.hostPlatform.system};
+  clusterTools = {
+    inherit (unstable) kubectl;
+    kubernetes-helm = pkgs.callPackage "${nixpkgs-unstable}/pkgs/applications/networking/cluster/helm/default.nix" { };
+    cilium-cli = pkgs.callPackage "${nixpkgs-unstable}/pkgs/by-name/ci/cilium-cli/package.nix" { };
+  };
+in
 {
   # NOT translated here (handled elsewhere on purpose):
   #   - access-tokens (github.com=<secret>): a secret → injected per-node via sops-nix, never baked.
@@ -56,10 +69,10 @@
     pkgs.dasel
     pkgs.git
     pkgs.gh
-    pkgs.kubectl
-    pkgs.kubernetes-helm
+    clusterTools.kubectl
+    clusterTools.kubernetes-helm
     # cilium-cli — `cilium status`, `cilium bgp peers`, `clustermesh` from the node's root shell.
-    pkgs.cilium-cli
+    clusterTools.cilium-cli
     # zfs userspace: the containerd zfs snapshotter shells `zfs`/`zpool` for its per-container
     # datasets, and rke2lab-zfs-containerd.service needs `mount.zfs` to mount the legacy dataset (it
     # also carries pkgs.zfs on its own unit PATH). The kernel module comes from the host (this is an

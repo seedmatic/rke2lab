@@ -1333,7 +1333,8 @@
                       "rke2-overlay"
                       (nixpkgs.lib.concatStringsSep " " [
                         "node-image-tree"
-                        "node-rke2-1-36"
+                        "node-rke2-version"
+                        "node-cluster-tools"
                         "node-rke2-unit-zfs-path"
                         "no-installer-channel"
                         "versions-lines"
@@ -1649,25 +1650,27 @@
             # no-installer-channel's). Each image is the other's
             # mutant. It reads options only: no warnings (the systemd module reads every unit, which instantiates the
             # whole system) and no configuration of its own.
-            # Both node images run rke2 1.36, built by the stable nixpkgs from unstable's versions (./nixos/rke2-1-36.nix),
-            # and keep the stable nixpkgs input's own glibc and systemd: no second base in the image (unstable's rke2_1_36
-            # would bring one). It fails the day the stable nixpkgs carries rke2_1_36, which is when the module goes.
-            # Options and attributes only. Its mutant: unstable's rke2_1_36, built by unstable's stdenv, must be caught.
-            node-rke2-1-36 =
+            # Both node images run the vendored rke2 (./nixos/rke2-version.d), built by the stable nixpkgs' own builder,
+            # and keep the stable nixpkgs input's own glibc and systemd: no second base in the image (unstable's rke2
+            # would bring one). It fails the day the stable nixpkgs carries the release's minor, which is when the module
+            # goes. Options and attributes only. Its mutant: unstable's rke2, built by unstable's stdenv, must be caught.
+            node-rke2-version =
               let
                 stable = inputs.nixpkgs.legacyPackages.${nodeSystem};
+                vendored = (import ./nixos/rke2-version.d/versions.nix).rke2Version;
+                minorAttr = "rke2_" + pkgs.lib.replaceStrings [ "." ] [ "_" ] (pkgs.lib.versions.majorMinor vendored);
                 faultsOf =
                   name: c:
                   pkgs.lib.optional (
-                    c.config.services.rke2.package.version != "1.36.4+rke2r1"
-                  ) "${name} runs rke2 ${c.config.services.rke2.package.version}"
+                    c.config.services.rke2.package.version != vendored
+                  ) "${name} runs rke2 ${c.config.services.rke2.package.version}, not the vendored ${vendored}"
                   ++ pkgs.lib.optional (
                     c.config.systemd.package.drvPath != stable.systemd.drvPath
                   ) "${name}'s systemd is not the stable nixpkgs'"
                   ++ pkgs.lib.optional (
                     c.pkgs.glibc.drvPath != stable.glibc.drvPath
                   ) "${name}'s glibc is not the stable nixpkgs'";
-                # rke2 1.36 deploys traefik on a new cluster that names no ingress; ours is Envoy Gateway.
+                # Since 1.36, rke2 deploys traefik on a new cluster that names no ingress; ours is Envoy Gateway.
                 traefikFaults =
                   let
                     flags = self.nixosConfigurations.rke2-node-server.config.services.rke2.extraFlags;
@@ -1682,21 +1685,72 @@
                   faultsOf "rke2-node-base" self.nixosConfigurations.rke2-node-base
                   ++ faultsOf "rke2-node-server" self.nixosConfigurations.rke2-node-server
                   ++ traefikFaults
-                  ++ pkgs.lib.optional (stable ? rke2_1_36) "the stable nixpkgs carries rke2_1_36: remove nixos/rke2-1-36.nix";
-                # What drags a second base in is the package's stdenv: unstable's rke2_1_36 is built by unstable's, hence
-                # its glibc and the rest. Ours must be the stable nixpkgs' own; the mutant, unstable's package, must not.
+                  ++ pkgs.lib.optional (stable ? ${minorAttr}) "the stable nixpkgs carries ${minorAttr}: remove nixos/rke2-version.nix";
+                # What drags a second base in is the package's stdenv: unstable's rke2 is built by unstable's, hence its
+                # glibc and the rest. Ours must be the stable nixpkgs' own; the mutant, unstable's package, must not.
                 foreignStdenv = p: p.stdenv.drvPath != stable.stdenv.drvPath;
                 ours = foreignStdenv self.nixosConfigurations.rke2-node-base.config.services.rke2.package;
-                mutant = foreignStdenv inputs.nixpkgs-unstable.legacyPackages.${nodeSystem}.rke2_1_36;
+                mutant = foreignStdenv inputs.nixpkgs-unstable.legacyPackages.${nodeSystem}.rke2;
               in
-              pkgs.runCommand "node-rke2-1-36" { } (
+              pkgs.runCommand "node-rke2-version" { } (
                 if faults == [ ] && !ours && mutant then
                   "touch $out"
                 else
                   ''
                     printf '%s\n' ${pkgs.lib.escapeShellArgs faults} >&2
                     echo "rke2 built by another stdenv than the stable nixpkgs': ${pkgs.lib.boolToString ours}" >&2
-                    echo "the mutant (unstable's rke2_1_36) caught: ${pkgs.lib.boolToString mutant}" >&2
+                    echo "the mutant (unstable's rke2) caught: ${pkgs.lib.boolToString mutant}" >&2
+                    exit 1
+                  ''
+              );
+            # The node's cluster tools follow rke2's minor (./nixos/nix-env.nix): each one on the node is at
+            # nixpkgs-unstable's version, and the two that link glibc are built by the stable nixpkgs' stdenv (no
+            # second glibc in the image); kubectl, static, is unstable's own. Attributes only. Its mutant: a node
+            # carrying the stable nixpkgs' tools must be caught.
+            node-cluster-tools =
+              let
+                stable = inputs.nixpkgs.legacyPackages.${nodeSystem};
+                unstable = inputs.nixpkgs-unstable.legacyPackages.${nodeSystem};
+                names = [
+                  "kubectl"
+                  "kubernetes-helm"
+                  "cilium-cli"
+                ];
+                faultsOf =
+                  label: c:
+                  let
+                    onNode = name: pkgs.lib.findFirst (p: (p.pname or "") == name) null c.config.environment.systemPackages;
+                  in
+                  pkgs.lib.concatMap (
+                    name:
+                    let
+                      p = onNode name;
+                    in
+                    if p == null then
+                      [ "${label} carries no ${name}" ]
+                    else
+                      pkgs.lib.optional (
+                        p.version != unstable.${name}.version
+                      ) "${label}'s ${name} is ${p.version}, not nixpkgs-unstable's ${unstable.${name}.version}"
+                      ++ pkgs.lib.optional (
+                        name != "kubectl" && p.stdenv.drvPath != stable.stdenv.drvPath
+                      ) "${label}'s ${name} is not built by the stable nixpkgs' stdenv"
+                      ++ pkgs.lib.optional (
+                        name == "kubectl" && p.drvPath != unstable.kubectl.drvPath
+                      ) "${label}'s kubectl is not nixpkgs-unstable's"
+                  ) names;
+                faults =
+                  faultsOf "rke2-node-base" self.nixosConfigurations.rke2-node-base
+                  ++ faultsOf "rke2-node-server" self.nixosConfigurations.rke2-node-server;
+                mutant = faultsOf "the mutant" { config.environment.systemPackages = map (name: stable.${name}) names; } != [ ];
+              in
+              pkgs.runCommand "node-cluster-tools" { } (
+                if faults == [ ] && mutant then
+                  "touch $out"
+                else
+                  ''
+                    printf '%s\n' ${pkgs.lib.escapeShellArgs faults} >&2
+                    echo "the mutant (the stable nixpkgs' tools) caught: ${pkgs.lib.boolToString mutant}" >&2
                     exit 1
                   ''
               );
@@ -1894,7 +1948,7 @@
         system = nodeSystem;
         specialArgs = {
           inherit flox flox-runtime flox-controller;
-          # Only for the rke2 1.36 versions until a stable nixpkgs carries them (./nixos/rke2-1-36.nix).
+          # The node's cluster tools, which follow rke2's minor (./nixos/nix-env.nix).
           inherit (inputs) nixpkgs-unstable;
           ndh = inputs.ndh;
           # The upstream caches every seedmatic flake shares (nix-flake-commons), for the node's nix.conf.
@@ -1933,22 +1987,26 @@
       };
 
       # rke2lab's version carriers, in nix-flake-commons' contract (its lib.versionSchema): the packages the node
-      # images run that rke2lab watches (what a carrier BUNDLES is the carrier's choice, so not listed: rke2's
-      # containerd, runc, its charts), and our own flake inputs. `latest` is the locked nixpkgs-unstable's attribute,
-      # or, for rke2 and the flakes, the GitHub head or release the report reads at run time. Run with
+      # images and the grow run that rke2lab watches (what a carrier BUNDLES is the carrier's choice, so not listed:
+      # rke2's containerd, runc, its charts), and our own flake inputs. A tool's `pinned` is what runs (the node's
+      # package, the grow's pulumi), its `latest` the locked nixpkgs-unstable's attribute: both come from
+      # nixpkgs-unstable, so moving it moves them. For rke2 and the flakes, `latest` is the GitHub head or release the
+      # report reads at run time. The seat's flox envs (fluxcd, helm…) are pinned by their manifest.lock, outside nix:
+      # not watched here yet. Run with
       # `nix eval --raw .#versions.jsonl | versions-report -` (nix-flake-commons' app), beside
       # `manifests versions format=jsonl` for the clusters world.
       versions =
         let
           node = self.nixosConfigurations.rke2-node-server;
           unstable = inputs.nixpkgs-unstable.legacyPackages.${nodeSystem};
-          tool = name: attr: {
-            inherit name;
-            source = "rke2lab:flake.lock#nixpkgs";
-            pinned = node.pkgs.${attr}.version;
+          tool = name: attr: pinned: {
+            inherit name pinned;
+            source = "rke2lab:flake.lock#nixpkgs-unstable";
             latest = unstable.${attr}.version;
             upstream = "nixpkgs:nixpkgs-unstable#${attr}";
           };
+          onNode = attr: (nixpkgs.lib.findFirst (p: (p.pname or "") == attr) { version = null; } node.config.environment.systemPackages).version;
+          nodeTool = name: tool name name (onNode name);
           # Our flakes: latest is the head of the branch the registry resolves (flake-registry.json).
           ours = name: repo: branch: {
             inherit name;
@@ -1959,15 +2017,14 @@
           carriers = [
             {
               name = "rke2";
-              source = "rke2lab:nixos/rke2-1-36.nix";
+              source = "rke2lab:nixos/rke2-version.d/versions.nix";
               pinned = node.config.services.rke2.package.version;
               upstream = "github:rancher/rke2";
             }
-            (tool "kubectl" "kubectl")
-            (tool "kubernetes-helm" "kubernetes-helm")
-            (tool "fluxcd" "fluxcd")
-            (tool "cilium-cli" "cilium-cli")
-            (tool "pulumi" "pulumi")
+            (nodeTool "kubectl")
+            (nodeTool "kubernetes-helm")
+            (nodeTool "cilium-cli")
+            (tool "pulumi" "pulumi" (operatorToolchain unstable).pulumi.version)
             (ours "flake-commons" "nix-flake-commons" "develop")
             (ours "flox-controller" "flox-controller" "develop")
             (ours "flox-runtime" "flox-nri-plugin" "develop")

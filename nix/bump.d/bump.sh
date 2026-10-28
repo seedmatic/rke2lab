@@ -16,10 +16,10 @@
 #
 #   source                                      step                                                   kind
 #   nix-flake-commons:flake.lock#<input>        nfc: relock every chosen input at once, then ONE pass   A
-#   rke2lab:flake.lock#nixpkgs (a tool's line)  = nixpkgs-unstable, in that nfc step                     A
+#   rke2lab:flake.lock#nixpkgs-unstable (a tool)  = nixpkgs-unstable, in that nfc step                 A
 #   rke2lab:flake.lock#<head of fabric/heads>   moves with the pass, if there is one; else its own pass A
 #   rke2lab:flake.lock#<other input>            relock <input> here                                     A
-#   rke2lab:nixos/rke2-1-36.nix                 the overlay's versions → upstream's release             B
+#   rke2lab:nixos/rke2-version.d/versions.nix   the vendored versions → upstream's release            B
 #   rke2lab:…/Component.java                    manifests versions apply=true component=<name>          B
 set -euo pipefail
 
@@ -57,13 +57,13 @@ step_of() { # <line json>
   upstream=$(jq -r .upstream <<<"$1"); latest=$(jq -r '.latest // ""' <<<"$1")
   case $source in
     nix-flake-commons:flake.lock#*) printf 'A\tnfc\t%s\n' "${source#*#}" ;;
-    rke2lab:flake.lock#nixpkgs)
+    rke2lab:flake.lock#nixpkgs-unstable)
       [[ $upstream == nixpkgs:nixpkgs-unstable#* ]] || { echo "bump: '$name' has an unknown upstream $upstream" >&2; return 2; }
       printf 'A\tnfc\tnixpkgs-unstable\n' ;;
     rke2lab:flake.lock#*)
       input=${source#*#}
       if is_head "$input"; then printf 'A\tpass\t%s\n' "$input"; else printf 'A\there\t%s\n' "$input"; fi ;;
-    rke2lab:nixos/rke2-1-36.nix) printf 'B\toverlay\t%s\n' "$latest" ;;
+    rke2lab:nixos/rke2-version.d/versions.nix) printf 'B\toverlay\t%s\n' "$latest" ;;
     rke2lab:*Component.java) printf 'B\tcomponent\t%s\n' "$name" ;;
     *) echo "bump: '$name' has a source no mechanism plays: $source" >&2; return 2 ;;
   esac
@@ -98,8 +98,8 @@ for name in "${names[@]}"; do
   [[ -n $line ]] || { echo "bump: no line named '$name' in the report" >&2; exit 2; }
   step=$(step_of "$line") || exit 2
   IFS=$'\t' read -r kind where arg <<<"$step"
-  if [[ $(jq -r .source <<<"$line") == rke2lab:flake.lock#nixpkgs ]]; then
-    with=$(jq -r 'select(.source == "rke2lab:flake.lock#nixpkgs") | .name' "$work/report.jsonl" | grep -vx "$name" | tr '\n' ' ')
+  if [[ $(jq -r .source <<<"$line") == rke2lab:flake.lock#nixpkgs-unstable ]]; then
+    with=$(jq -r 'select(.source == "rke2lab:flake.lock#nixpkgs-unstable") | .name' "$work/report.jsonl" | grep -vx "$name" | tr '\n' ' ')
     echo "bump: '$name' is not pinned by us: it moves with nixpkgs-unstable, and with it: ${with:-nothing else}" >&2
   fi
   [[ $(jq -r .status <<<"$line") == current ]] && echo "bump: '$name' is already current; nothing to play" >&2
