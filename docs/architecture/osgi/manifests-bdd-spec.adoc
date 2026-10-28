@@ -444,9 +444,10 @@ codec maps it ↔ slug and the bump facet carries a typed `Optional<Component>` 
 host↔OSGi membrane by slug — typed in BOTH realms because ingress is dual-realm. `ComponentSource`
 is the provenance the bumper reads: its `Upstream` (a sealed `GitHub` `owner/repo`, `HelmIndex`
 repository + chart, or `Oci` registry + repository, each queried anonymously) plus, for a GitHub
-upstream only, the release asset and vendored dir it refreshes. Every component has one, the three
-charts included (openebs-zfs and vcluster from their Helm index, github-token-manager from its ghcr
-tags). `ComponentVersions` is now a thin resolved
+upstream only, the release asset and vendored dir it refreshes. Every component has one, the four
+charts included (openebs-zfs, vcluster and tailscale from their Helm index, github-token-manager
+from its ghcr tags): a chart can trail its project's release tags (tailscale's did), so a chart
+follows the chart's own source. A Helm index is read with the indents it uses, not assumed ones. `ComponentVersions` is now a thin resolved
 holder over the enum (`of(Component)`), its baseline `defaults()` built from each
 `Component.defaultVersion()` — the literal the bumper rewrites. `BumpLevel` (a `WireEnum`:
 major/minor/micro) is the bump CEILING the operator authorises; the highest release the level admits

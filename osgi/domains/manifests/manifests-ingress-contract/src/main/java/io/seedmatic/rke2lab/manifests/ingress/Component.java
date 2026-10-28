@@ -39,7 +39,13 @@ public enum Component implements WireEnum {
   KUBERNETES_REPLICATOR("kubernetesReplicator", "v2.12.4", "mittwald/kubernetes-replicator"),
   FLUX_OPERATOR("fluxOperator", "v0.58.1", "controlplaneio-fluxcd/flux-operator"),
   ENVOY_GATEWAY("envoyGateway", "v1.9.0", "envoyproxy/gateway"),
-  TAILSCALE("tailscale", "1.102.3", "tailscale/tailscale"),
+  // tailscale/tailscale — the operator CHART version, which can trail the release tags (v1.104.4
+  // released, chart 1.104.2 the latest on 2026-10-28), so its source is the chart's own index.
+  TAILSCALE(
+      "tailscale",
+      "1.102.3",
+      new ComponentSource.Upstream.HelmIndex(
+          "https://pkgs.tailscale.com/helmcharts", "tailscale-operator")),
   CLUSTER_API_OPERATOR(
       "clusterApiOperator",
       "v0.29.0",
