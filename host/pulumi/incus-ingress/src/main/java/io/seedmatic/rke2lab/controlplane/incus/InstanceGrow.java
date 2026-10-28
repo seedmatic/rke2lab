@@ -16,6 +16,7 @@ import com.pulumi.incus.ProjectArgs;
 import com.pulumi.incus.inputs.ImageSourceFileArgs;
 import com.pulumi.incus.inputs.InstanceDeviceArgs;
 import com.pulumi.resources.CustomResourceOptions;
+import com.pulumi.resources.ProviderResource;
 import com.pulumi.resources.Resource;
 import io.seedmatic.rke2lab.incus.ingress.GrowImageView;
 import io.seedmatic.rke2lab.incus.ingress.GrowNetworkView;
@@ -321,11 +322,10 @@ public final class InstanceGrow {
    * out-of-graph CLI import that would require the project to pre-exist (the defect when the
    * operator recreates the incus project).
    *
-   * <p>The resource NAME carries the {@code buildChecksum} (the content key the scion computes): an
-   * unchanged tree keeps the same name → the same {@code Image}, a no-op with no redundant upload;
-   * a content change is a NEW resource → a fresh upload and a new daemon-computed fingerprint,
-   * which arms the instance's {@code replaceOnChanges} on {@code user.rke2lab.imageBuildChecksum}
-   * to recreate it. No declared {@code aliases}: the instance references the image by the
+   * <p>The resource NAME carries the image's fingerprint: unchanged content keeps the same name →
+   * the same {@code Image}, a no-op with no redundant upload; a content change is a NEW resource →
+   * a fresh upload and a new fingerprint, which the instance's {@code replacementTrigger} turns
+   * into a replace. No declared {@code aliases}: the instance references the image by the
    * fingerprint {@link Output} returned here, and a stable alias carried as an {@code Image}
    * attribute would collide on the daemon's per-project alias uniqueness while the old and new
    * images coexist at replace time (they DO coexist: the old image is {@code retainOnDelete}, held
@@ -433,8 +433,9 @@ public final class InstanceGrow {
     // profile.
     final Map<String, String> instanceConfig =
         new LinkedHashMap<>(NodeRuntimeContract.nodeBase().toIncusConfig());
-    // The image-build checksum arms replaceOnChanges — a rebuilt node-base image (new fingerprint,
-    // new checksum) recreates the instance onto it. A host-side trigger, never read by the guest.
+    // The image-build checksum, a record of what the image was built from (the replace rides the
+    // fingerprint,
+    // see instanceOptions). Host-side, never read by the guest.
     instanceConfig.put("user.rke2lab.imageBuildChecksum", plan.image().buildChecksum());
     // The per-node identity + revealed bootstrap material, delivered through the UNIFORM cloud-init
     // channel: ONE cloud-config write_files the node-base consumes at boot (node.env → hostname +
@@ -444,12 +445,13 @@ public final class InstanceGrow {
     // node — no devlxd user.rke2lab.* identity keys anymore.
     instanceConfig.put("cloud-init.user-data", cloudConfig.render());
 
-    // The image FINGERPRINT is the artifact's content hash (sha of metadata ++ rootfs). Fold it
-    // into config so replaceOnChanges("config.*") recreates the instance EXACTLY when the built
-    // image content changes — the source-digest buildChecksum above is a proxy that can miss a
-    // rebuild, and `image` drift is deliberately ignored (adopt-by-omission), so without this the
-    // instance stays on a stale image after a node-base rebuild. The fingerprint is an Output, so
-    // fold the map through it.
+    // The image FINGERPRINT is the artifact's content hash (sha of metadata ++ rootfs), recorded in
+    // config
+    // beside the checksum so the instance says which image it was created from. The replace itself
+    // is
+    // instanceOptions' replacementTrigger on the same fingerprint. The fingerprint is an Output, so
+    // fold the
+    // map through it.
     final Output<Map<String, String>> configWithFingerprint =
         imageFingerprint.applyValue(
             fingerprint -> {
@@ -479,34 +481,47 @@ public final class InstanceGrow {
             .running(true)
             .devices(seedInstanceDevices(plan))
             .build(),
-        CustomResourceOptions.builder()
-            .provider(providerContext.provider())
-            .deleteBeforeReplace(true)
-            // Replace on the IMAGE BUILD CHECKSUM only — a new node-base closure means a new node.
-            // This used to watch all of `config`/`config.*`, far wider than that stated intent, and
-            // the whole cloud-init rides in `config`: the node's github token is minted fresh every
-            // run (Persistence.TRANSIENT by design), so every run saw `~config` and planned
-            // `replace` + `delete original` — with no retainOnDelete, a kill-and-recreate of the
-            // control-plane node on each up. Watching the one key that warrants it keeps the
-            // re-provision trigger and drops the collateral. The rest of `config` still DIFFS; it
-            // just no longer forces a replacement.
-            .replaceOnChanges(List.of("config[\"user.rke2lab.imageBuildChecksum\"]"))
-            // Ignore drift on `image` (the fingerprint is adopted, not managed) AND `devices`:
-            // incus
-            // stores devices as a MAP (keyed by name, unordered), but the provider models them
-            // as
-            // an
-            // ORDERED List, so a refresh returns them in the daemon's order — never our
-            // declared
-            // order — and Pulumi reads the whole list as changed, replacing the instance every
-            // run
-            // (kill + recreate → the node never stays up long enough to become ready). No
-            // declared
-            // order can win against the daemon's map; the device SET is fixed and applied at
-            // create,
-            // so ignoring post-create drift is correct.
-            .ignoreChanges(List.of("image", "devices"))
-            .build());
+        instanceOptions(providerContext.provider(), imageFingerprint));
+  }
+
+  /**
+   * The seed instance's resource options, package-visible so a test reads them. ★ The REPLACE is
+   * triggered by the image FINGERPRINT through {@code replacementTrigger}: the engine diffs it with
+   * the last recorded value and replaces on any change, whatever the provider's own diff says.
+   */
+  static CustomResourceOptions instanceOptions(
+      ProviderResource provider, Output<String> imageFingerprint) {
+    return CustomResourceOptions.builder()
+        .provider(provider)
+        .deleteBeforeReplace(true)
+        // Replace on the IMAGE FINGERPRINT, a new image's content hash, through the engine's own
+        // trigger: it diffs
+        // the value with the last recorded one and replaces on any change. This used to be a
+        // replaceOnChanges on
+        // config["user.rke2lab.imageBuildChecksum"], which the provider applied as an in-place
+        // UPDATE: measured
+        // 2026-10-28, the grow moved that key (19b144e5 → 95005036) and wrote the new fingerprint,
+        // and the master
+        // kept its old base image, so its baked flox-controller kept the old bug. Nothing in
+        // `config` forces a
+        // replacement any more, so the fresh-every-run cloud-init token still only diffs.
+        .replacementTrigger(imageFingerprint)
+        // Ignore drift on `image` (the fingerprint is adopted, not managed) AND `devices`:
+        // incus
+        // stores devices as a MAP (keyed by name, unordered), but the provider models them
+        // as
+        // an
+        // ORDERED List, so a refresh returns them in the daemon's order — never our
+        // declared
+        // order — and Pulumi reads the whole list as changed, replacing the instance every
+        // run
+        // (kill + recreate → the node never stays up long enough to become ready). No
+        // declared
+        // order can win against the daemon's map; the device SET is fixed and applied at
+        // create,
+        // so ignoring post-create drift is correct.
+        .ignoreChanges(List.of("image", "devices"))
+        .build();
   }
 
   /**
