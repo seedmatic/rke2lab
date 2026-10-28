@@ -1,7 +1,7 @@
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: cluster-api-vcluster
+  name: vcluster-vcluster
   namespace: flux-system
 spec:
   decryption:
@@ -9,11 +9,11 @@ spec:
     secretRef:
       name: sops-age
   dependsOn:
-    - name: cluster-api-vcluster-certs
-    - name: cluster-api-vcluster-pin
+    - name: vcluster-vcluster-certs
+    - name: vcluster-vcluster-pin
   force: true
   interval: 5m
-  path: ./workloads/cluster-api/vcluster
+  path: ./workloads/vcluster/vcluster
   prune: true
   retryInterval: 30s
   sourceRef:

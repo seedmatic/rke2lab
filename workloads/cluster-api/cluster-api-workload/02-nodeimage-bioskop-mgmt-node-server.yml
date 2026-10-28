@@ -3,13 +3,13 @@ kind: NodeImage
 metadata:
   annotations:
     io.seedmatic.rke2lab/domain: cluster-api
-    io.seedmatic.rke2lab/package: cluster-api-management
-  name: nikopol-mgmt-node-base
-  namespace: rke2lab-nikopol-mgmt
+    io.seedmatic.rke2lab/package: cluster-api-workload
+  name: bioskop-mgmt-node-server
+  namespace: rke2lab-bioskop-mgmt
 spec:
-  alias: node-base
-  buildChecksum: e6db499d47ac2ae77dc8b9bfe02fdd35f8553cbd906b287a49787d227e5173bd
-  fingerprint: 9d5799dc0fe8c31ac20d6cfe18d825816e8455e638c5d705b3bed4459d0b376d
+  alias: node-server
+  buildChecksum: 95005036b34918d59ad222dc4e1f9c5bf6a2636f8bbf09a0d177d343a6d40ac8
+  fingerprint: ad50886bc886142b625d4435ac3e9bc9284f312f84d34050c07725344ff78ecf
   rke2Version: v1.36.4+rke2r1
   runtime:
     kernelModules:
