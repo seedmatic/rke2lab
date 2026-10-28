@@ -93,18 +93,28 @@ fi
 
 # The chosen names, each to its step.
 : >"$work/plan.tsv"
+unpinned=()
 for name in "${names[@]}"; do
   line=$(jq -c --arg n "$name" 'select(.name == $n)' "$work/report.jsonl" | head -1)
   [[ -n $line ]] || { echo "bump: no line named '$name' in the report" >&2; exit 2; }
   step=$(step_of "$line") || exit 2
   IFS=$'\t' read -r kind where arg <<<"$step"
-  if [[ $(jq -r .source <<<"$line") == rke2lab:flake.lock#nixpkgs-unstable ]]; then
-    with=$(jq -r 'select(.source == "rke2lab:flake.lock#nixpkgs-unstable") | .name' "$work/report.jsonl" | grep -vx "$name" | tr '\n' ' ')
-    echo "bump: '$name' is not pinned by us: it moves with nixpkgs-unstable, and with it: ${with:-nothing else}" >&2
-  fi
+  [[ $(jq -r .source <<<"$line") == rke2lab:flake.lock#nixpkgs-unstable ]] && unpinned+=("$name")
   [[ $(jq -r .status <<<"$line") == current ]] && echo "bump: '$name' is already current; nothing to play" >&2
   printf '%s\t%s\t%s\t%s\n' "$kind" "$where" "$arg" "$name" >>"$work/plan.tsv"
 done
+
+# The tools nixpkgs-unstable carries are not pinned by us: one line for those chosen, and what moves with them.
+if ((${#unpinned[@]})); then
+  with=$(jq -r 'select(.source == "rke2lab:flake.lock#nixpkgs-unstable") | .name' "$work/report.jsonl" |
+    grep -vxF -f <(printf '%s\n' "${unpinned[@]}") | tr '\n' ' ') || true
+  with=${with% }
+  if ((${#unpinned[@]} == 1)); then
+    echo "bump: ${unpinned[0]} is not pinned by us: it moves with nixpkgs-unstable, and with it: ${with:-nothing else}" >&2
+  else
+    echo "bump: ${unpinned[*]} are not pinned by us: they move with nixpkgs-unstable, and with them: ${with:-nothing else}" >&2
+  fi
+fi
 
 # Fold the steps: every nfc input in ONE relock and one pass; a head rides that pass (or makes one of its own); each
 # other line is its own step. A before B, in that order: nfc, pass, here, then the code lines.

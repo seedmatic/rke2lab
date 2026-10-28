@@ -1356,6 +1356,23 @@
                   name = "relock-no-push";
                   text = ''exec ${relockApp}/bin/relock --no-push "$@"'';
                 };
+                # rke2's B line: it vendors upstream's release (GitHub, the tarball, the release's files), then builds
+                # the go modules by revision for the vendor hash, hence its own tools.
+                rke2Overlay = pkgs.writeShellApplication {
+                  name = "rke2-overlay";
+                  runtimeInputs = [
+                    pkgs.coreutils
+                    pkgs.curl
+                    pkgs.gawk
+                    pkgs.gh
+                    pkgs.git
+                    pkgs.gnugrep
+                    pkgs.gnused
+                    pkgs.jq
+                    pkgs.nix
+                  ];
+                  text = builtins.readFile ./nix/bump.d/rke2-overlay.sh;
+                };
                 manifestsVersions = pkgs.writeShellApplication {
                   name = "manifests-versions";
                   runtimeInputs = [ pkgs.jdk25 ];
@@ -1372,7 +1389,7 @@
                   pkgs.gnugrep
                   pkgs.jq
                   (helper "nfc-relock" ./nix/bump.d/nfc-relock.sh)
-                  (helper "rke2-overlay" ./nix/bump.d/rke2-overlay.sh)
+                  rke2Overlay
                   relockNoPush
                   manifestsVersions
                 ];

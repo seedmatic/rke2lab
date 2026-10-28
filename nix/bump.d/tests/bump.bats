@@ -64,7 +64,14 @@ bump() { "$BATS_TEST_DIRNAME/../bump.sh" "$@"; }
 @test "a nixpkgs tool's line says it means nixpkgs-unstable, and the lines that move with it" {
 	run bump --plan kubectl
 	[ "$status" -eq 0 ]
-	[[ $output == *"'kubectl' is not pinned by us: it moves with nixpkgs-unstable, and with it: kubernetes-helm"* ]]
+	[[ $output == *"kubectl is not pinned by us: it moves with nixpkgs-unstable, and with it: kubernetes-helm"* ]]
+}
+
+@test "the chosen tools of nixpkgs-unstable say so in ONE line" {
+	run bump --plan kubectl kubernetes-helm
+	[ "$status" -eq 0 ]
+	[ "$(grep -c 'not pinned by us' <<<"$output")" = 1 ]
+	[[ $output == *"kubectl kubernetes-helm are not pinned by us: they move with nixpkgs-unstable, and with them: nothing else"* ]]
 }
 
 @test "two tools of one nixpkgs are one relock" {
