@@ -33,14 +33,14 @@ import software.constructs.Construct;
  */
 public final class VclusterManifestsUnit extends AbstractManifestsUnit {
 
-  public static final String MANIFEST_UNIT_ID = ManifestDomainCatalog.CLUSTER_API + "/vcluster";
+  public static final String MANIFEST_UNIT_ID = ManifestDomainCatalog.VCLUSTER + "/vcluster";
 
   private static final String LABEL = "project";
 
   private static final String API_LABEL = ManifestAnnotation.VCLUSTER_API_LABEL.key();
 
   private final PackageMetadataProfile packageProfile =
-      new PackageMetadataProfile(ManifestDomainCatalog.CLUSTER_API, "vcluster");
+      new PackageMetadataProfile(ManifestDomainCatalog.VCLUSTER, "vcluster");
 
   public VclusterManifestsUnit() {
     // After the pin: its Kustomization dependsOn the policy's, so no synced pod is ever admitted

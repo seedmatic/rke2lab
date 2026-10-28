@@ -10,10 +10,12 @@ import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
 import io.seedmatic.rke2lab.manifests.ManifestsUnit;
 import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
 import io.seedmatic.rke2lab.manifests.YamlMapper;
+import io.seedmatic.rke2lab.manifests.contract.ClusterRole;
+import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainPolicy;
 import io.seedmatic.rke2lab.manifests.contract.ManifestSynthesisRequest;
 import io.seedmatic.rke2lab.manifests.contract.profiles.BootstrapIdentity;
-import io.seedmatic.rke2lab.manifests.domain.ClusterApiDomainRegistrar;
+import io.seedmatic.rke2lab.manifests.domain.VclusterDomainRegistrar;
 import io.seedmatic.rke2lab.manifests.node.DefaultNodeEnvContext;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -38,7 +40,7 @@ import org.junit.jupiter.api.io.TempDir;
 class VclusterCertsRenderTest {
 
   private static final ManifestDomainPolicy POLICY =
-      ManifestDomainPolicy.builder().clusterApi(true).build();
+      ClusterRole.WRKLD.domainPolicy(ManifestDomainCatalog.builder().addDefaultDomains().build());
 
   private static VclusterPki.Pair pair(String tag) {
     return new VclusterPki.Pair("FAKE-" + tag + "-CERT", "FAKE-" + tag + "-KEY");
@@ -75,10 +77,10 @@ class VclusterCertsRenderTest {
         cluster + "-master." + host);
   }
 
-  /** The unit as the cluster-api domain registers it, so an unregistered unit renders nothing. */
+  /** The unit as the vcluster domain registers it, so an unregistered unit renders nothing. */
   private static List<ManifestsUnit> registered() {
     final List<ManifestsUnit> units = new ArrayList<>();
-    for (final ManifestsUnit unit : new ClusterApiDomainRegistrar().domain().units()) {
+    for (final ManifestsUnit unit : new VclusterDomainRegistrar().domain().units()) {
       if (unit.manifestUnitId().endsWith("/vcluster-certs")) {
         units.add(unit);
       }
@@ -102,7 +104,7 @@ class VclusterCertsRenderTest {
         unit.apply(
             new ManifestsUnitContext(
                 chart,
-                "cluster-api",
+                ManifestDomainCatalog.VCLUSTER,
                 unit.manifestUnitId(),
                 new Cdk8sApiObjectResolver(chart),
                 POLICY,

@@ -33,11 +33,10 @@ import software.constructs.Construct;
  */
 public final class VclusterCertsManifestsUnit extends AbstractManifestsUnit {
 
-  public static final String MANIFEST_UNIT_ID =
-      ManifestDomainCatalog.CLUSTER_API + "/vcluster-certs";
+  public static final String MANIFEST_UNIT_ID = ManifestDomainCatalog.VCLUSTER + "/vcluster-certs";
 
   private final PackageMetadataProfile packageProfile =
-      new PackageMetadataProfile(ManifestDomainCatalog.CLUSTER_API, "vcluster-certs");
+      new PackageMetadataProfile(ManifestDomainCatalog.VCLUSTER, "vcluster-certs");
 
   public VclusterCertsManifestsUnit() {
     super(MANIFEST_UNIT_ID, List.of());

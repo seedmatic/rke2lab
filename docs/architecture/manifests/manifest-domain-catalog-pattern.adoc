@@ -57,6 +57,17 @@ flowchart TD
 | All others | UPPER_SNAKE constant | camelCase accessor | lowercase string
 |===
 
+=== Which role renders which domain
+
+`ClusterRole.domainPolicy` is the one place a domain is enabled per role. Every domain renders on both roles but one:
+`cluster-api` is MGMT-only, because CAPI reconciles clusters from the management cluster.
+
+So a unit must sit in a domain its HOST cluster renders. The `vcluster` domain (`VCLUSTER`, `catalog.vcluster()`,
+`VclusterDomainRegistrar`) carries the vclusters' PKI, their pin to the tenant's pool and the vcluster itself. It is
+enabled on BOTH roles, because its host is whichever cluster `VclusterDeclaration` names: a workload cluster for ccr.
+Its units render nothing on a cluster that hosts no vcluster. They first sat in `cluster-api`, where no workload
+cluster ever rendered them. `TenantNodesTest` now renders each role's REAL policy, so such a placement turns red.
+
 **Critical**: Multi-word domains use *kebab-case* strings but *camelCase* accessors (and *UPPER_SNAKE* constants). Hardcoding the string directly — in any casing — causes mismatches. The accessor merely returns its constant, so the two are always in lock-step.
 
 == Usage Patterns

@@ -9,7 +9,9 @@ import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
 import io.seedmatic.rke2lab.manifests.ManifestsUnit;
 import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
 import io.seedmatic.rke2lab.manifests.YamlMapper;
+import io.seedmatic.rke2lab.manifests.contract.ClusterRole;
 import io.seedmatic.rke2lab.manifests.contract.ManifestAnnotation;
+import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainPolicy;
 import io.seedmatic.rke2lab.manifests.contract.ManifestSynthesisRequest;
 import io.seedmatic.rke2lab.manifests.contract.profiles.BootstrapIdentity;
@@ -65,7 +67,8 @@ class VclusterManifestsUnitTest {
             "nikopol-nixos",
             cluster + "-master",
             cluster + "-master.nikopol");
-    final ManifestDomainPolicy policy = ManifestDomainPolicy.builder().clusterApi(true).build();
+    final ManifestDomainPolicy policy =
+        ClusterRole.WRKLD.domainPolicy(ManifestDomainCatalog.builder().addDefaultDomains().build());
     final Chart chart = new Chart(new App(), "manifests");
     final ManifestSynthesisRequest request =
         ManifestSynthesisRequest.builder(outdir, outdir.resolve("manifests.yaml"))
@@ -79,7 +82,7 @@ class VclusterManifestsUnitTest {
         unit.apply(
             new ManifestsUnitContext(
                 chart,
-                "cluster-api",
+                ManifestDomainCatalog.VCLUSTER,
                 unit.manifestUnitId(),
                 new Cdk8sApiObjectResolver(chart),
                 policy,

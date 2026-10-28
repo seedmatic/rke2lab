@@ -31,6 +31,7 @@ public record ManifestDomainCatalog(List<String> all, List<String> stageALinkabl
   public static final String CLUSTER_API = "cluster-api";
   public static final String PLATFORM = "platform";
   public static final String TAILSCALE = "tailscale";
+  public static final String VCLUSTER = "vcluster";
 
   public ManifestDomainCatalog {
     all = List.copyOf(all);
@@ -81,6 +82,10 @@ public record ManifestDomainCatalog(List<String> all, List<String> stageALinkabl
     return TAILSCALE;
   }
 
+  public String vcluster() {
+    return VCLUSTER;
+  }
+
   public boolean isKnownDomainId(String domainId) {
     return all.contains(normalize(domainId));
   }
@@ -103,7 +108,8 @@ public record ManifestDomainCatalog(List<String> all, List<String> stageALinkabl
               CICD,
               CLUSTER_API,
               PLATFORM,
-              TAILSCALE));
+              TAILSCALE,
+              VCLUSTER));
     }
 
     public Builder addDefaultStageALinkableDomains() {
