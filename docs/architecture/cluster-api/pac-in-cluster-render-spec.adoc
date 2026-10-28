@@ -409,8 +409,10 @@ reused (0 issuance) and the treadmill stops.
 
 [NOTE]
 ====
-*Validate with LE STAGING.* While proving the persistence/reuse mechanism, the tailscale operator runs
-`useLetsEncryptStagingEnvironment: true` (`TailscaleManifestsUnit`) — staging has effectively unlimited
+*Validate with LE STAGING.* While proving the persistence/reuse mechanism, each Funnel `ProxyClass`
+carries `spec.useLetsEncryptStagingEnvironment: true` (`FunnelStatePersistenceManifestsUnit`; it is a
+ProxyClass field, read for the Ingresses that name the class, not a chart value: the chart reads no such
+key, so passing it there was a no-op that left the Funnel on production) — staging has effectively unlimited
 rate limits, so each re-grow in the loop costs nothing, where production would spend one of 5 certs /
 exact FQDN / 168h per attempt.
 
@@ -440,7 +442,7 @@ key stays, so the proxy returns as the SAME tailnet device and the purge has not
 flip costs exactly one issuance and no identity churn.
 
 The two halves now have ONE owner: `FunnelCertIssuance.current()`, in the dual-realm
-`manifests.ingress` face. The tailscale render projects it into `useLetsEncryptStagingEnvironment`; the
+`manifests.ingress` face. The Funnel render projects it into each ProxyClass's `useLetsEncryptStagingEnvironment`; the
 ghapp webhook reconcile projects it into `insecure_ssl` (which used to be a hardcoded `0` in the edge).
 So the pair cannot be half-flipped, and returning to `PRODUCTION` turns verification back on by
 construction.

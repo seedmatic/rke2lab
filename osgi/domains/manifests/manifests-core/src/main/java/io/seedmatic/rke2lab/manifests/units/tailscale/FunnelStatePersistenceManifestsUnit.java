@@ -103,10 +103,16 @@ public final class FunnelStatePersistenceManifestsUnit extends AbstractManifests
                 .build());
     // The operator appends ProxyClass env AFTER its own, and a later value wins (verified in the
     // operator's sts.go), so this overrides the pod-named default → the state Secret is stable.
+    // The cert posture is a ProxyClass field, not a chart value (the chart reads no
+    // `useLetsEncryptStagingEnvironment`, 1.102.3 and 1.104.2 alike). It comes from the same
+    // FunnelCertIssuance the ghapp webhook's insecure_ssl reads: a staging cert fails GitHub's TLS
+    // handshake, so the two must never be flipped apart.
     proxyClass.addJsonPatch(
         JsonPatch.add(
             "/spec",
             Map.of(
+                "useLetsEncryptStagingEnvironment",
+                FunnelCertIssuance.current().staging(),
                 "statefulSet",
                 Map.of(
                     "pod",

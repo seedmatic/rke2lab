@@ -11,10 +11,10 @@ package io.seedmatic.rke2lab.manifests.ingress;
  * RENDER is triggered by that webhook, so verification must be off for as long as staging is on or
  * the whole GitOps loop stalls.
  *
- * <p>Those two settings used to live apart — {@code useLetsEncryptStagingEnvironment} in the
- * tailscale render, {@code insecure_ssl} as a hardcoded {@code 0} in the webhook edge — which made
- * them a pair nothing could keep in step. Worse than drift: the edge re-asserted {@code 0} on every
- * grow, so a grow would silently undo an operator's manual "verification off" mid-window. One owner
+ * <p>Those two settings used to live apart — {@code useLetsEncryptStagingEnvironment} in the Funnel
+ * render, {@code insecure_ssl} as a hardcoded {@code 0} in the webhook edge — which made them a
+ * pair nothing could keep in step. Worse than drift: the edge re-asserted {@code 0} on every grow,
+ * so a grow would silently undo an operator's manual "verification off" mid-window. One owner
  * removes both problems, and it makes the return to production self-correcting: flipping {@link
  * #current} back to {@link #PRODUCTION} turns verification on by construction, rather than relying
  * on someone remembering the other half.
@@ -53,8 +53,8 @@ public enum FunnelCertIssuance {
   }
 
   /**
-   * Whether certs come from the staging directory — read BOTH by the tailscale render (the
-   * operator's {@code useLetsEncryptStagingEnvironment}) and by the ghapp webhook reconcile
+   * Whether certs come from the staging directory — read BOTH by the Funnel render (each Funnel
+   * ProxyClass's {@code useLetsEncryptStagingEnvironment}) and by the ghapp webhook reconcile
    * (GitHub's {@code insecure_ssl}, since a staging cert cannot be verified).
    */
   public boolean staging() {

@@ -8,7 +8,6 @@ import io.seedmatic.rke2lab.manifests.contract.ManifestAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
 import io.seedmatic.rke2lab.manifests.contract.ManifestLayer;
 import io.seedmatic.rke2lab.manifests.ingress.Component;
-import io.seedmatic.rke2lab.manifests.ingress.FunnelCertIssuance;
 import io.seedmatic.rke2lab.manifests.profiles.PackageMetadataProfile;
 import io.seedmatic.rke2lab.manifests.units.cluster.ClusterRefs;
 import java.util.List;
@@ -126,21 +125,8 @@ public final class TailscaleManifestsUnit extends AbstractManifestsUnit {
                 "valuesContent",
                 """
                 operatorConfig:
-                  debug: true
-                # Projected from FunnelCertIssuance.current() — the ONE place the posture is declared.
-                # A staging cert is untrusted, so GitHub's webhook TLS handshake fails against it, and
-                # the in-cluster RENDER is triggered by that webhook: verification must be off for
-                # exactly as long as this is on. Both halves now come from that one enum, so they
-                # cannot be half-flipped, and returning to production turns verification back on by
-                # construction.
-                #
-                # The cert already on disk is covered too: the backup records this posture beside the
-                # state and the restore drops a cert that does not match it, keeping the node key. So
-                # flipping this line IS the whole gesture.
-                # See docs .../pac-in-cluster-render-spec.adoc § funnel-durability.
-                useLetsEncryptStagingEnvironment: %s
-                """
-                    .formatted(FunnelCertIssuance.current().staging()),
+                  logging: debug
+                """,
                 "version",
                 version)));
 
