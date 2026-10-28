@@ -1280,6 +1280,7 @@
                 name = "rke2lab-versions";
                 runtimeInputs = [
                   pkgs.coreutils
+                  pkgs.gh
                   pkgs.jdk25
                   # nix-flake-commons exposes the report as an app; its program's package is that app's store path.
                   (pkgs.runCommand "versions-report" { } ''
@@ -1293,7 +1294,11 @@
                   fi
                   work=$(mktemp -d)
                   trap 'rm -rf "$work"' EXIT
-                  java -jar ${manifestsCliJar}/share/java/manifests.jar versions format=jsonl >"$work/clusters.jsonl"
+                  # The manifests CLI queries GitHub releases with the run's GITHUB_TOKEN when no App mint is around
+                  # (always, here): the operator's `gh` token, so a run never depends on the anonymous 60/h quota. It is
+                  # an environment value of this one process, never printed nor written.
+                  GITHUB_TOKEN="$(gh auth token 2>/dev/null || true)" \
+                    java -jar ${manifestsCliJar}/share/java/manifests.jar versions format=jsonl >"$work/clusters.jsonl"
                   versions-report "$@" "$work/clusters.jsonl" ${pkgs.writeText "nix.jsonl" (
                     self.versions.jsonl
                     + nixpkgs.lib.concatMapStrings (l: builtins.toJSON l + "\n") (
@@ -1303,6 +1308,75 @@
                 '';
               }
               + "/bin/rke2lab-versions"
+            );
+          };
+
+          # `nix run .#bump -- [--plan] <name>…`, from the repo root, on a feature branch: play the version bumps the
+          # operator chose, by name, from #versions. A nix lock edge is played through relock's own pass (it pushes, in
+          # the graph's order); what touches code is one commit per line here, kept only if the named checks pass on
+          # both systems, for the merge. See nix/bump.d/bump.sh.
+          apps.bump = {
+            type = "app";
+            meta.description = "Play the chosen version bumps: nix edges through relock's pass, code as checked commits";
+            program = toString (
+              let
+                fill =
+                  file:
+                  builtins.replaceStrings
+                    [ "@nix@" "@versions@" "@relock@" "@nfcRelock@" "@manifests@" "@overlay@" "@checks@" ]
+                    [
+                      "${pkgs.nix}/bin/nix"
+                      self.apps.${system}.versions.program
+                      "relock-no-push"
+                      "nfc-relock"
+                      "manifests-versions"
+                      "rke2-overlay"
+                      (nixpkgs.lib.concatStringsSep " " [
+                        "node-image-tree"
+                        "node-rke2-1-36"
+                        "node-rke2-unit-zfs-path"
+                        "no-installer-channel"
+                        "versions-lines"
+                      ])
+                    ]
+                    (builtins.readFile file);
+                helper =
+                  name: file:
+                  pkgs.writeShellApplication {
+                    inherit name;
+                    runtimeInputs = [
+                      pkgs.coreutils
+                      pkgs.git
+                    ];
+                    text = fill file;
+                  };
+                # rke2lab's own relock, committing here without pushing: the push is the merge's.
+                relockNoPush = pkgs.writeShellApplication {
+                  name = "relock-no-push";
+                  text = ''exec ${relockApp}/bin/relock --no-push "$@"'';
+                };
+                manifestsVersions = pkgs.writeShellApplication {
+                  name = "manifests-versions";
+                  runtimeInputs = [ pkgs.jdk25 ];
+                  text = ''exec java -jar ${manifestsCliJar}/share/java/manifests.jar "$@"'';
+                };
+              in
+              pkgs.writeShellApplication {
+                name = "rke2lab-bump";
+                runtimeInputs = [
+                  pkgs.coreutils
+                  pkgs.gawk
+                  pkgs.git
+                  pkgs.gnugrep
+                  pkgs.jq
+                  (helper "nfc-relock" ./nix/bump.d/nfc-relock.sh)
+                  (helper "rke2-overlay" ./nix/bump.d/rke2-overlay.sh)
+                  relockNoPush
+                  manifestsVersions
+                ];
+                text = fill ./nix/bump.d/bump.sh;
+              }
+              + "/bin/rke2lab-bump"
             );
           };
 
@@ -1499,6 +1573,9 @@
             };
             # No nixConfig in this flake: no machine of ours takes one (nix-flake-commons' shared check).
             no-nix-config = inputs.flake-commons.lib.noNixConfig pkgs ./flake.nix;
+            # #bump's dispatcher against stubs: source → mechanism, A before B, a tool's line = nixpkgs-unstable, a red
+            # line dropped alone.
+            bump-bats = import ./nix/bump.d/tests/package.nix { inherit pkgs; };
             # The #versions app builds (the manifests CLI, the report, the nix lines it ships), on this system.
             versions-app = pkgs.runCommand "versions-app" { } ''
               test -x ${self.apps.${system}.versions.program}
