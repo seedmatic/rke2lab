@@ -473,7 +473,10 @@ The host fills the operator's policy onto the neutral `FACET` role — the wire 
 `VersionsRunbookHandler` serves `ManifestsCoordinate.VERSIONS` and grows `VersionBumpScenario`
 in-container. The scenario `@OsgiService`-injects `Worktree` (jgit stage/commit), the optional
 `GithubWriterTokenMint` (the `auth` edge that mints a fresh writer token on demand, through
-`GithubAppTokens` reading the App from its owner — not a long-lived env token), and
+`GithubAppTokens` reading the App from its owner). Without a mint (a standalone CLI, a survey
+frontier) the release queries take the run's own `GITHUB_TOKEN` when it is set (`EnvironmentToken`):
+read only, sent as the `Authorization` of GitHub API requests and nowhere else, never printed. The
+anonymous quota (60 an hour) is what a report hits otherwise, about a dozen calls a run. And
 `NdhKeystoreReader` (the
 tailnet `authorityDomain` the bot email is minted from). On `apply` it rewrites `Component.java`,
 stages the changed paths (including the deleted old `release-<oldPin>.yaml`) through `Worktree`, and

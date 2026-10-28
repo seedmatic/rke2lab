@@ -87,13 +87,19 @@ public final class VersionBumper {
   private final UpstreamVersions upstreamVersions = new UpstreamVersions();
 
   public VersionBumper(final BumpLevel level, final Optional<String> githubToken) {
-    this.level = level;
-    this.githubToken = githubToken;
-    this.http =
+    this(
+        level,
+        githubToken,
         HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .followRedirects(HttpClient.Redirect.NORMAL)
-            .build();
+            .build());
+  }
+
+  VersionBumper(final BumpLevel level, final Optional<String> githubToken, final HttpClient http) {
+    this.level = level;
+    this.githubToken = githubToken;
+    this.http = http;
     this.wire = new SeedCodec().wire();
   }
 
