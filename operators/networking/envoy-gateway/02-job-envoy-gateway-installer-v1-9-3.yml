@@ -5,7 +5,7 @@ metadata:
     io.seedmatic.rke2lab/domain: networking
     io.seedmatic.rke2lab/layer: operators
     io.seedmatic.rke2lab/package: envoy-gateway
-  name: envoy-gateway-installer-v1-9-0
+  name: envoy-gateway-installer-v1-9-3
   namespace: envoy-gateway-system
 spec:
   backoffLimit: 3
@@ -23,7 +23,7 @@ spec:
             - /scripts/install.sh
           env:
             - name: ENVOY_GATEWAY_VERSION
-              value: v1.9.0
+              value: v1.9.3
             - name: ENVOY_GATEWAY_NAMESPACE
               value: envoy-gateway-system
           image: rke2lab/flox-carrier:i0rlc6217y1q0mcqa0576fz8llg4jiij

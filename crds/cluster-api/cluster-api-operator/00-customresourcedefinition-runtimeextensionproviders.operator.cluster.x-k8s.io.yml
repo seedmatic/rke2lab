@@ -3,7 +3,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: capi-operator-system/capi-operator-serving-cert
-    controller-gen.kubebuilder.io/version: v0.20.0
+    controller-gen.kubebuilder.io/version: v0.21.0
     io.seedmatic.rke2lab/domain: cluster-api
     io.seedmatic.rke2lab/layer: operators
     io.seedmatic.rke2lab/package: cluster-api-operator

@@ -8,4 +8,4 @@ metadata:
   name: rke2
   namespace: caprke2-system
 spec:
-  version: v0.25.2
+  version: v0.27.1

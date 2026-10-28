@@ -6,7 +6,7 @@ metadata:
     io.seedmatic.rke2lab/package: tekton-pipelines
   labels:
     app: tekton-pipelines-controller
-    version: v0.81.1
+    version: v0.81.2
   name: tekton-operator
   namespace: tekton-operator
 spec:

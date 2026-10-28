@@ -5,8 +5,8 @@ metadata:
     io.seedmatic.rke2lab/domain: cicd
     io.seedmatic.rke2lab/package: tekton-pipelines
   labels:
-    operator.tekton.dev/release: v0.81.1
-    version: v0.81.1
+    operator.tekton.dev/release: v0.81.2
+    version: v0.81.2
   name: tekton-operator
   namespace: tekton-operator
 spec:
@@ -40,13 +40,13 @@ spec:
             - name: OPERATOR_NAME
               value: tekton-operator
             - name: IMAGE_PIPELINES_PROXY
-              value: ghcr.io/tektoncd/operator/proxy-webhook-f6167da7bc41b96a27c5529f850e63d1:v0.81.1@sha256:01c073b53f09675ae8d18076b2dc608ea88c63f3cf453757b63ac3e8e4eefc65
+              value: ghcr.io/tektoncd/operator/proxy-webhook-f6167da7bc41b96a27c5529f850e63d1:v0.81.2@sha256:7608451691bedad4b658c7744d7f7209f0836047d95528e290ac6d3c5e941fcd
             - name: IMAGE_JOB_PRUNER_TKN
               value: ghcr.io/tektoncd/plumbing/tkn@sha256:233de6c8b8583a34c2379fa98d42dba739146c9336e8d41b66030484357481ed
             - name: METRICS_DOMAIN
               value: tekton.dev/operator
             - name: VERSION
-              value: v0.81.1
+              value: v0.81.2
             - name: CONFIG_OBSERVABILITY_NAME
               value: tekton-config-observability
             - name: CONFIG_LEADERELECTION_NAME
@@ -61,7 +61,7 @@ spec:
                 configMapKeyRef:
                   key: DEFAULT_TARGET_NAMESPACE
                   name: tekton-config-defaults
-          image: ghcr.io/tektoncd/operator/operator-303303c315a48490ba6517859ef65b77:v0.81.1@sha256:3ff013f3078eb7235f29d0e50f9aa40d8c7dc653a860c8f6591df2f5e9a24579
+          image: ghcr.io/tektoncd/operator/operator-303303c315a48490ba6517859ef65b77:v0.81.2@sha256:f7919734a3cca12033e46f31ff03f2686163c3414e81ad98bc89dea1b8667157
           imagePullPolicy: IfNotPresent
           name: tekton-operator-lifecycle
           securityContext:
@@ -93,12 +93,12 @@ spec:
             - name: PROFILING_PORT
               value: "9009"
             - name: VERSION
-              value: v0.81.1
+              value: v0.81.2
             - name: METRICS_DOMAIN
               value: tekton.dev/operator
             - name: CONFIG_LEADERELECTION_NAME
               value: tekton-operator-controller-config-leader-election
-          image: ghcr.io/tektoncd/operator/operator-303303c315a48490ba6517859ef65b77:v0.81.1@sha256:3ff013f3078eb7235f29d0e50f9aa40d8c7dc653a860c8f6591df2f5e9a24579
+          image: ghcr.io/tektoncd/operator/operator-303303c315a48490ba6517859ef65b77:v0.81.2@sha256:f7919734a3cca12033e46f31ff03f2686163c3414e81ad98bc89dea1b8667157
           imagePullPolicy: IfNotPresent
           name: tekton-operator-cluster-operations
           securityContext:

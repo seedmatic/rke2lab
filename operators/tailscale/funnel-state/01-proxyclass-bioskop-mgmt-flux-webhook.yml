@@ -13,3 +13,4 @@ spec:
         env:
           - name: TS_KUBE_SECRET
             value: ts-bioskop-mgmt-flux-webhook-state
+  useLetsEncryptStagingEnvironment: true

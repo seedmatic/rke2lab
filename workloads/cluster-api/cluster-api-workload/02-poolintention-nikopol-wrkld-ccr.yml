@@ -25,6 +25,6 @@ spec:
     - project=ccr:NoSchedule
   pool: ccr
   replicas: 1
-  rke2Version: v1.36.4+rke2r1
+  rke2Version: v1.37.1+rke2r1
   role: worker
   target: nikopol

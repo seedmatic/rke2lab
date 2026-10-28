@@ -8,4 +8,4 @@ metadata:
   name: cluster-api
   namespace: capi-system
 spec:
-  version: v1.14.0
+  version: v1.14.3
