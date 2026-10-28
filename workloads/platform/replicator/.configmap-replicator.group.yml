@@ -8,6 +8,7 @@ data:
     apps/v1|Deployment|kube-system|kubernetes-replicator
     v1|Secret|rke2lab-secrets|flux-webhook-token
     v1|Secret|rke2lab-secrets|operator-oauth
+    v1|Secret|rke2lab-secrets|floxhub-token
 kind: ConfigMap
 metadata:
   annotations:

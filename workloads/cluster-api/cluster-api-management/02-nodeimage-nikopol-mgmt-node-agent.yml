@@ -8,9 +8,9 @@ metadata:
   namespace: rke2lab-nikopol-mgmt
 spec:
   alias: node-agent
-  buildChecksum: 9399ec47443997bca385eae736c6e91abe8f5786a3fc5d1759a98c1b32e4db4b
-  fingerprint: f7a364ca78c8d7bbb53cca62be22529f58364bd37472f7ce6cb698e07ad46f40
-  rke2Version: v1.36.4+rke2r1
+  buildChecksum: 0ab94d23539677d1f730f357ea7a988d276c92c82c1cdf6c66f872971d06e981
+  fingerprint: 0c7a40692ea8a9d561b6f7b2b8c1453c46db5d70278b49eaadca55126cd88552
+  rke2Version: v1.37.1+rke2r1
   runtime:
     kernelModules:
       - ip_vs

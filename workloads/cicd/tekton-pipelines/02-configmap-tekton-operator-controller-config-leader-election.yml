@@ -36,6 +36,6 @@ metadata:
     io.seedmatic.rke2lab/package: tekton-pipelines
   labels:
     app.kubernetes.io/instance: default
-    operator.tekton.dev/release: v0.81.1
+    operator.tekton.dev/release: v0.81.2
   name: tekton-operator-controller-config-leader-election
   namespace: tekton-operator

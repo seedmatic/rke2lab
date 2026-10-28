@@ -12,17 +12,13 @@ spec:
   manifest:
     install:
       bash:
-        outputs: all
-        pkg-path: bash
+        flake: floxcatalog:catalog#bash
       coreutils:
-        outputs: all
-        pkg-path: coreutils
+        flake: floxcatalog:catalog#coreutils
       kubectl:
-        outputs: all
-        pkg-path: kubectl
+        flake: floxcatalog:catalog#kubectl
       yq-go:
-        outputs: all
-        pkg-path: yq-go
+        flake: floxcatalog:catalog#yq-go
     options:
       systems:
         - aarch64-linux

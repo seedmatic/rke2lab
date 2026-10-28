@@ -14,4 +14,4 @@ spec:
   valuesContent: |
     crds:
       enabled: true
-  version: v1.21.1
+  version: v1.21.3

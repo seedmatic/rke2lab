@@ -18,5 +18,5 @@ spec:
             value: /etc/ssl/certs:/etc/rke2lab/ca
         name: manager
   fetchConfig:
-    url: https://github.com/lxc/cluster-api-provider-incus/releases/v0.9.0/infrastructure-components.yaml
-  version: v0.9.0
+    url: https://github.com/lxc/cluster-api-provider-incus/releases/v0.9.1/infrastructure-components.yaml
+  version: v0.9.1
