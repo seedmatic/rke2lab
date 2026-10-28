@@ -14,6 +14,7 @@ spec:
   namespace: rke2lab-nikopol-mgmt
   nodes:
   - name: nikopol-mgmt-control-plane-txt7m
+  - name: nikopol-mgmt-control-plane-wshfq
   pool: control-node
 status:
   lastReflectTime: null
