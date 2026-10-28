@@ -291,6 +291,34 @@ class TenantNodesTest {
         vclusterObjects.apply(render(outdir.resolve("mgmt"), "nikopol-mgmt", ClusterRole.MGMT)));
   }
 
+  /**
+   * No FloxEnv installs a FloxHub catalog package ({@code pkg-path}): resolving one now requires a
+   * FloxHub login, which no node has (measured 2026-10-28: the five envs with one failed, the two
+   * with only {@code floxcatalog:} flakes realised). Every install comes from our own catalog.
+   */
+  @Test
+  void requireNoFloxEnvResolvesAgainstFloxHub(@TempDir Path outdir) {
+    final List<String> fromFloxHub = new ArrayList<>();
+    for (final ClusterRole role : ClusterRole.values()) {
+      final String cluster = role == ClusterRole.MGMT ? "nikopol-mgmt" : "nikopol-wrkld";
+      for (final Object doc : render(outdir.resolve(cluster), cluster, role)) {
+        final Map<?, ?> document = (Map<?, ?>) doc;
+        if (!"FloxEnv".equals(document.get("kind"))) {
+          continue;
+        }
+        final Map<?, ?> manifest = (Map<?, ?>) ((Map<?, ?>) document.get("spec")).get("manifest");
+        final Map<?, ?> install = (Map<?, ?>) manifest.get("install");
+        install.forEach(
+            (name, entry) -> {
+              if (((Map<?, ?>) entry).containsKey("pkg-path")) {
+                fromFloxHub.add(((Map<?, ?>) document.get("metadata")).get("name") + "/" + name);
+              }
+            });
+      }
+    }
+    assertEquals(List.of(), fromFloxHub.stream().distinct().sorted().toList());
+  }
+
   /** Kubernetes' ToleratesTaint, for one taint. */
   private static boolean tolerates(final Object tolerations) {
     final Iterable<?> list =
