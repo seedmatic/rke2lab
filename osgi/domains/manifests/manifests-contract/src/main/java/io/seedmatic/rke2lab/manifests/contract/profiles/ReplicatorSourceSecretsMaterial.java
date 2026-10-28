@@ -19,6 +19,17 @@ import java.util.Objects;
  */
 public record ReplicatorSourceSecretsMaterial(List<SourceSecret> sources) {
 
+  /**
+   * The FloxHub token's Secret and data key: the seal writes it, flox-controller's DaemonSet reads
+   * it as {@code FLOX_FLOXHUB_TOKEN}. One definition for both sides.
+   */
+  public static final String FLOXHUB_TOKEN_SECRET = "floxhub-token";
+
+  public static final String FLOXHUB_TOKEN_KEY = "token";
+
+  /** Where the token is replicated to: flox-controller's namespace, rke2lab-system. */
+  public static final String FLOXHUB_TOKEN_TARGET_NAMESPACE = "rke2lab-system";
+
   public ReplicatorSourceSecretsMaterial {
     sources = List.copyOf(Objects.requireNonNull(sources, "sources"));
   }
