@@ -544,6 +544,73 @@ class ClusterApiRenderTest {
   }
 
   @Test
+  void requireEachHostedVclusterGetsItsOwnWorkerPoolOnTheAgentImage(@TempDir Path outdir) {
+    // ★ A vcluster runs on nodes of its own: its host's mgmt plane births them as a WORKER pool,
+    // booted on the AGENT image (no server layer, so none of the fleet's secrets), labelled for the
+    // vcluster to pin its pods there. ccr is declared on nikopol-wrkld, and on nothing else.
+    final List<Map<String, Object>> documents =
+        renderWith(
+            outdir,
+            FLEET,
+            clusterApiUnits(),
+            Optional.empty(),
+            Optional.empty(),
+            Optional.of(agentImageState()));
+
+    final List<Map<String, Object>> workers =
+        documents.stream()
+            .filter(d -> "PoolIntention".equals(kindOf(d)))
+            .filter(d -> "worker".equals(((Map<String, Object>) d.get("spec")).get("role")))
+            .toList();
+    assertEquals(1, workers.size(), "one worker pool, ccr's: " + workers);
+
+    final Map<String, Object> metadata = (Map<String, Object>) workers.get(0).get("metadata");
+    final Map<String, Object> spec = (Map<String, Object>) workers.get(0).get("spec");
+    assertEquals("nikopol-wrkld-ccr", metadata.get("name"));
+    assertEquals("rke2lab-nikopol-wrkld", metadata.get("namespace"));
+    assertEquals("nikopol-wrkld", spec.get("clusterRef"));
+    assertEquals("ccr", spec.get("pool"));
+    assertEquals(Map.of("name", "nikopol-wrkld-node-agent"), spec.get("image"));
+    assertEquals(agentImageState().rke2Version(), spec.get("rke2Version"));
+    // CATTLE: the MachineDeployment names its machines, so the pool states a size, never a roster,
+    // and a worker registers on no control-plane endpoint.
+    assertEquals("cattle", spec.get("nature"));
+    assertEquals(1, spec.get("replicas"));
+    assertFalse(spec.containsKey("nodes"), "a worker pool declares no roster");
+    assertFalse(spec.containsKey("controlPlaneEndpoint"), "a worker pool has no API endpoint");
+    assertEquals("nikopol-mgmt", spec.get("adoptedBy"));
+    // Not the flox-runtime label: the flox DaemonSet selects it, and the tenant's pods carry no
+    // flox environment.
+    assertEquals(List.of("project=ccr"), spec.get("nodeLabels"));
+    // Tainted, so nothing of the fleet (Flux included) lands there: only what tolerates it.
+    assertEquals(List.of("project=ccr:NoSchedule"), spec.get("nodeTaints"));
+    // Born where its cluster's control plane is: the same member and the same devices.
+    final Map<String, Object> controlNode =
+        (Map<String, Object>)
+            documents.stream()
+                .filter(d -> "PoolIntention".equals(kindOf(d)))
+                .filter(
+                    d ->
+                        "nikopol-wrkld-control-node"
+                            .equals(((Map<String, Object>) d.get("metadata")).get("name")))
+                .findFirst()
+                .orElseThrow()
+                .get("spec");
+    assertEquals(controlNode.get("target"), spec.get("target"));
+    assertEquals(controlNode.get("devices"), spec.get("devices"));
+  }
+
+  @Test
+  void requireNoWorkerPoolWhenTheGrowBuiltNoAgentImage(@TempDir Path outdir) {
+    // Without an agent image a worker pool would have nothing to boot, or worse the server's: none.
+    final List<Map<String, Object>> documents = render(outdir, clusterApiUnits());
+    assertFalse(
+        documents.stream()
+            .filter(d -> "PoolIntention".equals(kindOf(d)))
+            .anyMatch(d -> "worker".equals(((Map<String, Object>) d.get("spec")).get("role"))));
+  }
+
+  @Test
   void requirePoolIntentionsCarryTheFullDeviceSet(@TempDir Path outdir) {
     final List<Map<String, Object>> documents = render(outdir, clusterApiUnits());
 
