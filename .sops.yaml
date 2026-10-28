@@ -62,7 +62,16 @@ creation_rules:
     age: >-
       age1hlvu7l7kefeum8drzvc5jp0jhgsqw2h3t3a8rmzvx05lcrsmx48q2ehxsk,
       age18xsumfdy9lpvlmaxksty3m20u3gwjjg9uxhrd8upd86hv82c5dwqp3xtc9
-  # Everything else — `.secrets` — marks each secret scalar with a `# sops:encrypted` comment.
+  # `.secrets` encrypts EVERY value but the few named here. It used to be the opt-in rule below, which
+  # encrypts only a scalar marked `# sops:encrypted`, and `sops set` adds no marker: a FloxHub token
+  # set that way was committed in the clear (2026-10-28). Opt-out instead, so a new key is a secret
+  # until someone says it is not. The clear leaves are ids and names the render reads unencrypted.
+  - path_regex: '(^|/)\.secrets$'
+    unencrypted_regex: '^(appId|installationId|sourceNamespace|name|replicateTo)$'
+    age: >-
+      age1hlvu7l7kefeum8drzvc5jp0jhgsqw2h3t3a8rmzvx05lcrsmx48q2ehxsk,
+      age18xsumfdy9lpvlmaxksty3m20u3gwjjg9uxhrd8upd86hv82c5dwqp3xtc9
+  # Everything else marks each secret scalar with a `# sops:encrypted` comment.
   # `.ndh-ssh.d/keys.yaml` is never encrypted HERE: it arrives encrypted from ndh, under ndh's
   # recipients, and has no filter, so nothing in this repository re-keys it. This rule was previously DEAD for yaml files, because the
   # rule above swallowed them all first, which is why keys.yaml carried eight such markers

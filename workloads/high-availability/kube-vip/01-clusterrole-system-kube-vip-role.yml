@@ -12,13 +12,22 @@ rules:
     resources:
       - services
       - services/status
-      - nodes
       - endpoints
     verbs:
       - list
       - get
       - watch
       - update
+  - apiGroups:
+      - ""
+    resources:
+      - nodes
+    verbs:
+      - list
+      - get
+      - watch
+      - update
+      - patch
   - apiGroups:
       - coordination.k8s.io
     resources:
@@ -29,3 +38,18 @@ rules:
       - watch
       - update
       - create
+  - apiGroups:
+      - discovery.k8s.io
+    resources:
+      - endpointslices
+    verbs:
+      - list
+      - get
+      - watch
+      - update
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - list

@@ -5,7 +5,6 @@ data:
     apiextensions.k8s.io/v1|CustomResourceDefinition||manualapprovalgates.operator.tekton.dev
     apiextensions.k8s.io/v1|CustomResourceDefinition||openshiftpipelinesascodes.operator.tekton.dev
     apiextensions.k8s.io/v1|CustomResourceDefinition||syncerservices.operator.tekton.dev
-    apiextensions.k8s.io/v1|CustomResourceDefinition||tektonaddons.operator.tekton.dev
     apiextensions.k8s.io/v1|CustomResourceDefinition||tektonchains.operator.tekton.dev
     apiextensions.k8s.io/v1|CustomResourceDefinition||tektonconfigs.operator.tekton.dev
     apiextensions.k8s.io/v1|CustomResourceDefinition||tektondashboards.operator.tekton.dev

@@ -41,7 +41,7 @@ spec:
               value: "6443"
             - name: vip_interface
               value: vmnet0
-            - name: vip_cidr
+            - name: vip_subnet
               value: "32"
             - name: dns_mode
               value: first
@@ -61,7 +61,7 @@ spec:
               value: "1"
             - name: address
               value: 10.80.47.10
-          image: ghcr.io/kube-vip/kube-vip:v0.9.2
+          image: ghcr.io/kube-vip/kube-vip:v1.3.1
           imagePullPolicy: Always
           name: kube-vip
           resources:

@@ -13,3 +13,4 @@ spec:
         env:
           - name: TS_KUBE_SECRET
             value: ts-nikopol-wrkld-flux-webhook-state
+  useLetsEncryptStagingEnvironment: true
