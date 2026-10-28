@@ -30,9 +30,9 @@ import org.junit.jupiter.api.io.TempDir;
 import org.yaml.snakeyaml.Yaml;
 
 /**
- * ccr's vcluster, on its host's branch: a namespace, the loft chart, the API LoadBalancer on the
- * fabric, and the policy that pins the tenant's pods to its own pool. Its pods never land on a
- * fleet node, and nothing of it reaches another cluster's branch.
+ * ccr's vcluster, on its host's branch: its namespace (a unit of its own), the loft chart, the API
+ * LoadBalancer on the fabric, and the policy that pins the tenant's pods to its own pool. Its pods
+ * never land on a fleet node, and nothing of it reaches another cluster's branch.
  */
 @Tag("osgi")
 class VclusterManifestsUnitTest {
@@ -54,6 +54,18 @@ class VclusterManifestsUnitTest {
 
   private static List<Map<String, Object>> render(
       final Path outdir, final String cluster, final Optional<ImageState> image) {
+    return render(
+        outdir,
+        cluster,
+        image,
+        List.of(new VclusterPinManifestsUnit(), new VclusterManifestsUnit()));
+  }
+
+  private static List<Map<String, Object>> render(
+      final Path outdir,
+      final String cluster,
+      final Optional<ImageState> image,
+      final List<ManifestsUnit> units) {
     final BootstrapIdentity identity =
         new BootstrapIdentity(
             cluster,
@@ -77,8 +89,7 @@ class VclusterManifestsUnitTest {
             .manifestDomainPolicy(Optional.of(policy))
             .build();
     try (var bound = ManifestSynthesisContext.of(request).bind()) {
-      for (final ManifestsUnit unit :
-          List.<ManifestsUnit>of(new VclusterPinManifestsUnit(), new VclusterManifestsUnit())) {
+      for (final ManifestsUnit unit : units) {
         unit.apply(
             new ManifestsUnitContext(
                 chart,
@@ -155,10 +166,34 @@ class VclusterManifestsUnitTest {
   }
 
   @Test
+  void requireTheNamespaceIsTheCellTheCertsAndTheVclusterBothWaitOn() {
+    // The certs' Kustomization is applied before the vcluster's: a namespace riding the vcluster
+    // left the certs failing "namespaces vcluster-ccr not found".
+    assertTrue(
+        new VclusterCertsManifestsUnit()
+            .dependsOnManifestsUnitIds()
+            .contains(VclusterNamespaceManifestsUnit.MANIFEST_UNIT_ID));
+    assertTrue(
+        new VclusterManifestsUnit()
+            .dependsOnManifestsUnitIds()
+            .contains(VclusterNamespaceManifestsUnit.MANIFEST_UNIT_ID));
+  }
+
+  @Test
+  void requireOnlyTheHostRendersTheNamespaceAndTheVclusterUnitNone(@TempDir Path outdir) {
+    final List<ManifestsUnit> namespace = List.of(new VclusterNamespaceManifestsUnit());
+    final Optional<ImageState> image = Optional.of(image("1.37.1+rke2r1"));
+    final List<Map<String, Object>> hosted =
+        of(render(outdir, "nikopol-wrkld", image, namespace), "Namespace");
+    assertEquals(1, hosted.size());
+    assertEquals("vcluster-ccr", at(hosted.get(0), "metadata").get("name"));
+    assertEquals(List.of(), of(render(outdir, "bioskop-wrkld", image, namespace), "Namespace"));
+    assertEquals(List.of(), of(render(outdir, "nikopol-wrkld"), "Namespace"));
+  }
+
+  @Test
   void requireTheChartIsLoftsPinnedAndInstalledInTheTenantsNamespace(@TempDir Path outdir) {
     final List<Map<String, Object>> documents = render(outdir, "nikopol-wrkld");
-    assertEquals(1, of(documents, "Namespace").size());
-    assertEquals("vcluster-ccr", at(of(documents, "Namespace").get(0), "metadata").get("name"));
     final List<Map<String, Object>> charts = of(documents, "HelmChart");
     assertEquals(1, charts.size());
     final Map<String, Object> spec = at(charts.get(0), "spec");
@@ -301,7 +336,17 @@ class VclusterManifestsUnitTest {
   @SuppressWarnings("unchecked")
   void requireTheNamespaceEnforcesRestrictedPodSecurity(@TempDir Path outdir) {
     final Map<String, Object> labels =
-        at(of(render(outdir, "nikopol-wrkld"), "Namespace").get(0), "metadata", "labels");
+        at(
+            of(
+                    render(
+                        outdir,
+                        "nikopol-wrkld",
+                        Optional.of(image("1.37.1+rke2r1")),
+                        List.of(new VclusterNamespaceManifestsUnit())),
+                    "Namespace")
+                .get(0),
+            "metadata",
+            "labels");
     assertEquals("restricted", labels.get("pod-security.kubernetes.io/enforce"));
     assertEquals("restricted", labels.get("pod-security.kubernetes.io/warn"));
   }
