@@ -1577,6 +1577,7 @@
             # #bump's dispatcher against stubs: source → mechanism, A before B, a tool's line = nixpkgs-unstable, a red
             # line dropped alone.
             bump-bats = import ./nix/bump.d/tests/package.nix { inherit pkgs; };
+            prepush-plan-closure-bats = import ./.githooks/tests/package.nix { inherit pkgs; };
             # The #versions app builds (the manifests CLI, the report, the nix lines it ships), on this system.
             versions-app = pkgs.runCommand "versions-app" { } ''
               test -x ${self.apps.${system}.versions.program}
