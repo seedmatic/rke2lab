@@ -12,6 +12,7 @@ import io.seedmatic.rke2lab.manifests.domain.PlatformDomainRegistrar;
 import io.seedmatic.rke2lab.manifests.domain.RuntimeDomainRegistrar;
 import io.seedmatic.rke2lab.manifests.domain.StorageDomainRegistrar;
 import io.seedmatic.rke2lab.manifests.domain.TailscaleDomainRegistrar;
+import io.seedmatic.rke2lab.manifests.domain.VclusterDomainRegistrar;
 import java.util.List;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -44,7 +45,8 @@ class RealDomainGraphTest {
           new PlatformDomainRegistrar(),
           new RuntimeDomainRegistrar(),
           new StorageDomainRegistrar(),
-          new TailscaleDomainRegistrar());
+          new TailscaleDomainRegistrar(),
+          new VclusterDomainRegistrar());
 
   @Test
   void everyUnitEdgeStaysInsideADeclaredDomainEdge() {

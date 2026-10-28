@@ -100,7 +100,11 @@ public enum ClusterRole {
             catalog.storage(),
             catalog.highAvailability(),
             catalog.tailscale(),
-            catalog.cicd());
+            catalog.cicd(),
+            // On both roles: a vcluster's units render only on the cluster that hosts it, which is
+            // a
+            // workload cluster for ccr; cluster-api, where they first sat, is MGMT-only.
+            catalog.vcluster());
     // ⚠️ `FloxEnvFolder.MESH` and the `mesh` DEBUG facet SURVIVE, and conflating either with this
     // domain is the standing trap: tailscale/tailnet live in the mesh FOLDER and are gated by that
     // facet, while belonging to the tailscale domain, which is live. The folder is not the owner.

@@ -5,11 +5,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.seedmatic.rke2lab.manifests.Cdk8sApiObjectResolver;
 import io.seedmatic.rke2lab.manifests.ManifestSynthesisContext;
+import io.seedmatic.rke2lab.manifests.ManifestsDomain;
 import io.seedmatic.rke2lab.manifests.ManifestsDomainRegistrar;
 import io.seedmatic.rke2lab.manifests.ManifestsUnit;
 import io.seedmatic.rke2lab.manifests.ManifestsUnitContext;
 import io.seedmatic.rke2lab.manifests.YamlMapper;
 import io.seedmatic.rke2lab.manifests.contract.ClusterFleet;
+import io.seedmatic.rke2lab.manifests.contract.ClusterRole;
 import io.seedmatic.rke2lab.manifests.contract.ControlPlaneShape;
 import io.seedmatic.rke2lab.manifests.contract.ManifestAnnotation;
 import io.seedmatic.rke2lab.manifests.contract.ManifestDomainCatalog;
@@ -28,6 +30,7 @@ import io.seedmatic.rke2lab.manifests.domain.PlatformDomainRegistrar;
 import io.seedmatic.rke2lab.manifests.domain.RuntimeDomainRegistrar;
 import io.seedmatic.rke2lab.manifests.domain.StorageDomainRegistrar;
 import io.seedmatic.rke2lab.manifests.domain.TailscaleDomainRegistrar;
+import io.seedmatic.rke2lab.manifests.domain.VclusterDomainRegistrar;
 import io.seedmatic.rke2lab.manifests.node.DefaultNodeEnvContext;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -85,7 +88,8 @@ class TenantNodesTest {
             document.get("kind") + "/" + ((Map<?, ?>) document.get("metadata")).get("name"));
       }
     }
-    assertTrue(pods >= 14, "the render lost pod templates: " + pods);
+    // A workload cluster's real render: cluster-api's operator is MGMT-only, so 13 pod templates.
+    assertTrue(pods >= 13, "the render lost pod templates: " + pods);
     assertEquals(List.of(), tolerating, "fleet pods that would land on a tenant's node");
   }
 
@@ -255,6 +259,38 @@ class TenantNodesTest {
     return true;
   }
 
+  /**
+   * ccr's vcluster lives on nikopol-wrkld, a WORKLOAD cluster: its real policy must render it, and
+   * a management cluster's must render none of it (enabling the domain on both roles leaks
+   * nothing).
+   */
+  @Test
+  void requireTheVclusterRendersOnItsWorkloadHostAndNowhereElse(@TempDir Path outdir) {
+    final List<String> vclusterKinds =
+        List.of("HelmChart", "MutatingAdmissionPolicy", "MutatingAdmissionPolicyBinding");
+    final java.util.function.Function<List<Object>, List<String>> vclusterObjects =
+        documents ->
+            documents.stream()
+                .map(d -> (Map<?, ?>) d)
+                .filter(
+                    d ->
+                        vclusterKinds.contains(d.get("kind"))
+                            && String.valueOf(((Map<?, ?>) d.get("metadata")).get("name"))
+                                .contains("ccr"))
+                .map(d -> d.get("kind") + "/" + ((Map<?, ?>) d.get("metadata")).get("name"))
+                .sorted()
+                .toList();
+    assertEquals(
+        List.of(
+            "HelmChart/ccr",
+            "MutatingAdmissionPolicy/vcluster-ccr-pin-to-pool",
+            "MutatingAdmissionPolicyBinding/vcluster-ccr-pin-to-pool"),
+        vclusterObjects.apply(render(outdir, "nikopol-wrkld", ClusterRole.WRKLD)));
+    assertEquals(
+        List.of(),
+        vclusterObjects.apply(render(outdir.resolve("mgmt"), "nikopol-mgmt", ClusterRole.MGMT)));
+  }
+
   /** Kubernetes' ToleratesTaint, for one taint. */
   private static boolean tolerates(final Object tolerations) {
     final Iterable<?> list =
@@ -282,6 +318,16 @@ class TenantNodesTest {
   }
 
   private static List<Object> renderEveryUnit(final Path outdir) {
+    return render(outdir, "nikopol-wrkld", ClusterRole.WRKLD);
+  }
+
+  /**
+   * The render a cluster of {@code role} actually gets: the registrars filtered by its REAL domain
+   * policy plus their declared domain dependencies, as DefaultManifestSynthesisService does. An
+   * everything-on policy hid that ccr's vcluster sat in a domain no workload cluster renders.
+   */
+  private static List<Object> render(
+      final Path outdir, final String cluster, final ClusterRole role) {
     final List<ManifestsDomainRegistrar> registrars =
         List.of(
             new CicdDomainRegistrar(),
@@ -293,14 +339,25 @@ class TenantNodesTest {
             new PlatformDomainRegistrar(),
             new RuntimeDomainRegistrar(),
             new StorageDomainRegistrar(),
-            new TailscaleDomainRegistrar());
-    final ManifestDomainPolicy policy =
-        ManifestDomainPolicy.builder()
-            .enableOnly(ManifestDomainCatalog.builder().addDefaultDomains().build().all())
-            .build();
+            new TailscaleDomainRegistrar(),
+            new VclusterDomainRegistrar());
+    final ManifestDomainCatalog catalog =
+        ManifestDomainCatalog.builder().addDefaultDomains().build();
+    final ManifestDomainPolicy policy = role.domainPolicy(catalog);
+    final Map<String, ManifestsDomain> byId = new java.util.LinkedHashMap<>();
+    registrars.forEach(r -> byId.put(r.domain().domainId(), r.domain()));
+    final java.util.Set<String> effective = new java.util.LinkedHashSet<>();
+    final java.util.ArrayDeque<String> pending =
+        new java.util.ArrayDeque<>(policy.enabledDomainIds());
+    while (!pending.isEmpty()) {
+      final String id = pending.pop();
+      if (effective.add(id) && byId.containsKey(id)) {
+        pending.addAll(byId.get(id).dependsOnDomainIds());
+      }
+    }
     final BootstrapIdentity identity =
         new BootstrapIdentity(
-            "nikopol-wrkld",
+            cluster,
             5,
             "token",
             "cluster.local",
@@ -309,8 +366,8 @@ class TenantNodesTest {
             1,
             "workload",
             "nikopol-nixos",
-            "nikopol-wrkld-master",
-            "nikopol-wrkld-master.nikopol");
+            cluster + "-master",
+            cluster + "-master.nikopol");
     final App app = new App(AppProps.builder().outdir(outdir.toString()).build());
     final Chart chart = new Chart(app, "manifests");
     final ManifestSynthesisRequest request =
@@ -337,6 +394,9 @@ class TenantNodesTest {
             .build();
     try (var bound = ManifestSynthesisContext.of(request).bind()) {
       for (final ManifestsDomainRegistrar registrar : registrars) {
+        if (!effective.contains(registrar.domain().domainId())) {
+          continue;
+        }
         for (final ManifestsUnit unit : registrar.domain().units()) {
           unit.apply(
               new ManifestsUnitContext(

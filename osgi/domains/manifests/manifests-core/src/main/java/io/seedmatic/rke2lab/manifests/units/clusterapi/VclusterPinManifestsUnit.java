@@ -28,7 +28,7 @@ import software.constructs.Construct;
  */
 public final class VclusterPinManifestsUnit extends AbstractManifestsUnit {
 
-  public static final String MANIFEST_UNIT_ID = ManifestDomainCatalog.CLUSTER_API + "/vcluster-pin";
+  public static final String MANIFEST_UNIT_ID = ManifestDomainCatalog.VCLUSTER + "/vcluster-pin";
 
   private static final String LABEL = "project";
 
@@ -37,7 +37,7 @@ public final class VclusterPinManifestsUnit extends AbstractManifestsUnit {
   private static final Pattern RKE2_VERSION = Pattern.compile("^v1\\.(\\d+)\\.");
 
   private final PackageMetadataProfile packageProfile =
-      new PackageMetadataProfile(ManifestDomainCatalog.CLUSTER_API, "vcluster-pin");
+      new PackageMetadataProfile(ManifestDomainCatalog.VCLUSTER, "vcluster-pin");
 
   public VclusterPinManifestsUnit() {
     super(MANIFEST_UNIT_ID, List.of());
