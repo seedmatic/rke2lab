@@ -1,0 +1,16 @@
+apiVersion: v1
+data:
+  members: |-
+    v1|Namespace||vcluster-ccr
+    helm.cattle.io/v1|HelmChart|kube-system|ccr
+    v1|Service|vcluster-ccr|ccr-api
+    cilium.io/v2alpha1|CiliumL2AnnouncementPolicy||vcluster-ccr-api
+    cilium.io/v2|CiliumNetworkPolicy|vcluster-ccr|ccr-api
+kind: ConfigMap
+metadata:
+  annotations:
+    config.kubernetes.io/local-config: "true"
+    io.seedmatic.rke2lab/domain: vcluster
+    io.seedmatic.rke2lab/manifest-group: "true"
+    io.seedmatic.rke2lab/package: vcluster
+  name: vcluster.group

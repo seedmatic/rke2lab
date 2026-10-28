@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: vcluster
+    io.seedmatic.rke2lab/package: vcluster
+    lbipam.cilium.io/ips: 172.16.18.67
+  labels:
+    io.cilium/lb-ipam-pool: fabric
+    io.seedmatic.rke2lab/vcluster-api: ccr
+  name: ccr-api
+  namespace: vcluster-ccr
+spec:
+  externalTrafficPolicy: Local
+  ports:
+    - name: https
+      port: 443
+      protocol: TCP
+      targetPort: 8443
+  selector:
+    app: vcluster
+    release: ccr
+  type: LoadBalancer

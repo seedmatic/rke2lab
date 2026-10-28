@@ -1,0 +1,17 @@
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: vcluster
+    io.seedmatic.rke2lab/package: vcluster
+  name: ccr-api
+  namespace: vcluster-ccr
+spec:
+  endpointSelector:
+    matchLabels:
+      app: vcluster
+      release: ccr
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: vcluster-ccr

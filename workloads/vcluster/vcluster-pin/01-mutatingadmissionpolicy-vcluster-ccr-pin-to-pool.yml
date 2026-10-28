@@ -1,0 +1,24 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingAdmissionPolicy
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: vcluster
+    io.seedmatic.rke2lab/package: vcluster-pin
+  name: vcluster-ccr-pin-to-pool
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - v1
+        operations:
+          - CREATE
+        resources:
+          - pods
+  mutations:
+    - applyConfiguration:
+        expression: "Object{spec: Object.spec{nodeSelector: {\"project\": \"ccr\"}}}"
+      patchType: ApplyConfiguration
+  reinvocationPolicy: IfNeeded

@@ -1,0 +1,20 @@
+apiVersion: cilium.io/v2alpha1
+kind: CiliumL2AnnouncementPolicy
+metadata:
+  annotations:
+    io.seedmatic.rke2lab/domain: vcluster
+    io.seedmatic.rke2lab/package: vcluster
+  name: vcluster-ccr-api
+spec:
+  interfaces:
+    - fabric0
+  loadBalancerIPs: true
+  nodeSelector:
+    matchExpressions:
+      - key: project
+        operator: In
+        values:
+          - ccr
+  serviceSelector:
+    matchLabels:
+      io.seedmatic.rke2lab/vcluster-api: ccr
