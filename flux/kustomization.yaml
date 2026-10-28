@@ -11,3 +11,4 @@ resources:
   - runtime.yml
   - storage.yml
   - tailscale.yml
+  - vcluster.yml

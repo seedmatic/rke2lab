@@ -19,7 +19,7 @@ spec:
     - "fabric0,type=nic,name=fabric0,nictype=bridged,parent=fabric-br"
     - "vmnet0,type=nic,name=vmnet0,nictype=bridged,parent=vmnet-wrkld"
   image:
-    name: nikopol-wrkld-node-base
+    name: nikopol-wrkld-node-server
   namespace: rke2lab-nikopol-wrkld
   nature: cattle
   nodeLabels:

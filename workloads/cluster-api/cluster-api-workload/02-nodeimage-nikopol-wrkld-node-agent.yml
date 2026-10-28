@@ -8,8 +8,8 @@ metadata:
   namespace: rke2lab-nikopol-wrkld
 spec:
   alias: node-agent
-  buildChecksum: 20cfbeb5cb3391da584b9046060b62828258d2ef26174007c47338e41a172f1a
-  fingerprint: ed04e02d84b56c8303016a0d86907a25f67a64a7d76c52feb654e5a7a0dc867d
+  buildChecksum: 9399ec47443997bca385eae736c6e91abe8f5786a3fc5d1759a98c1b32e4db4b
+  fingerprint: f7a364ca78c8d7bbb53cca62be22529f58364bd37472f7ce6cb698e07ad46f40
   rke2Version: v1.36.4+rke2r1
   runtime:
     kernelModules:
