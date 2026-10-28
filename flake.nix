@@ -1268,6 +1268,44 @@
             meta.description = "Grow or reset a throwaway cluster stack: each its own go, each checked by itself";
           };
 
+          # `nix run .#versions`, from the repo root: one version report for every world. The clusters world from the
+          # manifests CLI (`versions format=jsonl`, it reads the worktree's Component.java), the nix world from this
+          # flake's carriers and nix-flake-commons' own (the two nixpkgs), all through nix-flake-commons'
+          # versions-report. Arguments go to the report (`--format=jsonl`).
+          apps.versions = {
+            type = "app";
+            meta.description = "One version report of every world (clusters + nix), in nix-flake-commons' contract";
+            program = toString (
+              pkgs.writeShellApplication {
+                name = "rke2lab-versions";
+                runtimeInputs = [
+                  pkgs.coreutils
+                  pkgs.jdk25
+                  # nix-flake-commons exposes the report as an app; its program's package is that app's store path.
+                  (pkgs.runCommand "versions-report" { } ''
+                    mkdir -p $out/bin && ln -s ${inputs.flake-commons.apps.${system}.versions-report.program} $out/bin/versions-report
+                  '')
+                ];
+                text = ''
+                  if [ ! -f pom.xml ] || [ ! -f flake.nix ]; then
+                    echo "error: run from the rke2lab repo root" >&2
+                    exit 1
+                  fi
+                  work=$(mktemp -d)
+                  trap 'rm -rf "$work"' EXIT
+                  java -jar ${manifestsCliJar}/share/java/manifests.jar versions format=jsonl >"$work/clusters.jsonl"
+                  versions-report "$@" "$work/clusters.jsonl" ${pkgs.writeText "nix.jsonl" (
+                    self.versions.jsonl
+                    + nixpkgs.lib.concatMapStrings (l: builtins.toJSON l + "\n") (
+                      inputs.flake-commons.lib.versionLines inputs.flake-commons.versions.carriers
+                    )
+                  )}
+                '';
+              }
+              + "/bin/rke2lab-versions"
+            );
+          };
+
           apps.render-manifests = {
             type = "app";
             program = "${renderApp}/bin/rke2lab-render-manifests";
@@ -1461,6 +1499,11 @@
             };
             # No nixConfig in this flake: no machine of ours takes one (nix-flake-commons' shared check).
             no-nix-config = inputs.flake-commons.lib.noNixConfig pkgs ./flake.nix;
+            # The #versions app builds (the manifests CLI, the report, the nix lines it ships), on this system.
+            versions-app = pkgs.runCommand "versions-app" { } ''
+              test -x ${self.apps.${system}.versions.program}
+              touch $out
+            '';
             # rke2lab's version lines satisfy nix-flake-commons' contract (its schema), one per carrier.
             versions-lines =
               pkgs.runCommand "versions-lines" { nativeBuildInputs = [ pkgs.check-jsonschema ]; } ''
