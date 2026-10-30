@@ -9,6 +9,7 @@ spec:
     secretRef:
       name: sops-age
   dependsOn:
+    - name: vcluster-namespace
     - name: vcluster-vcluster-certs
     - name: vcluster-vcluster-pin
   force: true
