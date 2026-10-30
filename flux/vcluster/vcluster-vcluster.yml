@@ -10,6 +10,7 @@ spec:
       name: sops-age
   dependsOn:
     - name: networking-cilium-config
+    - name: vcluster-namespace
     - name: vcluster-vcluster-certs
     - name: vcluster-vcluster-pin
   force: true

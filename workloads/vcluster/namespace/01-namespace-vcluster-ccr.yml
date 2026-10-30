@@ -3,7 +3,7 @@ kind: Namespace
 metadata:
   annotations:
     io.seedmatic.rke2lab/domain: vcluster
-    io.seedmatic.rke2lab/package: vcluster
+    io.seedmatic.rke2lab/package: namespace
   labels:
     pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/warn: restricted

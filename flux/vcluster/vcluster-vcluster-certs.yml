@@ -8,6 +8,8 @@ spec:
     provider: sops
     secretRef:
       name: sops-age
+  dependsOn:
+    - name: vcluster-namespace
   force: true
   interval: 5m
   path: ./workloads/vcluster/vcluster-certs
