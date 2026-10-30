@@ -99,15 +99,9 @@ public final class VclusterPinManifestsUnit extends AbstractManifestsUnit {
                 List.of(
                     Map.of(
                         "patchType",
-                        "ApplyConfiguration",
-                        "applyConfiguration",
-                        Map.of(
-                            "expression",
-                            "Object{spec: Object.spec{nodeSelector: {\""
-                                + LABEL
-                                + "\": \""
-                                + name
-                                + "\"}}}"))))));
+                        "JSONPatch",
+                        "jsonPatch",
+                        Map.of("expression", pinExpression(name)))))));
 
     final ApiObject binding =
         new ApiObject(
@@ -129,6 +123,25 @@ public final class VclusterPinManifestsUnit extends AbstractManifestsUnit {
                     "namespaceSelector",
                     Map.of("matchLabels", Map.of("kubernetes.io/metadata.name", namespace))))));
     binding.addDependency(policy);
+  }
+
+  /**
+   * A JSON patch, not an ApplyConfiguration: a pod's nodeSelector is an atomic map, which an apply
+   * configuration may not merge into, so a pod that already carries one (the chart's own
+   * statefulSet, a synced tenant pod) was refused. Adding the one key keeps every other selector.
+   */
+  static String pinExpression(final String name) {
+    return "has(object.spec.nodeSelector)"
+        + " ? [JSONPatch{op: \"add\", path: \"/spec/nodeSelector/\" + jsonpatch.escapeKey(\""
+        + LABEL
+        + "\"), value: \""
+        + name
+        + "\"}]"
+        + " : [JSONPatch{op: \"add\", path: \"/spec/nodeSelector\", value: {\""
+        + LABEL
+        + "\": \""
+        + name
+        + "\"}}]";
   }
 
   private ApiObjectMetadata.Builder clusterScoped(final String name) {

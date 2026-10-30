@@ -293,6 +293,41 @@ class TenantNodesTest {
   }
 
   /**
+   * The pin adds its key by JSON patch, on both shapes of pod: a pod's nodeSelector is an atomic
+   * map, so an ApplyConfiguration may not merge into one already set, and with failurePolicy Fail
+   * the pod is refused (measured 2026-10-30: ccr-0, whose chart sets {@code project: ccr}, was
+   * never created). With a nodeSelector the key is added beside the others; without one, the map
+   * is.
+   */
+  @Test
+  void requireThePinAddsItsKeyByJsonPatchWithOrWithoutANodeSelector(@TempDir Path outdir) {
+    final Map<?, ?> policy =
+        render(outdir, "nikopol-wrkld", ClusterRole.WRKLD).stream()
+            .map(d -> (Map<?, ?>) d)
+            .filter(
+                d ->
+                    "MutatingAdmissionPolicy".equals(d.get("kind"))
+                        && "vcluster-ccr-pin-to-pool"
+                            .equals(((Map<?, ?>) d.get("metadata")).get("name")))
+            .findFirst()
+            .orElseThrow();
+    assertEquals(
+        List.of(
+            Map.of(
+                "patchType",
+                "JSONPatch",
+                "jsonPatch",
+                Map.of(
+                    "expression",
+                    "has(object.spec.nodeSelector)"
+                        + " ? [JSONPatch{op: \"add\", path: \"/spec/nodeSelector/\""
+                        + " + jsonpatch.escapeKey(\"project\"), value: \"ccr\"}]"
+                        + " : [JSONPatch{op: \"add\", path: \"/spec/nodeSelector\","
+                        + " value: {\"project\": \"ccr\"}}]"))),
+        ((Map<?, ?>) policy.get("spec")).get("mutations"));
+  }
+
+  /**
    * No FloxEnv installs a FloxHub catalog package ({@code pkg-path}): resolving one now requires a
    * FloxHub login, which no node has (measured 2026-10-28: the five envs with one failed, the two
    * with only {@code floxcatalog:} flakes realised). Every install comes from our own catalog.
