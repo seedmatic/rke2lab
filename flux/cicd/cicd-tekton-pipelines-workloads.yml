@@ -11,6 +11,10 @@ spec:
   dependsOn:
     - name: cicd-tekton-pipelines-crds
   force: true
+  healthCheckExprs:
+    - apiVersion: operator.tekton.dev/v1alpha1
+      current: "has(status.conditions) && status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')"
+      kind: TektonConfig
   healthChecks:
     - apiVersion: operator.tekton.dev/v1alpha1
       kind: TektonConfig
