@@ -15,7 +15,6 @@
     "java.test.config": {
         "vmArgs": []
     },
-    "java.jdt.ls.vmargs": "-XX:+UseParallelGC -XX:GCTimeRatio=4 -XX:AdaptiveSizePolicyWeight=90 -Dsun.zip.disableMemoryMapping=true -Xmx12G -Xms100m -Xlog:disable",
     "terminal.integrated.focusAfterRun": "editor",
     "task.defaultPresentation": {
         "reveal": "never",
