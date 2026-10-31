@@ -18,7 +18,7 @@ spec:
         resources:
           - pods
   mutations:
-    - applyConfiguration:
-        expression: "Object{spec: Object.spec{nodeSelector: {\"project\": \"ccr\"}}}"
-      patchType: ApplyConfiguration
+    - jsonPatch:
+        expression: "has(object.spec.nodeSelector) ? [JSONPatch{op: \"add\", path: \"/spec/nodeSelector/\" + jsonpatch.escapeKey(\"project\"), value: \"ccr\"}] : [JSONPatch{op: \"add\", path: \"/spec/nodeSelector\", value: {\"project\": \"ccr\"}}]"
+      patchType: JSONPatch
   reinvocationPolicy: IfNeeded
