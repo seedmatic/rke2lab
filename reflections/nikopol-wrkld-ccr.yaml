@@ -13,7 +13,7 @@ spec:
   clusterRef: nikopol-wrkld
   namespace: rke2lab-nikopol-wrkld
   nodes:
-  - name: nikopol-wrkld-control-plane-9sld2
+  - name: nikopol-wrkld-control-plane-xj8tc
   pool: ccr
 status:
   lastReflectTime: null
